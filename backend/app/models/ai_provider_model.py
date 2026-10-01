@@ -1,25 +1,25 @@
 from sqlalchemy import (
-    Column,
-    String,
-    Boolean,
-    ForeignKey,
-    Text,
-    Integer,
-    Float,
     UUID,
-    Index,
-    Enum as SQLEnum,
+    Boolean,
     CheckConstraint,
+    Column,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy import (
+    Enum as SQLEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.expression import text
-from typing import Optional
 
-from .base import Base, UUIDMixin, TenantMixin, TimestampMixin, UserMixin
+from app.models.enums import AIModelCapability, AIScope
 
-
-from app.models.enums import AIScope, AIModelCapability
+from .base import Base, TenantMixin, TimestampMixin, UserMixin, UUIDMixin
 
 
 class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
@@ -39,17 +39,13 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     settings = Column(JSONB, nullable=True, default=dict)
 
     # Provider Transparency Info
-    is_local = Column(
-        Boolean, default=False, server_default=text("false"), nullable=False
-    )
+    is_local = Column(Boolean, default=False, server_default=text("false"), nullable=False)
     company_name = Column(String(200), nullable=True)
     company_website = Column(String(500), nullable=True)
     company_country = Column(String(100), nullable=True)
 
     # Relationship to models
-    models = relationship(
-        "AIModel", back_populates="provider", cascade="all, delete-orphan"
-    )
+    models = relationship("AIModel", back_populates="provider", cascade="all, delete-orphan")
 
     # Relationship to task assignments
     task_assignments = relationship(
@@ -90,7 +86,7 @@ class AIProviderModel(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
             "updated_at": str(self.updated_at) if self.updated_at else None,
         }
 
-    def get_api_key_plaintext(self) -> Optional[str]:
+    def get_api_key_plaintext(self) -> str | None:
         """Return the decrypted api_key, or None if not set.
 
         This is the only sanctioned way to read the plaintext key for use
@@ -146,9 +142,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     __table_args__ = (
         Index("idx_ai_models_provider_active", "provider_id", "is_active"),
         CheckConstraint("max_tokens > 0", name="ck_ai_models_positive_max_tokens"),
-        CheckConstraint(
-            "temperature BETWEEN 0 AND 2", name="ck_ai_models_temperature_bounds"
-        ),
+        CheckConstraint("temperature BETWEEN 0 AND 2", name="ck_ai_models_temperature_bounds"),
     )
 
     def get_capabilities(self) -> list:
@@ -210,9 +204,7 @@ class AITaskAssignment(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     provider = relationship("AIProviderModel", back_populates="task_assignments")
 
     __table_args__ = (
-        Index(
-            "idx_ai_task_assignments_tenant_task", "tenant_id", "task_type", "is_active"
-        ),
+        Index("idx_ai_task_assignments_tenant_task", "tenant_id", "task_type", "is_active"),
         Index("idx_ai_task_assignments_priority", "priority"),
         Index("idx_ai_task_assignments_user", "user_id"),
         Index("idx_ai_task_assignments_scope", "scope"),

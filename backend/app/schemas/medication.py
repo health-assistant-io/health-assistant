@@ -1,22 +1,21 @@
-from typing import Optional, List, Dict, Any
+from datetime import date, datetime
+from typing import Any
 from uuid import UUID
-from datetime import datetime, date
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
 from app.models.enums import MedicationIntent, MedicationStatus
-
 
 # --- Medication Catalog ---
 
 
 class MedicationCatalogBase(BaseModel):
     name: str
-    description: Optional[str] = None
-    indications: Optional[str] = None
-    side_effects: List[str] = Field(default_factory=list)
-    contraindications: Optional[str] = None
-    dosage_info: Optional[str] = None
+    description: str | None = None
+    indications: str | None = None
+    side_effects: list[str] = Field(default_factory=list)
+    contraindications: str | None = None
+    dosage_info: str | None = None
 
     @field_validator("side_effects", mode="before")
     @classmethod
@@ -40,19 +39,19 @@ class MedicationCatalogCreate(MedicationCatalogBase):
 
 
 class MedicationCatalogUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    indications: Optional[str] = None
-    side_effects: Optional[List[str]] = None
-    contraindications: Optional[str] = None
-    dosage_info: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    indications: str | None = None
+    side_effects: list[str] | None = None
+    contraindications: str | None = None
+    dosage_info: str | None = None
 
 
 class MedicationCatalogResponse(MedicationCatalogBase):
     id: UUID
     is_custom: bool
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -62,13 +61,13 @@ class MedicationCatalogResponse(MedicationCatalogBase):
 
 class MedicationTiming(BaseModel):
     type: str = "daily"  # daily, weekly, specific_days, interval
-    frequency: Optional[int] = 1
-    period: Optional[int] = 1
-    period_unit: Optional[str] = "day"  # day, week, month
-    days_of_week: List[str] = Field(default_factory=list)  # ["mon", "tue", ...]
-    time_of_day: List[str] = Field(default_factory=list)  # ["08:00", "20:00"]
+    frequency: int | None = 1
+    period: int | None = 1
+    period_unit: str | None = "day"  # day, week, month
+    days_of_week: list[str] = Field(default_factory=list)  # ["mon", "tue", ...]
+    time_of_day: list[str] = Field(default_factory=list)  # ["08:00", "20:00"]
     as_needed: bool = False
-    display: Optional[str] = None
+    display: str | None = None
 
     @field_validator("days_of_week", "time_of_day", mode="before")
     @classmethod
@@ -80,20 +79,20 @@ class MedicationTiming(BaseModel):
 
 class MedicationRecordBase(BaseModel):
     status: MedicationStatus = MedicationStatus.ACTIVE
-    code: Dict[str, Any]  # {"text": "Aspirin", "catalog_id": "..."}
-    patient_id: Optional[UUID] = None
-    examination_id: Optional[UUID] = None
+    code: dict[str, Any]  # {"text": "Aspirin", "catalog_id": "..."}
+    patient_id: UUID | None = None
+    examination_id: UUID | None = None
     # Discriminator: MedicationStatement (default) vs MedicationRequest.
     # Exposed so integration pulls can import a remote MedicationRequest as
     # intent=order; UI callers leave it unset to keep the legacy statement
     # default. ``None`` here means "let the ORM column default apply".
-    intent: Optional[MedicationIntent] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    dosage: Optional[str] = None
-    frequency: Optional[MedicationTiming] = None
-    reason: Optional[str] = None
-    note: Optional[str] = None
+    intent: MedicationIntent | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    dosage: str | None = None
+    frequency: MedicationTiming | None = None
+    reason: str | None = None
+    note: str | None = None
 
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
@@ -111,34 +110,34 @@ class MedicationRecordBase(BaseModel):
 
 
 class MedicationRecordCreate(MedicationRecordBase):
-    timing: Optional[Dict[str, Any]] = None  # Direct FHIR timing object support
+    timing: dict[str, Any] | None = None  # Direct FHIR timing object support
     # Integration dedup key (Phase 4 of the fhir-server multi-resource sync
     # plan). Set by integration providers on the objects they return from
     # ``pull_medications``; the engine reads it and forwards it to the
     # service. ``source_integration_id`` is NOT on the schema — the engine
     # always supplies it (= the integration's own id).
-    external_id: Optional[str] = None
+    external_id: str | None = None
 
 
 class MedicationRecordUpdate(BaseModel):
-    status: Optional[MedicationStatus] = None
-    code: Optional[Dict[str, Any]] = None
-    examination_id: Optional[UUID] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    dosage: Optional[str] = None
-    frequency: Optional[MedicationTiming] = None
-    reason: Optional[str] = None
-    note: Optional[str] = None
+    status: MedicationStatus | None = None
+    code: dict[str, Any] | None = None
+    examination_id: UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    dosage: str | None = None
+    frequency: MedicationTiming | None = None
+    reason: str | None = None
+    note: str | None = None
 
 
 class MedicationRecordResponse(MedicationRecordBase):
     id: UUID
     patient_id: UUID
     tenant_id: UUID
-    source_integration_id: Optional[UUID] = None
-    external_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    source_integration_id: UUID | None = None
+    external_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

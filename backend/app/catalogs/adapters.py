@@ -24,7 +24,7 @@ joined field and ``BiomarkerDefinition`` has no ``to_dict()`` / ``to_fhir_dict()
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -35,12 +35,12 @@ from app.catalogs.policy import (
     CatalogAccessPolicy,
     CatalogConflict,
 )
+from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.concept_model import Concept, ConceptKindTag
 from app.models.enums import CatalogScope, ConceptKind
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
-from app.models.anatomy_model import AnatomyStructure
 from app.services.fhir_helpers import assert_valid_fhir
 
 # Columns that must never be set directly from a write payload (mass-assignment
@@ -79,7 +79,7 @@ class BaseCatalogAdapter:
     # The FK column linking items to their taxonomy ``class_concept`` (e.g.
     # ``class_concept_id``). Stamped by ``registrations.py`` from the
     # descriptor's ``ConceptLink``. Drives the generic ``?class=<slug>`` filter.
-    concept_link_column: Optional[str] = None
+    concept_link_column: str | None = None
 
     # --- audit -------------------------------------------------------------
 
@@ -90,9 +90,9 @@ class BaseCatalogAdapter:
         operation: str,
         obj: Any,
         *,
-        from_scope: Optional[str] = None,
-        to_scope: Optional[str] = None,
-        details: Optional[dict] = None,
+        from_scope: str | None = None,
+        to_scope: str | None = None,
+        details: dict | None = None,
     ) -> None:
         """Best-effort audit record after a successful write.
 
@@ -166,12 +166,12 @@ class BaseCatalogAdapter:
     async def list(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         *,
-        search: Optional[str] = None,
-        kind: Optional[str] = None,
-        scope: Optional[str] = None,
-        concept_class: Optional[str] = None,
+        search: str | None = None,
+        kind: str | None = None,
+        scope: str | None = None,
+        concept_class: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -201,9 +201,9 @@ class BaseCatalogAdapter:
     async def get(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         item_id: UUID,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         obj = await self._load(db, item_id, tenant_id)
         return self.serialize(obj) if obj else None
 
@@ -212,7 +212,7 @@ class BaseCatalogAdapter:
     async def search(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         q: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
@@ -260,9 +260,7 @@ class BaseCatalogAdapter:
                     *[c.ilike(f"%{norm}%") for c in cols],
                 )
             )
-            .order_by(
-                func.similarity(getattr(self.model, self.label_column), norm).desc()
-            )
+            .order_by(func.similarity(getattr(self.model, self.label_column), norm).desc())
             .limit(limit)
         )
         rows = (await db.execute(stmt)).scalars().all()
@@ -292,7 +290,7 @@ class BaseCatalogAdapter:
         actor: Any,
         item_id: UUID,
         payload: dict[str, Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         obj = await self._load(db, item_id, actor.tenant_id)
         if obj is None:
             return None
@@ -333,7 +331,7 @@ class BaseCatalogAdapter:
         actor: Any,
         item_id: UUID,
         target_scope: str,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Transition a catalog item's scope (plan §1.3).
 
         Role-gated: user↔tenant requires ADMIN/MANAGER; any transition
@@ -357,7 +355,7 @@ class BaseCatalogAdapter:
         self,
         db: AsyncSession,
         obj: Any,
-        target: "CatalogScope",
+        target: CatalogScope,
         actor: Any,
     ) -> str:
         """The shared promote/demote core: RBAC check + slug-collision guard +
@@ -393,8 +391,8 @@ class BaseCatalogAdapter:
         self,
         db: AsyncSession,
         obj: Any,
-        target: "CatalogScope",
-        actor_tenant_id: Optional[UUID],
+        target: CatalogScope,
+        actor_tenant_id: UUID | None,
     ) -> None:
         """Raise :class:`CatalogConflict` if another row at the target scope
         tier already owns ``obj.slug``. No-op for models without a ``slug``
@@ -434,7 +432,7 @@ class BaseCatalogAdapter:
     def _base_stmt(self):
         return select(self.model)
 
-    def _apply_tenant(self, stmt, tenant_id: Optional[UUID]):
+    def _apply_tenant(self, stmt, tenant_id: UUID | None):
         col = self.model.tenant_id
         return stmt.where(or_(col.is_(None), col == tenant_id))
 
@@ -444,9 +442,7 @@ class BaseCatalogAdapter:
 
     def _apply_search(self, stmt, q: str):
         term = f"%{q.strip()}%"
-        return stmt.where(
-            or_(*[getattr(self.model, c).ilike(term) for c in self.search_columns])
-        )
+        return stmt.where(or_(*[getattr(self.model, c).ilike(term) for c in self.search_columns]))
 
     def _apply_kind(self, stmt, kind: str):
         """Filter by a domain ``kind``. Default no-op; overridden by catalogs
@@ -454,9 +450,7 @@ class BaseCatalogAdapter:
         ``primary_kind``). Accepts comma-separated values."""
         return stmt
 
-    async def _resolve_class_concept_ids(
-        self, db: AsyncSession, concept_class: str
-    ) -> list:
+    async def _resolve_class_concept_ids(self, db: AsyncSession, concept_class: str) -> list:
         """Resolve one or more taxonomy-class concept slugs (comma-separated)
         to their concept ids. Generic over the catalog: works for any catalog
         whose items carry a ``class_concept_id`` FK (anatomy, biomarker,
@@ -470,7 +464,7 @@ class BaseCatalogAdapter:
     def _apply_order(self, stmt):
         return stmt.order_by(*[getattr(self.model, c).asc() for c in self.order_by])
 
-    async def _load(self, db: AsyncSession, item_id: UUID, tenant_id: Optional[UUID]):
+    async def _load(self, db: AsyncSession, item_id: UUID, tenant_id: UUID | None):
         stmt = self._base_stmt().where(self.model.id == item_id)
         stmt = self._apply_tenant(stmt, tenant_id)
         if self.soft_delete:
@@ -491,11 +485,7 @@ class BaseCatalogAdapter:
         from sqlalchemy import inspect as _sa_inspect
 
         column_keys = set(_sa_inspect(self.model).columns.keys())
-        return {
-            k: v
-            for k, v in payload.items()
-            if k in column_keys and k not in _READONLY_FIELDS
-        }
+        return {k: v for k, v in payload.items() if k in column_keys and k not in _READONLY_FIELDS}
 
     def _validate_fhir(self, obj) -> None:
         if hasattr(obj, "to_fhir_dict"):
@@ -577,12 +567,12 @@ class ConceptCatalogAdapter(BaseCatalogAdapter):
     async def list(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         *,
-        search: Optional[str] = None,
-        kind: Optional[str] = None,
-        scope: Optional[str] = None,
-        concept_class: Optional[str] = None,
+        search: str | None = None,
+        kind: str | None = None,
+        scope: str | None = None,
+        concept_class: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -605,28 +595,22 @@ class ConceptCatalogAdapter(BaseCatalogAdapter):
     async def get(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         item_id: UUID,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         d = await super().get(db, tenant_id, item_id)
         if d:
             await self._attach_parent_slugs(db, [d])
         return d
 
-    async def _attach_parent_slugs(
-        self, db: AsyncSession, items: list[dict[str, Any]]
-    ) -> None:
+    async def _attach_parent_slugs(self, db: AsyncSession, items: list[dict[str, Any]]) -> None:
         """Resolve ``parent_id`` → ``parent_slug`` for a batch of serialized
         concept dicts (one indexed query, not one per row)."""
-        parent_ids = {
-            UUID(it["parent_id"]) for it in items if it.get("parent_id")
-        }
+        parent_ids = {UUID(it["parent_id"]) for it in items if it.get("parent_id")}
         if not parent_ids:
             return
         rows = (
-            await db.execute(
-                select(Concept.id, Concept.slug).where(Concept.id.in_(parent_ids))
-            )
+            await db.execute(select(Concept.id, Concept.slug).where(Concept.id.in_(parent_ids)))
         ).all()
         slug_map = {str(pid): slug for pid, slug in rows}
         for it in items:
@@ -662,12 +646,12 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
     async def list(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         *,
-        search: Optional[str] = None,
-        kind: Optional[str] = None,
-        scope: Optional[str] = None,
-        concept_class: Optional[str] = None,
+        search: str | None = None,
+        kind: str | None = None,
+        scope: str | None = None,
+        concept_class: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -697,9 +681,9 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
     async def get(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         item_id: UUID,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         stmt = (
             select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
             .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
@@ -716,7 +700,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
     async def search(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         q: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
@@ -766,7 +750,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         actor: Any,
         item_id: UUID,
         payload: dict[str, Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         bio = await self._load(db, item_id, actor.tenant_id)
         if bio is None:
             return None
@@ -809,7 +793,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         actor: Any,
         item_id: UUID,
         target_scope: str,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         from app.models.enums import CatalogScope
 
         bio = await self._load(db, item_id, actor.tenant_id)
@@ -823,10 +807,10 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
 
     @staticmethod
     def _filters(
-        tenant_id: Optional[UUID],
-        search: Optional[str],
+        tenant_id: UUID | None,
+        search: str | None,
         *,
-        scope: Optional[str] = None,
+        scope: str | None = None,
     ):
         col = BiomarkerDefinition.tenant_id
         flt = [or_(col.is_(None), col == tenant_id)]
@@ -843,21 +827,17 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
             )
         return flt
 
-    async def _load(self, db: AsyncSession, item_id: UUID, tenant_id: Optional[UUID]):
+    async def _load(self, db: AsyncSession, item_id: UUID, tenant_id: UUID | None):
         stmt = select(BiomarkerDefinition).where(
             BiomarkerDefinition.id == item_id, *self._filters(tenant_id, None)
         )
         return (await db.execute(stmt)).scalar_one_or_none()
 
-    async def _get_with_symbol(
-        self, db: AsyncSession, bio: BiomarkerDefinition
-    ) -> dict:
+    async def _get_with_symbol(self, db: AsyncSession, bio: BiomarkerDefinition) -> dict:
         symbol = None
         if bio.preferred_unit_id:
             symbol = (
-                await db.execute(
-                    select(Unit.symbol).where(Unit.id == bio.preferred_unit_id)
-                )
+                await db.execute(select(Unit.symbol).where(Unit.id == bio.preferred_unit_id))
             ).scalar_one_or_none()
         return self._serialize(bio, symbol)
 
@@ -871,16 +851,10 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         from sqlalchemy import inspect as _sa_inspect
 
         column_keys = set(_sa_inspect(BiomarkerDefinition).columns.keys())
-        return {
-            k: v
-            for k, v in payload.items()
-            if k in column_keys and k not in _READONLY_FIELDS
-        }
+        return {k: v for k, v in payload.items() if k in column_keys and k not in _READONLY_FIELDS}
 
     @staticmethod
-    def _serialize(
-        bio: BiomarkerDefinition, unit_symbol: Optional[str]
-    ) -> dict[str, Any]:
+    def _serialize(bio: BiomarkerDefinition, unit_symbol: str | None) -> dict[str, Any]:
         return {
             "id": bio.id,
             "slug": bio.slug,
@@ -937,14 +911,13 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         }
 
     @staticmethod
-    async def _upsert_allowed_states(
-        db: AsyncSession, biomarker_id: UUID, specs: list
-    ) -> None:
+    async def _upsert_allowed_states(db: AsyncSession, biomarker_id: UUID, specs: list) -> None:
         """Resolve state slugs → BiomarkerAllowedState rows and replace the
         existing set atomically (delete-then-insert). Mirrors the domain
         endpoint behavior in ``biomarkers.py``."""
-        from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerState
         from sqlalchemy import delete as sa_delete
+
+        from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerState
 
         if not specs:
             await db.execute(
@@ -972,12 +945,24 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
             )
         )
         for spec in specs:
-            slug = spec.get("state_slug") if isinstance(spec, dict) else getattr(spec, "state_slug", None)
+            slug = (
+                spec.get("state_slug")
+                if isinstance(spec, dict)
+                else getattr(spec, "state_slug", None)
+            )
             state = by_slug.get(slug)
             if not state:
                 continue
-            is_normal = spec.get("is_normal", False) if isinstance(spec, dict) else getattr(spec, "is_normal", False)
-            sort_order = spec.get("sort_order", 0) if isinstance(spec, dict) else getattr(spec, "sort_order", 0)
+            is_normal = (
+                spec.get("is_normal", False)
+                if isinstance(spec, dict)
+                else getattr(spec, "is_normal", False)
+            )
+            sort_order = (
+                spec.get("sort_order", 0)
+                if isinstance(spec, dict)
+                else getattr(spec, "sort_order", 0)
+            )
             db.add(
                 BiomarkerAllowedState(
                     biomarker_id=biomarker_id,

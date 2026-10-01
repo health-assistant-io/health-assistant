@@ -6,6 +6,7 @@ Confirms:
 2. The latent ``valueCodeableConcept`` import drop is fixed — round-trip
    a valueCodeableConcept Observation through FHIR import and read it back.
 """
+
 import uuid
 
 import pytest
@@ -13,7 +14,6 @@ from sqlalchemy import text
 
 from app.core.database import AsyncSessionLocal
 from app.models.tenant_model import TenantModel
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -33,12 +33,8 @@ async def _cleanup():
                 "WHERE code->>'text' IN ('StateR4 Test', 'StateR4 Multi', 'StateR4 Import')"
             )
         )
-        await session.execute(
-            text("DELETE FROM fhir_patients WHERE name->>'family' = 'StateR4'")
-        )
-        await session.execute(
-            text("DELETE FROM tenants WHERE slug LIKE 'state-r4-%'")
-        )
+        await session.execute(text("DELETE FROM fhir_patients WHERE name->>'family' = 'StateR4'"))
+        await session.execute(text("DELETE FROM tenants WHERE slug LIKE 'state-r4-%'"))
         await session.commit()
 
 
@@ -50,9 +46,7 @@ async def _seed_tenant_patient_and_headers():
         tenant_id = uuid.uuid4()
         patient_id = uuid.uuid4()
         session.add(
-            TenantModel(
-                id=tenant_id, name="StateR4", slug=f"state-r4-{uuid.uuid4().hex[:8]}"
-            )
+            TenantModel(id=tenant_id, name="StateR4", slug=f"state-r4-{uuid.uuid4().hex[:8]}")
         )
         await session.flush()
         from app.models.fhir.patient import Patient
@@ -167,10 +161,7 @@ async def test_value_concept_search_with_system_narrows(async_client):
     assert response.status_code == 200, response.text
     bundle = response.json()
     assert bundle["total"] == 1
-    assert (
-        bundle["entry"][0]["resource"]["valueCodeableConcept"]["coding"][0]["system"]
-        == V3
-    )
+    assert bundle["entry"][0]["resource"]["valueCodeableConcept"]["coding"][0]["system"] == V3
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +219,6 @@ async def test_component_code_search_narrows_multi_state(async_client):
     bundle = response.json()
     assert bundle["total"] == 1
     comp_codes = [
-        c["code"]["coding"][0]["code"]
-        for c in bundle["entry"][0]["resource"]["component"]
+        c["code"]["coding"][0]["code"] for c in bundle["entry"][0]["resource"]["component"]
     ]
     assert "staph-aureus" in comp_codes

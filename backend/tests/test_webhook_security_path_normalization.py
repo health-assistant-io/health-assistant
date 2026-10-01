@@ -17,13 +17,16 @@ Post-fix contract pinned here:
 4. The real Python SDK ``sign_request`` helper (imported end-to-end)
    verifies against the bare-path verifier call — the original bug scenario.
 """
+
 import hashlib
 import hmac
 
 from integrations.sdk.webhook_security import verify_canonical_signature
 
 
-def _sign(secret: str, method: str, path: str, body: bytes = b"", timestamp: int | None = None) -> str:
+def _sign(
+    secret: str, method: str, path: str, body: bytes = b"", timestamp: int | None = None
+) -> str:
     """Mirror the canonical scheme used by the SDK ``sign_request`` helpers."""
     parts = [method.upper().encode(), b"\n", path.encode(), b"\n"]
     if timestamp is not None:
@@ -36,18 +39,14 @@ def test_with_slash_signature_verifies_bare_path():
     """SDK signs ``/map``; endpoint passes ``map`` → must verify (the bug)."""
     secret = "topsecret"
     sig = _sign(secret, "POST", "/map", b'{"x":1}')
-    assert verify_canonical_signature(
-        secret, "POST", "map", b'{"x":1}', sig
-    ) is True
+    assert verify_canonical_signature(secret, "POST", "map", b'{"x":1}', sig) is True
 
 
 def test_bare_signature_verifies_with_slash_path():
     """Inverse direction: bare-path signature, with-slash verifier call."""
     secret = "topsecret"
     sig = _sign(secret, "POST", "sync", b'{"x":1}')
-    assert verify_canonical_signature(
-        secret, "POST", "/sync", b'{"x":1}', sig
-    ) is True
+    assert verify_canonical_signature(secret, "POST", "/sync", b'{"x":1}', sig) is True
 
 
 def test_same_form_still_verifies():
@@ -83,10 +82,18 @@ def test_tolerance_with_timestamp_replay_protection():
     secret = "topsecret"
     ts = int(time.time())  # in-window so the skew check doesn't reject
     sig = _sign(secret, "POST", "/map", b"body", timestamp=ts)
-    assert verify_canonical_signature(
-        secret, "POST", "map", b"body", sig, provided_timestamp=str(ts),
-        max_skew_seconds=300,
-    ) is True
+    assert (
+        verify_canonical_signature(
+            secret,
+            "POST",
+            "map",
+            b"body",
+            sig,
+            provided_timestamp=str(ts),
+            max_skew_seconds=300,
+        )
+        is True
+    )
 
 
 def test_empty_path_forms():
@@ -99,6 +106,7 @@ def test_empty_path_forms():
 # ---------------------------------------------------------------------------
 # End-to-end: real Python SDK signer → verifier (the original bug scenario)
 # ---------------------------------------------------------------------------
+
 
 def test_real_sdk_sign_request_verifies_through_bare_path():
     """Import the actual SDK ``sign_request`` and feed it through the verifier
@@ -113,7 +121,9 @@ def test_real_sdk_sign_request_verifies_through_bare_path():
 
     sdk_root = (
         pathlib.Path(__file__).resolve().parents[2]
-        / "integrations" / "health_assistant_bridge" / "python-sdk"
+        / "integrations"
+        / "health_assistant_bridge"
+        / "python-sdk"
     )
     spec = importlib.util.spec_from_file_location(
         "ha_bridge_signing", sdk_root / "health_assistant_bridge" / "signing.py"
@@ -125,6 +135,7 @@ def test_real_sdk_sign_request_verifies_through_bare_path():
 
     secret = "topsecret-topsecret"  # min 16 chars per the config-flow validator
     import time
+
     ts = int(time.time())
     body = b'{"metrics":[]}'
     headers = sign_request(secret, "POST", "/sync", body, timestamp=ts)
@@ -134,12 +145,15 @@ def test_real_sdk_sign_request_verifies_through_bare_path():
 
     # Endpoint captures path WITHOUT leading slash ("sync"), per FastAPI
     # ``{path:path}`` semantics. This is the exact production call shape.
-    assert verify_canonical_signature(
-        secret,
-        "POST",
-        "sync",                       # bare path — what the route captures
-        body,
-        headers["X-Api-Signature"],
-        provided_timestamp=headers["X-Api-Timestamp"],
-        max_skew_seconds=300,
-    ) is True
+    assert (
+        verify_canonical_signature(
+            secret,
+            "POST",
+            "sync",  # bare path — what the route captures
+            body,
+            headers["X-Api-Signature"],
+            provided_timestamp=headers["X-Api-Timestamp"],
+            max_skew_seconds=300,
+        )
+        is True
+    )

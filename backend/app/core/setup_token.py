@@ -38,7 +38,6 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import Optional
 
 from fastapi import Request
 
@@ -49,8 +48,8 @@ logger = logging.getLogger(__name__)
 _LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
 _DEV_ENVS = {"development", "test", "testing"}
 
-_current_token: Optional[str] = None
-_boot_time: Optional[float] = None
+_current_token: str | None = None
+_boot_time: float | None = None
 _post_grace_token_minted: bool = False
 
 
@@ -76,7 +75,7 @@ def generate() -> str:
     return _current_token
 
 
-def seed_from_env(value: Optional[str]) -> bool:
+def seed_from_env(value: str | None) -> bool:
     """Seed the active token from an operator-supplied value (``env`` mode).
 
     Returns True if the token was actually set (a non-empty ``value`` was
@@ -107,12 +106,12 @@ def is_within_grace_window() -> bool:
     return (time.time() - _boot_time) <= _grace_window_seconds()
 
 
-def get() -> Optional[str]:
+def get() -> str | None:
     """Return the current setup token, if any (None after first use)."""
     return _current_token
 
 
-def validate(token: Optional[str]) -> bool:
+def validate(token: str | None) -> bool:
     """True if the supplied token matches the current setup token.
 
     An empty/None current token (already consumed, or never set in disabled /

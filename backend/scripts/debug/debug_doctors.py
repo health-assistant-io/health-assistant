@@ -1,8 +1,10 @@
 import asyncio
+from uuid import UUID
+
 from sqlalchemy import select
+
 from app.core.database import AsyncSessionLocal
 from app.models.doctor_model import DoctorModel
-from uuid import UUID
 
 
 async def debug_doctors_list():

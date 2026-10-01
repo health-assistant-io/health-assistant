@@ -1,11 +1,13 @@
-import pytest
 import uuid
+
+import pytest
+
+from app.models.enums import ExportScope
 from app.services import fhir_converter as fc
 from app.services import fhir_helpers as fh
-from app.models.enums import ExportScope
-
 
 # ---------- ORM-shape dict fixtures (for reverse-direction reference) ----------
+
 
 def _patient_orm():
     return {
@@ -85,10 +87,13 @@ def _allergy_orm(patient_id):
 
 # ---------- ORM model instance builders ----------
 
+
 def _patient_model():
     import datetime
-    from app.models.fhir.patient import Patient
+
     from app.models.enums import Gender
+    from app.models.fhir.patient import Patient
+
     return Patient(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -103,7 +108,9 @@ def _patient_model():
 
 def _observation_model():
     import datetime
+
     from app.models.fhir.patient import Observation
+
     o = Observation(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -111,7 +118,7 @@ def _observation_model():
         category=[{"coding": [{"code": "laboratory"}]}],
         code={"coding": [{"system": "http://loinc.org", "code": "2345-7"}], "text": "Glucose"},
         subject={"reference": "Patient/abc"},
-        effective_datetime=datetime.datetime(2026, 6, 18, 10, 0, tzinfo=datetime.timezone.utc),
+        effective_datetime=datetime.datetime(2026, 6, 18, 10, 0, tzinfo=datetime.UTC),
         value_quantity={"value": 95, "unit": "mg/dL"},
         reference_range=[{"low": {"value": 70}, "high": {"value": 99}}],
         interpretation="High",
@@ -128,8 +135,10 @@ def _observation_model():
 
 def _medication_model():
     import datetime
-    from app.models.fhir.medication import Medication
+
     from app.models.enums import MedicationStatus
+    from app.models.fhir.medication import Medication
+
     return Medication(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -146,8 +155,10 @@ def _medication_model():
 
 def _allergy_model():
     import datetime
+
+    from app.models.enums import AllergyCategory, AllergyClinicalStatus, AllergyCriticality
     from app.models.fhir.allergy import AllergyIntolerance
-    from app.models.enums import AllergyCategory, AllergyCriticality, AllergyClinicalStatus
+
     return AllergyIntolerance(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -157,14 +168,15 @@ def _allergy_model():
         category=AllergyCategory.FOOD,
         criticality=AllergyCriticality.HIGH,
         code={"text": "Peanuts"},
-        onset_date=datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc),
-        last_occurrence=datetime.datetime(2026, 5, 1, tzinfo=datetime.timezone.utc),
+        onset_date=datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC),
+        last_occurrence=datetime.datetime(2026, 5, 1, tzinfo=datetime.UTC),
         note="severe",
         reactions=[{"manifestation": "Hives", "severity": "MILD", "date": "2026-05-01"}],
     )
 
 
 # ---------- scope + meta helpers ----------
+
 
 def test_scope_to_smart():
     assert fc.scope_to_smart(ExportScope.PATIENT) == "patient/*.rs"
@@ -187,6 +199,7 @@ def test_build_meta_no_provenance():
 
 # ---------- to_fhir_dict() construction via fhir.resources ----------
 
+
 def test_patient_to_fhir_dict_valid_and_strips_app_fields():
     f = _patient_model().to_fhir_dict()
     assert f["resourceType"] == "Patient"
@@ -203,7 +216,9 @@ def test_observation_to_fhir_dict_valid_and_strips_app_fields():
     o = _observation_model().to_fhir_dict()
     assert o["resourceType"] == "Observation"
     assert o["status"] == "final"
-    assert o["effectiveDateTime"] == "2026-06-18T10:00:00Z"  # fhir.resources canonicalizes +00:00 → Z
+    assert (
+        o["effectiveDateTime"] == "2026-06-18T10:00:00Z"
+    )  # fhir.resources canonicalizes +00:00 → Z
     assert o["valueQuantity"] == {"value": 95, "unit": "mg/dL"}
     assert o["method"] == {"text": "enzymatic"}
     assert o["interpretation"] == [{"text": "High"}]
@@ -250,6 +265,7 @@ def test_to_fhir_dict_raises_on_invalid_resource():
 
 # ---------- orm_to_fhir dispatcher ----------
 
+
 def test_orm_to_fhir_routes_orm_object_to_to_fhir_dict():
     p = _patient_model()
     out = fc.orm_to_fhir("Patient", p)
@@ -264,6 +280,7 @@ def test_orm_to_fhir_rejects_plain_dict():
 
 
 # ---------- fhir_to_*_orm reverse (canonical FHIR in) ----------
+
 
 def test_fhir_to_orm_dispatch_unsupported():
     with pytest.raises(ValueError):
@@ -359,6 +376,7 @@ def test_fhir_to_orm_round_trips_canonical_patient():
 
 # ---------- round-trip: to_fhir_dict() -> fhir_to_*_orm ----------
 
+
 def test_patient_round_trip_to_orm():
     f = _patient_model().to_fhir_dict()
     orm = fc.fhir_to_patient_orm(f)
@@ -369,7 +387,9 @@ def test_patient_round_trip_to_orm():
 
 def test_observation_round_trip_to_orm_extracts_patient_id():
     import datetime
+
     from app.models.fhir.patient import Observation
+
     pid = str(uuid.uuid4())
     o = Observation(
         id=uuid.uuid4(),
@@ -377,7 +397,7 @@ def test_observation_round_trip_to_orm_extracts_patient_id():
         status="FINAL",
         code={"text": "Glucose"},
         subject={"reference": f"Patient/{pid}"},
-        effective_datetime=datetime.datetime(2026, 6, 18, 10, 0, tzinfo=datetime.timezone.utc),
+        effective_datetime=datetime.datetime(2026, 6, 18, 10, 0, tzinfo=datetime.UTC),
         value_quantity={"value": 95, "unit": "mg/dL"},
         method="enzymatic",
     )
@@ -408,6 +428,7 @@ def test_allergy_round_trip_to_orm():
 
 # ---------- Bundle + validation ----------
 
+
 def test_build_bundle_structure():
     p = _patient_model().to_fhir_dict()
     o = _observation_model().to_fhir_dict()
@@ -437,7 +458,11 @@ def test_validate_bundle_rejects_invalid_resource():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"fullUrl": "urn:uuid:1", "resource": {"resourceType": "Observation"}, "request": {"method": "POST", "url": "Observation"}}
+            {
+                "fullUrl": "urn:uuid:1",
+                "resource": {"resourceType": "Observation"},
+                "request": {"method": "POST", "url": "Observation"},
+            }
         ],
     }
     ok, errs = fc.validate_bundle(bundle)

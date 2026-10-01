@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,7 +25,7 @@ class TargetSpec(BaseModel):
     """A notification target spec (pre-resolution)."""
 
     kind: RecipientKind
-    id: Optional[UUID] = None
+    id: UUID | None = None
 
 
 class NotificationAction(BaseModel):
@@ -34,30 +34,30 @@ class NotificationAction(BaseModel):
     id: str
     label: str
     type: str = Field(..., description="'link' or 'post'")
-    url: Optional[str] = None
-    endpoint: Optional[str] = None
-    method: Optional[str] = None
-    style: Optional[str] = None
+    url: str | None = None
+    endpoint: str | None = None
+    method: str | None = None
+    style: str | None = None
 
 
 class NotificationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    patient_id: Optional[UUID] = None
-    trigger_id: Optional[UUID] = None
-    communication_id: Optional[UUID] = None
+    patient_id: UUID | None = None
+    trigger_id: UUID | None = None
+    communication_id: UUID | None = None
     source: NotificationSource
     type: NotificationType
     category: NotificationCategory
     severity: NotificationSeverity
     title: str
-    body: Optional[str] = None
-    payload: Optional[dict[str, Any]] = None
-    source_ref: Optional[dict[str, Any]] = None
-    sender_user_id: Optional[UUID] = None
-    tenant_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
+    body: str | None = None
+    payload: dict[str, Any] | None = None
+    source_ref: dict[str, Any] | None = None
+    sender_user_id: UUID | None = None
+    tenant_id: UUID | None = None
+    created_at: datetime | None = None
 
 
 class NotificationRecipientRead(BaseModel):
@@ -65,8 +65,8 @@ class NotificationRecipientRead(BaseModel):
 
     recipient_id: UUID
     status: RecipientStatus
-    read_at: Optional[datetime] = None
-    dismissed_at: Optional[datetime] = None
+    read_at: datetime | None = None
+    dismissed_at: datetime | None = None
     notification: NotificationRead
 
 
@@ -92,11 +92,11 @@ class NotificationDeliveryRead(BaseModel):
     user_id: UUID
     channel: NotificationChannel
     status: NotificationStatus
-    attempted_at: Optional[datetime] = None
-    delivered_at: Optional[datetime] = None
-    error: Optional[str] = None
-    subscription_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
+    attempted_at: datetime | None = None
+    delivered_at: datetime | None = None
+    error: str | None = None
+    subscription_id: UUID | None = None
+    created_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -106,16 +106,16 @@ class NotificationDeliveryRead(BaseModel):
 
 class NotificationRuleCreate(BaseModel):
     rule_type: str
-    biomarker_id: Optional[UUID] = None
-    operator: Optional[str] = None
-    value: Optional[float] = None
-    patient_id: Optional[UUID] = None
+    biomarker_id: UUID | None = None
+    operator: str | None = None
+    value: float | None = None
+    patient_id: UUID | None = None
     severity: str = "warning"
     enabled: bool = True
     cooldown_minutes: int = 60
     targets: list[TargetSpec] = Field(default_factory=list)
-    title_template: Optional[str] = None
-    body_template: Optional[str] = None
+    title_template: str | None = None
+    body_template: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = self.model_dump(exclude_none=True)
@@ -124,17 +124,17 @@ class NotificationRuleCreate(BaseModel):
 
 
 class NotificationRuleUpdate(BaseModel):
-    rule_type: Optional[str] = None
-    biomarker_id: Optional[UUID] = None
-    operator: Optional[str] = None
-    value: Optional[float] = None
-    patient_id: Optional[UUID] = None
-    severity: Optional[str] = None
-    enabled: Optional[bool] = None
-    cooldown_minutes: Optional[int] = None
-    targets: Optional[list[TargetSpec]] = None
-    title_template: Optional[str] = None
-    body_template: Optional[str] = None
+    rule_type: str | None = None
+    biomarker_id: UUID | None = None
+    operator: str | None = None
+    value: float | None = None
+    patient_id: UUID | None = None
+    severity: str | None = None
+    enabled: bool | None = None
+    cooldown_minutes: int | None = None
+    targets: list[TargetSpec] | None = None
+    title_template: str | None = None
+    body_template: str | None = None
 
     def to_updates(self) -> dict[str, Any]:
         data = self.model_dump(exclude_none=True, exclude_unset=False)
@@ -147,21 +147,21 @@ class NotificationRuleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    tenant_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
     rule_type: str
-    biomarker_id: Optional[UUID] = None
-    operator: Optional[str] = None
-    value: Optional[float] = None
-    patient_id: Optional[UUID] = None
+    biomarker_id: UUID | None = None
+    operator: str | None = None
+    value: float | None = None
+    patient_id: UUID | None = None
     severity: str
     enabled: bool
     cooldown_minutes: int
-    last_fired_at: Optional[datetime] = None
+    last_fired_at: datetime | None = None
     targets: list[dict[str, Any]] = Field(default_factory=list)
-    title_template: Optional[str] = None
-    body_template: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    title_template: str | None = None
+    body_template: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class NotificationRuleListResponse(BaseModel):
@@ -173,27 +173,27 @@ class TriggerRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    patient_id: Optional[UUID] = None
+    patient_id: UUID | None = None
     trigger_type: TriggerType
     notification_type: NotificationType
-    config: Optional[dict[str, Any]] = None
+    config: dict[str, Any] | None = None
     title: str
-    body: Optional[str] = None
+    body: str | None = None
     enabled: bool
-    last_triggered: Optional[datetime] = None
-    next_trigger: Optional[datetime] = None
-    reference_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
+    last_triggered: datetime | None = None
+    next_trigger: datetime | None = None
+    reference_id: UUID | None = None
+    created_at: datetime | None = None
 
 
 class TriggerCreate(BaseModel):
-    patient_id: Optional[UUID] = None
+    patient_id: UUID | None = None
     notification_type: str = "MEDICATION_REMINDER"
     trigger_type: str = "TIME"
     config: dict[str, Any]
     title: str
-    body: Optional[str] = None
-    reference_id: Optional[UUID] = None
+    body: str | None = None
+    reference_id: UUID | None = None
     enabled: bool = True
 
 
@@ -207,8 +207,8 @@ class SubscribeRequest(BaseModel):
     """
 
     subscription: dict[str, Any]
-    device_id: Optional[str] = None
-    user_agent: Optional[str] = None
+    device_id: str | None = None
+    user_agent: str | None = None
 
 
 # ---------------------------------------------------------------------------

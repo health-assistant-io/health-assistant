@@ -23,16 +23,15 @@ patterns documented by OWASP LLM Top 10 (LLM01: Prompt Injection) and
 common jailbreak literature.
 """
 
-import re
 import logging
-from typing import List, Tuple
+import re
 
 logger = logging.getLogger(__name__)
 
 
 # Each entry is (compiled_regex, human-readable name).
 # Patterns are case-insensitive and word-boundary-aware where sensible.
-_INJECTION_PATTERNS: List[Tuple[re.Pattern, str]] = [
+_INJECTION_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Direct instruction override — the classic injection.
     (
         re.compile(
@@ -122,8 +121,8 @@ def scan_prompt_injection(text: str) -> dict:
     if not text or not isinstance(text, str):
         return {"safe": True, "risk": "low", "matches": [], "snippets": []}
 
-    matches: List[str] = []
-    snippets: List[str] = []
+    matches: list[str] = []
+    snippets: list[str] = []
     for pattern, name in _INJECTION_PATTERNS:
         found = pattern.search(text)
         if found:

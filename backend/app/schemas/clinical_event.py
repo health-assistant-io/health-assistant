@@ -1,7 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from uuid import UUID
-from typing import Optional, List, Dict, Any
 from datetime import date, datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 from app.models.enums import (
     CatalogRelationType,
     CatalogType,
@@ -11,21 +13,19 @@ from app.models.enums import (
     MetadataFieldType,
     ScheduleKind,
 )
-
-
 from app.schemas.biomarker import BiomarkerResponse
 from app.schemas.concept import ConceptResponse
 
 
 class EventObservationLinkBase(BaseModel):
     observation_id: UUID
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class EventObservationLinkResponse(EventObservationLinkBase):
     id: UUID
     # Include some observation details if needed
-    observation: Optional[Dict[str, Any]] = None
+    observation: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,37 +58,35 @@ class MetadataField(BaseModel):
     # Optional input placeholder for text/number fields (shown greyed when the
     # field is empty). Helps the user understand the field's scope without a
     # separate description.
-    placeholder: Optional[str] = None
+    placeholder: str | None = None
     # CATALOG_SELECT only — which catalogs the picker may search.
-    catalogs: Optional[List[CatalogType]] = None
+    catalogs: list[CatalogType] | None = None
     # Only valid when catalogs == [CONCEPT]: narrows to one ConceptKind
     # (e.g. EVENT_CATEGORY, EXAMINATION_CATEGORY, SPECIALTY).
-    concept_kind: Optional[ConceptKind] = None
+    concept_kind: ConceptKind | None = None
     # CATALOG_SELECT only — single vs multi selection.
     multi: bool = False
     # Optional: how the picked item relates to the event (semantic hint).
-    relation: Optional[CatalogRelationType] = None
+    relation: CatalogRelationType | None = None
     # NUMBER only — inclusive bounds.
-    min: Optional[float] = None
-    max: Optional[float] = None
+    min: float | None = None
+    max: float | None = None
 
     @model_validator(mode="after")
     def _validate_catalog_select_constraints(self) -> "MetadataField":
         # CATALOG_SELECT requires at least one catalog.
-        if self.type == MetadataFieldType.CATALOG_SELECT:
-            if not self.catalogs:
-                raise ValueError(
-                    "A 'catalog-select' field requires a non-empty 'catalogs' "
-                    "list (e.g. [\"anatomy\"] or [\"concept\"])."
-                )
+        if self.type == MetadataFieldType.CATALOG_SELECT and not self.catalogs:
+            raise ValueError(
+                "A 'catalog-select' field requires a non-empty 'catalogs' "
+                'list (e.g. ["anatomy"] or ["concept"]).'
+            )
         # concept_kind is only meaningful when the field picks from concepts.
-        if self.concept_kind is not None:
-            if self.catalogs != [CatalogType.CONCEPT]:
-                raise ValueError(
-                    "'concept_kind' may only be set when 'catalogs' is exactly "
-                    "[\"concept\"] — a kind filter is meaningless for other "
-                    "catalogs."
-                )
+        if self.concept_kind is not None and self.catalogs != [CatalogType.CONCEPT]:
+            raise ValueError(
+                "'concept_kind' may only be set when 'catalogs' is exactly "
+                '["concept"] — a kind filter is meaningless for other '
+                "catalogs."
+            )
         # catalogs/relation/multi are silently ignored for non-catalog types;
         # we don't raise (a seed may carry harmless defaults) but they won't
         # render. Keeping this lenient avoids over-constraining authoring.
@@ -99,42 +97,38 @@ class MetadataSchema(BaseModel):
     """The typed top-level ``metadata_schema`` payload stored on a
     ``ClinicalEventType``."""
 
-    fields: List[MetadataField]
+    fields: list[MetadataField]
 
     @field_validator("fields")
     @classmethod
-    def _non_empty(cls, v: List[MetadataField]) -> List[MetadataField]:
+    def _non_empty(cls, v: list[MetadataField]) -> list[MetadataField]:
         if not v:
             raise ValueError("metadata_schema.fields must contain at least one field")
         return v
 
     @field_validator("fields")
     @classmethod
-    def _unique_field_names(
-        cls, v: List[MetadataField]
-    ) -> List[MetadataField]:
+    def _unique_field_names(cls, v: list[MetadataField]) -> list[MetadataField]:
         names = [f.name for f in v]
         dupes = {n for n in names if names.count(n) > 1}
         if dupes:
-            raise ValueError(
-                f"metadata_schema.fields has duplicate name(s): {sorted(dupes)}"
-            )
+            raise ValueError(f"metadata_schema.fields has duplicate name(s): {sorted(dupes)}")
         return v
 
 
 class ClinicalEventTypeBase(BaseModel):
     name: str
     slug: str
-    description: Optional[str] = None
-    icon: Optional[Dict[str, Any]] = None
-    color: Optional[str] = None
+    description: str | None = None
+    icon: dict[str, Any] | None = None
+    color: str | None = None
     # Raw JSONB passthrough on output (round-trips the stored dict unchanged).
     # Input validation happens on ClinicalEventTypeCreate below.
-    metadata_schema: Optional[Dict[str, Any]] = None
-    severity_scale: Optional[Dict[str, Any]] = None
-    phases: Optional[List[Dict[str, Any]]] = None
-    milestones: Optional[List[Dict[str, Any]]] = None
-    default_duration_days: Optional[int] = None
+    metadata_schema: dict[str, Any] | None = None
+    severity_scale: dict[str, Any] | None = None
+    phases: list[dict[str, Any]] | None = None
+    milestones: list[dict[str, Any]] | None = None
+    default_duration_days: int | None = None
     # Phase 8a: required (NOT NULL on the column). The seed loader falls back
     # to STATE when the seed JSON omits the field; every shipped seed already declares
     # one. The 422 fires on a missing/invalid value at the create-type endpoint.
@@ -149,47 +143,47 @@ class ClinicalEventTypeBase(BaseModel):
 class ClinicalEventTypeCreate(ClinicalEventTypeBase):
     # Override to validate the metadata_schema shape on input (fail-loud).
     # model_dump() still yields a JSONB-compatible dict.
-    metadata_schema: Optional[MetadataSchema] = None
+    metadata_schema: MetadataSchema | None = None
 
 
 class ClinicalEventTypeResponse(ClinicalEventTypeBase):
     id: UUID
-    tenant_id: Optional[UUID] = None
-    category_concept: Optional[ConceptResponse] = None
-    correlated_biomarkers: List[BiomarkerResponse] = []
+    tenant_id: UUID | None = None
+    category_concept: ConceptResponse | None = None
+    correlated_biomarkers: list[BiomarkerResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class EventExaminationLinkBase(BaseModel):
     examination_id: UUID
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class EventExaminationLinkResponse(EventExaminationLinkBase):
     id: UUID
-    examination_date: Optional[date] = None
+    examination_date: date | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ClinicalEventBase(BaseModel):
     patient_id: UUID
-    type_id: Optional[UUID] = None
+    type_id: UUID | None = None
     status: ClinicalEventStatus = ClinicalEventStatus.ACTIVE
     title: str
-    description: Optional[str] = None
-    onset_date: Optional[datetime] = None
-    resolved_date: Optional[datetime] = None
-    occurrences: List[Dict[str, Any]] = Field(default_factory=list)
-    event_metadata: Dict[str, Any] = Field(default_factory=dict)
-    coding_system: Optional[CodingSystem] = None
-    code: Optional[str] = None
+    description: str | None = None
+    onset_date: datetime | None = None
+    resolved_date: datetime | None = None
+    occurrences: list[dict[str, Any]] = Field(default_factory=list)
+    event_metadata: dict[str, Any] = Field(default_factory=dict)
+    coding_system: CodingSystem | None = None
+    code: str | None = None
 
 
 class ClinicalEventCreate(ClinicalEventBase):
-    examinations: Optional[List[EventExaminationLinkBase]] = Field(default_factory=list)
-    observations: Optional[List[EventObservationLinkBase]] = Field(default_factory=list)
+    examinations: list[EventExaminationLinkBase] | None = Field(default_factory=list)
+    observations: list[EventObservationLinkBase] | None = Field(default_factory=list)
     # Integration dedup key (workstream B.2). The POST /clinical-events
     # endpoint ignores this on the wire — it's set by integration providers
     # on the objects they return from ``pull_clinical_events``, and the
@@ -197,35 +191,35 @@ class ClinicalEventCreate(ClinicalEventBase):
     # ``clinical_event_service.create_event(..., source_integration_id=...)``.
     # ``source_integration_id`` is *not* on the schema — the engine always
     # supplies it (= the integration's own id), providers can't fake it.
-    external_id: Optional[str] = None
+    external_id: str | None = None
 
 
 class ClinicalEventUpdate(BaseModel):
-    type_id: Optional[UUID] = None
-    status: Optional[ClinicalEventStatus] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    onset_date: Optional[datetime] = None
-    resolved_date: Optional[datetime] = None
-    occurrences: Optional[List[Dict[str, Any]]] = None
-    event_metadata: Optional[Dict[str, Any]] = None
-    coding_system: Optional[CodingSystem] = None
-    code: Optional[str] = None
-    examinations: Optional[List[EventExaminationLinkBase]] = None
-    observations: Optional[List[EventObservationLinkBase]] = None
+    type_id: UUID | None = None
+    status: ClinicalEventStatus | None = None
+    title: str | None = None
+    description: str | None = None
+    onset_date: datetime | None = None
+    resolved_date: datetime | None = None
+    occurrences: list[dict[str, Any]] | None = None
+    event_metadata: dict[str, Any] | None = None
+    coding_system: CodingSystem | None = None
+    code: str | None = None
+    examinations: list[EventExaminationLinkBase] | None = None
+    observations: list[EventObservationLinkBase] | None = None
 
 
 class ClinicalEventResponse(ClinicalEventBase):
     id: UUID
     tenant_id: UUID
-    type_details: Optional[ClinicalEventTypeResponse] = None
+    type_details: ClinicalEventTypeResponse | None = None
     # Resolved rendering hint — populated by ClinicalEvent.to_dict() from the
     # type blueprint. Phase 8a: required (NOT NULL on the wire). A missing
     # value here is a backend bug, not a legacy case.
     schedule_kind: ScheduleKind
-    examinations: List[Dict[str, Any]] = []
-    observations: List[Dict[str, Any]] = []
-    anatomy_links: List[Dict[str, Any]] = []
+    examinations: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
+    anatomy_links: list[dict[str, Any]] = []
     created_at: datetime
     updated_at: datetime
 
@@ -242,12 +236,12 @@ class ClinicalEventOccurrenceCreate(BaseModel):
     """
 
     occurred_at: datetime
-    title: Optional[str] = None
-    severity: Optional[str] = None
-    intensity: Optional[int] = Field(default=None, ge=1, le=10)
-    notes: Optional[str] = None
-    anatomy_id: Optional[UUID] = None
-    metadata: Optional[Dict[str, Any]] = None
+    title: str | None = None
+    severity: str | None = None
+    intensity: int | None = Field(default=None, ge=1, le=10)
+    notes: str | None = None
+    anatomy_id: UUID | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class EventAnatomyLinkCreate(BaseModel):
@@ -258,7 +252,7 @@ class EventAnatomyLinkCreate(BaseModel):
     """
 
     anatomy_id: UUID
-    relation_type: Optional[str] = "primary_site"
+    relation_type: str | None = "primary_site"
 
 
 class BiomarkerCorrelationCreate(BaseModel):
@@ -271,4 +265,4 @@ class BiomarkerCorrelationCreate(BaseModel):
 
     biomarker_id: UUID
     correlation_type: str = "monitoring"
-    description: Optional[str] = None
+    description: str | None = None

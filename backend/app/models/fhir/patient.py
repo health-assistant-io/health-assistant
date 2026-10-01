@@ -1,28 +1,31 @@
 from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
     Column,
-    String,
     Date,
     DateTime,
     Enum,
-    Boolean,
-    Index,
     Float,
     ForeignKey,
+    Index,
+    String,
     text,
-    CheckConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.models.enums import Gender
+from app.services.fhir_extensions import to_fhir_extension_list as _patient_fhir_extension_list
 from app.services.fhir_helpers import (
     _as_list,
     _clean_quantity,
@@ -31,7 +34,6 @@ from app.services.fhir_helpers import (
     build_fhir_resource,
     build_meta,
 )
-from app.services.fhir_extensions import to_fhir_extension_list as _patient_fhir_extension_list
 
 
 class Patient(
@@ -123,9 +125,7 @@ class Patient(
         """Serialize to a FHIR R4B Patient resource via fhir.resources (validated)."""
         identifiers = []
         if self.mrn:
-            identifiers.append(
-                {"system": "urn:healthassistant:mrn", "value": str(self.mrn)}
-            )
+            identifiers.append({"system": "urn:healthassistant:mrn", "value": str(self.mrn)})
         return build_fhir_resource(
             "Patient",
             {

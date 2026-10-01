@@ -6,14 +6,15 @@ export_service, import_service, integration_sync_service). They are
 centralised here; the service modules import the public names (aliased back to
 their private ``_uuid`` / ``_now`` / ``_parse_dt`` so no call site changes).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 
-def to_uuid(value: Any) -> Optional[UUID]:
+def to_uuid(value: Any) -> UUID | None:
     """Coerce a str/UUID/None into a ``UUID`` (or ``None`` if not coercible)."""
     if value is None:
         return None
@@ -27,10 +28,10 @@ def to_uuid(value: Any) -> Optional[UUID]:
 
 def utcnow() -> datetime:
     """Timezone-aware UTC now — the project's canonical "now"."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def parse_dt(value: Any) -> Optional[datetime]:
+def parse_dt(value: Any) -> datetime | None:
     """Parse an ISO-8601 string into a timezone-aware ``datetime``.
 
     Falsy values and existing ``datetime`` instances pass through unchanged

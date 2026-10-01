@@ -4,6 +4,7 @@ Source-level wiring guards + a behavioural test for the engine path.
 Mirror of the contract tests already covering clinical events /
 examinations / catalog-proposals / HITL-proposals.
 """
+
 import inspect
 import uuid
 
@@ -15,7 +16,6 @@ from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
-
 
 # ---------------------------------------------------------------------------
 # fixtures
@@ -110,9 +110,7 @@ def test_document_pull_is_reexported_from_sdk():
     from integrations.sdk import DocumentPull
     from integrations.sdk.documents import DocumentPull as Source
 
-    assert DocumentPull is Source, (
-        "SDK re-export must alias the spec, not duplicate it"
-    )
+    assert DocumentPull is Source, "SDK re-export must alias the spec, not duplicate it"
 
 
 # ---------------------------------------------------------------------------
@@ -129,12 +127,9 @@ def test_run_sync_wires_documents_opt_in_hook():
 
     src = inspect.getsource(svc.run_sync)
     assert "supports_documents" in src, (
-        "run_sync must probe supports_documents — the opt-in gate for "
-        "the documents pull hook"
+        "run_sync must probe supports_documents — the opt-in gate for the documents pull hook"
     )
-    assert "pull_documents" in src, (
-        "run_sync must call pull_documents on providers that opt in"
-    )
+    assert "pull_documents" in src, "run_sync must call pull_documents on providers that opt in"
     assert "ingest_document_bytes" in src, (
         "run_sync must route pulled specs through "
         "document_service.ingest_document_bytes (the canonical write path)"
@@ -190,14 +185,13 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
     dropped — the under-cap items still land."""
     from unittest.mock import patch
 
+    from integrations.sdk.documents import DocumentPull
+
     from app.core.database import AsyncSessionLocal
     from app.models.document_model import DocumentModel
     from app.services import integration_sync_service as svc
-    from integrations.sdk.documents import DocumentPull
 
-    tenant_id, user_id, patient_id, integration_id = (
-        tenant_user_patient_integration
-    )
+    tenant_id, _user_id, _patient_id, integration_id = tenant_user_patient_integration
 
     # Build >20 small docs — the per-sync count cap (20) should drop the
     # excess. Each doc is tiny so the byte cap never engages.
@@ -229,32 +223,33 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
 
         integration = (
             await db.execute(
-                __import__("sqlalchemy").select(UserIntegration).where(
-                    UserIntegration.id == integration_id
-                )
+                __import__("sqlalchemy")
+                .select(UserIntegration)
+                .where(UserIntegration.id == integration_id)
             )
         ).scalar_one()
 
         # Mock the OCR dispatch so the test doesn't need a broker.
         with patch("app.workers.ai_tasks.ocr_document.apply_async"):
-            result = await svc.run_sync(
-                db, integration, _Provider(), source="test"
-            )
+            result = await svc.run_sync(db, integration, _Provider(), source="test")
 
     assert result.documents_pulled == 25
     assert result.documents_written == svc.INTEGRATION_MAX_DOCS_PER_SYNC, (
-        "Only the first 20 docs should land — the count cap must drop the "
-        "remaining 5"
+        "Only the first 20 docs should land — the count cap must drop the remaining 5"
     )
     # The documents actually landed.
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                __import__("sqlalchemy").select(DocumentModel).where(
-                    DocumentModel.tenant_id == tenant_id
+            (
+                await db.execute(
+                    __import__("sqlalchemy")
+                    .select(DocumentModel)
+                    .where(DocumentModel.tenant_id == tenant_id)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     filenames = {r.filename for r in rows}
     # First 20 by enumeration order: doc-00.txt through doc-19.txt.
     assert {f"doc-{i:02d}.txt" for i in range(20)} <= filenames

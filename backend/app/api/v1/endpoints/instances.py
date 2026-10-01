@@ -18,7 +18,6 @@ Security (centralized here — the single chokepoint):
 No PII is logged (only type/tenant/limit). See
 ``dev/plans/instance-browser-unified-picker-2026-07-16.md`` §4.
 """
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,11 +50,11 @@ DEFAULT_INSTANCE_TYPES = [
 @router.get("/search", response_model=InstanceSearchResponse)
 async def search_instances_endpoint(
     q: str = Query(..., min_length=2, description="Free-text query (min 2 chars)"),
-    types: Optional[str] = Query(
+    types: str | None = Query(
         None,
         description="Comma-separated entity types to search; omit for all",
     ),
-    patient_id: Optional[str] = Query(
+    patient_id: str | None = Query(
         None, description="Patient scope; omit for tenant-wide (admin only)"
     ),
     limit: int = Query(5, ge=1, le=20, description="Max hits per entity type"),
@@ -67,9 +66,7 @@ async def search_instances_endpoint(
     # Resolve + validate the requested types up front (422-friendly: unknown
     # types are silently dropped by the dispatcher, but an empty after-filter
     # set is a client error).
-    requested_types = (
-        [t.strip() for t in types.split(",") if t.strip()] if types else None
-    )
+    requested_types = [t.strip() for t in types.split(",") if t.strip()] if types else None
 
     # Patient scope enforcement — the security chokepoint.
     resolved_patient_id = None
@@ -85,9 +82,7 @@ async def search_instances_endpoint(
         # patient — the picker does this by default; this blocks direct
         # tenant-wide enumeration by standard users.
         if current_user.role == Role.USER.value:
-            raise AuthorizationError(
-                "A patient scope is required to search records."
-            )
+            raise AuthorizationError("A patient scope is required to search records.")
 
     hits = await search_instances(
         db=db,

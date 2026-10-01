@@ -1,6 +1,8 @@
 import asyncio
-from app.processors.ocr import get_ocr_processor
 from pathlib import Path
+
+from app.processors.ocr import get_ocr_processor
+
 from app.core.config import settings
 
 
@@ -54,9 +56,7 @@ async def test():
         Phenylephrine 2.5% (administered)
         """)
 
-    result = await ocr_processor.extract_structured_data(
-        Path("mock_eye_exam.txt"), schema
-    )
+    result = await ocr_processor.extract_structured_data(Path("mock_eye_exam.txt"), schema)
     print("RESULT:", result)
 
 

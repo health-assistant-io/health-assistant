@@ -27,10 +27,7 @@ async def list_my_sessions(current_user: TokenData = Depends(get_current_user)):
     """Every live sign-in family for the caller (own devices)."""
     rows = await list_for_user(current_user.user_id)
     current_fid = current_user.fid
-    return [
-        {**row.to_dict(), "current": str(row.id) == str(current_fid)}
-        for row in rows
-    ]
+    return [{**row.to_dict(), "current": str(row.id) == str(current_fid)} for row in rows]
 
 
 @router.delete("/sessions/{session_id}")
@@ -42,15 +39,11 @@ async def revoke_my_session(
     """Revoke one device's family — hidden-404 for anything not owned."""
     family = await get_family(session_id)
     if family is None or str(family.user_id) != str(current_user.user_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     await revoke_family(family.id)
     if str(family.id) == str(current_user.fid):
         # Revoking the device we are calling from: kill the bearer too.
         payload = verify_access_token(token)
         if payload and payload.get("jti"):
-            await token_store.revoke_session(
-                str(payload["user_id"]), str(payload["jti"])
-            )
+            await token_store.revoke_session(str(payload["user_id"]), str(payload["jti"]))
     return {"revoked": True}

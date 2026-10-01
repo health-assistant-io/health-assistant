@@ -31,17 +31,18 @@ api, invite, download) sign with ``HA_SESSION_KEY``, refresh with
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
+from typing import NoReturn
+from uuid import uuid4
 
 import bcrypt
 import jwt
-from datetime import datetime, timezone, timedelta
-from uuid import uuid4
-from typing import List, Optional
+from fastapi import Depends, Header, HTTPException, Request, status
+
 from app.core.config import settings
 from app.core.keys import key_for, verification_keys
 from app.models.enums import Role
 from app.schemas.user import TokenData
-from fastapi import HTTPException, status, Header, Depends, Request
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +93,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     try:
         # bcrypt expects bytes
-        return bcrypt.checkpw(
-            _fit_bcrypt(plain_password), hashed_password.encode("utf-8")
-        )
+        return bcrypt.checkpw(_fit_bcrypt(plain_password), hashed_password.encode("utf-8"))
     except Exception:
         return False
 
@@ -122,7 +121,7 @@ def _mint(kind: str, data: dict, ttl: timedelta) -> tuple[str, str]:
         if claim in data:
             raise ValueError(f"extra claims may not override {claim!r}")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     jti = uuid4().hex
     to_encode = {k: v for k, v in data.items() if v is not None}
     to_encode.update(
@@ -176,9 +175,7 @@ def create_session_access_token(
     return _mint(SESSION_TOKEN_KIND, dict(data), expires_delta)
 
 
-def create_refresh_token(
-    data: dict, expires_delta: timedelta | None = None
-) -> tuple[str, str]:
+def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> tuple[str, str]:
     """Mint a ``refresh`` JWT. Returns ``(token, jti)``.
 
     ``token_kind="refresh"`` (the old ``type="refresh"`` claim is gone) plus
@@ -223,13 +220,13 @@ def decode_token(token: str) -> dict | None:
 
 def _kind_is(payload: dict | None, kind: str) -> bool:
     return (
-        bool(payload)
+        payload is not None
         and payload.get("iss") == PRODUCT_SLUG
         and payload.get("token_kind") == kind
     )
 
 
-def verify_access_token(token: str) -> dict:
+def verify_access_token(token: str) -> dict | None:
     """Verify a **session** access token and return its payload.
 
     Rejects every other kind — refresh tokens must never be usable as a
@@ -308,10 +305,9 @@ async def authenticate_session_token(token: str) -> TokenData:
        its ``token_version`` must equal the ``ver`` claim (§8 — bump =
        global sign-out).
     """
-    from app.core import token_store
-    from app.core import instance_state
+    from app.core import instance_state, token_store
 
-    def _deny(detail: str = "Could not validate credentials") -> None:
+    def _deny(detail: str = "Could not validate credentials") -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=detail,
@@ -343,9 +339,7 @@ async def authenticate_session_token(token: str) -> TokenData:
         # Debug-level on purpose: once demo_mode flips off every demo-token
         # request lands here, and the loud signals (audit rows) live on the
         # login/refresh paths where the frequency is bounded.
-        logger.debug(
-            "demo token rejected: instance_settings.demo_mode is false (§13/S-7)"
-        )
+        logger.debug("demo token rejected: instance_settings.demo_mode is false (§13/S-7)")
         _deny("Invalid or expired token")
     if (
         auth_mode == AUTH_MODE_LOCAL_BOOT
@@ -370,7 +364,8 @@ async def authenticate_session_token(token: str) -> TokenData:
     if user is None or not getattr(user, "is_active", False):
         _deny("Invalid or expired token")
     try:
-        user_ver = int(user.token_version or 1)
+        ver_raw = user.token_version
+        user_ver = int(ver_raw) if ver_raw is not None else 1
     except (TypeError, ValueError):
         user_ver = -1
     if user_ver != int(ver):
@@ -409,10 +404,8 @@ class RoleChecker:
     """Class S role gate (identity-auth §17 — roles replace Class D's
     is_admin boolean). SYSTEM_ADMIN passes every gate."""
 
-    def __init__(self, allowed_roles: List[Role]):
-        self.allowed_roles = [
-            r.value if isinstance(r, Role) else r for r in allowed_roles
-        ]
+    def __init__(self, allowed_roles: list[Role]):
+        self.allowed_roles = [r.value if isinstance(r, Role) else r for r in allowed_roles]
 
     def __call__(self, current_user: TokenData = Depends(get_current_user)):
         if (
@@ -475,9 +468,7 @@ def verify_presigned_token(token: str, expected_doc_id: str) -> bool:
     payload = _decode_with(token, key_for(DOWNLOAD_TOKEN_KIND))
     if not _kind_is(payload, DOWNLOAD_TOKEN_KIND):
         return False
-    if payload.get("doc_id") != expected_doc_id:
-        return False
-    return True
+    return payload is not None and payload.get("doc_id") == expected_doc_id
 
 
 # --- MFA challenge tokens (plan 16 H5) -------------------------------------
@@ -653,9 +644,7 @@ def create_api_access_token(
             "tenant_id": str(tenant_id),
             "scope": " ".join(scopes),
             "aud": settings.OAUTH_AUDIENCE,
-            "bound_patient_id": (
-                str(bound_patient_id) if bound_patient_id is not None else None
-            ),
+            "bound_patient_id": (str(bound_patient_id) if bound_patient_id is not None else None),
         },
         expires_delta,
     )
@@ -675,8 +664,8 @@ async def get_api_principal(
     (Phase 2). The principal carries ``tenant_id`` (client-bound) and no
     ``user_id``/``role``.
     """
-    from app.schemas.user import TokenData
     from app.core import token_store
+    from app.schemas.user import TokenData
 
     payload = decode_token(token)
     if not payload or payload.get("iss") != PRODUCT_SLUG:
@@ -710,7 +699,7 @@ async def get_api_principal(
     try:
         return TokenData(**payload)
     except Exception:
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
@@ -718,7 +707,7 @@ async def get_api_principal(
 
 
 async def require_session_token(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
 ) -> None:
     """Guard dependency: block api tokens on session-only (domain) routes.
 

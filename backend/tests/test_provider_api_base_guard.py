@@ -60,8 +60,9 @@ def test_empty_api_base_is_noop(monkeypatch):
 
 
 def test_debug_allows_private(monkeypatch):
-    from app.core.config import settings
     import integrations.sdk.net_guard as ng
+
+    from app.core.config import settings
 
     captured = {}
 
@@ -76,8 +77,9 @@ def test_debug_allows_private(monkeypatch):
 
 
 def test_prod_blocks_private(monkeypatch):
-    from app.core.config import settings
     import integrations.sdk.net_guard as ng
+
+    from app.core.config import settings
 
     captured = {}
 
@@ -95,10 +97,11 @@ def test_prod_blocks_private(monkeypatch):
 
 async def test_create_provider_rejects_internal_api_base(monkeypatch):
     """Service-level: create_provider with a private api_base raises ValueError."""
+    import integrations.sdk.net_guard as ng
+
     from app.ai.providers.service import AIProviderService
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
-    import integrations.sdk.net_guard as ng
 
     def _fake(url, allow_private=False, **kw):
         raise ng.SSRFBlockedError("private")

@@ -1,3 +1,4 @@
+# ruff: noqa: B904,SIM102 -- long immutable strings; reflow when touched
 """Tenant/patient access-check helpers (audit C2).
 
 Canonical resource-access checks shared by the router layer AND the service
@@ -17,6 +18,7 @@ service layer can import it without a layer inversion — the audit (C2) found
 ``clinical_event_service`` importing these from ``app.api.v1.endpoints.utils``,
 which coupled it to the router and made it unusable from Celery/import/facade.
 """
+
 from uuid import UUID
 
 from sqlalchemy import select
@@ -33,9 +35,7 @@ from app.models.fhir.vaccine import PatientImmunization
 from app.schemas.user import TokenData
 
 
-async def check_patient_access(
-    patient_id: str | UUID, current_user: TokenData, db: AsyncSession
-):
+async def check_patient_access(patient_id: str | UUID, current_user: TokenData, db: AsyncSession):
     """Verify if the current user has access to the specified patient"""
     if isinstance(patient_id, str):
         try:
@@ -44,9 +44,7 @@ async def check_patient_access(
             raise ValidationError("Invalid patient ID format")
 
     result = await db.execute(
-        select(Patient).where(
-            Patient.id == patient_id, Patient.tenant_id == current_user.tenant_id
-        )
+        select(Patient).where(Patient.id == patient_id, Patient.tenant_id == current_user.tenant_id)
     )
     patient = result.scalar_one_or_none()
 
@@ -144,9 +142,7 @@ async def check_immunization_access(
     return record
 
 
-async def check_event_access(
-    event_id: str | UUID, current_user: TokenData, db: AsyncSession
-):
+async def check_event_access(event_id: str | UUID, current_user: TokenData, db: AsyncSession):
     """Verify if the current user has access to the specified clinical event"""
     if isinstance(event_id, str):
         try:
@@ -172,9 +168,7 @@ async def check_event_access(
     return event
 
 
-async def check_allergy_access(
-    allergy_id: str | UUID, current_user: TokenData, db: AsyncSession
-):
+async def check_allergy_access(allergy_id: str | UUID, current_user: TokenData, db: AsyncSession):
     """Verify if the current user has access to the specified allergy record"""
     if isinstance(allergy_id, str):
         try:

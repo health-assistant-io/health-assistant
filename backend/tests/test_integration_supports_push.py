@@ -17,14 +17,11 @@ Post-fix contract pinned here:
 2. ``supports_push`` detects a real ``push_data`` override automatically.
 3. ``run_sync`` calls ``push_data`` only when ``supports_push`` is True.
 """
-import inspect
-from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+import inspect
+from unittest.mock import MagicMock
 
 from integrations.sdk.base import BaseHealthProvider
-from integrations.sdk import BaseHealthProvider as ExportedBase  # export parity
-
 
 # ---------------------------------------------------------------------------
 # pull_data is no longer abstract
@@ -40,21 +37,22 @@ def test_pull_data_is_not_abstract():
 def test_pull_data_default_returns_empty_list():
     """The concrete default returns ``[]`` (a cheap no-op for push-only
     providers)."""
+
     # Use a minimal concrete subclass that overrides nothing.
     class _Minimal(BaseHealthProvider):
         domain = "minimal_test"
 
     import asyncio
+
     provider = _Minimal()
-    result = asyncio.get_event_loop().run_until_complete(
-        provider.pull_data(MagicMock())
-    )
+    result = asyncio.get_event_loop().run_until_complete(provider.pull_data(MagicMock()))
     assert result == []
 
 
 def test_minimal_subclass_instantiates_without_pull_data_override():
     """A provider that overrides neither ``pull_data`` nor ``push_data``
     instantiates cleanly (the historical ABC would have raised TypeError)."""
+
     class _ToolOnly(BaseHealthProvider):
         domain = "tool_only_test"
 
@@ -69,6 +67,7 @@ def test_minimal_subclass_instantiates_without_pull_data_override():
 
 def test_supports_push_false_when_push_data_not_overridden():
     """A provider that inherits the base ``push_data`` no-op does not push."""
+
     class _PullOnly(BaseHealthProvider):
         domain = "pull_only_test"
 
@@ -77,6 +76,7 @@ def test_supports_push_false_when_push_data_not_overridden():
 
 def test_supports_push_true_when_push_data_overridden():
     """A provider that overrides ``push_data`` is automatically opted in."""
+
     class _Pusher(BaseHealthProvider):
         domain = "push_test"
 
@@ -89,6 +89,7 @@ def test_supports_push_true_when_push_data_overridden():
 def test_supports_push_can_be_force_disabled():
     """A provider may override ``supports_push`` to return False even when
     ``push_data`` is implemented (escape hatch)."""
+
     class _Disabled(BaseHealthProvider):
         domain = "disabled_push_test"
 
@@ -113,8 +114,8 @@ def test_dev_dummy_and_fhir_server_are_detected_as_pushers():
 
 def test_webhook_bridge_mcp_are_not_pushers():
     """The push-only / tool-only providers do not push outward."""
-    from integrations.webhook.provider import WebhookProvider
     from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+    from integrations.webhook.provider import WebhookProvider
 
     assert WebhookProvider().supports_push() is False
     assert HealthAssistantBridgeProvider().supports_push() is False

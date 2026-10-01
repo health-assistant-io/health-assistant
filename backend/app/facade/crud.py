@@ -15,10 +15,10 @@ and deletes soft-delete via ``SoftDeleteMixin`` (tombstones → 410 Gone).
 import datetime as _dt
 import json as _json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, Float, func, literal, not_, or_, select, String
+from sqlalchemy import Float, String, and_, func, literal, not_, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,12 +29,11 @@ from app.schemas.user import TokenData
 from app.services.fhir_converter import fhir_to_orm
 from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
 from app.services.provenance_service import (
-    record_provenance,
     RECORD_CREATE,
     RECORD_DELETE,
     RECORD_UPDATE,
+    record_provenance,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,7 @@ class PreconditionFailed(Exception):
         )
 
 
-def _parse_if_match(header_value: str) -> Optional[Any]:
+def _parse_if_match(header_value: str) -> Any | None:
     """Parse an ``If-Match`` header value into the version number it carries.
 
     FHIR ETags come in two forms (both RFC 7232 compliant):
@@ -137,7 +136,7 @@ def _patient_compartment_predicate(entry: ResourceEntry, current_user: TokenData
     return None
 
 
-def _resolve_id(value: str) -> Optional[UUID]:
+def _resolve_id(value: str) -> UUID | None:
     """Parse a str into a UUID; return None on failure."""
     try:
         return UUID(str(value))
@@ -145,7 +144,7 @@ def _resolve_id(value: str) -> Optional[UUID]:
         return None
 
 
-def _project(row, entry: ResourceEntry) -> Dict[str, Any]:
+def _project(row, entry: ResourceEntry) -> dict[str, Any]:
     """Project an ORM row to its FHIR resource dict.
 
     Honors ``ResourceEntry.to_fhir_dict_attr`` so a single ORM model can back
@@ -163,11 +162,11 @@ def _project(row, entry: ResourceEntry) -> Dict[str, Any]:
 
 async def search(
     entry: ResourceEntry,
-    query_params: List[Tuple[str, str]],
+    query_params: list[tuple[str, str]],
     current_user: TokenData,
     db: AsyncSession,
     base_url: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run a FHIR search and return a Bundle dict.
 
     Honors ``_id``, ``_lastUpdated``, ``_count``, ``_sort``, plus a small
@@ -288,7 +287,7 @@ async def search(
     rows = result.scalars().all()
 
     # Serialize each row to FHIR. Skip-and-log on validation failure.
-    resources: List[Dict[str, Any]] = []
+    resources: list[dict[str, Any]] = []
     for row in rows:
         try:
             resources.append(_project(row, entry))
@@ -351,7 +350,7 @@ def _jsonb_codeable_concept_match(column, value: str, *, is_list: bool):
 
     if "|" in value:
         system, code = value.split("|", 1)
-        coding_fragment: Dict[str, Any] = {"system": system, "code": code}
+        coding_fragment: dict[str, Any] = {"system": system, "code": code}
     else:
         coding_fragment = {"code": value}
 
@@ -372,7 +371,7 @@ def _jsonb_codeable_concept_match(column, value: str, *, is_list: bool):
 # client sends a bare UUID (no `Type/` prefix) and we need to build the JSONB
 # fragment. Per-resource type rules per FHIR R4 spec; we use the most common
 # type for each field in our model layer.
-_REFERENCE_TYPE_HINTS: Dict[str, str] = {
+_REFERENCE_TYPE_HINTS: dict[str, str] = {
     "performer": "Practitioner",
     "author": "Practitioner",
     "sender": "Practitioner",
@@ -410,9 +409,7 @@ def _jsonb_reference_match(model, field_name: str, value: str):
         return None
 
     # Normalize the value to a canonical "Type/uuid" reference string.
-    if "/" in value:
-        reference = value
-    elif value.startswith("urn:uuid:"):
+    if "/" in value or value.startswith("urn:uuid:"):
         reference = value
     else:
         # Bare UUID — pick the conventional type for this field.
@@ -507,9 +504,7 @@ def _value_quantity_match(column, value: str):
     return value_expr == number
 
 
-def _project_elements(
-    resource: Dict[str, Any], elements: Optional[List[str]]
-) -> Dict[str, Any]:
+def _project_elements(resource: dict[str, Any], elements: list[str] | None) -> dict[str, Any]:
     """Apply the ``_elements`` projection to a FHIR resource dict.
 
     Per FHIR R4 spec (https://hl7.org/fhir/R4/search.html#elements), the
@@ -553,7 +548,7 @@ def _build_resource_filter(model, key: str, value: str):
       ``:below``, ``:in``, ``:text``) are deferred (Phase 9).
     """
     # Split token modifier (e.g. "code:not=1234" → key suffix ":not", value "1234").
-    modifier: Optional[str] = None
+    modifier: str | None = None
     base_key = key
     if ":" in key:
         base_key, _, modifier = key.partition(":")
@@ -777,9 +772,7 @@ def _build_resource_filter(model, key: str, value: str):
         # catalog is small; strict @> containment would need a
         # jsonb_build_object per coding slot and isn't worth it here.
         target = f'"code": "{code_lit}"'
-        sys_target = (
-            f'"system": "{system_part.strip()}"' if system_part.strip() else None
-        )
+        sys_target = f'"system": "{system_part.strip()}"' if system_part.strip() else None
         preds = []
         vcc_text = col.cast(String)
         if sys_target:
@@ -845,8 +838,8 @@ def _build_resource_filter(model, key: str, value: str):
 
 
 def _empty_bundle(
-    entry: ResourceEntry, base_url: str, query_params: List[Tuple[str, str]]
-) -> Dict[str, Any]:
+    entry: ResourceEntry, base_url: str, query_params: list[tuple[str, str]]
+) -> dict[str, Any]:
     raw_qs = "&".join(f"{k}={v}" for k, v in query_params)
     return build_search_bundle(
         base_url=base_url,
@@ -869,7 +862,7 @@ async def read(
     resource_id: str,
     current_user: TokenData,
     db: AsyncSession,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Fetch one resource by id. Returns the FHIR dict or None (with a 'reason'
     indicator the caller uses to choose 404 vs 410)."""
     # Computed resources (CodeSystem/ValueSet) override the generic table path.
@@ -908,10 +901,10 @@ async def read(
 
 async def create(
     entry: ResourceEntry,
-    fhir_data: Dict[str, Any],
+    fhir_data: dict[str, Any],
     current_user: TokenData,
     db: AsyncSession,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a new resource from canonical FHIR JSON.
 
     Returns the persisted FHIR dict. Raises ``FhirSerializationError`` on
@@ -939,9 +932,7 @@ async def create(
     bound = getattr(current_user, "bound_patient_id", None)
     if bound is not None:
         if entry.resource_type == "Patient":
-            raise PermissionError(
-                "patient-scoped clients cannot create new Patient resources"
-            )
+            raise PermissionError("patient-scoped clients cannot create new Patient resources")
         if hasattr(obj, "patient_id"):
             if obj.patient_id is not None and obj.patient_id != bound:
                 raise PermissionError(
@@ -981,11 +972,11 @@ async def create(
 async def update(
     entry: ResourceEntry,
     resource_id: str,
-    fhir_data: Dict[str, Any],
+    fhir_data: dict[str, Any],
     current_user: TokenData,
     db: AsyncSession,
-    if_match: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+    if_match: str | None = None,
+) -> dict[str, Any] | None:
     """Update an existing resource. Returns the updated FHIR dict, or None
     if the resource doesn't exist.
 
@@ -1099,7 +1090,7 @@ async def delete(
         return False
 
     if entry.soft_delete and hasattr(obj, "deleted_at"):
-        obj.deleted_at = _dt.datetime.now(_dt.timezone.utc)
+        obj.deleted_at = _dt.datetime.now(_dt.UTC)
     else:
         # No soft-delete support; hard-delete (rare — only Provenance-ish resources).
         await db.delete(obj)

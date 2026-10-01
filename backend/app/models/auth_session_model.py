@@ -1,4 +1,5 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String, UUID, func
+from sqlalchemy import UUID, Column, DateTime, ForeignKey, String, func
+
 from app.models.base import Base, UUIDMixin
 
 

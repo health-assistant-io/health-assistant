@@ -1,38 +1,38 @@
+import json
+from datetime import UTC, datetime
+from uuid import UUID
+
 from fastapi import (
     APIRouter,
     Depends,
+    File,
     HTTPException,
     Query,
-    status,
     UploadFile,
-    File,
+    status,
 )
 from fastapi.responses import StreamingResponse
-import json
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
-from uuid import UUID
-from datetime import datetime, timezone
 
-from app.core.database import get_db
 from app.ai.agents.chat_agent import FLOW_EVENT_PREFIX
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
-from app.services.chat_session_service import ChatSessionService, is_internal_message
-from app.models.enums import HitlTaskStatus
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
-    ChatSessionSchema,
+    AIAssistanceToolSchema,
     ChatMessageSchema,
+    ChatSessionSchema,
     HitlResolutionRequest,
     HitlResumeRequest,
-    AIAssistanceToolSchema,
 )
 from app.core.config import settings
-from app.core.security import get_current_user
+from app.core.database import get_db
 from app.core.rate_limit import rate_limit_user
+from app.core.security import get_current_user
+from app.models.enums import HitlTaskStatus
 from app.schemas.user import TokenData
+from app.services.chat_session_service import ChatSessionService, is_internal_message
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
@@ -112,9 +112,7 @@ def _classify_stream_error(exc: Exception) -> tuple[str, str]:
     return ("generic", "")
 
 
-async def _validate_owned_session(
-    context: dict, current_user: TokenData, db: AsyncSession
-) -> None:
+async def _validate_owned_session(context: dict, current_user: TokenData, db: AsyncSession) -> None:
     """Audit 2026-09-11 S-1: a client-supplied session_id must belong to the
     caller before chat dispatch (defense-in-depth alongside the service-level
     check; a foreign id is a client bug — 404, not silent auto-create)."""
@@ -141,11 +139,7 @@ async def _validate_patient_context(
     (and export via tools) any tenant patient's PHI."""
     from app.services.access import check_patient_access
 
-    pid = (
-        context_or_id.get("patient_id")
-        if isinstance(context_or_id, dict)
-        else context_or_id
-    )
+    pid = context_or_id.get("patient_id") if isinstance(context_or_id, dict) else context_or_id
     if pid:
         await check_patient_access(pid, current_user, db)
 
@@ -228,9 +222,7 @@ async def assist_user_stream(
                 flow_events=flow_events,
             ):
                 if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps(
-                        {"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])}
-                    )
+                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
                     yield f"data: {frame}\n\n"
                     continue
                 payload = json.dumps({"content": chunk})
@@ -243,37 +235,31 @@ async def assist_user_stream(
 
             logging.getLogger(__name__).warning(f"Chat stream rejected: {e}")
             error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps(
-                {"error": user_message, "error_type": error_type}
-            )
+            error_payload = json.dumps({"error": user_message, "error_type": error_type})
             yield f"data: {error_payload}\n\n"
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
             error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps(
-                {"error": user_message, "error_type": error_type}
-            )
+            error_payload = json.dumps({"error": user_message, "error_type": error_type})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.get("/sessions", response_model=List[ChatSessionSchema])
+@router.get("/sessions", response_model=list[ChatSessionSchema])
 async def list_sessions(
-    patient_id: Optional[UUID] = None,
+    patient_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
     """List chat sessions for the current user"""
     service = ChatSessionService(db)
-    return await service.list_sessions(
-        current_user.user_id, current_user.tenant_id, patient_id
-    )
+    return await service.list_sessions(current_user.user_id, current_user.tenant_id, patient_id)
 
 
-@router.get("/sessions/{session_id}/messages", response_model=List[ChatMessageSchema])
+@router.get("/sessions/{session_id}/messages", response_model=list[ChatMessageSchema])
 async def get_session_messages(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -302,10 +288,10 @@ async def delete_session(
     return {"success": True}
 
 
-@router.get("/tools", response_model=List[AIAssistanceToolSchema])
+@router.get("/tools", response_model=list[AIAssistanceToolSchema])
 async def list_tools(
     patient_id: UUID,
-    examination_id: Optional[UUID] = None,
+    examination_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -353,9 +339,7 @@ async def list_tools(
     except Exception as e:
         import logging
 
-        logging.getLogger(__name__).warning(
-            f"Failed to load integration tools for /tools: {e}"
-        )
+        logging.getLogger(__name__).warning(f"Failed to load integration tools for /tools: {e}")
 
     return result
 
@@ -418,7 +402,7 @@ async def resolve_hitl_task(
             detail=f"Task already {prior_status}.",
         )
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     task["status"] = resolution.status
     task["resolved"] = {
         "confirmed_by": str(current_user.user_id),
@@ -501,9 +485,7 @@ async def resume_hitl_session(
                 flow_events=flow_events,
             ):
                 if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps(
-                        {"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])}
-                    )
+                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
                     yield f"data: {frame}\n\n"
                     continue
                 payload = json.dumps({"content": chunk})
@@ -514,18 +496,14 @@ async def resume_hitl_session(
 
             logging.getLogger(__name__).warning(f"HITL resume rejected: {e}")
             error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps(
-                {"error": user_message, "error_type": error_type}
-            )
+            error_payload = json.dumps({"error": user_message, "error_type": error_type})
             yield f"data: {error_payload}\n\n"
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
             error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps(
-                {"error": user_message, "error_type": error_type}
-            )
+            error_payload = json.dumps({"error": user_message, "error_type": error_type})
             yield f"data: {error_payload}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -584,7 +562,7 @@ async def transcribe(
             tenant_id=current_user.tenant_id, user_id=current_user.user_id
         )
     except TranscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
 
     try:
         text = await transcribe_audio(
@@ -594,7 +572,7 @@ async def transcribe(
             target=target,
         )
     except TranscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
 
     # Run the transcribed text through the prompt-injection guard for audit
     # correlation (non-blocking) — consistent with every other user input path.

@@ -6,6 +6,7 @@ Covers:
     api_key/base/model resolution incl. env fallback shape.
   * ``AIModel.get_capabilities`` always includes the ``text`` baseline.
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,7 +19,6 @@ from app.ai.providers.capabilities import (
 )
 from app.ai.providers.enums import TaskType
 from app.models.enums import AIModelCapability
-
 
 # ---------------------------------------------------------------------------
 # capabilities mapping
@@ -34,9 +34,7 @@ def test_ocr_requires_vision():
 
 
 def test_transcription_requires_stt():
-    assert required_capabilities_for_task(TaskType.TRANSCRIPTION.value) == {
-        AIModelCapability.STT
-    }
+    assert required_capabilities_for_task(TaskType.TRANSCRIPTION.value) == {AIModelCapability.STT}
 
 
 def test_unknown_task_defaults_to_text():
@@ -60,9 +58,7 @@ def test_audio_only_model_rejected_for_text_tasks():
     # OCR (vision) — only for transcription (stt).
     assert not model_supports(["stt"], required_capabilities_for_task("chat"))
     assert not model_supports(["stt"], required_capabilities_for_task("ocr"))
-    assert model_supports(
-        ["stt"], required_capabilities_for_task("transcription")
-    )
+    assert model_supports(["stt"], required_capabilities_for_task("transcription"))
 
 
 def test_normalize_capabilities_defaults_empty_to_text():

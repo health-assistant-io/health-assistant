@@ -13,10 +13,9 @@ and ``TaskType.CHAT.value == "chat"`` both hold.
 from __future__ import annotations
 
 import enum
-from typing import List, Optional
 
 
-class ProviderType(str, enum.Enum):
+class ProviderType(enum.StrEnum):
     """Supported AI/processor backend types.
 
     The ``provider_type`` column on ``ai_providers`` carries one of these values
@@ -44,7 +43,7 @@ class ProviderType(str, enum.Enum):
     SPACY = "spacy"
 
     @classmethod
-    def from_string(cls, value: Optional[str]) -> Optional["ProviderType"]:
+    def from_string(cls, value: str | None) -> ProviderType | None:
         """Tolerant lookup used by the registry/resolution path.
 
         Returns ``None`` for unknown/missing values instead of raising, so a DB
@@ -59,7 +58,7 @@ class ProviderType(str, enum.Enum):
             return None
 
     @classmethod
-    def is_llm_capable(cls, value: Optional[str]) -> bool:
+    def is_llm_capable(cls, value: str | None) -> bool:
         """True if ``value`` maps to a provider that yields a ``BaseChatModel``.
 
         Processor-only backends (``tesseract``, ``spacy``) return False — they
@@ -77,7 +76,7 @@ class ProviderType(str, enum.Enum):
         }
 
 
-class TaskType(str, enum.Enum):
+class TaskType(enum.StrEnum):
     """Canonical AI task types.
 
     Values match the ``task_type`` string column on ``ai_task_assignments`` and
@@ -103,7 +102,7 @@ class TaskType(str, enum.Enum):
     TRANSCRIPTION = "transcription"
 
     @classmethod
-    def all_values(cls) -> List[str]:
+    def all_values(cls) -> list[str]:
         """Ordered list of task_type string values.
 
         Replaces the hard-coded list that used to live inline in
@@ -112,7 +111,7 @@ class TaskType(str, enum.Enum):
         return [member.value for member in cls]
 
     @classmethod
-    def from_string(cls, value: Optional[str]) -> Optional["TaskType"]:
+    def from_string(cls, value: str | None) -> TaskType | None:
         """Tolerant lookup; returns ``None`` for unknown values."""
         if value is None:
             return None

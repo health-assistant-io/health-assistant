@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -36,7 +36,7 @@ def sha256_hex(value: str) -> str:
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def device_hint(user_agent: str | None, *, max_length: int = 200) -> str:
@@ -93,9 +93,7 @@ async def get_family(family_id: str | UUID) -> AuthSessionModel | None:
     except ValueError:
         return None
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(AuthSessionModel).where(AuthSessionModel.id == fid)
-        )
+        result = await session.execute(select(AuthSessionModel).where(AuthSessionModel.id == fid))
         return result.scalar_one_or_none()
 
 
@@ -231,9 +229,7 @@ async def issue_session(
     access_token, access_jti = create_session_access_token(
         {**claims, "fid": fid}, expires_delta=access_ttl
     )
-    await token_store.register_session(
-        str(user.id), access_jti, int(access_ttl.total_seconds())
-    )
+    await token_store.register_session(str(user.id), access_jti, int(access_ttl.total_seconds()))
 
     return IssuedSession(
         access_token=access_token,

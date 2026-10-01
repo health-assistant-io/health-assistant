@@ -1,24 +1,33 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
+import logging
+from uuid import UUID
+
 from fastapi import (
     APIRouter,
     Depends,
+    File,
+    Form,
     HTTPException,
     Request,
     UploadFile,
-    File,
-    Form,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.enums import Role
+from app.schemas.document import DocumentEdit, DocumentResponse, DocumentUpdate
+from app.schemas.user import TokenData
+from app.services.audit_service import audit_read, log_audit_action
 from app.services.document_service import (
-    upload_document,
+    delete_document,
     get_document,
     get_documents,
     trigger_extraction,
-    delete_document,
     update_document,
+    upload_document,
 )
+
 # Top-level workers import keeps the load order stable: documents.py is
 # imported before examinations.py by the v1 router, and importing the
 # workers module here forces ``app.workers.ai_tasks`` to load before
@@ -28,13 +37,6 @@ from app.services.document_service import (
 # documents the dependency even though the dispatch itself lives in the
 # service.
 from app.workers.ai_tasks import ocr_document  # noqa: F401
-import logging
-from uuid import UUID
-
-from app.models.enums import Role
-from app.schemas.user import TokenData
-from app.schemas.document import DocumentUpdate, DocumentResponse, DocumentEdit
-from app.services.audit_service import audit_read, log_audit_action
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +53,9 @@ async def upload_document_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload a medical document"""
-    from app.models.user_model import UserModel
     from sqlalchemy import select
+
+    from app.models.user_model import UserModel
 
     user_id = current_user.user_id
 
@@ -137,8 +140,7 @@ async def list_documents(
     # Admins can see all documents in tenant, users only see their own
     owner_id = (
         None
-        if current_user.role
-        in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
+        if current_user.role in [Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value]
         else str(user_id)
     )
 
@@ -180,9 +182,7 @@ async def get_document_endpoint(
         Role.SYSTEM_ADMIN.value,
     ]
     if not is_admin and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to view this document")
 
     from app.services.document_service import enrich_document_entities
 
@@ -213,9 +213,7 @@ async def update_document_endpoint(
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,
     ] and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to update this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to update this document")
 
     old_include = document.include_in_extraction
     updated_document = await update_document(
@@ -240,9 +238,7 @@ async def update_document_endpoint(
         else:
             from app.services.document_service import trigger_cumulative_extraction
 
-            await trigger_cumulative_extraction(
-                str(updated_document.examination_id), db
-            )
+            await trigger_cumulative_extraction(str(updated_document.examination_id), db)
 
     await log_audit_action(
         tenant_id=current_user.tenant_id,
@@ -280,15 +276,11 @@ async def edit_document_endpoint(
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,
     ] and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to edit this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to edit this document")
 
     from app.services.document_service import edit_document_service
 
-    new_document = await edit_document_service(
-        document_id, edit_params.model_dump(), db
-    )
+    new_document = await edit_document_service(document_id, edit_params.model_dump(), db)
 
     await log_audit_action(
         tenant_id=current_user.tenant_id,
@@ -329,9 +321,7 @@ async def get_presigned_url_endpoint(
         Role.SYSTEM_ADMIN.value,
     ]
     if not is_admin and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to view this document")
 
     from app.core.security import create_presigned_token
 
@@ -342,7 +332,7 @@ async def get_presigned_url_endpoint(
 @router.get("/{document_id}/download")
 async def download_document_endpoint(
     document_id: str,
-    token: Optional[str] = None,
+    token: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Download document file"""
@@ -360,6 +350,7 @@ async def download_document_endpoint(
         raise HTTPException(status_code=404, detail="Document not found")
 
     import mimetypes
+
     from fastapi.responses import FileResponse
 
     # Try to guess the media type to render it inline instead of downloading
@@ -411,15 +402,13 @@ async def trigger_extraction_endpoint(
             raise HTTPException(status_code=404, detail="Document not found")
 
         user_id = current_user.user_id
-    
+
         if current_user.role not in [
             Role.ADMIN.value,
             Role.MANAGER.value,
             Role.SYSTEM_ADMIN.value,
         ] and str(document.owner_id) != str(user_id):
-            raise HTTPException(
-                status_code=403, detail="Not authorized to extract this document"
-            )
+            raise HTTPException(status_code=403, detail="Not authorized to extract this document")
 
         job_id = await trigger_extraction(document_id, db)
         return {"job_id": job_id, "message": "Extraction started"}
@@ -466,9 +455,7 @@ async def get_extraction_status_endpoint(
         logger.warning(
             f"Permission denied: user {current_user_id} (role: {current_user.role}) tried to access document owned by {doc_owner_id}"
         )
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view extraction status"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to view extraction status")
 
     logger.info(f"Permission granted: user {current_user_id} accessing their document")
 
@@ -488,9 +475,11 @@ async def upload_temp_preview(
     """Temporary upload for previewing DICOM/PDF before saving examination. Supports multiple pages/frames via 'page' query param."""
     import os
     import uuid
-    from app.ai.processors.ocr.utils import convert_to_images
-    from fastapi.responses import Response
     from pathlib import Path
+
+    from fastapi.responses import Response
+
+    from app.ai.processors.ocr.utils import convert_to_images
 
     # Security: check extension
     filename = file.filename or "temp"
@@ -506,8 +495,8 @@ async def upload_temp_preview(
 
     try:
         # Save temp file — cap size to prevent RAM exhaustion (audit A4)
-        from app.services.document_service import _read_capped
         from app.core.config import settings as _settings
+        from app.services.document_service import _read_capped
 
         content = await _read_capped(file, _settings.MAX_UPLOAD_SIZE * 1024 * 1024)
         with open(temp_path, "wb") as buffer:
@@ -535,9 +524,7 @@ async def upload_temp_preview(
             "X-Total-Pages": str(len(images)),
             "X-Current-Page": str(requested_frame),
         }
-        return Response(
-            content=images[requested_frame], media_type="image/jpeg", headers=headers
-        )
+        return Response(content=images[requested_frame], media_type="image/jpeg", headers=headers)
     except Exception:
         if temp_path.exists():
             os.remove(temp_path)
@@ -569,15 +556,14 @@ async def get_dicom_metadata_endpoint(
         Role.SYSTEM_ADMIN.value,
     ]
     if not is_admin and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to view this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to view this document")
 
     if not document.filename.lower().endswith(".dcm"):
         raise HTTPException(status_code=400, detail="Document is not a DICOM file")
 
-    import pydicom
     from pathlib import Path
+
+    import pydicom
 
     try:
         file_path = Path(document.file_path)
@@ -627,7 +613,7 @@ async def get_document_preview_endpoint(
     request: Request,
     document_id: str,
     page: int = 0,
-    token: Optional[str] = None,
+    token: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get an image preview of a document.
@@ -660,9 +646,7 @@ async def get_document_preview_endpoint(
         # mint time (the authenticated caller asked for a doc they could
         # already read).
         if not verify_presigned_token(token, document_id):
-            raise HTTPException(
-                status_code=401, detail="Invalid or expired preview token"
-            )
+            raise HTTPException(status_code=401, detail="Invalid or expired preview token")
     else:
         # No presigned token → require an Authorization: Bearer <jwt>.
         authorization = request.headers.get("authorization")
@@ -702,23 +686,21 @@ async def get_document_preview_endpoint(
         # USER role — a tenant member must not render other members'
         # documents. Mirrors the gate on GET /documents/{id}: ADMIN/MANAGER
         # are tenant-wide, USER must own the document.
-        if token_data.role == Role.USER.value and str(document.owner_id) != str(
-            token_data.user_id
-        ):
+        if token_data.role == Role.USER.value and str(document.owner_id) != str(token_data.user_id):
             raise HTTPException(status_code=404, detail="Document not found")
 
-    from app.ai.processors.ocr.utils import convert_to_images
-    from fastapi.responses import Response
     from pathlib import Path
+
+    from fastapi.responses import Response
+
+    from app.ai.processors.ocr.utils import convert_to_images
 
     file_path = Path(document.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     # If it's already an image, just serve it
-    if document.filename.lower().endswith(
-        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
-    ):
+    if document.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
         import mimetypes
 
         content_type, _ = mimetypes.guess_type(document.filename)
@@ -729,9 +711,7 @@ async def get_document_preview_endpoint(
     try:
         images = await convert_to_images(file_path)
         if not images:
-            raise HTTPException(
-                status_code=500, detail="Failed to generate preview image"
-            )
+            raise HTTPException(status_code=500, detail="Failed to generate preview image")
 
         # Ensure page index is within bounds
         if page < 0 or page >= len(images):
@@ -773,9 +753,7 @@ async def delete_document_endpoint(
         Role.MANAGER.value,
         Role.SYSTEM_ADMIN.value,
     ] and str(document.owner_id) != str(user_id):
-        raise HTTPException(
-            status_code=403, detail="Not authorized to delete this document"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to delete this document")
 
     success = await delete_document(document_id, db)
 

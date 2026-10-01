@@ -63,10 +63,7 @@ def _rewrite_caps(mapping: Mapping[str, Sequence[str]]) -> None:
                 deduped.append(cap)
         if deduped != caps:
             bind.execute(
-                sa.text(
-                    "UPDATE ai_models SET capabilities = CAST(:caps AS jsonb) "
-                    "WHERE id = :id"
-                ),
+                sa.text("UPDATE ai_models SET capabilities = CAST(:caps AS jsonb) WHERE id = :id"),
                 {"caps": json.dumps(deduped), "id": row_id},
             )
 

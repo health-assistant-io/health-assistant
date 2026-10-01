@@ -37,9 +37,7 @@ async def test_seed_all_resolves_anatomy_class(tmp_path, monkeypatch):
 
     await SeedService().seed_all()
     async with AsyncSessionLocal() as db:
-        total = (
-            await db.execute(select(func.count()).select_from(AnatomyStructure))
-        ).scalar()
+        total = (await db.execute(select(func.count()).select_from(AnatomyStructure))).scalar()
         with_class = (
             await db.execute(
                 select(func.count())
@@ -48,9 +46,7 @@ async def test_seed_all_resolves_anatomy_class(tmp_path, monkeypatch):
             )
         ).scalar()
         thyroid = (
-            await db.execute(
-                select(AnatomyStructure).where(AnatomyStructure.slug == "thyroid")
-            )
+            await db.execute(select(AnatomyStructure).where(AnatomyStructure.slug == "thyroid"))
         ).scalar_one()
 
     assert total > 0

@@ -14,7 +14,6 @@ Iteration 1 ships only the ``patient`` entity; the wizard UI lands in a
 later iteration on the same branch. See ``dev/audits/setup-wizard-design.md``.
 """
 
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -39,25 +38,17 @@ router = APIRouter(prefix="/setup", tags=["setup"])
 
 @router.get("/checklist", response_model=SetupChecklistResponse)
 async def get_setup_checklist(
-    entity: Optional[str] = Query(
-        None, description="Entity scope: one of 'patient' (iteration 1)"
-    ),
-    entity_id: Optional[UUID] = Query(
-        None, description="Entity id (required when entity is given)"
-    ),
+    entity: str | None = Query(None, description="Entity scope: one of 'patient' (iteration 1)"),
+    entity_id: UUID | None = Query(None, description="Entity id (required when entity is given)"),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> SetupChecklistResponse:
     if entity is not None and entity not in SUPPORTED_ENTITIES:
         from app.core.errors import ValidationError
 
-        raise ValidationError(
-            f"Unsupported checklist entity: {entity}"
-        )
+        raise ValidationError(f"Unsupported checklist entity: {entity}")
     service = SetupChecklistService(db)
-    return await service.get_checklist(
-        current_user, entity=entity, entity_id=entity_id
-    )
+    return await service.get_checklist(current_user, entity=entity, entity_id=entity_id)
 
 
 @router.get(
@@ -85,12 +76,10 @@ class ManualCompleteRequest(BaseModel):
     completed: bool = Field(
         ..., description="True to mark the step manually complete; False to clear."
     )
-    entity: Optional[str] = Field(
+    entity: str | None = Field(
         None, description="Entity scope ('patient') when toggling an entity step"
     )
-    entity_id: Optional[UUID] = Field(
-        None, description="Entity id (required when entity is given)"
-    )
+    entity_id: UUID | None = Field(None, description="Entity id (required when entity is given)")
 
 
 @router.post("/checklist/manual-complete", response_model=StepResult)
@@ -109,9 +98,7 @@ async def set_manual_complete(
     if payload.entity is not None and payload.entity not in SUPPORTED_ENTITIES:
         from app.core.errors import ValidationError
 
-        raise ValidationError(
-            f"Unsupported checklist entity: {payload.entity}"
-        )
+        raise ValidationError(f"Unsupported checklist entity: {payload.entity}")
     service = SetupChecklistService(db)
     return await service.set_manual_complete(
         current_user,

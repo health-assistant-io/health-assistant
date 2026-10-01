@@ -10,6 +10,7 @@ Covers:
 - ``Patient.to_fhir_dict()`` surfaces the canonical ``extension[]`` array
   and ``assert_valid_fhir`` accepts it (round-trip).
 """
+
 import uuid
 
 import pytest
@@ -82,9 +83,7 @@ def test_validate_rejects_empty_race():
 
 
 def test_validate_preferred_language_normalizes():
-    assert validate_patient_extensions({"preferred_language": "EL"}) == {
-        "preferred_language": "el"
-    }
+    assert validate_patient_extensions({"preferred_language": "EL"}) == {"preferred_language": "el"}
 
 
 def test_validate_rejects_preferred_language_non_string():

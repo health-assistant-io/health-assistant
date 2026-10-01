@@ -1,11 +1,13 @@
 import asyncio
+import logging
 from typing import Any, cast
+
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.core.config import settings
 from app.models.document_model import DocumentModel
 from app.workers.ai_tasks import process_document
-import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Recategorize")
@@ -13,9 +15,7 @@ logger = logging.getLogger("Recategorize")
 
 async def main():
     engine = create_async_engine(settings.DATABASE_URL)
-    LocalSession = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
+    LocalSession = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
     async with LocalSession() as db:
         query = select(DocumentModel).where(DocumentModel.status == "completed")

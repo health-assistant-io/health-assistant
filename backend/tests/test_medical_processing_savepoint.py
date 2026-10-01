@@ -12,6 +12,7 @@ Post-fix contract pinned here:
    restoring the prior Observations + Medications.
 3. The outer transaction stays open for the caller.
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -70,9 +71,12 @@ async def test_persist_results_uses_savepoint():
 
     await inst._persist_results(_exam(), _parsed_data(), [], {}, {})
 
-    db.begin_nested.assert_called_once(), (
-        "_persist_results must wrap its delete + recreate in begin_nested() "
-        "(SAVEPOINT) so re-extraction failures roll back to pre-delete state"
+    (
+        db.begin_nested.assert_called_once(),
+        (
+            "_persist_results must wrap its delete + recreate in begin_nested() "
+            "(SAVEPOINT) so re-extraction failures roll back to pre-delete state"
+        ),
     )
 
 

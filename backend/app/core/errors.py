@@ -20,9 +20,8 @@ Raise the most specific subclass; the ``detail`` is shown verbatim to the
 client, so keep it user-facing (e.g. ``"Patient not found"``) and never embed
 ``str(exc)`` of an underlying DB/driver error.
 """
-from __future__ import annotations
 
-from typing import Optional
+from __future__ import annotations
 
 
 class DomainError(Exception):
@@ -30,7 +29,7 @@ class DomainError(Exception):
 
     status_code: int = 500
 
-    def __init__(self, detail: str = "", *, status_code: Optional[int] = None):
+    def __init__(self, detail: str = "", *, status_code: int | None = None):
         super().__init__(detail)
         self.detail = detail or self.__class__.__name__
         if status_code is not None:

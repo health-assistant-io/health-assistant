@@ -30,10 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document_model import DocumentModel
 from app.services.document_service import _resolve_practitioner_id
 
-
 # ---------------------------------------------------------------------------
 # to_fhir_dict — author reference shape
 # ---------------------------------------------------------------------------
+
 
 def test_to_fhir_dict_omits_author_when_practitioner_id_unset():
     """When no Practitioner is linked (admin/manager uploads), `author` is
@@ -88,6 +88,7 @@ def test_to_fhir_dict_does_not_emit_owner_id_as_practitioner():
 # _resolve_practitioner_id — owner → Practitioner lookup
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_resolve_practitioner_id_returns_doctor_id_when_user_linked():
     """When the owner has a DoctorModel row linked via user_id, the resolver
@@ -123,13 +124,16 @@ async def test_resolve_practitioner_id_returns_none_when_no_doctor():
 async def test_resolve_practitioner_id_invalid_uuid_returns_none():
     """Garbage input doesn't raise; returns None (no resolution)."""
     db = AsyncMock(spec=AsyncSession)
-    resolved = await _resolve_practitioner_id(db, owner_id="not-a-uuid", tenant_id=str(uuid.uuid4()))
+    resolved = await _resolve_practitioner_id(
+        db, owner_id="not-a-uuid", tenant_id=str(uuid.uuid4())
+    )
     assert resolved is None
 
 
 # ---------------------------------------------------------------------------
 # Upload path integration — practitioner_id populated from owner
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
@@ -145,8 +149,10 @@ async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
 
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)
     monkeypatch.setattr("os.path.isdir", lambda *a, **kw: True)
+
     async def _fake_write(path, content):
         return None
+
     monkeypatch.setattr(
         "app.services.document_service.write_file_if_not_exists",
         _fake_write,
@@ -194,8 +200,10 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
 
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)
     monkeypatch.setattr("os.path.isdir", lambda *a, **kw: True)
+
     async def _fake_write(path, content):
         return None
+
     monkeypatch.setattr(
         "app.services.document_service.write_file_if_not_exists",
         _fake_write,
@@ -225,6 +233,7 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
 # ---------------------------------------------------------------------------
 # to_dict — practitioner_id exposed for the frontend
 # ---------------------------------------------------------------------------
+
 
 def test_to_dict_exposes_practitioner_id_when_set():
     pid = str(uuid.uuid4())

@@ -1,7 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from uuid import uuid4
 
 
 def make_token(role="USER", user_id=None, tenant_id=None):
@@ -30,8 +31,8 @@ def patient_dict():
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.list_patients", new_callable=AsyncMock)
 async def test_list_patients_success(mock_list, async_client: AsyncClient, patient_dict):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     token = make_token(role="ADMIN")
     app.dependency_overrides[get_current_user] = lambda: token
@@ -49,8 +50,8 @@ async def test_list_patients_success(mock_list, async_client: AsyncClient, patie
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.list_patients", new_callable=AsyncMock)
 async def test_list_patients_user_role_forced_user_id(mock_list, async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     user_id = uuid4()
     token = make_token(role="USER", user_id=user_id)
@@ -72,8 +73,8 @@ async def test_list_patients_user_role_forced_user_id(mock_list, async_client: A
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.create_patient", new_callable=AsyncMock)
 async def test_create_patient_success(mock_create, async_client: AsyncClient, patient_dict):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     token = make_token(role="ADMIN")
     app.dependency_overrides[get_current_user] = lambda: token
@@ -92,8 +93,8 @@ async def test_create_patient_success(mock_create, async_client: AsyncClient, pa
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.create_patient", new_callable=AsyncMock)
 async def test_create_patient_user_role_forces_user_id(mock_create, async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     user_id = uuid4()
     token = make_token(role="USER", user_id=user_id)
@@ -115,8 +116,8 @@ async def test_create_patient_user_role_forces_user_id(mock_create, async_client
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.check_patient_access", new_callable=AsyncMock)
 async def test_get_patient_success(mock_access, async_client: AsyncClient, patient_dict):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_access.return_value = patient_dict
@@ -131,9 +132,10 @@ async def test_get_patient_success(mock_access, async_client: AsyncClient, patie
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.check_patient_access", new_callable=AsyncMock)
 async def test_get_patient_not_found(mock_access, async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from fastapi import HTTPException
+
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_access.side_effect = HTTPException(status_code=404, detail="Patient not found")
@@ -154,8 +156,8 @@ async def test_get_patient_not_found(mock_access, async_client: AsyncClient):
 async def test_update_patient_success(
     mock_access, mock_update, async_client: AsyncClient, patient_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     updated = {**patient_dict, "gender": "female"}
@@ -179,8 +181,8 @@ async def test_update_patient_success(
 async def test_delete_patient_success(
     mock_access, mock_delete, async_client: AsyncClient, patient_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_access.return_value = patient_dict
@@ -199,8 +201,8 @@ async def test_delete_patient_success(
 async def test_delete_patient_forbidden_for_unlinked_user(
     mock_access, mock_delete, async_client: AsyncClient, patient_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     # USER role but patient is linked to a different user.
     # check_patient_access returns a model-like object with attributes.
@@ -208,9 +210,7 @@ async def test_delete_patient_forbidden_for_unlinked_user(
     caller = uuid4()
     mock_patient = MagicMock()
     mock_patient.user_id = patient_owner
-    app.dependency_overrides[get_current_user] = lambda: make_token(
-        role="USER", user_id=caller
-    )
+    app.dependency_overrides[get_current_user] = lambda: make_token(role="USER", user_id=caller)
     mock_access.return_value = mock_patient
 
     response = await async_client.delete(f"/api/v1/patients/{patient_dict['id']}")

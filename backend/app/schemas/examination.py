@@ -1,13 +1,11 @@
-from pydantic import BaseModel, ConfigDict, Field
-from uuid import UUID
-from typing import Optional, List, Any, Dict
 from datetime import date, datetime
+from typing import Any
+from uuid import UUID
 
-
-from app.schemas.doctor import DoctorResponse
-
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.concept import ConceptResponse
+from app.schemas.doctor import DoctorResponse
 from app.schemas.medication import MedicationRecordResponse
 from app.schemas.observation import ObservationResponse
 from app.schemas.organization import Organization
@@ -21,34 +19,28 @@ class DocumentStatus(BaseModel):
 
 
 class ExaminationBase(BaseModel):
-    patient_id: Optional[UUID] = None
-    examination_date: Optional[date] = None
-    notes: Optional[str] = None
-    patient_notes: Optional[str] = None
-    category: Optional[str] = Field(
-        None, description="Category name for resolution or suggestion"
-    )
-    category_concept_id: Optional[UUID] = Field(
+    patient_id: UUID | None = None
+    examination_date: date | None = None
+    notes: str | None = None
+    patient_notes: str | None = None
+    category: str | None = Field(None, description="Category name for resolution or suggestion")
+    category_concept_id: UUID | None = Field(
         None, description="Direct ID for the managed category concept"
     )
-    organization_id: Optional[UUID] = Field(
-        None, description="Direct ID for the linked facility"
-    )
-    source_integration_id: Optional[UUID] = Field(
+    organization_id: UUID | None = Field(None, description="Direct ID for the linked facility")
+    source_integration_id: UUID | None = Field(
         None, description="ID of the integration that synced this examination"
     )
-    external_id: Optional[str] = Field(
-        None, description="External ID from the source integration"
-    )
-    auto_extract_metadata: Optional[bool] = False
-    doctor_ids: Optional[List[UUID]] = Field(default_factory=list)
-    diagnoses: Optional[List[str]] = Field(default_factory=list)
-    impressions: Optional[str] = None
-    extraction_status: Optional[str] = None
-    extraction_progress: Optional[int] = 0
-    error_message: Optional[str] = None
-    medications: Optional[List[MedicationRecordResponse]] = Field(default_factory=list)
-    observations: Optional[List[ObservationResponse]] = Field(default_factory=list)
+    external_id: str | None = Field(None, description="External ID from the source integration")
+    auto_extract_metadata: bool | None = False
+    doctor_ids: list[UUID] | None = Field(default_factory=list)
+    diagnoses: list[str] | None = Field(default_factory=list)
+    impressions: str | None = None
+    extraction_status: str | None = None
+    extraction_progress: int | None = 0
+    error_message: str | None = None
+    medications: list[MedicationRecordResponse] | None = Field(default_factory=list)
+    observations: list[ObservationResponse] | None = Field(default_factory=list)
 
 
 class ExaminationCreate(ExaminationBase):
@@ -56,57 +48,57 @@ class ExaminationCreate(ExaminationBase):
 
 
 class ExaminationUpdate(BaseModel):
-    patient_id: Optional[UUID] = None
-    examination_date: Optional[date] = None
-    notes: Optional[str] = None
-    patient_notes: Optional[str] = None
-    category: Optional[str] = None
-    category_concept_id: Optional[UUID] = None
-    organization_id: Optional[UUID] = None
-    source_integration_id: Optional[UUID] = None
-    external_id: Optional[str] = None
-    doctor_ids: Optional[List[UUID]] = None
-    diagnoses: Optional[List[str]] = None
-    impressions: Optional[str] = None
-    extraction_status: Optional[str] = None
-    extraction_progress: Optional[int] = None
-    auto_extract_metadata: Optional[bool] = None
+    patient_id: UUID | None = None
+    examination_date: date | None = None
+    notes: str | None = None
+    patient_notes: str | None = None
+    category: str | None = None
+    category_concept_id: UUID | None = None
+    organization_id: UUID | None = None
+    source_integration_id: UUID | None = None
+    external_id: str | None = None
+    doctor_ids: list[UUID] | None = None
+    diagnoses: list[str] | None = None
+    impressions: str | None = None
+    extraction_status: str | None = None
+    extraction_progress: int | None = None
+    auto_extract_metadata: bool | None = None
 
 
 class ExaminationSummaryResponse(BaseModel):
     id: UUID
-    patient_id: Optional[UUID] = None
-    examination_date: Optional[date] = None
-    notes: Optional[str] = None
-    patient_notes: Optional[str] = None
-    category: Optional[str] = None
-    doctor_ids: Optional[List[UUID]] = Field(default_factory=list)
-    extraction_status: Optional[str] = None
-    extraction_progress: Optional[int] = 0
-    error_message: Optional[str] = None
-    diagnoses: Optional[List[str]] = Field(default_factory=list)
-    impressions: Optional[str] = None
-    category_concept: Optional[ConceptResponse] = None
-    organization: Optional[Organization] = None
-    doctors: List[DoctorResponse] = []
-    document_statuses: List[DocumentStatus] = []
-    observation_count: Optional[int] = 0
-    medication_count: Optional[int] = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    patient_id: UUID | None = None
+    examination_date: date | None = None
+    notes: str | None = None
+    patient_notes: str | None = None
+    category: str | None = None
+    doctor_ids: list[UUID] | None = Field(default_factory=list)
+    extraction_status: str | None = None
+    extraction_progress: int | None = 0
+    error_message: str | None = None
+    diagnoses: list[str] | None = Field(default_factory=list)
+    impressions: str | None = None
+    category_concept: ConceptResponse | None = None
+    organization: Organization | None = None
+    doctors: list[DoctorResponse] = []
+    document_statuses: list[DocumentStatus] = []
+    observation_count: int | None = 0
+    medication_count: int | None = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ExaminationResponse(ExaminationBase):
     id: UUID
-    category_concept: Optional[ConceptResponse] = None
-    organization: Optional[Organization] = None
-    doctors: List[DoctorResponse] = []
-    document_statuses: List[DocumentStatus] = []
-    clinical_events: List[Dict[str, Any]] = []
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    category_concept: ConceptResponse | None = None
+    organization: Organization | None = None
+    doctors: list[DoctorResponse] = []
+    document_statuses: list[DocumentStatus] = []
+    clinical_events: list[dict[str, Any]] = []
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -116,12 +108,12 @@ class ExaminationExtractRequest(BaseModel):
 
 
 class ExaminationBulkDeleteRequest(BaseModel):
-    examination_ids: List[UUID]
+    examination_ids: list[UUID]
 
 
 class ExaminationStatusResponse(BaseModel):
     id: UUID
-    extraction_status: Optional[str] = None
-    extraction_progress: Optional[int] = 0
-    error_message: Optional[str] = None
-    documents: List[DocumentStatus] = []
+    extraction_status: str | None = None
+    extraction_progress: int | None = 0
+    error_message: str | None = None
+    documents: list[DocumentStatus] = []

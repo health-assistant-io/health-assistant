@@ -11,16 +11,16 @@ the resolver endpoints. The SDK-facing spec
 (:class:`integrations.sdk.proposals.IntegrationProposalSpec`) lives in
 the SDK package so providers can build specs without importing app code.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import HitlTaskStatus
-
 
 ResolveAction = Literal["approve", "reject", "cancel"]
 
@@ -38,20 +38,20 @@ class IntegrationProposalResponse(BaseModel):
 
     id: UUID
     integration_id: UUID
-    tenant_id: Optional[UUID] = None
-    patient_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
+    patient_id: UUID | None = None
     proposal_type: str
     title: str
     status: HitlTaskStatus
-    proposed_payload: Dict[str, Any]
-    context: Dict[str, Any] = Field(default_factory=dict)
-    resolved_payload: Optional[Dict[str, Any]] = None
-    resolved_by: Optional[UUID] = None
-    resolved_at: Optional[datetime] = None
-    resolution_note: Optional[str] = None
-    dedup_key: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    proposed_payload: dict[str, Any]
+    context: dict[str, Any] = Field(default_factory=dict)
+    resolved_payload: dict[str, Any] | None = None
+    resolved_by: UUID | None = None
+    resolved_at: datetime | None = None
+    resolution_note: str | None = None
+    dedup_key: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class IntegrationProposalResolveRequest(BaseModel):
@@ -73,12 +73,12 @@ class IntegrationProposalResolveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: ResolveAction
-    payload: Optional[Dict[str, Any]] = None
-    note: Optional[str] = None
+    payload: dict[str, Any] | None = None
+    note: str | None = None
 
 
 __all__ = [
-    "IntegrationProposalResponse",
     "IntegrationProposalResolveRequest",
+    "IntegrationProposalResponse",
     "ResolveAction",
 ]

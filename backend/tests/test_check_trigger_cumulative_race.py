@@ -13,6 +13,7 @@ Post-fix contract pinned here:
    cumulative_extraction (another OCR completion is already mid-check).
 3. The lock is keyed on the exam id (stable per exam).
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -109,7 +110,11 @@ async def test_check_trigger_cumulative_skips_when_lock_not_acquired():
     async def _execute(stmt, *a, **kw):
         rendered = str(stmt).lower()
         # First call: select the doc.
-        if "fhir_documents" in rendered and "select" in rendered and call_count["pending_check"] == 0:
+        if (
+            "fhir_documents" in rendered
+            and "select" in rendered
+            and call_count["pending_check"] == 0
+        ):
             r = MagicMock()
             r.scalar_one_or_none.return_value = doc
             call_count["pending_check"] += 1
@@ -131,9 +136,12 @@ async def test_check_trigger_cumulative_skips_when_lock_not_acquired():
     with patch.object(worker_tasks.cumulative_extraction, "delay") as delayed:
         await worker_tasks._check_trigger_cumulative(db, doc.id)
 
-    delayed.assert_not_called(), (
-        "cumulative_extraction.delay() must NOT fire when the advisory lock "
-        "couldn't be acquired (audit C3 TOCTOU fix)"
+    (
+        delayed.assert_not_called(),
+        (
+            "cumulative_extraction.delay() must NOT fire when the advisory lock "
+            "couldn't be acquired (audit C3 TOCTOU fix)"
+        ),
     )
 
 
@@ -145,9 +153,7 @@ async def test_check_trigger_cumulative_no_exam_returns_early():
     doc.examination_id = None
 
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=doc))
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=doc)))
 
     with patch.object(worker_tasks.cumulative_extraction, "delay") as delayed:
         await worker_tasks._check_trigger_cumulative(db, doc.id)
@@ -159,9 +165,7 @@ async def test_check_trigger_cumulative_no_exam_returns_early():
 async def test_check_trigger_cumulative_doc_not_found_returns_early():
     """If the doc doesn't exist, return early without firing."""
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
 
     with patch.object(worker_tasks.cumulative_extraction, "delay") as delayed:
         await worker_tasks._check_trigger_cumulative(db, uuid.uuid4())
@@ -246,5 +250,5 @@ async def test_check_trigger_cumulative_fires_when_no_pending_and_docs_with_text
         await worker_tasks._check_trigger_cumulative(db, doc.id)
 
     delayed.assert_called_once()
-    args, kwargs = delayed.call_args
+    args, _kwargs = delayed.call_args
     assert args[0] == str(exam_id)

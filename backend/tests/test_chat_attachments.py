@@ -9,6 +9,7 @@ Covers ``app.ai.assistance.attachments``:
     OpenAI vision content-block list otherwise.
   * ``has_images`` correctly inspects persisted ``ChatMessage.content``.
 """
+
 import base64
 
 import pytest
@@ -93,11 +94,11 @@ def test_count_limit_enforced():
 
 
 def test_size_limit_enforced(monkeypatch):
+    from app.ai.assistance import attachments as att_mod
     from app.ai.assistance.attachments import (
         ImageValidationError,
         validate_chat_images,
     )
-    from app.ai.assistance import attachments as att_mod
 
     # Lower the limit to a few bytes so a small payload trips it without
     # having to construct a multi-megabyte string in memory.

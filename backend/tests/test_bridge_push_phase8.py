@@ -20,7 +20,6 @@ Coverage:
                                               worker fans out)
 """
 
-import datetime
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -31,7 +30,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.fhir.patient import Patient
-from app.models.notification import MobilePushTarget, NotificationRecipient
+from app.models.notification import MobilePushTarget
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
@@ -93,9 +92,7 @@ async def bridge_owner():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -336,9 +333,7 @@ async def test_dispatch_posts_to_each_active_device(bridge_owner, monkeypatch):
     monkeypatch.setattr(svc, "send_fcm", fake_fcm)
 
     async with AsyncSessionLocal() as db:
-        results = await svc.dispatch(
-            db, user_id=ctx["user_id"], payload={"title": "hi"}
-        )
+        results = await svc.dispatch(db, user_id=ctx["user_id"], payload={"title": "hi"})
     by_dev = {r["device_id"]: r for r in results}
     assert by_dev["dev-ok"]["status"] == "sent"
     assert by_dev["dev-fcm"]["status"] == "failed"
@@ -393,9 +388,7 @@ async def test_dispatch_skips_inactive(bridge_owner, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_emit_creates_push_delivery_for_mobile_only_user(
-    bridge_owner, monkeypatch
-):
+async def test_emit_creates_push_delivery_for_mobile_only_user(bridge_owner, monkeypatch):
     """End-to-end-ish: emit (which gates PUSH on _has_push_subscription)
     must create a PENDING PUSH delivery for a mobile-only user. After the
     dispatch service fans out successfully the delivery row transitions to
@@ -478,10 +471,7 @@ async def test_emit_creates_push_delivery_for_mobile_only_user(
             db, user_id=ctx["user_id"], payload={"title": "Phase 8 integration"}
         )
     assert any(r["device_id"] == "dev-integration" for r in sent)
-    assert any(
-        r["device_id"] == "dev-integration" and r["status"] == "sent"
-        for r in results
-    )
+    assert any(r["device_id"] == "dev-integration" and r["status"] == "sent" for r in results)
 
     # Simulate what the worker does on success: mark DELIVERED.
     async with AsyncSessionLocal() as db:

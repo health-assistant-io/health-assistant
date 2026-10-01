@@ -35,9 +35,6 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
 
-from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
-from app.models.tenant_model import TenantModel
 from app.ai.providers import setup as byok_setup
 from app.ai.providers.errors import classify_provider_error, extract_error_status
 from app.ai.providers.presets import (
@@ -48,13 +45,15 @@ from app.ai.providers.presets import (
     guess_preset_for_key,
 )
 from app.ai.providers.setup import infer_caps
+from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
-    AITaskAssignment,
     AIScope,
+    AITaskAssignment,
 )
-
+from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 # ---------------------------------------------------------------------------
 # fixtures + helpers
@@ -83,11 +82,7 @@ async def user_ctx():
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(
-                id=tenant_id, name="BYOK Tenant", slug=f"byok-{tenant_id}"
-            )
-        )
+        session.add(TenantModel(id=tenant_id, name="BYOK Tenant", slug=f"byok-{tenant_id}"))
         await session.commit()
 
     user = await create_user(
@@ -104,15 +99,18 @@ async def user_ctx():
         await session.execute(
             delete(AITaskAssignment).where(AITaskAssignment.tenant_id == tenant_id)
         )
-        await session.execute(
-            delete(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
-        )
+        await session.execute(delete(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id))
         await session.commit()
 
 
 async def _seed_provider(
-    tenant_id, user_id, *, name="Manual row", provider_type="openai",
-    api_base="https://api.openai.com/v1", preset_key=None,
+    tenant_id,
+    user_id,
+    *,
+    name="Manual row",
+    provider_type="openai",
+    api_base="https://api.openai.com/v1",
+    preset_key=None,
 ) -> AIProviderModel:
     async with AsyncSessionLocal() as session:
         provider = AIProviderModel(
@@ -133,9 +131,7 @@ async def _seed_provider(
         return provider
 
 
-async def _seed_model(
-    provider_id, model_name, caps
-) -> AIModel:
+async def _seed_model(provider_id, model_name, caps) -> AIModel:
     async with AsyncSessionLocal() as session:
         model = AIModel(
             provider_id=provider_id,
@@ -151,9 +147,7 @@ async def _seed_model(
         return model
 
 
-async def _seed_slot(
-    tenant_id, user_id, provider_id, model_id, task_type
-) -> AITaskAssignment:
+async def _seed_slot(tenant_id, user_id, provider_id, model_id, task_type) -> AITaskAssignment:
     async with AsyncSessionLocal() as session:
         row = AITaskAssignment(
             task_type=task_type,
@@ -172,10 +166,7 @@ async def _seed_slot(
 
 
 def wire_catalog(model_ids: list[str]) -> list[byok_setup.RemoteModel]:
-    return [
-        byok_setup.RemoteModel(external_id=m, caps=tuple(infer_caps(m)))
-        for m in model_ids
-    ]
+    return [byok_setup.RemoteModel(external_id=m, caps=tuple(infer_caps(m))) for m in model_ids]
 
 
 def install_catalog(
@@ -200,30 +191,36 @@ def install_catalog(
 async def user_rows(tenant_id) -> tuple[list[AIProviderModel], list[AIModel]]:
     async with AsyncSessionLocal() as session:
         providers = (
-            await session.execute(
-                select(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
+            (
+                await session.execute(
+                    select(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
+                )
             )
-        ).scalars().all()
-        models = (
-            (await session.execute(select(AIModel))).scalars().all()
+            .scalars()
+            .all()
         )
+        models = (await session.execute(select(AIModel))).scalars().all()
     return list(providers), list(models)
 
 
 async def slot_of(tenant_id, user_id, task_type) -> AITaskAssignment | None:
     async with AsyncSessionLocal() as session:
         return (
-            await session.execute(
-                select(AITaskAssignment)
-                .where(
-                    AITaskAssignment.tenant_id == tenant_id,
-                    AITaskAssignment.user_id == user_id,
-                    AITaskAssignment.task_type == task_type,
-                    AITaskAssignment.is_active.is_(True),
+            (
+                await session.execute(
+                    select(AITaskAssignment)
+                    .where(
+                        AITaskAssignment.tenant_id == tenant_id,
+                        AITaskAssignment.user_id == user_id,
+                        AITaskAssignment.task_type == task_type,
+                        AITaskAssignment.is_active.is_(True),
+                    )
+                    .order_by(AITaskAssignment.priority.desc())
                 )
-                .order_by(AITaskAssignment.priority.desc())
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -232,11 +229,14 @@ async def slot_of(tenant_id, user_id, task_type) -> AITaskAssignment | None:
 
 
 def test_preset_metadata_uniformity() -> None:
-    assert list(SETUP_PRESETS) == [
-        k for k in PRESET_ORDER if k not in DISABLED_PRESET_REASONS
-    ]
+    assert list(SETUP_PRESETS) == [k for k in PRESET_ORDER if k not in DISABLED_PRESET_REASONS]
     assert sorted(SETUP_PRESETS) == [
-        "deepseek", "groq", "mistral", "ollama", "openai", "openrouter",
+        "deepseek",
+        "groq",
+        "mistral",
+        "ollama",
+        "openai",
+        "openrouter",
     ]
     # health delta: gemini/anthropic overlay-disabled with recorded reasons
     assert set(DISABLED_PRESET_REASONS) == {"gemini", "anthropic"}
@@ -248,7 +248,11 @@ def test_preset_metadata_uniformity() -> None:
     assert SETUP_PRESETS["openai"]["wire_type"] == "openai_compatible"
     assert SETUP_PRESETS["openai"]["stt_model"] == "whisper-1"
     assert [hint["prefix"] for hint in KEY_PREFIX_HINTS] == [
-        "sk-ant-", "sk-or-v1-", "gsk_", "AIza", "sk-",
+        "sk-ant-",
+        "sk-or-v1-",
+        "gsk_",
+        "AIza",
+        "sk-",
     ]
     assert guess_preset_for_key("sk-ant-api03-xyz") == "anthropic"
     assert guess_preset_for_key("gsk_abc") == "groq"
@@ -261,9 +265,7 @@ def test_preset_metadata_uniformity() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_case_1_happy_path_bindings(
-    user_ctx, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_case_1_happy_path_bindings(user_ctx, monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
     calls = install_catalog(
         monkeypatch,
@@ -283,9 +285,7 @@ async def test_case_1_happy_path_bindings(
     assert outcome.assigned_chat_model == "gpt-5.6-terra"
     assert outcome.assigned_vision_model == "gpt-5.6-terra"
     assert outcome.assigned_stt_model == "whisper-1"
-    assert calls == [
-        ("openai_compatible", "https://api.openai.com/v1", "sk-live-key")
-    ]
+    assert calls == [("openai_compatible", "https://api.openai.com/v1", "sk-live-key")]
 
     providers, models = await user_rows(tenant_id)
     assert len(providers) == 1
@@ -309,9 +309,7 @@ async def test_case_1_happy_path_bindings(
     assert stt_slot.model_id == by_wire["whisper-1"].id
 
 
-async def test_case_1_happy_path_ollama_keyless(
-    user_ctx, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_case_1_happy_path_ollama_keyless(user_ctx, monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
     calls = install_catalog(monkeypatch, wire_catalog(["llama3.3"]))
     async with AsyncSessionLocal() as db:
@@ -398,9 +396,7 @@ async def test_case_5_never_clobbers_live_assignments(
     user_ctx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
-    install_catalog(
-        monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"])
-    )
+    install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"]))
     provider = await _seed_provider(tenant_id, user_id)
     custom = await _seed_model(provider.id, "my-custom-model", ["text"])
     await _seed_slot(tenant_id, user_id, provider.id, custom.id, "default")
@@ -436,9 +432,7 @@ async def test_case_6_empty_and_dead_slots_rebind(
     # shape on Postgres (study's SQLite PRAGMA trick has no equivalent).
     await _seed_slot(tenant_id, user_id, provider.id, doomed.id, "transcription")
     async with AsyncSessionLocal() as session:
-        await session.delete(
-            await session.get(AIModel, doomed.id)
-        )
+        await session.delete(await session.get(AIModel, doomed.id))
         await session.commit()
 
     async with AsyncSessionLocal() as db:
@@ -446,7 +440,7 @@ async def test_case_6_empty_and_dead_slots_rebind(
             db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
         )
 
-    providers, models = await user_rows(tenant_id)
+    _providers, models = await user_rows(tenant_id)
     by_wire = {m.model_name: m for m in models}
     assert outcome.assigned_stt_model == "whisper-1"
     stt_slot = await slot_of(tenant_id, user_id, "transcription")
@@ -503,7 +497,12 @@ async def test_case_8_unknown_preset_typed_error_without_fetch(
     async with AsyncSessionLocal() as db:
         with pytest.raises(byok_setup.UnknownPresetError):
             await byok_setup.setup_provider_from_preset(
-                db, "not-a-preset", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
+                db,
+                "not-a-preset",
+                "sk-key",
+                scope=AIScope.USER,
+                tenant_id=tenant_id,
+                user_id=user_id,
             )
     assert calls == []
 
@@ -541,9 +540,7 @@ async def test_case_9_hanging_fetch_times_out_and_local_refused_is_local_not_run
 
 def test_case_10_classifier_table_and_suspectedVendor_hints() -> None:
     def code(error: Exception, **kwargs: Any) -> str:
-        return classify_provider_error(
-            error, local_provider=False, **kwargs
-        ).code.value
+        return classify_provider_error(error, local_provider=False, **kwargs).code.value
 
     assert code(_http_status_error(401)) == "invalid_key"
     assert code(_http_status_error(402)) == "insufficient_credit"
@@ -559,9 +556,7 @@ def test_case_10_classifier_table_and_suspectedVendor_hints() -> None:
     assert code(_http_status_error(403, "forbidden")) == "unknown"
     assert code(httpx.ReadTimeout("aborted")) == "timeout"
     assert (
-        classify_provider_error(
-            httpx.ConnectError("ECONNREFUSED"), local_provider=True
-        ).code.value
+        classify_provider_error(httpx.ConnectError("ECONNREFUSED"), local_provider=True).code.value
         == "local_not_running"
     )
     assert code(httpx.ConnectError("fetch failed")) == "unknown"
@@ -605,9 +600,7 @@ async def test_case_11_snapshot_suffix_curation_and_zero_match_fallback(
     user_ctx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
-    install_catalog(
-        monkeypatch, wire_catalog(["gpt-5.6-terra-2026-09-11", "gpt-oss-120b"])
-    )
+    install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra-2026-09-11", "gpt-oss-120b"]))
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
             db, "openai", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
@@ -652,9 +645,7 @@ async def test_case_13_set_default_task_scoping_guards_and_cross_provider_reject
     async_client, user_ctx, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     headers = user_ctx["headers"]
-    install_catalog(
-        monkeypatch, wire_catalog(["gpt-5.6-terra", "text-only"])
-    )
+    install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "text-only"]))
     setup = await async_client.post(
         "/api/v1/ai-config/providers/openai/setup",
         json={"api_key": "sk-test"},
@@ -673,8 +664,10 @@ async def test_case_13_set_default_task_scoping_guards_and_cross_provider_reject
 
     # cross-provider model id → 409
     other = await _seed_provider(
-        user_ctx["tenant_id"], user_ctx["user_id"],
-        name="Other", api_base="https://other.test/v1",
+        user_ctx["tenant_id"],
+        user_ctx["user_id"],
+        name="Other",
+        api_base="https://other.test/v1",
     )
     await _seed_model(other.id, "shared-model", ["text"])
     cross = await async_client.put(
@@ -747,8 +740,12 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
         await session.commit()
         await session.refresh(sys_model)
         sys_slot = AITaskAssignment(
-            task_type="default", scope=AIScope.SYSTEM, provider_id=sys_provider.id,
-            model_id=sys_model.id, is_active=True, priority=0,
+            task_type="default",
+            scope=AIScope.SYSTEM,
+            provider_id=sys_provider.id,
+            model_id=sys_model.id,
+            is_active=True,
+            priority=0,
         )
         tenant_slot = AITaskAssignment(
             task_type="default",
@@ -778,62 +775,72 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
 
     async with SessionLocal() as session:
         sys_slot_after = (
-            await session.execute(
-                select(AITaskAssignment).where(
-                    AITaskAssignment.scope == AIScope.SYSTEM,
-                    AITaskAssignment.task_type == "default",
+            (
+                await session.execute(
+                    select(AITaskAssignment).where(
+                        AITaskAssignment.scope == AIScope.SYSTEM,
+                        AITaskAssignment.task_type == "default",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(sys_slot_after) == 1
         assert sys_slot_after[0].model_id == sys_model.id
 
         tenant_slots_after = (
-            await session.execute(
-                select(AITaskAssignment).where(
-                    AITaskAssignment.scope == AIScope.TENANT,
-                    AITaskAssignment.tenant_id == tenant_id,
-                    AITaskAssignment.task_type == "default",
+            (
+                await session.execute(
+                    select(AITaskAssignment).where(
+                        AITaskAssignment.scope == AIScope.TENANT,
+                        AITaskAssignment.tenant_id == tenant_id,
+                        AITaskAssignment.task_type == "default",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(tenant_slots_after) == 1
         assert tenant_slots_after[0].model_id == sys_model.id
 
         other_slots = (
-            await session.execute(
-                select(AITaskAssignment).where(
-                    AITaskAssignment.scope == AIScope.USER,
-                    AITaskAssignment.user_id == other_user,
-                    AITaskAssignment.task_type == "default",
-                    AITaskAssignment.is_active.is_(True),
+            (
+                await session.execute(
+                    select(AITaskAssignment).where(
+                        AITaskAssignment.scope == AIScope.USER,
+                        AITaskAssignment.user_id == other_user,
+                        AITaskAssignment.task_type == "default",
+                        AITaskAssignment.is_active.is_(True),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(other_slots) == 1
         assert other_slots[0].provider_id != ours.provider_id
 
         # adoption never crosses users: ours is a NEW row, not the other user's
         providers = (
-            await session.execute(
-                select(AIProviderModel).where(
-                    AIProviderModel.tenant_id == tenant_id
+            (
+                await session.execute(
+                    select(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert {p.user_id for p in providers} == {user_id, other_user}
 
         # cleanup system rows
         await session.execute(
-            delete(AITaskAssignment).where(
-                AITaskAssignment.provider_id == sys_provider.id
-            )
+            delete(AITaskAssignment).where(AITaskAssignment.provider_id == sys_provider.id)
         )
         await session.delete(sys_model)
         await session.delete(sys_provider)
-        await session.execute(
-            delete(TenantModel).where(TenantModel.id == other_tenant)
-        )
+        await session.execute(delete(TenantModel).where(TenantModel.id == other_tenant))
         await session.commit()
 
 
@@ -852,9 +859,7 @@ async def test_setup_options_are_honored_and_use_contract_names(
     assert hasattr(options, "bind_stt")
 
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
-    install_catalog(
-        monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"])
-    )
+    install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"]))
     async with AsyncSessionLocal() as db:
         outcome = await byok_setup.setup_provider_from_preset(
             db,
@@ -903,9 +908,7 @@ async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
     """The admin system/tenant surfaces run the SAME one-click setup against
     their own config layer (recorded plan-17 Phase 3 delta: health's setup is
     scope-aware, not USER-only)."""
-    install_catalog(
-        monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"])
-    )
+    install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"]))
 
     sysadmin_headers = await headers_for_claims(
         {
@@ -952,32 +955,38 @@ async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
     assert setup_user.json()["provider"]["scope"] == "USER"
 
     async with AsyncSessionLocal() as session:
-        providers = (
-            await session.execute(
-                select(AIProviderModel).where(
-                    AIProviderModel.preset_key == "openai",
-                    AITaskAssignment.__table__  is not None,  # noqa: E501 (placeholder removed below)
+        (
+            (
+                await session.execute(
+                    select(AIProviderModel).where(
+                        AIProviderModel.preset_key == "openai",
+                        AITaskAssignment.__table__ is not None,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         slots = (
-            await session.execute(
-                select(AITaskAssignment).where(
-                    AITaskAssignment.task_type == "default",
-                    AITaskAssignment.is_active.is_(True),
+            (
+                await session.execute(
+                    select(AITaskAssignment).where(
+                        AITaskAssignment.task_type == "default",
+                        AITaskAssignment.is_active.is_(True),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert sorted(s.scope.value for s in slots) == ["SYSTEM", "TENANT", "USER"]
 
         # cleanup SYSTEM + TENANT rows created here (user_ctx cleans its own)
         await session.execute(
             delete(AITaskAssignment).where(AITaskAssignment.scope != AIScope.USER)
         )
-        await session.execute(
-            delete(AIProviderModel).where(AIProviderModel.scope != AIScope.USER)
-        )
+        await session.execute(delete(AIProviderModel).where(AIProviderModel.scope != AIScope.USER))
         await session.commit()
 
     # role guard: a plain USER cannot create SYSTEM/TENANT rows

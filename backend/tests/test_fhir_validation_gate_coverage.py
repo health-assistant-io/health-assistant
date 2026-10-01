@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Regression tests for the FHIR validation gate coverage gap.
 
 Audit context: the FHIR validation gate coverage table lists 4 service-layer
@@ -30,10 +31,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.fhir_helpers import FhirSerializationError
 
-
 # ---------------------------------------------------------------------------
 # doctor_service — create + update
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_doctor_create_invokes_validation_gate():
@@ -83,10 +84,11 @@ async def test_doctor_update_invokes_validation_gate():
 # organization_service — create + update
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_organization_create_invokes_validation_gate():
-    from app.services import organization_service
     from app.schemas.organization import OrganizationCreate
+    from app.services import organization_service
 
     db = AsyncMock(spec=AsyncSession)
     payload = OrganizationCreate(name="Acme Clinics")
@@ -106,37 +108,40 @@ async def test_organization_create_invokes_validation_gate():
 
 @pytest.mark.asyncio
 async def test_organization_update_invokes_validation_gate():
-    from app.services import organization_service
     from app.schemas.organization import OrganizationUpdate
+    from app.services import organization_service
 
     db = AsyncMock(spec=AsyncSession)
     existing = MagicMock()
     payload = OrganizationUpdate(name="Renamed")
 
-    with patch.object(
-        organization_service, "get_organization", new=AsyncMock(return_value=existing)
+    with (
+        patch.object(
+            organization_service, "get_organization", new=AsyncMock(return_value=existing)
+        ),
+        patch("app.services.organization_service.assert_valid_fhir") as mock_gate,
     ):
-        with patch("app.services.organization_service.assert_valid_fhir") as mock_gate:
-            mock_gate.side_effect = FhirSerializationError("invalid Organization")
-            with pytest.raises(FhirSerializationError):
-                await organization_service.update_organization(
-                    organization_id="00000000-0000-0000-0000-000000000002",
-                    tenant_id="00000000-0000-0000-0000-000000000000",
-                    obj_in=payload,
-                    db=db,
-                )
-            mock_gate.assert_called_once()
-            db.commit.assert_not_called()
+        mock_gate.side_effect = FhirSerializationError("invalid Organization")
+        with pytest.raises(FhirSerializationError):
+            await organization_service.update_organization(
+                organization_id="00000000-0000-0000-0000-000000000002",
+                tenant_id="00000000-0000-0000-0000-000000000000",
+                obj_in=payload,
+                db=db,
+            )
+        mock_gate.assert_called_once()
+        db.commit.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # medication_service — catalog create + catalog update + patient add + patient update
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_medication_catalog_create_invokes_validation_gate():
-    from app.services import medication_service
     from app.schemas.medication import MedicationCatalogCreate
+    from app.services import medication_service
 
     db = AsyncMock(spec=AsyncSession)
     payload = MedicationCatalogCreate(name="Ibuprofen")
@@ -159,8 +164,8 @@ async def test_medication_catalog_create_invokes_validation_gate():
 
 @pytest.mark.asyncio
 async def test_medication_catalog_update_invokes_validation_gate():
-    from app.services import medication_service
     from app.schemas.medication import MedicationCatalogUpdate
+    from app.services import medication_service
 
     db = AsyncMock(spec=AsyncSession)
     existing = MagicMock()
@@ -195,6 +200,7 @@ async def test_medication_catalog_update_invokes_validation_gate():
 # document_service — upload_document + edited-copy
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_document_upload_invokes_validation_gate(monkeypatch):
     """upload_document must validate the DocumentModel before commit. We
@@ -212,6 +218,7 @@ async def test_document_upload_invokes_validation_gate(monkeypatch):
     # Avoid filesystem touching — patch the write paths.
     monkeypatch.setattr("os.makedirs", lambda *a, **kw: None)
     monkeypatch.setattr("os.path.isdir", lambda *a, **kw: True)
+
     async def _fake_write(path, content):
         return None
 
@@ -244,6 +251,7 @@ async def test_document_upload_invokes_validation_gate(monkeypatch):
 # ---------------------------------------------------------------------------
 # Sanity: gate is correctly imported in every service module
 # ---------------------------------------------------------------------------
+
 
 def test_gate_imported_in_all_four_services():
     """The four previously-ungated services must import assert_valid_fhir."""

@@ -13,11 +13,11 @@ import hmac
 import json
 import time
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from unittest.mock import patch
 
 from app.core.database import AsyncSessionLocal
 from app.core.encryption import decrypt_secret, encrypt_secret, is_encrypted
@@ -64,15 +64,9 @@ def test_rfc6238_vectors(timestamp, expected):
 def test_rfc6238_drift_window():
     """±1 step (30s) of clock skew is accepted; ±2 steps is not."""
     t = 1111111109
-    assert verify_totp(
-        RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t - 30), at=float(t)
-    )
-    assert verify_totp(
-        RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t + 30), at=float(t)
-    )
-    assert not verify_totp(
-        RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t - 60), at=float(t)
-    )
+    assert verify_totp(RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t - 30), at=float(t))
+    assert verify_totp(RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t + 30), at=float(t))
+    assert not verify_totp(RFC_SECRET_B32, totp_code_at(RFC_SECRET_B32, t - 60), at=float(t))
 
 
 def test_totp_rejects_malformed_codes():
@@ -253,9 +247,7 @@ async def test_challenge_token_expiry(
     async_client: AsyncClient, mfa_user, fast_recovery_hashing, no_rate_limit
 ):
     await _enroll_and_confirm(mfa_user)
-    token, jti = create_mfa_challenge_token(
-        str(mfa_user.id), expires_delta=timedelta(seconds=-10)
-    )
+    token, _jti = create_mfa_challenge_token(str(mfa_user.id), expires_delta=timedelta(seconds=-10))
     resp = await async_client.post(
         "/api/v1/auth/mfa/verify", json={"mfa_token": token, "code": "123456"}
     )
@@ -270,9 +262,7 @@ async def test_challenge_token_is_not_a_session_token(
     authenticate the domain API as a session token."""
     await _enroll_and_confirm(mfa_user)
     token, _ = create_mfa_challenge_token(str(mfa_user.id))
-    resp = await async_client.get(
-        "/api/v1/users/me", headers={"Authorization": f"Bearer {token}"}
-    )
+    resp = await async_client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401
 
 
@@ -452,9 +442,7 @@ def test_encrypt_decrypt_roundtrip():
 
 
 @pytest.mark.asyncio
-async def test_me_mfa_lifecycle(
-    async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
-):
+async def test_me_mfa_lifecycle(async_client: AsyncClient, fast_recovery_hashing, no_rate_limit):
     user = await create_user(password="my-password-123")
     headers = await auth_headers(user)
 
@@ -554,9 +542,7 @@ async def _force(async_client, headers, tenant_id, user_id, enforced=True):
 
 
 @pytest.mark.asyncio
-async def test_admin_force_mfa_audited(
-    async_client: AsyncClient, admin_and_target, no_rate_limit
-):
+async def test_admin_force_mfa_audited(async_client: AsyncClient, admin_and_target, no_rate_limit):
     tenant_id, sysadmin, target = admin_and_target
     headers = await auth_headers(sysadmin)
 
@@ -592,24 +578,18 @@ async def test_admin_force_mfa_audited(
 
 
 @pytest.mark.asyncio
-async def test_admin_force_scoping(
-    async_client: AsyncClient, admin_and_target, no_rate_limit
-):
+async def test_admin_force_scoping(async_client: AsyncClient, admin_and_target, no_rate_limit):
     tenant_id, _, target = admin_and_target
 
     # Tenant ADMIN may enforce inside their own tenant.
     tenant_admin = await create_user(role=Role.ADMIN, tenant_id=tenant_id)
-    ok = await _force(
-        async_client, await auth_headers(tenant_admin), tenant_id, target.id, True
-    )
+    ok = await _force(async_client, await auth_headers(tenant_admin), tenant_id, target.id, True)
     assert ok.status_code == 200
 
     # MANAGER / USER may not.
     for role in (Role.MANAGER, Role.USER):
         member = await create_user(role=role, tenant_id=tenant_id)
-        denied = await _force(
-            async_client, await auth_headers(member), tenant_id, target.id, False
-        )
+        denied = await _force(async_client, await auth_headers(member), tenant_id, target.id, False)
         assert denied.status_code == 403
 
     # ADMIN of a different tenant is refused (cross-tenant).
@@ -634,7 +614,7 @@ async def test_forced_enrollment_login_path(
     """Admin forces ⇒ next login requires enrollment before the challenge
     passes: challenge carries enrollment_needed, /auth/mfa/enroll provisions
     against the challenge token, verify confirms + signs in."""
-    tenant_id, sysadmin, target = admin_and_target
+    tenant_id, _sysadmin, target = admin_and_target
     target = await create_user(tenant_id=tenant_id, password="member-password-123")
     await mfa_service.set_enforced(target.id, True)
 
@@ -651,16 +631,10 @@ async def test_forced_enrollment_login_path(
     )
     assert early.status_code == 401
 
-    provision = await async_client.post(
-        "/api/v1/auth/mfa/enroll", json={"mfa_token": mfa_token}
-    )
+    provision = await async_client.post("/api/v1/auth/mfa/enroll", json={"mfa_token": mfa_token})
     assert provision.status_code == 200, provision.text
     data = provision.json()
-    assert (
-        data["secret"]
-        and data["uri"].startswith("otpauth://")
-        and data["recovery_codes"]
-    )
+    assert data["secret"] and data["uri"].startswith("otpauth://") and data["recovery_codes"]
 
     ok = await async_client.post(
         "/api/v1/auth/mfa/verify",

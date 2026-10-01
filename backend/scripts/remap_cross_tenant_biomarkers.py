@@ -15,6 +15,7 @@ What it does, per affected observation:
 
 Reports the counts. ``--dry-run`` lists what would change without writing.
 """
+
 import argparse
 import asyncio
 import logging
@@ -23,7 +24,6 @@ import sys
 from sqlalchemy import select, text
 
 from app.core.database import AsyncSessionLocal
-from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation
 from app.services.fhir_service import map_observations_to_biomarkers
 
@@ -72,9 +72,7 @@ async def main() -> int:
         total_relinked = 0
         for i in range(0, len(obs_ids), BATCH):
             batch = obs_ids[i : i + BATCH]
-            result = await db.execute(
-                select(Observation).where(Observation.id.in_(batch))
-            )
+            result = await db.execute(select(Observation).where(Observation.id.in_(batch)))
             observations = result.scalars().all()
             for o in observations:
                 o.biomarker_id = None
@@ -83,7 +81,10 @@ async def main() -> int:
             await db.commit()
             total_relinked += len(observations)
             logger.info(
-                "  re-mapped %d/%d (%d%%)", total_relinked, len(obs_ids), int(100 * total_relinked / len(obs_ids))
+                "  re-mapped %d/%d (%d%%)",
+                total_relinked,
+                len(obs_ids),
+                int(100 * total_relinked / len(obs_ids)),
             )
         logger.info("Re-mapped %d observation(s) total.", total_relinked)
     return 0

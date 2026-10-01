@@ -1,7 +1,8 @@
-from typing import List
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.organization import (
@@ -10,19 +11,19 @@ from app.schemas.organization import (
     OrganizationUpdate,
     OrganizationWithDetails,
 )
-from app.services.organization_service import (
-    list_organizations,
-    get_organization,
-    create_organization,
-    update_organization,
-    delete_organization,
-)
 from app.schemas.user import TokenData
+from app.services.organization_service import (
+    create_organization,
+    delete_organization,
+    get_organization,
+    list_organizations,
+    update_organization,
+)
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 
-@router.get("", response_model=List[Organization])
+@router.get("", response_model=list[Organization])
 async def list_organizations_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

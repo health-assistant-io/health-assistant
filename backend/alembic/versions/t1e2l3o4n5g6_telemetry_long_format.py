@@ -34,10 +34,10 @@ Revises: s1e2t3u4p5w6
 Create Date: 2026-07-28
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
+from alembic import op
 
 revision = "t1e2l3o4n5g6"
 down_revision = "s1e2t3u4p5w6"
@@ -62,14 +62,8 @@ def _has_timescaledb() -> bool:
 def _drop_old_caggs() -> None:
     """Tear down the legacy dedicated-column continuous aggregates."""
     # Policies first, then the views themselves.
-    op.execute(
-        "SELECT remove_continuous_aggregate_policy('telemetry_daily', "
-        "if_exists => true)"
-    )
-    op.execute(
-        "SELECT remove_continuous_aggregate_policy('telemetry_hourly', "
-        "if_exists => true)"
-    )
+    op.execute("SELECT remove_continuous_aggregate_policy('telemetry_daily', if_exists => true)")
+    op.execute("SELECT remove_continuous_aggregate_policy('telemetry_hourly', if_exists => true)")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_daily CASCADE")
     op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_hourly CASCADE")
 
@@ -125,8 +119,9 @@ def _create_long_format_table() -> None:
         )
 
 
-def _create_generic_cagg(bucket: str, name: str, start_offset: str,
-                         end_offset: str, schedule: str) -> None:
+def _create_generic_cagg(
+    bucket: str, name: str, start_offset: str, end_offset: str, schedule: str
+) -> None:
     """Create one generic continuous aggregate + its refresh policy.
 
     ``GROUP BY slug`` makes every CAgg cover all current and future telemetry
@@ -191,16 +186,25 @@ def upgrade() -> None:
             "INTERVAL '2 years', if_not_exists => true)"
         )
         _create_generic_cagg(
-            "1 hour", "telemetry_hourly",
-            start_offset="3 days", end_offset="1 hour", schedule="1 hour",
+            "1 hour",
+            "telemetry_hourly",
+            start_offset="3 days",
+            end_offset="1 hour",
+            schedule="1 hour",
         )
         _create_generic_cagg(
-            "1 day", "telemetry_daily",
-            start_offset="7 days", end_offset="1 day", schedule="1 day",
+            "1 day",
+            "telemetry_daily",
+            start_offset="7 days",
+            end_offset="1 day",
+            schedule="1 day",
         )
         _create_generic_cagg(
-            "1 month", "telemetry_monthly",
-            start_offset="12 months", end_offset="1 month", schedule="1 day",
+            "1 month",
+            "telemetry_monthly",
+            start_offset="12 months",
+            end_offset="1 month",
+            schedule="1 day",
         )
 
 
@@ -211,18 +215,15 @@ def downgrade() -> None:
     # preserve).
     if _has_timescaledb():
         op.execute(
-            "SELECT remove_continuous_aggregate_policy('telemetry_monthly', "
-            "if_exists => true)"
+            "SELECT remove_continuous_aggregate_policy('telemetry_monthly', if_exists => true)"
         )
         op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_monthly CASCADE")
         op.execute(
-            "SELECT remove_continuous_aggregate_policy('telemetry_daily', "
-            "if_exists => true)"
+            "SELECT remove_continuous_aggregate_policy('telemetry_daily', if_exists => true)"
         )
         op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_daily CASCADE")
         op.execute(
-            "SELECT remove_continuous_aggregate_policy('telemetry_hourly', "
-            "if_exists => true)"
+            "SELECT remove_continuous_aggregate_policy('telemetry_hourly', if_exists => true)"
         )
         op.execute("DROP MATERIALIZED VIEW IF EXISTS telemetry_hourly CASCADE")
     op.execute("DROP TABLE IF EXISTS telemetry_data CASCADE")

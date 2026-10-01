@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from datetime import datetime
 from uuid import UUID
@@ -29,9 +30,7 @@ async def get_user_by_email(email: str) -> UserModel | None:
         return result.scalar_one_or_none()
 
 
-async def get_user_by_id(
-    user_id: str | UUID, tenant_id: UUID | None = None
-) -> UserModel | None:
+async def get_user_by_id(user_id: str | UUID, tenant_id: UUID | None = None) -> UserModel | None:
     """Get user by ID, optionally filtered by tenant"""
     if not DATABASE_AVAILABLE:
         logger.warning("Database not available for get_user_by_id")
@@ -125,14 +124,10 @@ async def update_user(
         update_data["email"] = normalize_email(email)
     if role:
         if role == Role.SYSTEM_ADMIN.value and not allow_system_admin:
-            logger.warning(
-                "update_user: refused SYSTEM_ADMIN role change for %s", user_id
-            )
+            logger.warning("update_user: refused SYSTEM_ADMIN role change for %s", user_id)
             return None
-        try:
+        with contextlib.suppress(ValueError):
             update_data["role"] = Role(role)
-        except ValueError:
-            pass
     if settings is not None:
         update_data["settings"] = settings
 
@@ -153,6 +148,7 @@ async def update_user(
 # ---------------------------------------------------------------------------
 # §7 lockout + §8 token_version helpers
 # ---------------------------------------------------------------------------
+
 
 async def set_login_failures(
     user_id: str | UUID,
@@ -192,9 +188,7 @@ async def bump_token_version(user_id: str | UUID) -> int | None:
     if not DATABASE_AVAILABLE:
         return None
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(UserModel).where(UserModel.id == UUID(str(user_id)))
-        )
+        result = await session.execute(select(UserModel).where(UserModel.id == UUID(str(user_id))))
         user = result.scalar_one_or_none()
         if user is None:
             return None

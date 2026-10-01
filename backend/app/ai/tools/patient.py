@@ -4,7 +4,7 @@ Extracted from ``ChatbotTools`` (Phase 3).
 """
 
 import json
-from typing import Any, List
+from typing import Any
 
 from langchain_core.tools import tool
 from sqlalchemy import and_, select
@@ -15,7 +15,7 @@ from app.models.notification_rule import NotificationRule
 
 
 @register_chat_tool("patient")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_patient_summary() -> str:
         """Fetch a high-level summary of the patient's profile."""

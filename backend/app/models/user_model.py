@@ -1,17 +1,20 @@
 from sqlalchemy import (
+    UUID,
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     String,
     Text,
-    Enum as SQLEnum,
-    ForeignKey,
     UniqueConstraint,
-    UUID,
+)
+from sqlalchemy import (
+    Enum as SQLEnum,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from app.models.base import Base, UUIDMixin, AuditMixin, TimestampMixin, VersionedMixin
+
+from app.models.base import AuditMixin, Base, TimestampMixin, UUIDMixin, VersionedMixin
 from app.models.enums import Role
 
 
@@ -50,9 +53,7 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
         index=True,
     )
     # §7 lockout: 5 consecutive failures ⇒ locked_until = now + 15 min ⇒ 423.
-    failed_login_attempts = Column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    failed_login_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     locked_until = Column(DateTime(timezone=True), nullable=True)
     # §8: source of the ``ver`` claim; bump = global sign-out.
     token_version = Column(Integer, nullable=False, default=1, server_default="1")
@@ -70,9 +71,7 @@ class UserModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
     mfa_secret_enc = Column(String(512), nullable=True)
     mfa_recovery_codes = Column(Text, nullable=True)
     mfa_pending = Column(JSONB, nullable=True)
-    mfa_enforced = Column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
+    mfa_enforced = Column(Boolean, nullable=False, default=False, server_default="false")
 
     def __init__(self, **kwargs):
         # §5: email is lowercased on write — the login identifier is

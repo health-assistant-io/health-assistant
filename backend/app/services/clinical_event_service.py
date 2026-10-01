@@ -15,20 +15,13 @@ without coupling to the router (audit C2).
 
 import datetime as _dt
 import logging
-from datetime import timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.services.access import (
-    check_event_access,
-    check_examination_access,
-    check_observation_access,
-    check_patient_access,
-)
 from app.core.errors import DomainError
 from app.models.biomarker_model import (
     BiomarkerDefinition,
@@ -58,6 +51,12 @@ from app.schemas.clinical_event import (
     ClinicalEventUpdate,
 )
 from app.schemas.user import TokenData
+from app.services.access import (
+    check_event_access,
+    check_examination_access,
+    check_observation_access,
+    check_patient_access,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +85,7 @@ async def emit_event_notification(
     )
     from app.services.notification_service import emit
 
-    severity = (
-        NotificationSeverity.WARNING
-        if action == "deleted"
-        else NotificationSeverity.INFO
-    )
+    severity = NotificationSeverity.WARNING if action == "deleted" else NotificationSeverity.INFO
     title_map = {
         "created": f"New clinical event: {event.title}",
         "updated": f"Clinical event updated: {event.title}",
@@ -113,9 +108,7 @@ async def emit_event_notification(
             body=body_map.get(action, ""),
             patient_id=event.patient_id,
             tenant_id=current_user.tenant_id,
-            targets=[
-                {"kind": RecipientKind.PATIENT.value, "id": str(event.patient_id)}
-            ],
+            targets=[{"kind": RecipientKind.PATIENT.value, "id": str(event.patient_id)}],
             payload={
                 "event_id": str(event.id),
                 "action": action,
@@ -145,9 +138,7 @@ def _event_eager_loads():
     places across the endpoint.
     """
     return (
-        selectinload(ClinicalEvent.type_entity).selectinload(
-            ClinicalEventType.category_concept
-        ),
+        selectinload(ClinicalEvent.type_entity).selectinload(ClinicalEventType.category_concept),
         selectinload(ClinicalEvent.examination_links).selectinload(
             EventExaminationLink.examination
         ),
@@ -160,12 +151,10 @@ def _event_eager_loads():
     )
 
 
-async def _refetch_with_relations(db: AsyncSession, event_id: UUID) -> Dict[str, Any]:
+async def _refetch_with_relations(db: AsyncSession, event_id: UUID) -> dict[str, Any]:
     """Re-fetch an event with the full eager-load chain and serialize it."""
     result = await db.execute(
-        select(ClinicalEvent)
-        .where(ClinicalEvent.id == event_id)
-        .options(*_event_eager_loads())
+        select(ClinicalEvent).where(ClinicalEvent.id == event_id).options(*_event_eager_loads())
     )
     return result.scalar_one().to_dict()
 
@@ -174,15 +163,15 @@ async def list_events(
     db: AsyncSession,
     current_user: TokenData,
     *,
-    patient_id: Optional[UUID] = None,
-    examination_id: Optional[UUID] = None,
-    status: Optional[ClinicalEventStatus] = None,
-    active_on: Optional[_dt.date] = None,
-    onset_on: Optional[_dt.date] = None,
-    date_range: Optional[str] = None,
+    patient_id: UUID | None = None,
+    examination_id: UUID | None = None,
+    status: ClinicalEventStatus | None = None,
+    active_on: _dt.date | None = None,
+    onset_on: _dt.date | None = None,
+    date_range: str | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List clinical events, tenant-scoped, soft-deletes excluded.
 
     USER role is restricted to their own patients. ``limit`` is clamped to
@@ -216,9 +205,7 @@ async def list_events(
         query = query.where(ClinicalEvent.patient_id == patient_id)
     elif current_user.role == Role.USER.value:
         # Force filter by user's patients.
-        patient_ids_query = select(Patient.id).where(
-            Patient.user_id == current_user.user_id
-        )
+        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
         query = query.where(ClinicalEvent.patient_id.in_(patient_ids_query))
 
     if examination_id:
@@ -233,21 +220,18 @@ async def list_events(
 
     # Date filters ----------------------------------------------------------
     if active_on is not None:
-        # onset_date <= end_of_day(active_on) AND (resolved_date IS NULL OR resolved_date >= start_of_day)
-        day_start = _dt.datetime.combine(active_on, _dt.time.min, tzinfo=timezone.utc)
-        day_end = _dt.datetime.combine(
-            active_on, _dt.time.max, tzinfo=timezone.utc
-        )
+        # onset_date <= end_of_day(active_on) AND (resolved_date IS NULL OR resolved_date >= start_of_day)  # noqa: E501 -- long template/message string; reflow when touched
+        day_start = _dt.datetime.combine(active_on, _dt.time.min, tzinfo=_dt.UTC)
+        day_end = _dt.datetime.combine(active_on, _dt.time.max, tzinfo=_dt.UTC)
         query = query.where(
             ClinicalEvent.onset_date.isnot(None),
             ClinicalEvent.onset_date <= day_end,
-            (ClinicalEvent.resolved_date.is_(None))
-            | (ClinicalEvent.resolved_date >= day_start),
+            (ClinicalEvent.resolved_date.is_(None)) | (ClinicalEvent.resolved_date >= day_start),
         )
 
     if onset_on is not None:
-        day_start = _dt.datetime.combine(onset_on, _dt.time.min, tzinfo=timezone.utc)
-        day_end = _dt.datetime.combine(onset_on, _dt.time.max, tzinfo=timezone.utc)
+        day_start = _dt.datetime.combine(onset_on, _dt.time.min, tzinfo=_dt.UTC)
+        day_end = _dt.datetime.combine(onset_on, _dt.time.max, tzinfo=_dt.UTC)
         query = query.where(
             ClinicalEvent.onset_date.isnot(None),
             ClinicalEvent.onset_date >= day_start,
@@ -282,7 +266,7 @@ async def list_events(
 
 def _parse_date_range(
     value: str,
-) -> tuple[Optional[_dt.datetime], Optional[_dt.datetime]]:
+) -> tuple[_dt.datetime | None, _dt.datetime | None]:
     """Parse ``"YYYY-MM-DD,YYYY-MM-DD"`` into a (start, end) UTC datetime pair.
 
     Returns ``(None, None)`` on malformed input; the caller silently skips the
@@ -296,14 +280,12 @@ def _parse_date_range(
         end = _dt.date.fromisoformat(parts[1].strip())
     except ValueError:
         return None, None
-    start_dt = _dt.datetime.combine(start, _dt.time.min, tzinfo=timezone.utc)
-    end_dt = _dt.datetime.combine(end, _dt.time.max, tzinfo=timezone.utc)
+    start_dt = _dt.datetime.combine(start, _dt.time.min, tzinfo=_dt.UTC)
+    end_dt = _dt.datetime.combine(end, _dt.time.max, tzinfo=_dt.UTC)
     return start_dt, end_dt
 
 
-async def get_event(
-    db: AsyncSession, event_id: UUID, current_user: TokenData
-) -> Dict[str, Any]:
+async def get_event(db: AsyncSession, event_id: UUID, current_user: TokenData) -> dict[str, Any]:
     """Fetch a single event (access-checked) with full relationships."""
     await check_event_access(event_id, current_user, db)
     return await _refetch_with_relations(db, event_id)
@@ -314,9 +296,9 @@ async def create_event(
     current_user: TokenData,
     payload: ClinicalEventCreate,
     *,
-    source_integration_id: Optional[UUID] = None,
-    external_id: Optional[str] = None,
-) -> Dict[str, Any]:
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> dict[str, Any]:
     """Create an event + initial exam/observation links, notify, and re-fetch.
 
     Per-link access is checked; links the user can't access are skipped
@@ -349,7 +331,9 @@ async def create_event(
             logger.info(
                 "create_event: returning existing event %s (dedup hit on "
                 "source_integration_id=%s external_id=%r)",
-                existing.id, source_integration_id, effective_external_id,
+                existing.id,
+                source_integration_id,
+                effective_external_id,
             )
             return await _refetch_with_relations(db, existing.id)
 
@@ -358,9 +342,7 @@ async def create_event(
     # but we exclude it from the dump to avoid passing it twice to the ORM
     # constructor (once via event_data spread, once via the explicit kwarg
     # below that mirrors the source_integration_id pattern).
-    event_data = payload.model_dump(
-        exclude={"examinations", "observations", "external_id"}
-    )
+    event_data = payload.model_dump(exclude={"examinations", "observations", "external_id"})
     new_event = ClinicalEvent(
         **event_data,
         tenant_id=current_user.tenant_id,
@@ -371,12 +353,8 @@ async def create_event(
     db.add(new_event)
     await db.flush()  # assign id
 
-    await _attach_examination_links(
-        db, new_event.id, payload.examinations, current_user
-    )
-    await _attach_observation_links(
-        db, new_event.id, payload.observations, current_user
-    )
+    await _attach_examination_links(db, new_event.id, payload.examinations, current_user)
+    await _attach_observation_links(db, new_event.id, payload.observations, current_user)
 
     await db.commit()
     await emit_event_notification(new_event, "created", current_user)
@@ -390,7 +368,7 @@ async def _find_integration_event(
     patient_id: UUID,
     source_integration_id: UUID,
     external_id: str,
-) -> Optional[ClinicalEvent]:
+) -> ClinicalEvent | None:
     """Look up an existing integration-sourced event by dedup key.
 
     The partial unique index ``uq_clinical_event_integration_dedup`` makes
@@ -415,15 +393,13 @@ async def update_event(
     event_id: UUID,
     current_user: TokenData,
     payload: ClinicalEventUpdate,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Partial update with full-replace link sync; notify on resolve/edit."""
     event = await check_event_access(event_id, current_user, db)
 
     will_resolve = _detect_resolve_transition(event, payload)
 
-    update_data = payload.model_dump(
-        exclude_unset=True, exclude={"examinations", "observations"}
-    )
+    update_data = payload.model_dump(exclude_unset=True, exclude={"examinations", "observations"})
     for key, value in update_data.items():
         setattr(event, key, value)
 
@@ -439,18 +415,14 @@ async def update_event(
     await db.commit()
     await db.refresh(event)
 
-    await emit_event_notification(
-        event, "resolved" if will_resolve else "updated", current_user
-    )
+    await emit_event_notification(event, "resolved" if will_resolve else "updated", current_user)
     return await _refetch_with_relations(db, event.id)
 
 
-async def soft_delete_event(
-    db: AsyncSession, event_id: UUID, current_user: TokenData
-) -> None:
+async def soft_delete_event(db: AsyncSession, event_id: UUID, current_user: TokenData) -> None:
     """Tombstone an event (set ``deleted_at``) and emit the deletion notice."""
     event = await check_event_access(event_id, current_user, db)
-    event.deleted_at = _dt.datetime.now(timezone.utc)
+    event.deleted_at = _dt.datetime.now(_dt.UTC)
     event.updated_by = current_user.user_id
     await db.commit()
     await emit_event_notification(event, "deleted", current_user)
@@ -461,8 +433,8 @@ async def link_examination(
     event_id: UUID,
     current_user: TokenData,
     examination_id: UUID,
-    reason: Optional[str] = None,
-) -> Dict[str, Any]:
+    reason: str | None = None,
+) -> dict[str, Any]:
     """Add a single examination link (rejects duplicates)."""
     from fastapi import HTTPException
 
@@ -476,9 +448,7 @@ async def link_examination(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Examination already linked to this event"
-        )
+        raise HTTPException(status_code=400, detail="Examination already linked to this event")
 
     db.add(
         EventExaminationLink(
@@ -496,8 +466,8 @@ async def link_observation(
     event_id: UUID,
     current_user: TokenData,
     observation_id: UUID,
-    notes: Optional[str] = None,
-) -> Dict[str, Any]:
+    notes: str | None = None,
+) -> dict[str, Any]:
     """Add a single observation link (rejects duplicates).
 
     Closes the asymmetry with examinations: previously observation links were
@@ -515,15 +485,9 @@ async def link_observation(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Observation already linked to this event"
-        )
+        raise HTTPException(status_code=400, detail="Observation already linked to this event")
 
-    db.add(
-        EventObservationLink(
-            event_id=event_id, observation_id=observation_id, notes=notes
-        )
-    )
+    db.add(EventObservationLink(event_id=event_id, observation_id=observation_id, notes=notes))
     await db.commit()
     return await _refetch_with_relations(db, event_id)
 
@@ -538,7 +502,7 @@ async def add_occurrence(
     event_id: UUID,
     current_user: TokenData,
     payload: ClinicalEventOccurrenceCreate,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Append a discrete occurrence to a journey and re-fetch the event."""
     await check_event_access(event_id, current_user, db)
 
@@ -562,7 +526,7 @@ async def delete_occurrence(
     event_id: UUID,
     occurrence_id: UUID,
     current_user: TokenData,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Remove a single occurrence from a journey (access-checked)."""
     from fastapi import HTTPException
 
@@ -593,8 +557,8 @@ async def link_anatomy(
     event_id: UUID,
     current_user: TokenData,
     anatomy_id: UUID,
-    relation_type: Optional[str] = None,
-) -> Dict[str, Any]:
+    relation_type: str | None = None,
+) -> dict[str, Any]:
     """Link an anatomy site to an event (rejects duplicates).
 
     ``relation_type`` distinguishes ``primary_site`` / ``radiates_to`` /
@@ -608,9 +572,7 @@ async def link_anatomy(
     from app.models.anatomy_model import AnatomyStructure
 
     anatomy = (
-        await db.execute(
-            select(AnatomyStructure).where(AnatomyStructure.id == anatomy_id)
-        )
+        await db.execute(select(AnatomyStructure).where(AnatomyStructure.id == anatomy_id))
     ).scalar_one_or_none()
     if not anatomy:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
@@ -622,9 +584,7 @@ async def link_anatomy(
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400, detail="Anatomy already linked to this event"
-        )
+        raise HTTPException(status_code=400, detail="Anatomy already linked to this event")
 
     db.add(
         EventAnatomyLink(
@@ -642,7 +602,7 @@ async def unlink_anatomy(
     event_id: UUID,
     anatomy_id: UUID,
     current_user: TokenData,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Remove an anatomy link from an event (access-checked)."""
     from fastapi import HTTPException
 
@@ -672,7 +632,7 @@ async def get_insights(
     db: AsyncSession,
     event_id: UUID,
     current_user: TokenData,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Compute type-driven journey insights for an event.
 
     Returns the current phase, upcoming/overdue milestones, recommended
@@ -685,13 +645,11 @@ async def get_insights(
 
     # Resolve recommended biomarkers + the type template explicitly so the
     # (sync) engine never triggers a lazy load on event.type_entity.
-    recommended: List[Dict[str, Any]] = []
+    recommended: list[dict[str, Any]] = []
     type_template = None
     if event.type_id:
         type_template = (
-            await db.execute(
-                select(ClinicalEventType).where(ClinicalEventType.id == event.type_id)
-            )
+            await db.execute(select(ClinicalEventType).where(ClinicalEventType.id == event.type_id))
         ).scalar_one_or_none()
 
         # Resolve recommended biomarkers from the concept_edges graph
@@ -753,8 +711,8 @@ async def add_correlated_biomarker(
     biomarker_id: UUID,
     *,
     correlation_type: str = "monitoring",
-    description: Optional[str] = None,
-) -> Dict[str, Any]:
+    description: str | None = None,
+) -> dict[str, Any]:
     """Link a biomarker to this event type via a concept_edge (MONITORS).
 
     Idempotent on the (type, biomarker) pair — re-adding updates the
@@ -765,17 +723,13 @@ async def add_correlated_biomarker(
     from fastapi import HTTPException
 
     etype = (
-        await db.execute(
-            select(ClinicalEventType).where(ClinicalEventType.id == event_type_id)
-        )
+        await db.execute(select(ClinicalEventType).where(ClinicalEventType.id == event_type_id))
     ).scalar_one_or_none()
     if not etype:
         raise HTTPException(status_code=404, detail="Clinical event type not found")
 
     bio = (
-        await db.execute(
-            select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
-        )
+        await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id))
     ).scalar_one_or_none()
     if not bio:
         raise HTTPException(status_code=404, detail="Biomarker not found")
@@ -843,7 +797,7 @@ async def remove_correlated_biomarker(
     await db.commit()
 
 
-def _correlation_to_dict(edge: ConceptEdge, bio: BiomarkerDefinition) -> Dict[str, Any]:
+def _correlation_to_dict(edge: ConceptEdge, bio: BiomarkerDefinition) -> dict[str, Any]:
     props = edge.properties or {}
     return {
         "id": str(edge.id),
@@ -864,9 +818,7 @@ def _correlation_to_dict(edge: ConceptEdge, bio: BiomarkerDefinition) -> Dict[st
 # ---------------------------------------------------------------------------
 
 
-def _detect_resolve_transition(
-    event: ClinicalEvent, payload: ClinicalEventUpdate
-) -> bool:
+def _detect_resolve_transition(event: ClinicalEvent, payload: ClinicalEventUpdate) -> bool:
     """True iff this update flips status to RESOLVED from a non-resolved state."""
     status_dump = payload.model_dump(exclude_unset=True)
     return (
@@ -879,7 +831,7 @@ def _detect_resolve_transition(
 async def _attach_examination_links(
     db: AsyncSession,
     event_id: UUID,
-    links: Optional[List[Any]],
+    links: list[Any] | None,
     current_user: TokenData,
 ) -> None:
     """Add initial examination links at create time (best-effort per link).
@@ -911,7 +863,7 @@ async def _attach_examination_links(
 async def _attach_observation_links(
     db: AsyncSession,
     event_id: UUID,
-    links: Optional[List[Any]],
+    links: list[Any] | None,
     current_user: TokenData,
 ) -> None:
     """Add initial observation links at create time (best-effort per link)."""
@@ -939,7 +891,7 @@ async def _attach_observation_links(
 async def _sync_examination_links(
     db: AsyncSession,
     event_id: UUID,
-    new_links: List[Any],
+    new_links: list[Any],
     current_user: TokenData,
 ) -> None:
     """Full-replace sync: remove links not in the new list, add/update the rest.
@@ -986,7 +938,7 @@ async def _sync_examination_links(
 async def _sync_observation_links(
     db: AsyncSession,
     event_id: UUID,
-    new_links: List[Any],
+    new_links: list[Any],
     current_user: TokenData,
 ) -> None:
     """Full-replace sync for observation links (mirrors examination sync)."""

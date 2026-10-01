@@ -20,13 +20,13 @@ Post-fix contract pinned here:
 4. A failing trigger triggers ``session.rollback()`` so the shared session
    stays usable for the remaining triggers in the cycle.
 """
-import inspect
 
-import pytest
+import inspect
 from unittest.mock import AsyncMock, MagicMock
 
-from app.models.notification import TriggerType
+import pytest
 
+from app.models.notification import TriggerType
 
 # ---------------------------------------------------------------------------
 # 1. The task wires the worker-scoped session into the manager.
@@ -118,8 +118,14 @@ async def test_fire_notification_uses_injected_session(monkeypatch):
     monkeypatch.setattr(nsvc, "AsyncSessionLocal", asl_spy)
 
     trigger = MagicMock(
-        patient_id="p", tenant_id="t", id="t1", reference_id=None,
-        notification_type=MagicMock(), title="x", body=None, config={},
+        patient_id="p",
+        tenant_id="t",
+        id="t1",
+        reference_id=None,
+        notification_type=MagicMock(),
+        title="x",
+        body=None,
+        config={},
     )
 
     fake_session = AsyncMock()

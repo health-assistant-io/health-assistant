@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from app.ai.processors.nlp.langchain_structured import LangChainStructuredExtractor
 from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,

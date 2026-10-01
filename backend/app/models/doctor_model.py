@@ -1,8 +1,10 @@
-from sqlalchemy import Column, String, ForeignKey, UUID, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import UUID, Column, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
+
 from app.models.associations import examination_doctors, organization_doctors
+from app.models.base import AuditMixin, Base, TenantMixin, UUIDMixin, VersionedMixin
 from app.services.fhir_helpers import build_fhir_resource, build_meta
 
 
@@ -100,9 +102,7 @@ class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
             {
                 "resourceType": "Practitioner",
                 "id": str(self.id),
-                "name": [{"family": family, "given": given, "text": name}]
-                if name
-                else None,
+                "name": [{"family": family, "given": given, "text": name}] if name else None,
                 "qualification": qualifications or None,
                 "telecom": telecom or None,
                 "address": self.address,

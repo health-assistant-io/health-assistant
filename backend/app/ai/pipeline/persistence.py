@@ -19,7 +19,7 @@ the savepoint regression tests (``inst._persist_results(...)`` on a
 
 import datetime
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -27,10 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.schemas.nlp import KnownBiomarkerExtract
 from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.document_model import DocumentModel
 from app.models.enums import CodingSystem, QuantityType
 from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
 from app.models.fhir.patient import Observation
-from app.models.document_model import DocumentModel
 from app.services.fhir_helpers import (
     FhirSerializationError,
     _normalize_interpretation,
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _OBS_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/observation-category"
 
 
-def _fhir_observation_category(concept=None) -> List[Dict[str, Any]]:
+def _fhir_observation_category(concept=None) -> list[dict[str, Any]]:
     """Build a canonical FHIR ``category`` list from a biomarker's class concept.
 
     The FHIR observation-category code is stored on the concept itself in
@@ -70,9 +70,9 @@ async def persist_results(
     db: AsyncSession,
     exam,
     parsed_data,
-    docs_with_text: List[DocumentModel],
-    slug_map: Dict[str, Any],
-    med_name_map: Dict[str, Any],
+    docs_with_text: list[DocumentModel],
+    slug_map: dict[str, Any],
+    med_name_map: dict[str, Any],
 ) -> None:
     """Persist the LLM extraction results for an examination.
 
@@ -89,9 +89,7 @@ async def persist_results(
     # transaction stays open for the caller to handle the error.
     async with db.begin_nested():
         # Clear existing
-        await db.execute(
-            delete(Observation).where(Observation.examination_id == exam.id)
-        )
+        await db.execute(delete(Observation).where(Observation.examination_id == exam.id))
         await db.execute(delete(Medication).where(Medication.examination_id == exam.id))
 
         # Refresh maps
@@ -108,7 +106,7 @@ async def persist_results(
         eff_date = datetime.datetime.combine(
             exam.examination_date or datetime.date.today(),
             datetime.time.min,
-            tzinfo=datetime.timezone.utc,
+            tzinfo=datetime.UTC,
         )
 
         # Save Biomarkers
@@ -128,11 +126,7 @@ async def persist_results(
         for b in parsed_data.unknown_biomarkers:
             slug = slug_map.get(b.raw_name)
             target = bio_map.get(slug) or next(
-                (
-                    bio
-                    for bio in bio_map.values()
-                    if bio.name.lower() == b.raw_name.lower()
-                ),
+                (bio for bio in bio_map.values() if bio.name.lower() == b.raw_name.lower()),
                 None,
             )
             source_doc_id = find_source_doc(b.raw_name, docs_with_text)
@@ -182,7 +176,7 @@ async def persist_results(
     # end begin_nested — savepoint released cleanly, outer txn continues
 
 
-def find_source_doc(text_to_find: str, docs: List[DocumentModel]) -> Optional[UUID]:
+def find_source_doc(text_to_find: str, docs: list[DocumentModel]) -> UUID | None:
     if not docs:
         return None
     for d in docs:
@@ -194,12 +188,12 @@ def find_source_doc(text_to_find: str, docs: List[DocumentModel]) -> Optional[UU
 async def save_observation(
     db: AsyncSession,
     b: KnownBiomarkerExtract,
-    target_bio: Optional[BiomarkerDefinition],
-    units_by_symbol: Dict[str, Unit],
+    target_bio: BiomarkerDefinition | None,
+    units_by_symbol: dict[str, Unit],
     exam,
     patient_ref: str,
     effective_date: datetime.datetime,
-    document_id: Optional[UUID] = None,
+    document_id: UUID | None = None,
 ) -> None:
     val_float = b.value
     biomarker_id = target_bio.id if target_bio else None
@@ -215,7 +209,8 @@ async def save_observation(
             logger.warning(
                 "OCR extracted a state value for %s but the matched biomarker "
                 "is value_type=%s — skipping.",
-                b.matched_slug, target_bio.value_type,
+                b.matched_slug,
+                target_bio.value_type,
             )
             return
         coding = []
@@ -235,9 +230,7 @@ async def save_observation(
         state_system = b.value_state_system or (
             "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
         )
-        value_cc: dict = {
-            "coding": [{"code": b.value_state_code, "system": state_system}]
-        }
+        value_cc: dict = {"coding": [{"code": b.value_state_code, "system": state_system}]}
         if b.value_state_display:
             value_cc["coding"][0]["display"] = b.value_state_display
         obs = Observation(
@@ -253,9 +246,7 @@ async def save_observation(
             biomarker_id=biomarker_id,
             method=b.method,
             interpretation=_normalize_interpretation(b.interpretation_flag),
-            category=_fhir_observation_category(
-                target_bio.class_concept if target_bio else None
-            ),
+            category=_fhir_observation_category(target_bio.class_concept if target_bio else None),
             # Numeric-only fields stay None — categorical values are unitless.
             value_quantity=None,
             raw_value=None,
@@ -267,15 +258,14 @@ async def save_observation(
         try:
             assert_valid_fhir(obs)
         except FhirSerializationError as e:
-            logger.warning(
-                "Skipping invalid OCR state observation for %s: %s", b.name, e
-            )
+            logger.warning("Skipping invalid OCR state observation for %s: %s", b.name, e)
             return
         # Hard value-shape contract (plan Step 5): validate the STATE
         # biomarker's allowed_states membership before persisting.
         from app.services.observation_value_validator import (
             validate_observation_value,
         )
+
         try:
             validate_observation_value(
                 target_bio,
@@ -284,7 +274,8 @@ async def save_observation(
         except Exception as e:
             logger.warning(
                 "Skipping OCR state observation for %s — contract violation: %s",
-                b.name, e,
+                b.name,
+                e,
             )
             return
         db.add(obs)
@@ -305,15 +296,10 @@ async def save_observation(
     # position within the reference range as a [0.0, 1.0] float. The
     # previous OCR path never set relative_score, leaving the biomarker
     # engine's flagship scoring feature silently disabled for OCR data.
-    relative_score: Optional[float] = None
+    relative_score: float | None = None
     ref_min = b.reference_range_min
     ref_max = b.reference_range_max
-    if (
-        val_float is not None
-        and ref_min is not None
-        and ref_max is not None
-        and ref_max > ref_min
-    ):
+    if val_float is not None and ref_min is not None and ref_max is not None and ref_max > ref_min:
         relative_score = (val_float - ref_min) / (ref_max - ref_min)
         relative_score = max(0.0, min(1.0, relative_score))
     elif ref_min is not None or ref_max is not None:
@@ -334,7 +320,7 @@ async def save_observation(
             # units). The previous code skipped normalization entirely when
             # no preferred_unit_id was set, AND used the wrong direction
             # (raw * raw_mult = base, then labeled it as-preferred).
-            preferred_unit: Optional[Unit] = None
+            preferred_unit: Unit | None = None
             if target_bio and target_bio.preferred_unit_id:
                 # Look up the preferred Unit object. units_by_symbol is the
                 # only Unit collection passed in; scan it once (small set).
@@ -393,9 +379,7 @@ async def save_observation(
         lab_reference_range=lab_ref_range,
         method=b.method,
         interpretation=_normalize_interpretation(b.interpretation_flag),
-        category=_fhir_observation_category(
-            target_bio.class_concept if target_bio else None
-        ),
+        category=_fhir_observation_category(target_bio.class_concept if target_bio else None),
     )
     # Write-time FHIR gate: never persist an Observation that cannot be
     # projected to valid FHIR. Skip-and-log so one bad row can't abort the

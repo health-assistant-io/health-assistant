@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """LLM builders for each LLM-capable ``ProviderType`` (the model factory).
 
 This is the ONLY application module that may import LangChain chat classes
@@ -30,7 +31,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator, Iterator, List, Optional, Tuple
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
@@ -42,12 +44,12 @@ logger = logging.getLogger(__name__)
 
 def build_openai(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     """Build a ``ChatOpenAI`` (OpenAI-compatible: OpenAI, LocalAI, vLLM, ...).
 
@@ -67,12 +69,12 @@ def build_openai(
 
 def build_anthropic(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     raise NotImplementedError(
         "Anthropic provider is reserved but not wired. Add langchain-anthropic to "
@@ -82,12 +84,12 @@ def build_anthropic(
 
 def build_ollama(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     raise NotImplementedError(
         "Ollama provider is reserved but not wired. Add langchain-ollama (or "
@@ -97,24 +99,24 @@ def build_ollama(
 
 def build_azure_openai(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     raise NotImplementedError("Azure OpenAI provider is reserved but not wired.")
 
 
 def build_bedrock(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     raise NotImplementedError("Bedrock provider is reserved but not wired.")
 
@@ -129,7 +131,7 @@ MOCK_EXAMS_CALL_ID = "call_mock_exams"
 MOCK_DETAILS_CALL_ID = "call_mock_details"
 
 
-def _mock_final_answer(history: List[BaseMessage]) -> str:
+def _mock_final_answer(history: list[BaseMessage]) -> str:
     """Build the final markdown answer from the mock's tool results.
 
     Parses the ``get_examination_details`` ToolMessage and formats its
@@ -195,14 +197,14 @@ class MockMedicalChatModel(BaseChatModel):
     def _llm_type(self) -> str:
         return "mock-medical"
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "MockMedicalChatModel":
+    def bind_tools(self, tools: Any, **kwargs: Any) -> MockMedicalChatModel:
         # The script already "knows" which tools to call; binding is a no-op.
         return self
 
     # -- planning ----------------------------------------------------------
 
     @staticmethod
-    def _plan(messages: List[BaseMessage]) -> Tuple[str, Optional[List[dict]]]:
+    def _plan(messages: list[BaseMessage]) -> tuple[str, list[dict] | None]:
         """Scripted plan over three turns:
 
         1. no tool results yet          → ``get_recent_examinations``
@@ -210,15 +212,13 @@ class MockMedicalChatModel(BaseChatModel):
         3. details result present       → final markdown answer
         """
         have_details = any(
-            isinstance(m, ToolMessage) and m.tool_call_id == MOCK_DETAILS_CALL_ID
-            for m in messages
+            isinstance(m, ToolMessage) and m.tool_call_id == MOCK_DETAILS_CALL_ID for m in messages
         )
         if have_details:
             return "answer", None
 
         have_exams = any(
-            isinstance(m, ToolMessage) and m.tool_call_id == MOCK_EXAMS_CALL_ID
-            for m in messages
+            isinstance(m, ToolMessage) and m.tool_call_id == MOCK_EXAMS_CALL_ID for m in messages
         )
         if have_exams:
             exam_id = None
@@ -246,8 +246,8 @@ class MockMedicalChatModel(BaseChatModel):
 
     def _generate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
         run_manager: Any = None,
         **kwargs: Any,
     ) -> ChatResult:
@@ -262,8 +262,8 @@ class MockMedicalChatModel(BaseChatModel):
 
     def _stream(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
         run_manager: Any = None,
         **kwargs: Any,
     ) -> Iterator[ChatGenerationChunk]:
@@ -271,8 +271,8 @@ class MockMedicalChatModel(BaseChatModel):
 
     async def _astream(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
         run_manager: Any = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
@@ -280,7 +280,7 @@ class MockMedicalChatModel(BaseChatModel):
             yield chunk
 
 
-def _mock_stream_sync(messages: List[BaseMessage]) -> Iterator[ChatGenerationChunk]:
+def _mock_stream_sync(messages: list[BaseMessage]) -> Iterator[ChatGenerationChunk]:
     """Chunked stream for the mock's two-turn plan.
 
     Tool-call turn: one chunk carrying the full ``tool_call_chunks`` (the
@@ -319,12 +319,12 @@ def _mock_stream_sync(messages: List[BaseMessage]) -> Iterator[ChatGenerationChu
 
 def build_mock(
     *,
-    api_key: Optional[str],
+    api_key: str | None,
     base_url: str,
     model_name: str,
     temperature: float,
     max_tokens: int,
-    reasoning_effort: Optional[str] = None,
+    reasoning_effort: str | None = None,
 ) -> BaseChatModel:
     """Build the deterministic mock chat model (provider_type ``"mock"``).
 

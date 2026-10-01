@@ -1,10 +1,11 @@
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
 import logging
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.schemas.telemetry import TelemetrySyncPayload
 from app.schemas.user import TokenData
 from app.services.telemetry_service import (
@@ -70,7 +71,7 @@ async def get_telemetry_data_endpoint(
 @router.get("/data/summary")
 async def get_telemetry_summary_endpoint(
     date: str,
-    device_id: str = None,
+    device_id: str | None = None,
     metrics: str = Query(None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),

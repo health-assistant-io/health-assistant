@@ -6,7 +6,7 @@ that return ``JSONResponse`` with the correct status code + OperationOutcome bod
 plus a small helper for success responses with FHIR-canonical headers.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi.responses import JSONResponse
 
@@ -17,7 +17,7 @@ def operation_outcome(
     diagnostics: str,
     status_code: int,
     *,
-    extra: Optional[Dict[str, Any]] = None,
+    extra: dict[str, Any] | None = None,
 ) -> JSONResponse:
     """Build an OperationOutcome JSONResponse.
 
@@ -26,7 +26,7 @@ def operation_outcome(
     not-found, exceptional, timeout, etc.). ``diagnostics`` is a human-readable
     explanation.
     """
-    issue: Dict[str, Any] = {
+    issue: dict[str, Any] = {
         "severity": severity,
         "code": code,
         "diagnostics": diagnostics,
@@ -71,13 +71,13 @@ def invalid(diagnostics: str) -> JSONResponse:
 
 
 def created_response(
-    resource: Dict[str, Any],
+    resource: dict[str, Any],
     location: str,
     etag: str,
-    last_modified: Optional[str] = None,
+    last_modified: str | None = None,
 ) -> JSONResponse:
     """201 Created with Location, ETag, Last-Modified headers + canonical body."""
-    headers: Dict[str, str] = {
+    headers: dict[str, str] = {
         "Location": location,
         "ETag": etag,
     }
@@ -87,10 +87,10 @@ def created_response(
 
 
 def ok_response(
-    resource: Dict[str, Any], etag: str, last_modified: Optional[str] = None
+    resource: dict[str, Any], etag: str, last_modified: str | None = None
 ) -> JSONResponse:
     """200 OK with ETag + canonical body."""
-    headers: Dict[str, str] = {"ETag": etag}
+    headers: dict[str, str] = {"ETag": etag}
     if last_modified:
         headers["Last-Modified"] = last_modified
     return JSONResponse(status_code=200, content=resource, headers=headers)

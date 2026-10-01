@@ -1,7 +1,8 @@
+import uuid
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch
-import uuid
 
 
 def override_get_current_user():
@@ -32,8 +33,8 @@ def mock_layout_data():
 async def test_list_layouts(
     mock_get_layouts, mock_check, async_client: AsyncClient, mock_layout_data
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_layouts.return_value = [mock_layout_data]
@@ -50,13 +51,12 @@ async def test_list_layouts(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patient_layout.create_patient_layout")
-async def test_create_layout(
-    mock_create_layout, async_client: AsyncClient, mock_layout_data
-):
-    from app.main import app
-    from app.core.security import get_current_user
-    from app.core.database import get_db
+async def test_create_layout(mock_create_layout, async_client: AsyncClient, mock_layout_data):
     from unittest.mock import AsyncMock, MagicMock
+
+    from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -97,8 +97,8 @@ async def test_create_layout(
 async def test_get_active_layout(
     mock_get_active, mock_check, async_client: AsyncClient, mock_layout_data
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_active.return_value = mock_layout_data

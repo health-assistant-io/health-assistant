@@ -9,6 +9,7 @@ the same slug at one scope.
 Uses ``anatomy`` (``AnatomyStructure`` has a slug) through the unified
 ``/catalogs/anatomy/{id}/promote`` endpoint.
 """
+
 import uuid
 
 import pytest
@@ -44,11 +45,7 @@ async def test_promote_tenant_to_system_blocked_on_slug_collision(async_client):
     slug = f"collide-{uuid.uuid4().hex[:6]}"
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            AnatomyStructure(
-                slug=slug, name="System Node", scope="system", tenant_id=None
-            )
-        )
+        db.add(AnatomyStructure(slug=slug, name="System Node", scope="system", tenant_id=None))
         tenant_node = AnatomyStructure(
             slug=slug, name="Tenant Node", scope="tenant", tenant_id=tenant_id
         )
@@ -103,9 +100,7 @@ async def test_same_scope_promote_skips_collision_check(async_client):
     _, headers = await _make_tenant()
     slug = f"same-{uuid.uuid4().hex[:6]}"
     async with AsyncSessionLocal() as db:
-        node = AnatomyStructure(
-            slug=slug, name="Same Node", scope="system", tenant_id=None
-        )
+        node = AnatomyStructure(slug=slug, name="Same Node", scope="system", tenant_id=None)
         db.add(node)
         await db.commit()
         await db.refresh(node)

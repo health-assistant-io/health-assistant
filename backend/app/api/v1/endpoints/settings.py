@@ -4,7 +4,7 @@ Three tiers: system (SYSTEM_ADMIN), tenant (ADMIN+), user (self).
 Resolution (USER > TENANT > SYSTEM > default) is exposed via /settings/effective.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,15 +33,13 @@ async def get_effective_settings(
     db: AsyncSession = Depends(get_db),
 ):
     service = SettingsService(db)
-    values, sources = await service.resolve_effective(
-        current_user.user_id, current_user.tenant_id
-    )
+    values, sources = await service.resolve_effective(current_user.user_id, current_user.tenant_id)
     return {"settings": values, "sources": sources}
 
 
 @router.get("/system")
 async def get_system_overrides(
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     service = SettingsService(db)
@@ -53,8 +51,8 @@ async def get_system_overrides(
 
 @router.put("/system")
 async def update_system_override(
-    payload: Dict[str, Any],
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    payload: dict[str, Any],
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     key = payload.get("key")
@@ -71,7 +69,7 @@ async def update_system_override(
             current_user.tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
     return {"message": "System setting updated"}
 
 
@@ -96,7 +94,7 @@ async def get_tenant_overrides(
 
 @router.put("/tenant")
 async def update_tenant_override(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,7 +119,7 @@ async def update_tenant_override(
             current_user.tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
     return {"message": "Tenant setting updated"}
 
 
@@ -139,7 +137,7 @@ async def get_user_overrides(
 
 @router.put("/user")
 async def update_user_override(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -153,5 +151,5 @@ async def update_user_override(
             SettingLevel.USER, key, value, current_user.user_id, current_user.tenant_id
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
     return {"message": "User setting updated"}

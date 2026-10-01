@@ -89,9 +89,7 @@ def _session_pattern(user_id: str) -> str:
 
 async def register_session(user_id: str, jti: str, ttl_seconds: int) -> None:
     try:
-        await redis_client.set(
-            _session_key(user_id, jti), "1", ex=max(int(ttl_seconds), 1)
-        )
+        await redis_client.set(_session_key(user_id, jti), "1", ex=max(int(ttl_seconds), 1))
     except Exception as e:
         logger.warning("token_store: could not register session jti: %s", e)
 
@@ -193,9 +191,7 @@ async def is_mfa_challenge_active(user_id: str, jti: str) -> bool:
     try:
         return bool(await redis_client.exists(_mfa_key(user_id, jti)))
     except Exception as e:
-        logger.warning(
-            "token_store unavailable, refusing mfa challenge (fail-closed): %s", e
-        )
+        logger.warning("token_store unavailable, refusing mfa challenge (fail-closed): %s", e)
         return False
 
 
@@ -204,9 +200,7 @@ async def consume_mfa_challenge(user_id: str, jti: str) -> bool:
     try:
         return bool(await redis_client.delete(_mfa_key(user_id, jti)))
     except Exception as e:
-        logger.warning(
-            "token_store unavailable, refusing mfa challenge (fail-closed): %s", e
-        )
+        logger.warning("token_store unavailable, refusing mfa challenge (fail-closed): %s", e)
         return False
 
 

@@ -5,6 +5,7 @@ create, update, delete; parent-not-found 404s; range-not-found 404s; input
 validation (inverted range → 422); and the inherited-access model (a USER
 cannot manage ranges for a system-scope biomarker → 403, SYSTEM_ADMIN can).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -12,9 +13,9 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 
 async def _make_biomarker(*, tenant_id=None, slug=None) -> str:
@@ -33,7 +34,7 @@ async def _make_biomarker(*, tenant_id=None, slug=None) -> str:
 async def _user_headers(tenant_id, role="USER") -> dict:
     tok_headers = await headers_for_claims(
         {
-        "sub": f"{role.lower()}@test.local",
+            "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
@@ -161,9 +162,7 @@ async def test_user_cannot_manage_system_scope_ranges(async_client, system_admin
     user = await _user_headers(user_tenant, role="USER")
 
     # Read is allowed (system rows are visible).
-    read = await async_client.get(
-        f"/api/v1/biomarkers/{bio_id}/reference-ranges", headers=user
-    )
+    read = await async_client.get(f"/api/v1/biomarkers/{bio_id}/reference-ranges", headers=user)
     assert read.status_code == 200
 
     # Write is denied (system-scope needs SYSTEM_ADMIN).
@@ -176,18 +175,14 @@ async def test_user_cannot_manage_system_scope_ranges(async_client, system_admin
 
 
 @pytest.mark.asyncio
-async def test_biomarker_response_includes_reference_ranges(
-    async_client, system_admin_headers
-):
+async def test_biomarker_response_includes_reference_ranges(async_client, system_admin_headers):
     bio_id = await _make_biomarker()
     await async_client.post(
         f"/api/v1/biomarkers/{bio_id}/reference-ranges",
         headers=system_admin_headers,
         json={"sex": "FEMALE", "low": 0.4, "high": 3.5},
     )
-    resp = await async_client.get(
-        "/api/v1/biomarkers/", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/biomarkers/", headers=system_admin_headers)
     mine = next(b for b in resp.json() if b["id"] == bio_id)
     assert len(mine["reference_ranges"]) == 1
     assert mine["reference_ranges"][0]["sex"] == "FEMALE"
@@ -221,9 +216,7 @@ async def test_reference_ranges_endpoint_reads_from_db(async_client, system_admi
 
 
 @pytest.mark.asyncio
-async def test_catalog_adapter_serializes_reference_ranges(
-    async_client, system_admin_headers
-):
+async def test_catalog_adapter_serializes_reference_ranges(async_client, system_admin_headers):
     """The /catalogs/biomarker surface must include stratified ranges (edit form)."""
     bio_id = await _make_biomarker()
     await async_client.post(
@@ -243,4 +236,3 @@ async def test_catalog_adapter_serializes_reference_ranges(
     assert rr["sex"] == "FEMALE"
     assert rr["age_min"] == 18 and rr["age_max"] == 65
     assert rr["low"] == 0.4 and rr["high"] == 3.5
-

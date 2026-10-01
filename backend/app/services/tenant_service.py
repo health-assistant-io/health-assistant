@@ -1,18 +1,20 @@
-from typing import Optional, Dict, Any
-from uuid import UUID
 import logging
 import secrets
-from sqlalchemy import select, update, delete, func
-from app.models.tenant_model import TenantModel
-from app.models.fhir.organization import OrganizationModel
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import delete, func, select, update
+
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.models.enums import OrganizationType
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.models.fhir.organization import OrganizationModel
+from app.models.tenant_model import TenantModel
 from app.utils.slug import slugify
 
 logger = logging.getLogger(__name__)
 
 
-async def get_tenant(tenant_id: str | UUID) -> Optional[TenantModel]:
+async def get_tenant(tenant_id: str | UUID) -> TenantModel | None:
     """Get tenant by ID"""
     if not DATABASE_AVAILABLE:
         return None
@@ -24,17 +26,15 @@ async def get_tenant(tenant_id: str | UUID) -> Optional[TenantModel]:
             return None
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(TenantModel).where(TenantModel.id == tenant_id)
-        )
+        result = await session.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         return result.scalar_one_or_none()
 
 
 async def create_tenant(
     name: str,
-    settings: dict = None,
-    slug: Optional[str] = None,
-) -> Optional[TenantModel]:
+    settings: dict | None = None,
+    slug: str | None = None,
+) -> TenantModel | None:
     """Create a new tenant and a default root organization.
 
     The ``slug`` column is NOT NULL + UNIQUE, so when a slug isn't supplied
@@ -64,9 +64,7 @@ async def create_tenant(
         else:
             candidate = f"{base_slug}-{secrets.token_hex(4)}"
 
-        new_tenant = TenantModel(
-            name=name, slug=candidate, settings=settings or {}
-        )
+        new_tenant = TenantModel(name=name, slug=candidate, settings=settings or {})
         session.add(new_tenant)
         await session.flush()  # Get ID for new_tenant
 
@@ -86,8 +84,8 @@ async def create_tenant(
 
 
 async def update_tenant(
-    tenant_id: str | UUID, name: str = None, settings: dict = None
-) -> Optional[TenantModel]:
+    tenant_id: str | UUID, name: str | None = None, settings: dict | None = None
+) -> TenantModel | None:
     """Update tenant information"""
     if not DATABASE_AVAILABLE:
         return None
@@ -128,14 +126,12 @@ async def delete_tenant(tenant_id: str | UUID) -> bool:
             return False
 
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            delete(TenantModel).where(TenantModel.id == tenant_id)
-        )
+        result = await session.execute(delete(TenantModel).where(TenantModel.id == tenant_id))
         await session.commit()
         return result.rowcount > 0
 
 
-async def list_tenants(limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+async def list_tenants(limit: int = 50, offset: int = 0) -> dict[str, Any]:
     """List all tenants"""
     if not DATABASE_AVAILABLE:
         return {"items": [], "total": 0}

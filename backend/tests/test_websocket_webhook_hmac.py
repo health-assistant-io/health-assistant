@@ -19,7 +19,6 @@ from uuid import uuid4
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # B15: webhook HMAC verification
 # ---------------------------------------------------------------------------
@@ -277,9 +276,7 @@ def test_b11_no_unawaited_sleep_in_endpoint():
 
 def test_b11_endpoint_logs_errors_before_closing_1011():
     """B11: the except branch must log before close(1011) (was silent)."""
-    src = inspect.getsource(
-        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
-    )
+    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     # Find the exception handler block.
     assert "logger.warning" in src or "logger.error" in src, (
         "WebSocket endpoint does not log errors before close(1011)."
@@ -324,17 +321,13 @@ def test_b11_extract_token_returns_none_when_neither_present():
 
 def test_b11_keepalive_ping_present():
     """B11: a periodic ping must be sent so intermediaries don't drop the socket."""
-    src = inspect.getsource(
-        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
-    )
+    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     assert "ping" in src.lower(), "WebSocket endpoint has no keepalive ping."
 
 
 def test_b11_poll_timeout_reduced():
     """B11: the effective poll cadence comes from get_message timeout, not a sleep."""
-    src = inspect.getsource(
-        __import__("app.api.v1.endpoints.websockets", fromlist=["x"])
-    )
+    src = inspect.getsource(__import__("app.api.v1.endpoints.websockets", fromlist=["x"]))
     # The 1.0 second timeout replaces the old 10 Hz busy-loop.
     assert "timeout=1.0" in src or "_POLL_TIMEOUT_SECONDS" in src, (
         "WebSocket endpoint must use a 1s poll timeout."

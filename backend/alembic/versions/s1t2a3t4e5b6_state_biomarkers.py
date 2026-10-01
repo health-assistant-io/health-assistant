@@ -23,9 +23,9 @@ Revises: t1e2l3o4n5g6
 Create Date: 2026-08-05
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "s1t2a3t4e5b6"
 down_revision = "t1e2l3o4n5g6"
@@ -51,8 +51,7 @@ def _column_exists(table: str, column: str) -> bool:
     bind = op.get_bind()
     result = bind.execute(
         sa.text(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name = :t AND column_name = :c"
+            "SELECT 1 FROM information_schema.columns WHERE table_name = :t AND column_name = :c"
         ),
         {"t": table, "c": column},
     )
@@ -62,9 +61,7 @@ def _column_exists(table: str, column: str) -> bool:
 def _table_exists(table: str) -> bool:
     bind = op.get_bind()
     result = bind.execute(
-        sa.text(
-            "SELECT 1 FROM information_schema.tables WHERE table_name = :t"
-        ),
+        sa.text("SELECT 1 FROM information_schema.tables WHERE table_name = :t"),
         {"t": table},
     )
     return result.scalar() is not None
@@ -91,9 +88,7 @@ def _enum_exists(name: str) -> bool:
 def upgrade() -> None:
     # --- enum type ---
     if not _enum_exists("biomarkervaluetype"):
-        op.execute(
-            "CREATE TYPE biomarkervaluetype AS ENUM ('quantity', 'state')"
-        )
+        op.execute("CREATE TYPE biomarkervaluetype AS ENUM ('quantity', 'state')")
 
     # --- biomarker_definitions columns (idempotent — baseline may have them) ---
     if not _column_exists("biomarker_definitions", "value_type"):
@@ -109,8 +104,7 @@ def upgrade() -> None:
 
     if not _index_exists("ix_biomarker_definitions_value_type"):
         op.execute(
-            "CREATE INDEX ix_biomarker_definitions_value_type "
-            "ON biomarker_definitions (value_type)"
+            "CREATE INDEX ix_biomarker_definitions_value_type ON biomarker_definitions (value_type)"
         )
 
     # CHECK constraints (can't use IF NOT EXISTS — guard via lookup).
@@ -122,9 +116,7 @@ def upgrade() -> None:
             "biomarker_definitions",
             "is_telemetry = FALSE OR value_type != 'state'",
         )
-    if not _constraint_exists(
-        "ck_biomarker_definitions_state_no_unit", "biomarker_definitions"
-    ):
+    if not _constraint_exists("ck_biomarker_definitions_state_no_unit", "biomarker_definitions"):
         op.create_check_constraint(
             "ck_biomarker_definitions_state_no_unit",
             "biomarker_definitions",
@@ -132,9 +124,7 @@ def upgrade() -> None:
         )
 
     if not _column_exists("biomarker_states", "category"):
-        op.execute(
-            "ALTER TABLE biomarker_states ADD COLUMN category VARCHAR(80)"
-        )
+        op.execute("ALTER TABLE biomarker_states ADD COLUMN category VARCHAR(80)")
 
     # --- biomarker_states table ---
     if not _table_exists("biomarker_states"):
@@ -158,17 +148,11 @@ def upgrade() -> None:
             """
         )
     if not _index_exists("ix_biomarker_states_slug"):
-        op.execute(
-            "CREATE UNIQUE INDEX ix_biomarker_states_slug ON biomarker_states (slug)"
-        )
+        op.execute("CREATE UNIQUE INDEX ix_biomarker_states_slug ON biomarker_states (slug)")
     if not _index_exists("ix_biomarker_states_created_at"):
-        op.execute(
-            "CREATE INDEX ix_biomarker_states_created_at ON biomarker_states (created_at)"
-        )
+        op.execute("CREATE INDEX ix_biomarker_states_created_at ON biomarker_states (created_at)")
     if not _index_exists("ix_biomarker_states_updated_at"):
-        op.execute(
-            "CREATE INDEX ix_biomarker_states_updated_at ON biomarker_states (updated_at)"
-        )
+        op.execute("CREATE INDEX ix_biomarker_states_updated_at ON biomarker_states (updated_at)")
 
     # --- biomarker_allowed_states table ---
     if not _table_exists("biomarker_allowed_states"):
@@ -222,8 +206,6 @@ def downgrade() -> None:
         "DROP CONSTRAINT IF EXISTS ck_biomarker_definitions_state_not_telemetry"
     )
     op.execute("DROP INDEX IF EXISTS ix_biomarker_definitions_value_type")
-    op.execute(
-        "ALTER TABLE biomarker_definitions DROP COLUMN IF EXISTS supports_multi_state"
-    )
+    op.execute("ALTER TABLE biomarker_definitions DROP COLUMN IF EXISTS supports_multi_state")
     op.execute("ALTER TABLE biomarker_definitions DROP COLUMN IF EXISTS value_type")
     op.execute("DROP TYPE IF EXISTS biomarkervaluetype")

@@ -11,12 +11,12 @@ A7: ``backend/app/models/__init__.py`` listed ``"WearableDataModel"`` in
     ``TelemetryDataModel``). ``from app.models import *`` therefore raised
     ``AttributeError``.
 """
+
 import importlib
 import sys
 from pathlib import Path
 
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND = REPO_ROOT / "backend"
@@ -89,6 +89,4 @@ def test_no_other_references_to_wearabledata():
         if "WearableDataModel" in text:
             hits.append(str(path.relative_to(BACKEND)))
 
-    assert not hits, (
-        "WearableDataModel is still referenced in: " + ", ".join(hits)
-    )
+    assert not hits, "WearableDataModel is still referenced in: " + ", ".join(hits)

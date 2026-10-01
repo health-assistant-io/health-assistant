@@ -1,20 +1,34 @@
-from sqlalchemy import Column, String, Float, ForeignKey, Enum, Text, Boolean, CheckConstraint, UniqueConstraint, Integer, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
     AuditMixin,
+    Base,
     TenantMixin,
-    VersionedMixin,
     TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.models.enums import (
-    QuantityType,
-    CodingSystem,
-    CatalogScope,
-    Gender,
     BiomarkerValueType,
+    CatalogScope,
+    CodingSystem,
+    Gender,
+    QuantityType,
 )
 
 
@@ -23,9 +37,7 @@ class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
 
     symbol = Column(String(50), unique=True, nullable=False, index=True)
     name = Column(String(255), nullable=False)
-    quantity_type = Column(
-        Enum(QuantityType), nullable=False, default=QuantityType.OTHER
-    )
+    quantity_type = Column(Enum(QuantityType), nullable=False, default=QuantityType.OTHER)
     base_unit_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("units.id", ondelete="SET NULL"),
@@ -48,9 +60,7 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     __tablename__ = "biomarker_definitions"
 
     slug = Column(String(255), nullable=False, index=True)
-    coding_system = Column(
-        Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC
-    )
+    coding_system = Column(Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC)
     code = Column(String(100), nullable=True)
     name = Column(String(255), nullable=False)
     class_concept_id = Column(
@@ -81,7 +91,9 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     # STATE biomarkers only: when True, Observations use FHIR ``component[]``
     # (one ``valueCodeableConcept`` per sub-context) instead of a single
     # top-level value. Ignored for QUANTITY biomarkers.
-    supports_multi_state = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    supports_multi_state = Column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     meta_data = Column(JSONB, nullable=True)
     scope = Column(
         Enum(CatalogScope, values_callable=lambda obj: [e.value for e in obj]),
@@ -189,9 +201,7 @@ class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):
     applies_to = Column(String(100), nullable=True)
 
     # Relationship back to the parent definition.
-    biomarker = relationship(
-        "BiomarkerDefinition", back_populates="reference_ranges"
-    )
+    biomarker = relationship("BiomarkerDefinition", back_populates="reference_ranges")
 
     __table_args__ = (
         CheckConstraint(
@@ -245,9 +255,7 @@ class BiomarkerState(Base, UUIDMixin, AuditMixin, TimestampMixin):
     __table_args__ = (
         # A code is unique within its code system (POS in v3-OI is unambiguous;
         # a different POS in another system would be a different concept).
-        UniqueConstraint(
-            "code", "system", name="uq_biomarker_states_code_system"
-        ),
+        UniqueConstraint("code", "system", name="uq_biomarker_states_code_system"),
     )
 
 
@@ -281,16 +289,12 @@ class BiomarkerAllowedState(Base, UUIDMixin):
     sort_order = Column(Integer, nullable=False, default=0)
 
     # Relationships
-    biomarker = relationship(
-        "BiomarkerDefinition", back_populates="allowed_states"
-    )
+    biomarker = relationship("BiomarkerDefinition", back_populates="allowed_states")
     state = relationship("BiomarkerState", lazy="selectin")
 
     __table_args__ = (
         # A biomarker lists each state at most once.
-        UniqueConstraint(
-            "biomarker_id", "state_id", name="uq_biomarker_allowed_states"
-        ),
+        UniqueConstraint("biomarker_id", "state_id", name="uq_biomarker_allowed_states"),
     )
 
 

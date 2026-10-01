@@ -1,9 +1,8 @@
-from PIL import Image, ImageEnhance
+# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
 import os
-from typing import Optional, Tuple, List
-
 
 import numpy as np
+from PIL import Image, ImageEnhance
 
 
 def find_coeffs(pa, pb):
@@ -13,7 +12,7 @@ def find_coeffs(pa, pb):
     pb: 4 points in source (input) quadrilateral
     """
     matrix = []
-    for p1, p2 in zip(pa, pb):
+    for p1, p2 in zip(pa, pb, strict=False):
         matrix.append([p1[0], p1[1], 1, 0, 0, 0, -p2[0] * p1[0], -p2[0] * p1[1]])
         matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1] * p1[0], -p2[1] * p1[1]])
 
@@ -27,8 +26,8 @@ def find_coeffs(pa, pb):
 def edit_image(
     input_path: str,
     output_path: str,
-    crop: Optional[Tuple[int, int, int, int]] = None,
-    perspective_points: Optional[List[List[int]]] = None,
+    crop: tuple[int, int, int, int] | None = None,
+    perspective_points: list[list[int]] | None = None,
     brightness: float = 1.0,
     contrast: float = 1.0,
     sharpness: float = 1.0,
@@ -74,17 +73,11 @@ def edit_image(
             logger.info("Applying perspective transform")
             pb = [tuple(p) for p in perspective_points]
             pts = [np.array(p) for p in pb]
-            width = int(
-                max(np.linalg.norm(pts[0] - pts[1]), np.linalg.norm(pts[3] - pts[2]))
-            )
-            height = int(
-                max(np.linalg.norm(pts[0] - pts[3]), np.linalg.norm(pts[1] - pts[2]))
-            )
+            width = int(max(np.linalg.norm(pts[0] - pts[1]), np.linalg.norm(pts[3] - pts[2])))
+            height = int(max(np.linalg.norm(pts[0] - pts[3]), np.linalg.norm(pts[1] - pts[2])))
 
             if width > 0 and height > 0:
-                coeffs = find_coeffs(
-                    [(0, 0), (width, 0), (width, height), (0, height)], pb
-                )
+                coeffs = find_coeffs([(0, 0), (width, 0), (width, height), (0, height)], pb)
                 img = img.transform(
                     (width, height),
                     Image.Transform.PERSPECTIVE,

@@ -11,15 +11,15 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+from sqlalchemy import delete
+
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
-from sqlalchemy import delete
-
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 
 
 async def _purge_catalog_data(
@@ -37,22 +37,16 @@ async def _purge_catalog_data(
     tids = [t for t in tenant_ids if t]
     async with AsyncSessionLocal() as db:
         if tids:
+            await db.execute(delete(UserIntegration).where(UserIntegration.tenant_id.in_(tids)))
             await db.execute(
-                delete(UserIntegration).where(UserIntegration.tenant_id.in_(tids))
-            )
-            await db.execute(
-                delete(BiomarkerDefinition).where(
-                    BiomarkerDefinition.tenant_id.in_(tids)
-                )
+                delete(BiomarkerDefinition).where(BiomarkerDefinition.tenant_id.in_(tids))
             )
             await db.execute(delete(Patient).where(Patient.tenant_id.in_(tids)))
             await db.execute(delete(UserModel).where(UserModel.tenant_id.in_(tids)))
             await db.execute(delete(TenantModel).where(TenantModel.id.in_(tids)))
         if global_def_id is not None:
             await db.execute(
-                delete(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == global_def_id
-                )
+                delete(BiomarkerDefinition).where(BiomarkerDefinition.id == global_def_id)
             )
         if unit_id is not None:
             await db.execute(delete(Unit).where(Unit.id == unit_id))
@@ -87,12 +81,8 @@ async def bridge_with_catalog():
     unit_symbol = f"bpm-{uuid.uuid4().hex[:8]}"
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(id=tenant_a, name="Catalog T.A", slug=f"cta-{tenant_a.hex[:8]}")
-        )
-        db.add(
-            TenantModel(id=tenant_b, name="Catalog T.B", slug=f"ctb-{tenant_b.hex[:8]}")
-        )
+        db.add(TenantModel(id=tenant_a, name="Catalog T.A", slug=f"cta-{tenant_a.hex[:8]}"))
+        db.add(TenantModel(id=tenant_b, name="Catalog T.B", slug=f"ctb-{tenant_b.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -201,9 +191,7 @@ async def _load_integration(integration_id) -> UserIntegration:
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 

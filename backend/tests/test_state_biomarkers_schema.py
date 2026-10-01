@@ -9,6 +9,7 @@ Covers three layers:
    bad rows (STATE + telemetry, STATE + unit), and a QUANTITY biomarker is
    still accepted with the previous shape.
 """
+
 import uuid
 
 import pytest
@@ -22,7 +23,6 @@ from app.models.biomarker_model import (
     BiomarkerState,
 )
 from app.models.enums import BiomarkerValueType
-
 
 # ----------------------------------------------------------------------------
 # 1. ORM metadata
@@ -54,10 +54,7 @@ def test_models_declare_state_check_constraints():
     }
     found = set()
     for constraint in Base.metadata.tables["biomarker_definitions"].constraints:
-        if (
-            isinstance(constraint, CheckConstraint)
-            and constraint.name in expected
-        ):
+        if isinstance(constraint, CheckConstraint) and constraint.name in expected:
             found.add(constraint.name)
     assert found == expected, f"Missing constraints: {expected - found}"
 
@@ -184,7 +181,7 @@ async def test_state_biomarker_with_telemetry_is_rejected():
 @pytest.mark.asyncio
 async def test_state_biomarker_with_unit_is_rejected():
     """STATE biomarkers carry no unit (categorical values are unitless)."""
-    from app.models.enums import CodingSystem, CatalogScope
+    from app.models.enums import CatalogScope, CodingSystem
 
     # Insert a real unit so the FK passes, then point a STATE biomarker at it.
     async with AsyncSessionLocal() as session:

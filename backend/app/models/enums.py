@@ -1,7 +1,7 @@
 import enum
 
 
-class QuantityType(str, enum.Enum):
+class QuantityType(enum.StrEnum):
     MASS_CONCENTRATION = "MASS_CONCENTRATION"
     MOLAR_CONCENTRATION = "MOLAR_CONCENTRATION"
     NUMBER_CONCENTRATION = "NUMBER_CONCENTRATION"
@@ -15,14 +15,14 @@ class QuantityType(str, enum.Enum):
     OTHER = "OTHER"
 
 
-class ClinicalEventStatus(str, enum.Enum):
+class ClinicalEventStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     RESOLVED = "RESOLVED"
     ON_HOLD = "ON_HOLD"
     UNKNOWN = "UNKNOWN"
 
 
-class ScheduleKind(str, enum.Enum):
+class ScheduleKind(enum.StrEnum):
     """How a ``ClinicalEventType`` should be rendered in calendar/schedule views.
 
     Set on the type blueprint (the default for all instances of that type).
@@ -53,7 +53,7 @@ class ScheduleKind(str, enum.Enum):
             return None
 
 
-class NotificationType(str, enum.Enum):
+class NotificationType(enum.StrEnum):
     MEDICATION_REMINDER = "MEDICATION_REMINDER"
     EXAMINATION_REMINDER = "EXAMINATION_REMINDER"
     BIOMARKER_ALERT = "BIOMARKER_ALERT"
@@ -72,7 +72,7 @@ class NotificationType(str, enum.Enum):
     CUSTOM = "CUSTOM"
 
 
-class NotificationSource(str, enum.Enum):
+class NotificationSource(enum.StrEnum):
     """Origin system of a notification event."""
 
     SYSTEM = "SYSTEM"
@@ -83,7 +83,7 @@ class NotificationSource(str, enum.Enum):
     SCHEDULED = "SCHEDULED"
 
 
-class NotificationCategory(str, enum.Enum):
+class NotificationCategory(enum.StrEnum):
     """UI grouping for the notification center."""
 
     REMINDER = "reminder"
@@ -95,13 +95,13 @@ class NotificationCategory(str, enum.Enum):
     CLINICAL_EVENT = "clinical_event"
 
 
-class NotificationSeverity(str, enum.Enum):
+class NotificationSeverity(enum.StrEnum):
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
 
 
-class RecipientKind(str, enum.Enum):
+class RecipientKind(enum.StrEnum):
     """The principal kind a notification target was specified as (pre-resolution)."""
 
     USER = "USER"
@@ -111,7 +111,7 @@ class RecipientKind(str, enum.Enum):
     SYSTEM = "SYSTEM"
 
 
-class RecipientStatus(str, enum.Enum):
+class RecipientStatus(enum.StrEnum):
     """Per-recipient inbox state (the user-facing read/dismiss lifecycle)."""
 
     UNREAD = "unread"
@@ -119,14 +119,14 @@ class RecipientStatus(str, enum.Enum):
     DISMISSED = "dismissed"
 
 
-class NotificationChannel(str, enum.Enum):
+class NotificationChannel(enum.StrEnum):
     IN_APP = "IN_APP"
     PUSH = "PUSH"
     EMAIL = "EMAIL"
     SMS = "SMS"
 
 
-class NotificationStatus(str, enum.Enum):
+class NotificationStatus(enum.StrEnum):
     """Per-channel delivery lifecycle (delivery log)."""
 
     PENDING = "PENDING"
@@ -135,7 +135,7 @@ class NotificationStatus(str, enum.Enum):
     FAILED = "FAILED"
 
 
-class NotificationRuleType(str, enum.Enum):
+class NotificationRuleType(enum.StrEnum):
     """What a NotificationRule evaluates."""
 
     BIOMARKER_THRESHOLD = "BIOMARKER_THRESHOLD"
@@ -144,7 +144,7 @@ class NotificationRuleType(str, enum.Enum):
     EVENT_LIFECYCLE = "EVENT_LIFECYCLE"
 
 
-class ComparisonOperator(str, enum.Enum):
+class ComparisonOperator(enum.StrEnum):
     GT = ">"
     LT = "<"
     GTE = ">="
@@ -153,7 +153,7 @@ class ComparisonOperator(str, enum.Enum):
     OUT_OF_NORMAL = "out_of_normal"
 
 
-class HitlTaskStatus(str, enum.Enum):
+class HitlTaskStatus(enum.StrEnum):
     """Status of a human-in-the-loop task card proposed by the AI assistant.
     Values are lowercase to match the JSONB payload contract consumed by the
     frontend (registry.tsx HITL_STATUS_META keys)."""
@@ -170,21 +170,21 @@ class HitlTaskStatus(str, enum.Enum):
         return frozenset({cls.CONFIRMED, cls.DISMISSED, cls.FAILED})
 
 
-class TriggerType(str, enum.Enum):
+class TriggerType(enum.StrEnum):
     TIME = "TIME"
     RECURRING = "RECURRING"
     EVENT = "EVENT"
     THRESHOLD = "THRESHOLD"
 
 
-class Gender(str, enum.Enum):
+class Gender(enum.StrEnum):
     MALE = "MALE"
     FEMALE = "FEMALE"
     OTHER = "OTHER"
     UNKNOWN = "UNKNOWN"
 
 
-class MedicationStatus(str, enum.Enum):
+class MedicationStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     COMPLETED = "COMPLETED"
@@ -196,7 +196,7 @@ class MedicationStatus(str, enum.Enum):
     UNKNOWN = "UNKNOWN"
 
 
-class MedicationIntent(str, enum.Enum):
+class MedicationIntent(enum.StrEnum):
     """Discriminator for whether a Medication row is a MedicationStatement
     (what the patient is taking) or a MedicationRequest (what was prescribed).
 
@@ -211,14 +211,14 @@ class MedicationIntent(str, enum.Enum):
     PROPOSAL = "proposal"
 
 
-class AIScope(str, enum.Enum):
+class AIScope(enum.StrEnum):
     SYSTEM = "SYSTEM"
     TENANT = "TENANT"
     USER = "USER"
     ORGANIZATION = "ORGANIZATION"
 
 
-class AIModelCapability(str, enum.Enum):
+class AIModelCapability(enum.StrEnum):
     """The input/output modalities a model supports (its "features").
 
     Family vocabulary (ai-features §15, frozen 2026-09-19):
@@ -259,7 +259,7 @@ class AIModelCapability(str, enum.Enum):
             return None
 
 
-class ImportFormat(str, enum.Enum):
+class ImportFormat(enum.StrEnum):
     CSV = "CSV"
     JSON = "JSON"
     FHIR = "FHIR"
@@ -267,7 +267,7 @@ class ImportFormat(str, enum.Enum):
     IMAGE = "IMAGE"
 
 
-class ImportSourceType(str, enum.Enum):
+class ImportSourceType(enum.StrEnum):
     FILE_UPLOAD = "FILE_UPLOAD"
     URL = "URL"
     MANUAL_ENTRY = "MANUAL_ENTRY"
@@ -275,7 +275,7 @@ class ImportSourceType(str, enum.Enum):
     LAB_SYSTEM = "LAB_SYSTEM"
 
 
-class ImportStatus(str, enum.Enum):
+class ImportStatus(enum.StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
@@ -283,7 +283,7 @@ class ImportStatus(str, enum.Enum):
     PARTIAL = "PARTIAL"
 
 
-class ImmunizationStatus(str, enum.Enum):
+class ImmunizationStatus(enum.StrEnum):
     """FHIR R4 Immunization.status (closed value set)."""
 
     COMPLETED = "completed"
@@ -291,7 +291,7 @@ class ImmunizationStatus(str, enum.Enum):
     NOT_DONE = "not-done"
 
 
-class AllergyCategory(str, enum.Enum):
+class AllergyCategory(enum.StrEnum):
     FOOD = "FOOD"
     MEDICATION = "MEDICATION"
     ENVIRONMENT = "ENVIRONMENT"
@@ -299,32 +299,32 @@ class AllergyCategory(str, enum.Enum):
     OTHER = "OTHER"
 
 
-class AllergyCriticality(str, enum.Enum):
+class AllergyCriticality(enum.StrEnum):
     LOW = "LOW"
     HIGH = "HIGH"
     UNABLE_TO_ASSESS = "UNABLE_TO_ASSESS"
 
 
-class AllergyClinicalStatus(str, enum.Enum):
+class AllergyClinicalStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
     RESOLVED = "RESOLVED"
 
 
-class ReactionSeverity(str, enum.Enum):
+class ReactionSeverity(enum.StrEnum):
     MILD = "MILD"
     MODERATE = "MODERATE"
     SEVERE = "SEVERE"
 
 
-class Role(str, enum.Enum):
+class Role(enum.StrEnum):
     SYSTEM_ADMIN = "SYSTEM_ADMIN"
     ADMIN = "ADMIN"
     MANAGER = "MANAGER"
     USER = "USER"
 
 
-class CatalogScope(str, enum.Enum):
+class CatalogScope(enum.StrEnum):
     """The visibility/ownership tier of a catalog item.
 
     Drives the ownership-based access model (plan §1):
@@ -342,7 +342,7 @@ class CatalogScope(str, enum.Enum):
     USER = "user"
 
 
-class OrganizationType(str, enum.Enum):
+class OrganizationType(enum.StrEnum):
     HOUSEHOLD = "HOUSEHOLD"
     CLINIC = "CLINIC"
     DEPARTMENT = "DEPARTMENT"
@@ -351,7 +351,7 @@ class OrganizationType(str, enum.Enum):
     OTHER = "OTHER"
 
 
-class CodingSystem(str, enum.Enum):
+class CodingSystem(enum.StrEnum):
     LOINC = "loinc"
     SNOMED = "snomed"
     CUSTOM = "custom"
@@ -366,7 +366,7 @@ class CodingSystem(str, enum.Enum):
         return "urn:uuid:health-assistant:custom-biomarker"
 
 
-class BiomarkerValueType(str, enum.Enum):
+class BiomarkerValueType(enum.StrEnum):
     """The shape of values a ``BiomarkerDefinition`` accepts.
 
     A true discriminator — every consumer (analytics, OCR pipeline, FHIR
@@ -388,26 +388,26 @@ class BiomarkerValueType(str, enum.Enum):
     STATE = "state"
 
 
-class IntegrationStatus(str, enum.Enum):
+class IntegrationStatus(enum.StrEnum):
     PENDING = "PENDING"
     ACTIVE = "ACTIVE"
     EXPIRED = "EXPIRED"
     ERROR = "ERROR"
 
 
-class ExportScope(str, enum.Enum):
+class ExportScope(enum.StrEnum):
     PATIENT = "patient"
     GROUP = "group"
     SYSTEM = "system"
 
 
-class ExportType(str, enum.Enum):
+class ExportType(enum.StrEnum):
     FHIR_ONLY = "fhir_only"
     FULL_BACKUP = "full_backup"
     CATALOG_ONLY = "catalog_only"
 
 
-class JobStatus(str, enum.Enum):
+class JobStatus(enum.StrEnum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
@@ -415,7 +415,7 @@ class JobStatus(str, enum.Enum):
     PARTIAL = "PARTIAL"
 
 
-class AnatomyRelationType(str, enum.Enum):
+class AnatomyRelationType(enum.StrEnum):
     """.. deprecated:: Migrated into :class:`ConceptRelationType`.
 
     Retained as a thin alias so schema/endpoint code that still references it
@@ -432,7 +432,7 @@ class AnatomyRelationType(str, enum.Enum):
     CONTINUOUS_WITH = "CONTINUOUS_WITH"
 
 
-class ConceptKind(str, enum.Enum):
+class ConceptKind(enum.StrEnum):
     """The domain a Concept belongs to in the unified taxonomy.
 
     Values are lowercase short codes (used verbatim as FHIR CodeSystem codes
@@ -458,7 +458,7 @@ class ConceptKind(str, enum.Enum):
     ORGAN = "organ"
 
 
-class ConceptStatus(str, enum.Enum):
+class ConceptStatus(enum.StrEnum):
     """Lifecycle of a Concept (mirrors FHIR CodeSystem concept status)."""
 
     DRAFT = "draft"
@@ -466,7 +466,7 @@ class ConceptStatus(str, enum.Enum):
     RETIRED = "retired"
 
 
-class ConceptProvenance(str, enum.Enum):
+class ConceptProvenance(enum.StrEnum):
     """Where a Concept or ConceptEdge originated.
 
     Drives the curated-wins conflict resolution (``seed`` > ``integration`` >
@@ -479,7 +479,7 @@ class ConceptProvenance(str, enum.Enum):
     MANUAL = "manual"
 
 
-class EdgeApprovalStatus(str, enum.Enum):
+class EdgeApprovalStatus(enum.StrEnum):
     """Approval state of a ConceptEdge.
 
     Only ``approved`` rows count for graph queries; ``proposed`` rows are
@@ -491,7 +491,7 @@ class EdgeApprovalStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
-class EdgeEndpointType(str, enum.Enum):
+class EdgeEndpointType(enum.StrEnum):
     """Polymorphic type tag for a ConceptEdge endpoint.
 
     ``concept`` endpoints reference ``concepts.id``; all others reference the
@@ -513,7 +513,7 @@ class EdgeEndpointType(str, enum.Enum):
     DOCUMENT = "document"
 
 
-class MetadataFieldType(str, enum.Enum):
+class MetadataFieldType(enum.StrEnum):
     """Discriminator for a ``ClinicalEventType.metadata_schema`` field.
 
     Drives the frontend renderer switch in ``DynamicMetadataForm``. Each value
@@ -533,7 +533,7 @@ class MetadataFieldType(str, enum.Enum):
     CATALOG_SELECT = "catalog-select"
 
 
-class CatalogType(str, enum.Enum):
+class CatalogType(enum.StrEnum):
     """The searchable catalog domains a ``CATALOG_SELECT`` metadata field can
     reference.
 
@@ -551,7 +551,7 @@ class CatalogType(str, enum.Enum):
     CONCEPT = "concept"
 
 
-class CatalogRelationType(str, enum.Enum):
+class CatalogRelationType(enum.StrEnum):
     """How a picked catalog item in a ``CATALOG_SELECT`` field relates to the
     clinical event.
 
@@ -569,7 +569,7 @@ class CatalogRelationType(str, enum.Enum):
     INDICATES = "indicates"
 
 
-class ConceptRelationType(str, enum.Enum):
+class ConceptRelationType(enum.StrEnum):
     """Typed relationships between Concepts, or between an entity and a Concept.
 
     Split into two groups: **structural / classification** (single-valued

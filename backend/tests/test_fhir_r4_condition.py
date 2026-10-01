@@ -8,6 +8,7 @@ Covers:
 - Round-trip: ORM → FHIR → ORM preserves identity
 - Validation: invalid data rejected via build_fhir_resource
 """
+
 import datetime as _dt
 from uuid import uuid4
 
@@ -20,18 +21,18 @@ from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resourc
 
 
 def _make_event(**overrides) -> ClinicalEvent:
-    defaults = dict(
-        id=str(uuid4()),
-        patient_id=str(uuid4()),
-        status=ClinicalEventStatus.ACTIVE,
-        title="Test Condition",
-        description=None,
-        onset_date=None,
-        resolved_date=None,
-        code=None,
-        coding_system=None,
-        created_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "patient_id": str(uuid4()),
+        "status": ClinicalEventStatus.ACTIVE,
+        "title": "Test Condition",
+        "description": None,
+        "onset_date": None,
+        "resolved_date": None,
+        "code": None,
+        "coding_system": None,
+        "created_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return ClinicalEvent(**defaults)
 
@@ -39,6 +40,7 @@ def _make_event(**overrides) -> ClinicalEvent:
 # ---------------------------------------------------------------------------
 # to_fhir_dict — basic projection
 # ---------------------------------------------------------------------------
+
 
 def test_condition_minimal_to_fhir_dict():
     event = _make_event(title="Headache")
@@ -64,7 +66,10 @@ def test_condition_status_mapping():
     cases = [
         (ClinicalEventStatus.ACTIVE, "active"),
         (ClinicalEventStatus.RESOLVED, "resolved"),
-        (ClinicalEventStatus.ON_HOLD, "active"),  # ON_HOLD has no FHIR equivalent; falls back to active
+        (
+            ClinicalEventStatus.ON_HOLD,
+            "active",
+        ),  # ON_HOLD has no FHIR equivalent; falls back to active
         (ClinicalEventStatus.UNKNOWN, "active"),
     ]
     for status, expected_code in cases:
@@ -110,8 +115,8 @@ def test_condition_with_custom_code():
 
 
 def test_condition_onset_and_abatement():
-    onset = _dt.datetime(2020, 1, 15, tzinfo=_dt.timezone.utc)
-    resolved = _dt.datetime(2024, 6, 1, tzinfo=_dt.timezone.utc)
+    onset = _dt.datetime(2020, 1, 15, tzinfo=_dt.UTC)
+    resolved = _dt.datetime(2024, 6, 1, tzinfo=_dt.UTC)
     event = _make_event(
         status=ClinicalEventStatus.RESOLVED,
         onset_date=onset,
@@ -130,7 +135,7 @@ def test_condition_description_in_note():
 
 
 def test_condition_recorded_date_from_created_at():
-    event = _make_event(created_at=_dt.datetime(2024, 3, 15, 12, 30, tzinfo=_dt.timezone.utc))
+    event = _make_event(created_at=_dt.datetime(2024, 3, 15, 12, 30, tzinfo=_dt.UTC))
     fhir = event.to_fhir_dict()
     assert fhir["recordedDate"].startswith("2024-03-15")
 
@@ -153,6 +158,7 @@ def test_condition_iso_format_normalizes_naive_datetime():
 # ---------------------------------------------------------------------------
 # Reverse: fhir_to_condition_orm
 # ---------------------------------------------------------------------------
+
 
 def _canonical_condition(**overrides) -> dict:
     base = {
@@ -244,6 +250,7 @@ def test_fhir_to_condition_orm_drops_unknown_fields():
 # Round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_round_trip_orm_to_fhir_to_orm():
     """ORM → FHIR → ORM should preserve the key fields."""
     event = _make_event(
@@ -251,7 +258,7 @@ def test_round_trip_orm_to_fhir_to_orm():
         title="Migraine",
         code="37796009",
         coding_system=CodingSystem.SNOMED,
-        onset_date=_dt.datetime(2021, 5, 1, tzinfo=_dt.timezone.utc),
+        onset_date=_dt.datetime(2021, 5, 1, tzinfo=_dt.UTC),
         description="Recurring",
     )
     fhir = event.to_fhir_dict()
@@ -279,7 +286,7 @@ def test_round_trip_fhir_to_orm_to_fhir():
         onset_date=orm.get("onset_date"),
         code=orm.get("code"),
         coding_system=orm.get("coding_system"),
-        created_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
+        created_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
     )
     fhir_out = event.to_fhir_dict()
 
@@ -291,6 +298,7 @@ def test_round_trip_fhir_to_orm_to_fhir():
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def test_invalid_condition_rejected_by_to_fhir_dict():
     """Malformed data should be rejected by build_fhir_resource. fhir.resources

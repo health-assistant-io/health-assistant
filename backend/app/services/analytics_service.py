@@ -1,21 +1,23 @@
-from typing import Any, Dict, List, Optional
-from datetime import datetime
+# ruff: noqa: SIM108,E501 -- legacy ternary/long strings; reflow when touched
+import logging
+import re
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
+
 from app.core.database import AsyncSessionLocal
-from app.models.document_model import DocumentModel
-from app.models.examination_model import ExaminationModel
-from app.models.user_model import UserModel
 from app.models.biomarker_model import BiomarkerAllowedState, BiomarkerDefinition
+from app.models.document_model import DocumentModel
 from app.models.enums import BiomarkerValueType
+from app.models.examination_model import ExaminationModel
 
 # FHIR models
-from app.models.fhir import Observation, Medication, DiagnosticReport
+from app.models.fhir import DiagnosticReport, Medication, Observation
+from app.models.user_model import UserModel
 from app.schemas.biomarker import is_safe_slug
-
-import re
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +89,11 @@ def units_are_compatible(unit1: str, unit2: str) -> bool:
 
 
 async def _get_observation_status(
-    name: str, val: Any, obs: Observation, ref_min: float = None, ref_max: float = None
+    name: str,
+    val: Any,
+    obs: Observation,
+    ref_min: float | None = None,
+    ref_max: float | None = None,
 ) -> str:
     """Helper to determine the status of an observation using the new relative_score or interpretation"""
     # 0. STATE biomarker branch (plan state-biomarkers Step 7): categorical
@@ -111,9 +117,8 @@ async def _get_observation_status(
     # could be exactly at the bound (still normal) or beyond it (abnormal).
     # Rather than guess, fall through to the explicit reference-range
     # comparison in step 2 which has the raw value + bounds to decide.
-    if getattr(obs, "relative_score", None) is not None:
-        if 0.0 < obs.relative_score < 1.0:
-            return "Normal"
+    if getattr(obs, "relative_score", None) is not None and 0.0 < obs.relative_score < 1.0:
+        return "Normal"
         # score at boundary (0.0 or 1.0) — defer to the range check below.
 
     # 2. Use provided ranges or fallback to parsing FHIR reference_range
@@ -202,14 +207,8 @@ def _state_observation_status(biomarker, obs) -> str:
         any_normal = False
         any_abnormal = False
         for comp in components:
-            value_cc = (
-                comp.get("valueCodeableConcept")
-                if isinstance(comp, dict)
-                else None
-            ) or (
-                comp.get("value_codeable_concept")
-                if isinstance(comp, dict)
-                else None
+            value_cc = (comp.get("valueCodeableConcept") if isinstance(comp, dict) else None) or (
+                comp.get("value_codeable_concept") if isinstance(comp, dict) else None
             )
             pair = _extract_coding_pair(value_cc)
             if pair is None:
@@ -230,7 +229,7 @@ def _state_observation_status(biomarker, obs) -> str:
 
 async def get_dashboard_data(
     tenant_id: str,
-    patient_id: str = None,
+    patient_id: str | None = None,
     period: str = "last-30-days",
     db: AsyncSession = None,
 ) -> dict:
@@ -280,16 +279,12 @@ async def get_dashboard_data(
         )
 
     # Latest examination
-    latest_exam_query = select(ExaminationModel).where(
-        ExaminationModel.tenant_id == tenant_id
-    )
+    latest_exam_query = select(ExaminationModel).where(ExaminationModel.tenant_id == tenant_id)
     if patient_id:
-        latest_exam_query = latest_exam_query.where(
-            ExaminationModel.patient_id == patient_id
-        )
-    latest_exam_query = latest_exam_query.order_by(
-        ExaminationModel.examination_date.desc()
-    ).limit(1)
+        latest_exam_query = latest_exam_query.where(ExaminationModel.patient_id == patient_id)
+    latest_exam_query = latest_exam_query.order_by(ExaminationModel.examination_date.desc()).limit(
+        1
+    )
 
     exam_result = await db.execute(latest_exam_query)
     latest_exam = exam_result.scalar_one_or_none()
@@ -327,17 +322,13 @@ async def get_dashboard_data(
 
     doc_imaging_query = (
         select(DocumentModel, Concept.name.label("exam_category"))
-        .outerjoin(
-            ExaminationModel, DocumentModel.examination_id == ExaminationModel.id
-        )
+        .outerjoin(ExaminationModel, DocumentModel.examination_id == ExaminationModel.id)
         .outerjoin(Concept, ExaminationModel.category_concept_id == Concept.id)
         .where(DocumentModel.tenant_id == tenant_id)
     )
 
     if patient_id:
-        doc_imaging_query = doc_imaging_query.where(
-            DocumentModel.patient_id == patient_id
-        )
+        doc_imaging_query = doc_imaging_query.where(DocumentModel.patient_id == patient_id)
 
     doc_imaging_query = doc_imaging_query.where(
         (DocumentModel.entities["document_category"].as_string().ilike("%imaging%"))
@@ -351,9 +342,7 @@ async def get_dashboard_data(
         | (DocumentModel.filename.ilike("%.dcm"))
     )
 
-    doc_imaging_query = doc_imaging_query.order_by(
-        DocumentModel.updated_at.desc()
-    ).limit(20)
+    doc_imaging_query = doc_imaging_query.order_by(DocumentModel.updated_at.desc()).limit(20)
 
     doc_res = await db.execute(doc_imaging_query)
     all_docs = doc_res.all()
@@ -368,29 +357,24 @@ async def get_dashboard_data(
                 "type": "document",
                 "date": doc.updated_at.isoformat() if doc.updated_at else "",
                 "title": doc.filename,
-                "category": exam_cat
-                or doc_cat.replace("_", " ").replace("-", " ").title()
+                "category": exam_cat or doc_cat.replace("_", " ").replace("-", " ").title()
                 if doc_cat
                 else "Imaging",
-                "examination_id": str(doc.examination_id)
-                if doc.examination_id
-                else None,
+                "examination_id": str(doc.examination_id) if doc.examination_id else None,
                 "has_image": True,
             }
         )
 
     # 2. If list is small, add DiagnosticReports
     if len(imaging_list) < 5:
-        imaging_query = select(DiagnosticReport).where(
-            DiagnosticReport.tenant_id == tenant_id
-        )
+        imaging_query = select(DiagnosticReport).where(DiagnosticReport.tenant_id == tenant_id)
         if patient_id:
             imaging_query = imaging_query.where(
                 DiagnosticReport.subject["reference"].astext == f"Patient/{patient_id}"
             )
-        imaging_query = imaging_query.order_by(
-            DiagnosticReport.effective_datetime.desc()
-        ).limit(5 - len(imaging_list))
+        imaging_query = imaging_query.order_by(DiagnosticReport.effective_datetime.desc()).limit(
+            5 - len(imaging_list)
+        )
 
         imaging_result = await db.execute(imaging_query)
         imaging_reports = imaging_result.scalars().all()
@@ -417,9 +401,7 @@ async def get_dashboard_data(
     # Latest Laboratory Results
     labs_query = (
         select(Observation, BiomarkerDefinition.info.label("biomarker_info"))
-        .outerjoin(
-            BiomarkerDefinition, Observation.biomarker_id == BiomarkerDefinition.id
-        )
+        .outerjoin(BiomarkerDefinition, Observation.biomarker_id == BiomarkerDefinition.id)
         .where(Observation.tenant_id == tenant_id)
     )
     if patient_id:
@@ -441,11 +423,7 @@ async def get_dashboard_data(
             if val is None:
                 val = getattr(obs, "raw_value", None)
             if val is None:
-                val = (
-                    obs.value_quantity.get("value")
-                    if obs.value_quantity
-                    else obs.value_string
-                )
+                val = obs.value_quantity.get("value") if obs.value_quantity else obs.value_string
 
             if val is not None:
                 # Basic interpretation
@@ -454,12 +432,8 @@ async def get_dashboard_data(
                 unique_labs[name] = {
                     "name": name,
                     "result": val,
-                    "unit": obs.value_quantity.get("unit", "")
-                    if obs.value_quantity
-                    else "",
-                    "date": obs.effective_datetime.isoformat()
-                    if obs.effective_datetime
-                    else "",
+                    "unit": obs.value_quantity.get("unit", "") if obs.value_quantity else "",
+                    "date": obs.effective_datetime.isoformat() if obs.effective_datetime else "",
                     "status": status,
                     "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
                     "relative_score": getattr(obs, "relative_score", None),
@@ -476,21 +450,19 @@ async def get_dashboard_data(
         "summary": {
             "total_documents": len(documents),
             "total_observations": 0,
-            "last_upload": recent_documents[0]["created_at"]
-            if recent_documents
-            else "",
+            "last_upload": recent_documents[0]["created_at"] if recent_documents else "",
         },
     }
 
 
 async def get_biomarker_trends(
     tenant_id: str,
-    biomarker_codes: str = None,
+    biomarker_codes: str | None = None,
     period: str = "last-6-months",
-    aggregation: str = None,
-    patient_id: str = None,
-    start_date: datetime = None,
-    end_date: datetime = None,
+    aggregation: str | None = None,
+    patient_id: str | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
     db: AsyncSession = None,
 ) -> dict:
     if not db:
@@ -498,16 +470,15 @@ async def get_biomarker_trends(
 
     query = select(Observation).where(Observation.tenant_id == tenant_id)
     if patient_id:
-        query = query.where(
-            Observation.subject["reference"].as_string() == f"Patient/{patient_id}"
-        )
+        query = query.where(Observation.subject["reference"].as_string() == f"Patient/{patient_id}")
 
     from app.models.biomarker_model import Unit
 
     if biomarker_codes:
         codes = [c.strip() for c in biomarker_codes.split(",")]
-        from sqlalchemy import or_
         import uuid
+
+        from sqlalchemy import or_
 
         # Resolve the requested codes/slugs against the definition catalog so we
         # can expand the filter to include the matched definitions' names,
@@ -538,9 +509,7 @@ async def get_biomarker_trends(
                 )
             )
         if uuid_codes:
-            def_filters.append(
-                BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes])
-            )
+            def_filters.append(BiomarkerDefinition.id.in_([uuid.UUID(u) for u in uuid_codes]))
 
         if def_filters:
             def_filter = or_(*def_filters)
@@ -566,9 +535,7 @@ async def get_biomarker_trends(
         filter_clauses = []
         # Match by expanded text terms (raw codes + definition names/aliases)
         for term in expanded_terms:
-            filter_clauses.append(
-                Observation.code["text"].as_string().ilike(f"%{term}%")
-            )
+            filter_clauses.append(Observation.code["text"].as_string().ilike(f"%{term}%"))
         # Match by slug via the join (mapped observations)
         for code in text_codes:
             filter_clauses.append(BiomarkerDefinition.slug.ilike(f"%{code}%"))
@@ -610,7 +577,7 @@ async def get_biomarker_trends(
     bio_map_def = {}
     for b, symbol in bio_defs_rows:
         # Attach symbol to the object dynamically for easier access in loop
-        setattr(b, "preferred_unit_symbol", symbol)
+        b.preferred_unit_symbol = symbol
         bio_map_def[b.id] = b
 
     bio_slug_map = {b.slug: b for b in bio_map_def.values()}
@@ -628,8 +595,9 @@ async def get_biomarker_trends(
     # outside the "default" demographic).
     _patient_ctx = None
     if patient_id:
-        from app.models.fhir import Patient
         import uuid as _uuid
+
+        from app.models.fhir import Patient
 
         try:
             _pid = _uuid.UUID(str(patient_id))
@@ -645,9 +613,9 @@ async def get_biomarker_trends(
     # or more panel concepts; we group by the destination concept's name.
     from app.models.concept_model import Concept, ConceptEdge
     from app.models.enums import (
-        EdgeEndpointType,
         ConceptRelationType,
         EdgeApprovalStatus,
+        EdgeEndpointType,
     )
 
     edges_res = await db.execute(
@@ -665,7 +633,7 @@ async def get_biomarker_trends(
         panel_res = await db.execute(
             select(Concept.id, Concept.name).where(Concept.id.in_(panel_ids))
         )
-        panel_name_map = {pid: name for pid, name in panel_res.all()}
+        panel_name_map = dict(panel_res.all())
 
     # Map biomarker_id to list of group (panel) names
     bio_to_groups = {}
@@ -676,7 +644,7 @@ async def get_biomarker_trends(
 
     # Optimize queries by fetching everything we need for exam info in one go
     # Only fetch doc_ids we actually care about
-    doc_ids = list(set([obs.document_id for obs in observations if obs.document_id]))
+    doc_ids = list({obs.document_id for obs in observations if obs.document_id})
     exam_info_map = {}
 
     if doc_ids:
@@ -775,9 +743,7 @@ async def get_biomarker_trends(
         technical_category = b_def.category if b_def else "other"
 
         # Clinical Groups mapping with fallback to technical category
-        clinical_groups = (
-            bio_to_groups.get(obs.biomarker_id) if obs.biomarker_id else None
-        )
+        clinical_groups = bio_to_groups.get(obs.biomarker_id) if obs.biomarker_id else None
         if not clinical_groups and b_def:
             clinical_groups = bio_to_groups.get(b_def.id)
 
@@ -795,13 +761,12 @@ async def get_biomarker_trends(
         # has the same richness as the QUANTITY path. Falls through to the
         # numeric branch when the coding can't be parsed (defensive — shouldn't
         # happen for validated writes).
-        state_display: Optional[str] = None
-        state_code: Optional[str] = None
-        state_system: Optional[str] = None
-        state_is_normal: Optional[bool] = None
+        state_display: str | None = None
+        state_code: str | None = None
+        state_system: str | None = None
+        state_is_normal: bool | None = None
         is_state_biomarker = (
-            b_def is not None
-            and getattr(b_def, "value_type", None) == BiomarkerValueType.STATE
+            b_def is not None and getattr(b_def, "value_type", None) == BiomarkerValueType.STATE
         )
         if is_state_biomarker:
             from app.services.observation_value_validator import _extract_coding_pair
@@ -810,7 +775,7 @@ async def get_biomarker_trends(
             if pair is not None:
                 state_code, state_system = pair
                 # Resolve display + is_normal from the biomarker's allowed_states.
-                for allowed in (b_def.allowed_states or []):
+                for allowed in b_def.allowed_states or []:
                     if (
                         allowed.state is not None
                         and allowed.state.code == state_code
@@ -856,9 +821,7 @@ async def get_biomarker_trends(
             ref_range_text = "--"
 
             # Current observation unit
-            obs_unit_symbol = (
-                obs.value_quantity.get("unit", "") if obs.value_quantity else ""
-            )
+            obs_unit_symbol = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
 
             if (
                 obs.reference_range
@@ -913,22 +876,14 @@ async def get_biomarker_trends(
             exam_id = str(obs.examination_id) if obs.examination_id else None
 
             # Priority 2: Use document linkage if direct exam_id is missing
-            if (
-                not exam_id
-                and obs.document_id
-                and obs.document_id in exam_info_map
-            ):
+            if not exam_id and obs.document_id and obs.document_id in exam_info_map:
                 info = exam_info_map[obs.document_id]
                 exam_date = info["date"]
                 source_category = info["category"]
                 exam_id = info["exam_id"]
                 exam_name = info["exam_name"]
                 if exam_date:
-                    from datetime import timezone
-
-                    obs_date = datetime.combine(
-                        exam_date, datetime.min.time(), tzinfo=timezone.utc
-                    )
+                    obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=UTC)
             elif exam_id:
                 # If we have direct exam_id, we might still want the name from the map if it's there
                 # Or we could fetch it, but for now we try to find it in the map
@@ -949,11 +904,7 @@ async def get_biomarker_trends(
             elif obs.document_id:
                 source_type = "document"
                 source_name = "Uploaded Document"
-            elif (
-                obs.performer
-                and isinstance(obs.performer, list)
-                and len(obs.performer) > 0
-            ):
+            elif obs.performer and isinstance(obs.performer, list) and len(obs.performer) > 0:
                 p = obs.performer[0]
                 if p.get("type") == "Integration":
                     source_type = "integration"
@@ -977,18 +928,14 @@ async def get_biomarker_trends(
                     else "Unknown"
                 )
             else:
-                status = await _get_observation_status(
-                    name, val, obs, ref_range_min, ref_range_max
-                )
+                status = await _get_observation_status(name, val, obs, ref_range_min, ref_range_max)
 
             trends[key].append(
                 {
                     "observation_id": str(obs.id),
                     "date": obs_date.isoformat() if obs_date else "",
                     "value": val,
-                    "unit": obs.value_quantity.get("unit", "")
-                    if obs.value_quantity
-                    else "",
+                    "unit": obs.value_quantity.get("unit", "") if obs.value_quantity else "",
                     "name": name,
                     "status": status,
                     "biomarker_id": str(obs.biomarker_id)
@@ -1017,10 +964,11 @@ async def get_biomarker_trends(
             )
 
     # Telemetry Data Aggregation using TimescaleDB
-    from sqlalchemy import text
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    now = datetime.now(timezone.utc)
+    from sqlalchemy import text
+
+    now = datetime.now(UTC)
 
     PERIOD_MAPPING = {
         "last-1-hour": {"delta": timedelta(hours=1), "bucket": "1 minute"},
@@ -1085,9 +1033,7 @@ async def get_biomarker_trends(
             text_codes.extend([s for s in def_res.scalars().all() if s])
 
         telemetry_to_query = [
-            s
-            for s in telemetry_slugs
-            if any(c.lower() in s.lower() for c in text_codes)
+            s for s in telemetry_slugs if any(c.lower() in s.lower() for c in text_codes)
         ]
     else:
         telemetry_to_query = telemetry_slugs
@@ -1213,12 +1159,8 @@ async def get_biomarker_trends(
                             "name": b_def.name if b_def else slug,
                             "status": "Normal",
                             "biomarker_id": str(b_def.id) if b_def else None,
-                            "reference_range_min": b_def.reference_range_min
-                            if b_def
-                            else None,
-                            "reference_range_max": b_def.reference_range_max
-                            if b_def
-                            else None,
+                            "reference_range_min": b_def.reference_range_min if b_def else None,
+                            "reference_range_max": b_def.reference_range_max if b_def else None,
                             "reference_range_text": f"{b_def.reference_range_min} - {b_def.reference_range_max}"
                             if b_def and b_def.reference_range_min
                             else "--",
@@ -1233,9 +1175,7 @@ async def get_biomarker_trends(
                         }
                     )
         except Exception as e:
-            logger.error(
-                f"Failed to query telemetry data for '{slug}': {e}", exc_info=True
-            )
+            logger.error(f"Failed to query telemetry data for '{slug}': {e}", exc_info=True)
             # If timescale is not perfectly configured or missing data, skip
             pass
 
@@ -1247,8 +1187,8 @@ async def get_biomarker_trends(
 
 async def get_biomarker_anomalies(
     tenant_id: str,
-    biomarker_codes: str = None,
-    patient_id: str = None,
+    biomarker_codes: str | None = None,
+    patient_id: str | None = None,
     db: AsyncSession = None,
 ) -> dict:
     """Detect anomalies in biomarker trends by reusing the trends pipeline
@@ -1330,7 +1270,7 @@ async def get_biomarker_anomalies(
 
 async def get_analytics_summary(
     tenant_id: str,
-    patient_id: str = None,
+    patient_id: str | None = None,
     period: str = "last-year",
     db: AsyncSession = None,
 ) -> dict:
@@ -1343,18 +1283,14 @@ async def get_analytics_summary(
             "last_upload": "",
         }
 
-    doc_query = select(func.count(DocumentModel.id)).where(
-        DocumentModel.tenant_id == tenant_id
-    )
+    doc_query = select(func.count(DocumentModel.id)).where(DocumentModel.tenant_id == tenant_id)
     if patient_id:
         doc_query = doc_query.where(DocumentModel.patient_id == patient_id)
 
     result = await db.execute(doc_query)
     total_documents = result.scalar() or 0
 
-    obs_query = select(func.count(Observation.id)).where(
-        Observation.tenant_id == tenant_id
-    )
+    obs_query = select(func.count(Observation.id)).where(Observation.tenant_id == tenant_id)
     if patient_id:
         obs_query = obs_query.where(
             Observation.subject["reference"].as_string() == f"Patient/{patient_id}"
@@ -1363,25 +1299,17 @@ async def get_analytics_summary(
     result = await db.execute(obs_query)
     total_observations = result.scalar() or 0
 
-    med_query = select(func.count(Medication.id)).where(
-        Medication.tenant_id == tenant_id
-    )
+    med_query = select(func.count(Medication.id)).where(Medication.tenant_id == tenant_id)
     if patient_id:
         med_query = med_query.where(Medication.patient_id == patient_id)
 
     result = await db.execute(med_query)
     total_medications = result.scalar() or 0
 
-    last_upload_query = select(DocumentModel.updated_at).where(
-        DocumentModel.tenant_id == tenant_id
-    )
+    last_upload_query = select(DocumentModel.updated_at).where(DocumentModel.tenant_id == tenant_id)
     if patient_id:
-        last_upload_query = last_upload_query.where(
-            DocumentModel.patient_id == patient_id
-        )
-    last_upload_query = last_upload_query.order_by(
-        DocumentModel.updated_at.desc()
-    ).limit(1)
+        last_upload_query = last_upload_query.where(DocumentModel.patient_id == patient_id)
+    last_upload_query = last_upload_query.order_by(DocumentModel.updated_at.desc()).limit(1)
 
     result = await db.execute(last_upload_query)
     last_upload_row = result.scalar_one_or_none()
@@ -1399,7 +1327,7 @@ async def get_analytics_summary(
 async def get_category_analytics(
     tenant_id: str,
     category_name: str,
-    patient_id: str = None,
+    patient_id: str | None = None,
     db: AsyncSession = None,
 ) -> dict:
     if not db:
@@ -1482,32 +1410,18 @@ async def get_category_analytics(
 
             if val is not None:
                 obs_date = obs.effective_datetime
-                if obs.document_id and obs.document_id in [
-                    d.id for d in documents
-                ]:
-                    doc_obj = next(
-                        (d for d in documents if d.id == obs.document_id), None
-                    )
-                    if (
-                        doc_obj
-                        and doc_obj.examination_id
-                        and doc_obj.examination_id in exams_map
-                    ):
+                if obs.document_id and obs.document_id in [d.id for d in documents]:
+                    doc_obj = next((d for d in documents if d.id == obs.document_id), None)
+                    if doc_obj and doc_obj.examination_id and doc_obj.examination_id in exams_map:
                         exam_date = exams_map[doc_obj.examination_id]
                         if exam_date:
-                            from datetime import timezone
-
-                            obs_date = datetime.combine(
-                                exam_date, datetime.min.time(), tzinfo=timezone.utc
-                            )
+                            obs_date = datetime.combine(exam_date, datetime.min.time(), tzinfo=UTC)
 
                 trends[key].append(
                     {
                         "date": obs_date.isoformat() if obs_date else "",
                         "value": val,
-                        "unit": obs.value_quantity.get("unit", "")
-                        if obs.value_quantity
-                        else "",
+                        "unit": obs.value_quantity.get("unit", "") if obs.value_quantity else "",
                         "name": name,
                         "relative_score": getattr(obs, "relative_score", None),
                     }
@@ -1530,8 +1444,8 @@ async def get_biomarker_state_history(
     slug: str,
     *,
     limit: int = 500,
-    db: Optional[AsyncSession] = None,
-) -> List[Dict[str, Any]]:
+    db: AsyncSession | None = None,
+) -> list[dict[str, Any]]:
     """Chronological state history for a single-state biomarker.
 
     Returns a list of ``{timestamp, state_code, state_system, display,
@@ -1553,25 +1467,22 @@ async def get_biomarker_state_history(
 
     # Resolve the biomarker definition (global + tenant scope).
     bio = (
-        (
-            await session.execute(
-                select(BiomarkerDefinition)
-                .where(
-                    BiomarkerDefinition.slug == slug,
-                    or_(
-                        BiomarkerDefinition.tenant_id.is_(None),
-                        BiomarkerDefinition.tenant_id == tenant_id,
-                    ),
-                )
-                .options(
-                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
-                        BiomarkerAllowedState.state
-                    )
+        await session.execute(
+            select(BiomarkerDefinition)
+            .where(
+                BiomarkerDefinition.slug == slug,
+                or_(
+                    BiomarkerDefinition.tenant_id.is_(None),
+                    BiomarkerDefinition.tenant_id == tenant_id,
+                ),
+            )
+            .options(
+                selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                    BiomarkerAllowedState.state
                 )
             )
         )
-        .scalar_one_or_none()
-    )
+    ).scalar_one_or_none()
     if bio is None or bio.value_type != "state":
         return []
 
@@ -1609,9 +1520,7 @@ async def get_biomarker_state_history(
             continue
         history.append(
             {
-                "timestamp": obs.effective_datetime.isoformat()
-                if obs.effective_datetime
-                else None,
+                "timestamp": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
                 "state_code": pair[0],
                 "state_system": pair[1],
                 "display": pair_to_display.get(pair, pair[0]),
@@ -1628,8 +1537,8 @@ async def get_multi_state_history(
     slug: str,
     *,
     limit: int = 500,
-    db: Optional[AsyncSession] = None,
-) -> Dict[str, List[Dict[str, Any]]]:
+    db: AsyncSession | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     """Per-component state history for a multi-state biomarker.
 
     Returns ``{component_code: [{timestamp, state_code, state_system,
@@ -1651,25 +1560,22 @@ async def get_multi_state_history(
             )
 
     bio = (
-        (
-            await session.execute(
-                select(BiomarkerDefinition)
-                .where(
-                    BiomarkerDefinition.slug == slug,
-                    or_(
-                        BiomarkerDefinition.tenant_id.is_(None),
-                        BiomarkerDefinition.tenant_id == tenant_id,
-                    ),
-                )
-                .options(
-                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
-                        BiomarkerAllowedState.state
-                    )
+        await session.execute(
+            select(BiomarkerDefinition)
+            .where(
+                BiomarkerDefinition.slug == slug,
+                or_(
+                    BiomarkerDefinition.tenant_id.is_(None),
+                    BiomarkerDefinition.tenant_id == tenant_id,
+                ),
+            )
+            .options(
+                selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                    BiomarkerAllowedState.state
                 )
             )
         )
-        .scalar_one_or_none()
-    )
+    ).scalar_one_or_none()
     if bio is None or not bio.supports_multi_state:
         return {}
 
@@ -1699,11 +1605,9 @@ async def get_multi_state_history(
         .all()
     )
 
-    tracks: Dict[str, List[Dict[str, Any]]] = {}
+    tracks: dict[str, list[dict[str, Any]]] = {}
     for obs in observations:
-        ts = (
-            obs.effective_datetime.isoformat() if obs.effective_datetime else None
-        )
+        ts = obs.effective_datetime.isoformat() if obs.effective_datetime else None
         for comp in obs.component or []:
             comp_code_obj, value_cc = _normalize_component_value(comp)
             if comp_code_obj is None or value_cc is None:

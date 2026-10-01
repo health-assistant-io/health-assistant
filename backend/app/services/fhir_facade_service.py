@@ -8,7 +8,7 @@ the facade endpoints. Per-resource CRUD lives in :mod:`app.services.fhir_service
 import datetime as _dt
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 from app.facade.registry import RESOURCE_REGISTRY
 from app.facade.search_params import RESOURCE_PARAMS
@@ -24,7 +24,7 @@ def get_software_version() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(here, "..", "core", "config.py")
     try:
-        with open(config_path, "r", encoding="utf-8") as fh:
+        with open(config_path, encoding="utf-8") as fh:
             text = fh.read()
         match = re.search(r'VERSION:\s*str\s*=\s*"([^"]+)"', text)
         if match:
@@ -34,7 +34,7 @@ def get_software_version() -> str:
     return "0.0.0+unknown"
 
 
-def build_capability_statement(base_url: str) -> Dict[str, Any]:
+def build_capability_statement(base_url: str) -> dict[str, Any]:
     """Build a FHIR R4 CapabilityStatement for the facade.
 
     The statement is built dynamically from the :data:`RESOURCE_REGISTRY` so
@@ -57,7 +57,7 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
     """
     software_version = get_software_version()
 
-    resources: List[Dict[str, Any]] = []
+    resources: list[dict[str, Any]] = []
     for entry in RESOURCE_REGISTRY.all():
         params = sorted(
             RESOURCE_PARAMS.get(entry.resource_type, set())
@@ -110,7 +110,7 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
     return {
         "resourceType": "CapabilityStatement",
         "status": "active",
-        "date": _dt.datetime.now(_dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "date": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
         "publisher": "Health Assistant",
         "kind": "instance",
         "fhirVersion": FHIR_VERSION,
@@ -186,7 +186,7 @@ def build_capability_statement(base_url: str) -> Dict[str, Any]:
     }
 
 
-def build_smart_configuration() -> Dict[str, Any]:
+def build_smart_configuration() -> dict[str, Any]:
     """Build the SMART-on-FHIR discovery document (``/.well-known/smart-
     configuration``).
 

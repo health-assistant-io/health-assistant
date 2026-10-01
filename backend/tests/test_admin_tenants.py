@@ -17,8 +17,9 @@ These pin the contract for ``/api/v1/admin/tenants`` and the
 The tests follow the mock-heavy style used by the rest of the suite
 (``app.dependency_overrides`` for auth, ``AsyncMock`` for the session).
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,7 +33,6 @@ from app.schemas.tenant import (
     UpdateTenantUser,
 )
 from app.services.tenant_admin_service import TenantAdminService
-
 
 # ---------------------------------------------------------------------------
 # Token-data fixtures
@@ -98,8 +98,8 @@ def _tenant_row(
     fake.is_active = is_active
     fake.owner_id = owner_id
     fake.settings = settings or {}
-    fake.created_at = datetime.now(timezone.utc)
-    fake.updated_at = datetime.now(timezone.utc)
+    fake.created_at = datetime.now(UTC)
+    fake.updated_at = datetime.now(UTC)
     return fake
 
 
@@ -111,8 +111,8 @@ def _user_row(*, id=None, tenant_id=None, role=Role.USER, is_active=True):
     fake.role = role if isinstance(role, Role) else Role(role)
     fake.is_active = is_active
     fake.settings = {}
-    fake.created_at = datetime.now(timezone.utc)
-    fake.updated_at = datetime.now(timezone.utc)
+    fake.created_at = datetime.now(UTC)
+    fake.updated_at = datetime.now(UTC)
     return fake
 
 
@@ -161,7 +161,11 @@ async def test_admin_routes_forbidden_for_non_admin(async_client):
             ("post", "/api/v1/admin/tenants", {}),
             ("get", f"/api/v1/admin/tenants/{uuid.uuid4()}", None),
             ("patch", f"/api/v1/admin/tenants/{uuid.uuid4()}", {}),
-            ("delete_request", f"/api/v1/admin/tenants/{uuid.uuid4()}", {"permanent": True, "confirm_name": "x"}),
+            (
+                "delete_request",
+                f"/api/v1/admin/tenants/{uuid.uuid4()}",
+                {"permanent": True, "confirm_name": "x"},
+            ),
             ("post", f"/api/v1/admin/tenants/{uuid.uuid4()}/switch", None),
         ]
         for method, url, body in cases:
@@ -171,7 +175,9 @@ async def test_admin_routes_forbidden_for_non_admin(async_client):
                 resp = await getattr(async_client, method)(url)
             else:
                 resp = await getattr(async_client, method)(url, json=body)
-            assert resp.status_code == 403, f"{role} on {method.upper()} {url} -> {resp.status_code}"
+            assert resp.status_code == 403, (
+                f"{role} on {method.upper()} {url} -> {resp.status_code}"
+            )
     app.dependency_overrides = {}
 
 
@@ -218,9 +224,7 @@ async def test_create_tenant_auto_generates_slug():
 
     db.add = _add
 
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ):
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
         tenant = await TenantAdminService(db).create_tenant(
             TenantCreate(name="Acme Health"), actor_id=actor
         )
@@ -239,9 +243,7 @@ async def test_create_tenant_appends_suffix_on_slug_collision():
     captured = {}
     db.add = lambda obj: captured.__setitem__("obj", obj)
 
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ):
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
         tenant = await TenantAdminService(db).create_tenant(
             TenantCreate(name="Acme"), actor_id=uuid.uuid4()
         )
@@ -266,9 +268,7 @@ async def test_hard_delete_rejects_wrong_confirm_name():
 async def test_hard_delete_succeeds_with_matching_confirm_name():
     tenant = _tenant_row(name="Acme")
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ) as mock_audit:
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()) as mock_audit:
         await TenantAdminService(db).hard_delete_tenant(
             tenant.id, confirm_name="Acme", actor_id=uuid.uuid4()
         )
@@ -297,9 +297,7 @@ async def test_switch_into_tenant_mints_scoped_jwt():
     admin = _admin_token_data(user_id=user.id)
     tenant = _tenant_row(is_active=True)
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ):
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
         result = await TenantAdminService(db).switch_into_tenant(tenant.id, actor=admin)
     # Decode the access token and verify claims.
     from app.core.security import decode_token
@@ -339,9 +337,7 @@ async def test_switch_back_restores_original_tenant():
     )
     tenant = _tenant_row(id=original_tid)
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ):
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
         result = await TenantAdminService(db).switch_back(actor=admin)
     from app.core.security import decode_token
 
@@ -409,9 +405,7 @@ async def test_update_tenant_user_writes_audit_log():
     tenant_id = uuid.uuid4()
     user = _user_row(tenant_id=tenant_id, role=Role.USER)
     db = _mock_db_with_results(_scalars_result([user]))
-    with patch(
-        "app.services.tenant_admin_service.log_audit_action", new=AsyncMock()
-    ) as mock_audit:
+    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()) as mock_audit:
         await TenantAdminService(db).update_tenant_user(
             tenant_id,
             user.id,
@@ -449,9 +443,7 @@ async def test_endpoint_list_tenants_returns_paginated(async_client):
 async def test_endpoint_create_tenant_returns_201(async_client):
     app.dependency_overrides[get_current_user] = lambda: _admin_token_data()
     tenant = _tenant_row()
-    with patch.object(
-        TenantAdminService, "create_tenant", new=AsyncMock(return_value=tenant)
-    ):
+    with patch.object(TenantAdminService, "create_tenant", new=AsyncMock(return_value=tenant)):
         resp = await async_client.post(
             "/api/v1/admin/tenants",
             json={"name": "Acme Health"},
@@ -473,6 +465,7 @@ async def test_endpoint_malformed_uuid_returns_400(async_client):
 async def test_endpoint_hard_delete_requires_confirmation_body(async_client):
     app.dependency_overrides[get_current_user] = lambda: _admin_token_data()
     tenant_id = uuid.uuid4()
+
     # Wrong confirm_name → 400 from service.
     async def _boom(*args, **kwargs):
         raise HTTPException(status_code=400, detail="nope")
@@ -511,9 +504,7 @@ async def test_endpoint_invite_mints_token(async_client):
         "role": "USER",
         "expires_in_days": 7,
     }
-    with patch.object(
-        TenantAdminService, "mint_invite", new=AsyncMock(return_value=payload)
-    ):
+    with patch.object(TenantAdminService, "mint_invite", new=AsyncMock(return_value=payload)):
         resp = await async_client.post(
             f"/api/v1/admin/tenants/{tenant_id}/invite",
             json={"role": "USER", "expires_days": 7},

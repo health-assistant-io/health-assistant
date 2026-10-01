@@ -7,6 +7,7 @@ outside the "default" demographic. The fix adds a child table
 and a specificity-ranked resolver that picks the best match for a patient,
 falling back to the legacy global range.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -25,7 +26,6 @@ from app.services.reference_ranges import (
     pick_reference_range,
     resolve_for_patient,
 )
-
 
 # ---------------------------------------------------------------------------
 # Pure helpers
@@ -82,21 +82,21 @@ async def test_table_exists_with_constraints():
     """The migration must have created the table + constraints + index."""
     async with AsyncSessionLocal() as session:
         exists = (
-            await session.execute(
-                text(
-                    "SELECT to_regclass('biomarker_reference_ranges')"
-                )
-            )
+            await session.execute(text("SELECT to_regclass('biomarker_reference_ranges')"))
         ).scalar()
         assert exists == "biomarker_reference_ranges"
         idx = (
-            await session.execute(
-                text(
-                    "SELECT indexname FROM pg_indexes "
-                    "WHERE tablename='biomarker_reference_ranges'"
+            (
+                await session.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE tablename='biomarker_reference_ranges'"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert "ix_biomarker_reference_ranges_biomarker_id" in idx
 
 
@@ -106,15 +106,15 @@ async def test_table_exists_with_constraints():
 
 
 def _bio(**kw) -> BiomarkerDefinition:
-    base = dict(
-        id=uuid.uuid4(),
-        slug="tsh",
-        name="TSH",
-        coding_system=None,
-        aliases=[],
-        reference_range_min=0.4,
-        reference_range_max=4.0,
-    )
+    base = {
+        "id": uuid.uuid4(),
+        "slug": "tsh",
+        "name": "TSH",
+        "coding_system": None,
+        "aliases": [],
+        "reference_range_min": 0.4,
+        "reference_range_max": 4.0,
+    }
     base.update(kw)
     return BiomarkerDefinition(**base)
 
@@ -196,9 +196,7 @@ def test_resolver_most_specific_wins_combining_dimensions():
         _range(sex=Gender.MALE, age_min=None, age_max=None, unit_id=None, low=0.5, high=5.0),
         _range(sex=Gender.MALE, age_min=19, age_max=99, unit_id=unit, low=0.6, high=6.0),
     ]
-    res = pick_reference_range(
-        bio, rows, sex=Gender.MALE, age=40, unit_id=unit
-    )
+    res = pick_reference_range(bio, rows, sex=Gender.MALE, age=40, unit_id=unit)
     assert (res.low, res.high) == (0.6, 6.0)
     assert res.source == "stratified"
 
@@ -226,9 +224,7 @@ async def _seed_biomarker_with_ranges(session, tenant_id):
     session.add_all(
         [
             BiomarkerReferenceRange(biomarker_id=bio.id, sex=None, low=0.4, high=4.0),
-            BiomarkerReferenceRange(
-                biomarker_id=bio.id, sex=Gender.MALE, low=0.5, high=5.0
-            ),
+            BiomarkerReferenceRange(biomarker_id=bio.id, sex=Gender.MALE, low=0.5, high=5.0),
             BiomarkerReferenceRange(
                 biomarker_id=bio.id,
                 sex=None,
@@ -294,7 +290,7 @@ async def test_resolve_for_patient_falls_back_when_unstratified():
 
         res = await resolve_for_patient(session, bio, patient)
         assert res is not None
-        # Catch-all row (0.4–4.0) outranks the legacy global, but they're equal
+        # Catch-all row (0.4-4.0) outranks the legacy global, but they're equal
         # here; both are the same value, so just assert the resolved bounds.
         assert (res.low, res.high) == (0.4, 4.0)
 
@@ -311,9 +307,7 @@ async def test_check_constraint_rejects_inverted_range():
         )
         session.add(bio)
         await session.flush()
-        session.add(
-            BiomarkerReferenceRange(biomarker_id=bio.id, low=10.0, high=1.0)
-        )
+        session.add(BiomarkerReferenceRange(biomarker_id=bio.id, low=10.0, high=1.0))
         with pytest.raises(IntegrityError):
             await session.commit()
         await session.rollback()
@@ -332,10 +326,7 @@ async def test_patient_delete_cascades_to_biomarker_and_ranges():
         bio_id = bio.id
         before = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM biomarker_reference_ranges "
-                    "WHERE biomarker_id = :bid"
-                ),
+                text("SELECT count(*) FROM biomarker_reference_ranges WHERE biomarker_id = :bid"),
                 {"bid": bio_id},
             )
         ).scalar()
@@ -344,10 +335,7 @@ async def test_patient_delete_cascades_to_biomarker_and_ranges():
         await session.commit()
         after = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM biomarker_reference_ranges "
-                    "WHERE biomarker_id = :bid"
-                ),
+                text("SELECT count(*) FROM biomarker_reference_ranges WHERE biomarker_id = :bid"),
                 {"bid": bio_id},
             )
         ).scalar()

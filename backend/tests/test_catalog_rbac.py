@@ -12,14 +12,15 @@ identical data):
 """
 
 import uuid
-from typing import Any, Callable, Dict, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
 from app.core.database import AsyncSessionLocal
+from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
-from app.models.biomarker_model import BiomarkerDefinition
 from app.models.tenant_model import TenantModel
 
 ROLES = ["USER", "ADMIN", "SYSTEM_ADMIN"]
@@ -27,18 +28,18 @@ ROLES = ["USER", "ADMIN", "SYSTEM_ADMIN"]
 
 async def _make_shared_tenant(
     roles=ROLES,
-) -> Tuple[uuid.UUID, Dict[str, Dict[str, str]]]:
+) -> tuple[uuid.UUID, dict[str, dict[str, str]]]:
     from tests._auth_helpers import headers_for_claims
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="RBAC", slug=f"rbac-{tenant_id}"))
         await db.commit()
-    headers: Dict[str, Dict[str, str]] = {}
+    headers: dict[str, dict[str, str]] = {}
     for role in roles:
         tok_headers = await headers_for_claims(
             {
-            "sub": f"{role.lower()}@test.local",
+                "sub": f"{role.lower()}@test.local",
                 "tenant_id": str(tenant_id),
                 "role": role,
             }
@@ -49,13 +50,9 @@ async def _make_shared_tenant(
 
 def _model_factory(type: str) -> Callable:
     if type == "biomarker":
-        return lambda tid, name: BiomarkerDefinition(
-            slug=f"slug-{name}", name=name, tenant_id=tid
-        )
+        return lambda tid, name: BiomarkerDefinition(slug=f"slug-{name}", name=name, tenant_id=tid)
     if type == "allergy":
-        return lambda tid, name: AllergyCatalog(
-            name=name, category="FOOD", tenant_id=tid
-        )
+        return lambda tid, name: AllergyCatalog(name=name, category="FOOD", tenant_id=tid)
     return lambda tid, name: MedicationCatalog(name=name, tenant_id=tid)
 
 
@@ -70,7 +67,7 @@ async def _create_row(type: str, tenant_id, name: str) -> str:
         return str(obj.id)
 
 
-def _create_payload(type: str, suffix: str) -> Dict[str, Any]:
+def _create_payload(type: str, suffix: str) -> dict[str, Any]:
     name = f"Item {suffix}"
     if type == "biomarker":
         return {"slug": f"item-{suffix}", "name": name}

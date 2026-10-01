@@ -15,7 +15,7 @@ enforced.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,9 +35,7 @@ def _require_descriptor(type: str):
     if not CatalogRegistry.is_registered(type):
         raise HTTPException(
             status_code=404,
-            detail=_UNKNOWN_TYPE_DETAIL.format(
-                type=type, available=CatalogRegistry.types()
-            ),
+            detail=_UNKNOWN_TYPE_DETAIL.format(type=type, available=CatalogRegistry.types()),
         )
     return CatalogRegistry.get(type)
 
@@ -112,10 +110,10 @@ async def list_relation_types(
 @router.get("/search")
 async def search_catalogs_endpoint(
     q: str = Query(..., min_length=2),
-    types: Optional[str] = Query(
+    types: str | None = Query(
         None, description="Comma-separated catalog types to search (default: all)"
     ),
-    kind: Optional[str] = Query(
+    kind: str | None = Query(
         None,
         description="ConceptKind value (e.g. 'event_category', 'specialty', "
         "'disease') to narrow the concept catalog. Ignored for non-concept "
@@ -141,7 +139,7 @@ async def search_catalogs_endpoint(
 
     # Validate the kind param up front so a typo is a 400, not a silent
     # "no results because nothing matched an unknown kind".
-    kind_enum: Optional[ConceptKind] = None
+    kind_enum: ConceptKind | None = None
     if kind:
         try:
             kind_enum = ConceptKind(kind.strip().lower())
@@ -149,9 +147,7 @@ async def search_catalogs_endpoint(
             valid = sorted(k.value for k in ConceptKind)
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"Unknown kind '{kind}'. Valid ConceptKind values: {valid}"
-                ),
+                detail=(f"Unknown kind '{kind}'. Valid ConceptKind values: {valid}"),
             ) from None
 
     results = await search_catalogs(
@@ -167,13 +163,13 @@ async def search_catalogs_endpoint(
 
 @router.get("/graph")
 async def get_catalog_graph(
-    types: Optional[str] = Query(
+    types: str | None = Query(
         None,
         description="Comma-separated EdgeEndpointType values to filter by "
         "(e.g. 'concept,biomarker,medication'). Only edges where both "
         "endpoints are of a requested type are returned. Omit for all types.",
     ),
-    kind: Optional[str] = Query(
+    kind: str | None = Query(
         None,
         description="Comma-separated ConceptKind values to filter concept "
         "endpoints by (e.g. 'disease,symptom'). Non-concept endpoints are "
@@ -207,11 +203,7 @@ async def get_catalog_graph(
     # Map catalog type names (e.g. "vaccine") to EdgeEndpointType values
     # (e.g. "immunization") via the registry. Most match directly, but
     # "vaccine" → "immunization" is the one mismatch.
-    raw_types = (
-        [t.strip().lower() for t in types.split(",") if t.strip()]
-        if types
-        else None
-    )
+    raw_types = [t.strip().lower() for t in types.split(",") if t.strip()] if types else None
     type_list = None
     if raw_types:
         type_list = []
@@ -221,11 +213,7 @@ async def get_catalog_graph(
                 type_list.append(desc.edge_endpoint_type.value)
             else:
                 type_list.append(t)  # might be a raw EdgeEndpointType value
-    kinds = (
-        [k.strip().lower() for k in kind.split(",") if k.strip()]
-        if kind
-        else None
-    )
+    kinds = [k.strip().lower() for k in kind.split(",") if k.strip()] if kind else None
     return await whole_catalog_graph(
         db,
         tenant_id=current_user.tenant_id,
@@ -239,24 +227,24 @@ async def get_catalog_graph(
 @router.get("/{type}")
 async def list_catalog_items(
     type: str,
-    search: Optional[str] = Query(None),
-    scope: Optional[str] = Query(
+    search: str | None = Query(None),
+    scope: str | None = Query(
         None,
         description="Narrow to a scope tier: system | tenant | user",
     ),
-    kind: Optional[str] = Query(
+    kind: str | None = Query(
         None,
         description="Domain kind filter. For the ``concept`` catalog type this "
         "filters by ``primary_kind`` (e.g. ``anatomy_class``, ``disease``).",
     ),
-    class_: Optional[str] = Query(
+    class_: str | None = Query(
         None,
         alias="class",
         description="Taxonomy-class concept slug(s) to filter by, e.g. "
         "``organ`` or ``organ,organ-part``. Works for any catalog whose items "
         "carry a ``class_concept_id`` FK.",
     ),
-    include: Optional[str] = Query(
+    include: str | None = Query(
         None,
         description="Comma-separated extras: 'relations' annotates each item "
         "with relation_count + relation_breakdown (one batched query).",
@@ -322,9 +310,7 @@ async def get_catalog_item(
     descriptor = _require_descriptor(type)
     item = await descriptor.service.get(db, current_user.tenant_id, item_id)
     if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"{type} item '{item_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return item
 
 
@@ -365,9 +351,7 @@ async def update_catalog_item(
     descriptor = _require_writable_descriptor(type)
     item = await descriptor.service.update(db, current_user, item_id, payload)
     if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"{type} item '{item_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return item
 
 
@@ -382,9 +366,7 @@ async def delete_catalog_item(
     descriptor = _require_writable_descriptor(type)
     deleted = await descriptor.service.delete(db, current_user, item_id)
     if not deleted:
-        raise HTTPException(
-            status_code=404, detail=f"{type} item '{item_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return {"status": "success", "message": f"{type} item deleted"}
 
 
@@ -410,14 +392,12 @@ async def promote_catalog_item(
     try:
         item = await descriptor.service.promote_scope(db, current_user, item_id, target)
     except ValueError:
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail=f"invalid scope '{target}'. Use: system | tenant | user",
         )
     if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"{type} item '{item_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return item
 
 
@@ -442,9 +422,7 @@ async def get_catalog_item_history(
     # The item must be visible to the caller before its history is revealed.
     item = await descriptor.service.get(db, current_user.tenant_id, item_id)
     if item is None:
-        raise HTTPException(
-            status_code=404, detail=f"{type} item '{item_id}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     rows = await list_history(
         db,
         tenant_id=current_user.tenant_id,
@@ -460,7 +438,7 @@ async def get_catalog_relations(
     type: str,
     item_id: UUID,
     depth: int = Query(2, ge=1, le=3),
-    relation: Optional[str] = Query(
+    relation: str | None = Query(
         None,
         description="Comma-separated relation whitelist, e.g. 'AFFECTS,TREATS'",
     ),
@@ -478,7 +456,7 @@ async def get_catalog_relations(
     from app.services.catalog_graph_service import traverse
 
     descriptor = _require_descriptor(type)
-    whitelist: Optional[tuple[ConceptRelationType, ...]] = None
+    whitelist: tuple[ConceptRelationType, ...] | None = None
     if relation:
         requested = [r.strip().upper() for r in relation.split(",") if r.strip()]
         valid = {rt.value for rt in ConceptRelationType}

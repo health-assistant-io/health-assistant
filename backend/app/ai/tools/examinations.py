@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Examination tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3). Includes the only write tool
@@ -5,7 +6,7 @@ Extracted from ``ChatbotTools`` (Phase 3). Includes the only write tool
 """
 
 import json
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
@@ -17,7 +18,7 @@ from app.models.examination_model import ExaminationModel
 
 
 @register_chat_tool("examinations")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_recent_examinations(limit: int = 5) -> str:
         """Fetch a list of recent clinical examinations/visits for the patient.
@@ -42,15 +43,9 @@ def build(ctx: ToolContext) -> List[Any]:
             summary.append(
                 {
                     "id": str(exam.id),
-                    "date": exam.examination_date.isoformat()
-                    if exam.examination_date
-                    else None,
-                    "category": exam.category_concept.name
-                    if exam.category_concept
-                    else None,
-                    "notes": exam.notes[:500]
-                    if exam.notes
-                    else None,  # Truncate long notes
+                    "date": exam.examination_date.isoformat() if exam.examination_date else None,
+                    "category": exam.category_concept.name if exam.category_concept else None,
+                    "notes": exam.notes[:500] if exam.notes else None,  # Truncate long notes
                     "diagnoses": exam.diagnoses,
                 }
             )
@@ -83,9 +78,7 @@ def build(ctx: ToolContext) -> List[Any]:
         # Map the core examination data
         summary = {
             "id": str(exam.id),
-            "date": exam.examination_date.isoformat()
-            if exam.examination_date
-            else None,
+            "date": exam.examination_date.isoformat() if exam.examination_date else None,
             "category": exam.category_concept.name if exam.category_concept else None,
             "notes": exam.notes,
             "patient_notes": exam.patient_notes,
@@ -117,13 +110,9 @@ def build(ctx: ToolContext) -> List[Any]:
                     "value": obs.value_quantity.get("value")
                     if obs.value_quantity
                     else obs.value_string,
-                    "unit": obs.value_quantity.get("unit")
-                    if obs.value_quantity
-                    else None,
+                    "unit": obs.value_quantity.get("unit") if obs.value_quantity else None,
                     "interpretation": obs.interpretation,
-                    "date": obs.effective_datetime.isoformat()
-                    if obs.effective_datetime
-                    else None,
+                    "date": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
                 }
             )
 

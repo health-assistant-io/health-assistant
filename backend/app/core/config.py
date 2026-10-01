@@ -1,13 +1,15 @@
+# ruff: noqa: SIM102 -- long immutable strings; reflow when touched
+import os
 import secrets
+from functools import lru_cache
 from pathlib import Path
+from typing import ClassVar
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
-from typing import Optional, ClassVar
-from functools import lru_cache
 
 
-def _resolve_env_file() -> Optional[str]:
+def _resolve_env_file() -> str | None:
     """Locate the .env file for Pydantic Settings.
 
     Precedence:
@@ -82,7 +84,7 @@ class Settings(BaseSettings):
     # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
     # neuronection_health_demo / neuronection_health_test[_gwN] via env.
     POSTGRES_DB: str = "neuronection_health"
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str | None = None
 
     @model_validator(mode="after")
     def assemble_db_connection(self) -> "Settings":
@@ -110,10 +112,7 @@ class Settings(BaseSettings):
         active_password = parsed_url.password or ""
 
         if self.APP_ENV not in ("development", "test", "testing"):
-            if (
-                active_password in weak_passwords
-                or active_password == "secure_password_here"
-            ):
+            if active_password in weak_passwords or active_password == "secure_password_here":
                 raise ValueError(
                     "A strong database password must be provided in the DATABASE_URL "
                     f"for APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
@@ -126,7 +125,7 @@ class Settings(BaseSettings):
     # Redis
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_URL: Optional[str] = None
+    REDIS_URL: str | None = None
 
     @model_validator(mode="after")
     def assemble_redis_connection(self) -> "Settings":
@@ -165,12 +164,12 @@ class Settings(BaseSettings):
     # cross-purpose values, so a stale legacy .env fails loudly, not
     # silently). Dev/test fall back to per-process ephemeral keys
     # (logins do not survive a restart).
-    HA_SESSION_KEY: Optional[str] = None
-    HA_REFRESH_KEY: Optional[str] = None
+    HA_SESSION_KEY: str | None = None
+    HA_REFRESH_KEY: str | None = None
     # Fernet key material (base64 32 bytes). The padded ``Fernet.generate_key()``
     # form is the canonical shape; the kit's unpadded token form is accepted
     # too (app.core.encryption normalizes the padding).
-    HA_DATA_KEY: Optional[str] = None
+    HA_DATA_KEY: str | None = None
     # Prior Fernet keys (comma-separated) accepted for DECRYPTION only so
     # ciphertext sealed before a rotation keeps decrypting; the primary
     # HA_DATA_KEY always encrypts (the rotation ring — see
@@ -188,7 +187,7 @@ class Settings(BaseSettings):
     # ``disabled`` — never require; only safe behind a firewall / VPN / 127.0.0.1
     #                bind. Logs a security warning on every fresh boot.
     SETUP_TOKEN_MODE: str = "log"
-    SETUP_BOOTSTRAP_TOKEN: Optional[str] = None
+    SETUP_BOOTSTRAP_TOKEN: str | None = None
     SETUP_TOKEN_GRACE_MINUTES: int = 30
 
     @model_validator(mode="after")
@@ -206,8 +205,7 @@ class Settings(BaseSettings):
         allowed = {"log", "env", "time", "disabled"}
         if self.SETUP_TOKEN_MODE not in allowed:
             raise ValueError(
-                f"SETUP_TOKEN_MODE must be one of {sorted(allowed)}; "
-                f"got {self.SETUP_TOKEN_MODE!r}."
+                f"SETUP_TOKEN_MODE must be one of {sorted(allowed)}; got {self.SETUP_TOKEN_MODE!r}."
             )
         if self.SETUP_TOKEN_MODE == "env" and not self.SETUP_BOOTSTRAP_TOKEN:
             logging.warning(
@@ -237,9 +235,7 @@ class Settings(BaseSettings):
             import logging
 
             if self.APP_ENV not in ("development", "test", "testing"):
-                accept = (
-                    os.getenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", "").strip().lower()
-                )
+                accept = os.getenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", "").strip().lower()
                 if accept not in ("1", "true", "yes"):
                     raise ValueError(
                         "DEMO_MODE=true in APP_ENV="
@@ -299,9 +295,7 @@ class Settings(BaseSettings):
             return False
         if v.isdigit():
             return False
-        if _re.fullmatch(r"[a-z]+", v.lower()):
-            return False
-        return True
+        return not _re.fullmatch(r"[a-z]+", v.lower())
 
     @staticmethod
     def _is_valid_fernet_material(value: str) -> bool:
@@ -405,15 +399,13 @@ class Settings(BaseSettings):
     # WebSocket handshake. Empty/None = same-origin (request Host) +
     # APP_URL/FRONTEND_URL (the CORS list; the dev LAN regex applies in
     # development).
-    HA_WS_ALLOWED_ORIGINS: Optional[str] = None
+    HA_WS_ALLOWED_ORIGINS: str | None = None
 
     @model_validator(mode="after")
     def _validate_auth_lifetimes(self) -> "Settings":
         """§8 lifetime invariants — fail fast on impossible configurations."""
         if not 1 <= self.HA_AUTH_ACCESS_TTL_MINUTES <= 24 * 60:
-            raise ValueError(
-                "HA_AUTH_ACCESS_TTL_MINUTES must be 1..1440 (24h hard cap per §8)."
-            )
+            raise ValueError("HA_AUTH_ACCESS_TTL_MINUTES must be 1..1440 (24h hard cap per §8).")
         if self.HA_AUTH_REFRESH_TTL_DAYS < 1:
             raise ValueError("HA_AUTH_REFRESH_TTL_DAYS must be >= 1.")
         if self.HA_AUTH_REFRESH_ABSOLUTE_DAYS < self.HA_AUTH_REFRESH_TTL_DAYS:
@@ -422,13 +414,9 @@ class Settings(BaseSettings):
                 "(rolling window inside the absolute cap)."
             )
         if self.HA_AUTH_LOCKOUT_THRESHOLD < 1 or self.HA_AUTH_LOCKOUT_MINUTES < 1:
-            raise ValueError(
-                "HA_AUTH_LOCKOUT_THRESHOLD / HA_AUTH_LOCKOUT_MINUTES must be >= 1."
-            )
+            raise ValueError("HA_AUTH_LOCKOUT_THRESHOLD / HA_AUTH_LOCKOUT_MINUTES must be >= 1.")
         if self.HA_COOKIE_SAMESITE.lower() not in ("lax", "strict", "none"):
-            raise ValueError(
-                "HA_COOKIE_SAMESITE must be one of lax|strict|none (§10 default Lax)."
-            )
+            raise ValueError("HA_COOKIE_SAMESITE must be one of lax|strict|none (§10 default Lax).")
         if self.HA_COOKIE_SAMESITE.lower() == "none" and not self.HA_COOKIE_SECURE:
             raise ValueError(
                 "HA_COOKIE_SAMESITE=none requires HA_COOKIE_SECURE=true "
@@ -470,15 +458,15 @@ class Settings(BaseSettings):
     # code defaults; ``0`` disables the bucket. Unset ⇒ route defaults only
     # (the pre-§16 behavior — see app/core/rate_limit.py).
     HA_RATELIMIT_ENABLED: bool = True
-    HA_RATELIMIT_AUTH: Optional[int] = None
-    HA_RATELIMIT_AUTH_EMAIL: Optional[int] = None
-    HA_RATELIMIT_AI: Optional[int] = None
-    HA_RATELIMIT_MCP: Optional[int] = None
-    HA_RATELIMIT_DEFAULT: Optional[int] = None
+    HA_RATELIMIT_AUTH: int | None = None
+    HA_RATELIMIT_AUTH_EMAIL: int | None = None
+    HA_RATELIMIT_AI: int | None = None
+    HA_RATELIMIT_MCP: int | None = None
+    HA_RATELIMIT_DEFAULT: int | None = None
 
     # AI/OCR - OpenAI Compatible API (used as fallback if no database configuration exists)
     OCR_PROVIDER: str = "openai"
-    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: str | None = None
     OPENAI_API_BASE: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4-vision-preview"
     OPENAI_MAX_TOKENS: int = 65536
@@ -517,8 +505,9 @@ class Settings(BaseSettings):
         """
         if not self.HA_DATA_KEY:
             if self.APP_ENV in ("development", "test", "testing"):
-                from cryptography.fernet import Fernet
                 import logging
+
+                from cryptography.fernet import Fernet
 
                 logging.warning(
                     "No HA_DATA_KEY provided; generating an ephemeral one for "
@@ -534,9 +523,9 @@ class Settings(BaseSettings):
         elif not self._is_valid_fernet_material(self.HA_DATA_KEY):
             raise ValueError(
                 "HA_DATA_KEY must be 32 bytes of urlsafe-base64 key material "
-                "(a Fernet key). Generate with: python -c \"from "
+                '(a Fernet key). Generate with: python -c "from '
                 "cryptography.fernet import Fernet; "
-                "print(Fernet.generate_key().decode())\""
+                'print(Fernet.generate_key().decode())"'
             )
         for prev in filter(None, (k.strip() for k in self.HA_DATA_KEY_PREVIOUS.split(","))):
             if not self._is_valid_fernet_material(prev):
@@ -600,8 +589,8 @@ class Settings(BaseSettings):
     # previous ``os.getenv(...)`` defaults bypassed pydantic and made the
     # prod-guard validator below ineffective (the os.getenv value was baked
     # in at class-definition time, before any test could monkeypatch env).
-    VAPID_PUBLIC_KEY: Optional[str] = None
-    VAPID_PRIVATE_KEY: Optional[str] = None
+    VAPID_PUBLIC_KEY: str | None = None
+    VAPID_PRIVATE_KEY: str | None = None
     VAPID_ADMIN_EMAIL: str = "admin@healthassistant.local"
 
     @model_validator(mode="after")
@@ -636,7 +625,7 @@ class Settings(BaseSettings):
     )
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()

@@ -7,14 +7,16 @@ from a non-FHIR source couldn't construct a proper systolic/diastolic
 observation. These tests pin the new setters and the value[x]/component
 mutual exclusion (FHIR R4 §3.1.1).
 """
+
 import datetime
 
 from integrations.sdk.observation_builder import ObservationBuilder
+
 from app.models.enums import CodingSystem
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 PATIENT = "00000000-0000-0000-0000-000000000002"
-NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
 
 def _builder() -> ObservationBuilder:
@@ -54,8 +56,7 @@ def test_component_uses_specified_coding_system():
     obs = (
         _builder()
         .set_biomarker("85354-9", "BP")
-        .add_component("8480-6", "Systolic", 120, "mmHg",
-                       coding_system=CodingSystem.SNOMED)
+        .add_component("8480-6", "Systolic", 120, "mmHg", coding_system=CodingSystem.SNOMED)
         .set_effective_date(NOW)
         .build()
     )
@@ -102,8 +103,9 @@ def test_add_category_single():
         _builder()
         .set_biomarker("8867-4", "Heart rate")
         .set_value(72, "bpm")
-        .add_category("vital-signs",
-                      system="http://terminology.hl7.org/CodeSystem/observation-category")
+        .add_category(
+            "vital-signs", system="http://terminology.hl7.org/CodeSystem/observation-category"
+        )
         .set_effective_date(NOW)
         .build()
     )
@@ -130,8 +132,7 @@ def test_set_performer():
         _builder()
         .set_biomarker("8867-4", "Heart rate")
         .set_value(72, "bpm")
-        .set_performer("Acme Lab", reference="Organization/abc",
-                       performer_type="Organization")
+        .set_performer("Acme Lab", reference="Organization/abc", performer_type="Organization")
         .set_effective_date(NOW)
         .build()
     )
@@ -186,10 +187,7 @@ def test_reset_clears_structural_fields():
     )
     b.reset()
     obs = (
-        b.set_biomarker("8867-4", "Heart rate")
-        .set_value(72, "bpm")
-        .set_effective_date(NOW)
-        .build()
+        b.set_biomarker("8867-4", "Heart rate").set_value(72, "bpm").set_effective_date(NOW).build()
     )
     assert obs.component is None
     assert obs.performer is None

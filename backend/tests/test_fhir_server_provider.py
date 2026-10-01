@@ -6,14 +6,14 @@ refresh-on-401 path, the push pipeline (echo exclusion, custom-coding exclusion,
 and the custom-action surface. HTTP mocked via httpx.MockTransport; DB access is
 mocked via AsyncSessionLocal; no Redis.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import httpx
 import pytest
-
 from integrations.fhir_server.provider import FhirServerProvider
 from integrations.sdk.exceptions import IntegrationAuthError
 
@@ -24,8 +24,12 @@ def _client(handler):
 
 def _lab_obs(code="2345-7"):
     return {
-        "resourceType": "Observation", "status": "final",
-        "code": {"coding": [{"system": "http://loinc.org", "code": code, "display": "Glucose"}], "text": "Glucose"},
+        "resourceType": "Observation",
+        "status": "final",
+        "code": {
+            "coding": [{"system": "http://loinc.org", "code": code, "display": "Glucose"}],
+            "text": "Glucose",
+        },
         "subject": {"reference": "Patient/REMOTE-1"},
         "valueQuantity": {"value": 95, "unit": "mg/dL", "code": "mg/dL"},
         "effectiveDateTime": "2026-06-01T10:00:00Z",
@@ -34,13 +38,22 @@ def _lab_obs(code="2345-7"):
 
 
 def _integration(auth_mode, **extra):
-    cfg = {"fhir_base_url": "https://ehr/fhir", "auth_mode": auth_mode,
-           "time_window_months": 12, "categories": "both", "sync_direction": "both"}
+    cfg = {
+        "fhir_base_url": "https://ehr/fhir",
+        "auth_mode": auth_mode,
+        "time_window_months": 12,
+        "categories": "both",
+        "sync_direction": "both",
+    }
     cfg.update(extra)
     return SimpleNamespace(
-        id="i1", tenant_id=uuid4(), patient_id=uuid4(),
-        user_config=cfg, is_debug_enabled=False,
-        instance_name="My Hospital", provider="fhir_server",
+        id="i1",
+        tenant_id=uuid4(),
+        patient_id=uuid4(),
+        user_config=cfg,
+        is_debug_enabled=False,
+        instance_name="My Hospital",
+        provider="fhir_server",
     )
 
 
@@ -66,9 +79,15 @@ async def test_pull_data_none_mode_tokenless_pull():
     """auth_mode=none -> no OAuth, tokenless FHIR search returns observations."""
     provider = FhirServerProvider()
     await provider.setup({})
-    provider._http_client = _client(lambda r: httpx.Response(200, json={
-        "resourceType": "Bundle", "entry": [{"resource": _lab_obs()}],
-    }))
+    provider._http_client = _client(
+        lambda r: httpx.Response(
+            200,
+            json={
+                "resourceType": "Bundle",
+                "entry": [{"resource": _lab_obs()}],
+            },
+        )
+    )
     integ = _integration("none")
     observations = await provider.pull_data(integ)
     assert len(observations) == 1
@@ -85,15 +104,25 @@ async def test_pull_preserves_canonical_category_list():
     provider = FhirServerProvider()
     await provider.setup({})
     remote = _lab_obs()
-    remote["category"] = [{
-        "coding": [{
-            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-            "code": "laboratory",
-        }]
-    }]
-    provider._http_client = _client(lambda r: httpx.Response(200, json={
-        "resourceType": "Bundle", "entry": [{"resource": remote}],
-    }))
+    remote["category"] = [
+        {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                    "code": "laboratory",
+                }
+            ]
+        }
+    ]
+    provider._http_client = _client(
+        lambda r: httpx.Response(
+            200,
+            json={
+                "resourceType": "Bundle",
+                "entry": [{"resource": remote}],
+            },
+        )
+    )
     observations = await provider.pull_data(_integration("none"))
     assert len(observations) == 1
     assert isinstance(observations[0].category, list)
@@ -106,9 +135,11 @@ async def test_pull_data_none_mode_sends_no_bearer():
     provider = FhirServerProvider()
     await provider.setup({})
     seen = {}
+
     def handler(request):
         seen["auth"] = request.headers.get("authorization")
         return httpx.Response(200, json={"resourceType": "Bundle", "entry": []})
+
     provider._http_client = _client(handler)
     await provider.pull_data(_integration("none"))
     assert seen["auth"] is None
@@ -120,7 +151,9 @@ async def test_pull_data_smart_mode_pending_returns_empty():
     """auth_mode=smart without _oauth (not yet authorized) -> no pull."""
     provider = FhirServerProvider()
     await provider.setup({})
-    provider._http_client = _client(lambda r: httpx.Response(200, json={"resourceType": "Bundle", "entry": []}))
+    provider._http_client = _client(
+        lambda r: httpx.Response(200, json={"resourceType": "Bundle", "entry": []})
+    )
     integ = _integration("smart")  # no _oauth blob
     assert await provider.pull_data(integ) == []
     await provider.close()
@@ -132,15 +165,21 @@ async def test_authorized_search_refreshes_on_401_race():
     provider = FhirServerProvider()
     await provider.setup({})
     state = {"first": True}
+
     def handler(request):
         if state["first"]:
             state["first"] = False
             return httpx.Response(401, text="expired")
-        return httpx.Response(200, json={"resourceType": "Bundle", "entry": [{"resource": _lab_obs()}]})
+        return httpx.Response(
+            200, json={"resourceType": "Bundle", "entry": [{"resource": _lab_obs()}]}
+        )
+
     provider._http_client = _client(handler)
     provider._smart = _FakeSmart(token="TOKEN")  # live token, but server 401s once
     integ = _integration("smart")
-    results = await provider._authorized_search(integ, "https://ehr/fhir", "Observation", {"patient": "REMOTE-1"})
+    results = await provider._authorized_search(
+        integ, "https://ehr/fhir", "Observation", {"patient": "REMOTE-1"}
+    )
     assert len(results) == 1
     assert provider._smart.force_refresh_calls == 1
     await provider.close()
@@ -150,12 +189,16 @@ async def test_authorized_search_refreshes_on_401_race():
 # sync_direction gating (Stage 2b)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_pull_data_skipped_when_direction_is_push_only():
     provider = FhirServerProvider()
     await provider.setup({})
-    provider._http_client = _client(lambda r: httpx.Response(
-        200, json={"resourceType": "Bundle", "entry": [{"resource": _lab_obs()}]}))
+    provider._http_client = _client(
+        lambda r: httpx.Response(
+            200, json={"resourceType": "Bundle", "entry": [{"resource": _lab_obs()}]}
+        )
+    )
     # pull must NOT happen -> empty list even though the server has data
     integ = _integration("none", sync_direction="push_only")
     assert await provider.pull_data(integ) == []
@@ -181,16 +224,20 @@ async def test_push_data_skipped_when_direction_is_pull_only():
 # Push pipeline (Stage 2b)
 # ---------------------------------------------------------------------------
 
+
 def _local_obs(*, system="http://loinc.org", code="2345-7", performer=None, oid=None, value=95):
     """A fake ORM Observation with the attributes _run_push reads."""
     oid = oid or uuid4()
-    code_dict = {"coding": [{"system": system, "code": code, "display": "Glucose"}], "text": "Glucose"}
+    code_dict = {
+        "coding": [{"system": system, "code": code, "display": "Glucose"}],
+        "text": "Glucose",
+    }
     return SimpleNamespace(
         id=oid,
         code=code_dict,
         performer=performer,
-        updated_at=datetime(2026, 6, 19, 12, 0, tzinfo=timezone.utc),
-        effective_datetime=datetime(2026, 6, 19, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 6, 19, 12, 0, tzinfo=UTC),
+        effective_datetime=datetime(2026, 6, 19, 12, 0, tzinfo=UTC),
         value_quantity={"value": value, "unit": "mg/dL", "code": "mg/dL"},
         value_string=None,
         value_codeable_concept=None,
@@ -236,7 +283,9 @@ async def test_run_push_excludes_echo_and_custom_coding_and_rewrites_subject():
     echo_ref = f"Integration/{integ.id}"
     pushable = _local_obs(oid=uuid4())  # LOINC, no performer -> pushed
     echo = _local_obs(oid=uuid4(), performer=[{"reference": echo_ref, "display": "My Hospital"}])
-    custom = _local_obs(oid=uuid4(), system="http://healthassistant.local/custom", code="HK_HeartRate")
+    custom = _local_obs(
+        oid=uuid4(), system="http://healthassistant.local/custom", code="HK_HeartRate"
+    )
 
     captured = {}
 
@@ -246,16 +295,24 @@ async def test_run_push_excludes_echo_and_custom_coding_and_rewrites_subject():
         captured["access_token"] = access_token
         return 201, {"id": "server-1"}
 
-    with _patch_db([pushable, echo, custom]), \
-         patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update):
+    with (
+        _patch_db([pushable, echo, custom]),
+        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+    ):
         result = await provider._run_push(integ)
 
     assert result["created"] == 1
     assert result["pushed"] == 1
     # subject rewritten to the remote patient (none-mode uses remote_patient_id)
-    assert captured["body"]["subject"] == {"reference": "Patient/REMOTE-1"} or captured["body"]["subject"]["reference"].startswith("Patient/")
+    assert captured["body"]["subject"] == {"reference": "Patient/REMOTE-1"} or captured["body"][
+        "subject"
+    ]["reference"].startswith("Patient/")
     # the local-UUID identifier is stamped
-    idents = [i for i in captured["body"]["identifier"] if i.get("system") == "urn:healthassistant:observation"]
+    idents = [
+        i
+        for i in captured["body"]["identifier"]
+        if i.get("system") == "urn:healthassistant:observation"
+    ]
     assert len(idents) == 1
     assert idents[0]["value"] == str(pushable.id)
     # server-controlled fields dropped
@@ -278,8 +335,10 @@ async def test_run_push_412_counted_as_skipped():
     async def fake_update(*a, **kw):
         return 412, {"resourceType": "OperationOutcome"}
 
-    with _patch_db([obs]), \
-         patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update):
+    with (
+        _patch_db([obs]),
+        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+    ):
         result = await provider._run_push(integ)
 
     assert result["created"] == 0
@@ -304,8 +363,10 @@ async def test_run_push_excludes_background_echo_by_domain_display():
         calls.append(kw.get("search_params"))
         return 201, {}
 
-    with _patch_db([bg_echo, pushable]), \
-         patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update):
+    with (
+        _patch_db([bg_echo, pushable]),
+        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+    ):
         result = await provider._run_push(integ)
 
     assert result["created"] == 1  # only the non-echo one
@@ -329,6 +390,7 @@ async def test_push_data_smart_pending_noop():
 # ---------------------------------------------------------------------------
 # Check connection
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_check_connection_tokenless_reads_capability_statement():
@@ -375,13 +437,18 @@ async def test_check_connection_http_error_reported():
 # Custom actions
 # ---------------------------------------------------------------------------
 
+
 def test_custom_actions_declared():
     provider = FhirServerProvider()
     actions = provider.get_custom_actions()
     ids = {a["id"] for a in actions}
     assert ids == {
-        "check_connection", "find_patient", "pull_now",
-        "push_now", "push_preview", "reset_cursors",
+        "check_connection",
+        "find_patient",
+        "pull_now",
+        "push_now",
+        "push_preview",
+        "reset_cursors",
     }
     # the patient-picker action carries the modal hint for the frontend
     find = next(a for a in actions if a["id"] == "find_patient")
@@ -418,8 +485,10 @@ async def test_action_push_preview_lists_candidates_without_sending():
         sent.append(kw)
         return 201, {}
 
-    with _patch_db([pushable, echo]), \
-         patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update):
+    with (
+        _patch_db([pushable, echo]),
+        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+    ):
         response = await provider.execute_custom_action(integ, "push_preview")
 
     # preview must NOT push anything
@@ -442,14 +511,17 @@ async def test_unknown_action_raises_not_implemented():
 
 
 # ===========================================================================
-# Multi-resource sync (Phases 1–4 of the fhir-server multi-resource sync plan)
+# Multi-resource sync (Phases 1-4 of the fhir-server multi-resource sync plan)
 # ===========================================================================
 
 
 def _bundle(resources, *, next_url=None):
     """Build a FHIR searchset Bundle wrapping ``resources``."""
-    bundle = {"resourceType": "Bundle", "type": "searchset",
-              "entry": [{"resource": r} for r in resources]}
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "searchset",
+        "entry": [{"resource": r} for r in resources],
+    }
     if next_url:
         bundle["link"] = [{"relation": "next", "url": next_url}]
     return bundle
@@ -457,9 +529,12 @@ def _bundle(resources, *, next_url=None):
 
 def _condition(rid="cond-1", last_updated="2026-06-01T10:00:00Z"):
     return {
-        "resourceType": "Condition", "id": rid,
-        "code": {"text": "Type 2 Diabetes",
-                 "coding": [{"system": "http://snomed.info/sct", "code": "44054006"}]},
+        "resourceType": "Condition",
+        "id": rid,
+        "code": {
+            "text": "Type 2 Diabetes",
+            "coding": [{"system": "http://snomed.info/sct", "code": "44054006"}],
+        },
         "clinicalStatus": {"coding": [{"code": "active"}]},
         "onsetDateTime": "2020-01-01T00:00:00Z",
         "meta": {"lastUpdated": last_updated},
@@ -468,7 +543,8 @@ def _condition(rid="cond-1", last_updated="2026-06-01T10:00:00Z"):
 
 def _encounter(rid="enc-1", last_updated="2026-06-02T10:00:00Z"):
     return {
-        "resourceType": "Encounter", "id": rid,
+        "resourceType": "Encounter",
+        "id": rid,
         "status": "finished",
         "class": {"code": "AMB"},
         "period": {"start": "2026-05-01T10:00:00Z"},
@@ -479,9 +555,12 @@ def _encounter(rid="enc-1", last_updated="2026-06-02T10:00:00Z"):
 
 def _doc_ref(rid="doc-1", url="http://ehr/fhir/Binary/abc"):
     return {
-        "resourceType": "DocumentReference", "id": rid, "status": "current",
-        "content": [{"attachment": {"url": url, "title": "report.pdf",
-                                    "contentType": "application/pdf"}}],
+        "resourceType": "DocumentReference",
+        "id": rid,
+        "status": "current",
+        "content": [
+            {"attachment": {"url": url, "title": "report.pdf", "contentType": "application/pdf"}}
+        ],
         "category": [{"coding": [{"code": "lab-report", "display": "Lab Report"}]}],
         "context": {"encounter": [{"reference": "Encounter/enc-1"}]},
         "meta": {"lastUpdated": "2026-06-03T10:00:00Z"},
@@ -490,9 +569,13 @@ def _doc_ref(rid="doc-1", url="http://ehr/fhir/Binary/abc"):
 
 def _med_statement(rid="med-1"):
     return {
-        "resourceType": "MedicationStatement", "id": rid, "status": "active",
-        "medicationCodeableConcept": {"text": "Metformin",
-            "coding": [{"system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "860975"}]},
+        "resourceType": "MedicationStatement",
+        "id": rid,
+        "status": "active",
+        "medicationCodeableConcept": {
+            "text": "Metformin",
+            "coding": [{"system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "860975"}],
+        },
         "effectiveDateTime": "2026-01-01",
         "dosage": [{"text": "500mg twice daily"}],
         "meta": {"lastUpdated": "2026-06-04T10:00:00Z"},
@@ -501,7 +584,9 @@ def _med_statement(rid="med-1"):
 
 def _med_request(rid="req-1"):
     return {
-        "resourceType": "MedicationRequest", "id": rid, "status": "active",
+        "resourceType": "MedicationRequest",
+        "id": rid,
+        "status": "active",
         "intent": "order",
         "medicationCodeableConcept": {"text": "Lisinopril"},
         "authoredOn": "2026-02-01",
@@ -512,21 +597,29 @@ def _med_request(rid="req-1"):
 
 def _allergy(rid="alg-1"):
     return {
-        "resourceType": "AllergyIntolerance", "id": rid,
-        "code": {"text": "Penicillin",
-                 "coding": [{"system": "http://snomed.info/sct", "code": "91936005"}]},
+        "resourceType": "AllergyIntolerance",
+        "id": rid,
+        "code": {
+            "text": "Penicillin",
+            "coding": [{"system": "http://snomed.info/sct", "code": "91936005"}],
+        },
         "clinicalStatus": {"coding": [{"code": "active"}]},
         "verificationStatus": {"coding": [{"code": "confirmed"}]},
-        "category": ["medication"], "criticality": "high",
+        "category": ["medication"],
+        "criticality": "high",
         "meta": {"lastUpdated": "2026-06-06T10:00:00Z"},
     }
 
 
 def _immunization(rid="imm-1"):
     return {
-        "resourceType": "Immunization", "id": rid, "status": "completed",
-        "vaccineCode": {"text": "Influenza vaccine",
-                        "coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "140"}]},
+        "resourceType": "Immunization",
+        "id": rid,
+        "status": "completed",
+        "vaccineCode": {
+            "text": "Influenza vaccine",
+            "coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "140"}],
+        },
         "occurrenceDateTime": "2025-10-15T09:00:00Z",
         "lotNumber": "LOT123",
         "meta": {"lastUpdated": "2026-06-07T10:00:00Z"},
@@ -539,11 +632,13 @@ def _client_routing(routes):
     ``routes`` is a list of ``(url_substring, responder)`` where responder
     takes the request and returns an httpx.Response.
     """
+
     def handler(request):
         for needle, responder in routes:
             if needle in str(request.url):
                 return responder(request)
         return httpx.Response(404, text=f"no route for {request.url}")
+
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
@@ -671,8 +766,9 @@ async def test_pull_documents_fetches_attachment_and_returns_pull():
         if "DocumentReference" in url:
             return httpx.Response(200, json=_bundle([_doc_ref()]))
         if "Binary/abc" in url:
-            return httpx.Response(200, content=pdf_bytes,
-                                  headers={"content-type": "application/pdf"})
+            return httpx.Response(
+                200, content=pdf_bytes, headers={"content-type": "application/pdf"}
+            )
         return httpx.Response(404)
 
     provider._http_client = _client(handler)
@@ -685,7 +781,9 @@ async def test_pull_documents_fetches_attachment_and_returns_pull():
     assert pull.external_id == "doc-1"  # DB-level dedup key
     assert pull.examination_external_id == "enc-1"  # linked Encounter id
     assert pull.category_concept_slug == "lab-report"
-    assert provider.get_sync_cursor(integ, "last_updated:DocumentReference") == "2026-06-03T10:00:00Z"
+    assert (
+        provider.get_sync_cursor(integ, "last_updated:DocumentReference") == "2026-06-03T10:00:00Z"
+    )
     await provider.close()
 
 
@@ -697,7 +795,9 @@ async def test_pull_documents_skips_unreachable_attachment():
 
     def handler(request):
         if "DocumentReference" in request.url.path:
-            return httpx.Response(200, json=_bundle([_doc_ref(url="http://ehr/fhir/Binary/missing")]))
+            return httpx.Response(
+                200, json=_bundle([_doc_ref(url="http://ehr/fhir/Binary/missing")])
+            )
         return httpx.Response(404)
 
     provider._http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -717,12 +817,22 @@ async def test_pull_hitl_proposals_only_for_codes_absent_from_catalog():
     await provider.setup({})
     # remote carries two LOINC codes: 2345-7 (known locally) + 99999-9 (unknown)
     remote_obs = [
-        {"resourceType": "Observation", "code": {"coding": [
-            {"system": "http://loinc.org", "code": "2345-7", "display": "Glucose"}]},
-         "valueQuantity": {"value": 95, "unit": "mg/dL"}},
-        {"resourceType": "Observation", "code": {"coding": [
-            {"system": "http://loinc.org", "code": "99999-9", "display": "Novel Marker"}]},
-         "valueQuantity": {"value": 1, "unit": "mg/L"}},
+        {
+            "resourceType": "Observation",
+            "code": {
+                "coding": [{"system": "http://loinc.org", "code": "2345-7", "display": "Glucose"}]
+            },
+            "valueQuantity": {"value": 95, "unit": "mg/dL"},
+        },
+        {
+            "resourceType": "Observation",
+            "code": {
+                "coding": [
+                    {"system": "http://loinc.org", "code": "99999-9", "display": "Novel Marker"}
+                ]
+            },
+            "valueQuantity": {"value": 1, "unit": "mg/L"},
+        },
     ]
     provider._http_client = _client(lambda r: httpx.Response(200, json=_bundle(remote_obs)))
     # local catalog already knows 2345-7
@@ -745,8 +855,16 @@ async def test_pull_hitl_proposals_idempotent_across_syncs():
     """A second sync must not re-propose a code already in seen_codes."""
     provider = FhirServerProvider()
     await provider.setup({})
-    remote_obs = [{"resourceType": "Observation", "code": {"coding": [
-        {"system": "http://loinc.org", "code": "99999-9", "display": "Novel Marker"}]}}]
+    remote_obs = [
+        {
+            "resourceType": "Observation",
+            "code": {
+                "coding": [
+                    {"system": "http://loinc.org", "code": "99999-9", "display": "Novel Marker"}
+                ]
+            },
+        }
+    ]
     provider._http_client = _client(lambda r: httpx.Response(200, json=_bundle(remote_obs)))
     provider._known_biomarker_codes = AsyncMock(return_value=set())
     integ = _integration("none")
@@ -887,10 +1005,12 @@ def test_all_pull_hooks_declared():
 
 def _remote_patient(rid="pat-1", name="John Smith", mrn="MRN-999", birth="1980-05-01"):
     return {
-        "resourceType": "Patient", "id": rid,
+        "resourceType": "Patient",
+        "id": rid,
         "name": [{"family": "Smith", "given": ["John"], "text": name}],
         "identifier": [{"system": "http://hospital.example.org/mrn", "value": mrn}],
-        "birthDate": birth, "gender": "male",
+        "birthDate": birth,
+        "gender": "male",
         "meta": {"lastUpdated": "2026-06-01T10:00:00Z"},
     }
 
@@ -899,7 +1019,9 @@ def _remote_patient(rid="pat-1", name="John Smith", mrn="MRN-999", birth="1980-0
 async def test_find_patient_searches_by_query_and_summarizes():
     provider = FhirServerProvider()
     await provider.setup({})
-    provider._http_client = _client(lambda r: httpx.Response(200, json=_bundle([_remote_patient()])))
+    provider._http_client = _client(
+        lambda r: httpx.Response(200, json=_bundle([_remote_patient()]))
+    )
     integ = _integration("none")
     provider._local_patient_hint = AsyncMock(return_value={"mrn": None, "name": None})
 
@@ -920,7 +1042,9 @@ async def test_find_patient_auto_suggests_by_local_mrn_when_no_query():
     """Opening the picker with no query seeds the search from the local MRN."""
     provider = FhirServerProvider()
     await provider.setup({})
-    provider._http_client = _client(lambda r: httpx.Response(200, json=_bundle([_remote_patient()])))
+    provider._http_client = _client(
+        lambda r: httpx.Response(200, json=_bundle([_remote_patient()]))
+    )
     integ = _integration("none")
     provider._local_patient_hint = AsyncMock(return_value={"mrn": "MRN-999", "name": "John Smith"})
 

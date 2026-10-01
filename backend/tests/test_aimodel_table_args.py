@@ -7,11 +7,10 @@ the model metadata and never created on existing databases.
 
 These tests guard against regression.
 """
+
 import importlib
 import inspect
-
 from pathlib import Path
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = REPO_ROOT / "backend" / "alembic" / "versions"
@@ -47,9 +46,7 @@ def test_aimodel_table_args_in_source():
 
     Catches the specific typo at the source level rather than at runtime.
     """
-    src_path = inspect.getsourcefile(
-        importlib.import_module("app.models.ai_provider_model")
-    )
+    src_path = inspect.getsourcefile(importlib.import_module("app.models.ai_provider_model"))
     assert src_path is not None
     source = Path(src_path).read_text()
 

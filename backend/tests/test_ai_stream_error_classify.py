@@ -4,6 +4,7 @@ Guarantees that provider/LLM exceptions are mapped to stable, non-leaky codes
 (so raw SDK text like OpenAI's "Connection error." never reaches the client)
 and that soft ValueError guard messages are forwarded verbatim.
 """
+
 from openai import (
     APIConnectionError,
     APITimeoutError,
@@ -19,9 +20,7 @@ class TestClassifyStreamError:
     def test_value_error_is_guard_with_message(self):
         # ValueError is the channel for intentional client-facing guards
         # (ownership/no-tasks/pending); its message must be forwarded as-is.
-        etype, msg = _classify_stream_error(
-            ValueError("Session not found or access denied.")
-        )
+        etype, msg = _classify_stream_error(ValueError("Session not found or access denied."))
         assert etype == "guard"
         assert msg == "Session not found or access denied."
 

@@ -1,9 +1,10 @@
+# ruff: noqa: B904,E501 -- long immutable strings / legacy patterns; reflow when touched
 import logging
-from typing import Dict, Optional
 from uuid import UUID
+
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biomarker_model import (
     BiomarkerAllowedState,
@@ -37,12 +38,16 @@ class CatalogImportService:
         if not desired:
             return
         existing = (
-            await self.db.execute(
-                select(BiomarkerReferenceRange).where(
-                    BiomarkerReferenceRange.biomarker_id == biomarker_id
+            (
+                await self.db.execute(
+                    select(BiomarkerReferenceRange).where(
+                        BiomarkerReferenceRange.biomarker_id == biomarker_id
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         def _key(rr):
             return (
@@ -103,17 +108,14 @@ class CatalogImportService:
         if not slugs:
             return
         state_rows = (
-            (
-                await self.db.execute(
-                    select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))
-                )
-            )
+            (await self.db.execute(select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))))
             .scalars()
             .all()
         )
         by_slug = {r.slug: r for r in state_rows}
         # Wipe existing and re-insert (atomic replace).
         from sqlalchemy import delete as sa_delete
+
         await self.db.execute(
             sa_delete(BiomarkerAllowedState).where(
                 BiomarkerAllowedState.biomarker_id == biomarker_id
@@ -123,9 +125,7 @@ class CatalogImportService:
             slug = getattr(spec, "state_slug", None) or spec.get("state_slug")
             state = by_slug.get(slug)
             if not state:
-                logger.warning(
-                    "Catalog import: unknown biomarker_state slug %r — skipping", slug
-                )
+                logger.warning("Catalog import: unknown biomarker_state slug %r — skipping", slug)
                 continue
             is_normal = getattr(spec, "is_normal", None)
             if is_normal is None:
@@ -142,7 +142,7 @@ class CatalogImportService:
                 )
             )
 
-    async def _resolve_class_concept(self, bio_data) -> Optional[UUID]:
+    async def _resolve_class_concept(self, bio_data) -> UUID | None:
         """Resolve a biomarker's class concept, preferring the explicit slug
         (the backup export path emits the concept slug, which round-trips
         cleanly) and falling back to the legacy ``category`` name→slug
@@ -150,9 +150,7 @@ class CatalogImportService:
         underscore convention ``blood_laboratory``)."""
         slug = getattr(bio_data, "class_concept_slug", None)
         if slug:
-            cid = await resolve_concept_by_slug(
-                self.db, slug, ConceptKind.BIOMARKER_CLASS
-            )
+            cid = await resolve_concept_by_slug(self.db, slug, ConceptKind.BIOMARKER_CLASS)
             if cid:
                 return cid
         return await resolve_biomarker_class_concept(self.db, bio_data.category)
@@ -167,9 +165,9 @@ class CatalogImportService:
                 return CatalogImportPayload.model_validate(data)
         except Exception as e:
             logger.error(f"Failed to fetch or parse catalog from {url}: {e}")
-            raise ValueError(f"Failed to load catalog from URL: {str(e)}")
+            raise ValueError(f"Failed to load catalog from URL: {e!s}")
 
-    async def import_catalog(self, payload: CatalogImportPayload) -> Dict[str, int]:
+    async def import_catalog(self, payload: CatalogImportPayload) -> dict[str, int]:
         """
         Import units and biomarkers from the payload into the database.
         Returns statistics about the import.
@@ -186,9 +184,7 @@ class CatalogImportService:
         for unit_data in payload.units:
             try:
                 # Find existing unit by symbol
-                result = await self.db.execute(
-                    select(Unit).where(Unit.symbol == unit_data.symbol)
-                )
+                result = await self.db.execute(select(Unit).where(Unit.symbol == unit_data.symbol))
                 existing_unit = result.scalar_one_or_none()
 
                 q_type = QuantityType.OTHER
@@ -233,9 +229,7 @@ class CatalogImportService:
 
                 # Find existing by slug
                 result = await self.db.execute(
-                    select(BiomarkerDefinition).where(
-                        BiomarkerDefinition.slug == bio_data.slug
-                    )
+                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_data.slug)
                 )
                 existing_bio = result.scalar_one_or_none()
 
@@ -246,9 +240,7 @@ class CatalogImportService:
                     if bio_data.class_concept_id is not None:
                         existing_bio.class_concept_id = bio_data.class_concept_id
                     else:
-                        existing_bio.class_concept_id = (
-                            await self._resolve_class_concept(bio_data)
-                        )
+                        existing_bio.class_concept_id = await self._resolve_class_concept(bio_data)
                     existing_bio.aliases = bio_data.aliases
                     existing_bio.info = bio_data.info
                     existing_bio.reference_range_min = bio_data.reference_range_min
@@ -258,9 +250,7 @@ class CatalogImportService:
                     # State biomarker discriminator (plan Step 4/6).
                     if bio_data.value_type:
                         existing_bio.value_type = bio_data.value_type
-                        existing_bio.supports_multi_state = (
-                            bio_data.supports_multi_state or False
-                        )
+                        existing_bio.supports_multi_state = bio_data.supports_multi_state or False
                     await self._upsert_reference_ranges(
                         existing_bio.id, getattr(bio_data, "reference_ranges", None)
                     )

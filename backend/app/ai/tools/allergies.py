@@ -7,7 +7,7 @@ HITL-gated (see ``propose_record_allergy`` / ``propose_define_allergy``).
 """
 
 import json
-from typing import Any, List
+from typing import Any
 
 from langchain_core.tools import tool
 from sqlalchemy import and_, desc, select
@@ -17,7 +17,7 @@ from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
 
 
 @register_chat_tool("allergies")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_current_allergies() -> str:
         """Fetch the list of ACTIVE allergies currently on the patient's chart.
@@ -32,8 +32,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 and_(
                     AllergyIntolerance.patient_id == ctx.patient_id,
                     AllergyIntolerance.tenant_id == ctx.tenant_id,
-                    AllergyIntolerance.clinical_status
-                    == AllergyClinicalStatus.ACTIVE,
+                    AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
                     AllergyIntolerance.deleted_at.is_(None),
                 )
             )
@@ -49,9 +48,7 @@ def build(ctx: ToolContext) -> List[Any]:
                     "criticality": a.criticality.value if a.criticality else None,
                     "category": a.category.value if a.category else None,
                     "onset_date": a.onset_date.isoformat() if a.onset_date else None,
-                    "last_occurrence": a.last_occurrence.isoformat()
-                    if a.last_occurrence
-                    else None,
+                    "last_occurrence": a.last_occurrence.isoformat() if a.last_occurrence else None,
                     "reactions": a.reactions or [],
                     "note": a.note,
                 }
@@ -70,9 +67,7 @@ def build(ctx: ToolContext) -> List[Any]:
                     AllergyIntolerance.deleted_at.is_(None),
                 )
             )
-            .order_by(
-                desc(AllergyIntolerance.onset_date), desc(AllergyIntolerance.created_at)
-            )
+            .order_by(desc(AllergyIntolerance.onset_date), desc(AllergyIntolerance.created_at))
             .limit(limit)
         )
         rows = result.scalars().all()
@@ -83,15 +78,11 @@ def build(ctx: ToolContext) -> List[Any]:
                 {
                     "id": str(a.id),
                     "name": (a.code or {}).get("text"),
-                    "clinical_status": a.clinical_status.value
-                    if a.clinical_status
-                    else "unknown",
+                    "clinical_status": a.clinical_status.value if a.clinical_status else "unknown",
                     "criticality": a.criticality.value if a.criticality else None,
                     "category": a.category.value if a.category else None,
                     "onset_date": a.onset_date.isoformat() if a.onset_date else None,
-                    "resolved_date": a.resolved_date.isoformat()
-                    if a.resolved_date
-                    else None,
+                    "resolved_date": a.resolved_date.isoformat() if a.resolved_date else None,
                     "reactions": a.reactions or [],
                     "note": a.note,
                 }

@@ -16,13 +16,13 @@ slug→column branching: every telemetry observation becomes one
 ``TelemetryDataModel(slug=..., value=..., unit=..., patient_id=...)`` row.
 These tests pin that contract.
 """
+
 import datetime
 import inspect
 from unittest.mock import MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
 
@@ -31,21 +31,16 @@ class _FakeObservation:
     """Stand-in for the ORM Observation class so test routing checks can
     distinguish it from TelemetryDataModel via ``type(x).__name__``."""
 
-    def __init__(self, biomarker_id, value=70.0, code_loinc="8867-4",
-                 patient_id=None):
+    def __init__(self, biomarker_id, value=70.0, code_loinc="8867-4", patient_id=None):
         self.id = uuid4()
         self.biomarker_id = biomarker_id
-        self.effective_datetime = datetime.datetime(
-            2026, 1, 1, tzinfo=datetime.timezone.utc
-        )
+        self.effective_datetime = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
         self.raw_value = value
         self.normalized_value = value
         self.value_quantity = {"value": value, "unit": "{beats}/min"}
         self.performer = None
         self.patient_id = patient_id
-        self.subject = {
-            "reference": f"Patient/{patient_id}" if patient_id else None
-        }
+        self.subject = {"reference": f"Patient/{patient_id}" if patient_id else None}
 
 
 # Patch the helper's type-check by giving the fake class the real name
@@ -358,9 +353,7 @@ def test_manual_sync_endpoint_uses_run_sync():
     from app.api.v1.endpoints import integrations
 
     src = inspect.getsource(integrations)
-    assert "run_sync" in src, (
-        "manual sync endpoint should use run_sync for DRY"
-    )
+    assert "run_sync" in src, "manual sync endpoint should use run_sync for DRY"
 
 
 # ---------------------------------------------------------------------------

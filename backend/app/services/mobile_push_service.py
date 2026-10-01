@@ -64,13 +64,11 @@ async def register_device(
     """
     platform_norm = (platform or "").lower().strip()
     if platform_norm not in ("unifiedpush", "fcm"):
-        raise ValueError(
-            f"Unsupported platform '{platform}'. Must be 'unifiedpush' or 'fcm'."
-        )
+        raise ValueError(f"Unsupported platform '{platform}'. Must be 'unifiedpush' or 'fcm'.")
     if not endpoint_url:
         raise ValueError("endpoint_url is required.")
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     stmt = (
         pg_insert(MobilePushTarget)
         .values(
@@ -106,16 +104,14 @@ async def register_device(
     return row
 
 
-async def unregister_device(
-    db: AsyncSession, *, user_id: UUID, device_id: str
-) -> bool:
+async def unregister_device(db: AsyncSession, *, user_id: UUID, device_id: str) -> bool:
     """Soft-deactivate a device (sign-out / lost-device). Hard-delete is not
     exposed — the row is retained for audit + to detect a re-registration
     of the same device id (which re-activates it via the upsert above).
 
     Returns True if a row was deactivated, False if no such (user, device)
     pair exists."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     res = await db.execute(
         update(MobilePushTarget)
         .where(
@@ -144,9 +140,7 @@ async def list_devices(
     return list(res.scalars().all())
 
 
-async def active_targets_for_user(
-    db: AsyncSession, *, user_id: UUID
-) -> list[MobilePushTarget]:
+async def active_targets_for_user(db: AsyncSession, *, user_id: UUID) -> list[MobilePushTarget]:
     """Read the active push targets for a user — used by the dispatch task."""
     res = await db.execute(
         select(MobilePushTarget).where(
@@ -201,7 +195,7 @@ async def dispatch(
                     "detail": None,
                 }
             )
-        except Exception as exc:  # noqa: BLE001 — dispatch must not raise
+        except Exception as exc:
             logger.warning(
                 "Mobile push to device %s (%s) failed: %s",
                 target.device_id,
@@ -247,8 +241,7 @@ async def send_unifiedpush(target: MobilePushTarget, payload: dict[str, Any]) ->
             # register will replace it. Don't auto-deactivate here; let the
             # client re-register.
             raise RuntimeError(
-                f"UnifiedPush endpoint returned HTTP {resp.status_code}: "
-                f"{resp.text[:200]}"
+                f"UnifiedPush endpoint returned HTTP {resp.status_code}: {resp.text[:200]}"
             )
 
 

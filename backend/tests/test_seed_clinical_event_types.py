@@ -7,12 +7,13 @@ Pins two contracts:
 2. A malformed ``metadata_schema`` is rejected (counted in ``errors``, never
    written) — the fail-loud rule for the metadata descriptor.
 """
+
 import pytest
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.clinical_event import ClinicalEventType
 from app.services.seed_service import SeedService
-from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -40,9 +41,7 @@ async def test_shipped_seed_uses_new_catalog_select_shape():
     async with AsyncSessionLocal() as db:
         row = (
             await db.execute(
-                select(ClinicalEventType).where(
-                    ClinicalEventType.slug == "pain-episode"
-                )
+                select(ClinicalEventType).where(ClinicalEventType.slug == "pain-episode")
             )
         ).scalar_one_or_none()
     assert row is not None, "pain-episode type not seeded"
@@ -117,8 +116,7 @@ async def test_malformed_metadata_schema_rejected_and_not_written():
         bad = (
             await db.execute(
                 select(ClinicalEventType).where(
-                    ClinicalEventType.slug
-                    == f"bad-catalog-select-no-catalogs-{ns}"
+                    ClinicalEventType.slug == f"bad-catalog-select-no-catalogs-{ns}"
                 )
             )
         ).scalar_one_or_none()
@@ -128,9 +126,7 @@ async def test_malformed_metadata_schema_rejected_and_not_written():
     async with AsyncSessionLocal() as db:
         good = (
             await db.execute(
-                select(ClinicalEventType).where(
-                    ClinicalEventType.slug == f"valid-with-schema-{ns}"
-                )
+                select(ClinicalEventType).where(ClinicalEventType.slug == f"valid-with-schema-{ns}")
             )
         ).scalar_one_or_none()
     assert good is not None

@@ -5,7 +5,7 @@ domain tool factory via the ``@register_chat_tool`` decorator (the domain
 modules are imported below for their registration side effect).
 """
 
-from typing import Any, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,9 +33,9 @@ def get_tools(
     db: AsyncSession,
     tenant_id: UUID,
     patient_id: UUID,
-    examination_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-) -> List[Any]:
+    examination_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> list[Any]:
     """Return the full set of built-in chatbot tools bound to the given context.
 
     Each registered domain factory is invoked with a :class:`ToolContext` and
@@ -49,10 +49,10 @@ def get_tools(
         examination_id=examination_id,
         user_id=user_id,
     )
-    tools: List[Any] = []
+    tools: list[Any] = []
     for factory in get_factories().values():
         tools.extend(factory(ctx))
     return tools
 
 
-__all__ = ["get_tools", "ToolContext"]
+__all__ = ["ToolContext", "get_tools"]

@@ -14,10 +14,10 @@ Revises: f1m2u3l4t5i6
 Create Date: 2026-07-24
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from alembic import op
 
 revision = "s1e2t3u4p5w6"
 down_revision = "f1m2u3l4t5i6"

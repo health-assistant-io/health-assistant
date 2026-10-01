@@ -23,10 +23,10 @@ from fastapi import HTTPException
 
 from app.facade.search_params import parse_search_params
 
-
 # ---------------------------------------------------------------------------
 # _elements parsing
 # ---------------------------------------------------------------------------
+
 
 def test_elements_parsed_as_list():
     """_elements is a comma-separated list of top-level fields."""
@@ -35,9 +35,7 @@ def test_elements_parsed_as_list():
 
 
 def test_elements_strips_whitespace_and_drops_empty():
-    p = parse_search_params(
-        "Patient", [("_elements", " name , birthDate , ")]
-    )
+    p = parse_search_params("Patient", [("_elements", " name , birthDate , ")])
     assert p._elements == ["name", "birthDate"]
 
 
@@ -60,6 +58,7 @@ def test_elements_empty_string_returns_none():
 # ---------------------------------------------------------------------------
 # _elements projection (applied in crud.search post-serialization)
 # ---------------------------------------------------------------------------
+
 
 def test_elements_projection_keeps_requested_plus_always_present():
     """The _elements projection keeps the requested fields plus resourceType,
@@ -113,6 +112,7 @@ def test_elements_projection_when_field_missing_in_resource():
 # ---------------------------------------------------------------------------
 # _format=xml explicit reject (and other unsupported formats)
 # ---------------------------------------------------------------------------
+
 
 def test_format_json_accepted():
     p = parse_search_params("Patient", [("_format", "json")])
@@ -173,19 +173,16 @@ def test_format_default_unset():
 # _include / _revinclude — documented as parsed-but-not-honored
 # ---------------------------------------------------------------------------
 
+
 def test_include_parsed_but_not_honored():
     """F14 sub-point: _include is parsed into params._include (so the
     dispatcher knows it was requested) but the actual included-resources
     fetch is deferred (Phase 9). This test just verifies the parse — no
     assertion that included resources appear in the Bundle."""
-    p = parse_search_params(
-        "Observation", [("_include", "Observation:subject")]
-    )
+    p = parse_search_params("Observation", [("_include", "Observation:subject")])
     assert p._include == ["Observation:subject"]
 
 
 def test_revinclude_parsed():
-    p = parse_search_params(
-        "Patient", [("_revinclude", "Observation:subject")]
-    )
+    p = parse_search_params("Patient", [("_revinclude", "Observation:subject")])
     assert p._revinclude == ["Observation:subject"]

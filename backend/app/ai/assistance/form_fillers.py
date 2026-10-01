@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
 """AI-assisted form fillers: biomarker entry, medication entry, examination.
 
 Extracted from ``AIAssistanceService`` (Phase 6c). Each handler uses
@@ -11,8 +12,8 @@ continue to work.
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 async def _get_recent_biomarkers_context(
     db: AsyncSession, patient_id: UUID, limit: int = 10
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get lightweight context of recent biomarkers for style matching"""
     patient_ref = f"Patient/{patient_id}"
     result = await db.execute(
@@ -58,7 +59,7 @@ async def _get_recent_biomarkers_context(
 
 async def _get_recent_medications_context(
     db: AsyncSession, patient_id: UUID, limit: int = 10
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get lightweight context of recent medications for style matching"""
     result = await db.execute(
         select(Medication)
@@ -76,10 +77,10 @@ async def _get_recent_medications_context(
 
 
 async def fill_biomarker_form(
-    db: AsyncSession, llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+    db: AsyncSession, llm, user_input: str, context: dict[str, Any]
+) -> dict[str, Any]:
     patient_id = context.get("patient_id")
-    recent_bios: List[Dict[str, Any]] = []
+    recent_bios: list[dict[str, Any]] = []
     if patient_id:
         recent_bios = await _get_recent_biomarkers_context(db, UUID(patient_id))
 
@@ -95,18 +96,16 @@ If the user mentions a biomarker that matches one of these, prefer the unit they
     )
 
     chain = prompt | structured_llm
-    result = await chain.ainvoke(
-        {"user_input": user_input, "recent_bios": json.dumps(recent_bios)}
-    )
+    result = await chain.ainvoke({"user_input": user_input, "recent_bios": json.dumps(recent_bios)})
 
     return {"suggested_data": result.model_dump(), "success": True}
 
 
 async def fill_medication_form(
-    db: AsyncSession, llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+    db: AsyncSession, llm, user_input: str, context: dict[str, Any]
+) -> dict[str, Any]:
     patient_id = context.get("patient_id")
-    recent_meds: List[Dict[str, Any]] = []
+    recent_meds: list[dict[str, Any]] = []
     if patient_id:
         recent_meds = await _get_recent_medications_context(db, UUID(patient_id))
 
@@ -123,16 +122,14 @@ Style Matching: The patient currently takes: {recent_meds}.
     )
 
     chain = prompt | structured_llm
-    result = await chain.ainvoke(
-        {"user_input": user_input, "recent_meds": json.dumps(recent_meds)}
-    )
+    result = await chain.ainvoke({"user_input": user_input, "recent_meds": json.dumps(recent_meds)})
 
     return {"suggested_data": result.model_dump(), "success": True}
 
 
 async def magic_fill_examination(
-    db: AsyncSession, llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+    db: AsyncSession, llm, user_input: str, context: dict[str, Any]
+) -> dict[str, Any]:
     """AI-driven examination form filler"""
     tenant_id = context.get("tenant_id")
 
@@ -160,14 +157,14 @@ async def magic_fill_examination(
     slugs_str = ", ".join(existing_slugs)
 
     # Inject the live date so relative-date parsing stays accurate.
-    _now = datetime.now(timezone.utc)
+    _now = datetime.now(UTC)
     today_iso = _now.strftime("%Y-%m-%d")
     current_year = _now.year
 
     system_prompt = f"""You are a medical assistant helping to record a new examination visit.
-Extract the examination date, clinical notes, patient notes, category slug, and any doctor names from the user's input.
+Extract the examination date, clinical notes, patient notes, category slug, and any doctor names from the user's input.  # noqa: E501 -- long template/message string; reflow when touched
 
-Doctor Names: Omit titles like 'Dr.', 'Doctor', 'MD', etc. Only return the actual name (e.g. return 'Smith' or 'John Smith' instead of 'Dr. Smith').
+Doctor Names: Omit titles like 'Dr.', 'Doctor', 'MD', etc. Only return the actual name (e.g. return 'Smith' or 'John Smith' instead of 'Dr. Smith').  # noqa: E501 -- long template/message string; reflow when touched
 
 Available Category SLUGS: {slugs_str}
 Pick EXACTLY one most appropriate category SLUG from the list above.

@@ -15,7 +15,6 @@ write routes for ``medication`` (the simplest FHIR-gated catalog) end-to-end:
 """
 
 import uuid
-from typing import Dict, Tuple
 
 import pytest
 from sqlalchemy import select
@@ -27,16 +26,14 @@ from app.models.tenant_model import TenantModel
 
 async def _tenant_and_headers(
     role: str = "ADMIN",
-) -> Tuple[uuid.UUID, Dict[str, str], uuid.UUID, str]:
+) -> tuple[uuid.UUID, dict[str, str], uuid.UUID, str]:
     from tests._auth_helpers import auth_headers, create_user
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="Audit", slug=f"audit-{tenant_id}"))
         await db.commit()
-    user = await create_user(
-        role=role, tenant_id=tenant_id, email=f"{role.lower()}@audit.test"
-    )
+    user = await create_user(role=role, tenant_id=tenant_id, email=f"{role.lower()}@audit.test")
     return tenant_id, await auth_headers(user), user.id, user.email
 
 
@@ -124,9 +121,7 @@ async def test_delete_appends_audit_row_with_snapshot(async_client):
     )
     item_id = create.json()["id"]
 
-    delete = await async_client.delete(
-        f"/api/v1/catalogs/medication/{item_id}", headers=headers
-    )
+    delete = await async_client.delete(f"/api/v1/catalogs/medication/{item_id}", headers=headers)
     assert delete.status_code == 200, delete.text
 
     rows = await _audit_rows("medication", item_id)
@@ -190,9 +185,7 @@ async def test_history_endpoint_returns_trail_newest_first(async_client):
         headers=headers,
     )
 
-    hist = await async_client.get(
-        f"/api/v1/catalogs/medication/{item_id}/history", headers=headers
-    )
+    hist = await async_client.get(f"/api/v1/catalogs/medication/{item_id}/history", headers=headers)
     assert hist.status_code == 200, hist.text
     trail = hist.json()["items"]
     assert len(trail) == 2, trail
@@ -231,9 +224,7 @@ async def test_audit_failure_does_not_abort_create(async_client, monkeypatch):
     async def _boom(*args, **kwargs):
         raise RuntimeError("audit DB is down")
 
-    monkeypatch.setattr(
-        "app.services.catalog_audit_service.record_from_obj", _boom
-    )
+    monkeypatch.setattr("app.services.catalog_audit_service.record_from_obj", _boom)
 
     _, headers, _, _ = await _tenant_and_headers("ADMIN")
     resp = await async_client.post(

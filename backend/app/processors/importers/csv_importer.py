@@ -1,26 +1,28 @@
+# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
 import csv
 import io
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
-from datetime import datetime
+from typing import Any
+
 from app.schemas.import_data import CSVImportConfig, ImportResult, ImportStatus
 
 
 class CSVImporter:
     """Import data from CSV files"""
 
-    def __init__(self, config: Optional[CSVImportConfig] = None):
+    def __init__(self, config: CSVImportConfig | None = None):
         self.config = config or CSVImportConfig()
 
     async def import_from_file(
         self,
         file_path: Path,
         tenant_id: str,
-        patient_id: Optional[str] = None,
+        patient_id: str | None = None,
     ) -> ImportResult:
         """Import data from CSV file"""
         try:
-            with open(file_path, "r", encoding=self.config.encoding) as f:
+            with open(file_path, encoding=self.config.encoding) as f:
                 content = f.read()
 
             return await self.import_from_string(content, tenant_id, patient_id)
@@ -38,13 +40,11 @@ class CSVImporter:
         self,
         content: str,
         tenant_id: str,
-        patient_id: Optional[str] = None,
+        patient_id: str | None = None,
     ) -> ImportResult:
         """Import data from CSV string content"""
         try:
-            reader = csv.DictReader(
-                io.StringIO(content), delimiter=self.config.delimiter
-            )
+            reader = csv.DictReader(io.StringIO(content), delimiter=self.config.delimiter)
 
             records = []
             errors = []
@@ -56,7 +56,7 @@ class CSVImporter:
                     if record:
                         records.append(record)
                 except Exception as e:
-                    errors.append(f"Row {row_num}: {str(e)}")
+                    errors.append(f"Row {row_num}: {e!s}")
 
             return ImportResult(
                 job_id="",
@@ -80,9 +80,9 @@ class CSVImporter:
 
     def _process_row(
         self,
-        row: Dict[str, str],
+        row: dict[str, str],
         row_num: int,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Process a single CSV row"""
         try:
             # Map columns based on configuration
@@ -98,9 +98,9 @@ class CSVImporter:
 
             return mapped
         except Exception as e:
-            raise ValueError(f"Failed to process row {row_num}: {str(e)}")
+            raise ValueError(f"Failed to process row {row_num}: {e!s}")
 
-    def _auto_map_row(self, row: Dict[str, str]) -> Dict[str, Any]:
+    def _auto_map_row(self, row: dict[str, str]) -> dict[str, Any]:
         """Auto-map common CSV column names to FHIR fields"""
         mapped = {}
 
@@ -122,7 +122,7 @@ class CSVImporter:
         }
 
         for source, target in field_mappings.items():
-            for key in row.keys():
+            for key in row:
                 if key.lower() == source:
                     mapped[target] = self._convert_value(row[key], target)
                     break
@@ -145,7 +145,7 @@ class CSVImporter:
         # Default to string
         return value.strip()
 
-    def _parse_datetime(self, value: str) -> Optional[datetime]:
+    def _parse_datetime(self, value: str) -> datetime | None:
         """Parse datetime string"""
         formats = [
             "%Y-%m-%d",
@@ -161,10 +161,8 @@ class CSVImporter:
 
         for fmt in formats:
             try:
-                from datetime import timezone
-
                 dt = datetime.strptime(value.strip(), fmt)
-                return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+                return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
             except ValueError:
                 continue
 

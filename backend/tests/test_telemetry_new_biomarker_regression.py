@@ -19,13 +19,12 @@ Pinned end-to-end:
   5. ``analytics_service.get_biomarker_trends`` queries it via
      ``slug = :slug``.
 """
+
 import datetime
 from unittest.mock import MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-
-from uuid import UUID
 
 TENANT = UUID("11111111-1111-1111-1111-111111111111")
 DEVICE = "spo2-ring"
@@ -71,7 +70,7 @@ async def test_spo2_routes_to_telemetry_row():
         def __init__(self):
             self.id = uuid4()
             self.biomarker_id = b_id
-            self.effective_datetime = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+            self.effective_datetime = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
             self.raw_value = 97.0
             self.normalized_value = 97.0
             self.value_quantity = {"value": 97.0, "unit": "%"}
@@ -144,8 +143,8 @@ async def test_spo2_upload_stores_long_format_row():
 
     session = _Session()
     points = [
-        _Point(datetime.datetime(2026, 1, 1, 0, 0, tzinfo=datetime.timezone.utc), 97.0),
-        _Point(datetime.datetime(2026, 1, 1, 0, 5, tzinfo=datetime.timezone.utc), 98.0),
+        _Point(datetime.datetime(2026, 1, 1, 0, 0, tzinfo=datetime.UTC), 97.0),
+        _Point(datetime.datetime(2026, 1, 1, 0, 5, tzinfo=datetime.UTC), 98.0),
     ]
     count = await upload_telemetry_data(session, DEVICE, points, TENANT)
     assert count == 2
@@ -167,18 +166,25 @@ async def test_spo2_read_and_summary_are_slug_generic():
         get_telemetry_summary,
     )
 
-    ts = datetime.datetime(2026, 1, 1, 0, 0, tzinfo=datetime.timezone.utc)
+    ts = datetime.datetime(2026, 1, 1, 0, 0, tzinfo=datetime.UTC)
     from app.models.telemetry_model import TelemetryDataModel
 
     rows = [
         TelemetryDataModel(
-            tenant_id=TENANT, device_id=DEVICE, timestamp=ts,
-            slug="spo2", value=97.0, unit="%",
+            tenant_id=TENANT,
+            device_id=DEVICE,
+            timestamp=ts,
+            slug="spo2",
+            value=97.0,
+            unit="%",
         ),
         TelemetryDataModel(
-            tenant_id=TENANT, device_id=DEVICE,
+            tenant_id=TENANT,
+            device_id=DEVICE,
             timestamp=ts + datetime.timedelta(minutes=5),
-            slug="spo2", value=98.0, unit="%",
+            slug="spo2",
+            value=98.0,
+            unit="%",
         ),
     ]
 
@@ -209,6 +215,7 @@ async def test_spo2_read_and_summary_are_slug_generic():
                     avg = 97.5
                     sm = 195.0
                     cnt = 2
+
                 return _Result([_Agg()])
             return _Result(self._rows)
 
@@ -216,8 +223,11 @@ async def test_spo2_read_and_summary_are_slug_generic():
 
     # get_telemetry_data with metrics='spo2'
     data = await get_telemetry_data(
-        session, tenant_id=TENANT, device_id=DEVICE,
-        start_date="2026-01-01T00:00:00Z", end_date="2026-01-02T00:00:00Z",
+        session,
+        tenant_id=TENANT,
+        device_id=DEVICE,
+        start_date="2026-01-01T00:00:00Z",
+        end_date="2026-01-02T00:00:00Z",
         metrics="spo2",
     )
     assert len(data) == 2
@@ -226,7 +236,9 @@ async def test_spo2_read_and_summary_are_slug_generic():
 
     # get_telemetry_summary includes spo2 under its slug
     summary = await get_telemetry_summary(
-        session, tenant_id=TENANT, target_date="2026-01-01",
+        session,
+        tenant_id=TENANT,
+        target_date="2026-01-01",
     )
     assert "spo2" in summary["metrics"]
     assert summary["metrics"]["spo2"]["min"] == 97.0
@@ -256,4 +268,4 @@ def test_analytics_sql_uses_slug_filter_for_arbitrary_biomarker():
     # No metric-specific column references would survive a spo2 query.
     assert "spo2" not in src.lower() or "spo2" in src  # (only docstring mentions ok
     assert "heart_rate IS NOT NULL" not in src
-    assert '"data ? \'{slug}\'' not in src
+    assert "\"data ? '{slug}'" not in src

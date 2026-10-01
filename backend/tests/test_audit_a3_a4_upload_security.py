@@ -8,6 +8,7 @@ The download path must force ``attachment`` for those types regardless and set
 A4: ``MAX_UPLOAD_SIZE`` must actually be enforced — an oversized upload is
 rejected with 413 before it exhausts server RAM.
 """
+
 import io
 
 import pytest
@@ -21,7 +22,9 @@ from app.services.document_service import (
 
 
 class TestUploadAllowlist:
-    @pytest.mark.parametrize("ext", [".pdf", ".png", ".jpg", ".jpeg", ".dcm", ".md", ".txt", ".tiff", ".gif"])
+    @pytest.mark.parametrize(
+        "ext", [".pdf", ".png", ".jpg", ".jpeg", ".dcm", ".md", ".txt", ".tiff", ".gif"]
+    )
     def test_accepts_safe_types(self, ext):
         assert _validate_upload_extension(f"report{ext}") == ext
 
@@ -105,6 +108,7 @@ class TestDownloadHeaders:
 
     def test_download_sets_nosniff_and_inline_logic(self):
         import inspect
+
         from app.api.v1.endpoints import documents
 
         src = inspect.getsource(documents.download_document_endpoint)

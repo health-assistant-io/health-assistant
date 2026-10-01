@@ -7,6 +7,7 @@ endpoint tests; this file exercises only the model + service skeleton.
 Real-DB integration tests: each test creates its own tenant +
 UserIntegration row so nothing leaks across runs.
 """
+
 import uuid
 
 import pytest
@@ -103,12 +104,8 @@ def test_compute_dedup_key_is_order_stable_for_dict_keys():
 def test_compute_dedup_key_differs_on_list_order():
     """List order is significant — re-ordering aliases changes the hash.
     (Sets would dedup; lists carry intent.)"""
-    a = svc.compute_dedup_key(
-        "create_biomarker_definition", {"aliases": ["a", "b"]}
-    )
-    b = svc.compute_dedup_key(
-        "create_biomarker_definition", {"aliases": ["b", "a"]}
-    )
+    a = svc.compute_dedup_key("create_biomarker_definition", {"aliases": ["a", "b"]})
+    b = svc.compute_dedup_key("create_biomarker_definition", {"aliases": ["b", "a"]})
     assert a != b
 
 
@@ -128,9 +125,7 @@ def test_compute_dedup_key_returns_none_on_uncanonicalizable_payload():
     but the contract is documented."""
     # Most "weird" objects are stringified by default=str. The one case
     # that defeats it is a non-string dict key.
-    a = svc.compute_dedup_key(
-        "create_biomarker_definition", {1: "integer key"}
-    )
+    a = svc.compute_dedup_key("create_biomarker_definition", {1: "integer key"})
     # `default=str` does stringify the int key — so this still succeeds.
     # The None contract is documented as best-effort.
     assert isinstance(a, str)
@@ -319,9 +314,7 @@ async def test_get_proposal_scoped_to_integration(integration_row):
         await db.commit()
 
         # Correct integration → returns the row.
-        fetched = await svc.get_proposal(
-            db, integration_id=integration_id, proposal_id=row.id
-        )
+        fetched = await svc.get_proposal(db, integration_id=integration_id, proposal_id=row.id)
         assert fetched is not None
         assert fetched.id == row.id
 
@@ -371,17 +364,13 @@ async def test_list_proposals_filters_by_status(integration_row):
         only_proposed = await svc.list_proposals(
             db, integration_id=integration_id, status=HitlTaskStatus.PROPOSED
         )
-        all_for_integration = await svc.list_proposals(
-            db, integration_id=integration_id
-        )
+        all_for_integration = await svc.list_proposals(db, integration_id=integration_id)
         n_proposed = await svc.count_proposals(
             db,
             integration_id=integration_id,
             status=HitlTaskStatus.PROPOSED,
         )
-        n_total = await svc.count_proposals(
-            db, integration_id=integration_id
-        )
+        n_total = await svc.count_proposals(db, integration_id=integration_id)
 
     proposed_ids = {r.id for r in only_proposed}
     assert proposed_ids == {proposed_a.id, proposed_b.id}
@@ -401,8 +390,6 @@ async def test_list_proposals_filters_by_status(integration_row):
 async def _all_proposals_for_integration(integration_id) -> list:
     async with AsyncSessionLocal() as db:
         result = await db.execute(
-            select(IntegrationProposal).where(
-                IntegrationProposal.integration_id == integration_id
-            )
+            select(IntegrationProposal).where(IntegrationProposal.integration_id == integration_id)
         )
         return list(result.scalars().all())

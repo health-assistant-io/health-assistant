@@ -13,6 +13,7 @@ one with::
 
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
+
 import argparse
 import asyncio
 import sys
@@ -21,14 +22,14 @@ from pathlib import Path
 # Allow execution as ``python scripts/encrypt_existing_api_keys.py`` from backend/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.core.database import AsyncSessionLocal  # noqa: E402
-from app.core.encryption import (  # noqa: E402
+from app.core.database import AsyncSessionLocal
+from app.core.encryption import (
     encrypt_secret,
     is_encrypted,
 )
-from app.models.ai_provider_model import AIProviderModel  # noqa: E402
+from app.models.ai_provider_model import AIProviderModel
 
 
 async def run(dry_run: bool = False) -> int:

@@ -22,10 +22,10 @@ import pytest
 
 from app.facade.crud import PreconditionFailed, _parse_if_match
 
-
 # ---------------------------------------------------------------------------
 # F5 — _parse_if_match
 # ---------------------------------------------------------------------------
+
 
 def test_parse_if_match_weak_etag():
     """The standard FHIR/server form: W/"<version>"."""
@@ -63,6 +63,7 @@ def test_parse_if_match_strips_whitespace():
 # F5 — PreconditionFailed exception carries useful context
 # ---------------------------------------------------------------------------
 
+
 def test_precondition_failed_carries_context():
     """The exception carries the resource type/id and expected/actual version
     so the endpoint can build an informative OperationOutcome."""
@@ -84,6 +85,7 @@ def test_precondition_failed_carries_context():
 # ---------------------------------------------------------------------------
 # F5 — crud.update honors If-Match
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
@@ -110,9 +112,7 @@ async def test_update_if_match_version_check_unit():
             self.id = RID
             self.version = 2
 
-    entry = ResourceEntry(
-        resource_type="StubF5", model=_Stub, tenant_scope="tenant_id"
-    )
+    entry = ResourceEntry(resource_type="StubF5", model=_Stub, tenant_scope="tenant_id")
 
     class _CurrentUser:
         tenant_id = "00000000-0000-0000-0000-000000000000"
@@ -144,7 +144,11 @@ async def test_update_if_match_version_check_unit():
         p.start()
     try:
         result = await crud.update(
-            entry, RID, {"resourceType": "StubF5"}, _CurrentUser(), db1,
+            entry,
+            RID,
+            {"resourceType": "StubF5"},
+            _CurrentUser(),
+            db1,
             if_match='W/"2"',
         )
         assert result is not None
@@ -161,7 +165,11 @@ async def test_update_if_match_version_check_unit():
     try:
         with pytest.raises(PreconditionFailed) as exc:
             await crud.update(
-                entry, RID, {"resourceType": "StubF5"}, _CurrentUser(), db2,
+                entry,
+                RID,
+                {"resourceType": "StubF5"},
+                _CurrentUser(),
+                db2,
                 if_match='W/"3"',
             )
         assert exc.value.expected == 3
@@ -179,7 +187,11 @@ async def test_update_if_match_version_check_unit():
         p.start()
     try:
         result = await crud.update(
-            entry, RID, {"resourceType": "StubF5"}, _CurrentUser(), db3,
+            entry,
+            RID,
+            {"resourceType": "StubF5"},
+            _CurrentUser(),
+            db3,
             if_match=None,
         )
         assert result is not None
@@ -196,7 +208,11 @@ async def test_update_if_match_version_check_unit():
         p.start()
     try:
         result = await crud.update(
-            entry, RID, {"resourceType": "StubF5"}, _CurrentUser(), db4,
+            entry,
+            RID,
+            {"resourceType": "StubF5"},
+            _CurrentUser(),
+            db4,
             if_match="garbage",
         )
         assert result is not None
@@ -204,7 +220,6 @@ async def test_update_if_match_version_check_unit():
     finally:
         for p in common_patches:
             p.stop()
-
 
     assert result is not None
 
@@ -214,6 +229,7 @@ async def test_update_if_match_version_check_unit():
 # (already covered by test_capability_statement_per_resource_no_version_no_update_create
 # in test_fhir_r4_phase1.py — sanity check here that it remains honest)
 # ---------------------------------------------------------------------------
+
 
 def test_capability_statement_versioning_is_no_version():
     """F5 headline: CapabilityStatement per-resource versioning must be
@@ -228,6 +244,7 @@ def test_capability_statement_versioning_is_no_version():
 # ---------------------------------------------------------------------------
 # F17 — Location header short form
 # ---------------------------------------------------------------------------
+
 
 def test_create_location_header_uses_short_form():
     """F17: for versioning='no-version', the Location header is the short form

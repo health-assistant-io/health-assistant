@@ -16,6 +16,7 @@ Usage:
 After disabling, restart the backend (or hit POST /admin/system/integrations/<domain>/disable
 or .../enable) so the registry reloads.
 """
+
 import argparse
 import asyncio
 import os
@@ -28,7 +29,7 @@ if backend_dir not in sys.path:
 
 from sqlalchemy import select  # noqa: E402
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal  # noqa: E402
 from app.models.system_integration import SystemIntegration  # noqa: E402
 
 

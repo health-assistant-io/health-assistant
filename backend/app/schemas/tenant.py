@@ -10,12 +10,11 @@ frontend a fresh scoped JWT plus the original-tenant pointer so it can later
 restore the admin's real session.
 """
 
-from typing import Any, Dict, List, Literal, Optional
 from datetime import datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
-
 
 _ROLE_VALUES = {"USER", "MANAGER", "ADMIN"}
 
@@ -24,13 +23,13 @@ class TenantBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     name: str = Field(..., min_length=1, max_length=255)
-    slug: Optional[str] = Field(default=None, max_length=80)
-    description: Optional[str] = Field(default=None)
-    settings: Dict[str, Any] = Field(default_factory=dict)
+    slug: str | None = Field(default=None, max_length=80)
+    description: str | None = Field(default=None)
+    settings: dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantCreate(TenantBase):
-    owner_id: Optional[UUID] = None
+    owner_id: UUID | None = None
 
 
 class TenantUpdate(BaseModel):
@@ -38,10 +37,10 @@ class TenantUpdate(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    slug: Optional[str] = Field(default=None, max_length=80)
-    description: Optional[str] = None
-    settings: Optional[Dict[str, Any]] = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    slug: str | None = Field(default=None, max_length=80)
+    description: str | None = None
+    settings: dict[str, Any] | None = None
 
 
 class HardDeleteConfirm(BaseModel):
@@ -59,9 +58,9 @@ class HardDeleteConfirm(BaseModel):
 class TenantResponse(TenantBase):
     id: UUID
     is_active: bool
-    owner_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    owner_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class TenantStats(BaseModel):
@@ -85,11 +84,11 @@ class UserSummary(BaseModel):
 
 class TenantDetailResponse(TenantResponse):
     stats: TenantStats
-    owner: Optional[UserSummary] = None
+    owner: UserSummary | None = None
 
 
 class TenantListResponse(BaseModel):
-    items: List[TenantResponse]
+    items: list[TenantResponse]
     total: int
 
 
@@ -101,13 +100,13 @@ class TenantUserResponse(BaseModel):
     mfa_enabled: bool = False
     mfa_enforced: bool = False
     tenant_id: UUID
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class TenantUserListResponse(BaseModel):
-    items: List[TenantUserResponse]
+    items: list[TenantUserResponse]
     total: int
 
 
@@ -117,8 +116,8 @@ class UpdateTenantUser(BaseModel):
     SYSTEM_ADMIN cannot be granted here — it is bootstrap-only by design.
     """
 
-    role: Optional[Literal["USER", "MANAGER", "ADMIN"]] = None
-    is_active: Optional[bool] = None
+    role: Literal["USER", "MANAGER", "ADMIN"] | None = None
+    is_active: bool | None = None
 
 
 class SetTenantUserMFA(BaseModel):
@@ -133,7 +132,7 @@ class SetTenantUserMFA(BaseModel):
 
 
 class CreateInvitePayload(BaseModel):
-    email: Optional[EmailStr] = None
+    email: EmailStr | None = None
     role: Literal["USER", "MANAGER", "ADMIN"] = "USER"
     expires_days: int = Field(default=7, ge=1, le=30)
 
@@ -160,15 +159,15 @@ class AuditEntryResponse(BaseModel):
     diff columns). ``outcome`` is ``ok``/``denied``/``error``."""
 
     id: UUID
-    tenant_id: Optional[UUID] = None
-    user_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
+    user_id: UUID | None = None
     action: str
     resource_type: str
-    resource_id: Optional[UUID] = None
+    resource_id: UUID | None = None
     outcome: str = "ok"
-    old_value: Optional[Dict[str, Any]] = None
-    new_value: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = None
+    old_value: dict[str, Any] | None = None
+    new_value: dict[str, Any] | None = None
+    created_at: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -184,11 +183,12 @@ class AuditEntryResponse(BaseModel):
 
 
 class AuditListResponse(BaseModel):
-    items: List[AuditEntryResponse]
+    items: list[AuditEntryResponse]
     total: int
 
 
 __all__ = [
+    "_ROLE_VALUES",
     "AuditEntryResponse",
     "AuditListResponse",
     "CreateInvitePayload",
@@ -206,5 +206,4 @@ __all__ = [
     "TenantUserResponse",
     "UpdateTenantUser",
     "UserSummary",
-    "_ROLE_VALUES",
 ]

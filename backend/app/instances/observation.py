@@ -3,8 +3,8 @@
 Tenant- (+ optional patient-) scoped ILIKE over the FHIR ``code.text`` JSONB
 field (LOINC display). Self-registers.
 """
+
 from uuid import UUID
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ from app.models.fhir.patient import Observation
 async def search(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
     limit: int,
 ) -> list[dict]:
@@ -28,9 +28,7 @@ async def search(
     )
     if patient_id is not None:
         stmt = stmt.where(Observation.patient_id == patient_id)
-    stmt = stmt.order_by(
-        Observation.effective_datetime.desc().nullslast()
-    ).limit(limit)
+    stmt = stmt.order_by(Observation.effective_datetime.desc().nullslast()).limit(limit)
 
     result = await db.execute(stmt)
     hits: list[dict] = []

@@ -13,8 +13,9 @@ output of every registered factory.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,17 +29,17 @@ class ToolContext:
     db: AsyncSession
     tenant_id: UUID
     patient_id: UUID
-    examination_id: Optional[UUID] = None
-    user_id: Optional[UUID] = None
+    examination_id: UUID | None = None
+    user_id: UUID | None = None
 
 
 # A factory maps a ToolContext -> list of LangChain tools (closures over ctx).
-_TOOL_FACTORIES: "Dict[str, Callable[[ToolContext], List[Any]]]" = {}
+_TOOL_FACTORIES: dict[str, Callable[[ToolContext], list[Any]]] = {}
 
 
 def register_chat_tool(
     domain: str,
-) -> Callable[[Callable[[ToolContext], List[Any]]], Callable[[ToolContext], List[Any]]]:
+) -> Callable[[Callable[[ToolContext], list[Any]]], Callable[[ToolContext], list[Any]]]:
     """Decorator: register a tool factory under ``domain``.
 
     Usage in a domain module::
@@ -52,12 +53,11 @@ def register_chat_tool(
     """
 
     def _decorator(
-        factory: Callable[[ToolContext], List[Any]],
-    ) -> Callable[[ToolContext], List[Any]]:
+        factory: Callable[[ToolContext], list[Any]],
+    ) -> Callable[[ToolContext], list[Any]]:
         if domain in _TOOL_FACTORIES:
             raise ValueError(
-                f"chat-tool domain {domain!r} already registered by "
-                f"{_TOOL_FACTORIES[domain]!r}"
+                f"chat-tool domain {domain!r} already registered by {_TOOL_FACTORIES[domain]!r}"
             )
         _TOOL_FACTORIES[domain] = factory
         return factory
@@ -65,6 +65,6 @@ def register_chat_tool(
     return _decorator
 
 
-def get_factories() -> Dict[str, Callable[[ToolContext], List[Any]]]:
+def get_factories() -> dict[str, Callable[[ToolContext], list[Any]]]:
     """Snapshot of all registered domain factories (domain -> factory)."""
     return dict(_TOOL_FACTORIES)

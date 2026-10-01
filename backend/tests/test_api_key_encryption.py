@@ -15,6 +15,7 @@ B1: ``AIProviderModel.api_key`` was stored plaintext and returned in GET/
       - Backfill script ``scripts/encrypt_existing_api_keys.py`` converts
         legacy rows
 """
+
 import inspect
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -22,7 +23,6 @@ from uuid import uuid4
 
 import pytest
 from cryptography.fernet import Fernet
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKEND = REPO_ROOT / "backend"
@@ -158,8 +158,8 @@ def test_looks_masked():
 
 def test_response_masks_encrypted_api_key(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import encrypt_secret
     from app.ai.schemas.config import AIProviderResponse
+    from app.core.encryption import encrypt_secret
 
     encrypted = encrypt_secret("sk-prod-DEADBEEF")
     resp = AIProviderResponse(
@@ -222,8 +222,8 @@ def test_response_none_api_key(monkeypatch):
 
 def test_with_models_response_also_masks(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import encrypt_secret
     from app.ai.schemas.config import AIProviderWithModelsResponse
+    from app.core.encryption import encrypt_secret
 
     encrypted = encrypt_secret("sk-abcdef-XX-SECRET")
     resp = AIProviderWithModelsResponse(
@@ -249,9 +249,9 @@ def test_with_models_response_also_masks(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_provider_encrypts_api_key(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import decrypt_secret, is_encrypted
     from app.ai.providers.service import AIProviderService
     from app.ai.schemas.config import AIProviderCreate
+    from app.core.encryption import decrypt_secret, is_encrypted
     from app.models.enums import AIScope
 
     db = MagicMock()
@@ -283,9 +283,9 @@ async def test_create_provider_encrypts_api_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_update_provider_preserves_key_when_masked_sent(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import encrypt_secret
     from app.ai.providers.service import AIProviderService
     from app.ai.schemas.config import AIProviderUpdate
+    from app.core.encryption import encrypt_secret
 
     encrypted_existing = encrypt_secret("sk-real-key-XYZ")
 
@@ -320,7 +320,7 @@ async def test_update_provider_preserves_key_when_masked_sent(monkeypatch):
     )
 
     # api_key must NOT be in the update payload
-    assert all("api_key" not in k for k in captured.keys()), (
+    assert all("api_key" not in k for k in captured), (
         f"api_key leaked into update payload: {captured}"
     )
 
@@ -328,9 +328,9 @@ async def test_update_provider_preserves_key_when_masked_sent(monkeypatch):
 @pytest.mark.asyncio
 async def test_update_provider_encrypts_new_plaintext(monkeypatch):
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import decrypt_secret
     from app.ai.providers.service import AIProviderService
     from app.ai.schemas.config import AIProviderUpdate
+    from app.core.encryption import decrypt_secret
 
     captured = {}
 
@@ -465,14 +465,12 @@ def test_provider_service_never_reads_plaintext_attr():
     # not in the service. The encrypted value is fine to read for storage
     # paths, but anything that needs the actual key must use the getter.
     forbidden_patterns = [
-        "f\"Bearer {provider.api_key}\"",
-        'f\'Bearer {provider.api_key}\'',
+        'f"Bearer {provider.api_key}"',
+        "f'Bearer {provider.api_key}'",
         "api_key=provider.api_key",
     ]
     for pat in forbidden_patterns:
-        assert pat not in src, (
-            f"ai_provider_service.py still contains plaintext-key read {pat!r}"
-        )
+        assert pat not in src, f"ai_provider_service.py still contains plaintext-key read {pat!r}"
 
 
 def test_backfill_script_exists():
@@ -491,7 +489,9 @@ def test_to_dict_does_not_decrypt():
     only ever return the encrypted form. Plaintext reads go through the
     explicit getter.
     """
-    src = inspect.getsource(__import__("app.models.ai_provider_model", fromlist=["AIProviderModel"]).AIProviderModel.to_dict)
-    assert "decrypt_secret" not in src, (
-        "to_dict() must not decrypt — would leak plaintext via logs"
+    src = inspect.getsource(
+        __import__(
+            "app.models.ai_provider_model", fromlist=["AIProviderModel"]
+        ).AIProviderModel.to_dict
     )
+    assert "decrypt_secret" not in src, "to_dict() must not decrypt — would leak plaintext via logs"

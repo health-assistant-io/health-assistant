@@ -23,9 +23,11 @@ The validator accepts value[x] either as separate kwargs (preferred for new
 call sites) or via the legacy ``observation_data`` dict shape (the keys
 actually used by the REST create path).
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import BiomarkerValueType
@@ -40,7 +42,7 @@ class InvalidObservationValue(Exception):
 # ---------------------------------------------------------------------------
 
 
-AllowedStateSet = Iterable[Tuple[str, str]]
+AllowedStateSet = Iterable[tuple[str, str]]
 
 
 def _resolve_state_set(biomarker: BiomarkerDefinition) -> AllowedStateSet:
@@ -56,7 +58,7 @@ def _resolve_state_set(biomarker: BiomarkerDefinition) -> AllowedStateSet:
     return out
 
 
-def _extract_coding_pair(value_cc: Any) -> Optional[Tuple[str, str]]:
+def _extract_coding_pair(value_cc: Any) -> tuple[str, str] | None:
     """Pull ``(code, system)`` from a valueCodeableConcept dict.
 
     Returns ``None`` if the shape isn't a CodeableConcept with at least one
@@ -93,12 +95,11 @@ def _check_state_membership(
         )
     if pair not in set(allowed):
         raise InvalidObservationValue(
-            f"STATE biomarker {biomarker_slug!r} {context} "
-            f"coding {pair!r} not in allowed_states"
+            f"STATE biomarker {biomarker_slug!r} {context} coding {pair!r} not in allowed_states"
         )
 
 
-def _normalize_component_value(comp: Any) -> Tuple[Optional[Any], Optional[Any]]:
+def _normalize_component_value(comp: Any) -> tuple[Any | None, Any | None]:
     """Extract ``(code, valueCodeableConcept)`` from a FHIR component entry.
 
     Tolerates both camelCase (``valueCodeableConcept`` — FHIR R4 wire shape)
@@ -121,12 +122,12 @@ def _normalize_component_value(comp: Any) -> Tuple[Optional[Any], Optional[Any]]
 
 
 def validate_observation_value(
-    biomarker: Optional[BiomarkerDefinition],
+    biomarker: BiomarkerDefinition | None,
     *,
-    value_quantity: Optional[Dict[str, Any]] = None,
-    value_string: Optional[str] = None,
-    value_codeable_concept: Optional[Dict[str, Any]] = None,
-    component: Optional[List[Any]] = None,
+    value_quantity: dict[str, Any] | None = None,
+    value_string: str | None = None,
+    value_codeable_concept: dict[str, Any] | None = None,
+    component: list[Any] | None = None,
 ) -> None:
     """Validate the value[x] shape against ``biomarker``'s value_type contract.
 
@@ -191,17 +192,14 @@ def validate_observation_value(
             comp_code, comp_value = _normalize_component_value(comp)
             if comp_code is None:
                 raise InvalidObservationValue(
-                    f"Multi-state biomarker {biomarker.slug!r} "
-                    f"component[{i}] missing code"
+                    f"Multi-state biomarker {biomarker.slug!r} component[{i}] missing code"
                 )
             if comp_value is None:
                 raise InvalidObservationValue(
                     f"Multi-state biomarker {biomarker.slug!r} "
                     f"component[{i}] missing valueCodeableConcept"
                 )
-            _check_state_membership(
-                biomarker.slug, comp_value, allowed, context=f"component[{i}]"
-            )
+            _check_state_membership(biomarker.slug, comp_value, allowed, context=f"component[{i}]")
     else:
         # ----- STATE single-state: top-level valueCodeableConcept ----------
         # Check ``component`` FIRST — a single-state biomarker with component[]
@@ -216,13 +214,11 @@ def validate_observation_value(
             raise InvalidObservationValue(
                 f"STATE biomarker {biomarker.slug!r} requires valueCodeableConcept"
             )
-        _check_state_membership(
-            biomarker.slug, value_codeable_concept, allowed
-        )
+        _check_state_membership(biomarker.slug, value_codeable_concept, allowed)
 
 
 def validate_observation_payload(
-    biomarker: Optional[BiomarkerDefinition], payload: Dict[str, Any]
+    biomarker: BiomarkerDefinition | None, payload: dict[str, Any]
 ) -> None:
     """Convenience wrapper: extract value[x] from an ORM-shape dict and validate.
 

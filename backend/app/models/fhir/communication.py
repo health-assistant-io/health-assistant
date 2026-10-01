@@ -14,17 +14,18 @@ drop columns in P1).
 Spec: https://hl7.org/fhir/R4/communication.html
 """
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Index
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy import Column, DateTime, ForeignKey, Index, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
@@ -43,7 +44,7 @@ class CommunicationModel(
     __tablename__ = "fhir_communications"
 
     status = Column(String(50), nullable=False, default="completed")
-    # preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown
+    # preparation | in-progress | not-done | on-hold | stopped | completed | entered-in-error | unknown  # noqa: E501 -- long template/message string; reflow when touched
 
     category = Column(JSONB, nullable=True)  # [CodeableConcept]
     priority = Column(String(50), nullable=True)  # routine | urgent | asap | stat
@@ -84,9 +85,7 @@ class CommunicationModel(
             "status": self.status,
             "category": self.category,
             "priority": self.priority,
-            "subject_patient_id": str(self.subject_patient_id)
-            if self.subject_patient_id
-            else None,
+            "subject_patient_id": str(self.subject_patient_id) if self.subject_patient_id else None,
             "encounter_id": str(self.encounter_id) if self.encounter_id else None,
             "topic": self.topic,
             "payload": self.payload,

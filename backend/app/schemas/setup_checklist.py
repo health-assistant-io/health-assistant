@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Pydantic schemas for the in-app guided-setup checklist.
 
 Backend-derived (no onboarding_state table): see
@@ -8,7 +9,7 @@ per-entity completion ratio to render the wizard / completion card.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,7 +36,7 @@ class StepResult(BaseModel):
     """
 
     id: str = Field(..., description="Stable step id, e.g. 'system.first_tenant'")
-    entity: Optional[str] = Field(
+    entity: str | None = Field(
         None, description="Entity scope, e.g. 'patient'; None for role steps"
     )
     title_i18n_key: str
@@ -43,14 +44,14 @@ class StepResult(BaseModel):
     completed: bool = False
     manually_completed: bool = False
     optional: bool = False
-    payload_hint: Optional[Dict[str, Any]] = None
+    payload_hint: dict[str, Any] | None = None
 
 
 class SetupChecklistResponse(BaseModel):
     role: str
-    entity: Optional[str] = None
-    entity_id: Optional[UUID] = None
-    steps: List[StepResult]
+    entity: str | None = None
+    entity_id: UUID | None = None
+    steps: list[StepResult]
     completion: float = Field(
         ...,
         ge=0.0,
@@ -82,11 +83,9 @@ class ExtensionCatalogItem(BaseModel):
 
     key: str = Field(..., description="Local extension key, e.g. 'race'")
     title_i18n_key: str
-    value_type: str = Field(
-        ..., description="omb_category | code | string"
-    )
+    value_type: str = Field(..., description="omb_category | code | string")
     cardinality: str = Field("0..1")
-    options: Optional[List[ExtensionOption]] = Field(
+    options: list[ExtensionOption] | None = Field(
         None, description="Picklist for omb_category / code value types"
     )
 
@@ -95,4 +94,4 @@ class ExtensionCatalogResponse(BaseModel):
     """The supported-extension catalog for an entity (patient today)."""
 
     entity: str = Field("patient")
-    extensions: List[ExtensionCatalogItem]
+    extensions: list[ExtensionCatalogItem]

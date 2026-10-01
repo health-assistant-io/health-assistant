@@ -81,9 +81,7 @@ class CookieNames:
 def cookie_names() -> CookieNames:
     """``__Host-nx_access`` under TLS (§10); ``nx_refresh`` cannot use the
     prefix (its Path is narrower than ``/``), matching the table above."""
-    access = (
-        ACCESS_COOKIE_HOST_PREFIXED if settings.HA_COOKIE_SECURE else ACCESS_COOKIE
-    )
+    access = ACCESS_COOKIE_HOST_PREFIXED if settings.HA_COOKIE_SECURE else ACCESS_COOKIE
     return CookieNames(access=access, refresh=REFRESH_COOKIE, csrf=CSRF_COOKIE)
 
 
@@ -184,9 +182,7 @@ def clear_session_cookies(response: Any) -> None:
     response.delete_cookie(
         names.refresh, path=COOKIE_PATH_AUTH, secure=secure, samesite=samesite, httponly=True
     )
-    response.delete_cookie(
-        names.csrf, path=COOKIE_PATH_ROOT, secure=secure, samesite=samesite
-    )
+    response.delete_cookie(names.csrf, path=COOKIE_PATH_ROOT, secure=secure, samesite=samesite)
 
 
 def parse_cookies(header: str | None) -> dict[str, str]:
@@ -237,29 +233,21 @@ class CsrfMiddleware:
             await self.app(scope, receive, send)
             return
 
-        if any(
-            path == prefix or path.startswith(prefix)
-            for prefix in CSRF_EXEMPT_PREFIXES
-        ):
+        if any(path == prefix or path.startswith(prefix) for prefix in CSRF_EXEMPT_PREFIXES):
             await self.app(scope, receive, send)
             return
 
         cookies = parse_cookies(headers.get("cookie"))
         csrf_cookie = cookies.get(CSRF_COOKIE, "")
         session_present = any(
-            name in cookies
-            for name in (*access_cookie_candidates(), REFRESH_COOKIE)
+            name in cookies for name in (*access_cookie_candidates(), REFRESH_COOKIE)
         )
         if not csrf_cookie and not session_present:
             await self.app(scope, receive, send)
             return
 
         presented = headers.get(CSRF_HEADER, "")
-        if (
-            not csrf_cookie
-            or not presented
-            or not hmac.compare_digest(csrf_cookie, presented)
-        ):
+        if not csrf_cookie or not presented or not hmac.compare_digest(csrf_cookie, presented):
             await self._forbidden(send)
             return
         await self.app(scope, receive, send)

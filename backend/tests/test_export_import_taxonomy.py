@@ -22,7 +22,7 @@ fills, never by a bare slug that may exist in another tenant from a prior run.
 import copy
 import datetime as _dt
 from datetime import date
-from typing import Any, Dict, List
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -55,7 +55,6 @@ from app.services.catalog_import_service import CatalogImportService
 from app.services.export_service import ExportService
 from app.services.import_service import ImportService
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -68,9 +67,7 @@ def _uslug(base: str) -> str:
 
 async def _new_tenant(session, slug_prefix: str = "exp-imp-tax") -> UUID:
     tid = uuid4()
-    session.add(
-        TenantModel(id=tid, name=f"Tenant {tid}", slug=_uslug(slug_prefix))
-    )
+    session.add(TenantModel(id=tid, name=f"Tenant {tid}", slug=_uslug(slug_prefix)))
     await session.commit()
     return tid
 
@@ -99,7 +96,7 @@ def _make_concept(
     name: str,
     tenant_id: UUID | None,
     *,
-    kinds: List[ConceptKind],
+    kinds: list[ConceptKind],
     primary_kind: ConceptKind | None = None,
     parent_id: UUID | None = None,
 ) -> Concept:
@@ -140,9 +137,7 @@ async def test_restore_sidecar_concepts_dispatch():
     svc = ImportService(db)
     svc._restore_concepts = AsyncMock(return_value=2)
     payload = {"concepts": [{"id": "x", "slug": "x"}]}
-    created, errors, warnings = await svc.restore_sidecar(
-        "concepts.json", payload, tid, {}
-    )
+    created, errors, _warnings = await svc.restore_sidecar("concepts.json", payload, tid, {})
     assert created == {"concepts": 2}
     assert errors == []
     svc._restore_concepts.assert_awaited_once_with(payload, tid, {})
@@ -171,9 +166,7 @@ async def test_restore_sidecar_concept_edges_dispatch():
     db = AsyncMock()
     svc = ImportService(db)
     svc._restore_concept_edges = AsyncMock(return_value=5)
-    created, errors, _ = await svc.restore_sidecar(
-        "concept_edges.json", {"edges": []}, tid, {}
-    )
+    created, errors, _ = await svc.restore_sidecar("concept_edges.json", {"edges": []}, tid, {})
     assert created == {"concept_edges": 5}
     assert errors == []
 
@@ -239,14 +232,8 @@ async def test_gather_concepts_excludes_global(db):
     tid = await _new_tenant(db)
     tenant_slug = _uslug("tenant-panel")
     global_slug = _uslug("global-cat")
-    db.add(
-        _make_concept(
-            tenant_slug, "Tenant Panel", tid, kinds=[ConceptKind.BIOMARKER_PANEL]
-        )
-    )
-    await _seed_global_concept(
-        db, "global", "Global", [ConceptKind.BIOMARKER_CLASS]
-    )
+    db.add(_make_concept(tenant_slug, "Tenant Panel", tid, kinds=[ConceptKind.BIOMARKER_PANEL]))
+    await _seed_global_concept(db, "global", "Global", [ConceptKind.BIOMARKER_CLASS])
     await db.commit()
 
     out = await ExportService(db).gather_concepts(tid)
@@ -269,9 +256,7 @@ async def test_gather_anatomy_returns_tenant_scoped_only(db):
     tenant_slug = _uslug("tenant-organ")
     global_slug = _uslug("g-organ")
     other_custom_slug = _uslug("other-custom")
-    custom = AnatomyStructure(
-        tenant_id=tid, name="Custom Organ", slug=custom_slug, is_custom=True
-    )
+    custom = AnatomyStructure(tenant_id=tid, name="Custom Organ", slug=custom_slug, is_custom=True)
     tenant_only = AnatomyStructure(
         tenant_id=tid, name="Tenant Organ", slug=tenant_slug, is_custom=False
     )
@@ -374,16 +359,14 @@ async def test_restore_concepts_upserts_and_remaps(db):
             }
         ]
     }
-    id_remap: Dict[str, str] = {}
+    id_remap: dict[str, str] = {}
     count = await ImportService(db)._restore_concepts(payload, tid, id_remap)
     await db.commit()
 
     assert count == 1
     assert str(src_id) in id_remap
     created = (
-        await db.execute(
-            select(Concept).where(Concept.id == _uu(id_remap[str(src_id)]))
-        )
+        await db.execute(select(Concept).where(Concept.id == _uu(id_remap[str(src_id)])))
     ).scalar_one()
     assert created.tenant_id == tid
     assert created.primary_kind == ConceptKind.BIOMARKER_PANEL
@@ -407,20 +390,18 @@ async def test_restore_concepts_idempotent(db):
         ]
     }
     svc = ImportService(db)
-    idr1: Dict[str, str] = {}
+    idr1: dict[str, str] = {}
     await svc._restore_concepts(base, tid, idr1)
     await db.commit()
     new_id = idr1[base["concepts"][0]["id"]]
 
     payload2 = copy.deepcopy(base)
     payload2["concepts"][0]["name"] = "Renamed Category"
-    idr2: Dict[str, str] = {}
+    idr2: dict[str, str] = {}
     await svc._restore_concepts(payload2, tid, idr2)
     await db.commit()
 
-    rows = (
-        await db.execute(select(Concept).where(Concept.id == _uu(new_id)))
-    ).scalars().all()
+    rows = (await db.execute(select(Concept).where(Concept.id == _uu(new_id)))).scalars().all()
     assert len(rows) == 1
     assert rows[0].name == "Renamed Category"
     # remap points at the SAME row (updated, not duplicated)
@@ -452,7 +433,7 @@ async def test_restore_concepts_defers_parent(db):
             },
         ]
     }
-    id_remap: Dict[str, str] = {}
+    id_remap: dict[str, str] = {}
     await ImportService(db)._restore_concepts(payload, tid, id_remap)
     await db.commit()
 
@@ -468,9 +449,7 @@ async def test_restore_concepts_defers_parent(db):
 @pytest.mark.asyncio
 async def test_restore_anatomy_relinks_class_concept(db):
     tid = await _new_tenant(db)
-    cls = await _seed_global_concept(
-        db, "organ", "Organ", [ConceptKind.ANATOMY_CLASS]
-    )
+    cls = await _seed_global_concept(db, "organ", "Organ", [ConceptKind.ANATOMY_CLASS])
     src_struct = uuid4()
     struct_slug = _uslug("widget-organ")
     payload = {
@@ -489,17 +468,15 @@ async def test_restore_anatomy_relinks_class_concept(db):
         ],
         "relations": [],
     }
-    id_remap: Dict[str, str] = {}
+    id_remap: dict[str, str] = {}
     svc = ImportService(db)
-    structs, rels = await svc._restore_anatomy(payload, tid, id_remap)
+    structs, _rels = await svc._restore_anatomy(payload, tid, id_remap)
     await db.commit()
 
     assert structs == 1
     s = (
         await db.execute(
-            select(AnatomyStructure).where(
-                AnatomyStructure.id == _uu(id_remap[str(src_struct)])
-            )
+            select(AnatomyStructure).where(AnatomyStructure.id == _uu(id_remap[str(src_struct)]))
         )
     ).scalar_one()
     assert s.tenant_id == tid
@@ -509,9 +486,7 @@ async def test_restore_anatomy_relinks_class_concept(db):
 @pytest.mark.asyncio
 async def test_restore_concept_edges_remaps_and_skips_dangling(db):
     tid = await _new_tenant(db)
-    src_concept = _make_concept(
-        _uslug("edge-src"), "Edge Src", tid, kinds=[ConceptKind.SPECIALTY]
-    )
+    src_concept = _make_concept(_uslug("edge-src"), "Edge Src", tid, kinds=[ConceptKind.SPECIALTY])
     db.add(src_concept)
     await db.flush()
     # a global anatomy structure (the realistic target of a concept edge)
@@ -559,8 +534,8 @@ async def test_restore_concept_edges_remaps_and_skips_dangling(db):
 
     assert count == 1  # dangling edge skipped
     edges = (
-        await db.execute(select(ConceptEdge).where(ConceptEdge.tenant_id == tid))
-    ).scalars().all()
+        (await db.execute(select(ConceptEdge).where(ConceptEdge.tenant_id == tid))).scalars().all()
+    )
     assert len(edges) == 1
     assert edges[0].src_id == src_concept.id
     assert edges[0].dst_id == tgt_organ.id
@@ -607,9 +582,7 @@ async def test_catalog_import_resolves_class_concept_slug_not_name(db):
     assert stats["biomarkers_added"] == 1
 
     bio = (
-        await db.execute(
-            select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug)
-        )
+        await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug))
     ).scalar_one()
     assert bio.class_concept_id == cls.id
 
@@ -647,9 +620,7 @@ async def test_catalog_import_legacy_underscore_category_still_works(db):
     stats = await CatalogImportService(db).import_catalog(payload)
     assert stats["biomarkers_added"] == 1
     bio = (
-        await db.execute(
-            select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug)
-        )
+        await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug))
     ).scalar_one()
     assert bio.class_concept_id == cls.id
 
@@ -657,10 +628,8 @@ async def test_catalog_import_legacy_underscore_category_still_works(db):
 # ---------- full export -> import round-trip across two tenants ----------
 
 
-async def _build_source_dataset(session, tid: UUID) -> Dict[str, Any]:
-    panel = _make_concept(
-        _uslug("my-panel"), "My Panel", tid, kinds=[ConceptKind.BIOMARKER_PANEL]
-    )
+async def _build_source_dataset(session, tid: UUID) -> dict[str, Any]:
+    panel = _make_concept(_uslug("my-panel"), "My Panel", tid, kinds=[ConceptKind.BIOMARKER_PANEL])
     exam_cat = _make_concept(
         _uslug("my-exam-cat"),
         "My Exam Category",
@@ -721,9 +690,7 @@ async def test_full_round_trip_taxonomy_anatomy_exam(db):
     concepts_payload = await export_svc.gather_concepts(src_tid)
     edges_payload = await export_svc.gather_concept_edges(src_tid)
     anatomy_payload = await export_svc.gather_anatomy(src_tid)
-    exams_payload = [
-        e.to_dict() for e in (await export_svc.gather_examinations(src_tid, None))
-    ]
+    exams_payload = [e.to_dict() for e in (await export_svc.gather_examinations(src_tid, None))]
     # capture source ids before wiping
     src_panel_id = src["panel"].id
     src_exam_cat_id = src["exam_cat"].id
@@ -731,9 +698,7 @@ async def test_full_round_trip_taxonomy_anatomy_exam(db):
     src_patient_id = src["patient"].id
 
     # wipe the source tenant's rows (mimics restore-after-data-loss)
-    await db.execute(
-        ConceptEdge.__table__.delete().where(ConceptEdge.tenant_id == src_tid)
-    )
+    await db.execute(ConceptEdge.__table__.delete().where(ConceptEdge.tenant_id == src_tid))
     await db.execute(
         ExaminationModel.__table__.delete().where(ExaminationModel.tenant_id == src_tid)
     )
@@ -747,20 +712,16 @@ async def test_full_round_trip_taxonomy_anatomy_exam(db):
     # In the real pipeline the FHIR bundle restores Patients first and fills
     # id_remap; this test exercises only the sidecar layer, so seed a target
     # patient + the remap entry the exam restore consumes.
-    tgt_patient = Patient(
-        tenant_id=tgt_tid, name=[{"family": "Round"}], gender=Gender.UNKNOWN
-    )
+    tgt_patient = Patient(tenant_id=tgt_tid, name=[{"family": "Round"}], gender=Gender.UNKNOWN)
     db.add(tgt_patient)
     await db.flush()
 
     import_svc = ImportService(db)
-    id_remap: Dict[str, str] = {str(src_patient_id): str(tgt_patient.id)}
+    id_remap: dict[str, str] = {str(src_patient_id): str(tgt_patient.id)}
     n_c = await import_svc._restore_concepts(concepts_payload, tgt_tid, id_remap)
     n_s, _n_r = await import_svc._restore_anatomy(anatomy_payload, tgt_tid, id_remap)
     n_e = await import_svc._restore_examinations(exams_payload, tgt_tid, id_remap)
-    n_edges = await import_svc._restore_concept_edges(
-        edges_payload, tgt_tid, id_remap
-    )
+    n_edges = await import_svc._restore_concept_edges(edges_payload, tgt_tid, id_remap)
     await db.commit()
 
     assert n_c == 2
@@ -769,35 +730,25 @@ async def test_full_round_trip_taxonomy_anatomy_exam(db):
     assert n_edges == 1
 
     tgt_panel = (
-        await db.execute(
-            select(Concept).where(Concept.id == _uu(id_remap[str(src_panel_id)]))
-        )
+        await db.execute(select(Concept).where(Concept.id == _uu(id_remap[str(src_panel_id)])))
     ).scalar_one()
     assert tgt_panel.tenant_id == tgt_tid
     tgt_organ = (
         await db.execute(
-            select(AnatomyStructure).where(
-                AnatomyStructure.id == _uu(id_remap[str(src_organ_id)])
-            )
+            select(AnatomyStructure).where(AnatomyStructure.id == _uu(id_remap[str(src_organ_id)]))
         )
     ).scalar_one()
     assert tgt_organ.tenant_id == tgt_tid
     tgt_edge = (
-        await db.execute(
-            select(ConceptEdge).where(ConceptEdge.tenant_id == tgt_tid)
-        )
+        await db.execute(select(ConceptEdge).where(ConceptEdge.tenant_id == tgt_tid))
     ).scalar_one()
     assert tgt_edge.src_id == tgt_panel.id
     assert tgt_edge.dst_id == tgt_organ.id
     tgt_exam_cat = (
-        await db.execute(
-            select(Concept).where(Concept.id == _uu(id_remap[str(src_exam_cat_id)]))
-        )
+        await db.execute(select(Concept).where(Concept.id == _uu(id_remap[str(src_exam_cat_id)])))
     ).scalar_one()
     tgt_exam = (
-        await db.execute(
-            select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid)
-        )
+        await db.execute(select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid))
     ).scalar_one()
     assert tgt_exam.category_concept_id == tgt_exam_cat.id
     assert tgt_exam.notes == "round-trip exam"
@@ -815,9 +766,7 @@ async def test_full_round_trip_examination_category_global_slug_fallback(db):
         "Global Exam Category",
         [ConceptKind.EXAMINATION_CATEGORY],
     )
-    patient = Patient(
-        tenant_id=src_tid, name=[{"family": "G"}], gender=Gender.UNKNOWN
-    )
+    patient = Patient(tenant_id=src_tid, name=[{"family": "G"}], gender=Gender.UNKNOWN)
     db.add(patient)
     await db.flush()
     db.add(
@@ -831,9 +780,7 @@ async def test_full_round_trip_examination_category_global_slug_fallback(db):
     await db.commit()
 
     export_svc = ExportService(db)
-    exams_payload = [
-        e.to_dict() for e in (await export_svc.gather_examinations(src_tid, None))
-    ]
+    exams_payload = [e.to_dict() for e in (await export_svc.gather_examinations(src_tid, None))]
     # global concepts are deliberately NOT exported
     assert (await export_svc.gather_concepts(src_tid))["concepts"] == []
 
@@ -841,9 +788,7 @@ async def test_full_round_trip_examination_category_global_slug_fallback(db):
     await db.commit()
     assert n == 1
     tgt_exam = (
-        await db.execute(
-            select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid)
-        )
+        await db.execute(select(ExaminationModel).where(ExaminationModel.tenant_id == tgt_tid))
     ).scalar_one()
     assert tgt_exam.category_concept_id == g_src.id  # resolved via global existence
 
@@ -861,9 +806,7 @@ async def test_full_round_trip_idempotent(db):
     anatomy_payload = await export_svc.gather_anatomy(src_tid)
 
     # wipe source so globally-unique anatomy slug is free for the target
-    await db.execute(
-        ConceptEdge.__table__.delete().where(ConceptEdge.tenant_id == src_tid)
-    )
+    await db.execute(ConceptEdge.__table__.delete().where(ConceptEdge.tenant_id == src_tid))
     await db.execute(
         AnatomyStructure.__table__.delete().where(AnatomyStructure.tenant_id == src_tid)
     )
@@ -871,18 +814,16 @@ async def test_full_round_trip_idempotent(db):
     await db.commit()
 
     import_svc = ImportService(db)
-    idr1: Dict[str, str] = {}
+    idr1: dict[str, str] = {}
     await import_svc._restore_concepts(concepts_payload, tgt_tid, idr1)
     await import_svc._restore_anatomy(anatomy_payload, tgt_tid, idr1)
     await import_svc._restore_concept_edges(edges_payload, tgt_tid, idr1)
     await db.commit()
 
-    idr2: Dict[str, str] = {}
+    idr2: dict[str, str] = {}
     await import_svc._restore_concepts(concepts_payload, tgt_tid, idr2)
     await import_svc._restore_anatomy(anatomy_payload, tgt_tid, idr2)
-    n_edges_2 = await import_svc._restore_concept_edges(
-        edges_payload, tgt_tid, idr2
-    )
+    n_edges_2 = await import_svc._restore_concept_edges(edges_payload, tgt_tid, idr2)
     await db.commit()
 
     concept_rows = (
@@ -892,9 +833,7 @@ async def test_full_round_trip_idempotent(db):
     ).scalar()
     edge_rows = (
         await db.execute(
-            select(func.count())
-            .select_from(ConceptEdge)
-            .where(ConceptEdge.tenant_id == tgt_tid)
+            select(func.count()).select_from(ConceptEdge).where(ConceptEdge.tenant_id == tgt_tid)
         )
     ).scalar()
     struct_rows = (
@@ -1008,9 +947,7 @@ async def test_import_complete_and_fail_job_write_completed_at_datetime(db):
     assert isinstance(job.completed_at, _dt.datetime)
 
     # fail a fresh job
-    job2 = ImportJobModel(
-        tenant_id=tid, user_id=uid, status=JobStatus.PROCESSING, progress=10
-    )
+    job2 = ImportJobModel(tenant_id=tid, user_id=uid, status=JobStatus.PROCESSING, progress=10)
     db.add(job2)
     await db.commit()
     await db.refresh(job2)

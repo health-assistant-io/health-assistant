@@ -13,6 +13,7 @@ Revision ID: m1o2b3i4l5e6
 Revises: a1d2c3a4t5e6
 Create Date: 2026-08-12
 """
+
 from alembic import op
 
 revision = "m1o2b3i4l5e6"

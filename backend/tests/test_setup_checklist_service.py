@@ -1,3 +1,4 @@
+# ruff: noqa: B017 -- long immutable strings / legacy patterns; reflow when touched
 """Tests for the in-app guided-setup checklist service + endpoint.
 
 The service (`SetupChecklistService`) derives step state from live data, so
@@ -10,6 +11,7 @@ checklist (birth_date / address / telecom / emergency_contact / race /
 ethnicity / preferred_language / insurance_provider / allergies /
 current_medications / current_events).
 """
+
 import uuid
 
 import pytest
@@ -52,7 +54,12 @@ async def _make_tenant_and_user(role: Role = Role.USER):
                 "INSERT INTO users (id, tenant_id, email, role, password_hash, settings) "
                 "VALUES (:id, :tid, :email, :role, 'x', '{}'::jsonb)"
             ),
-            {"id": user_id, "tid": tenant_id, "email": f"u-{user_id.hex[:6]}@t.local", "role": role.value},
+            {
+                "id": user_id,
+                "tid": tenant_id,
+                "email": f"u-{user_id.hex[:6]}@t.local",
+                "role": role.value,
+            },
         )
         await session.commit()
     return tenant_id, user_id
@@ -62,9 +69,7 @@ async def _cleanup(*ids):
     """Best-effort delete by id per table."""
     async with AsyncSessionLocal() as session:
         for table, ident in ids:
-            await session.execute(
-                text(f"DELETE FROM {table} WHERE id = :id"), {"id": ident}
-            )
+            await session.execute(text(f"DELETE FROM {table} WHERE id = :id"), {"id": ident})
         await session.commit()
 
 
@@ -367,7 +372,13 @@ async def test_patient_current_medications_step_only_counts_active():
                     "(id, tenant_id, patient_id, code, status, intent) "
                     "VALUES (:id, :tid, :pid, :code, :status, 'statement')"
                 ),
-                {"id": mid, "tid": tenant_id, "pid": patient_id, "code": '{"text":"M"}', "status": status},
+                {
+                    "id": mid,
+                    "tid": tenant_id,
+                    "pid": patient_id,
+                    "code": '{"text":"M"}',
+                    "status": status,
+                },
             )
         await session.commit()
 
@@ -507,8 +518,8 @@ async def test_user_role_cannot_read_other_users_patient_checklist():
 
 @pytest.mark.asyncio
 async def test_setup_endpoint_returns_role_only_for_user(async_client):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     tenant_id, user_id = await _make_tenant_and_user(Role.USER)
     from unittest.mock import MagicMock
@@ -533,9 +544,10 @@ async def test_setup_endpoint_returns_role_only_for_user(async_client):
 
 @pytest.mark.asyncio
 async def test_setup_endpoint_rejects_unsupported_entity(async_client):
-    from app.main import app
-    from app.core.security import get_current_user
     from unittest.mock import MagicMock
+
+    from app.core.security import get_current_user
+    from app.main import app
 
     tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
     token = MagicMock()
@@ -592,9 +604,7 @@ async def test_extension_catalog_omb_race_options_present():
     insurance = next(e for e in catalog.extensions if e.key == "insurance_provider")
     # OMB race: 5 OMB minimum categories
     assert race.options is not None and len(race.options) == 5
-    assert {o.code for o in race.options} == {
-        "1002-5", "2028-9", "2054-5", "2076-8", "2106-3"
-    }
+    assert {o.code for o in race.options} == {"1002-5", "2028-9", "2054-5", "2076-8", "2106-3"}
     # Ethnicity: 2 OMB categories
     assert ethnicity.options is not None and len(ethnicity.options) == 2
     # Languages: non-empty picklist
@@ -620,9 +630,10 @@ async def test_extension_catalog_rejects_unsupported_entity():
 
 @pytest.mark.asyncio
 async def test_extension_catalog_endpoint_returns_catalog(async_client):
-    from app.main import app
-    from app.core.security import get_current_user
     from unittest.mock import MagicMock
+
+    from app.core.security import get_current_user
+    from app.main import app
 
     tenant_id, user_id = await _make_tenant_and_user(Role.ADMIN)
     token = MagicMock()
@@ -753,10 +764,7 @@ async def test_system_integrations_review_completes_when_admin_acts():
     token = _make_token(Role.SYSTEM_ADMIN, user_id, tenant_id)
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text(
-                "INSERT INTO system_integrations (domain, is_enabled) "
-                "VALUES ('dev_dummy', false)"
-            )
+            text("INSERT INTO system_integrations (domain, is_enabled) VALUES ('dev_dummy', false)")
         )
         await session.commit()
         service = SetupChecklistService(session)
@@ -765,9 +773,7 @@ async def test_system_integrations_review_completes_when_admin_acts():
     assert step.completed is True
 
     async with AsyncSessionLocal() as session:
-        await session.execute(
-            text("DELETE FROM system_integrations WHERE domain = 'dev_dummy'")
-        )
+        await session.execute(text("DELETE FROM system_integrations WHERE domain = 'dev_dummy'"))
         await session.commit()
     await _cleanup(("users", user_id), ("tenants", tenant_id))
 
@@ -789,9 +795,7 @@ async def test_manual_complete_marks_step_done_and_persists():
         assert lang_step.completed is False
         assert lang_step.manually_completed is False
 
-        updated = await service.set_manual_complete(
-            token, "user.preferences_language", True
-        )
+        updated = await service.set_manual_complete(token, "user.preferences_language", True)
         assert updated.completed is True
         assert updated.manually_completed is True
 
@@ -849,17 +853,13 @@ async def test_manual_complete_does_not_flag_when_evaluator_already_complete():
         service = SetupChecklistService(session)
         # Step is genuinely complete (patient linked). Set a manual override
         # anyway — it should not flip manually_completed to True.
-        await service.set_manual_complete(
-            token, "user.linked_self_patient", True
-        )
+        await service.set_manual_complete(token, "user.linked_self_patient", True)
         after = await service.get_checklist(token)
         step = next(s for s in after.steps if s.id == "user.linked_self_patient")
         assert step.completed is True  # evaluator-derived
         assert step.manually_completed is False
 
-    await _cleanup(
-        ("fhir_patients", patient_id), ("users", user_id), ("tenants", tenant_id)
-    )
+    await _cleanup(("fhir_patients", patient_id), ("users", user_id), ("tenants", tenant_id))
 
 
 @pytest.mark.asyncio
@@ -874,7 +874,9 @@ async def test_manual_complete_rejects_unknown_step():
         service = SetupChecklistService(session)
         with pytest.raises(ValidationError):
             await service.set_manual_complete(
-                token, "tenant.first_org", True  # not a USER-role step
+                token,
+                "tenant.first_org",
+                True,  # not a USER-role step
             )
 
     await _cleanup(("users", user_id), ("tenants", tenant_id))
@@ -883,9 +885,10 @@ async def test_manual_complete_rejects_unknown_step():
 @pytest.mark.asyncio
 async def test_manual_complete_endpoint_roundtrip(async_client):
     """The POST endpoint persists the override and returns the updated step."""
-    from app.main import app
-    from app.core.security import get_current_user
     from unittest.mock import MagicMock
+
+    from app.core.security import get_current_user
+    from app.main import app
 
     tenant_id, user_id = await _make_tenant_and_user(Role.USER)
     token = MagicMock()
@@ -905,9 +908,7 @@ async def test_manual_complete_endpoint_roundtrip(async_client):
 
         # A fresh GET reflects the override.
         r2 = await async_client.get("/api/v1/setup/checklist")
-        step = next(
-            s for s in r2.json()["steps"] if s["id"] == "user.preferences_language"
-        )
+        step = next(s for s in r2.json()["steps"] if s["id"] == "user.preferences_language")
         assert step["completed"] is True
         assert step["manually_completed"] is True
     finally:

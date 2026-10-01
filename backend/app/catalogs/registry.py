@@ -8,11 +8,13 @@ dispatcher, graph service, and LLM tools closed for modification.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from app.catalogs.descriptors import CatalogDescriptor
 
 
 class CatalogRegistry:
-    _by_type: dict[str, CatalogDescriptor] = {}
+    _by_type: ClassVar[dict[str, CatalogDescriptor]] = {}
 
     @classmethod
     def register(cls, descriptor: CatalogDescriptor) -> None:

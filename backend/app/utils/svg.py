@@ -15,7 +15,6 @@ viewBox attributes) are preserved.
 
 import re
 
-
 # Paired dangerous elements: <script>...</script>, <foreignObject>...</foreignObject>
 _PAIRED_DANGEROUS = re.compile(
     r"<\s*(script|foreignObject|foreignobject)\b[^>]*>.*?<\s*/\s*\1\s*>",

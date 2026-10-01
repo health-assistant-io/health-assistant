@@ -21,8 +21,9 @@ Post-fix contract pinned here:
    If no preferred unit is set, it falls back to the base SI unit so trends
    are at least consistent across labs reporting in different raw units.
 """
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -97,16 +98,21 @@ async def test_c7_relative_score_computed_inside_range():
     db.add = MagicMock()
     db.flush = AsyncMock()
     # db.begin_nested must return an async context manager
-    db.begin_nested = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
+    db.begin_nested = MagicMock(
+        return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
+    )
 
     b = _build_extract(value=5.0, ref_min=0.0, ref_max=10.0)
     exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4()),
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
         units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
-        exam=exam, patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -128,10 +134,13 @@ async def test_c7_relative_score_clamped_below_range():
     exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4()),
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
         units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
-        exam=exam, patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -149,10 +158,13 @@ async def test_c7_relative_score_clamped_above_range():
     exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4()),
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
         units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
-        exam=exam, patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -170,10 +182,13 @@ async def test_c7_relative_score_incomplete_range_uses_middle_default():
     exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4()),
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
         units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
-        exam=exam, patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -191,10 +206,13 @@ async def test_c7_relative_score_null_when_no_range():
     exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4()),
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
         units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
-        exam=exam, patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -232,10 +250,13 @@ async def test_c8_normalized_value_expressed_in_preferred_unit():
     }
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=preferred_unit_id),
-        units_by_symbol=units, exam=exam,
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=preferred_unit_id),
+        units_by_symbol=units,
+        exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -268,10 +289,13 @@ async def test_c8_normalized_value_direction_is_raw_to_preferred():
     }
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=preferred_unit_id),
-        units_by_symbol=units, exam=exam,
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=preferred_unit_id),
+        units_by_symbol=units,
+        exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)
@@ -301,10 +325,13 @@ async def test_c8_normalized_value_when_no_preferred_unit_falls_back_to_base():
     }
 
     await save_observation(
-        db, b, target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=None),
-        units_by_symbol=units, exam=exam,
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4(), preferred_unit_id=None),
+        units_by_symbol=units,
+        exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.now(timezone.utc),
+        effective_date=datetime.now(UTC),
     )
 
     obs = _intercept_obs(db)

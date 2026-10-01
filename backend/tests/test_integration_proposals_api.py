@@ -5,15 +5,15 @@ state transitions, and the provider-callback contract. Uses real DB +
 ``async_client`` so the test database runs through the actual FastAPI
 stack (matching the convention in ``test_concept_fk_integration.py``).
 """
+
 import uuid
 
 import pytest
 import pytest_asyncio
+from integrations.sdk.proposals import biomarker_hitl_proposal
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.services.user_service import get_user_by_id
-from tests._auth_helpers import auth_headers
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import HitlTaskStatus, Role
 from app.models.fhir.medication import MedicationCatalog
@@ -22,7 +22,8 @@ from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
 from app.services import integration_proposal_service as proposal_svc
-from integrations.sdk.proposals import biomarker_hitl_proposal
+from app.services.user_service import get_user_by_id
+from tests._auth_helpers import auth_headers
 
 
 @pytest_asyncio.fixture
@@ -90,11 +91,7 @@ async def other_user_headers(owner_headers_and_integration):
     the ownership check refuses cross-tenant reads / writes."""
     tenant_id, user_id = uuid.uuid4(), uuid.uuid4()
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Other T.", slug=f"oth-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Other T.", slug=f"oth-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -140,14 +137,10 @@ async def _seed_proposal(integration_id, tenant_id, user_id, spec=None):
 
 
 @pytest.mark.asyncio
-async def test_list_proposals_returns_owner_proposals(
-    async_client, owner_headers_and_integration
-):
+async def test_list_proposals_returns_owner_proposals(async_client, owner_headers_and_integration):
     """The owner can list their integration's proposals; an unrelated user
     gets 404 (the ownership check refuses before any row is read)."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.get(
@@ -162,13 +155,9 @@ async def test_list_proposals_returns_owner_proposals(
 
 
 @pytest.mark.asyncio
-async def test_list_proposals_status_filter(
-    async_client, owner_headers_and_integration
-):
+async def test_list_proposals_status_filter(async_client, owner_headers_and_integration):
     """``?status=proposed`` filters out terminal rows."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     a = await _seed_proposal(integration_id, tenant_id, user_id)
     b = await _seed_proposal(integration_id, tenant_id, user_id)
     # Flip b to DISMISSED directly. Re-fetch within the session so the
@@ -178,11 +167,7 @@ async def test_list_proposals_status_filter(
         from app.models.integration_proposal import IntegrationProposal
 
         fresh_b = (
-            await db.execute(
-                select(IntegrationProposal).where(
-                    IntegrationProposal.id == b.id
-                )
-            )
+            await db.execute(select(IntegrationProposal).where(IntegrationProposal.id == b.id))
         ).scalar_one()
         fresh_b.status = HitlTaskStatus.DISMISSED
         await db.commit()
@@ -199,9 +184,7 @@ async def test_list_proposals_status_filter(
 
 
 @pytest.mark.asyncio
-async def test_list_proposals_rejects_unknown_status(
-    async_client, owner_headers_and_integration
-):
+async def test_list_proposals_rejects_unknown_status(async_client, owner_headers_and_integration):
     """Unknown ``status`` value → 400 (not 500)."""
     headers, _t, _u, integration_id = owner_headers_and_integration
     resp = await async_client.get(
@@ -231,12 +214,8 @@ async def test_list_proposals_404_for_non_owner(
 
 
 @pytest.mark.asyncio
-async def test_get_proposal_returns_full_row(
-    async_client, owner_headers_and_integration
-):
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+async def test_get_proposal_returns_full_row(async_client, owner_headers_and_integration):
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.get(
@@ -250,9 +229,7 @@ async def test_get_proposal_returns_full_row(
 
 
 @pytest.mark.asyncio
-async def test_get_proposal_404_for_unknown_id(
-    async_client, owner_headers_and_integration
-):
+async def test_get_proposal_404_for_unknown_id(async_client, owner_headers_and_integration):
     headers, *_ = owner_headers_and_integration
     bogus = uuid.uuid4()
     resp = await async_client.get(
@@ -274,9 +251,7 @@ async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
     """The canonical happy path: approve → ``catalog_proposal_service.apply_proposal``
     writes the biomarker → status transitions to CONFIRMED with
     ``applied_entity_id`` set."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.post(
@@ -299,9 +274,7 @@ async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
         bio = (
             await db.execute(
                 select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == uuid.UUID(
-                        data["applied_entity_id"]
-                    )
+                    BiomarkerDefinition.id == uuid.UUID(data["applied_entity_id"])
                 )
             )
         ).scalar_one()
@@ -311,14 +284,10 @@ async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
 
 
 @pytest.mark.asyncio
-async def test_resolve_approve_with_edited_payload(
-    async_client, owner_headers_and_integration
-):
+async def test_resolve_approve_with_edited_payload(async_client, owner_headers_and_integration):
     """The user can edit the payload before approving — ``payload`` in the
     request body overrides the original ``proposed_payload``."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
     original_name = row.proposed_payload["name"]
     edited_name = f"{original_name} (edited)"
@@ -338,9 +307,7 @@ async def test_resolve_approve_with_edited_payload(
         bio = (
             await db.execute(
                 select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == uuid.UUID(
-                        data["applied_entity_id"]
-                    )
+                    BiomarkerDefinition.id == uuid.UUID(data["applied_entity_id"])
                 )
             )
         ).scalar_one()
@@ -351,9 +318,7 @@ async def test_resolve_approve_with_edited_payload(
 async def test_resolve_reject_marks_dismissed_without_applying(
     async_client, owner_headers_and_integration
 ):
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
     # Capture the proposed payload so we can verify nothing landed.
     proposed_slug = row.proposed_payload.get("slug")
@@ -372,22 +337,20 @@ async def test_resolve_reject_marks_dismissed_without_applying(
     # No biomarker landed.
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.slug == proposed_slug
+            (
+                await db.execute(
+                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == proposed_slug)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert rows == []
 
 
 @pytest.mark.asyncio
-async def test_resolve_cancel_marks_dismissed(
-    async_client, owner_headers_and_integration
-):
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+async def test_resolve_cancel_marks_dismissed(async_client, owner_headers_and_integration):
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.post(
@@ -405,9 +368,7 @@ async def test_resolve_on_terminal_proposal_returns_409(
 ):
     """Re-resolve from a terminal state must return 409 — idempotent
     contract so the UI doesn't let a user double-approve."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     first = await async_client.post(
@@ -426,14 +387,10 @@ async def test_resolve_on_terminal_proposal_returns_409(
 
 
 @pytest.mark.asyncio
-async def test_resolve_user_role_forbidden(
-    async_client, owner_headers_and_integration
-):
+async def test_resolve_user_role_forbidden(async_client, owner_headers_and_integration):
     """USER role can list + view but not approve catalog proposals (which
     require ADMIN+ under the catalog policy)."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    _headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     user_token_headers = await auth_headers(
@@ -462,9 +419,7 @@ async def test_resolve_records_failed_when_apply_errors(
     """When apply_proposal raises (e.g. a permission error), the resolver
     records status=FAILED + an error message rather than 500'ing. The
     proposal stays around for retry / re-review."""
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     # Build a proposal with an empty name → apply_proposal will raise
     # ValueError before any DB write (biomarker router's first check).
     async with AsyncSessionLocal() as db:
@@ -492,12 +447,8 @@ async def test_resolve_records_failed_when_apply_errors(
 
 
 @pytest.mark.asyncio
-async def test_resolve_unknown_action_returns_400(
-    async_client, owner_headers_and_integration
-):
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+async def test_resolve_unknown_action_returns_400(async_client, owner_headers_and_integration):
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.post(
@@ -519,9 +470,7 @@ async def test_resolve_medication_proposal_writes_catalog(
     a medication proposal."""
     from integrations.sdk.proposals import medication_hitl_proposal
 
-    headers, tenant_id, user_id, integration_id = (
-        owner_headers_and_integration
-    )
+    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     spec = medication_hitl_proposal(
         title=f"Define Med: TestMol-{uuid.uuid4().hex[:6]}",
         name=f"TestMol-{uuid.uuid4().hex[:8]}",
@@ -552,9 +501,7 @@ async def test_resolve_medication_proposal_writes_catalog(
         med = (
             await db.execute(
                 select(MedicationCatalog).where(
-                    MedicationCatalog.id == uuid.UUID(
-                        data["applied_entity_id"]
-                    )
+                    MedicationCatalog.id == uuid.UUID(data["applied_entity_id"])
                 )
             )
         ).scalar_one()

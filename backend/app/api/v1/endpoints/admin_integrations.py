@@ -1,23 +1,24 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 import logging
-from typing import List, Dict, Any
+from typing import Any
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import RoleChecker
+from app.models.system_integration import SystemIntegration
 from app.models.user_model import Role
 from app.schemas.user import TokenData
-from app.models.system_integration import SystemIntegration
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("", response_model=List[Dict[str, Any]])
+@router.get("", response_model=list[dict[str, Any]])
 async def list_system_integrations(
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     """List all system integration configurations, including newly discovered ones."""
@@ -68,7 +69,7 @@ async def list_system_integrations(
 @router.post("/{domain}/enable")
 async def enable_system_integration(
     domain: str,
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     """Enable an integration globally across the system."""
@@ -95,7 +96,7 @@ async def enable_system_integration(
 @router.post("/{domain}/disable")
 async def disable_system_integration(
     domain: str,
-    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     """Disable an integration globally across the system.

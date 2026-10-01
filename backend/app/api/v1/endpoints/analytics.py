@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
 from app.core.security import get_current_user
-from app.services.access import check_patient_access
 from app.models.enums import Role
+from app.schemas.user import TokenData
+from app.services.access import check_patient_access
 from app.services.analytics_service import (
     get_analytics_summary,
-    get_biomarker_trends,
-    get_dashboard_data,
     get_biomarker_anomalies,
+    get_biomarker_trends,
     get_category_analytics,
+    get_dashboard_data,
 )
-
-from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -49,9 +49,7 @@ async def get_summary_endpoint(
     elif current_user.role == Role.USER.value:
         return {}
 
-    summary = await get_analytics_summary(
-        str(current_user.tenant_id), patient_id, period, db
-    )
+    summary = await get_analytics_summary(str(current_user.tenant_id), patient_id, period, db)
     return summary
 
 
@@ -155,9 +153,7 @@ async def get_category_analytics_endpoint(
     elif current_user.role == Role.USER.value:
         return {}
 
-    data = await get_category_analytics(
-        str(current_user.tenant_id), category_name, patient_id, db
-    )
+    data = await get_category_analytics(str(current_user.tenant_id), category_name, patient_id, db)
     return data
 
 
@@ -182,9 +178,7 @@ async def get_available_categories_endpoint(
         query = query.where(DocumentModel.patient_id == patient_id)
     elif current_user.role == Role.USER.value:
         # Filter by all user's patients
-        patient_ids_query = select(Patient.id).where(
-            Patient.user_id == current_user.user_id
-        )
+        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
         query = query.where(DocumentModel.patient_id.in_(patient_ids_query))
 
     result = await db.execute(query)
@@ -198,10 +192,7 @@ async def get_available_categories_endpoint(
             doc_cat = entities.get("document_category", "").lower()
             if doc_cat:
                 for cat_id, cat_name in CATEGORY_MAPPING.items():
-                    if (
-                        cat_name.lower() in doc_cat
-                        or cat_id.replace("-", " ") in doc_cat
-                    ):
+                    if cat_name.lower() in doc_cat or cat_id.replace("-", " ") in doc_cat:
                         available.add(cat_id)
 
     return {"categories": list(available)}

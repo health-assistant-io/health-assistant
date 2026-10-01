@@ -38,10 +38,10 @@ Dedup contract:
    endpoint's "catch accidental re-submission" behavior, preserved
    unchanged.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -74,8 +74,8 @@ async def create_examination(
     current_user: TokenData,
     payload: ExaminationCreate,
     *,
-    source_integration_id: Optional[UUID] = None,
-    external_id: Optional[str] = None,
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
 ) -> ExaminationModel:
     """Create an examination with patient validation, category resolution,
     dedup, and doctor linking.
@@ -141,7 +141,9 @@ async def create_examination(
             logger.info(
                 "create_examination: returning existing exam %s (dedup hit "
                 "on source_integration_id=%s external_id=%r)",
-                existing.id, effective_source, effective_external,
+                existing.id,
+                effective_source,
+                effective_external,
             )
             return await _reload_with_relationships(db, existing.id)
 
@@ -167,9 +169,9 @@ async def create_examination(
         )
         if heuristic_match is not None:
             logger.info(
-                "Duplicate examination detected for patient %s, returning "
-                "existing record %s.",
-                payload.patient_id, heuristic_match.id,
+                "Duplicate examination detected for patient %s, returning existing record %s.",
+                payload.patient_id,
+                heuristic_match.id,
             )
             return heuristic_match
 
@@ -222,10 +224,10 @@ async def _find_by_integration_key(
     db: AsyncSession,
     *,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     source_integration_id: UUID,
     external_id: str,
-) -> Optional[ExaminationModel]:
+) -> ExaminationModel | None:
     """Look up an existing integration-sourced exam by exact dedup key.
 
     The partial unique index ``uq_examination_integration_dedup`` makes
@@ -246,11 +248,11 @@ async def _find_by_heuristic(
     db: AsyncSession,
     *,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     examination_date,
     category_concept_id,
     notes,
-) -> Optional[ExaminationModel]:
+) -> ExaminationModel | None:
     """The original endpoint's UI anti-re-submission check.
 
     Matches on ``(tenant_id, patient_id, examination_date,
@@ -269,9 +271,7 @@ async def _find_by_heuristic(
     return result.scalars().first()
 
 
-async def _reload_with_relationships(
-    db: AsyncSession, examination_id: UUID
-) -> ExaminationModel:
+async def _reload_with_relationships(db: AsyncSession, examination_id: UUID) -> ExaminationModel:
     """Reload with the relationships the response_model expects.
 
     Mirrors the original endpoint's reload block (doctors / organization /

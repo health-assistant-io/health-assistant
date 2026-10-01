@@ -75,10 +75,14 @@ def key_for(kind: str) -> str:
     other kind so a typo can never mint under an unintended key.
     """
     if kind in SESSION_FAMILY_KINDS:
-        return settings.HA_SESSION_KEY
-    if kind == REFRESH_KIND:
-        return settings.HA_REFRESH_KEY
-    raise ValueError(f"unknown token kind {kind!r}")
+        key = settings.HA_SESSION_KEY
+    elif kind == REFRESH_KIND:
+        key = settings.HA_REFRESH_KEY
+    else:
+        raise ValueError(f"unknown token kind {kind!r}")
+    if not key:
+        raise ValueError(f"HA key for token kind {kind!r} is not configured")
+    return key
 
 
 def verification_keys() -> tuple[str, ...]:
@@ -88,9 +92,7 @@ def verification_keys() -> tuple[str, ...]:
     Deduplicated in case a (forbidden) shared value slips in.
     """
     return tuple(
-        dict.fromkeys(
-            (settings.HA_SESSION_KEY, settings.HA_REFRESH_KEY)
-        )
+        key for key in dict.fromkeys((settings.HA_SESSION_KEY, settings.HA_REFRESH_KEY)) if key
     )
 
 
@@ -110,7 +112,5 @@ def data_key_family() -> tuple[str, ...]:
         # (the config boot guard guarantees this never happens outside
         # a monkeypatched test).
         return ()
-    previous = [
-        k.strip() for k in (settings.HA_DATA_KEY_PREVIOUS or "").split(",") if k.strip()
-    ]
+    previous = [k.strip() for k in (settings.HA_DATA_KEY_PREVIOUS or "").split(",") if k.strip()]
     return tuple(dict.fromkeys([primary, *previous]))

@@ -1,10 +1,11 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Document tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3).
 """
 
 import json
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
@@ -15,7 +16,7 @@ from app.models.document_model import DocumentModel
 
 
 @register_chat_tool("documents")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_document_content(document_id: str) -> str:
         """Fetch the full extracted text content of a specific document (e.g., a lab report or clinical note).
@@ -39,7 +40,9 @@ def build(ctx: ToolContext) -> List[Any]:
             return "Document not found or access denied."
 
         if not doc.extracted_text:
-            return f"Document '{doc.filename}' has no extracted text content (Status: {doc.status})."
+            return (
+                f"Document '{doc.filename}' has no extracted text content (Status: {doc.status})."
+            )
 
         return json.dumps(
             {

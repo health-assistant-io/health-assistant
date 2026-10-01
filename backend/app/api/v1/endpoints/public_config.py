@@ -11,6 +11,7 @@ same ktor connection it already uses).
 admin-editable — the dedicated ``mobile.*`` settings are the presentation-only
 overrides. No secrets.
 """
+
 from fastapi import APIRouter
 
 from app.core.database import AsyncSessionLocal

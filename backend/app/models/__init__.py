@@ -1,162 +1,163 @@
-from .base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
-from .user_model import UserModel, Role
+from app.models.enums import ImmunizationStatus
+
+from .ai_provider_model import AIModel, AIProviderModel, AITaskAssignment
+from .anatomy_model import AnatomyFigure, AnatomyStructure
+from .associations import examination_doctors, organization_doctors
+from .audit_model import AuditEvent
 from .auth_session_model import AuthSessionModel
-from .instance_setting_model import InstanceSettingModel
-from .tenant_model import TenantModel
+from .base import AuditMixin, Base, TenantMixin, UUIDMixin, VersionedMixin
+from .biomarker_model import (
+    BiomarkerDefinition,
+    BiomarkerReferenceRange,
+    Laboratory,
+    Unit,
+)
+from .catalog_audit_model import CatalogAuditLog
+from .chat_model import ChatMessage, ChatSession
+from .clinical_event import (
+    ClinicalEvent,
+    ClinicalEventOccurrence,
+    ClinicalEventStatus,
+    ClinicalEventType,
+    EventAnatomyLink,
+    EventExaminationLink,
+    EventObservationLink,
+)
+from .concept_model import Concept, ConceptEdge, ConceptKindTag
+from .doctor_model import DoctorModel
 from .document_model import DocumentModel
 from .examination_model import ExaminationModel
-from .doctor_model import DoctorModel
+from .export_import_job import ExportJobModel, ImportJobModel
+from .fhir import (
+    AllergyCatalog,
+    AllergyCategory,
+    AllergyClinicalStatus,
+    AllergyCriticality,
+    AllergyIntolerance,
+    DiagnosticReport,
+    Medication,
+    Observation,
+    Patient,
+    PatientImmunization,
+    VaccineCatalog,
+)
+from .fhir.communication import CommunicationModel
+from .fhir.device import DeviceModel
 from .fhir.organization import OrganizationModel
-from .associations import examination_doctors, organization_doctors
-from .telemetry_model import TelemetryDataModel
+from .fhir.provenance import ProvenanceModel
+from .instance_setting_model import InstanceSettingModel
+from .integration_proposal import IntegrationProposal
 from .notification import (
-    NotificationTrigger,
     Notification,
-    NotificationRecipient,
-    NotificationDelivery,
-    NotificationSubscription,
-    NotificationType,
-    NotificationSource,
     NotificationCategory,
-    NotificationSeverity,
     NotificationChannel,
+    NotificationDelivery,
+    NotificationRecipient,
+    NotificationSeverity,
+    NotificationSource,
     NotificationStatus,
+    NotificationSubscription,
+    NotificationTrigger,
+    NotificationType,
     RecipientKind,
     RecipientStatus,
     TriggerType,
 )
 from .notification_rule import (
+    ComparisonOperator,
     NotificationRule,
     NotificationRuleType,
-    ComparisonOperator,
 )
-from .audit_model import AuditEvent
-from .task_log import TaskLog
+from .oauth import OAuthClient
 from .patient_layout import PatientLayoutModel
-from .biomarker_model import (
-    Unit,
-    BiomarkerDefinition,
-    BiomarkerReferenceRange,
-    Laboratory,
-)
-from .fhir import (
-    Patient,
-    Observation,
-    DiagnosticReport,
-    Medication,
-    AllergyCatalog,
-    AllergyIntolerance,
-    AllergyCategory,
-    AllergyCriticality,
-    AllergyClinicalStatus,
-    VaccineCatalog,
-    PatientImmunization,
-)
-from app.models.enums import ImmunizationStatus
-from .fhir.provenance import ProvenanceModel
-from .fhir.device import DeviceModel
-from .fhir.communication import CommunicationModel
-from .ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
-from .chat_model import ChatSession, ChatMessage
-from .clinical_event import (
-    ClinicalEvent,
-    ClinicalEventType,
-    ClinicalEventOccurrence,
-    EventExaminationLink,
-    EventObservationLink,
-    EventAnatomyLink,
-    ClinicalEventStatus,
-)
-from .anatomy_model import AnatomyStructure, AnatomyFigure
-from .concept_model import Concept, ConceptEdge, ConceptKindTag
-from .user_integration import UserIntegration
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
-from .export_import_job import ExportJobModel, ImportJobModel
-from .catalog_audit_model import CatalogAuditLog
-from .integration_proposal import IntegrationProposal
-from .oauth import OAuthClient
+from .task_log import TaskLog
+from .telemetry_model import TelemetryDataModel
+from .tenant_model import TenantModel
+from .user_integration import UserIntegration
+from .user_model import Role, UserModel
 
 __all__ = [
-    "Base",
-    "UUIDMixin",
-    "TenantMixin",
-    "AuditMixin",
-    "VersionedMixin",
-    "UserModel",
-    "Role",
-    "AuthSessionModel",
-    "InstanceSettingModel",
-    "TenantModel",
-    "DocumentModel",
-    "ExaminationModel",
-    "DoctorModel",
-    "OrganizationModel",
-    "examination_doctors",
-    "organization_doctors",
-    "TelemetryDataModel",
-    "AuditEvent",
-    "TaskLog",
-    "PatientLayoutModel",
-    "Patient",
-    "Observation",
-    "DiagnosticReport",
-    "Medication",
+    "AIModel",
+    "AIProviderModel",
+    "AITaskAssignment",
     "AllergyCatalog",
-    "AllergyIntolerance",
     "AllergyCategory",
-    "AllergyCriticality",
     "AllergyClinicalStatus",
-    "VaccineCatalog",
-    "PatientImmunization",
-    "ImmunizationStatus",
-    "ProvenanceModel",
-    "DeviceModel",
-    "CommunicationModel",
-    "Unit",
+    "AllergyCriticality",
+    "AllergyIntolerance",
+    "AnatomyFigure",
+    "AnatomyStructure",
+    "AuditEvent",
+    "AuditMixin",
+    "AuthSessionModel",
+    "Base",
     "BiomarkerDefinition",
     "BiomarkerReferenceRange",
-    "Laboratory",
-    "AIProviderModel",
-    "AIModel",
-    "AITaskAssignment",
-    "ChatSession",
+    "CatalogAuditLog",
     "ChatMessage",
+    "ChatSession",
     "ClinicalEvent",
-    "ClinicalEventType",
     "ClinicalEventOccurrence",
-    "EventExaminationLink",
-    "EventObservationLink",
-    "EventAnatomyLink",
     "ClinicalEventStatus",
-    "AnatomyStructure",
-    "AnatomyFigure",
+    "ClinicalEventType",
+    "CommunicationModel",
+    "ComparisonOperator",
     "Concept",
     "ConceptEdge",
     "ConceptKindTag",
-    "NotificationTrigger",
+    "DeviceModel",
+    "DiagnosticReport",
+    "DoctorModel",
+    "DocumentModel",
+    "EventAnatomyLink",
+    "EventExaminationLink",
+    "EventObservationLink",
+    "ExaminationModel",
+    "ExportJobModel",
+    "ImmunizationStatus",
+    "ImportJobModel",
+    "InstanceSettingModel",
+    "IntegrationProposal",
+    "Laboratory",
+    "Medication",
     "Notification",
-    "NotificationRecipient",
-    "NotificationDelivery",
-    "NotificationSubscription",
-    "NotificationType",
-    "NotificationSource",
     "NotificationCategory",
-    "NotificationSeverity",
     "NotificationChannel",
-    "NotificationStatus",
-    "RecipientKind",
-    "RecipientStatus",
-    "TriggerType",
+    "NotificationDelivery",
+    "NotificationRecipient",
     "NotificationRule",
     "NotificationRuleType",
-    "ComparisonOperator",
-    "UserIntegration",
+    "NotificationSeverity",
+    "NotificationSource",
+    "NotificationStatus",
+    "NotificationSubscription",
+    "NotificationTrigger",
+    "NotificationType",
+    "OAuthClient",
+    "Observation",
+    "OrganizationModel",
+    "Patient",
+    "PatientImmunization",
+    "PatientLayoutModel",
+    "ProvenanceModel",
+    "RecipientKind",
+    "RecipientStatus",
+    "Role",
     "SystemIntegration",
     "SystemSetting",
-    "ExportJobModel",
-    "ImportJobModel",
-    "CatalogAuditLog",
-    "IntegrationProposal",
-    "OAuthClient",
+    "TaskLog",
+    "TelemetryDataModel",
+    "TenantMixin",
+    "TenantModel",
+    "TriggerType",
+    "UUIDMixin",
+    "Unit",
+    "UserIntegration",
+    "UserModel",
+    "VaccineCatalog",
+    "VersionedMixin",
+    "examination_doctors",
+    "organization_doctors",
 ]

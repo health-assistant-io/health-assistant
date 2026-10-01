@@ -11,7 +11,7 @@ compatibility with callers and tests.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import HumanMessage
@@ -26,9 +26,11 @@ from app.ai.agents.chat_agent import (
 from app.ai.agents.hitl import (
     _append_assistant_turn_to_history,
     _hitl_llm_feedback,
-    _hitl_resolved_brief,
     _hitl_resolution_summary,
+    _hitl_resolved_brief,
     _parse_hitl_proposal,
+)
+from app.ai.agents.hitl import (
     resume_after_hitl as _resume_after_hitl,
 )
 from app.ai.agents.prompts import (
@@ -36,7 +38,6 @@ from app.ai.agents.prompts import (
     build_general_chat_system_prompt,
     session_title_prompt,
 )
-from app.ai.graphs.chat_agent import chat_engine_iter
 from app.ai.assistance.attachments import (
     build_multimodal_content,
     validate_chat_images,
@@ -52,6 +53,7 @@ from app.ai.assistance.form_fillers import (
     magic_fill_examination,
 )
 from app.ai.assistance.icons import generate_category_icon, suggest_category_icon
+from app.ai.graphs.chat_agent import chat_engine_iter
 from app.ai.providers.service import AIProviderService
 from app.core.config import settings
 from app.models.system_setting import SystemSetting
@@ -65,8 +67,8 @@ __all__ = [
     "AIAssistanceService",
     "_append_assistant_turn_to_history",
     "_hitl_llm_feedback",
-    "_hitl_resolved_brief",
     "_hitl_resolution_summary",
+    "_hitl_resolved_brief",
     "_parse_hitl_proposal",
 ]
 
@@ -116,12 +118,12 @@ class AIAssistanceService:
         self,
         task_type: str,
         user_input: str,
-        reference_image: Optional[str] = None,
-        context: Dict[str, Any] = None,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
+        reference_image: str | None = None,
+        context: dict[str, Any] | None = None,
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
         stream: bool = False,
-        images: Optional[List[str]] = None,
+        images: list[str] | None = None,
         flow_events: bool = False,
     ):
         """Main entry point for AI assistance.
@@ -137,9 +139,7 @@ class AIAssistanceService:
         remains the structural defence for any clinical write they motivate).
         """
         if user_input:
-            guard_result = check_user_input_safety(
-                user_input, context=f"assist:{task_type}"
-            )
+            guard_result = check_user_input_safety(user_input, context=f"assist:{task_type}")
             if guard_result.get("blocked"):
                 raise ValueError(
                     "This request was blocked by the prompt-injection guard. "
@@ -165,9 +165,7 @@ class AIAssistanceService:
         elif task_type == "suggest_category_icon":
             return await self._suggest_category_icon(llm, user_input, context)
         elif task_type == "generate_category_icon":
-            return await self._generate_category_icon(
-                llm, user_input, reference_image, context
-            )
+            return await self._generate_category_icon(llm, user_input, reference_image, context)
         elif task_type == "chat":
             if stream:
                 return self._chat_stream(
@@ -202,10 +200,10 @@ class AIAssistanceService:
         self,
         llm,
         user_input: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         tenant_id: UUID,
         user_id: UUID,
-        images: Optional[List[str]] = None,
+        images: list[str] | None = None,
         flow_events: bool = False,
     ):
         """Stream a chat response (SSE). Body lives in the LangGraph engine."""
@@ -288,7 +286,7 @@ class AIAssistanceService:
         session_id: UUID,
         tenant_id: UUID,
         user_id: UUID,
-        message_id: Optional[UUID] = None,
+        message_id: UUID | None = None,
         flow_events: bool = False,
     ):
         """Stream a HITL continuation turn. Delegates to
@@ -311,11 +309,11 @@ class AIAssistanceService:
         self,
         llm,
         user_input: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         tenant_id: UUID,
         user_id: UUID,
-        images: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        images: list[str] | None = None,
+    ) -> dict[str, Any]:
         """Non-streaming chat with tool support. Collects content events from
         the chat engine (streaming=False) into the response dict."""
         patient_id = context.get("patient_id")
@@ -419,45 +417,45 @@ class AIAssistanceService:
     # ------------------------------------------------------------------
 
     async def _define_biomarker(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await define_biomarker(llm, user_input, context)
 
     async def _define_medication(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await define_medication(llm, user_input, context)
 
     async def _define_anatomy_graph(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await define_anatomy_graph(llm, user_input, context)
 
     async def _magic_fill_examination(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await magic_fill_examination(self.db, llm, user_input, context)
 
     async def _fill_biomarker_form(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await fill_biomarker_form(self.db, llm, user_input, context)
 
     async def _fill_medication_form(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await fill_medication_form(self.db, llm, user_input, context)
 
     async def _suggest_category_icon(
-        self, llm, user_input: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, llm, user_input: str, context: dict[str, Any]
+    ) -> dict[str, Any]:
         return await suggest_category_icon(llm, user_input, context)
 
     async def _generate_category_icon(
         self,
         llm,
         user_input: str,
-        reference_image: Optional[str] = None,
-        context: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
+        reference_image: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return await generate_category_icon(llm, user_input, reference_image, context)

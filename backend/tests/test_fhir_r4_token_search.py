@@ -23,7 +23,6 @@ a live PG instance cover actual execution semantics.
 
 from __future__ import annotations
 
-
 import pytest
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql
@@ -45,6 +44,7 @@ def _literal_sql(predicate) -> str:
 # ---------------------------------------------------------------------------
 # _jsonb_codeable_concept_match — predicate construction
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def cc_column():
@@ -70,9 +70,7 @@ def test_bare_code_match_uses_containment(cc_column):
 
 def test_system_pipe_code_match(cc_column):
     """``code=http://loinc.org|1234-5`` must include both system and code."""
-    pred = _jsonb_codeable_concept_match(
-        cc_column, "http://loinc.org|1234-5", is_list=False
-    )
+    pred = _jsonb_codeable_concept_match(cc_column, "http://loinc.org|1234-5", is_list=False)
     compiled = _literal_sql(pred)
     assert '"http://loinc.org"' in compiled
     assert '"1234-5"' in compiled
@@ -84,7 +82,7 @@ def test_list_match_wraps_fragment_in_list(cc_list_column):
     pred = _jsonb_codeable_concept_match(cc_list_column, "vital-signs", is_list=True)
     compiled = _literal_sql(pred)
     # The fragment must be a JSON array ([{...}]), not a bare object ({...}).
-    assert "'[{\"coding\"" in compiled.replace("\\", "") or '[{"coding"' in compiled
+    assert '\'[{"coding"' in compiled.replace("\\", "") or '[{"coding"' in compiled
 
 
 def test_non_jsonb_column_returns_none():
@@ -101,8 +99,10 @@ def test_non_jsonb_column_returns_none():
 # _build_resource_filter — code branch (multi-coding support)
 # ---------------------------------------------------------------------------
 
+
 class _FakeObservation:
     """Stub ORM model with a JSONB code column for testing the dispatcher."""
+
     code = Column("code", JSONB)
 
 
@@ -147,13 +147,16 @@ def test_build_resource_filter_code_missing_column_returns_none():
 # _build_resource_filter — category branch (list-of-CodeableConcept)
 # ---------------------------------------------------------------------------
 
+
 class _FakeObservationCategory:
     """Observation-style model: category is a JSONB list of CodeableConcept."""
+
     category = Column("category", JSONB)
 
 
 class _FakeAllergyCategory:
     """AllergyIntolerance-style model: category is a scalar enum column."""
+
     from sqlalchemy import Enum as SqlEnum
 
     category = Column("category", SqlEnum)
@@ -196,9 +199,7 @@ def test_build_resource_filter_category_scalar_enum_uses_equality():
 
 def test_build_resource_filter_category_not_modifier():
     """``category:not=vital-signs`` negates the match."""
-    pred = _build_resource_filter(
-        _FakeObservationCategory, "category:not", "vital-signs"
-    )
+    pred = _build_resource_filter(_FakeObservationCategory, "category:not", "vital-signs")
     compiled = _literal_sql(pred)
     assert "NOT" in compiled.upper()
     assert "@>" in compiled
@@ -207,6 +208,7 @@ def test_build_resource_filter_category_not_modifier():
 # ---------------------------------------------------------------------------
 # type branch (DocumentReference.type / DiagnosticReport.type)
 # ---------------------------------------------------------------------------
+
 
 class _FakeDocRef:
     type = Column("type", JSONB)
@@ -230,6 +232,7 @@ def test_build_resource_filter_type_not_modifier():
 # ---------------------------------------------------------------------------
 # Fragment shape sanity (multi-coding capability)
 # ---------------------------------------------------------------------------
+
 
 def test_fragment_does_not_pin_coding_index():
     """The headline F9 bug: the previous predicate pinned coding[0]. The new

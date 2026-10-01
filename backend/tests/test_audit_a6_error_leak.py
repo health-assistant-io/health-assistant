@@ -8,6 +8,7 @@ id instead; endpoints should either re-raise or return a generic detail.
 These tests statically inspect the source of the previously-leaky endpoints so
 the regression cannot silently return.
 """
+
 import inspect
 
 import pytest
@@ -19,7 +20,6 @@ from app.api.v1.endpoints import (
     documents,
     import_data,
 )
-
 
 # Endpoints that previously leaked ``str(e)`` (audit A6 reference list).
 LEAKY_ENDPOINTS = [
@@ -35,12 +35,8 @@ LEAKY_ENDPOINTS = [
 @pytest.mark.parametrize("fn", LEAKY_ENDPOINTS, ids=lambda fn: fn.__name__)
 def test_endpoint_does_not_leak_str_e(fn):
     src = inspect.getsource(fn)
-    assert "detail=str(e)" not in src, (
-        f"{fn.__name__} still leaks raw exception via detail=str(e)"
-    )
-    assert "{str(e)}" not in src, (
-        f"{fn.__name__} still embeds str(e) in an f-string detail"
-    )
+    assert "detail=str(e)" not in src, f"{fn.__name__} still leaks raw exception via detail=str(e)"
+    assert "{str(e)}" not in src, f"{fn.__name__} still embeds str(e) in an f-string detail"
     assert "{e}" not in src or "logger" in src, (
         f"{fn.__name__} embeds {{e}} in a client-facing string"
     )
@@ -84,7 +80,9 @@ def test_global_handler_returns_generic_in_prod(monkeypatch):
 
     async def _runner(debug: bool):
         monkeypatch.setattr("app.main.settings.DEBUG", debug)
-        resp = await global_exception_handler(_Req(), Exception("secret db internals: password='pw'"))
+        resp = await global_exception_handler(
+            _Req(), Exception("secret db internals: password='pw'")
+        )
         import json
 
         body = json.loads(resp.body.decode())

@@ -12,23 +12,22 @@ FK constraint on the TimescaleDB hypertable (FKs on hypertables are
 problematic).
 """
 
-from sqlalchemy import Column, String, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy import Column, ForeignKey, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
 )
 from app.services.fhir_helpers import build_fhir_resource, build_meta
 
 
-class DeviceModel(
-    Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin, SoftDeleteMixin
-):
+class DeviceModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin, SoftDeleteMixin):
     """A FHIR Device resource representing a telemetry source."""
 
     __tablename__ = "fhir_devices"

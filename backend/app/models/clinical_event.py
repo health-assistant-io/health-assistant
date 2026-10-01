@@ -1,14 +1,16 @@
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, Enum, Index, Integer
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.models.enums import ClinicalEventStatus, CodingSystem, ScheduleKind
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
@@ -97,9 +99,7 @@ class ClinicalEventType(Base, UUIDMixin, TimestampMixin):
             "category_concept_id": str(self.category_concept_id)
             if self.category_concept_id
             else None,
-            "category_concept": self.category_concept.to_dict()
-            if self.category_concept
-            else None,
+            "category_concept": self.category_concept.to_dict() if self.category_concept else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
         }
 
@@ -119,9 +119,7 @@ class EventExaminationLink(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    reason = Column(
-        Text, nullable=True
-    )  # Why this examination is related to this event
+    reason = Column(Text, nullable=True)  # Why this examination is related to this event
 
     # Relationships
     event = relationship("ClinicalEvent", back_populates="examination_links")
@@ -171,9 +169,7 @@ class ClinicalEventOccurrence(Base, UUIDMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    occurred_at = Column(
-        DateTime(timezone=True), nullable=False, index=True
-    )
+    occurred_at = Column(DateTime(timezone=True), nullable=False, index=True)
     title = Column(String(255), nullable=True)
     severity = Column(String(50), nullable=True)  # 'mild' | 'moderate' | 'severe'
     intensity = Column(Integer, nullable=True)  # e.g. 1..10 for pain-style types
@@ -233,16 +229,14 @@ class ClinicalEvent(
         nullable=True,
         index=True,
     )
-    status = Column(
-        Enum(ClinicalEventStatus), default=ClinicalEventStatus.ACTIVE, nullable=False
-    )
+    status = Column(Enum(ClinicalEventStatus), default=ClinicalEventStatus.ACTIVE, nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
 
     onset_date = Column(DateTime(timezone=True), nullable=True, index=True)
     resolved_date = Column(DateTime(timezone=True), nullable=True, index=True)
 
-    # occurrences: JSONB list of events, e.g. [{"date": "2024-03-20", "intensity": 8, "notes": "..."}]
+    # occurrences: JSONB list of events, e.g. [{"date": "2024-03-20", "intensity": 8, "notes": "..."}]  # noqa: E501 -- long template/message string; reflow when touched
     occurrences = Column(JSONB, nullable=True, default=list)
 
     # event_metadata: JSONB for specific event data like pregnancy LMP, EDD
@@ -287,9 +281,7 @@ class ClinicalEvent(
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (
-        Index("idx_clinical_event_patient_type", "patient_id", "type_id"),
-    )
+    __table_args__ = (Index("idx_clinical_event_patient_type", "patient_id", "type_id"),)
 
     def to_dict(self) -> dict:
         return {
@@ -302,9 +294,7 @@ class ClinicalEvent(
             "title": self.title,
             "description": self.description,
             "onset_date": self.onset_date.isoformat() if self.onset_date else None,
-            "resolved_date": self.resolved_date.isoformat()
-            if self.resolved_date
-            else None,
+            "resolved_date": self.resolved_date.isoformat() if self.resolved_date else None,
             "occurrences": self._serialize_occurrences(),
             "event_metadata": self.event_metadata,
             # Phase 4: explicit rendering hint resolved from the type blueprint.
@@ -444,16 +434,10 @@ class ClinicalEvent(
             "id": str(self.id) if self.id else None,
             "clinicalStatus": clinical_status,
             "code": condition_code,
-            "subject": {"reference": f"Patient/{self.patient_id}"}
-            if self.patient_id
-            else None,
-            "onsetDateTime": fhir_isoformat(self.onset_date)
-            if self.onset_date
-            else None,
+            "subject": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
+            "onsetDateTime": fhir_isoformat(self.onset_date) if self.onset_date else None,
             "abatementDateTime": abatement_datetime,
-            "recordedDate": fhir_isoformat(self.created_at)
-            if self.created_at
-            else None,
+            "recordedDate": fhir_isoformat(self.created_at) if self.created_at else None,
             "note": [{"text": self.description}] if self.description else None,
             "meta": build_meta(version_id=str(self.version or 1)),
         }
@@ -506,11 +490,7 @@ class ClinicalEvent(
         # facade search path loads rows generically without eager-loading
         # type_entity). ``type`` is 0..* optional in FHIR, so omitting it when
         # the relationship isn't loaded is safe.
-        if (
-            "type_entity" in self.__dict__
-            and self.type_entity
-            and self.type_entity.name
-        ):
+        if "type_entity" in self.__dict__ and self.type_entity and self.type_entity.name:
             type_list = [{"text": self.type_entity.name}]
 
         # The Condition this episode manages is this same row's Condition
@@ -526,9 +506,7 @@ class ClinicalEvent(
             "resourceType": "EpisodeOfCare",
             "id": str(self.id) if self.id else None,
             "status": eoc_status,
-            "patient": {"reference": f"Patient/{self.patient_id}"}
-            if self.patient_id
-            else None,
+            "patient": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
             "period": period or None,
             "type": type_list,
             "diagnosis": diagnosis,
@@ -568,6 +546,4 @@ class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
     event = relationship("ClinicalEvent", back_populates="anatomy_links")
     anatomy = relationship("AnatomyStructure", lazy="selectin")
 
-    __table_args__ = (
-        Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),
-    )
+    __table_args__ = (Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),)

@@ -16,13 +16,13 @@ Pins the contract documented in ``dev/plans/concept-fk-naming-convention-2026-07
 5. Rename verification: ``ExaminationModel`` / ``ClinicalEventType`` /
    ``DocumentModel`` expose ``category_concept_id`` (not ``category_id``).
 """
+
 import re
 from collections import defaultdict
 
 import pytest
 
 from app.models.base import Base
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,10 +43,7 @@ def _concept_fk_models():
         cols = []
         for col in table.columns:
             for fk in col.foreign_keys:
-                if (
-                    fk.column.table.name == _CONCEPT_TABLE
-                    and table.name != _CONCEPT_TABLE
-                ):
+                if fk.column.table.name == _CONCEPT_TABLE and table.name != _CONCEPT_TABLE:
                     cols.append(col.name)
                     break
         if cols:
@@ -108,9 +105,7 @@ def test_concept_relationships_resolve_to_a_local_concept_fk():
             if not isinstance(prop, RelationshipProperty):
                 continue
             arg = prop.argument
-            target_name = (
-                arg if isinstance(arg, str) else getattr(arg, "__name__", "")
-            )
+            target_name = arg if isinstance(arg, str) else getattr(arg, "__name__", "")
             if target_name != "Concept":
                 continue
             local_pairs = prop.local_remote_pairs or []
@@ -232,9 +227,7 @@ def test_model_db_concept_columns_agree():
     and vice-versa. Catches the ``documents.category_concept_id`` drift class
     (DB had it; ORM did not)."""
     db_cols = _db_concept_columns()
-    orm_cols = {
-        cls.__tablename__: set(cols) for cls, cols in _concept_fk_models()
-    }
+    orm_cols = {cls.__tablename__: set(cols) for cls, cols in _concept_fk_models()}
 
     all_tables = set(db_cols) | set(orm_cols)
     drift = []
@@ -243,10 +236,6 @@ def test_model_db_concept_columns_agree():
         orm_set = orm_cols.get(table, set())
         if db_set != orm_set:
             drift.append(
-                f"{table}: db_only={sorted(db_set - orm_set)} "
-                f"orm_only={sorted(orm_set - db_set)}"
+                f"{table}: db_only={sorted(db_set - orm_set)} orm_only={sorted(orm_set - db_set)}"
             )
-    assert not drift, (
-        "Model/DB concept-FK column drift detected:\n  - "
-        + "\n  - ".join(drift)
-    )
+    assert not drift, "Model/DB concept-FK column drift detected:\n  - " + "\n  - ".join(drift)

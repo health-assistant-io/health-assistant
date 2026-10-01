@@ -10,10 +10,9 @@ Reference: HL7 FHIR R4 Search — https://hl7.org/fhir/R4/search.html
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from fastapi import HTTPException
-
 
 # Standard FHIR search params recognized on every resource.
 STANDARD_PARAMS = frozenset(
@@ -38,7 +37,7 @@ STANDARD_PARAMS = frozenset(
 # tail params (Device.manufacturer/model, Medication.form, Encounter.class /
 # reason-code / diagnosis / practitioner, Condition.severity, Provenance.entity)
 # are deliberately omitted — when implementation lands, add them back here.
-RESOURCE_PARAMS: Dict[str, frozenset] = {
+RESOURCE_PARAMS: dict[str, frozenset] = {
     "Patient": frozenset(
         {"identifier", "name", "family", "given", "birthdate", "gender", "active"}
     ),
@@ -80,9 +79,7 @@ RESOURCE_PARAMS: Dict[str, frozenset] = {
     # ClinicalEventStatus enum stores as ACTIVE/RESOLVED/ON_HOLD/UNKNOWN — the
     # case-insensitive text-cast comparison in crud handles the mapping.
     "EpisodeOfCare": frozenset({"patient", "subject", "status"}),
-    "Device": frozenset(
-        {"patient", "subject", "identifier", "type", "status", "parent"}
-    ),
+    "Device": frozenset({"patient", "subject", "identifier", "type", "status", "parent"}),
     "MedicationStatement": frozenset(
         {"patient", "subject", "status", "medication", "effective", "context"}
     ),
@@ -175,7 +172,7 @@ def _patient_family_name_sort():
     )
 
 
-SORT_COLUMNS: Dict[str, Dict[str, Any]] = {
+SORT_COLUMNS: dict[str, dict[str, Any]] = {
     "Patient": {
         "_id": "id",
         "_lastUpdated": "updated_at",
@@ -256,7 +253,7 @@ DATE_PREFIXES = ("eq", "ne", "gt", "ge", "lt", "le", "sa", "eb", "ap")
 class DateFilter:
     """A parsed date query value: optional prefix + ISO date/datetime."""
 
-    prefix: Optional[str]
+    prefix: str | None
     value: str
 
     def to_orm_filter(self, column):
@@ -320,27 +317,25 @@ class FhirSearchParams:
 
     resource_type: str
     # Standard params.
-    _id: Optional[List[str]] = None
-    _lastUpdated: Optional[List[DateFilter]] = None
+    _id: list[str] | None = None
+    _lastUpdated: list[DateFilter] | None = None
     _count: int = DEFAULT_COUNT
-    _sort: List[Tuple[str, bool]] = field(
-        default_factory=list
-    )  # (column_name, descending)
-    _format: Optional[str] = None
-    _include: List[str] = field(default_factory=list)
-    _revinclude: List[str] = field(default_factory=list)
-    _summary: Optional[str] = None
+    _sort: list[tuple[str, bool]] = field(default_factory=list)  # (column_name, descending)
+    _format: str | None = None
+    _include: list[str] = field(default_factory=list)
+    _revinclude: list[str] = field(default_factory=list)
+    _summary: str | None = None
     # F16: _total controls whether the Bundle includes the `total` key AND
     # whether the dispatcher runs the COUNT(*) query. Values: 'accurate'
     # (default), 'estimated' (treated as accurate), 'none' (skip + omit).
-    _total: Optional[str] = None
+    _total: str | None = None
     # F14: _elements is a comma-separated list of top-level fields to include
     # in the returned resources (e.g. `_elements=name,birthDate`). The
     # dispatcher projects each resource to the requested fields plus the
     # always-present `resourceType`, `id`, `meta` (per FHIR R4 spec).
-    _elements: Optional[List[str]] = None
+    _elements: list[str] | None = None
     # Resource-specific params (key → list of raw string values).
-    resource_filters: Dict[str, List[str]] = field(default_factory=dict)
+    resource_filters: dict[str, list[str]] = field(default_factory=dict)
     # Pagination offset (derived from a `page` param or set explicitly).
     offset: int = 0
 
@@ -349,7 +344,7 @@ class FhirSearchParams:
         return self._count
 
 
-def _parse_fhir_datetime(value: str) -> Optional[Any]:
+def _parse_fhir_datetime(value: str) -> Any | None:
     """Parse a FHIR date or datetime string into a timezone-aware datetime.
 
     Accepts ``YYYY``, ``YYYY-MM``, ``YYYY-MM-DD``, partial datetimes, and
@@ -361,7 +356,6 @@ def _parse_fhir_datetime(value: str) -> Optional[Any]:
     :func:`_parse_fhir_date_range` instead.
     """
     import datetime as _dt
-    from datetime import timezone
 
     s = value.strip()
     if not s:
@@ -381,14 +375,14 @@ def _parse_fhir_datetime(value: str) -> Optional[Any]:
         try:
             parsed = _dt.datetime.strptime(s, fmt)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.replace(tzinfo=_dt.UTC)
             return parsed
         except ValueError:
             continue
     return None
 
 
-def _parse_fhir_date_range(value: str) -> Optional[Tuple[Any, Any]]:
+def _parse_fhir_date_range(value: str) -> tuple[Any, Any] | None:
     """Parse a FHIR date/datetime into a ``(start_inclusive, end_exclusive)``
     timezone-aware datetime tuple, honoring FHIR precision semantics.
 
@@ -404,7 +398,7 @@ def _parse_fhir_date_range(value: str) -> Optional[Tuple[Any, Any]]:
     Returns ``None`` if the value cannot be parsed.
     """
     import datetime as _dt
-    from datetime import timezone, timedelta
+    from datetime import timedelta
 
     s = value.strip()
     if not s:
@@ -415,8 +409,8 @@ def _parse_fhir_date_range(value: str) -> Optional[Tuple[Any, Any]]:
     if s.isdigit() and len(s) == 4:
         try:
             year = int(s)
-            start = _dt.datetime(year, 1, 1, tzinfo=timezone.utc)
-            end = _dt.datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            start = _dt.datetime(year, 1, 1, tzinfo=_dt.UTC)
+            end = _dt.datetime(year + 1, 1, 1, tzinfo=_dt.UTC)
             return (start, end)
         except ValueError:
             return None
@@ -425,11 +419,11 @@ def _parse_fhir_date_range(value: str) -> Optional[Tuple[Any, Any]]:
     if len(s) == 7 and s[4] == "-":
         try:
             year, month = map(int, s.split("-"))
-            start = _dt.datetime(year, month, 1, tzinfo=timezone.utc)
+            start = _dt.datetime(year, month, 1, tzinfo=_dt.UTC)
             if month == 12:
-                end = _dt.datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+                end = _dt.datetime(year + 1, 1, 1, tzinfo=_dt.UTC)
             else:
-                end = _dt.datetime(year, month + 1, 1, tzinfo=timezone.utc)
+                end = _dt.datetime(year, month + 1, 1, tzinfo=_dt.UTC)
             return (start, end)
         except (ValueError, IndexError):
             return None
@@ -441,7 +435,7 @@ def _parse_fhir_date_range(value: str) -> Optional[Tuple[Any, Any]]:
     # boundary explicitly.
     if len(s) == 10 and s[4] == "-" and s[7] == "-":
         try:
-            start = _dt.datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            start = _dt.datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_dt.UTC)
             end = start + timedelta(days=1)
             return (start, end)
         except ValueError:
@@ -467,7 +461,7 @@ def _split_date_param(value: str) -> DateFilter:
 
 def parse_search_params(
     resource_type: str,
-    query_params: List[Tuple[str, str]],
+    query_params: list[tuple[str, str]],
 ) -> FhirSearchParams:
     """Parse a list of (key, value) query params into typed FhirSearchParams.
 
@@ -484,16 +478,14 @@ def parse_search_params(
 
     params = FhirSearchParams(resource_type=resource_type)
 
-    unknown: List[str] = []
+    unknown: list[str] = []
 
     for key, value in query_params:
         if key in STANDARD_PARAMS:
             if key == "_id":
                 params._id = (params._id or []) + [value]
             elif key == "_lastUpdated":
-                params._lastUpdated = (params._lastUpdated or []) + [
-                    _split_date_param(value)
-                ]
+                params._lastUpdated = (params._lastUpdated or []) + [_split_date_param(value)]
             elif key == "_count":
                 try:
                     c = int(value)
@@ -501,7 +493,7 @@ def parse_search_params(
                         raise ValueError
                     params._count = min(c, MAX_COUNT)
                 except ValueError:
-                    raise HTTPException(
+                    raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
                         status_code=400,
                         detail=_operation_outcome_detail(
                             "invalid",
@@ -609,7 +601,7 @@ def parse_search_params(
     return params
 
 
-def _operation_outcome_detail(severity: str, diagnostics: str) -> Dict[str, Any]:
+def _operation_outcome_detail(severity: str, diagnostics: str) -> dict[str, Any]:
     """Build an OperationOutcome-shaped detail for HTTPException."""
     return {
         "resourceType": "OperationOutcome",

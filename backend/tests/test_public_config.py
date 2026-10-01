@@ -3,6 +3,7 @@
 Covers the resolution of the mobile connect URL and the frontend/PWA origin:
 `mobile.frontend_base_url` → `FRONTEND_URL` → `mobile.client_base_url` → `APP_URL`.
 """
+
 import pytest
 
 from app.core.config import settings
@@ -18,9 +19,7 @@ async def test_public_config_defaults_to_app_url(async_client):
     data = res.json()
     assert data["app_url"] == settings.APP_URL
     assert data["client_base_url"] == settings.APP_URL
-    assert data["frontend_base_url"] == (
-        settings.FRONTEND_URL or settings.APP_URL
-    )
+    assert data["frontend_base_url"] == (settings.FRONTEND_URL or settings.APP_URL)
     assert "demo_mode" in data
 
 
@@ -30,12 +29,8 @@ async def test_public_config_prefers_mobile_settings(async_client):
     from app.models.system_setting import SystemSetting
 
     async with AsyncSessionLocal() as db:
-        await SystemSetting.set_value(
-            db, "mobile.client_base_url", "http://10.0.0.5:8000"
-        )
-        await SystemSetting.set_value(
-            db, "mobile.frontend_base_url", "http://10.0.0.5:3000"
-        )
+        await SystemSetting.set_value(db, "mobile.client_base_url", "http://10.0.0.5:8000")
+        await SystemSetting.set_value(db, "mobile.frontend_base_url", "http://10.0.0.5:3000")
 
     res = await async_client.get("/api/v1/config/public")
     data = res.json()
@@ -51,9 +46,7 @@ async def test_frontend_base_url_falls_back_to_client(async_client):
     from app.models.system_setting import SystemSetting
 
     async with AsyncSessionLocal() as db:
-        await SystemSetting.set_value(
-            db, "mobile.client_base_url", "http://10.0.0.5:8000"
-        )
+        await SystemSetting.set_value(db, "mobile.client_base_url", "http://10.0.0.5:8000")
         # Clear any frontend override from a prior test.
         await SystemSetting.set_value(db, "mobile.frontend_base_url", "")
 

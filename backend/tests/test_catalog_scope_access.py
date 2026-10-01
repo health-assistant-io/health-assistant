@@ -17,7 +17,8 @@ is exercised on identical data:
 """
 
 import uuid
-from typing import Any, Callable, Dict, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 from sqlalchemy import select, text
@@ -39,7 +40,7 @@ WRITE_TYPES = ["biomarker", "medication", "allergy", "vaccine"]
 
 async def _make_shared_tenant(
     roles=ROLES,
-) -> Tuple[uuid.UUID, Dict[str, Dict[str, str]], Dict[str, uuid.UUID]]:
+) -> tuple[uuid.UUID, dict[str, dict[str, str]], dict[str, uuid.UUID]]:
     """Create one tenant + one JWT header per role + a stable user_id per role."""
     from tests._auth_helpers import auth_headers, create_user
 
@@ -47,8 +48,8 @@ async def _make_shared_tenant(
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="Scope", slug=f"scope-{tenant_id}"))
         await db.commit()
-    headers: Dict[str, Dict[str, str]] = {}
-    user_ids: Dict[str, uuid.UUID] = {}
+    headers: dict[str, dict[str, str]] = {}
+    user_ids: dict[str, uuid.UUID] = {}
     for role in roles:
         uid = uuid.uuid4()
         user_ids[role] = uid
@@ -78,7 +79,7 @@ def _model_class(type: str):
     }[type]
 
 
-def _create_payload(type: str, suffix: str) -> Dict[str, Any]:
+def _create_payload(type: str, suffix: str) -> dict[str, Any]:
     name = f"Item {suffix}"
     if type == "biomarker":
         return {"slug": f"item-{suffix}", "name": name}
@@ -130,9 +131,7 @@ async def test_user_create_lands_in_user_scope(async_client, type):
     item_id = body["id"]
 
     # Visible to the tenant — fetch by id (authoritative read-back).
-    fetched = await async_client.get(
-        f"/api/v1/catalogs/{type}/{item_id}", headers=headers["USER"]
-    )
+    fetched = await async_client.get(f"/api/v1/catalogs/{type}/{item_id}", headers=headers["USER"])
     assert fetched.status_code == 200, fetched.text
     assert fetched.json()["id"] == item_id
 
@@ -188,7 +187,7 @@ async def test_user_updates_own_user_scope_row(async_client, type):
 @pytest.mark.parametrize("type", WRITE_TYPES)
 @pytest.mark.asyncio
 async def test_user_cannot_update_other_user_scope_row(async_client, type):
-    tenant_id, headers, user_ids = await _make_shared_tenant(["USER"])
+    tenant_id, headers, _user_ids = await _make_shared_tenant(["USER"])
     # A user-scope row created by a DIFFERENT user in the same tenant.
     other_id = uuid.uuid4()
     item_id = await _insert_row(
@@ -225,9 +224,7 @@ async def test_user_cannot_update_system_row(async_client, type):
 async def test_admin_can_update_any_user_scope_row(async_client, type):
     tenant_id, headers, _ = await _make_shared_tenant(["ADMIN"])
     other_id = uuid.uuid4()
-    item_id = await _insert_row(
-        type, tenant_id=tenant_id, scope="user", created_by=other_id
-    )
+    item_id = await _insert_row(type, tenant_id=tenant_id, scope="user", created_by=other_id)
     resp = await async_client.put(
         f"/api/v1/catalogs/{type}/{item_id}",
         json={"name": "admin-edit"},
@@ -274,9 +271,7 @@ async def test_user_cannot_promote(async_client, type):
 async def test_admin_promotes_user_to_tenant(async_client, type):
     tenant_id, headers, _ = await _make_shared_tenant(["ADMIN"])
     other_id = uuid.uuid4()
-    item_id = await _insert_row(
-        type, tenant_id=tenant_id, scope="user", created_by=other_id
-    )
+    item_id = await _insert_row(type, tenant_id=tenant_id, scope="user", created_by=other_id)
     resp = await async_client.post(
         f"/api/v1/catalogs/{type}/{item_id}/promote",
         json={"scope": "tenant"},
@@ -440,8 +435,6 @@ async def test_backfill_derives_scope_from_tenant_id():
                 MedicationCatalog.name.like("bf-%")
             )
         )
-        by_name = {
-            n: (s.value if isinstance(s, CatalogScope) else s) for n, s in res.all()
-        }
+        by_name = {n: (s.value if isinstance(s, CatalogScope) else s) for n, s in res.all()}
     assert by_name["bf-global"] == "system", by_name
     assert by_name["bf-tenant"] == "tenant", by_name

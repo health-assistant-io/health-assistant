@@ -48,9 +48,7 @@ async def test_list_relation_types(async_client, system_admin_headers):
     ConceptRelationType member (value/label/group/description/icon)."""
     from app.models.enums import ConceptRelationType
 
-    resp = await async_client.get(
-        "/api/v1/catalogs/relation-types", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/catalogs/relation-types", headers=system_admin_headers)
     assert resp.status_code == 200
     items = resp.json()["items"]
     values = {it["value"] for it in items}
@@ -71,9 +69,7 @@ async def test_list_relation_types_requires_auth(async_client):
 
 @pytest.mark.asyncio
 async def test_unknown_catalog_type_returns_404(async_client, system_admin_headers):
-    resp = await async_client.get(
-        "/api/v1/catalogs/nonexistent", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/catalogs/nonexistent", headers=system_admin_headers)
     assert resp.status_code == 404
     assert "nonexistent" in resp.json()["detail"]
 
@@ -127,9 +123,7 @@ async def test_biomarker_list_tenant_scoped(async_client, system_admin_headers):
 async def test_biomarker_item_has_expected_shape(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     async with AsyncSessionLocal() as db:
-        bio = BiomarkerDefinition(
-            slug=f"shape-{suffix}", name=f"Shape {suffix}", tenant_id=None
-        )
+        bio = BiomarkerDefinition(slug=f"shape-{suffix}", name=f"Shape {suffix}", tenant_id=None)
         db.add(bio)
         await db.commit()
         await db.refresh(bio)
@@ -175,9 +169,7 @@ async def test_biomarker_get_cross_tenant_hidden(async_client, system_admin_head
     other_tenant = uuid.uuid4()
     suffix = uuid.uuid4().hex[:8]
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(id=other_tenant, name="Other", slug=f"other2-{other_tenant}")
-        )
+        db.add(TenantModel(id=other_tenant, name="Other", slug=f"other2-{other_tenant}"))
         await db.commit()
     async with AsyncSessionLocal() as db:
         bio = BiomarkerDefinition(

@@ -1,37 +1,39 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
 import logging
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
-from sqlalchemy import select, update, delete, or_, text
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from langchain_core.language_models.chat_models import BaseChatModel
+from sqlalchemy import delete, or_, select, text, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import get_llm_builder
 from app.ai.providers.resolution import resolve_active_assignment
 from app.ai.providers.workflows import build_workflows
-from app.core.config import settings
-from app.models.ai_provider_model import (
-    AIProviderModel,
-    AIModel,
-    AITaskAssignment,
-    AIScope,
-)
-from app.models.tenant_model import TenantModel
-from app.models.system_setting import SystemSetting
 from app.ai.schemas.config import (
-    AIProviderCreate,
-    AIProviderUpdate,
-    AIProviderResponse,
-    AIModelCreate,
-    AIModelUpdate,
-    AIModelResponse,
-    AITaskAssignmentCreate,
-    AITaskAssignmentUpdate,
-    AITaskAssignmentResponse,
     AIConfigSummary,
+    AIModelCreate,
+    AIModelResponse,
+    AIModelUpdate,
+    AIProviderCreate,
+    AIProviderResponse,
+    AIProviderUpdate,
+    AITaskAssignmentCreate,
+    AITaskAssignmentResponse,
+    AITaskAssignmentUpdate,
     TaskTypeAssignment,
 )
+from app.core.config import settings
+from app.models.ai_provider_model import (
+    AIModel,
+    AIProviderModel,
+    AIScope,
+    AITaskAssignment,
+)
+from app.models.system_setting import SystemSetting
+from app.models.tenant_model import TenantModel
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ def guard_api_base(api_base: str) -> None:
         ) from exc
 
 
-def _model_reasoning_effort(model: Optional[AIModel]) -> Optional[str]:
+def _model_reasoning_effort(model: AIModel | None) -> str | None:
     """Reasoning-effort model setting (``settings.reasoning_effort``), if any.
 
     Stored on the model row's ``settings`` JSONB (e.g. ``"none"`` for a
@@ -69,11 +71,7 @@ def _model_reasoning_effort(model: Optional[AIModel]) -> Optional[str]:
     default.
     """
     settings_dict = getattr(model, "settings", None) or {}
-    value = (
-        settings_dict.get("reasoning_effort")
-        if isinstance(settings_dict, dict)
-        else None
-    )
+    value = settings_dict.get("reasoning_effort") if isinstance(settings_dict, dict) else None
     return str(value) if value else None
 
 
@@ -84,7 +82,7 @@ class AIProviderService:
         self.db = db
 
     # Providers
-    async def get_provider(self, provider_id: UUID) -> Optional[AIProviderModel]:
+    async def get_provider(self, provider_id: UUID) -> AIProviderModel | None:
         """Get a specific provider by ID"""
         result = await self.db.execute(
             select(AIProviderModel).where(AIProviderModel.id == provider_id)
@@ -93,12 +91,12 @@ class AIProviderService:
 
     async def get_providers(
         self,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-        is_active: Optional[bool] = None,
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+        is_active: bool | None = None,
         include_models: bool = False,
-        scope: Optional[AIScope] = None,
-    ) -> List[AIProviderModel]:
+        scope: AIScope | None = None,
+    ) -> list[AIProviderModel]:
         """Get providers with optional filtering"""
         query = select(AIProviderModel)
 
@@ -118,8 +116,7 @@ class AIProviderService:
                 )
             if user_id:
                 conditions.append(
-                    (AIProviderModel.scope == AIScope.USER)
-                    & (AIProviderModel.user_id == user_id)
+                    (AIProviderModel.scope == AIScope.USER) & (AIProviderModel.user_id == user_id)
                 )
             query = query.where(or_(*conditions))
 
@@ -151,7 +148,7 @@ class AIProviderService:
 
     async def update_provider(
         self, provider_id: UUID, provider_data: AIProviderUpdate
-    ) -> Optional[AIProviderModel]:
+    ) -> AIProviderModel | None:
         """Update a provider.
 
         Encrypts any newly-provided api_key before persistence.
@@ -186,22 +183,18 @@ class AIProviderService:
             return await self.get_provider(provider_id)
 
         await self.db.execute(
-            update(AIProviderModel)
-            .where(AIProviderModel.id == provider_id)
-            .values(**update_dict)
+            update(AIProviderModel).where(AIProviderModel.id == provider_id).values(**update_dict)
         )
         await self.db.commit()
         return await self.get_provider(provider_id)
 
     async def delete_provider(self, provider_id: UUID) -> bool:
         """Delete a provider"""
-        await self.db.execute(
-            delete(AIProviderModel).where(AIProviderModel.id == provider_id)
-        )
+        await self.db.execute(delete(AIProviderModel).where(AIProviderModel.id == provider_id))
         await self.db.commit()
         return True
 
-    async def fetch_external_models(self, provider_id: UUID) -> List[Dict[str, Any]]:
+    async def fetch_external_models(self, provider_id: UUID) -> list[dict[str, Any]]:
         """Fetch available models from the provider's external API"""
         provider = await self.get_provider(provider_id)
         if not provider:
@@ -237,19 +230,19 @@ class AIProviderService:
                     return models
                 except Exception as e:
                     logger.error(f"Failed to fetch models from {url}: {e}")
-                    raise RuntimeError(f"Failed to fetch external models: {str(e)}")
+                    raise RuntimeError(f"Failed to fetch external models: {e!s}")
 
         return []
 
     # Models
-    async def get_model(self, model_id: UUID) -> Optional[AIModel]:
+    async def get_model(self, model_id: UUID) -> AIModel | None:
         """Get a specific model by ID"""
         result = await self.db.execute(select(AIModel).where(AIModel.id == model_id))
         return result.scalars().first()
 
     async def get_models(
-        self, provider_id: Optional[UUID] = None, is_active: Optional[bool] = None
-    ) -> List[AIModel]:
+        self, provider_id: UUID | None = None, is_active: bool | None = None
+    ) -> list[AIModel]:
         """Get models for a provider"""
         query = select(AIModel)
         if provider_id:
@@ -269,17 +262,13 @@ class AIProviderService:
         await self.db.refresh(model)
         return model
 
-    async def update_model(
-        self, model_id: UUID, model_data: AIModelUpdate
-    ) -> Optional[AIModel]:
+    async def update_model(self, model_id: UUID, model_data: AIModelUpdate) -> AIModel | None:
         """Update a model"""
         update_dict = model_data.model_dump(exclude_unset=True)
         if not update_dict:
             return await self.get_model(model_id)
 
-        await self.db.execute(
-            update(AIModel).where(AIModel.id == model_id).values(**update_dict)
-        )
+        await self.db.execute(update(AIModel).where(AIModel.id == model_id).values(**update_dict))
         await self.db.commit()
         return await self.get_model(model_id)
 
@@ -290,9 +279,7 @@ class AIProviderService:
         return True
 
     # Task Assignments
-    async def get_task_assignment(
-        self, assignment_id: UUID
-    ) -> Optional[AITaskAssignment]:
+    async def get_task_assignment(self, assignment_id: UUID) -> AITaskAssignment | None:
         """Get a specific task assignment"""
         result = await self.db.execute(
             select(AITaskAssignment).where(AITaskAssignment.id == assignment_id)
@@ -301,12 +288,12 @@ class AIProviderService:
 
     async def get_task_assignments(
         self,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-        task_type: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        scope: Optional[AIScope] = None,
-    ) -> List[AITaskAssignment]:
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+        task_type: str | None = None,
+        is_active: bool | None = None,
+        scope: AIScope | None = None,
+    ) -> list[AITaskAssignment]:
         """Get all task assignments with optional filtering"""
         query = select(AITaskAssignment)
 
@@ -325,8 +312,7 @@ class AIProviderService:
                 )
             if user_id:
                 conditions.append(
-                    (AITaskAssignment.scope == AIScope.USER)
-                    & (AITaskAssignment.user_id == user_id)
+                    (AITaskAssignment.scope == AIScope.USER) & (AITaskAssignment.user_id == user_id)
                 )
             query = query.where(or_(*conditions))
 
@@ -335,9 +321,7 @@ class AIProviderService:
         if is_active is not None:
             query = query.where(AITaskAssignment.is_active == is_active)
 
-        query = query.order_by(
-            AITaskAssignment.scope.desc(), AITaskAssignment.priority.desc()
-        )
+        query = query.order_by(AITaskAssignment.scope.desc(), AITaskAssignment.priority.desc())
         result = await self.db.execute(query)
         return result.scalars().all()
 
@@ -353,7 +337,7 @@ class AIProviderService:
 
     async def update_task_assignment(
         self, assignment_id: UUID, assignment_data: AITaskAssignmentUpdate
-    ) -> Optional[AITaskAssignment]:
+    ) -> AITaskAssignment | None:
         """Update a task assignment"""
         update_dict = assignment_data.model_dump(exclude_unset=True)
         if not update_dict:
@@ -369,18 +353,16 @@ class AIProviderService:
 
     async def delete_task_assignment(self, assignment_id: UUID) -> bool:
         """Delete a task assignment"""
-        await self.db.execute(
-            delete(AITaskAssignment).where(AITaskAssignment.id == assignment_id)
-        )
+        await self.db.execute(delete(AITaskAssignment).where(AITaskAssignment.id == assignment_id))
         await self.db.commit()
         return True
 
     async def get_active_assignment_for_task(
         self,
         task_type: str,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-    ) -> Optional[AITaskAssignment]:
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+    ) -> AITaskAssignment | None:
         """
         Get active assignment for a task type with fallback.
         Resolution Order:
@@ -395,22 +377,18 @@ class AIProviderService:
 
     async def get_config_summary(
         self,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-        scope: Optional[AIScope] = None,
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+        scope: AIScope | None = None,
     ) -> AIConfigSummary:
         """Get a complete summary of AI configuration for the UI"""
-        providers = await self.get_providers(
-            tenant_id=tenant_id, user_id=user_id, scope=scope
-        )
+        providers = await self.get_providers(tenant_id=tenant_id, user_id=user_id, scope=scope)
 
         # Load models for all visible providers
         provider_ids = {p.id for p in providers}
         models_res = await self.db.execute(
             select(AIModel).where(
-                AIModel.provider_id.in_(list(provider_ids))
-                if provider_ids
-                else text("FALSE")
+                AIModel.provider_id.in_(list(provider_ids)) if provider_ids else text("FALSE")
             )
         )
         visible_models = models_res.scalars().all()
@@ -428,25 +406,17 @@ class AIProviderService:
         task_assignments = {}
 
         for task_type in task_types:
-            assignment = await self.get_active_assignment_for_task(
-                task_type, tenant_id, user_id
-            )
+            assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
             if assignment:
                 provider = (
                     await self.get_provider(assignment.provider_id)
                     if assignment.provider_id
                     else None
                 )
-                model = (
-                    await self.get_model(assignment.model_id)
-                    if assignment.model_id
-                    else None
-                )
+                model = await self.get_model(assignment.model_id) if assignment.model_id else None
                 task_assignments[task_type] = TaskTypeAssignment(
                     task_type=task_type,
-                    provider=AIProviderResponse.model_validate(provider)
-                    if provider
-                    else None,
+                    provider=AIProviderResponse.model_validate(provider) if provider else None,
                     model=AIModelResponse.model_validate(model) if model else None,
                     assignment_id=assignment.id,
                 )
@@ -459,9 +429,7 @@ class AIProviderService:
         max_iterations = settings.AI_AGENT_MAX_ITERATIONS
 
         # Check system DB setting first if looking at system scope or if no tenant specified
-        system_db_max = await SystemSetting.get_value(
-            self.db, "ai_agent_max_iterations"
-        )
+        system_db_max = await SystemSetting.get_value(self.db, "ai_agent_max_iterations")
         if system_db_max is not None:
             max_iterations = int(system_db_max)
 
@@ -476,9 +444,7 @@ class AIProviderService:
         return AIConfigSummary(
             providers=[AIProviderResponse.model_validate(p) for p in providers],
             models=[AIModelResponse.model_validate(m) for m in visible_models],
-            task_assignments=[
-                AITaskAssignmentResponse.model_validate(a) for a in assignments
-            ],
+            task_assignments=[AITaskAssignmentResponse.model_validate(a) for a in assignments],
             default=task_assignments.get("default"),
             ocr=task_assignments.get("ocr"),
             nlp=task_assignments.get("nlp"),
@@ -500,9 +466,9 @@ class AIProviderService:
     async def update_ai_settings(
         self,
         config_data: Any,  # AIConfigUpdate
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-        current_user_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+        current_user_id: UUID | None = None,
     ) -> bool:
         """Update AI-specific settings for a tenant or user"""
         if not tenant_id and not user_id:
@@ -517,9 +483,7 @@ class AIProviderService:
             return True
 
         if tenant_id:
-            result = await self.db.execute(
-                select(TenantModel).where(TenantModel.id == tenant_id)
-            )
+            result = await self.db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
             tenant = result.scalars().first()
             if not tenant:
                 return False
@@ -529,9 +493,7 @@ class AIProviderService:
 
             # Merge settings
             if config_data.ai_agent_max_iterations is not None:
-                tenant.settings["ai_agent_max_iterations"] = (
-                    config_data.ai_agent_max_iterations
-                )
+                tenant.settings["ai_agent_max_iterations"] = config_data.ai_agent_max_iterations
 
             # Flag for SQLAlchemy to detect change in JSONB
             from sqlalchemy.orm.attributes import flag_modified
@@ -546,13 +508,11 @@ class AIProviderService:
     async def _resolve_config(
         self,
         task_type: str,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
-    ) -> Tuple[Optional[AIProviderModel], Optional[AIModel]]:
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
+    ) -> tuple[AIProviderModel | None, AIModel | None]:
         """Resolve the active provider and model for a task type"""
-        assignment = await self.get_active_assignment_for_task(
-            task_type, tenant_id, user_id
-        )
+        assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
 
         provider = None
         model = None
@@ -568,13 +528,11 @@ class AIProviderService:
     async def get_llm(
         self,
         task_type: str,
-        tenant_id: Optional[UUID] = None,
-        user_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
+        user_id: UUID | None = None,
     ) -> BaseChatModel:
         """Get an initialized LangChain chat model for a specific task"""
-        assignment = await self.get_active_assignment_for_task(
-            task_type, tenant_id, user_id
-        )
+        assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
 
         provider = None
         model = None
@@ -618,15 +576,11 @@ class AIProviderService:
             max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
         )
 
-    async def get_ocr_processor(
-        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
-    ):
+    async def get_ocr_processor(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
         """Get a configured OCR processor for the tenant/user"""
         from app.ai.processors.ocr import get_ocr_processor
 
-        assignment = await self.get_active_assignment_for_task(
-            "ocr", tenant_id, user_id
-        )
+        assignment = await self.get_active_assignment_for_task("ocr", tenant_id, user_id)
 
         provider = None
         model = None
@@ -674,19 +628,15 @@ class AIProviderService:
         return get_ocr_processor(
             provider=settings.OCR_PROVIDER,
             api_key=settings.OPENAI_API_KEY
-            if settings.OCR_PROVIDER == ProviderType.OPENAI.value
+            if ProviderType.OPENAI.value == settings.OCR_PROVIDER
             else None,
         )
 
-    async def get_nlp_extractor(
-        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
-    ):
+    async def get_nlp_extractor(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
         """Get a configured NLP extractor for the tenant/user"""
         from app.ai.processors.nlp import get_nlp_extractor
 
-        assignment = await self.get_active_assignment_for_task(
-            "nlp", tenant_id, user_id
-        )
+        assignment = await self.get_active_assignment_for_task("nlp", tenant_id, user_id)
 
         provider = None
         model = None
@@ -744,9 +694,7 @@ class AIProviderService:
         )
         return get_nlp_extractor(provider=ProviderType.SPACY.value)
 
-    async def get_stt_target(
-        self, tenant_id: Optional[UUID] = None, user_id: Optional[UUID] = None
-    ):
+    async def get_stt_target(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
         """Resolve the speech-to-text target (provider + model) for the
         ``transcription`` task.
 
@@ -769,8 +717,7 @@ class AIProviderService:
             if assignment.model_id:
                 model = await self.get_model(assignment.model_id)
             logger.info(
-                "AI Resolution [transcription]: Using %s configuration. "
-                "Provider: %s, Model: %s",
+                "AI Resolution [transcription]: Using %s configuration. Provider: %s, Model: %s",
                 assignment.scope,
                 provider.name if provider else "None",
                 model.model_name if model else "Default",
@@ -779,8 +726,7 @@ class AIProviderService:
 
         # Fallback to env (OPENAI_API_KEY + OPENAI_STT_MODEL).
         logger.warning(
-            "AI Resolution [transcription]: No DB assignment found. "
-            "Falling back to ENV settings."
+            "AI Resolution [transcription]: No DB assignment found. Falling back to ENV settings."
         )
         return STTTarget(
             api_key=settings.OPENAI_API_KEY,

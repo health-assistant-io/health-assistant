@@ -11,18 +11,18 @@ enforces the value[x] mutual-exclusion rule, so a builder that emits both
 valueQuantity and valueString would be silently dropped — the same class
 of bug this file guards against).
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from integrations.sdk.observation_builder import ObservationBuilder
-
 
 TENANT = uuid4()
 PATIENT = uuid4()
 
 
 def _a_tz():
-    return datetime(2026, 7, 21, 9, 30, 0, tzinfo=timezone.utc)
+    return datetime(2026, 7, 21, 9, 30, 0, tzinfo=UTC)
 
 
 def _translate_vcc(d):
@@ -240,9 +240,7 @@ def test_set_value_codeable_concept_clears_numeric_slot():
     """Last value-setter wins — calling set_value_codeable_concept after
     set_value clears the quantitative slot."""
     builder = (
-        ObservationBuilder(TENANT, PATIENT)
-        .set_biomarker("94500-6", "PCR")
-        .set_value(1.0, "x")
+        ObservationBuilder(TENANT, PATIENT).set_biomarker("94500-6", "PCR").set_value(1.0, "x")
     )
     builder.set_value_codeable_concept("NEG", V3)
     obs = builder.set_effective_date(_a_tz()).build()

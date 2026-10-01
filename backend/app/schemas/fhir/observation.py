@@ -1,8 +1,9 @@
 """Observation FHIR schemas"""
 
-from typing import Optional, Dict, Any, List, Union
-from uuid import UUID
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,43 +11,39 @@ class ObservationBase(BaseModel):
     """Base observation schema"""
 
     status: str = Field(default="final", description="Observation status")
-    code: Dict[str, Any] = Field(..., description="LOINC code object")
-    subject: Dict[str, Any] = Field(..., description="Patient reference")
+    code: dict[str, Any] = Field(..., description="LOINC code object")
+    subject: dict[str, Any] = Field(..., description="Patient reference")
 
 
 class ObservationCreate(ObservationBase):
     """Observation creation schema"""
 
     tenant_id: UUID
-    value_quantity: Optional[Dict[str, Any]] = Field(
-        None, description="Value with unit"
-    )
-    value_string: Optional[str] = None
+    value_quantity: dict[str, Any] | None = Field(None, description="Value with unit")
+    value_string: str | None = None
     # Coded categorical value (STATE biomarkers). Tolerates both
     # snake_case (``value_codeable_concept``) and FHIR camelCase
     # (``valueCodeableConcept``) on input — the create path normalizes.
-    value_codeable_concept: Optional[Dict[str, Any]] = Field(
-        None, alias="value_codeable_concept"
-    )
-    effective_datetime: Optional[datetime] = None
-    category: Optional[List[Dict[str, Any]]] = None
-    reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
-    biomarker_id: Optional[UUID] = None
-    examination_id: Optional[UUID] = None
-    biomarker_slug: Optional[str] = None
-    biomarker_info: Optional[str] = None
-    biomarker_aliases: Optional[List[str]] = None
-    biomarker_reference_range_min: Optional[float] = None
-    biomarker_reference_range_max: Optional[float] = None
-    raw_value: Optional[float] = None
-    normalized_value: Optional[float] = None
-    normalized_unit: Optional[str] = None
-    lab_reference_range: Optional[Dict[str, Any]] = None
-    relative_score: Optional[float] = None
-    comment: Optional[str] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    component: Optional[List[Dict[str, Any]]] = None
+    value_codeable_concept: dict[str, Any] | None = Field(None, alias="value_codeable_concept")
+    effective_datetime: datetime | None = None
+    category: list[dict[str, Any]] | None = None
+    reference_range: list[dict[str, Any]] | None = None
+    interpretation: str | list[dict[str, Any]] | None = None
+    biomarker_id: UUID | None = None
+    examination_id: UUID | None = None
+    biomarker_slug: str | None = None
+    biomarker_info: str | None = None
+    biomarker_aliases: list[str] | None = None
+    biomarker_reference_range_min: float | None = None
+    biomarker_reference_range_max: float | None = None
+    raw_value: float | None = None
+    normalized_value: float | None = None
+    normalized_unit: str | None = None
+    lab_reference_range: dict[str, Any] | None = None
+    relative_score: float | None = None
+    comment: str | None = None
+    performer: list[dict[str, Any]] | None = None
+    component: list[dict[str, Any]] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -54,37 +51,37 @@ class ObservationCreate(ObservationBase):
 class ObservationUpdate(BaseModel):
     """Observation update schema"""
 
-    status: Optional[str] = None
-    code: Optional[Dict[str, Any]] = None
-    subject: Optional[Dict[str, Any]] = None
-    value_quantity: Optional[Dict[str, Any]] = None
-    value_string: Optional[str] = None
-    value_codeable_concept: Optional[Dict[str, Any]] = None
-    effective_datetime: Optional[datetime] = None
-    category: Optional[List[Dict[str, Any]]] = None
-    reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
-    comment: Optional[str] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    component: Optional[List[Dict[str, Any]]] = None
+    status: str | None = None
+    code: dict[str, Any] | None = None
+    subject: dict[str, Any] | None = None
+    value_quantity: dict[str, Any] | None = None
+    value_string: str | None = None
+    value_codeable_concept: dict[str, Any] | None = None
+    effective_datetime: datetime | None = None
+    category: list[dict[str, Any]] | None = None
+    reference_range: list[dict[str, Any]] | None = None
+    interpretation: str | list[dict[str, Any]] | None = None
+    comment: str | None = None
+    performer: list[dict[str, Any]] | None = None
+    component: list[dict[str, Any]] | None = None
 
 
 class ObservationResponse(ObservationBase):
     """Observation response schema"""
 
     id: UUID
-    value_quantity: Optional[Dict[str, Any]] = None
-    value_string: Optional[str] = None
-    value_codeable_concept: Optional[Dict[str, Any]] = None
-    effective_datetime: Optional[datetime] = None
-    category: Optional[List[Dict[str, Any]]] = None
-    reference_range: Optional[List[Dict[str, Any]]] = None
-    interpretation: Optional[Union[str, List[Dict[str, Any]]]] = None
-    comment: Optional[str] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    component: Optional[List[Dict[str, Any]]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    value_quantity: dict[str, Any] | None = None
+    value_string: str | None = None
+    value_codeable_concept: dict[str, Any] | None = None
+    effective_datetime: datetime | None = None
+    category: list[dict[str, Any]] | None = None
+    reference_range: list[dict[str, Any]] | None = None
+    interpretation: str | list[dict[str, Any]] | None = None
+    comment: str | None = None
+    performer: list[dict[str, Any]] | None = None
+    component: list[dict[str, Any]] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -92,5 +89,5 @@ class ObservationResponse(ObservationBase):
 class ObservationList(BaseModel):
     """Observation list response schema"""
 
-    items: List[ObservationResponse]
+    items: list[ObservationResponse]
     total: int = Field(..., description="Total number of observations")

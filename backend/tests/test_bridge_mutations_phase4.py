@@ -41,11 +41,7 @@ async def bridge_with_two_patients():
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge P4 T.", slug=f"bp4-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge P4 T.", slug=f"bp4-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -111,9 +107,7 @@ async def bridge_with_two_patients():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -423,9 +417,7 @@ async def test_examination_logs_returns_rows_for_exam_tenant(bridge_with_two_pat
             )
         )
         # Cross-tenant log using the same task_id (must not leak)
-        db.add(
-            TenantModel(id=other_tenant, name="Other", slug=f"o-{other_tenant.hex[:8]}")
-        )
+        db.add(TenantModel(id=other_tenant, name="Other", slug=f"o-{other_tenant.hex[:8]}"))
         await db.flush()
         db.add(
             TaskLog(

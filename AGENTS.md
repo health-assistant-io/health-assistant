@@ -38,7 +38,7 @@ cd backend && ruff check && ruff format        # lint/format
 # Frontend
 cd frontend && npm run build && npm run lint   # build = tsc && vite build
 ```
-- Backend tests: `backend/pytest.ini` (`asyncio_mode=auto`, `.env.test`). Real
+- Backend tests: `backend/pyproject.toml` `[tool.pytest.ini_options]` (`asyncio_mode=auto`, `.env.test`). Real
   Postgres test DB required (`conftest.py` runs `alembic upgrade head`).
 - `PYTHONPATH=.:..` from `backend/` so `app.*` + `integrations.*` both resolve.
 

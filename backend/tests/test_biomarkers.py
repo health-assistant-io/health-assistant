@@ -1,7 +1,8 @@
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock, AsyncMock
-import uuid
 
 
 class MockUser:
@@ -58,15 +59,15 @@ def _mock_biomarker(value_type="quantity", **overrides):
     bio.id = overrides.get("id", uuid.uuid4())
     bio.slug = overrides.get("slug", "new-biomarker")
     bio.name = overrides.get("name", "New Biomarker")
-    bio.category = overrides.get("category", None)
+    bio.category = overrides.get("category")
     bio.aliases = overrides.get("aliases", [])
-    bio.preferred_unit_id = overrides.get("preferred_unit_id", None)
-    bio.info = overrides.get("info", None)
+    bio.preferred_unit_id = overrides.get("preferred_unit_id")
+    bio.info = overrides.get("info")
     bio.coding_system = overrides.get("coding_system", "loinc")
-    bio.code = overrides.get("code", None)
+    bio.code = overrides.get("code")
     bio.meta_data = overrides.get("meta_data", {})
-    bio.reference_range_min = overrides.get("reference_range_min", None)
-    bio.reference_range_max = overrides.get("reference_range_max", None)
+    bio.reference_range_min = overrides.get("reference_range_min")
+    bio.reference_range_max = overrides.get("reference_range_max")
     bio.is_telemetry = overrides.get("is_telemetry", False)
     bio.value_type = overrides.get("value_type", BiomarkerValueType(value_type))
     bio.supports_multi_state = overrides.get("supports_multi_state", False)
@@ -93,9 +94,9 @@ def get_mock_db(data_to_return):
 
 @pytest.mark.asyncio
 async def test_get_biomarkers(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -134,9 +135,9 @@ async def test_get_biomarkers(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_units(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -162,27 +163,22 @@ async def test_get_units(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_biomarker(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
     mock_unit = MagicMock()
     mock_unit.id = uuid.uuid4()
-    mock_bio = _mock_biomarker(
-        slug="new-biomarker", name="New Biomarker", aliases=["NB"]
-    )
+    mock_bio = _mock_biomarker(slug="new-biomarker", name="New Biomarker", aliases=["NB"])
 
     async def mock_execute(*args, **kwargs):
         query = args[0] if args else kwargs.get("statement")
         query_str = str(query).lower()
         # If the query is specifically selecting just the symbol column
         # and NOT selecting other columns like units.name
-        if (
-            "select units.symbol \nfrom" in query_str
-            or "select unit.symbol \nfrom" in query_str
-        ):
+        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
             return MockResult(["mg/dL"])
         # State-biomarker reload query (selects BiomarkerDefinition by id).
         if "from biomarker_definitions" in query_str:
@@ -229,9 +225,9 @@ async def test_create_biomarker(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_telemetry_biomarker(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -248,10 +244,7 @@ async def test_create_telemetry_biomarker(async_client: AsyncClient):
         query = args[0] if args else kwargs.get("statement")
         query_str = str(query).lower()
 
-        if (
-            "select units.symbol \nfrom" in query_str
-            or "select unit.symbol \nfrom" in query_str
-        ):
+        if "select units.symbol \nfrom" in query_str or "select unit.symbol \nfrom" in query_str:
             return MockResult(["bpm"])
         if "from biomarker_definitions" in query_str:
             return MockResult([mock_bio])

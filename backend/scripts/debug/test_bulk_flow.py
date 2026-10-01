@@ -1,5 +1,6 @@
-import httpx
 import asyncio
+
+import httpx
 
 API_URL = "http://localhost:8000/api/v1"
 AUTH = ("admin@health-assistant.local", "admin123")
@@ -82,12 +83,8 @@ async def test_bulk():
         print("\nWaiting for processing...")
         for _ in range(10):
             await asyncio.sleep(2)
-            res1 = await client.get(
-                f"{API_URL}/examinations/{exam1_id}/status", headers=headers
-            )
-            res2 = await client.get(
-                f"{API_URL}/examinations/{exam2_id}/status", headers=headers
-            )
+            res1 = await client.get(f"{API_URL}/examinations/{exam1_id}/status", headers=headers)
+            res2 = await client.get(f"{API_URL}/examinations/{exam2_id}/status", headers=headers)
             s1 = res1.json().get("extraction_status")
             s2 = res2.json().get("extraction_status")
             print(f"Status 1: {s1}, Status 2: {s2}")

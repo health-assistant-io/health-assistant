@@ -31,7 +31,6 @@ The cross-tenant stream (SYSTEM_ADMIN sees every tenant + system-level
 rows) lives at ``GET /admin/audit`` in ``admin.py``.
 """
 
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -86,8 +85,8 @@ def _svc(db: AsyncSession) -> TenantAdminService:
 
 @router.get("", response_model=TenantListResponse)
 async def list_tenants(
-    search: Optional[str] = Query(default=None),
-    is_active: Optional[bool] = Query(default=None),
+    search: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
     current_user: TokenData = Depends(_admin_only),
@@ -121,7 +120,7 @@ def _coerce_uuid(value: str, field: str = "tenant_id") -> UUID:
     try:
         return UUID(value)
     except (ValueError, AttributeError, TypeError):
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid {field}: must be a valid UUID.",
         )
@@ -252,16 +251,14 @@ async def exit_tenant_switch(
 @router.get("/{tenant_id}/users", response_model=TenantUserListResponse)
 async def list_tenant_users(
     tenant_id: str,
-    search: Optional[str] = Query(default=None),
+    search: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
     current_user: TokenData = Depends(_admin_only),
     db: AsyncSession = Depends(get_db),
 ) -> TenantUserListResponse:
     tid = _coerce_uuid(tenant_id)
-    items, total = await _svc(db).list_tenant_users(
-        tid, search=search, limit=limit, offset=offset
-    )
+    items, total = await _svc(db).list_tenant_users(tid, search=search, limit=limit, offset=offset)
     return TenantUserListResponse(
         items=[TenantUserResponse.model_validate(u) for u in items],
         total=total,
@@ -281,9 +278,7 @@ async def update_tenant_user(
 ) -> TenantUserResponse:
     tid = _coerce_uuid(tenant_id)
     uid = _coerce_uuid(user_id, field="user_id")
-    user = await _svc(db).update_tenant_user(
-        tid, uid, payload, actor_id=current_user.user_id
-    )
+    user = await _svc(db).update_tenant_user(tid, uid, payload, actor_id=current_user.user_id)
     return TenantUserResponse.model_validate(user)
 
 
@@ -314,9 +309,7 @@ async def set_tenant_user_mfa(
     """
     tid = _coerce_uuid(tenant_id)
     uid = _coerce_uuid(user_id, field="user_id")
-    if current_user.role != Role.SYSTEM_ADMIN.value and str(
-        current_user.tenant_id
-    ) != str(tid):
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != str(tid):
         await log_audit_action(
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
@@ -388,8 +381,8 @@ async def create_tenant_invite(
 @router.get("/{tenant_id}/audit", response_model=AuditListResponse)
 async def list_tenant_audit(
     tenant_id: str,
-    action: Optional[str] = Query(default=None),
-    outcome: Optional[str] = Query(default=None),
+    action: str | None = Query(default=None),
+    outcome: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
     current_user: TokenData = Depends(_admin_only),

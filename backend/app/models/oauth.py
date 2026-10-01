@@ -13,16 +13,17 @@ revocation via ``token_store`` provide the lifecycle controls.
 See ``docs/API_LAYERS.md`` for the layered model and
 ``docs/FHIR_R4_FACADE.md`` for the SMART scope vocabulary.
 """
+
 from sqlalchemy import (
+    UUID,
     Boolean,
     Column,
     ForeignKey,
     String,
-    UUID,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 
-from app.models.base import Base, UUIDMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class OAuthClient(Base, UUIDMixin, TimestampMixin):

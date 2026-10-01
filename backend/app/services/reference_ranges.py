@@ -17,10 +17,10 @@ unit) constraints are satisfied by the patient, the row constraining the
 back to the biomarker's legacy global range so existing behaviour is
 preserved (the ~30 display sites that read the global range keep working).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,9 +32,9 @@ from app.models.biomarker_model import BiomarkerDefinition, BiomarkerReferenceRa
 class ResolvedRange:
     """A resolved reference range + where it came from (for debugging/UX)."""
 
-    low: Optional[float]
-    high: Optional[float]
-    text: Optional[str] = None
+    low: float | None
+    high: float | None
+    text: str | None = None
     # "stratified" = matched a biomarker_reference_ranges row;
     # "definition"  = fell back to the biomarker's legacy global range.
     source: str = "definition"
@@ -44,7 +44,7 @@ class ResolvedRange:
         return self.low is not None and self.high is not None
 
 
-def compute_relative_score(value: float, low: Optional[float], high: Optional[float]) -> Optional[float]:
+def compute_relative_score(value: float, low: float | None, high: float | None) -> float | None:
     """Position of ``value`` within [low, high] as a clamped [0.0, 1.0] float.
 
     Returns ``0.5`` for an incomplete (one-sided) range, and ``None`` when
@@ -70,9 +70,8 @@ def _matches(row: BiomarkerReferenceRange, sex, age, unit_id) -> bool:
     age/sex/unit cannot be assumed to fall inside a stratified window, so such
     rows do not match (and the resolver falls through to a less-specific row or
     the global range)."""
-    if row.sex is not None:
-        if sex is None or row.sex != sex:
-            return False
+    if row.sex is not None and (sex is None or row.sex != sex):
+        return False
     if row.age_min is not None or row.age_max is not None:
         if age is None:
             return False
@@ -80,10 +79,7 @@ def _matches(row: BiomarkerReferenceRange, sex, age, unit_id) -> bool:
             return False
         if row.age_max is not None and age > row.age_max:
             return False
-    if row.unit_id is not None:
-        if unit_id is None or str(row.unit_id) != str(unit_id):
-            return False
-    return True
+    return not (row.unit_id is not None and (unit_id is None or str(row.unit_id) != str(unit_id)))
 
 
 def _specificity(row: BiomarkerReferenceRange) -> int:
@@ -101,9 +97,9 @@ def _specificity(row: BiomarkerReferenceRange) -> int:
     return score
 
 
-def _pick_best(rows, sex, age, unit_id) -> Optional[BiomarkerReferenceRange]:
+def _pick_best(rows, sex, age, unit_id) -> BiomarkerReferenceRange | None:
     """Choose the most-specific applicable row, or None."""
-    best: Optional[BiomarkerReferenceRange] = None
+    best: BiomarkerReferenceRange | None = None
     best_score = -1
     for row in rows:
         if not _matches(row, sex, age, unit_id):
@@ -119,9 +115,9 @@ def pick_reference_range(
     rows,
     *,
     sex=None,
-    age: Optional[float] = None,
+    age: float | None = None,
     unit_id=None,
-) -> Optional[ResolvedRange]:
+) -> ResolvedRange | None:
     """In-memory resolution from already-loaded ``rows`` (no DB hit).
 
     Use this in hot paths (e.g. the analytics trends loop) where the
@@ -131,9 +127,7 @@ def pick_reference_range(
     """
     best = _pick_best(rows, sex, age, unit_id)
     if best is not None:
-        return ResolvedRange(
-            low=best.low, high=best.high, text=best.text, source="stratified"
-        )
+        return ResolvedRange(low=best.low, high=best.high, text=best.text, source="stratified")
     if biomarker.reference_range_min is not None or biomarker.reference_range_max is not None:
         return ResolvedRange(
             low=biomarker.reference_range_min,
@@ -148,9 +142,9 @@ async def resolve_reference_range(
     biomarker: BiomarkerDefinition,
     *,
     sex=None,
-    age: Optional[float] = None,
+    age: float | None = None,
     unit_id=None,
-) -> Optional[ResolvedRange]:
+) -> ResolvedRange | None:
     """Resolve the best reference range for ``biomarker`` given patient context.
 
     Loads the biomarker's stratified rows and picks the most-specific match.
@@ -171,9 +165,7 @@ async def resolve_reference_range(
     range at all.
     """
     result = await db.execute(
-        select(BiomarkerReferenceRange).where(
-            BiomarkerReferenceRange.biomarker_id == biomarker.id
-        )
+        select(BiomarkerReferenceRange).where(BiomarkerReferenceRange.biomarker_id == biomarker.id)
     )
     rows = result.scalars().all()
     return pick_reference_range(biomarker, rows, sex=sex, age=age, unit_id=unit_id)
@@ -185,7 +177,7 @@ async def resolve_for_patient(
     patient,
     *,
     unit_id=None,
-) -> Optional[ResolvedRange]:
+) -> ResolvedRange | None:
     """Convenience wrapper: derive sex/age from a ``Patient`` ORM row.
 
     ``patient`` may be ``None`` (→ unstratified resolution, falls back to the

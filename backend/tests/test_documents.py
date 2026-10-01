@@ -1,7 +1,8 @@
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock, AsyncMock
-import uuid
 
 
 class MockUser:
@@ -56,21 +57,17 @@ def mock_document():
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.documents.get_document")
-async def test_get_document(
-    mock_get_document, async_client: AsyncClient, mock_document
-):
-    from app.main import app
-    from app.core.security import get_current_user
+async def test_get_document(mock_get_document, async_client: AsyncClient, mock_document):
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_db] = override_get_db
 
     mock_get_document.return_value = mock_document
 
-    response = await async_client.get(
-        "/api/v1/documents/123e4567-e89b-12d3-a456-426614174000"
-    )
+    response = await async_client.get("/api/v1/documents/123e4567-e89b-12d3-a456-426614174000")
     assert response.status_code == 200
     assert response.json()["filename"] == "test_lab_report.pdf"
 
@@ -79,12 +76,10 @@ async def test_get_document(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.documents.get_documents")
-async def test_list_documents(
-    mock_get_documents, async_client: AsyncClient, mock_document
-):
-    from app.main import app
-    from app.core.security import get_current_user
+async def test_list_documents(mock_get_documents, async_client: AsyncClient, mock_document):
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_db] = override_get_db
@@ -106,9 +101,9 @@ async def test_list_documents(
 async def test_delete_document(
     mock_get_document, mock_delete_document, async_client: AsyncClient, mock_document
 ):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_db] = override_get_db
@@ -116,9 +111,7 @@ async def test_delete_document(
     mock_get_document.return_value = mock_document
     mock_delete_document.return_value = True
 
-    response = await async_client.delete(
-        "/api/v1/documents/123e4567-e89b-12d3-a456-426614174000"
-    )
+    response = await async_client.delete("/api/v1/documents/123e4567-e89b-12d3-a456-426614174000")
     assert response.status_code == 200
     assert response.json()["message"] == "Document deleted successfully"
 

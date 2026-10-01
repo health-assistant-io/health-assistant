@@ -8,6 +8,7 @@ layers of defence:
 3. ``analytics_service`` skips (never interpolates) any slug that is not a
    strict identifier, regardless of how it entered the DB.
 """
+
 import uuid
 
 import pytest

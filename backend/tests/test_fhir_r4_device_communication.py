@@ -7,12 +7,12 @@ Covers:
 - Soft-delete mixin applied (Device, Communication)
 - Round-trip integrity
 """
+
 import datetime as _dt
 from uuid import uuid4
 
-
-from app.models.fhir.device import DeviceModel
 from app.models.fhir.communication import CommunicationModel
+from app.models.fhir.device import DeviceModel
 from app.services.fhir_converter import (
     fhir_to_communication_orm,
     fhir_to_device_orm,
@@ -20,20 +20,20 @@ from app.services.fhir_converter import (
 )
 from app.services.fhir_helpers import parse_fhir_resource
 
-
 # ---------------------------------------------------------------------------
 # Device
 # ---------------------------------------------------------------------------
 
+
 def _make_device(**overrides) -> DeviceModel:
-    defaults = dict(
-        id=str(uuid4()),
-        tenant_id=str(uuid4()),
-        type={"text": "Wearable"},
-        status="active",
-        created_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-        updated_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "type": {"text": "Wearable"},
+        "status": "active",
+        "created_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+        "updated_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return DeviceModel(**defaults)
 
@@ -127,16 +127,17 @@ def test_device_round_trip():
 # Communication
 # ---------------------------------------------------------------------------
 
+
 def _make_comm(**overrides) -> CommunicationModel:
-    defaults = dict(
-        id=str(uuid4()),
-        tenant_id=str(uuid4()),
-        status="completed",
-        payload=[{"contentString": "Hello"}],
-        sent=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-        created_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-        updated_at=_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "status": "completed",
+        "payload": [{"contentString": "Hello"}],
+        "sent": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+        "created_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+        "updated_at": _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return CommunicationModel(**defaults)
 
@@ -170,7 +171,7 @@ def test_communication_encounter_reference():
 
 
 def test_communication_sent_iso_format():
-    comm = _make_comm(sent=_dt.datetime(2024, 6, 1, 12, 0, tzinfo=_dt.timezone.utc))
+    comm = _make_comm(sent=_dt.datetime(2024, 6, 1, 12, 0, tzinfo=_dt.UTC))
     fhir = comm.to_fhir_dict()
     assert fhir["sent"].startswith("2024-06-01")
     assert fhir["sent"].endswith("Z")

@@ -13,14 +13,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.main import app
-from app.core.security import get_current_user
-from app.models.enums import HitlTaskStatus
-from app.schemas.user import TokenData
 from app.ai.assistance.service import (
     _hitl_resolution_summary,
     _hitl_resolved_brief,
 )
+from app.core.security import get_current_user
+from app.main import app
+from app.models.enums import HitlTaskStatus
+from app.schemas.user import TokenData
 
 
 def _token():
@@ -114,14 +114,24 @@ def test_resolution_summary_trims_large_payload():
 
 def test_resolved_brief_skips_pending():
     tasks = [
-        {"task_type": "x", "title": "Pending One", "status": HitlTaskStatus.PROPOSED, "resolved": None},
+        {
+            "task_type": "x",
+            "title": "Pending One",
+            "status": HitlTaskStatus.PROPOSED,
+            "resolved": None,
+        },
         {
             "task_type": "create_clinical_event",
             "title": "Done",
             "status": HitlTaskStatus.CONFIRMED,
             "resolved": {"result": {"id": "abc-1234567890"}},
         },
-        {"task_type": "add_medication", "title": "Nope", "status": HitlTaskStatus.DISMISSED, "resolved": {}},
+        {
+            "task_type": "add_medication",
+            "title": "Nope",
+            "status": HitlTaskStatus.DISMISSED,
+            "resolved": {},
+        },
     ]
     brief = _hitl_resolved_brief(tasks)
     assert brief is not None
@@ -237,13 +247,12 @@ async def test_resume_endpoint_streams_content(async_client):
     (NOT an AsyncMock) so the test exercises the real call shape and would
     catch an `await` regression.
     """
+
     async def _fake_resume(*args, **kwargs):
         for chunk in ["Hello ", "[TOOL_CALL_START] get_system_time", "world"]:
             yield chunk
 
-    with patch(
-        "app.api.v1.endpoints.ai_assistance.AIAssistanceService"
-    ) as mock_cls:
+    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
         # Plain lambda (not AsyncMock) — mirrors the real async-generator
         # function: `service.resume_after_hitl(...)` returns the gen directly.
@@ -272,9 +281,7 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
         yield "Acknowledged your partial review."
         yield ""
 
-    with patch(
-        "app.api.v1.endpoints.ai_assistance.AIAssistanceService"
-    ) as mock_cls:
+    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
         mock_instance.resume_after_hitl = lambda **kw: _fake_resume(**kw)
         mock_cls.return_value = mock_instance
@@ -302,9 +309,7 @@ async def test_resume_endpoint_passes_message_id_selector(async_client):
         if False:  # pragma: no cover
             yield ""
 
-    with patch(
-        "app.api.v1.endpoints.ai_assistance.AIAssistanceService"
-    ) as mock_cls:
+    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
         mock_instance.resume_after_hitl = lambda **kw: _fake_resume(**kw)
         mock_cls.return_value = mock_instance
@@ -404,9 +409,7 @@ async def test_resolve_audit_note_propose_says_saved(async_client):
         inst = mock_cls.return_value
         inst.find_message_by_proposal = AsyncMock(return_value=fake_message)
         inst.update_message_tasks = AsyncMock(return_value=None)
-        inst.save_message = AsyncMock(
-            side_effect=lambda **kw: captured_messages.append(kw)
-        )
+        inst.save_message = AsyncMock(side_effect=lambda **kw: captured_messages.append(kw))
 
         session_id = uuid4()
         resp = await async_client.post(
@@ -433,9 +436,10 @@ def test_is_internal_message_flags_hitl_feedback():
     from app.services.chat_session_service import is_internal_message
 
     # New rows: explicit kind tag.
-    assert is_internal_message(
-        {"text": "[HITL RESOLUTION FEEDBACK] ...", "kind": "hitl_feedback"}
-    ) is True
+    assert (
+        is_internal_message({"text": "[HITL RESOLUTION FEEDBACK] ...", "kind": "hitl_feedback"})
+        is True
+    )
     # Legacy rows: text prefix only (no kind tag).
     assert is_internal_message({"text": "[HITL RESOLUTION FEEDBACK] legacy"}) is True
     # Normal user message — not internal.
@@ -474,14 +478,10 @@ async def test_get_session_messages_hides_hitl_feedback(async_client):
 
     with patch.object(ep, "ChatSessionService") as mock_cls:
         inst = mock_cls.return_value
-        inst.get_session_messages = AsyncMock(
-            return_value=[visible[0], internal, visible[1]]
-        )
+        inst.get_session_messages = AsyncMock(return_value=[visible[0], internal, visible[1]])
 
         session_id = uuid4()
-        resp = await async_client.get(
-            f"/api/v1/ai-assistance/sessions/{session_id}/messages"
-        )
+        resp = await async_client.get(f"/api/v1/ai-assistance/sessions/{session_id}/messages")
 
     assert resp.status_code == 200
     msgs = resp.json()

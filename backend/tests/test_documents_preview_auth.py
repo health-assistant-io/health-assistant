@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Regression tests for audit item B5 — document preview auth hole.
 
 Pre-fix contract: ``GET /documents/{id}/preview`` had the auth logic
@@ -21,7 +22,6 @@ import pytest
 from app.api.v1.endpoints import documents as docs_endpoint
 from app.models.enums import Role
 from app.schemas.user import TokenData
-
 
 _FAKE_IMG_BYTES = b"PNGDATA"
 
@@ -103,18 +103,22 @@ async def test_preview_with_bad_bearer_returns_401():
     request = _request_with({"Authorization": "Bearer not.a.real.token"})
     db = MagicMock()
 
-    with patch(
-        "app.core.security.authenticate_session_token",
-        new=AsyncMock(side_effect=HTTPException(status_code=401, detail="Invalid or expired token")),
+    with (
+        patch(
+            "app.core.security.authenticate_session_token",
+            new=AsyncMock(
+                side_effect=HTTPException(status_code=401, detail="Invalid or expired token")
+            ),
+        ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await docs_endpoint.get_document_preview_endpoint(
-                request=request,
-                document_id=str(uuid.uuid4()),
-                page=0,
-                token=None,
-                db=db,
-            )
+        await docs_endpoint.get_document_preview_endpoint(
+            request=request,
+            document_id=str(uuid.uuid4()),
+            page=0,
+            token=None,
+            db=db,
+        )
     assert exc.value.status_code == 401
 
 

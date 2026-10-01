@@ -11,6 +11,7 @@ These pin the dedup contract added to ``ingest_document_bytes`` +
 * DocumentPull.external_id is the SDK spec field that surfaces this to
   providers.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -148,13 +149,17 @@ async def test_ingest_document_bytes_dedup_returns_existing_row(
     # Only one DB row for this dedup key.
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(DocumentModel).where(
-                    DocumentModel.source_integration_id == integration_id,
-                    DocumentModel.external_id == external_id,
+            (
+                await db.execute(
+                    select(DocumentModel).where(
+                        DocumentModel.source_integration_id == integration_id,
+                        DocumentModel.external_id == external_id,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert len(rows) == 1
 
 
@@ -213,9 +218,7 @@ async def test_ingest_document_bytes_dedup_no_reocr_on_hit(
         dispatch_count["n"] += 1
         return type("R", (), {"id": "fake"})
 
-    monkeypatch.setattr(
-        "app.workers.ai_tasks.ocr_document.apply_async", _count_dispatch
-    )
+    monkeypatch.setattr("app.workers.ai_tasks.ocr_document.apply_async", _count_dispatch)
 
     async with AsyncSessionLocal() as db:
         await document_service.ingest_document_bytes(
@@ -350,10 +353,10 @@ def test_run_sync_passes_integration_keys_to_ingest_document_bytes():
     the full pipeline without a provider + DB, so this is a static check
     on the source."""
     src = Path(document_service.__file__).read_text()
-    assert "source_integration_id=integration.id" not in src  # document_service itself doesn't say this
-    integration_sync_path = (
-        Path(document_service.__file__).parent / "integration_sync_service.py"
-    )
+    assert (
+        "source_integration_id=integration.id" not in src
+    )  # document_service itself doesn't say this
+    integration_sync_path = Path(document_service.__file__).parent / "integration_sync_service.py"
     sync_src = integration_sync_path.read_text()
     assert "source_integration_id=integration.id" in sync_src
     assert "external_id=getattr" in sync_src or "external_id=doc_spec.external_id" in sync_src

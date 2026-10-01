@@ -37,7 +37,6 @@ from app.ai.tools.ask_user import (
 )
 from app.ai.tools.registry import ToolContext
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -245,7 +244,8 @@ def test_validate_rejects_prefilter_unknown_keys():
 
 def test_cap_max_questions():
     too_many = [
-        {"id": f"q{i}", "kind": "freetext", "prompt": f"P{i}"} for i in range(MAX_QUESTIONS_PER_BATCH + 1)
+        {"id": f"q{i}", "kind": "freetext", "prompt": f"P{i}"}
+        for i in range(MAX_QUESTIONS_PER_BATCH + 1)
     ]
     with pytest.raises(AskUserValidationError) as exc:
         _validate_batch(too_many)
@@ -253,9 +253,7 @@ def test_cap_max_questions():
 
 
 def test_cap_max_options_per_question():
-    options = [
-        {"value": str(i), "label": f"Opt{i}"} for i in range(MAX_OPTIONS_PER_QUESTION + 1)
-    ]
+    options = [{"value": str(i), "label": f"Opt{i}"} for i in range(MAX_OPTIONS_PER_QUESTION + 1)]
     with pytest.raises(AskUserValidationError) as exc:
         _validate_batch(
             [{"id": "q1", "kind": "single_choice", "prompt": "Pick", "options": options}]
@@ -291,7 +289,7 @@ async def test_catalog_ref_snapshot_captures_rich_fields():
         "app.services.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
-        from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+        from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
         q = CatalogRefQuestion(
             id="q1",
@@ -338,7 +336,7 @@ async def test_catalog_ref_snapshot_normalises_string_telemetry_flag():
         "app.services.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
-        from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+        from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
         q = CatalogRefQuestion(
             id="q1",
@@ -362,10 +360,13 @@ async def test_catalog_ref_snapshot_truncates_long_description():
         "app.services.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
-        from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+        from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
         q = CatalogRefQuestion(
-            id="q1", kind="catalog_ref", prompt="Pick", catalog_type="medication",
+            id="q1",
+            kind="catalog_ref",
+            prompt="Pick",
+            catalog_type="medication",
             prefilter={"query": "x"},
         )
         candidates = await _snapshot_catalog_candidates(ctx, q)
@@ -377,15 +378,13 @@ async def test_catalog_ref_snapshot_truncates_long_description():
 @pytest.mark.asyncio
 async def test_catalog_ref_snapshot_caps_at_max():
     """Even if search returns more, the snapshot caps at MAX_CANDIDATES_PER_REF."""
-    fake_hits = [
-        {"id": f"u{i}", "label": f"H{i}"} for i in range(50)
-    ]
+    fake_hits = [{"id": f"u{i}", "label": f"H{i}"} for i in range(50)]
     ctx = _ctx()
     with patch(
         "app.services.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits[:MAX_CANDIDATES_PER_REF]),
     ) as mock_search:
-        from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+        from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
         q = CatalogRefQuestion(
             id="q1",
@@ -407,7 +406,7 @@ async def test_catalog_ref_snapshot_without_query_returns_empty():
     """No `prefilter.query` → no snapshot (frontend will run the first query
     when the user types)."""
     ctx = _ctx()
-    from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+    from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
     q = CatalogRefQuestion(
         id="q1",
@@ -427,7 +426,7 @@ async def test_catalog_ref_snapshot_swallows_search_errors():
         "app.services.catalog_search_service.search_catalogs",
         new=AsyncMock(side_effect=RuntimeError("boom")),
     ):
-        from app.ai.tools.ask_user import _snapshot_catalog_candidates, CatalogRefQuestion
+        from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
 
         q = CatalogRefQuestion(
             id="q1",
@@ -446,8 +445,8 @@ async def test_instance_ref_snapshot_clinical_event():
     CandidateRef list is attached to the question."""
     from app.ai.tools.ask_user import (
         CandidateRef,
-        _populate_candidates,
         InstanceRefQuestion,
+        _populate_candidates,
     )
 
     expected = [
@@ -477,14 +476,16 @@ async def test_instance_ref_snapshot_clinical_event():
 @pytest.mark.asyncio
 async def test_instance_ref_unknown_entity_type_returns_empty_candidates():
     """An entity_type with no registered builder degrades to [] — never raises."""
-    from app.ai.tools.ask_user import _populate_candidates, InstanceRefQuestion
+    from app.ai.tools.ask_user import InstanceRefQuestion, _populate_candidates
 
     ctx = _ctx()
     q = InstanceRefQuestion(
         id="q1", kind="instance_ref", prompt="Pick", entity_type="clinical_event"
     )
     with patch.dict(
-        "app.ai.tools.ask_user.INSTANCE_SNAPSHOT_BUILDERS", {}, clear=True,
+        "app.ai.tools.ask_user.INSTANCE_SNAPSHOT_BUILDERS",
+        {},
+        clear=True,
     ):
         await _populate_candidates(ctx, q)
     assert q.candidates == []
@@ -496,8 +497,8 @@ async def test_populate_candidates_does_not_overwrite_existing_snapshot():
     tool does not re-snapshot."""
     from app.ai.tools.ask_user import (
         CandidateRef,
-        _populate_candidates,
         CatalogRefQuestion,
+        _populate_candidates,
     )
 
     ctx = _ctx()
@@ -572,9 +573,7 @@ async def test_tool_returns_error_on_invalid_payload():
     the LLM can self-correct on the next iteration."""
     ctx = _ctx()
     (ask_user,) = build(ctx)
-    raw = await ask_user.ainvoke(
-        {"questions": [{"id": "q1", "kind": "rating", "prompt": "Stars"}]}
-    )
+    raw = await ask_user.ainvoke({"questions": [{"id": "q1", "kind": "rating", "prompt": "Stars"}]})
     parsed = json.loads(raw)
     assert "error" in parsed
     assert "__hitl__" not in parsed
@@ -846,7 +845,7 @@ def test_resolution_summary_drops_empty_candidate_fields():
                             "id": "u1",
                             "name": "Pregnancy",
                             "type": "clinical_event",
-                            "code": None,           # not set on instances
+                            "code": None,  # not set on instances
                             "coding_system": None,
                             "is_telemetry": None,
                             "unit": None,

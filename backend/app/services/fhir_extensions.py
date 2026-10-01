@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """FHIR R4 extension registry for Patient (and later Doctor/Organization).
 
 The application stores FHIR extensions on entity rows as a **local-keyed**
@@ -29,8 +30,9 @@ the API schema layer validates first).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 US_CORE_RACE_URL = "urn:oid:2.16.840.1.113883.4.642.40.46|race"
 US_CORE_ETHNICITY_URL = "urn:oid:2.16.840.1.113883.4.642.40.46|ethnicity"
@@ -40,7 +42,7 @@ INSURANCE_PROVIDER_URL = "urn:healthassistant:insurance-provider"
 OMB_CATEGORY_SYSTEM = "urn:oid:2.16.840.1.113883.6.18"
 
 
-def _build_omb_category(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _build_omb_category(value: dict[str, Any] | None) -> dict[str, Any] | None:
     if not value:
         return None
     coding = {}
@@ -57,8 +59,8 @@ def _build_omb_category(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, A
     return {"url": "ombCategory", "valueCoding": coding}
 
 
-def _parse_complex_codeable(ext_sublist: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
+def _parse_complex_codeable(ext_sublist: list[dict[str, Any]] | None) -> dict[str, Any]:
+    out: dict[str, Any] = {}
     if not ext_sublist:
         return out
     for sub in ext_sublist:
@@ -88,20 +90,20 @@ def _validate_preferred_language(value: Any) -> str:
         raise ValueError("preferred_language must be an ISO-639-1 code string")
     code = value.strip().lower()
     if len(code) < 2 or len(code) > 8:
-        raise ValueError("preferred_language must be a 2–8 char ISO/BCP-47 code")
+        raise ValueError("preferred_language must be a 2-8 char ISO/BCP-47 code")
     return code
 
 
-def _build_simple_extension(url: str, fhir_field: str, value: Any) -> Dict[str, Any]:
+def _build_simple_extension(url: str, fhir_field: str, value: Any) -> dict[str, Any]:
     return {"url": url, fhir_field: value}
 
 
-def _parse_simple_extension(ext_obj: Dict[str, Any], fhir_field: str) -> Optional[Any]:
+def _parse_simple_extension(ext_obj: dict[str, Any], fhir_field: str) -> Any | None:
     return ext_obj.get(fhir_field)
 
 
-def _build_omb_extension(url: str, value: Dict[str, Any]) -> Dict[str, Any]:
-    sub: List[Dict[str, Any]] = []
+def _build_omb_extension(url: str, value: dict[str, Any]) -> dict[str, Any]:
+    sub: list[dict[str, Any]] = []
     cat = _build_omb_category(value)
     if cat:
         sub.append(cat)
@@ -116,15 +118,15 @@ class ExtensionDefinition:
     url: str
     title_i18n_key: str
     cardinality: str
-    build: Callable[[Any], Dict[str, Any]]
-    parse: Callable[[Dict[str, Any]], Any]
+    build: Callable[[Any], dict[str, Any]]
+    parse: Callable[[dict[str, Any]], Any]
     validate: Callable[[Any], Any]
 
 
-def _race_validate(value: Any) -> Dict[str, Any]:
+def _race_validate(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("race extension must be an object {ombCategory?, text?}")
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     cat = value.get("ombCategory")
     if cat is not None:
         if not isinstance(cat, dict) or not cat.get("code"):
@@ -144,11 +146,11 @@ def _race_validate(value: Any) -> Dict[str, Any]:
     return out
 
 
-def _ethnicity_validate(value: Any) -> Dict[str, Any]:
+def _ethnicity_validate(value: Any) -> dict[str, Any]:
     return _race_validate(value)
 
 
-SUPPORTED_PATIENT_EXTENSIONS: Tuple[ExtensionDefinition, ...] = (
+SUPPORTED_PATIENT_EXTENSIONS: tuple[ExtensionDefinition, ...] = (
     ExtensionDefinition(
         key="race",
         url=US_CORE_RACE_URL,
@@ -187,24 +189,24 @@ SUPPORTED_PATIENT_EXTENSIONS: Tuple[ExtensionDefinition, ...] = (
     ),
 )
 
-_PATIENT_BY_KEY: Dict[str, ExtensionDefinition] = {
+_PATIENT_BY_KEY: dict[str, ExtensionDefinition] = {
     ext.key: ext for ext in SUPPORTED_PATIENT_EXTENSIONS
 }
-_PATIENT_BY_URL: Dict[str, ExtensionDefinition] = {
+_PATIENT_BY_URL: dict[str, ExtensionDefinition] = {
     ext.url: ext for ext in SUPPORTED_PATIENT_EXTENSIONS
 }
 
 
-def supported_patient_keys() -> Tuple[str, ...]:
+def supported_patient_keys() -> tuple[str, ...]:
     return tuple(_PATIENT_BY_KEY.keys())
 
 
-def validate_patient_extensions(extensions: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def validate_patient_extensions(extensions: dict[str, Any] | None) -> dict[str, Any] | None:
     if extensions is None:
         return None
     if not isinstance(extensions, dict):
         raise ValueError("extensions must be a JSON object keyed by extension key")
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for key, value in extensions.items():
         if value is None:
             continue
@@ -214,10 +216,10 @@ def validate_patient_extensions(extensions: Optional[Dict[str, Any]]) -> Optiona
     return cleaned or None
 
 
-def to_fhir_extension_list(extensions: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def to_fhir_extension_list(extensions: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not extensions:
         return []
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for key, value in extensions.items():
         if value is None or key not in _PATIENT_BY_KEY:
             continue
@@ -225,10 +227,10 @@ def to_fhir_extension_list(extensions: Optional[Dict[str, Any]]) -> List[Dict[st
     return out
 
 
-def from_fhir_extension_list(ext_list: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+def from_fhir_extension_list(ext_list: list[dict[str, Any]] | None) -> dict[str, Any]:
     if not ext_list:
         return {}
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for ext_obj in ext_list:
         url = ext_obj.get("url")
         if not url:

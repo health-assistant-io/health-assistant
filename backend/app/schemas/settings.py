@@ -1,11 +1,12 @@
 """Pydantic schemas for the tiered settings system."""
 
-from typing import Any, Dict, List, Optional
-from enum import Enum
+from enum import StrEnum
+from typing import Any
+
 from pydantic import BaseModel
 
 
-class SettingType(str, Enum):
+class SettingType(StrEnum):
     INTEGER = "integer"
     FLOAT = "float"
     BOOLEAN = "boolean"
@@ -13,12 +14,12 @@ class SettingType(str, Enum):
     ENUM = "enum"
 
 
-class SettingStorage(str, Enum):
+class SettingStorage(StrEnum):
     TIERED = "tiered"
     DEVICE = "device"
 
 
-class SettingLevel(str, Enum):
+class SettingLevel(StrEnum):
     SYSTEM = "system"
     TENANT = "tenant"
     USER = "user"
@@ -27,7 +28,7 @@ class SettingLevel(str, Enum):
 class SettingCategory(BaseModel):
     key: str
     label_key: str
-    description_key: Optional[str] = None
+    description_key: str | None = None
     order: int = 0
 
 
@@ -42,18 +43,18 @@ class SettingDefinition(BaseModel):
     type: SettingType
     default: Any
     storage: SettingStorage = SettingStorage.TIERED
-    allowed_levels: List[SettingLevel]
+    allowed_levels: list[SettingLevel]
     label_key: str
     description_key: str
-    min: Optional[float] = None
-    max: Optional[float] = None
-    options: Optional[List[SettingEnumOption]] = None
+    min: float | None = None
+    max: float | None = None
+    options: list[SettingEnumOption] | None = None
     order: int = 0
 
 
 class EffectiveSettingsResponse(BaseModel):
-    settings: Dict[str, Any]
-    sources: Dict[str, str]
+    settings: dict[str, Any]
+    sources: dict[str, str]
 
 
 class SettingsOverrideUpdate(BaseModel):

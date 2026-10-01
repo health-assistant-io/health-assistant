@@ -15,18 +15,24 @@ FROM base AS deps
 # Build stage: compilers live here only, never in the runtime layer.
 RUN apt-get update && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
+# Workspace manifests first (cache-friendly); uv installs into /app/.venv.
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/pyproject.toml
+COPY backend/app backend/app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 FROM base AS runtime
-# Copy only the installed packages from the deps stage.
-COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=deps /usr/local/bin /usr/local/bin
+# Copy only the uv environment from the deps stage.
+ENV PATH="/app/.venv/bin:$PATH"
+COPY --from=deps /app/.venv /app/.venv
 
 # Application code — allowlisted paths only (.dockerignore guards the rest).
 # Consolidated multi-source COPY so new backend files (e.g. alembic.ini) can't
 # silently miss the image.
-COPY backend/app backend/alembic backend/alembic.ini backend/scripts backend/requirements.txt backend/pytest.ini /app/backend/
+COPY backend/app backend/alembic backend/alembic.ini backend/scripts /app/backend/
 COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).

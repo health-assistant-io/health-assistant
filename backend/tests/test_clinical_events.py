@@ -1,30 +1,35 @@
+import datetime
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock, AsyncMock
-import uuid
-import datetime
+
 from app.models.clinical_event import (
     ClinicalEvent,
-    ClinicalEventType,
     ClinicalEventStatus,
+    ClinicalEventType,
 )
 from app.models.enums import ScheduleKind
-
 
 # Define consistent test IDs
 TEST_USER_ID = uuid.uuid4()
 TEST_TENANT_ID = uuid.uuid4()
 
+
 def override_get_current_user():
     from app.schemas.user import TokenData
-    return TokenData(user_id=TEST_USER_ID, sub=str(TEST_USER_ID), tenant_id=TEST_TENANT_ID, role="user")
+
+    return TokenData(
+        user_id=TEST_USER_ID, sub=str(TEST_USER_ID), tenant_id=TEST_TENANT_ID, role="user"
+    )
 
 
 @pytest.mark.asyncio
 async def test_list_event_types(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -62,9 +67,9 @@ async def test_list_event_types(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_event(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -92,11 +97,11 @@ async def test_create_event(async_client: AsyncClient):
         tenant_id=tenant_id,
         title="Test Event",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        updated_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         type_entity=None,
         examination_links=[],
     )
@@ -131,9 +136,9 @@ async def test_create_event(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_event(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -152,11 +157,11 @@ async def test_get_event(async_client: AsyncClient):
         tenant_id=tenant_id,
         title="Test Event",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        updated_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         type_entity=None,
         examination_links=[],
     )
@@ -184,9 +189,9 @@ async def test_get_event(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_event(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -207,11 +212,11 @@ async def test_update_event(async_client: AsyncClient):
         tenant_id=tenant_id,
         title="Old Title",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        updated_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         type_entity=None,
         examination_links=[],
     )
@@ -244,9 +249,9 @@ async def test_update_event(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_delete_event(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -287,9 +292,9 @@ async def test_delete_event(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_events_by_examination(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -303,11 +308,11 @@ async def test_list_events_by_examination(async_client: AsyncClient):
         tenant_id=tenant_id,
         title="Event for Exam",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        updated_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         type_entity=None,
         examination_links=[],
     )
@@ -321,9 +326,7 @@ async def test_list_events_by_examination(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = await async_client.get(
-        f"/api/v1/clinical-events?examination_id={exam_id}"
-    )
+    response = await async_client.get(f"/api/v1/clinical-events?examination_id={exam_id}")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -341,8 +344,8 @@ def test_parse_date_range_valid():
     from app.services.clinical_event_service import _parse_date_range
 
     start, end = _parse_date_range("2026-03-01,2026-03-31")
-    assert start == datetime.datetime(2026, 3, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-    assert end == datetime.datetime(2026, 3, 31, 23, 59, 59, 999999, tzinfo=datetime.timezone.utc)
+    assert start == datetime.datetime(2026, 3, 1, 0, 0, 0, tzinfo=datetime.UTC)
+    assert end == datetime.datetime(2026, 3, 31, 23, 59, 59, 999999, tzinfo=datetime.UTC)
 
 
 def test_parse_date_range_with_whitespace():
@@ -368,9 +371,9 @@ def test_parse_date_range_invalid_returns_none():
 @pytest.mark.asyncio
 async def test_list_events_with_active_on_param(async_client: AsyncClient):
     """active_on=YYYY-MM-DD should be accepted and forwarded to the service."""
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -381,11 +384,11 @@ async def test_list_events_with_active_on_param(async_client: AsyncClient):
         tenant_id=TEST_TENANT_ID,
         title="Ongoing Pain",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime(2026, 1, 15, tzinfo=datetime.timezone.utc),
+        onset_date=datetime.datetime(2026, 1, 15, tzinfo=datetime.UTC),
         occurrences=[],
         event_metadata={},
-        created_at=datetime.datetime.now(datetime.timezone.utc),
-        updated_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=datetime.datetime.now(datetime.UTC),
+        updated_at=datetime.datetime.now(datetime.UTC),
         type_entity=None,
         examination_links=[],
     )
@@ -399,9 +402,7 @@ async def test_list_events_with_active_on_param(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = await async_client.get(
-        "/api/v1/clinical-events?active_on=2026-03-15"
-    )
+    response = await async_client.get("/api/v1/clinical-events?active_on=2026-03-15")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
@@ -412,9 +413,9 @@ async def test_list_events_with_active_on_param(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_events_with_onset_on_param(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -428,9 +429,7 @@ async def test_list_events_with_onset_on_param(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = await async_client.get(
-        "/api/v1/clinical-events?onset_on=2026-03-15"
-    )
+    response = await async_client.get("/api/v1/clinical-events?onset_on=2026-03-15")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -439,9 +438,9 @@ async def test_list_events_with_onset_on_param(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_events_with_date_range_param(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -455,9 +454,7 @@ async def test_list_events_with_date_range_param(async_client: AsyncClient):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    response = await async_client.get(
-        "/api/v1/clinical-events?date_range=2026-01-01,2026-06-30"
-    )
+    response = await async_client.get("/api/v1/clinical-events?date_range=2026-01-01,2026-06-30")
     assert response.status_code == 200
 
     app.dependency_overrides = {}
@@ -466,14 +463,12 @@ async def test_list_events_with_date_range_param(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_list_events_rejects_malformed_active_on(async_client: AsyncClient):
     """Bad date format should 422 (FastAPI validation), not 500."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
-    response = await async_client.get(
-        "/api/v1/clinical-events?active_on=not-a-date"
-    )
+    response = await async_client.get("/api/v1/clinical-events?active_on=not-a-date")
     assert response.status_code == 422
 
     app.dependency_overrides = {}
@@ -527,7 +522,7 @@ def test_clinical_event_to_dict_resolves_schedule_kind_from_type():
         tenant_id=TEST_TENANT_ID,
         title="Ongoing Back Pain",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
         type_entity=type_row,
@@ -553,7 +548,7 @@ def test_clinical_event_to_dict_schedule_kind_falls_back_to_state_when_type_miss
         tenant_id=TEST_TENANT_ID,
         title="Orphan Event",
         status=ClinicalEventStatus.ACTIVE,
-        onset_date=datetime.datetime.now(datetime.timezone.utc),
+        onset_date=datetime.datetime.now(datetime.UTC),
         occurrences=[],
         event_metadata={},
         type_entity=None,
@@ -566,8 +561,8 @@ def test_clinical_event_to_dict_schedule_kind_falls_back_to_state_when_type_miss
 @pytest.mark.asyncio
 async def test_create_event_type_rejects_invalid_schedule_kind(async_client: AsyncClient):
     """An unknown schedule_kind value must 422, not 500."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -588,8 +583,8 @@ async def test_create_event_type_rejects_invalid_schedule_kind(async_client: Asy
 async def test_create_event_type_rejects_missing_schedule_kind(async_client: AsyncClient):
     """Phase 8a: schedule_kind is required on the wire (NOT NULL on the column).
     Omitting it must 422, not 500 / not silently default."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -625,6 +620,7 @@ def test_clinical_event_type_schema_rejects_missing_schedule_kind():
     """Phase 8a: the schema requires schedule_kind — Pydantic raises on a
     missing field before the request even reaches the endpoint logic."""
     from pydantic import ValidationError
+
     from app.schemas.clinical_event import ClinicalEventTypeBase
 
     with pytest.raises(ValidationError):

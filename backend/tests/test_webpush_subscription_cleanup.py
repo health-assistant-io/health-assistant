@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Regression tests for Web Push dead-subscription cleanup (C13).
 
 Pre-fix contract: ``webpush_service.send_web_push`` swallowed every
@@ -18,13 +19,14 @@ Post-fix contract pinned here:
    ``NotificationSubscription.is_active = False``, and continues
    processing the remaining subscriptions.
 """
+
 import inspect
 from unittest.mock import MagicMock, patch
 
 import pytest
 from pywebpush import WebPushException
 
-from app.services.webpush_service import send_web_push, SubscriptionExpired
+from app.services.webpush_service import SubscriptionExpired, send_web_push
 
 
 def _make_webpush_exception(status_code: int) -> WebPushException:

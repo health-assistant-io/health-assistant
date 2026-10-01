@@ -1,5 +1,9 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import uuid4
+
+from fhir.resources.R4B import get_fhir_model_class
+from fhir.resources.R4B.bundle import Bundle
+from pydantic import ValidationError as FhirValidationError
 
 from app.models.enums import ExportScope
 from app.schemas.backup import PROVENANCE_SYSTEM
@@ -9,11 +13,6 @@ from app.services.fhir_helpers import (
     _normalize_interpretation,
     parse_fhir_resource,
 )
-
-from fhir.resources.R4B.bundle import Bundle
-from fhir.resources.R4B import get_fhir_model_class
-from pydantic import ValidationError as FhirValidationError
-
 
 CLINICAL_RESOURCE_TYPES = (
     "Patient",
@@ -34,7 +33,7 @@ def scope_to_smart(scope: ExportScope) -> str:
     return "system/*.cruds"
 
 
-def orm_to_fhir(resource_type: str, orm_obj: Any) -> Dict[str, Any]:
+def orm_to_fhir(resource_type: str, orm_obj: Any) -> dict[str, Any]:
     """Serialize an ORM object to a FHIR resource dict.
 
     Construction is owned by each model's ``to_fhir_dict()`` (which validates via
@@ -51,10 +50,10 @@ def orm_to_fhir(resource_type: str, orm_obj: Any) -> Dict[str, Any]:
 
 
 def build_bundle(
-    entries: List[Tuple[str, Dict[str, Any], str]],
-    meta: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    bundle_entries: List[Dict[str, Any]] = []
+    entries: list[tuple[str, dict[str, Any], str]],
+    meta: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    bundle_entries: list[dict[str, Any]] = []
     for full_url, resource, method in entries:
         rt = resource.get("resourceType")
         url = rt or "Resource"
@@ -65,7 +64,7 @@ def build_bundle(
                 "request": {"method": method, "url": url},
             }
         )
-    bundle: Dict[str, Any] = {
+    bundle: dict[str, Any] = {
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": bundle_entries,
@@ -79,7 +78,7 @@ def build_bundle(
     return bundle
 
 
-def validate_resource(resource_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def validate_resource(resource_dict: dict[str, Any]) -> tuple[bool, list[str]]:
     rt = resource_dict.get("resourceType")
     if not rt:
         return False, ["Missing resourceType"]
@@ -93,7 +92,7 @@ def validate_resource(resource_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
         return False, [f"Unknown resource type {rt}: {e}"]
 
 
-def validate_bundle(bundle_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def validate_bundle(bundle_dict: dict[str, Any]) -> tuple[bool, list[str]]:
     try:
         Bundle.model_validate(bundle_dict)
         return True, []
@@ -107,7 +106,7 @@ def validate_bundle(bundle_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
 # ---------------------------------------------------------------------------
 
 
-def fhir_to_patient_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_patient_orm(f: dict[str, Any]) -> dict[str, Any]:
     mrn = None
     for ident in f.get("identifier") or []:
         if ident.get("system", "").endswith("mrn"):
@@ -128,7 +127,7 @@ def fhir_to_patient_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_observation_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_observation_orm(f: dict[str, Any]) -> dict[str, Any]:
     return _clean(
         {
             "id": f.get("id"),
@@ -153,7 +152,7 @@ def fhir_to_observation_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_medication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_medication_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR MedicationStatement to an ORM dict (intent=statement).
 
     Reuses the legacy ``fhir_to_medication_orm`` mapping but tags the row
@@ -164,19 +163,15 @@ def fhir_to_medication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     return base
 
 
-def _fhir_to_medication_orm_legacy(f: Dict[str, Any]) -> Dict[str, Any]:
+def _fhir_to_medication_orm_legacy(f: dict[str, Any]) -> dict[str, Any]:
     """Legacy MedicationStatement → ORM mapping (used by import + facade)."""
     med_cc = f.get("medicationCodeableConcept") or {}
     dosage_list = f.get("dosage") or []
     dosage_text = (
-        dosage_list[0].get("text")
-        if dosage_list and isinstance(dosage_list[0], dict)
-        else None
+        dosage_list[0].get("text") if dosage_list and isinstance(dosage_list[0], dict) else None
     )
     timing = (
-        dosage_list[0].get("timing")
-        if dosage_list and isinstance(dosage_list[0], dict)
-        else None
+        dosage_list[0].get("timing") if dosage_list and isinstance(dosage_list[0], dict) else None
     )
     period = f.get("effectivePeriod") or {}
     reason_code = f.get("reasonCode") or []
@@ -198,7 +193,7 @@ def _fhir_to_medication_orm_legacy(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_medication_request_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_medication_request_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR MedicationRequest to an ORM dict (intent=order/plan/...).
 
     The reverse of :meth:`Medication._to_medication_request`. Maps:
@@ -237,14 +232,10 @@ def fhir_to_medication_request_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     med_cc = f.get("medicationCodeableConcept") or {}
     dosage_list = f.get("dosageInstruction") or []
     dosage_text = (
-        dosage_list[0].get("text")
-        if dosage_list and isinstance(dosage_list[0], dict)
-        else None
+        dosage_list[0].get("text") if dosage_list and isinstance(dosage_list[0], dict) else None
     )
     timing = (
-        dosage_list[0].get("timing")
-        if dosage_list and isinstance(dosage_list[0], dict)
-        else None
+        dosage_list[0].get("timing") if dosage_list and isinstance(dosage_list[0], dict) else None
     )
     reason_code = f.get("reasonCode") or []
     note_list = f.get("note") or []
@@ -266,7 +257,7 @@ def fhir_to_medication_request_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_allergy_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_allergy_orm(f: dict[str, Any]) -> dict[str, Any]:
     clinical = (
         f.get("clinicalStatus", {}).get("coding", [{}])[0].get("code", "active")
         if f.get("clinicalStatus")
@@ -281,14 +272,12 @@ def fhir_to_allergy_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     category = categories[0].upper() if categories else None
     criticality = (f.get("criticality") or "").upper() or None
 
-    reactions: List[Dict[str, Any]] = []
+    reactions: list[dict[str, Any]] = []
     for r in f.get("reaction") or []:
         manifestations = r.get("manifestation") or []
         reactions.append(
             {
-                "manifestation": manifestations[0].get("text")
-                if manifestations
-                else None,
+                "manifestation": manifestations[0].get("text") if manifestations else None,
                 "severity": (r.get("severity") or "").upper() or None,
                 "date": r.get("onset"),
             }
@@ -311,7 +300,7 @@ def fhir_to_allergy_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_diagnostic_report_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_diagnostic_report_orm(f: dict[str, Any]) -> dict[str, Any]:
     return _clean(
         {
             "id": f.get("id"),
@@ -330,7 +319,7 @@ def fhir_to_diagnostic_report_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_organization_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_organization_orm(f: dict[str, Any]) -> dict[str, Any]:
     return _clean(
         {
             "id": f.get("id"),
@@ -346,20 +335,16 @@ def fhir_to_organization_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_practitioner_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_practitioner_orm(f: dict[str, Any]) -> dict[str, Any]:
     name_list = f.get("name") or []
     name_obj = name_list[0] if name_list else {}
     full_name = (
         name_obj.get("text")
-        or " ".join(
-            (name_obj.get("given") or []) + [name_obj.get("family") or ""]
-        ).strip()
+        or " ".join((name_obj.get("given") or []) + [name_obj.get("family") or ""]).strip()
     )
 
     qualifications = f.get("qualification") or []
-    specialty = (
-        qualifications[0].get("code", {}).get("text") if qualifications else None
-    )
+    specialty = qualifications[0].get("code", {}).get("text") if qualifications else None
     license_number = None
     if qualifications and qualifications[0].get("identifier"):
         license_number = qualifications[0]["identifier"][0].get("value")
@@ -382,7 +367,7 @@ def fhir_to_practitioner_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_condition_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR Condition dict to a ClinicalEvent ORM dict.
 
     The reverse of :meth:`ClinicalEvent.to_fhir_dict`. Maps:
@@ -430,11 +415,7 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             coding_system = CodingSystem.CUSTOM
 
     note_list = f.get("note") or []
-    description = (
-        note_list[0].get("text")
-        if note_list and isinstance(note_list[0], dict)
-        else None
-    )
+    description = note_list[0].get("text") if note_list and isinstance(note_list[0], dict) else None
 
     onset_raw = f.get("onsetDateTime")
     onset_dt = _parse_iso(onset_raw)
@@ -456,7 +437,7 @@ def fhir_to_condition_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_episode_of_care_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_episode_of_care_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR EpisodeOfCare dict to a ClinicalEvent ORM dict.
 
     The reverse of :meth:`ClinicalEvent.to_fhir_episode_of_care_dict`. An
@@ -489,9 +470,7 @@ def fhir_to_episode_of_care_orm(f: Dict[str, Any]) -> Dict[str, Any]:
 
     period = f.get("period") or {}
     onset_dt = _parse_iso(period.get("start")) if isinstance(period, dict) else None
-    resolved_dt = (
-        _parse_iso(period.get("end")) if isinstance(period, dict) else None
-    )
+    resolved_dt = _parse_iso(period.get("end")) if isinstance(period, dict) else None
 
     return _clean(
         {
@@ -505,7 +484,7 @@ def fhir_to_episode_of_care_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_encounter_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR Encounter dict to an ExaminationModel ORM dict.
 
     The reverse of :meth:`ExaminationModel.to_fhir_dict`. ExaminationModel is
@@ -528,7 +507,7 @@ def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
         if parsed is not None:
             exam_date = parsed.date()
 
-    diagnoses: List[Dict[str, Any]] = []
+    diagnoses: list[dict[str, Any]] = []
     for d in f.get("diagnosis") or []:
         cond = d.get("condition") or {}
         text = cond.get("display") or cond.get("reference")
@@ -536,11 +515,7 @@ def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
             diagnoses.append({"text": text})
 
     reason_list = f.get("reasonCode") or []
-    notes = (
-        reason_list[0].get("text")
-        if reason_list and isinstance(reason_list[0], dict)
-        else None
-    )
+    notes = reason_list[0].get("text") if reason_list and isinstance(reason_list[0], dict) else None
 
     return _clean(
         {
@@ -554,7 +529,7 @@ def fhir_to_encounter_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_document_reference_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR DocumentReference to a DocumentModel ORM dict.
 
     The reverse of :meth:`DocumentModel.to_fhir_dict`. DocumentModel stores
@@ -606,7 +581,7 @@ def fhir_to_document_reference_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_provenance_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_provenance_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR Provenance dict to a ProvenanceModel ORM dict.
 
     Provenance is immutable; this converter is mainly used for round-trip
@@ -628,7 +603,7 @@ def fhir_to_provenance_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_device_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_device_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR Device to a DeviceModel ORM dict."""
     # Device.serialNumber is a single string in R4B (not a list).
     serial = f.get("serialNumber")
@@ -651,7 +626,7 @@ def fhir_to_device_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def fhir_to_communication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_communication_orm(f: dict[str, Any]) -> dict[str, Any]:
     """Convert a canonical FHIR Communication to a CommunicationModel ORM dict."""
     sent_raw = f.get("sent")
     received_raw = f.get("received")
@@ -673,10 +648,9 @@ def fhir_to_communication_orm(f: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _parse_iso(value: Optional[str]) -> Optional[Any]:
+def _parse_iso(value: str | None) -> Any | None:
     """Parse an ISO-8601 string to a timezone-aware datetime; return None on failure."""
     import datetime as _dt
-    from datetime import timezone
 
     if not value:
         return None
@@ -694,7 +668,7 @@ def _parse_iso(value: Optional[str]) -> Optional[Any]:
         try:
             parsed = _dt.datetime.strptime(s, fmt)
             if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
+                parsed = parsed.replace(tzinfo=_dt.UTC)
             return parsed
         except ValueError:
             continue
@@ -721,7 +695,7 @@ _TO_ORM = {
 }
 
 
-def fhir_to_orm(resource_type: str, fhir_dict: Dict[str, Any]) -> Dict[str, Any]:
+def fhir_to_orm(resource_type: str, fhir_dict: dict[str, Any]) -> dict[str, Any]:
     """Parse a canonical FHIR resource dict into an ORM-shape dict.
 
     Input MUST be canonical FHIR (camelCase). It is validated via

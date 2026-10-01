@@ -52,25 +52,23 @@ async def test_register_existing_tenant_without_invite_returns_403():
     db = MagicMock()
 
     with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
         patch.object(
             auth_endpoint,
             "get_tenant",
             new=AsyncMock(return_value=MagicMock(id=tenant_id)),
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.register(
-                user_data=UserRegister(
-                    email="attacker@evil.com",
-                    password="password123",
-                    tenant_id=str(tenant_id),
-                    invite_token=None,
-                ),
-                db=db,
-            )
+        await auth_endpoint.register(
+            user_data=UserRegister(
+                email="attacker@evil.com",
+                password="password123",
+                tenant_id=str(tenant_id),
+                invite_token=None,
+            ),
+            db=db,
+        )
     assert exc.value.status_code == 403
     assert "invite" in exc.value.detail.lower()
 
@@ -90,25 +88,23 @@ async def test_register_existing_tenant_with_invalid_invite_returns_403():
     )
 
     with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
         patch.object(
             auth_endpoint,
             "get_tenant",
             new=AsyncMock(return_value=MagicMock(id=tenant_id)),
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.register(
-                user_data=UserRegister(
-                    email="attacker@evil.com",
-                    password="password123",
-                    tenant_id=str(tenant_id),
-                    invite_token=bad_token,
-                ),
-                db=db,
-            )
+        await auth_endpoint.register(
+            user_data=UserRegister(
+                email="attacker@evil.com",
+                password="password123",
+                tenant_id=str(tenant_id),
+                invite_token=bad_token,
+            ),
+            db=db,
+        )
     assert exc.value.status_code == 403
 
 
@@ -126,9 +122,7 @@ async def test_register_existing_tenant_with_valid_invite_succeeds():
     fake_new_user.email = "newuser@family.com"
 
     with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
         patch.object(
             auth_endpoint,
             "get_tenant",
@@ -157,7 +151,7 @@ async def test_register_existing_tenant_with_valid_invite_succeeds():
 
     creating.assert_awaited_once()
     consuming.assert_awaited_once()
-    args, kwargs = creating.await_args
+    _args, kwargs = creating.await_args
     assert kwargs.get("role") == Role.USER.value
     assert kwargs.get("tenant_id") == str(tenant_id)
 
@@ -170,30 +164,26 @@ async def test_register_existing_tenant_with_email_mismatch_invite_returns_403()
     tenant_id = uuid.uuid4()
     db = MagicMock()
 
-    valid_token, _vjti = create_invite_token(
-        tenant_id=str(tenant_id), email="specific@family.com"
-    )
+    valid_token, _vjti = create_invite_token(tenant_id=str(tenant_id), email="specific@family.com")
 
     with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
         patch.object(
             auth_endpoint,
             "get_tenant",
             new=AsyncMock(return_value=MagicMock(id=tenant_id)),
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.register(
-                user_data=UserRegister(
-                    email="impostor@evil.com",
-                    password="password123",
-                    tenant_id=str(tenant_id),
-                    invite_token=valid_token,
-                ),
-                db=db,
-            )
+        await auth_endpoint.register(
+            user_data=UserRegister(
+                email="impostor@evil.com",
+                password="password123",
+                tenant_id=str(tenant_id),
+                invite_token=valid_token,
+            ),
+            db=db,
+        )
     assert exc.value.status_code == 403
 
 
@@ -203,10 +193,8 @@ async def test_register_nonexistent_tenant_returns_404():
     from fastapi import HTTPException
 
     db = MagicMock()
-    with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+    with (  # noqa: SIM117 -- nested context managers; merge when touched
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
         patch.object(auth_endpoint, "get_tenant", new=AsyncMock(return_value=None)),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -234,9 +222,7 @@ async def test_register_duplicate_email_returns_400():
     db = MagicMock()
     valid_token, _vjti = create_invite_token(tenant_id=str(tenant_id))
     with (
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=existing)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=existing)),
         patch.object(
             auth_endpoint,
             "get_tenant",
@@ -247,17 +233,17 @@ async def test_register_duplicate_email_returns_400():
             "consume_invite",
             new=AsyncMock(return_value=True),
         ),
+        pytest.raises(HTTPException) as exc,
     ):
-        with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.register(
-                user_data=UserRegister(
-                    email="dup@family.com",
-                    password="password123",
-                    tenant_id=str(tenant_id),
-                    invite_token=valid_token,
-                ),
-                db=db,
-            )
+        await auth_endpoint.register(
+            user_data=UserRegister(
+                email="dup@family.com",
+                password="password123",
+                tenant_id=str(tenant_id),
+                invite_token=valid_token,
+            ),
+            db=db,
+        )
     assert exc.value.status_code == 400
 
 
@@ -278,8 +264,9 @@ def test_verify_invite_token_downgrades_system_admin_to_user():
     """Defense in depth: even a hand-crafted SYSTEM_ADMIN token is
     downgraded to USER on verify."""
     import jwt
+
     from app.core.config import settings
-    from app.core.security import INVITE_TOKEN_KIND, PRODUCT_SLUG
+    from app.core.security import PRODUCT_SLUG
 
     tenant_id = str(uuid.uuid4())
     # Hand-craft a SYSTEM_ADMIN token bypassing the issuer's check —
@@ -338,9 +325,7 @@ async def test_invite_system_admin_can_target_other_tenant():
     """SYSTEM_ADMIN can invite into any tenant."""
     sysadmin = _user(role=Role.SYSTEM_ADMIN.value, tenant_id=uuid.uuid4())
     other_tenant = uuid.uuid4()
-    result = await auth_endpoint.create_invite(
-        tenant_id=str(other_tenant), current_user=sysadmin
-    )
+    result = await auth_endpoint.create_invite(tenant_id=str(other_tenant), current_user=sysadmin)
     assert result["tenant_id"] == str(other_tenant)
 
 
@@ -351,9 +336,7 @@ async def test_invite_admin_cannot_target_other_tenant():
 
     admin = _user(role=Role.ADMIN.value, tenant_id=uuid.uuid4())
     with pytest.raises(HTTPException) as exc:
-        await auth_endpoint.create_invite(
-            tenant_id=str(uuid.uuid4()), current_user=admin
-        )
+        await auth_endpoint.create_invite(tenant_id=str(uuid.uuid4()), current_user=admin)
     assert exc.value.status_code == 403
 
 
@@ -364,9 +347,7 @@ async def test_invite_refuses_system_admin_role():
 
     admin = _user(role=Role.ADMIN.value)
     with pytest.raises(HTTPException) as exc:
-        await auth_endpoint.create_invite(
-            role=Role.SYSTEM_ADMIN.value, current_user=admin
-        )
+        await auth_endpoint.create_invite(role=Role.SYSTEM_ADMIN.value, current_user=admin)
     assert exc.value.status_code == 400
 
 

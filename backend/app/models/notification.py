@@ -19,33 +19,33 @@ Biomarker/threshold rules live in :mod:`app.models.notification_rule`.
 """
 
 from sqlalchemy import (
+    Boolean,
     Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
     String,
     Text,
-    Boolean,
-    DateTime,
-    ForeignKey,
-    Enum,
-    Index,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
+    Base,
+    TenantMixin,
     TimestampMixin,
+    UUIDMixin,
 )
 from app.models.enums import (
-    NotificationType,
-    NotificationSource,
     NotificationCategory,
-    NotificationSeverity,
     NotificationChannel,
+    NotificationSeverity,
+    NotificationSource,
     NotificationStatus,
+    NotificationType,
     RecipientKind,
     RecipientStatus,
     TriggerType,
@@ -69,12 +69,8 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
         nullable=True,
         index=True,
     )
-    trigger_type = Column(
-        Enum(TriggerType, values_callable=_enum_values), nullable=False
-    )
-    notification_type = Column(
-        Enum(NotificationType, values_callable=_enum_values), nullable=False
-    )
+    trigger_type = Column(Enum(TriggerType, values_callable=_enum_values), nullable=False)
+    notification_type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False)
 
     # Configuration for the trigger
     # e.g., {"at": "2024-03-20T10:00:00", "repeat": "daily"}
@@ -102,12 +98,8 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
             "title": self.title,
             "body": self.body,
             "enabled": self.enabled,
-            "last_triggered": self.last_triggered.isoformat()
-            if self.last_triggered
-            else None,
-            "next_trigger": self.next_trigger.isoformat()
-            if self.next_trigger
-            else None,
+            "last_triggered": self.last_triggered.isoformat() if self.last_triggered else None,
+            "next_trigger": self.next_trigger.isoformat() if self.next_trigger else None,
             "reference_id": str(self.reference_id) if self.reference_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -147,9 +139,7 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    type = Column(
-        Enum(NotificationType, values_callable=_enum_values), nullable=False, index=True
-    )
+    type = Column(Enum(NotificationType, values_callable=_enum_values), nullable=False, index=True)
     category = Column(
         Enum(NotificationCategory, values_callable=_enum_values),
         nullable=False,
@@ -193,9 +183,7 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "id": str(self.id),
             "patient_id": str(self.patient_id) if self.patient_id else None,
             "trigger_id": str(self.trigger_id) if self.trigger_id else None,
-            "communication_id": str(self.communication_id)
-            if self.communication_id
-            else None,
+            "communication_id": str(self.communication_id) if self.communication_id else None,
             "source": self.source.value,
             "type": self.type.value,
             "category": self.category.value,
@@ -238,9 +226,7 @@ class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
         index=True,
     )
 
-    recipient_kind = Column(
-        Enum(RecipientKind, values_callable=_enum_values), nullable=False
-    )
+    recipient_kind = Column(Enum(RecipientKind, values_callable=_enum_values), nullable=False)
     recipient_ref = Column(UUID(as_uuid=True), nullable=True)
 
     status = Column(
@@ -262,9 +248,7 @@ class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "recipient_ref": str(self.recipient_ref) if self.recipient_ref else None,
             "status": self.status.value,
             "read_at": self.read_at.isoformat() if self.read_at else None,
-            "dismissed_at": self.dismissed_at.isoformat()
-            if self.dismissed_at
-            else None,
+            "dismissed_at": self.dismissed_at.isoformat() if self.dismissed_at else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -287,9 +271,7 @@ class NotificationDelivery(Base, UUIDMixin, TenantMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    channel = Column(
-        Enum(NotificationChannel, values_callable=_enum_values), nullable=False
-    )
+    channel = Column(Enum(NotificationChannel, values_callable=_enum_values), nullable=False)
     status = Column(
         Enum(NotificationStatus, values_callable=_enum_values),
         default=NotificationStatus.PENDING,
@@ -314,16 +296,10 @@ class NotificationDelivery(Base, UUIDMixin, TenantMixin, TimestampMixin):
             "user_id": str(self.user_id),
             "channel": self.channel.value,
             "status": self.status.value,
-            "attempted_at": self.attempted_at.isoformat()
-            if self.attempted_at
-            else None,
-            "delivered_at": self.delivered_at.isoformat()
-            if self.delivered_at
-            else None,
+            "attempted_at": self.attempted_at.isoformat() if self.attempted_at else None,
+            "delivered_at": self.delivered_at.isoformat() if self.delivered_at else None,
             "error": self.error,
-            "subscription_id": str(self.subscription_id)
-            if self.subscription_id
-            else None,
+            "subscription_id": str(self.subscription_id) if self.subscription_id else None,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
@@ -421,18 +397,12 @@ class MobilePushTarget(Base, UUIDMixin, TenantMixin, TimestampMixin):
             # Never echo the endpoint back in full — mask it so a listDevices
             # response can't be reused as a credential. The bridge returns
             # the masked form; the dispatch task reads the raw column.
-            "endpoint_url": (
-                self.endpoint_url[:12] + "…" if self.endpoint_url else None
-            ),
-            "encryption_pubkey": (
-                "set" if self.encryption_pubkey else None
-            ),
+            "endpoint_url": (self.endpoint_url[:12] + "…" if self.endpoint_url else None),
+            "encryption_pubkey": ("set" if self.encryption_pubkey else None),
             "app_version": self.app_version,
             "user_agent": self.user_agent,
             "is_active": self.is_active,
-            "last_seen_at": self.last_seen_at.isoformat()
-            if self.last_seen_at
-            else None,
+            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

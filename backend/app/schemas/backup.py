@@ -1,8 +1,9 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from app.models.enums import ExportScope, ExportType, JobStatus
+from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.enums import ExportScope, ExportType, JobStatus
 
 PROVENANCE_SYSTEM = "https://healthassistant.local/fhir/export"
 PROVENANCE_CODE = "ha-export"
@@ -19,7 +20,7 @@ BACKUP_SCHEMA_VERSION = "1.0.0"
 class BackupRequest(BaseModel):
     scope: ExportScope = ExportScope.PATIENT
     export_type: ExportType = ExportType.FHIR_ONLY
-    patient_ids: Optional[List[str]] = None
+    patient_ids: list[str] | None = None
     include_documents: bool = True
     include_telemetry: bool = True
     include_integrations: bool = True
@@ -30,53 +31,53 @@ class BackupRequest(BaseModel):
 
 class ExportJobResponse(BaseModel):
     id: str
-    tenant_id: Optional[str] = None
-    user_id: Optional[str] = None
+    tenant_id: str | None = None
+    user_id: str | None = None
     scope: ExportScope
     export_type: ExportType
     status: JobStatus
     progress: int = 0
-    patient_ids: Optional[List[str]] = None
-    file_path: Optional[str] = None
-    file_size_bytes: Optional[int] = None
-    resource_counts: Optional[Dict[str, int]] = None
-    smart_scope: Optional[str] = None
-    error_message: Optional[str] = None
-    completed_at: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    patient_ids: list[str] | None = None
+    file_path: str | None = None
+    file_size_bytes: int | None = None
+    resource_counts: dict[str, int] | None = None
+    smart_scope: str | None = None
+    error_message: str | None = None
+    completed_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ExportJobListResponse(BaseModel):
-    items: List[ExportJobResponse]
+    items: list[ExportJobResponse]
     total: int
 
 
 class ImportJobResponse(BaseModel):
     id: str
-    tenant_id: Optional[str] = None
-    user_id: Optional[str] = None
-    source_filename: Optional[str] = None
+    tenant_id: str | None = None
+    user_id: str | None = None
+    source_filename: str | None = None
     status: JobStatus
     progress: int = 0
-    total_records: Optional[int] = None
-    processed_records: Optional[int] = None
-    failed_records: Optional[int] = None
-    restore_result: Optional[Dict[str, Any]] = None
-    errors: Optional[List[str]] = None
-    warnings: Optional[List[str]] = None
-    error_message: Optional[str] = None
-    completed_at: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    total_records: int | None = None
+    processed_records: int | None = None
+    failed_records: int | None = None
+    restore_result: dict[str, Any] | None = None
+    errors: list[str] | None = None
+    warnings: list[str] | None = None
+    error_message: str | None = None
+    completed_at: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class ImportJobListResponse(BaseModel):
-    items: List[ImportJobResponse]
+    items: list[ImportJobResponse]
     total: int
 
 
@@ -89,16 +90,16 @@ class ManifestFile(BaseModel):
 class BackupManifest(BaseModel):
     schema_version: str = BACKUP_SCHEMA_VERSION
     exported_at: datetime
-    tenant_id: Optional[str] = None
+    tenant_id: str | None = None
     fhir_version: str = FHIR_VERSION
     scope: ExportScope
     export_type: ExportType
     smart_scope: str
     source: str = "health-assistant"
-    counts: Dict[str, int] = Field(default_factory=dict)
-    files: List[ManifestFile] = Field(default_factory=list)
-    options: Dict[str, bool] = Field(default_factory=dict)
-    notes: Optional[List[str]] = None
+    counts: dict[str, int] = Field(default_factory=dict)
+    files: list[ManifestFile] = Field(default_factory=list)
+    options: dict[str, bool] = Field(default_factory=dict)
+    notes: list[str] | None = None
 
 
 class RestoreResult(BaseModel):
@@ -107,9 +108,9 @@ class RestoreResult(BaseModel):
     total_records: int = 0
     processed_records: int = 0
     failed_records: int = 0
-    created_resources: Dict[str, int] = Field(default_factory=dict)
-    updated_resources: Dict[str, int] = Field(default_factory=dict)
-    errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    created_resources: dict[str, int] = Field(default_factory=dict)
+    updated_resources: dict[str, int] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     manifest_verified: bool = False
     fhir_validated: bool = False

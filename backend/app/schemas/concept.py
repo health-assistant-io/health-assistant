@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,21 +11,21 @@ from pydantic import BaseModel, ConfigDict, Field
 class ConceptBase(BaseModel):
     slug: str = Field(..., min_length=1, max_length=255)
     name: str = Field(..., min_length=1, max_length=255)
-    kinds: List[str] = Field(default_factory=list)
-    primary_kind: Optional[str] = None
+    kinds: list[str] = Field(default_factory=list)
+    primary_kind: str | None = None
     # Legacy single-kind field — still accepted on write for backward
     # compatibility (wrapped to ``kinds=[kind]`` by the endpoint). Omitted
     # from responses in favor of ``kinds`` / ``primary_kind``.
-    kind: Optional[str] = None
-    parent_id: Optional[UUID] = None
-    description: Optional[str] = None
-    coding_system: Optional[str] = Field(None, max_length=50)
-    code: Optional[str] = Field(None, max_length=100)
-    aliases: List[str] = Field(default_factory=list)
-    icon: Optional[dict] = None
-    color: Optional[str] = Field(None, max_length=50)
+    kind: str | None = None
+    parent_id: UUID | None = None
+    description: str | None = None
+    coding_system: str | None = Field(None, max_length=50)
+    code: str | None = Field(None, max_length=100)
+    aliases: list[str] = Field(default_factory=list)
+    icon: dict | None = None
+    color: str | None = Field(None, max_length=50)
     display_order: int = 0
-    meta_data: Optional[dict] = None
+    meta_data: dict | None = None
 
 
 class ConceptCreate(ConceptBase):
@@ -33,19 +33,19 @@ class ConceptCreate(ConceptBase):
 
 
 class ConceptUpdate(BaseModel):
-    name: Optional[str] = None
-    parent_id: Optional[UUID] = None
-    description: Optional[str] = None
-    coding_system: Optional[str] = None
-    code: Optional[str] = None
-    aliases: Optional[List[str]] = None
-    icon: Optional[dict] = None
-    color: Optional[str] = None
-    status: Optional[str] = None
-    display_order: Optional[int] = None
-    meta_data: Optional[dict] = None
-    kinds: Optional[List[str]] = None
-    primary_kind: Optional[str] = None
+    name: str | None = None
+    parent_id: UUID | None = None
+    description: str | None = None
+    coding_system: str | None = None
+    code: str | None = None
+    aliases: list[str] | None = None
+    icon: dict | None = None
+    color: str | None = None
+    status: str | None = None
+    display_order: int | None = None
+    meta_data: dict | None = None
+    kinds: list[str] | None = None
+    primary_kind: str | None = None
 
 
 class ConceptResponse(BaseModel):
@@ -54,22 +54,22 @@ class ConceptResponse(BaseModel):
     id: UUID
     slug: str
     name: str
-    kinds: List[str] = Field(default_factory=list)
-    primary_kind: Optional[str] = None
-    parent_id: Optional[UUID] = None
-    description: Optional[str] = None
-    coding_system: Optional[str] = None
-    code: Optional[str] = None
-    aliases: List[str] = Field(default_factory=list)
-    icon: Optional[dict] = None
-    color: Optional[str] = None
+    kinds: list[str] = Field(default_factory=list)
+    primary_kind: str | None = None
+    parent_id: UUID | None = None
+    description: str | None = None
+    coding_system: str | None = None
+    code: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    icon: dict | None = None
+    color: str | None = None
     status: str
     display_order: int = 0
-    meta_data: Optional[dict] = None
-    tenant_id: Optional[UUID] = None
-    version: Optional[int] = None
-    created_at: Optional[Any] = None
-    updated_at: Optional[Any] = None
+    meta_data: dict | None = None
+    tenant_id: UUID | None = None
+    version: int | None = None
+    created_at: Any | None = None
+    updated_at: Any | None = None
 
 
 class ConceptEdgeBase(BaseModel):
@@ -78,8 +78,8 @@ class ConceptEdgeBase(BaseModel):
     dst_type: str
     dst_id: UUID
     relation: str
-    properties: Optional[dict] = None
-    evidence: Optional[dict] = None
+    properties: dict | None = None
+    evidence: dict | None = None
     source: str = "manual"
     status: str = "approved"
 
@@ -92,9 +92,9 @@ class ConceptEdgeResponse(ConceptEdgeBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    tenant_id: Optional[UUID] = None
-    created_at: Optional[Any] = None
-    updated_at: Optional[Any] = None
+    tenant_id: UUID | None = None
+    created_at: Any | None = None
+    updated_at: Any | None = None
 
 
 class ResolvedEndpointResponse(BaseModel):
@@ -108,9 +108,9 @@ class ResolvedEndpointResponse(BaseModel):
     type: str
     id: UUID
     label: str
-    icon: Optional[dict] = None
-    color: Optional[str] = None
-    kind: Optional[str] = None
+    icon: dict | None = None
+    color: str | None = None
+    kind: str | None = None
 
 
 class NeighborResponse(BaseModel):
@@ -118,4 +118,4 @@ class NeighborResponse(BaseModel):
 
     edge: ConceptEdgeResponse
     direction: str
-    endpoint: Optional[ResolvedEndpointResponse] = None
+    endpoint: ResolvedEndpointResponse | None = None

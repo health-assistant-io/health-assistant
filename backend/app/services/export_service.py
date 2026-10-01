@@ -3,16 +3,17 @@ import json
 import logging
 import os
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select, update as sa_update
+from sqlalchemy import or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import to_uuid as _uuid
-from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
+from app.models.ai_provider_model import AIModel, AIProviderModel, AITaskAssignment
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.clinical_event import (
@@ -62,16 +63,14 @@ class ExportError(Exception):
     data (fail-loud policy)."""
 
 
-def _patient_filter_conditions(
-    model, patient_ids: List[str], ref_field: str = "patient_id"
-):
+def _patient_filter_conditions(model, patient_ids: list[str], ref_field: str = "patient_id"):
     ids = [p for p in (_uuid(pid) for pid in patient_ids) if p]
     if not ids:
         return None
     return getattr(model, ref_field).in_(ids)
 
 
-def _subject_filter_conditions(model, patient_ids: List[str]):
+def _subject_filter_conditions(model, patient_ids: list[str]):
     ids = [str(p) for p in patient_ids if p]
     if not ids:
         return None
@@ -91,8 +90,8 @@ class ExportService:
         tenant_id: UUID,
         scope: ExportScope,
         export_type: ExportType,
-        patient_ids: Optional[List[str]] = None,
-        options: Optional[Dict[str, bool]] = None,
+        patient_ids: list[str] | None = None,
+        options: dict[str, bool] | None = None,
     ) -> ExportJobModel:
         job = ExportJobModel(
             tenant_id=tenant_id,
@@ -110,15 +109,13 @@ class ExportService:
         return job
 
     async def update_job_progress(
-        self, job_id: UUID, progress: int, status: Optional[JobStatus] = None
+        self, job_id: UUID, progress: int, status: JobStatus | None = None
     ) -> None:
-        values: Dict[str, Any] = {"progress": progress}
+        values: dict[str, Any] = {"progress": progress}
         if status:
             values["status"] = status
         await self.db.execute(
-            sa_update(ExportJobModel)
-            .where(ExportJobModel.id == job_id)
-            .values(**values)
+            sa_update(ExportJobModel).where(ExportJobModel.id == job_id).values(**values)
         )
         await self.db.commit()
 
@@ -127,8 +124,8 @@ class ExportService:
         job_id: UUID,
         file_path: str,
         file_size: int,
-        counts: Dict[str, int],
-        manifest: Optional[BackupManifest] = None,
+        counts: dict[str, int],
+        manifest: BackupManifest | None = None,
     ) -> None:
         manifest_path = None
         if manifest:
@@ -143,7 +140,7 @@ class ExportService:
                 manifest_path=manifest_path,
                 file_size_bytes=file_size,
                 resource_counts=counts,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
         )
         await self.db.commit()
@@ -157,21 +154,19 @@ class ExportService:
             .values(
                 status=JobStatus.FAILED,
                 error_message=error,
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
         )
         await self.db.commit()
 
-    async def get_job(
-        self, job_id: UUID, tenant_id: Optional[UUID] = None
-    ) -> Optional[ExportJobModel]:
+    async def get_job(self, job_id: UUID, tenant_id: UUID | None = None) -> ExportJobModel | None:
         q = select(ExportJobModel).where(ExportJobModel.id == job_id)
         if tenant_id:
             q = q.where(ExportJobModel.tenant_id == tenant_id)
         res = await self.db.execute(q)
         return res.scalar_one_or_none()
 
-    async def list_jobs(self, tenant_id: UUID, limit: int = 50) -> List[ExportJobModel]:
+    async def list_jobs(self, tenant_id: UUID, limit: int = 50) -> list[ExportJobModel]:
         res = await self.db.execute(
             select(ExportJobModel)
             .where(ExportJobModel.tenant_id == tenant_id)
@@ -183,8 +178,8 @@ class ExportService:
     # ---------------- gather (queries) ----------------
 
     async def gather_patients(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[Patient]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[Patient]:
         q = select(Patient).where(Patient.tenant_id == tenant_id)
         cond = _patient_filter_conditions(Patient, patient_ids or [], "id")
         if cond is not None:
@@ -193,8 +188,8 @@ class ExportService:
         return list(res.scalars().unique().all())
 
     async def gather_observations(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[Observation]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[Observation]:
         q = select(Observation).where(Observation.tenant_id == tenant_id)
         if patient_ids:
             cond = _subject_filter_conditions(Observation, patient_ids)
@@ -204,8 +199,8 @@ class ExportService:
         return list(res.scalars().unique().all())
 
     async def gather_medications(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[Medication]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[Medication]:
         q = select(Medication).where(Medication.tenant_id == tenant_id)
         cond = _patient_filter_conditions(Medication, patient_ids or [])
         if cond is not None:
@@ -214,8 +209,8 @@ class ExportService:
         return list(res.scalars().all())
 
     async def gather_allergies(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[AllergyIntolerance]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[AllergyIntolerance]:
         q = select(AllergyIntolerance).where(AllergyIntolerance.tenant_id == tenant_id)
         cond = _patient_filter_conditions(AllergyIntolerance, patient_ids or [])
         if cond is not None:
@@ -224,8 +219,8 @@ class ExportService:
         return list(res.scalars().all())
 
     async def gather_diagnostic_reports(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[DiagnosticReport]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[DiagnosticReport]:
         q = select(DiagnosticReport).where(DiagnosticReport.tenant_id == tenant_id)
         if patient_ids:
             cond = _subject_filter_conditions(DiagnosticReport, patient_ids)
@@ -234,23 +229,21 @@ class ExportService:
         res = await self.db.execute(q)
         return list(res.scalars().all())
 
-    async def gather_organizations(self, tenant_id: UUID) -> List[OrganizationModel]:
+    async def gather_organizations(self, tenant_id: UUID) -> list[OrganizationModel]:
         res = await self.db.execute(
             select(OrganizationModel).where(OrganizationModel.tenant_id == tenant_id)
         )
         return list(res.scalars().all())
 
-    async def gather_practitioners(self, tenant_id: UUID) -> List[Any]:
+    async def gather_practitioners(self, tenant_id: UUID) -> list[Any]:
         from app.models.doctor_model import DoctorModel
 
-        res = await self.db.execute(
-            select(DoctorModel).where(DoctorModel.tenant_id == tenant_id)
-        )
+        res = await self.db.execute(select(DoctorModel).where(DoctorModel.tenant_id == tenant_id))
         return list(res.scalars().all())
 
     async def gather_documents(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[DocumentModel]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[DocumentModel]:
         q = select(DocumentModel).where(DocumentModel.tenant_id == tenant_id)
         cond = _patient_filter_conditions(DocumentModel, patient_ids or [])
         if cond is not None:
@@ -258,15 +251,15 @@ class ExportService:
         res = await self.db.execute(q)
         return list(res.scalars().all())
 
-    async def gather_telemetry(self, tenant_id: UUID) -> List[TelemetryDataModel]:
+    async def gather_telemetry(self, tenant_id: UUID) -> list[TelemetryDataModel]:
         res = await self.db.execute(
             select(TelemetryDataModel).where(TelemetryDataModel.tenant_id == tenant_id)
         )
         return list(res.scalars().all())
 
     async def gather_integrations(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[UserIntegration]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[UserIntegration]:
         q = select(UserIntegration).where(UserIntegration.tenant_id == tenant_id)
         cond = _patient_filter_conditions(UserIntegration, patient_ids or [])
         if cond is not None:
@@ -275,11 +268,9 @@ class ExportService:
         return list(res.scalars().all())
 
     async def gather_notification_triggers(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[NotificationTrigger]:
-        q = select(NotificationTrigger).where(
-            NotificationTrigger.tenant_id == tenant_id
-        )
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[NotificationTrigger]:
+        q = select(NotificationTrigger).where(NotificationTrigger.tenant_id == tenant_id)
         cond = _patient_filter_conditions(NotificationTrigger, patient_ids or [])
         if cond is not None:
             q = q.where(cond)
@@ -287,8 +278,8 @@ class ExportService:
         return list(res.scalars().all())
 
     async def gather_examinations(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[ExaminationModel]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[ExaminationModel]:
         q = select(ExaminationModel).where(ExaminationModel.tenant_id == tenant_id)
         cond = _patient_filter_conditions(ExaminationModel, patient_ids or [])
         if cond is not None:
@@ -297,8 +288,8 @@ class ExportService:
         return list(res.scalars().unique().all())
 
     async def gather_clinical_events(
-        self, tenant_id: UUID, patient_ids: Optional[List[str]]
-    ) -> List[ClinicalEvent]:
+        self, tenant_id: UUID, patient_ids: list[str] | None
+    ) -> list[ClinicalEvent]:
         q = select(ClinicalEvent).where(ClinicalEvent.tenant_id == tenant_id)
         cond = _patient_filter_conditions(ClinicalEvent, patient_ids or [])
         if cond is not None:
@@ -306,7 +297,7 @@ class ExportService:
         res = await self.db.execute(q)
         return list(res.scalars().unique().all())
 
-    async def gather_clinical_event_types(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_clinical_event_types(self, tenant_id: UUID) -> dict[str, Any]:
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
         from app.services.concept_service import concepts_with_kind
@@ -334,7 +325,7 @@ class ExportService:
             "categories": [c.to_dict() for c in cats_res.scalars().all()],
         }
 
-    async def gather_concepts(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_concepts(self, tenant_id: UUID) -> dict[str, Any]:
         """Tenant-private concepts (the part of the taxonomy not recreated by
         the global seed). Global/seeded concepts (``tenant_id IS NULL``) are
         re-created by ``SeedService`` on the target, so we export only
@@ -349,17 +340,15 @@ class ExportService:
         )
         return {"concepts": [c.to_dict() for c in res.scalars().unique().all()]}
 
-    async def gather_concept_edges(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_concept_edges(self, tenant_id: UUID) -> dict[str, Any]:
         """Tenant-scoped knowledge-graph edges. Global/seeded edges are
         recreated by ``SeedService`` on the target. Endpoints that point at
         global concepts/anatomy/biomarkers are remapped on import via slug /
         existence lookup against the target's re-seeded rows."""
-        res = await self.db.execute(
-            select(ConceptEdge).where(ConceptEdge.tenant_id == tenant_id)
-        )
+        res = await self.db.execute(select(ConceptEdge).where(ConceptEdge.tenant_id == tenant_id))
         return {"edges": [e.to_dict() for e in res.scalars().all()]}
 
-    async def gather_anatomy(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_anatomy(self, tenant_id: UUID) -> dict[str, Any]:
         """Tenant-scoped anatomy structures and the relations between them.
 
         Global/seeded body parts (``tenant_id IS NULL``) are recreated by
@@ -370,9 +359,7 @@ class ExportService:
         anatomy and break tenant isolation. Relations are included only when
         both endpoints are in the exported set."""
         struct_res = await self.db.execute(
-            select(AnatomyStructure).where(
-                AnatomyStructure.tenant_id == tenant_id
-            )
+            select(AnatomyStructure).where(AnatomyStructure.tenant_id == tenant_id)
         )
         structures = list(struct_res.scalars().unique().all())
         exported_ids = {s.id for s in structures}
@@ -402,7 +389,7 @@ class ExportService:
             "relations": relations,
         }
 
-    async def gather_biomarker_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_biomarker_catalog(self, tenant_id: UUID) -> dict[str, Any]:
         units_res = await self.db.execute(select(Unit))
         bios_res = await self.db.execute(
             select(BiomarkerDefinition).where(
@@ -442,9 +429,7 @@ class ExportService:
                     "class_concept_slug": b.class_concept.slug
                     if b.class_concept and getattr(b.class_concept, "slug", None)
                     else None,
-                    "preferred_unit_id": str(b.preferred_unit_id)
-                    if b.preferred_unit_id
-                    else None,
+                    "preferred_unit_id": str(b.preferred_unit_id) if b.preferred_unit_id else None,
                     "aliases": b.aliases or [],
                     "info": b.info,
                     "reference_range_min": b.reference_range_min,
@@ -467,7 +452,7 @@ class ExportService:
             ],
         }
 
-    async def gather_medication_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_medication_catalog(self, tenant_id: UUID) -> dict[str, Any]:
         res = await self.db.execute(
             select(MedicationCatalog).where(
                 or_(
@@ -492,7 +477,7 @@ class ExportService:
             ]
         }
 
-    async def gather_allergy_catalog(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_allergy_catalog(self, tenant_id: UUID) -> dict[str, Any]:
         res = await self.db.execute(
             select(AllergyCatalog).where(
                 or_(
@@ -515,14 +500,14 @@ class ExportService:
             ]
         }
 
-    async def gather_ai_config(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def gather_ai_config(self, tenant_id: UUID) -> dict[str, Any]:
         providers_res = await self.db.execute(
             select(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id)
         )
         providers = list(providers_res.scalars().all())
         provider_ids = [p.id for p in providers]
-        models: List[Any] = []
-        assignments: List[Any] = []
+        models: list[Any] = []
+        assignments: list[Any] = []
         if provider_ids:
             models_res = await self.db.execute(
                 select(AIModel).where(AIModel.provider_id.in_(provider_ids))
@@ -543,18 +528,18 @@ class ExportService:
     def build_fhir_bundle(
         self,
         tenant_id: UUID,
-        patient_ids: Optional[List[str]],
-        patients: List[Patient],
-        observations: List[Observation],
-        medications: List[Medication],
-        allergies: List[AllergyIntolerance],
-        diagnostic_reports: List[DiagnosticReport],
-        organizations: List[OrganizationModel],
-        practitioners: List[Any],
-        documents: Optional[List[DocumentModel]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, int]]:
-        counts: Dict[str, int] = {}
-        entries: List[Tuple[str, Dict[str, Any], str]] = []
+        patient_ids: list[str] | None,
+        patients: list[Patient],
+        observations: list[Observation],
+        medications: list[Medication],
+        allergies: list[AllergyIntolerance],
+        diagnostic_reports: list[DiagnosticReport],
+        organizations: list[OrganizationModel],
+        practitioners: list[Any],
+        documents: list[DocumentModel] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, int]]:
+        counts: dict[str, int] = {}
+        entries: list[tuple[str, dict[str, Any], str]] = []
 
         # Each ORM object serializes itself via to_fhir_dict() (which validates
         # through fhir.resources). Fail-loud policy: a resource that fails FHIR
@@ -570,7 +555,7 @@ class ExportService:
             ("Organization", organizations),
             ("Practitioner", practitioners),
         ]
-        failures: List[str] = []
+        failures: list[str] = []
         for resource_type, items in resource_groups:
             for obj in items:
                 try:
@@ -596,15 +581,15 @@ class ExportService:
                 counts["DocumentReference"] = counts.get("DocumentReference", 0) + 1
 
         bundle_meta = build_meta(
-            last_updated=datetime.now(timezone.utc).isoformat(),
+            last_updated=datetime.now(UTC).isoformat(),
         )
         bundle = build_bundle(entries, meta=bundle_meta)
         return bundle, counts
 
     def _document_to_document_reference(
         self, doc: DocumentModel, tenant_id: UUID
-    ) -> Dict[str, Any]:
-        content: List[Dict[str, Any]] = [
+    ) -> dict[str, Any]:
+        content: list[dict[str, Any]] = [
             {
                 "attachment": {
                     "url": f"urn:uuid:{doc.id}",
@@ -616,9 +601,7 @@ class ExportService:
             "resourceType": "DocumentReference",
             "id": str(doc.id),
             "status": "current",
-            "docStatus": "final"
-            if (doc.status or "").lower() == "completed"
-            else "preliminary",
+            "docStatus": "final" if (doc.status or "").lower() == "completed" else "preliminary",
             "content": content,
             "meta": build_meta(str(doc.id)),
         }
@@ -626,27 +609,27 @@ class ExportService:
     def build_nonfhir_sidecars(
         self,
         tenant_id: UUID,
-        patient_ids: Optional[List[str]],
+        patient_ids: list[str] | None,
         scope: ExportScope,
-        options: Dict[str, bool],
-        examinations: List[ExaminationModel],
-        clinical_events: List[ClinicalEvent],
-        clinical_event_types: Dict[str, Any],
-        biomarker_catalog: Dict[str, Any],
-        medication_catalog: Dict[str, Any],
-        allergy_catalog: Dict[str, Any],
-        documents: List[DocumentModel],
-        telemetry: Optional[List[TelemetryDataModel]] = None,
-        integrations: Optional[List[UserIntegration]] = None,
-        notification_triggers: Optional[List[NotificationTrigger]] = None,
-        ai_config: Optional[Dict[str, Any]] = None,
-        concepts: Optional[Dict[str, Any]] = None,
-        concept_edges: Optional[Dict[str, Any]] = None,
-        anatomy: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, int], List[str]]:
-        sidecars: Dict[str, Any] = {}
-        counts: Dict[str, int] = {}
-        notes: List[str] = []
+        options: dict[str, bool],
+        examinations: list[ExaminationModel],
+        clinical_events: list[ClinicalEvent],
+        clinical_event_types: dict[str, Any],
+        biomarker_catalog: dict[str, Any],
+        medication_catalog: dict[str, Any],
+        allergy_catalog: dict[str, Any],
+        documents: list[DocumentModel],
+        telemetry: list[TelemetryDataModel] | None = None,
+        integrations: list[UserIntegration] | None = None,
+        notification_triggers: list[NotificationTrigger] | None = None,
+        ai_config: dict[str, Any] | None = None,
+        concepts: dict[str, Any] | None = None,
+        concept_edges: dict[str, Any] | None = None,
+        anatomy: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, int], list[str]]:
+        sidecars: dict[str, Any] = {}
+        counts: dict[str, int] = {}
+        notes: list[str] = []
 
         # Taxonomy + anatomy first: they hold the FK targets for biomarker
         # classes, examination categories, and edge endpoints. On import they
@@ -690,9 +673,7 @@ class ExportService:
             sidecars["telemetry.json"] = [t.to_dict() for t in telemetry]
             counts["telemetry"] = len(telemetry)
         elif scope == ExportScope.PATIENT:
-            notes.append(
-                "Telemetry excluded for patient scope (no patient_id on telemetry rows)."
-            )
+            notes.append("Telemetry excluded for patient scope (no patient_id on telemetry rows).")
 
         if integrations is not None:
             sidecars["integrations.json"] = [
@@ -701,9 +682,7 @@ class ExportService:
             counts["integrations"] = len(integrations)
 
         if notification_triggers is not None:
-            sidecars["notification_triggers.json"] = [
-                t.to_dict() for t in notification_triggers
-            ]
+            sidecars["notification_triggers.json"] = [t.to_dict() for t in notification_triggers]
             counts["notification_triggers"] = len(notification_triggers)
 
         if ai_config is not None:
@@ -719,7 +698,7 @@ class ExportService:
 
         return sidecars, counts, notes
 
-    def _integration_to_export_dict(self, integ: UserIntegration) -> Dict[str, Any]:
+    def _integration_to_export_dict(self, integ: UserIntegration) -> dict[str, Any]:
         return {
             "id": str(integ.id),
             "tenant_id": str(integ.tenant_id) if integ.tenant_id else None,
@@ -734,9 +713,7 @@ class ExportService:
             "provider_account_id": integ.provider_account_id,
             "instance_name": integ.instance_name,
             "is_debug_enabled": integ.is_debug_enabled,
-            "last_synced_at": integ.last_synced_at.isoformat()
-            if integ.last_synced_at
-            else None,
+            "last_synced_at": integ.last_synced_at.isoformat() if integ.last_synced_at else None,
             "user_config": integ.user_config,
         }
 
@@ -763,65 +740,55 @@ class ExportService:
 
     def write_fhir_only_file(
         self,
-        bundle: Dict[str, Any],
+        bundle: dict[str, Any],
         tenant_id: UUID,
         job_id: UUID,
         manifest: BackupManifest,
-    ) -> Tuple[str, int, BackupManifest]:
+    ) -> tuple[str, int, BackupManifest]:
         out_dir = self._exports_dir(tenant_id)
         file_path = out_dir / f"{job_id}.fhir.json"
         bundle_bytes = json.dumps(bundle, indent=2, default=str).encode("utf-8")
         file_path.write_bytes(bundle_bytes)
         sha = self._sha256_bytes(bundle_bytes)
-        manifest.files = [
-            ManifestFile(path="fhir/bundle.json", sha256=sha, size=len(bundle_bytes))
-        ]
+        manifest.files = [ManifestFile(path="fhir/bundle.json", sha256=sha, size=len(bundle_bytes))]
         manifest.counts = {"bundle_entries": len(bundle.get("entry", []))}
         size = len(bundle_bytes)
         return str(file_path), size, manifest
 
     def write_catalog_file(
         self,
-        catalog: Dict[str, Any],
+        catalog: dict[str, Any],
         tenant_id: UUID,
         job_id: UUID,
         manifest: BackupManifest,
-    ) -> Tuple[str, int, BackupManifest]:
+    ) -> tuple[str, int, BackupManifest]:
         out_dir = self._exports_dir(tenant_id)
         file_path = out_dir / f"{job_id}.catalog.json"
         payload_bytes = json.dumps(catalog, indent=2, default=str).encode("utf-8")
         file_path.write_bytes(payload_bytes)
         sha = self._sha256_bytes(payload_bytes)
-        manifest.files = [
-            ManifestFile(path="catalog.json", sha256=sha, size=len(payload_bytes))
-        ]
+        manifest.files = [ManifestFile(path="catalog.json", sha256=sha, size=len(payload_bytes))]
         manifest.counts = {
             "units": len(catalog.get("units", [])),
             "biomarkers": len(catalog.get("biomarkers", [])),
-            "clinical_event_types": len(
-                catalog.get("clinical_event_types", {}).get("types", [])
-            ),
-            "medication_catalog": len(
-                catalog.get("medication_catalog", {}).get("medications", [])
-            ),
-            "allergy_catalog": len(
-                catalog.get("allergy_catalog", {}).get("allergies", [])
-            ),
+            "clinical_event_types": len(catalog.get("clinical_event_types", {}).get("types", [])),
+            "medication_catalog": len(catalog.get("medication_catalog", {}).get("medications", [])),
+            "allergy_catalog": len(catalog.get("allergy_catalog", {}).get("allergies", [])),
         }
         return str(file_path), len(payload_bytes), manifest
 
     def write_full_backup_zip(
         self,
-        bundle: Dict[str, Any],
-        sidecars: Dict[str, Any],
-        documents: List[DocumentModel],
+        bundle: dict[str, Any],
+        sidecars: dict[str, Any],
+        documents: list[DocumentModel],
         tenant_id: UUID,
         job_id: UUID,
         manifest: BackupManifest,
-    ) -> Tuple[str, int, BackupManifest]:
+    ) -> tuple[str, int, BackupManifest]:
         out_dir = self._exports_dir(tenant_id)
         zip_path = out_dir / f"{job_id}.zip"
-        files: List[ManifestFile] = []
+        files: list[ManifestFile] = []
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             bundle_bytes = json.dumps(bundle, indent=2, default=str).encode("utf-8")
@@ -878,7 +845,7 @@ class ExportService:
                 f"Exported-At: {manifest.exported_at.isoformat()}\n"
                 f"Schema-Version: {BACKUP_SCHEMA_VERSION}\n"
                 f"FHIR-Version: {FHIR_VERSION}\n"
-                f"Smart-Scope: {manifest.smart_scope}\n".encode("utf-8"),
+                f"Smart-Scope: {manifest.smart_scope}\n".encode(),
             )
 
         size = zip_path.stat().st_size
@@ -889,11 +856,11 @@ class ExportService:
         tenant_id: UUID,
         scope: ExportScope,
         export_type: ExportType,
-        options: Dict[str, bool],
-        notes: Optional[List[str]] = None,
+        options: dict[str, bool],
+        notes: list[str] | None = None,
     ) -> BackupManifest:
         return BackupManifest(
-            exported_at=datetime.now(timezone.utc),
+            exported_at=datetime.now(UTC),
             tenant_id=str(tenant_id),
             scope=scope,
             export_type=export_type,
@@ -926,15 +893,9 @@ class ExportService:
 
             if export_type == ExportType.CATALOG_ONLY:
                 catalog = await self.gather_biomarker_catalog(tenant_id)
-                catalog[
-                    "clinical_event_types"
-                ] = await self.gather_clinical_event_types(tenant_id)
-                catalog["medication_catalog"] = await self.gather_medication_catalog(
-                    tenant_id
-                )
-                catalog["allergy_catalog"] = await self.gather_allergy_catalog(
-                    tenant_id
-                )
+                catalog["clinical_event_types"] = await self.gather_clinical_event_types(tenant_id)
+                catalog["medication_catalog"] = await self.gather_medication_catalog(tenant_id)
+                catalog["allergy_catalog"] = await self.gather_allergy_catalog(tenant_id)
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
                 file_path, size, manifest = self.write_catalog_file(
                     catalog, tenant_id, job_id, manifest
@@ -970,9 +931,7 @@ class ExportService:
             )
             ok, errs = validate_bundle(bundle)
             if not ok:
-                logger.warning(
-                    f"Export bundle validation issues for job {job_id}: {errs}"
-                )
+                logger.warning(f"Export bundle validation issues for job {job_id}: {errs}")
 
             if export_type == ExportType.FHIR_ONLY:
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
@@ -980,9 +939,7 @@ class ExportService:
                     bundle, tenant_id, job_id, manifest
                 )
                 manifest.counts = {**fhir_counts, **manifest.counts}
-                await self.complete_job(
-                    job_id, file_path, size, manifest.counts, manifest
-                )
+                await self.complete_job(job_id, file_path, size, manifest.counts, manifest)
                 return
 
             examinations = await self.gather_examinations(tenant_id, patient_ids)
@@ -1028,9 +985,7 @@ class ExportService:
                 anatomy=anatomy,
             )
 
-            manifest = self.build_manifest(
-                tenant_id, scope, export_type, options, notes=notes
-            )
+            manifest = self.build_manifest(tenant_id, scope, export_type, options, notes=notes)
             file_path, size, manifest = self.write_full_backup_zip(
                 bundle, sidecars, documents, tenant_id, job_id, manifest
             )

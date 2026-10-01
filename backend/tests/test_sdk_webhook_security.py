@@ -6,6 +6,7 @@ verification (``integrations.dev_dummy.provider``). The HMAC algorithm
 itself was previously inlined in two places; this is the canonical
 implementation, so the tests are exhaustive about the accepted forms.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,7 +14,6 @@ import hmac
 import time
 
 import pytest
-
 from integrations.sdk.webhook_security import (
     DEFAULT_WEBHOOK_SIGNATURE_HEADERS,
     get_signature_header,
@@ -21,7 +21,6 @@ from integrations.sdk.webhook_security import (
     verify_hmac_signature,
     verify_stripe_signature,
 )
-
 
 SECRET = "topsecret"
 BODY = b'{"hello":"world"}'
@@ -114,10 +113,7 @@ def test_verify_canonical_signature_with_timestamp():
     ts = str(int(time.time()))
     sig = _canonical_sig("POST", "/foo", BODY, timestamp=ts)
     assert (
-        verify_canonical_signature(
-            SECRET, "POST", "/foo", BODY, sig, provided_timestamp=ts
-        )
-        is True
+        verify_canonical_signature(SECRET, "POST", "/foo", BODY, sig, provided_timestamp=ts) is True
     )
 
 
@@ -127,9 +123,7 @@ def test_verify_canonical_signature_rejects_replay_outside_skew():
     too_old = str(int(time.time()) - 1000)
     sig = _canonical_sig("POST", "/foo", BODY, timestamp=too_old)
     assert (
-        verify_canonical_signature(
-            SECRET, "POST", "/foo", BODY, sig, provided_timestamp=too_old
-        )
+        verify_canonical_signature(SECRET, "POST", "/foo", BODY, sig, provided_timestamp=too_old)
         is False
     )
 

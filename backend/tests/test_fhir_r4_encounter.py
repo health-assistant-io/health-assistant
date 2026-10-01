@@ -9,6 +9,7 @@ Covers:
 - fhir_to_encounter_orm() reverse conversion
 - Round-trip preserves key fields
 """
+
 import datetime as _dt
 from uuid import uuid4
 
@@ -20,19 +21,19 @@ from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resourc
 
 
 def _make_exam(**overrides) -> ExaminationModel:
-    defaults = dict(
-        id=str(uuid4()),
-        patient_id=str(uuid4()),
-        tenant_id=str(uuid4()),
-        examination_date=_dt.date(2024, 3, 15),
-        notes=None,
-        patient_notes=None,
-        diagnoses=None,
-        impressions=None,
-        organization_id=None,
-        created_at=_dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.timezone.utc),
-        updated_at=_dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "patient_id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "examination_date": _dt.date(2024, 3, 15),
+        "notes": None,
+        "patient_notes": None,
+        "diagnoses": None,
+        "impressions": None,
+        "organization_id": None,
+        "created_at": _dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.UTC),
+        "updated_at": _dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return ExaminationModel(**defaults)
 
@@ -40,6 +41,7 @@ def _make_exam(**overrides) -> ExaminationModel:
 # ---------------------------------------------------------------------------
 # to_fhir_dict — basic projection
 # ---------------------------------------------------------------------------
+
 
 def test_encounter_minimal_to_fhir_dict():
     exam = _make_exam(notes=None)
@@ -126,6 +128,7 @@ def test_encounter_long_notes_truncated():
 # Reverse: fhir_to_encounter_orm
 # ---------------------------------------------------------------------------
 
+
 def _canonical_encounter(**overrides) -> dict:
     base = {
         "resourceType": "Encounter",
@@ -191,6 +194,7 @@ def test_fhir_to_encounter_orm_drops_unknown_fields():
 # Round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_round_trip_orm_to_fhir_to_orm():
     org_id = str(uuid4())
     exam = _make_exam(
@@ -233,6 +237,7 @@ def test_round_trip_fhir_to_orm_to_fhir():
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def test_canonical_encounter_validates():
     fhir = _canonical_encounter()

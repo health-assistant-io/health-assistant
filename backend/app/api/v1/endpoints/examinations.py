@@ -1,32 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
-from typing import List, Optional
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
+import logging
 from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.ai.pipeline.service import MedicalProcessingService
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.examination_model import ExaminationModel
 from app.models.clinical_event import EventExaminationLink
-from app.models.user_model import UserModel
 from app.models.doctor_model import DoctorModel
-from app.ai.pipeline.service import MedicalProcessingService
-from sqlalchemy.orm import selectinload
-from app.schemas.examination import (
-    ExaminationCreate,
-    ExaminationUpdate,
-    ExaminationResponse,
-    ExaminationSummaryResponse,
-    ExaminationStatusResponse,
-    ExaminationExtractRequest,
-    ExaminationBulkDeleteRequest,
-)
 from app.models.enums import Role
-from app.services.access import check_patient_access, check_examination_access
-from app.services.audit_service import audit_read, log_audit_action
-import logging
-
-from app.schemas.user import TokenData
+from app.models.examination_model import ExaminationModel
+from app.models.user_model import UserModel
+from app.schemas.examination import (
+    ExaminationBulkDeleteRequest,
+    ExaminationCreate,
+    ExaminationExtractRequest,
+    ExaminationResponse,
+    ExaminationStatusResponse,
+    ExaminationSummaryResponse,
+    ExaminationUpdate,
+)
 from app.schemas.task_log import TaskLogResponse
+from app.schemas.user import TokenData
+from app.services.access import check_examination_access, check_patient_access
+from app.services.audit_service import audit_read, log_audit_action
 
 logger = logging.getLogger(__name__)
 
@@ -115,15 +116,17 @@ async def update_examination(
 
     # If examination date changed, synchronize all linked clinical observations
     if date_changed:
-        from app.models.fhir import Observation, Medication
-        from sqlalchemy import update
         import datetime
+
+        from sqlalchemy import update
+
+        from app.models.fhir import Medication, Observation
 
         new_date = update_data["examination_date"]
         # Convert date to datetime for FHIR models that use DateTime
         if new_date:
             new_datetime = datetime.datetime.combine(
-                new_date, datetime.time.min, tzinfo=datetime.timezone.utc
+                new_date, datetime.time.min, tzinfo=datetime.UTC
             )
 
             # Update Observations
@@ -193,7 +196,7 @@ async def update_examination(
     return updated
 
 
-@router.get("/categories", response_model=List[str])
+@router.get("/categories", response_model=list[str])
 async def list_examination_categories(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -215,9 +218,9 @@ async def list_examination_categories(
     return sorted(result.scalars().all())
 
 
-@router.get("", response_model=List[ExaminationSummaryResponse])
+@router.get("", response_model=list[ExaminationSummaryResponse])
 async def list_examinations(
-    patient_id: Optional[str] = None,
+    patient_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
     current_user: TokenData = Depends(get_current_user),
@@ -234,9 +237,7 @@ async def list_examinations(
             selectinload(ExaminationModel.observations),
             selectinload(ExaminationModel.medications),
             # Bidirectional: surface the health journeys this visit belongs to.
-            selectinload(ExaminationModel.event_links).selectinload(
-                EventExaminationLink.event
-            ),
+            selectinload(ExaminationModel.event_links).selectinload(EventExaminationLink.event),
         )
     )
 
@@ -247,16 +248,10 @@ async def list_examinations(
         # For standard users, if no patient_id is provided, only show examinations for their patients
         from app.models.fhir.patient import Patient
 
-        patient_ids_query = select(Patient.id).where(
-            Patient.user_id == current_user.user_id
-        )
+        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
         query = query.where(ExaminationModel.patient_id.in_(patient_ids_query))
 
-    query = (
-        query.order_by(ExaminationModel.examination_date.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    query = query.order_by(ExaminationModel.examination_date.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     examinations = result.scalars().unique().all()
 
@@ -272,9 +267,7 @@ async def list_examinations(
             "notes": exam.notes,
             "patient_notes": exam.patient_notes,
             "category_concept_id": exam.category_concept_id,
-            "category": exam.category_concept.name
-            if exam.category_concept
-            else None,
+            "category": exam.category_concept.name if exam.category_concept else None,
             "category_concept": exam.category_concept,
             "extraction_status": exam.extraction_status,
             "extraction_progress": exam.extraction_progress,
@@ -324,9 +317,7 @@ async def get_examination(
             selectinload(ExaminationModel.category_concept),
             selectinload(ExaminationModel.organization),
             # Bidirectional: surface the health journeys this visit belongs to.
-            selectinload(ExaminationModel.event_links).selectinload(
-                EventExaminationLink.event
-            ),
+            selectinload(ExaminationModel.event_links).selectinload(EventExaminationLink.event),
         )
     )
     examination = result.scalar_one_or_none()
@@ -395,9 +386,10 @@ async def get_examination_documents(
     db: AsyncSession = Depends(get_db),
 ):
     await check_examination_access(examination_id, current_user, db)
+    from sqlalchemy import not_
+
     from app.models.document_model import DocumentModel
     from app.services.document_service import enrich_document_entities
-    from sqlalchemy import not_
 
     # Subquery to find all parent_ids that have children (meaning they have been edited)
     parent_ids_subquery = select(DocumentModel.parent_id).where(
@@ -420,7 +412,7 @@ async def get_examination_documents(
 @router.post("/{examination_id}/extract")
 async def extract_examination_data(
     examination_id: str,
-    request: Optional[ExaminationExtractRequest] = None,
+    request: ExaminationExtractRequest | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -448,30 +440,26 @@ async def extract_examination_data(
         return {"message": "Extraction triggered", "job_id": job_id, "mode": mode}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail="Failed to trigger extraction"
-        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to trigger extraction")
 
 
-@router.get("/{examination_id}/logs", response_model=List[TaskLogResponse])
+@router.get("/{examination_id}/logs", response_model=list[TaskLogResponse])
 async def get_examination_logs(
     examination_id: str,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     await check_examination_access(examination_id, current_user, db)
-    from app.models.task_log import TaskLog
     from sqlalchemy import or_
 
     # Find logs related to this examination or its documents
     # 1. Get document IDs for this examination
     from app.models.document_model import DocumentModel
+    from app.models.task_log import TaskLog
 
     doc_res = await db.execute(
-        select(DocumentModel.id).where(
-            DocumentModel.examination_id == UUID(examination_id)
-        )
+        select(DocumentModel.id).where(DocumentModel.examination_id == UUID(examination_id))
     )
     doc_ids = doc_res.scalars().all()
 
@@ -501,10 +489,11 @@ async def bulk_delete_examinations(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.document_model import DocumentModel
-    from app.services.document_service import delete_document
-    from app.models.fhir import Observation, Medication
     from sqlalchemy import delete
+
+    from app.models.document_model import DocumentModel
+    from app.models.fhir import Medication, Observation
+    from app.services.document_service import delete_document
 
     # Fetch all examinations to be deleted, verifying ownership
     query = select(ExaminationModel).where(
@@ -533,12 +522,8 @@ async def bulk_delete_examinations(
         await delete_document(str(doc.id), db, trigger_cumulative=False)
 
     # 2. Explicitly delete clinical data
-    await db.execute(
-        delete(Observation).where(Observation.examination_id.in_(actual_ids))
-    )
-    await db.execute(
-        delete(Medication).where(Medication.examination_id.in_(actual_ids))
-    )
+    await db.execute(delete(Observation).where(Observation.examination_id.in_(actual_ids)))
+    await db.execute(delete(Medication).where(Medication.examination_id.in_(actual_ids)))
 
     # 3. Delete the examinations
     for exam in examinations:
@@ -571,10 +556,11 @@ async def delete_examination(
     examination = await check_examination_access(examination_id, current_user, db)
 
     # Delete all associated documents first (and their physical files)
-    from app.models.document_model import DocumentModel
-    from app.services.document_service import delete_document
-    from app.models.fhir import Observation, Medication
     from sqlalchemy import delete
+
+    from app.models.document_model import DocumentModel
+    from app.models.fhir import Medication, Observation
+    from app.services.document_service import delete_document
 
     # 1. Physical document deletion
     docs_result = await db.execute(
@@ -587,12 +573,8 @@ async def delete_examination(
 
     # 2. Explicitly delete clinical data (Observations & Medications)
     # This is also handled by DB CASCADE but explicit is better for "no trash"
-    await db.execute(
-        delete(Observation).where(Observation.examination_id == examination.id)
-    )
-    await db.execute(
-        delete(Medication).where(Medication.examination_id == examination.id)
-    )
+    await db.execute(delete(Observation).where(Observation.examination_id == examination.id))
+    await db.execute(delete(Medication).where(Medication.examination_id == examination.id))
 
     # 3. Delete the examination itself
     await db.delete(examination)

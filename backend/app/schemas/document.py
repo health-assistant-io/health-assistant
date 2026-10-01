@@ -1,13 +1,14 @@
-from pydantic import BaseModel, ConfigDict
-from uuid import UUID
-from typing import Optional, Any, List, Tuple
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
 
 
 class DocumentBase(BaseModel):
     filename: str
-    patient_id: Optional[UUID] = None
-    examination_id: Optional[UUID] = None
+    patient_id: UUID | None = None
+    examination_id: UUID | None = None
     include_in_extraction: bool = False
 
 
@@ -16,20 +17,20 @@ class DocumentCreate(DocumentBase):
 
 
 class DocumentUpdate(BaseModel):
-    status: Optional[str] = None
-    progress: Optional[int] = None
-    extracted_text: Optional[str] = None
-    entities: Optional[Any] = None
-    examination_id: Optional[UUID] = None
-    include_in_extraction: Optional[bool] = None
+    status: str | None = None
+    progress: int | None = None
+    extracted_text: str | None = None
+    entities: Any | None = None
+    examination_id: UUID | None = None
+    include_in_extraction: bool | None = None
 
 
 class DocumentEdit(BaseModel):
-    crop_left: Optional[int] = None
-    crop_top: Optional[int] = None
-    crop_right: Optional[int] = None
-    crop_bottom: Optional[int] = None
-    perspective_points: Optional[List[Tuple[int, int]]] = None
+    crop_left: int | None = None
+    crop_top: int | None = None
+    crop_right: int | None = None
+    crop_bottom: int | None = None
+    perspective_points: list[tuple[int, int]] | None = None
     brightness: float = 1.0
     contrast: float = 1.0
     sharpness: float = 1.0
@@ -41,15 +42,15 @@ class DocumentResponse(DocumentBase):
     owner_id: UUID
     status: str
     progress: int
-    error_message: Optional[str] = None
+    error_message: str | None = None
     file_path: str
     include_in_extraction: bool
-    extracted_text: Optional[str] = None
-    entities: Optional[Any] = None
-    examination_id: Optional[UUID] = None
-    parent_id: Optional[UUID] = None
+    extracted_text: str | None = None
+    entities: Any | None = None
+    examination_id: UUID | None = None
+    parent_id: UUID | None = None
     is_edited: bool = False
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

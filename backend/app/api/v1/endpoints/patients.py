@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import Role
+from app.schemas.user import TokenData
 from app.services.access import check_patient_access
+from app.services.audit_service import audit_read, log_audit_action
 from app.services.fhir_service import (
-    list_patients,
     create_patient,
-    update_patient,
     delete_patient,
+    list_patients,
+    update_patient,
     update_patient_layout,
 )
-from app.schemas.user import TokenData
-from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -37,9 +38,7 @@ async def list_patients_endpoint(
     elif current_user.role == Role.USER.value:
         final_user_id = str(current_user.user_id)
 
-    patients = await list_patients(
-        final_tenant_id, limit, offset, user_id=final_user_id
-    )
+    patients = await list_patients(final_tenant_id, limit, offset, user_id=final_user_id)
     return patients
 
 
@@ -132,7 +131,7 @@ async def delete_patient_endpoint(
     """Delete patient and all associated clinical data"""
     patient = await check_patient_access(patient_id, current_user, db)
 
-    if current_user.role not in [Role.SYSTEM_ADMIN.value, Role.ADMIN.value]:
+    if current_user.role not in [Role.SYSTEM_ADMIN.value, Role.ADMIN.value]:  # noqa: SIM102 -- nested conditional; merge when touched
         if str(patient.user_id) != str(current_user.user_id):
             raise HTTPException(status_code=403, detail="Access denied")
 

@@ -9,19 +9,15 @@ Covers:
 - /metadata endpoint returns valid CapabilityStatement (200, Cache-Control)
 - Unknown facade route returns 501 OperationOutcome
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from starlette.testclient import TestClient
 
-from app.facade.search_params import (
-    DATE_PREFIXES,
-    DEFAULT_COUNT,
-    MAX_COUNT,
-    DateFilter,
-    parse_search_params,
-)
+from app.facade.bundle import build_search_bundle
+from app.facade.registry import RESOURCE_REGISTRY, ResourceEntry
 from app.facade.responses import (
     gone,
     no_content,
@@ -29,16 +25,21 @@ from app.facade.responses import (
     ok_response,
     operation_outcome,
 )
-from app.facade.bundle import build_search_bundle
-from app.facade.registry import RESOURCE_REGISTRY, ResourceEntry
+from app.facade.search_params import (
+    DATE_PREFIXES,
+    DEFAULT_COUNT,
+    MAX_COUNT,
+    DateFilter,
+    parse_search_params,
+)
+from app.models.base import SoftDeleteMixin
 from app.services.fhir_facade_service import build_capability_statement, get_software_version
 from app.services.fhir_helpers import parse_fhir_resource
-from app.models.base import SoftDeleteMixin
-
 
 # ---------------------------------------------------------------------------
 # SoftDeleteMixin
 # ---------------------------------------------------------------------------
+
 
 def test_soft_delete_mixin_has_deleted_at():
     assert SoftDeleteMixin.deleted_at is not None
@@ -52,6 +53,7 @@ def test_soft_delete_mixin_has_deleted_at():
 # ---------------------------------------------------------------------------
 # Search param parser
 # ---------------------------------------------------------------------------
+
 
 def test_parse_search_params_empty():
     p = parse_search_params("Patient", [])
@@ -190,6 +192,7 @@ def test_date_prefix_constants():
 # Bundle builder
 # ---------------------------------------------------------------------------
 
+
 def test_build_search_bundle_basic():
     resources = [
         {"resourceType": "Patient", "id": "abc"},
@@ -306,10 +309,12 @@ def test_build_search_bundle_empty_results():
 # OperationOutcome helpers
 # ---------------------------------------------------------------------------
 
+
 def test_operation_outcome_basic():
     r = operation_outcome("error", "invalid", "boom", 400)
     assert r.status_code == 400
     import json
+
     body = json.loads(r.body)
     assert body["resourceType"] == "OperationOutcome"
     assert body["issue"][0]["severity"] == "error"
@@ -321,6 +326,7 @@ def test_not_found_response():
     r = not_found("Patient", "abc")
     assert r.status_code == 404
     import json
+
     body = json.loads(r.body)
     assert "not found" in body["issue"][0]["diagnostics"]
 
@@ -329,6 +335,7 @@ def test_gone_response():
     r = gone("Patient", "abc")
     assert r.status_code == 410
     import json
+
     body = json.loads(r.body)
     assert "deleted" in body["issue"][0]["diagnostics"]
 
@@ -347,6 +354,7 @@ def test_ok_response_with_etag():
 # ---------------------------------------------------------------------------
 # CapabilityStatement builder
 # ---------------------------------------------------------------------------
+
 
 def test_get_software_version_returns_string():
     v = get_software_version()
@@ -427,9 +435,9 @@ def test_capability_statement_date_is_current():
 
     # Allow a small skew between the build_capability_statement call and `now`
     # to tolerate test latency.
-    before = datetime.now(timezone.utc) - timedelta(seconds=5)
+    before = datetime.now(UTC) - timedelta(seconds=5)
     cs = build_capability_statement("https://host/api/v1/fhir/R4")
-    after = datetime.now(timezone.utc) + timedelta(seconds=5)
+    after = datetime.now(UTC) + timedelta(seconds=5)
 
     parsed_date = datetime.fromisoformat(cs["date"].replace("Z", "+00:00"))
     assert before <= parsed_date <= after
@@ -438,6 +446,7 @@ def test_capability_statement_date_is_current():
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+
 
 def test_registry_register_and_get():
     # Use a unique resource type to avoid collision with real registrations.
@@ -476,6 +485,7 @@ def test_registry_duplicate_raises():
 # ---------------------------------------------------------------------------
 # HTTP layer — metadata endpoint + unknown route catch-all
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def app_with_facade(monkeypatch):
@@ -516,13 +526,18 @@ def test_unknown_facade_route_returns_404(app_with_facade):
     """Unknown resource type now returns 404 OperationOutcome (was 501 in the
     initial Phase 1 scaffold — Phase 5 replaced the catch-all with proper
     resource-type dispatch via RESOURCE_REGISTRY)."""
-    from app.core.security import get_api_principal
-    from app.schemas.user import TokenData
     from uuid import uuid4
 
+    from app.core.security import get_api_principal
+    from app.schemas.user import TokenData
+
     fake_user = TokenData(
-        user_id=uuid4(), tenant_id=uuid4(), role="USER", sub="test",
-        token_kind="api", scope="system/*.*",
+        user_id=uuid4(),
+        tenant_id=uuid4(),
+        role="USER",
+        sub="test",
+        token_kind="api",
+        scope="system/*.*",
     )
     app_with_facade.dependency_overrides[get_api_principal] = lambda: fake_user
     try:

@@ -10,7 +10,6 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.concept_model import Concept
@@ -19,6 +18,7 @@ from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
 from app.services.catalog_search_service import search_catalogs
+from tests._auth_helpers import headers_for_claims
 
 
 async def _tenant_and_headers(role="ADMIN"):
@@ -28,7 +28,7 @@ async def _tenant_and_headers(role="ADMIN"):
         await db.commit()
     tok_headers = await headers_for_claims(
         {
-        "sub": f"{role.lower()}@test.local",
+            "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
@@ -47,9 +47,7 @@ async def _seed_cross_catalog(token_word: str):
                     tenant_id=None,
                 ),
                 MedicationCatalog(name=f"{token_word} Drug", tenant_id=None),
-                AllergyCatalog(
-                    name=f"{token_word} Allergen", category="FOOD", tenant_id=None
-                ),
+                AllergyCatalog(name=f"{token_word} Allergen", category="FOOD", tenant_id=None),
                 AnatomyStructure(
                     slug=f"anat-{token_word}-{uuid.uuid4().hex[:4]}",
                     name=f"{token_word} Organ",
@@ -97,9 +95,7 @@ async def test_search_catalogs_type_filter_restricts():
     tenant_id, _ = await _tenant_and_headers()
     await _seed_cross_catalog("giraffe")
     async with AsyncSessionLocal() as db:
-        hits = await search_catalogs(
-            db, tenant_id, "giraffe", types=["biomarker", "anatomy"]
-        )
+        hits = await search_catalogs(db, tenant_id, "giraffe", types=["biomarker", "anatomy"])
     types_hit = {h["type"] for h in hits}
     assert types_hit == {"biomarker", "anatomy"}
 
@@ -138,9 +134,7 @@ async def test_search_catalogs_tenant_scoped():
 async def test_search_catalogs_unknown_type_ignored():
     tenant_id, _ = await _tenant_and_headers()
     async with AsyncSessionLocal() as db:
-        hits = await search_catalogs(
-            db, tenant_id, "anything", types=["biomarker", "nonexistent"]
-        )
+        hits = await search_catalogs(db, tenant_id, "anything", types=["biomarker", "nonexistent"])
     # No error; unknown type skipped. (May be empty if no biomarker matches.)
     assert all(h["type"] != "nonexistent" for h in hits)
 
@@ -325,9 +319,7 @@ async def test_catalogs_search_endpoint_kind_filter(async_client):
         "/api/v1/catalogs/search?q=heron&kind=event_category", headers=headers
     )
     assert resp.status_code == 200, resp.text
-    concept_ids = {
-        h["id"] for h in resp.json()["results"] if h["type"] == "concept"
-    }
+    concept_ids = {h["id"] for h in resp.json()["results"] if h["type"] == "concept"}
     assert str(ec_id) in concept_ids
 
 

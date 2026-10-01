@@ -10,6 +10,7 @@ Post-fix: the upsert persists ``value_codeable_concept`` (camelCase ORM
 column) from the converter's ``value_codeable_concept`` (snake) key, and
 the hard validator runs on the import path.
 """
+
 import uuid
 
 import pytest
@@ -20,7 +21,6 @@ from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
 from app.services.fhir_converter import fhir_to_observation_orm
 from app.services.import_service import ImportService
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -37,12 +37,8 @@ async def _cleanup():
         await session.execute(
             text("DELETE FROM fhir_observations WHERE code->>'text' = 'ImportRT Test'")
         )
-        await session.execute(
-            text("DELETE FROM fhir_patients WHERE name->>'family' = 'ImportRT'")
-        )
-        await session.execute(
-            text("DELETE FROM tenants WHERE slug LIKE 'importrt-%'")
-        )
+        await session.execute(text("DELETE FROM fhir_patients WHERE name->>'family' = 'ImportRT'"))
+        await session.execute(text("DELETE FROM tenants WHERE slug LIKE 'importrt-%'"))
         await session.commit()
 
 

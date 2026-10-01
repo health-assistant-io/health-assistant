@@ -9,6 +9,7 @@ objects directly (no DB needed) and assert that:
   - the legacy bug shapes round-trip to valid FHIR via the read-side normalizers,
   - Medication.to_fhir_dict works with both raw-string and enum status.
 """
+
 import uuid
 
 import pytest
@@ -30,15 +31,35 @@ def _pid():
 
 # ---------- assert_valid_fhir: valid shapes pass ----------
 
-@pytest.mark.parametrize("ctor", [
-    lambda: Patient(id=uuid.uuid4(), name={"given": ["A"], "family": "B"}, gender=Gender.MALE),
-    lambda: Patient(id=uuid.uuid4(), name=[{"given": ["A"], "family": "B"}], gender=Gender.FEMALE),
-    lambda: Observation(id=uuid.uuid4(), status="final", code={}, subject={"reference": f"Patient/{_pid()}"}),
-    lambda: Observation(id=uuid.uuid4(), status="final", code={"text": "HR"}, subject={"reference": f"Patient/{_pid()}"}),
-    lambda: DiagnosticReport(id=uuid.uuid4(), status="final", code={}, subject={"reference": f"Patient/{_pid()}"}),
-    lambda: Medication(id=uuid.uuid4(), patient_id=uuid.uuid4(), code={"text": "Aspirin"}, status="ACTIVE",
-                       subject={"reference": f"Patient/{_pid()}"}),
-])
+
+@pytest.mark.parametrize(
+    "ctor",
+    [
+        lambda: Patient(id=uuid.uuid4(), name={"given": ["A"], "family": "B"}, gender=Gender.MALE),
+        lambda: Patient(
+            id=uuid.uuid4(), name=[{"given": ["A"], "family": "B"}], gender=Gender.FEMALE
+        ),
+        lambda: Observation(
+            id=uuid.uuid4(), status="final", code={}, subject={"reference": f"Patient/{_pid()}"}
+        ),
+        lambda: Observation(
+            id=uuid.uuid4(),
+            status="final",
+            code={"text": "HR"},
+            subject={"reference": f"Patient/{_pid()}"},
+        ),
+        lambda: DiagnosticReport(
+            id=uuid.uuid4(), status="final", code={}, subject={"reference": f"Patient/{_pid()}"}
+        ),
+        lambda: Medication(
+            id=uuid.uuid4(),
+            patient_id=uuid.uuid4(),
+            code={"text": "Aspirin"},
+            status="ACTIVE",
+            subject={"reference": f"Patient/{_pid()}"},
+        ),
+    ],
+)
 def test_valid_shapes_pass_validation(ctor):
     # Should not raise
     fhir = assert_valid_fhir(ctor())
@@ -48,11 +69,14 @@ def test_valid_shapes_pass_validation(ctor):
 
 # ---------- assert_valid_fhir: genuinely malformed data is rejected ----------
 
+
 def test_observation_value_quantity_as_string_rejected():
     # valueQuantity must be an object, not a string — _clean_quantity passes
     # non-dicts through unchanged so fhir.resources rejects it.
     obs = Observation(
-        id=uuid.uuid4(), status="final", code={"text": "X"},
+        id=uuid.uuid4(),
+        status="final",
+        code={"text": "X"},
         subject={"reference": f"Patient/{_pid()}"},
         value_quantity="72 bpm",
     )
@@ -62,7 +86,9 @@ def test_observation_value_quantity_as_string_rejected():
 
 def test_observation_code_as_string_rejected():
     obs = Observation(
-        id=uuid.uuid4(), status="final", code="HeartRate",
+        id=uuid.uuid4(),
+        status="final",
+        code="HeartRate",
         subject={"reference": f"Patient/{_pid()}"},
     )
     with pytest.raises(FhirSerializationError):
@@ -72,17 +98,21 @@ def test_observation_code_as_string_rejected():
 def test_assert_valid_fhir_rejects_object_without_serializer():
     class NoFhir:
         pass
+
     with pytest.raises(FhirSerializationError):
         assert_valid_fhir(NoFhir())
 
 
 # ---------- legacy bug shapes round-trip to valid FHIR (normalized) ----------
 
+
 def test_legacy_empty_value_quantity_code_normalizes_and_passes():
     # The exact shape that broke export: empty-string code/unit. The read-side
     # _clean_quantity normalizer drops them so the projection is valid FHIR.
     obs = Observation(
-        id=uuid.uuid4(), status="final", code={"text": "HR"},
+        id=uuid.uuid4(),
+        status="final",
+        code={"text": "HR"},
         subject={"reference": f"Patient/{_pid()}"},
         value_quantity={"value": 72, "unit": "", "system": "http://unitsofmeasure.org", "code": ""},
     )
@@ -101,6 +131,7 @@ def test_legacy_name_as_dict_normalizes_and_passes():
 
 # ---------- Medication status hardening (string | enum) ----------
 
+
 def test_medication_to_dict_accepts_string_status():
     m = Medication(id=uuid.uuid4(), patient_id=uuid.uuid4(), code={"text": "A"}, status="ACTIVE")
     # Pre-flush state holds a raw string; to_dict must not crash on .value
@@ -108,7 +139,9 @@ def test_medication_to_dict_accepts_string_status():
 
 
 def test_medication_to_dict_accepts_enum_status():
-    m = Medication(id=uuid.uuid4(), patient_id=uuid.uuid4(), code={"text": "A"}, status=MedicationStatus.ACTIVE)
+    m = Medication(
+        id=uuid.uuid4(), patient_id=uuid.uuid4(), code={"text": "A"}, status=MedicationStatus.ACTIVE
+    )
     assert m.to_dict()["status"] == "ACTIVE"
 
 
@@ -119,6 +152,7 @@ def test_medication_to_fhir_dict_lowercases_status_for_fhir():
 
 
 # ---------- _enum_value helper ----------
+
 
 def test_enum_value_passthrough_for_string():
     assert _enum_value("ACTIVE") == "ACTIVE"
@@ -134,6 +168,7 @@ def test_enum_value_default_for_none():
 
 # ---------- Observation.category canonical-list shape (strict) ----------
 
+
 def _obs_with_category(category):
     return Observation(
         id=uuid.uuid4(),
@@ -145,12 +180,16 @@ def _obs_with_category(category):
 
 
 def test_observation_category_as_canonical_list_passes():
-    category = [{
-        "coding": [{
-            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
-            "code": "laboratory",
-        }]
-    }]
+    category = [
+        {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                    "code": "laboratory",
+                }
+            ]
+        }
+    ]
     fhir = assert_valid_fhir(_obs_with_category(category))
     assert fhir["category"][0]["coding"][0]["code"] == "laboratory"
 
@@ -159,12 +198,11 @@ def test_observation_category_as_dict_is_rejected():
     # The legacy drift shape (single dict instead of a list). Strict mode: the
     # write-gate must reject it so non-canonical data can never persist.
     with pytest.raises(FhirSerializationError):
-        assert_valid_fhir(_obs_with_category({
-            "coding": [{"code": "laboratory"}]
-        }))
+        assert_valid_fhir(_obs_with_category({"coding": [{"code": "laboratory"}]}))
 
 
 # ---------- validate_and_filter_observations (batch skip-and-log gate) ----------
+
 
 def test_validate_and_filter_observations_drops_invalid_keeps_valid():
     good = _obs_with_category([{"coding": [{"code": "laboratory"}]}])
@@ -191,7 +229,9 @@ def test_validate_and_filter_observations_does_not_mutate_input():
 def test_validate_and_filter_observations_all_valid_drops_none():
     a = _obs_with_category([{"coding": [{"code": "laboratory"}]}])
     b = Observation(
-        id=uuid.uuid4(), status="final", code={"text": "X"},
+        id=uuid.uuid4(),
+        status="final",
+        code={"text": "X"},
         subject={"reference": f"Patient/{_pid()}"},
     )
     observations = [a, b]

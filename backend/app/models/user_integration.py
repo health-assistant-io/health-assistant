@@ -1,18 +1,20 @@
 from sqlalchemy import (
-    Column,
-    String,
-    ForeignKey,
-    DateTime,
-    Text,
-    Enum,
-    Integer,
     Boolean,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
-from app.models.enums import IntegrationStatus
 from sqlalchemy.sql import func
+
+from app.models.base import AuditMixin, Base, TenantMixin, TimestampMixin, UUIDMixin
+from app.models.enums import IntegrationStatus
 
 
 class UserIntegration(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
@@ -68,9 +70,7 @@ class IntegrationSyncLog(Base, UUIDMixin, TenantMixin):
     records_synced = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=False)
-    completed_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    completed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     integration = relationship("UserIntegration", back_populates="sync_logs")
 
@@ -84,9 +84,7 @@ class IntegrationDebugLog(Base, UUIDMixin, TenantMixin):
         nullable=False,
         index=True,
     )
-    timestamp = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     level = Column(String(20), default="info")  # e.g. 'info', 'error'
     title = Column(String(255), nullable=False)
     payload = Column(JSONB, nullable=True)

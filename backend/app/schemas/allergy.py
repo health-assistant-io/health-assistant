@@ -1,16 +1,15 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from uuid import UUID
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any
+from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import (
     AllergyCategory,
-    AllergyCriticality,
     AllergyClinicalStatus,
+    AllergyCriticality,
     ReactionSeverity,
 )
-
 
 # --- Allergy Catalog ---
 
@@ -18,8 +17,8 @@ from app.models.enums import (
 class AllergyCatalogBase(BaseModel):
     name: str
     category: AllergyCategory = AllergyCategory.OTHER
-    description: Optional[str] = None
-    typical_reactions: List[str] = Field(default_factory=list)
+    description: str | None = None
+    typical_reactions: list[str] = Field(default_factory=list)
 
     @field_validator("typical_reactions", mode="before")
     @classmethod
@@ -43,23 +42,23 @@ class AllergyCatalogCreate(AllergyCatalogBase):
 class AllergyCatalogUpdate(BaseModel):
     """Partial update for an allergy catalog entry (all fields optional)."""
 
-    name: Optional[str] = None
-    category: Optional[AllergyCategory] = None
-    description: Optional[str] = None
-    typical_reactions: Optional[List[str]] = None
+    name: str | None = None
+    category: AllergyCategory | None = None
+    description: str | None = None
+    typical_reactions: list[str] | None = None
 
 
 class AllergyCatalogResponse(AllergyCatalogBase):
     id: UUID
     is_custom: bool
-    scope: Optional[str] = None
-    class_concept_id: Optional[UUID] = None
-    class_concept_slug: Optional[str] = None
-    class_concept_name: Optional[str] = None
-    tenant_id: Optional[UUID] = None
-    created_by: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    scope: str | None = None
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
+    class_concept_name: str | None = None
+    tenant_id: UUID | None = None
+    created_by: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -70,26 +69,26 @@ class AllergyCatalogResponse(AllergyCatalogBase):
 class AllergyReaction(BaseModel):
     manifestation: str
     severity: ReactionSeverity = ReactionSeverity.MILD
-    date: Optional[datetime] = None
+    date: datetime | None = None
 
 
 class AllergenCode(BaseModel):
     text: str
-    catalog_id: Optional[UUID] = None
+    catalog_id: UUID | None = None
 
 
 class AllergyIntoleranceBase(BaseModel):
-    patient_id: Optional[UUID] = None
+    patient_id: UUID | None = None
     clinical_status: AllergyClinicalStatus = AllergyClinicalStatus.ACTIVE
     verification_status: str = "confirmed"
-    category: Optional[AllergyCategory] = None
-    criticality: Optional[AllergyCriticality] = None
-    code: Dict[str, Any]  # {"text": "Peanuts", "catalog_id": "..."}
-    onset_date: Optional[datetime] = None
-    resolved_date: Optional[datetime] = None
-    last_occurrence: Optional[datetime] = None
-    note: Optional[str] = None
-    reactions: List[Dict[str, Any]] = Field(default_factory=list)
+    category: AllergyCategory | None = None
+    criticality: AllergyCriticality | None = None
+    code: dict[str, Any]  # {"text": "Peanuts", "catalog_id": "..."}
+    onset_date: datetime | None = None
+    resolved_date: datetime | None = None
+    last_occurrence: datetime | None = None
+    note: str | None = None
+    reactions: list[dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("reactions", mode="before")
     @classmethod
@@ -112,30 +111,30 @@ class AllergyIntoleranceCreate(AllergyIntoleranceBase):
     # ``pull_allergies``; the engine reads it and forwards it to the
     # service. ``source_integration_id`` is NOT on the schema — the engine
     # always supplies it (= the integration's own id).
-    external_id: Optional[str] = None
+    external_id: str | None = None
 
 
 class AllergyIntoleranceUpdate(BaseModel):
-    clinical_status: Optional[AllergyClinicalStatus] = None
-    verification_status: Optional[str] = None
-    category: Optional[AllergyCategory] = None
-    criticality: Optional[AllergyCriticality] = None
-    code: Optional[Dict[str, Any]] = None
-    onset_date: Optional[datetime] = None
-    resolved_date: Optional[datetime] = None
-    last_occurrence: Optional[datetime] = None
-    note: Optional[str] = None
-    reactions: Optional[List[Dict[str, Any]]] = None
+    clinical_status: AllergyClinicalStatus | None = None
+    verification_status: str | None = None
+    category: AllergyCategory | None = None
+    criticality: AllergyCriticality | None = None
+    code: dict[str, Any] | None = None
+    onset_date: datetime | None = None
+    resolved_date: datetime | None = None
+    last_occurrence: datetime | None = None
+    note: str | None = None
+    reactions: list[dict[str, Any]] | None = None
 
 
 class AllergyIntoleranceResponse(AllergyIntoleranceBase):
     id: UUID
     patient_id: UUID
     tenant_id: UUID
-    patient_name_display: Optional[str] = None
-    source_integration_id: Optional[UUID] = None
-    external_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    patient_name_display: str | None = None
+    source_integration_id: UUID | None = None
+    external_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

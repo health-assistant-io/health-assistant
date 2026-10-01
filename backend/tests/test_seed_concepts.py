@@ -23,10 +23,11 @@ async def test_seed_concepts_idempotent():
 @pytest.mark.asyncio
 async def test_seed_concept_edges_idempotent():
     """Running seed_concept_edges twice doesn't duplicate edges in the DB."""
-    from app.services.seed_service import SeedService
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import ConceptEdge
-    from sqlalchemy import select, func
+    from app.services.seed_service import SeedService
 
     svc = SeedService()
     await svc.seed_concepts()
@@ -34,18 +35,14 @@ async def test_seed_concept_edges_idempotent():
 
     async with AsyncSessionLocal() as session:
         count_after_first = await session.scalar(
-            select(func.count())
-            .select_from(ConceptEdge)
-            .where(ConceptEdge.tenant_id.is_(None))
+            select(func.count()).select_from(ConceptEdge).where(ConceptEdge.tenant_id.is_(None))
         )
 
     await svc.seed_concept_edges()
 
     async with AsyncSessionLocal() as session:
         count_after_second = await session.scalar(
-            select(func.count())
-            .select_from(ConceptEdge)
-            .where(ConceptEdge.tenant_id.is_(None))
+            select(func.count()).select_from(ConceptEdge).where(ConceptEdge.tenant_id.is_(None))
         )
 
     assert count_after_first == count_after_second, (
@@ -58,11 +55,12 @@ async def test_seed_concept_edges_idempotent():
 async def test_seed_concepts_reconciles_kinds_on_existing_row():
     """Re-seeding a concept whose `kinds` changed in the JSON must update the
     kind tags on the existing row — not silently skip them (the drift bug)."""
-    from app.services.seed_service import SeedService
+    from sqlalchemy import select
+
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import Concept, ConceptKindTag
     from app.models.enums import ConceptKind
-    from sqlalchemy import select
+    from app.services.seed_service import SeedService
 
     svc = SeedService()
     # First seed: runs the full file (concepts.json). Take a known concept.
@@ -103,12 +101,13 @@ async def test_seed_concept_to_anatomy_edges():
     (anatomy_structure), referenced by slug with dst_type='anatomy'. Verifies
     the edge is created with the right endpoint types and the organ is NOT
     duplicated into the concept table (single source of truth)."""
-    from app.services.seed_service import SeedService
-    from app.core.database import AsyncSessionLocal
-    from app.models.concept_model import Concept, ConceptEdge
-    from app.models.anatomy_model import AnatomyStructure
-    from app.models.enums import EdgeEndpointType, ConceptRelationType
     from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.anatomy_model import AnatomyStructure
+    from app.models.concept_model import Concept, ConceptEdge
+    from app.models.enums import ConceptRelationType, EdgeEndpointType
+    from app.services.seed_service import SeedService
 
     svc = SeedService()
     await svc.seed_body_parts()  # creates heart, brain, …
@@ -117,9 +116,7 @@ async def test_seed_concept_to_anatomy_edges():
 
     async with AsyncSessionLocal() as session:
         heart = (
-            await session.execute(
-                select(AnatomyStructure).where(AnatomyStructure.slug == "heart")
-            )
+            await session.execute(select(AnatomyStructure).where(AnatomyStructure.slug == "heart"))
         ).scalar_one()
         # The seed edge: cardiology (concept) -[EXAMINES]-> heart (anatomy)
         edge = (
@@ -151,10 +148,11 @@ async def test_seed_includes_all_expected_kinds():
     svc = SeedService()
     await svc.seed_concepts()
 
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import Concept
     from app.models.enums import ConceptKind
-    from sqlalchemy import select, func
 
     async with AsyncSessionLocal() as session:
         from app.services.concept_service import concepts_with_kind
@@ -191,10 +189,11 @@ async def test_seed_edges_create_graph():
     await svc.seed_concepts()
     await svc.seed_concept_edges()
 
+    from sqlalchemy import select
+
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import Concept, ConceptEdge
     from app.models.enums import ConceptRelationType
-    from sqlalchemy import select
 
     async with AsyncSessionLocal() as session:
         cardio = (

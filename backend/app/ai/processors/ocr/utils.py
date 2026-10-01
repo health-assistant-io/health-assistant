@@ -1,7 +1,6 @@
 import io
 import logging
 from pathlib import Path
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -20,15 +19,15 @@ except ImportError:
     HAS_PDF2IMAGE = False
 
 try:
-    import pydicom
     import numpy as np
+    import pydicom
 
     HAS_DICOM = True
 except ImportError:
     HAS_DICOM = False
 
 
-async def convert_to_images(file_path: Path) -> List[bytes]:
+async def convert_to_images(file_path: Path) -> list[bytes]:
     """Convert a document file to a list of image bytes (JPEG)"""
     if not file_path.exists():
         logger.error(f"File not found: {file_path}")
@@ -72,7 +71,7 @@ async def convert_to_images(file_path: Path) -> List[bytes]:
     return []
 
 
-async def _convert_pdf_to_images(file_path: Path) -> List[bytes]:
+async def _convert_pdf_to_images(file_path: Path) -> list[bytes]:
     """Convert PDF pages to JPEG images"""
     if not HAS_PDF2IMAGE:
         logger.warning("pdf2image not installed, cannot convert PDF to images")
@@ -103,7 +102,7 @@ async def _convert_pdf_to_images(file_path: Path) -> List[bytes]:
         return []
 
 
-async def _convert_dicom_to_images(file_path: Path) -> List[bytes]:
+async def _convert_dicom_to_images(file_path: Path) -> list[bytes]:
     """Convert DICOM to JPEG images with proper medical windowing. Handles multi-frame DICOMs."""
     if not HAS_DICOM or not HAS_PIL:
         logger.warning("pydicom, numpy or PIL not installed, cannot convert DICOM")

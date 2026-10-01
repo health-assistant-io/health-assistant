@@ -189,7 +189,7 @@ git pull
 Backend:
 
 ```bash
-cd backend && source venv/bin/activate && pip install -r requirements.txt
+cd backend && # (uv manages the environment) && pip install -r pyproject.toml
 ```
 
 Frontend:
@@ -235,7 +235,7 @@ Common causes: an existing `.env` with stale or placeholder secrets, or a port c
 ### Backend Import Errors
 
 ```bash
-cd backend && source venv/bin/activate && python -c "from app.main import app"
+cd backend && # (uv manages the environment) && python -c "from app.main import app"
 ```
 
 ### Database Connection Error

@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 
 
 class OCRProcessor(ABC):
@@ -12,11 +11,11 @@ class OCRProcessor(ABC):
         pass
 
     @abstractmethod
-    async def extract_text_from_images(self, images: List[bytes]) -> str:
+    async def extract_text_from_images(self, images: list[bytes]) -> str:
         """Extract text from a list of image bytes (e.g. from PDF pages)"""
         pass
 
     @abstractmethod
-    async def extract_images(self, file_path: Path) -> List[bytes]:
+    async def extract_images(self, file_path: Path) -> list[bytes]:
         """Extract images from a document (for multi-page files)"""
         pass

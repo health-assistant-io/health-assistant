@@ -21,10 +21,10 @@ Revises: a1u2d3i4t5e6
 Create Date: 2026-09-26
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "h5m2f3a4t6o7"
 down_revision = "a1u2d3i4t5e6"
@@ -34,14 +34,10 @@ depends_on = None
 
 def upgrade() -> None:
     with op.batch_alter_table("users", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("mfa_secret_enc", sa.String(length=512), nullable=True)
-        )
+        batch_op.add_column(sa.Column("mfa_secret_enc", sa.String(length=512), nullable=True))
         batch_op.add_column(sa.Column("mfa_recovery_codes", sa.Text(), nullable=True))
         batch_op.add_column(
-            sa.Column(
-                "mfa_pending", postgresql.JSONB(astext_type=sa.Text()), nullable=True
-            )
+            sa.Column("mfa_pending", postgresql.JSONB(astext_type=sa.Text()), nullable=True)
         )
         batch_op.add_column(
             sa.Column(

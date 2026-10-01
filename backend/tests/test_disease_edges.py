@@ -42,9 +42,7 @@ async def _concept_id(slug: str) -> uuid.UUID:
     async with AsyncSessionLocal() as db:
         row = (
             await db.execute(
-                select(Concept.id).where(
-                    Concept.slug == slug, Concept.tenant_id.is_(None)
-                )
+                select(Concept.id).where(Concept.slug == slug, Concept.tenant_id.is_(None))
             )
         ).scalar_one()
     return row

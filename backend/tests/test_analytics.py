@@ -1,7 +1,8 @@
-import pytest
-from unittest.mock import MagicMock, AsyncMock
-import uuid
 import datetime
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.mark.asyncio
@@ -46,7 +47,7 @@ async def test_get_biomarker_trends():
             exam_id = uuid.uuid4()
             exam_date = datetime.date(2023, 5, 5)
             exam_category = "Laboratory Tests"
-            # Return 5 columns as expected by service: doc_id, exam_id, exam_date, exam_category, entities
+            # Return 5 columns as expected by service: doc_id, exam_id, exam_date, exam_category, entities  # noqa: E501 -- long template/message string; reflow when touched
             return TrendsMockResult([(doc_id, exam_id, exam_date, exam_category, {})])
         return TrendsMockResult([])
 
@@ -59,7 +60,7 @@ async def test_get_biomarker_trends():
     assert "biomarkers" in trends
     assert "glucose" in trends["biomarkers"]
 
-    # The date should be mapped to the examination date (2023-05-05) not the original effective_datetime
+    # The date should be mapped to the examination date (2023-05-05) not the original effective_datetime  # noqa: E501 -- long template/message string; reflow when touched
     glucose_data = trends["biomarkers"]["glucose"][0]
     assert glucose_data["value"] == 100
     assert glucose_data["unit"] == "mg/dL"

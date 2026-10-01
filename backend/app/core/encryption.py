@@ -25,7 +25,6 @@ from __future__ import annotations
 import base64
 import logging
 from functools import lru_cache
-from typing import Optional, Union
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
@@ -74,7 +73,7 @@ def fernet_from_data_key(data_key: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(raw))
 
 
-def _resolve_fernet() -> Optional[MultiFernet]:
+def _resolve_fernet() -> MultiFernet | None:
     """Build the rotation-ring cipher from the configured key family.
 
     Primary first (encrypts), then the ``HA_DATA_KEY_PREVIOUS`` priors
@@ -103,16 +102,16 @@ def _resolve_fernet() -> Optional[MultiFernet]:
 
 
 @lru_cache(maxsize=1)
-def _fernet_singleton() -> Optional[MultiFernet]:
+def _fernet_singleton() -> MultiFernet | None:
     return _resolve_fernet()
 
 
-def is_encrypted(value: Optional[str]) -> bool:
+def is_encrypted(value: str | None) -> bool:
     """True if the stored value is in the encrypted ``enc::<token>`` form."""
-    return bool(value) and value.startswith(ENCRYPTED_PREFIX)
+    return value is not None and value.startswith(ENCRYPTED_PREFIX)
 
 
-def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
+def encrypt_secret(plaintext: str | None) -> str | None:
     """Encrypt a plaintext string for storage.
 
     Returns None if the input is None. If no DATA_KEY is configured, raises
@@ -148,7 +147,7 @@ def encrypt_secret(plaintext: Optional[str]) -> Optional[str]:
     return f"{ENCRYPTED_PREFIX}{token}"
 
 
-def decrypt_secret(stored: Optional[str]) -> Optional[str]:
+def decrypt_secret(stored: str | None) -> str | None:
     """Decrypt a stored value produced by :func:`encrypt_secret`.
 
     Returns the plaintext. If the input is None, returns None. If the input
@@ -168,16 +167,14 @@ def decrypt_secret(stored: Optional[str]) -> Optional[str]:
     token = stored[len(ENCRYPTED_PREFIX) :].encode("utf-8")
     fernet = _fernet_singleton()
     if fernet is None:
-        raise ValueError(
-            "Secret is encrypted but HA_DATA_KEY is not configured"
-        )
+        raise ValueError("Secret is encrypted but HA_DATA_KEY is not configured")
     try:
         return fernet.decrypt(token).decode("utf-8")
     except InvalidToken as e:
         raise ValueError("Encrypted secret could not be decrypted") from e
 
 
-def mask_secret(stored_or_plain: Optional[str], visible_tail: int = 4) -> Optional[str]:
+def mask_secret(stored_or_plain: str | None, visible_tail: int = 4) -> str | None:
     """Mask a secret for display: returns ``***<last N chars>`` or ``None``.
 
     Accepts either an encrypted value (decrypts first) or a plaintext value.
@@ -197,12 +194,12 @@ def mask_secret(stored_or_plain: Optional[str], visible_tail: int = 4) -> Option
     return f"{MASK_MARKER}{plain[-visible_tail:]}"
 
 
-def looks_masked(value: Optional[str]) -> bool:
+def looks_masked(value: str | None) -> bool:
     """True if ``value`` looks like a masked secret returned by :func:`mask_secret`.
 
     Update paths use this to decide whether to preserve the existing key.
     """
-    return bool(value) and value.startswith(MASK_MARKER)
+    return value is not None and value.startswith(MASK_MARKER)
 
 
 def reset_cache() -> None:

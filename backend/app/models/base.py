@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, func, text, Integer, UUID, ForeignKey
+from sqlalchemy import UUID, Column, DateTime, ForeignKey, Integer, func, text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()

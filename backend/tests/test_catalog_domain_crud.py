@@ -15,11 +15,11 @@ import uuid
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
+from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
-from app.models.biomarker_model import BiomarkerDefinition
 from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 ROLES = ["USER", "ADMIN", "SYSTEM_ADMIN"]
 
@@ -73,24 +73,18 @@ async def test_allergy_catalog_full_crud(async_client):
     assert put.json()["description"] == "seasonal allergen"
 
     # delete
-    delete = await async_client.delete(
-        f"/api/v1/allergies/catalog/{cat_id}", headers=admin
-    )
+    delete = await async_client.delete(f"/api/v1/allergies/catalog/{cat_id}", headers=admin)
     assert delete.status_code == 200, delete.text
 
     # now 404
-    get_after = await async_client.get(
-        f"/api/v1/allergies/catalog/{cat_id}", headers=admin
-    )
+    get_after = await async_client.get(f"/api/v1/allergies/catalog/{cat_id}", headers=admin)
     assert get_after.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_allergy_catalog_get_missing_404(async_client):
     _, admin = await _tenant_and_headers("ADMIN")
-    resp = await async_client.get(
-        f"/api/v1/allergies/catalog/{uuid.uuid4()}", headers=admin
-    )
+    resp = await async_client.get(f"/api/v1/allergies/catalog/{uuid.uuid4()}", headers=admin)
     assert resp.status_code == 404
 
 
@@ -138,9 +132,7 @@ async def test_medication_catalog_delete(async_client):
     assert create.status_code == 200, create.text
     med_id = create.json()["id"]
 
-    delete = await async_client.delete(
-        f"/api/v1/medications/catalog/{med_id}", headers=admin
-    )
+    delete = await async_client.delete(f"/api/v1/medications/catalog/{med_id}", headers=admin)
     assert delete.status_code == 200, delete.text
 
 
@@ -167,9 +159,7 @@ async def test_medication_catalog_admin_cannot_delete_global(async_client):
         await db.commit()
         await db.refresh(entry)
         gid = str(entry.id)
-    resp = await async_client.delete(
-        f"/api/v1/medications/catalog/{gid}", headers=admin
-    )
+    resp = await async_client.delete(f"/api/v1/medications/catalog/{gid}", headers=admin)
     assert resp.status_code == 403
 
 

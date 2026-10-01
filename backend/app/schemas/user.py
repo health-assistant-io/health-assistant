@@ -1,8 +1,9 @@
 """User schemas — identity-auth §5/§8/§12 shapes + Class S extensions."""
 
-from typing import Optional, Dict, Any
+from typing import Any
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class PublicUser(BaseModel):
@@ -33,15 +34,15 @@ class UserCreate(UserBase):
     email: EmailStr
     password: str = Field(..., min_length=10, max_length=100)
     full_name: str = Field(default="", max_length=200)
-    tenant_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
 
 
 class UserUpdate(BaseModel):
     """User update schema"""
 
-    email: Optional[EmailStr] = None
-    role: Optional[str] = None
-    settings: Optional[Dict[str, Any]] = None
+    email: EmailStr | None = None
+    role: str | None = None
+    settings: dict[str, Any] | None = None
 
 
 class UserResponse(PublicUser):
@@ -56,7 +57,7 @@ class UserResponse(PublicUser):
 
     role: str = Field(default="user", description="User role: admin, manager, or user")
     tenant_id: UUID
-    settings: Dict[str, Any] = Field(default_factory=dict)
+    settings: dict[str, Any] = Field(default_factory=dict)
     mfa_enabled: bool = Field(default=False, description="TOTP MFA is active.")
     mfa_enforced: bool = Field(default=False, description="An admin requires MFA.")
 
@@ -89,24 +90,24 @@ class TokenData(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    user_id: Optional[UUID] = None
+    user_id: UUID | None = None
     tenant_id: UUID
     role: str = ""
-    sub: Optional[str] = None
-    email: Optional[str] = None
-    ver: Optional[int] = None
-    auth_mode: Optional[str] = None
-    fid: Optional[str] = None
-    client_id: Optional[str] = None
-    original_tenant_id: Optional[UUID] = None
-    original_user_id: Optional[UUID] = None
+    sub: str | None = None
+    email: str | None = None
+    ver: int | None = None
+    auth_mode: str | None = None
+    fid: str | None = None
+    client_id: str | None = None
+    original_tenant_id: UUID | None = None
+    original_user_id: UUID | None = None
     switched: bool = False
     # API-token claims (defaults keep session tokens valid).
     token_kind: str = "session"
     scope: str = ""
-    aud: Optional[Any] = None
-    iss: Optional[str] = None
-    bound_patient_id: Optional[UUID] = None
+    aud: Any | None = None
+    iss: str | None = None
+    bound_patient_id: UUID | None = None
 
     @property
     def scope_set(self) -> set[str]:

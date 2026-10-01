@@ -6,15 +6,13 @@ which is too weak. The ``webhook_secret`` is now **required**: the config
 flow rejects instances without one, and the platform endpoint verifies an
 HMAC-SHA256 signature over the raw body before dispatch.
 """
+
 import hashlib
 import hmac
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from integrations.webhook.config_flow import WebhookConfigFlow
-
 
 # ---------------------------------------------------------------------------
 # Config-flow validation
@@ -32,29 +30,38 @@ async def test_validate_input_rejects_missing_secret():
 async def test_validate_input_rejects_short_secret():
     flow = WebhookConfigFlow()
     with pytest.raises(ValueError, match="at least 16 characters"):
-        await flow.validate_input({
-            "instance_name": "x", "parser_type": "basic",
-            "webhook_secret": "short",
-        })
+        await flow.validate_input(
+            {
+                "instance_name": "x",
+                "parser_type": "basic",
+                "webhook_secret": "short",
+            }
+        )
 
 
 @pytest.mark.asyncio
 async def test_validate_input_accepts_strong_secret():
     flow = WebhookConfigFlow()
-    out = await flow.validate_input({
-        "instance_name": "x", "parser_type": "basic",
-        "webhook_secret": "a-very-strong-secret-1234",
-    })
+    out = await flow.validate_input(
+        {
+            "instance_name": "x",
+            "parser_type": "basic",
+            "webhook_secret": "a-very-strong-secret-1234",
+        }
+    )
     assert out["webhook_secret"] == "a-very-strong-secret-1234"
 
 
 @pytest.mark.asyncio
 async def test_validate_input_strips_whitespace():
     flow = WebhookConfigFlow()
-    out = await flow.validate_input({
-        "instance_name": "x", "parser_type": "basic",
-        "webhook_secret": "  a-very-strong-secret-1234  ",
-    })
+    out = await flow.validate_input(
+        {
+            "instance_name": "x",
+            "parser_type": "basic",
+            "webhook_secret": "  a-very-strong-secret-1234  ",
+        }
+    )
     assert out["webhook_secret"] == "a-very-strong-secret-1234"
 
 
@@ -119,9 +126,11 @@ async def test_webhook_route_accepts_valid_signature():
     flow.get_secret_fields.return_value = []  # treat as already-plaintext
     flow.decrypt_for_use = lambda cfg: dict(cfg)
 
-    with patch.object(endpoint.integration_registry, "get_provider", return_value=provider), \
-         patch.object(endpoint.integration_registry, "get_config_flow", return_value=flow):
-        response = await endpoint.integration_webhook(
+    with (
+        patch.object(endpoint.integration_registry, "get_provider", return_value=provider),
+        patch.object(endpoint.integration_registry, "get_config_flow", return_value=flow),
+    ):
+        await endpoint.integration_webhook(
             domain="webhook",
             integration_id=str(integration_id),
             request=request,
@@ -167,8 +176,10 @@ async def test_webhook_route_rejects_tampered_signature():
     flow.get_secret_fields.return_value = []
     flow.decrypt_for_use = lambda cfg: dict(cfg)
 
-    with patch.object(endpoint.integration_registry, "get_provider", return_value=provider), \
-         patch.object(endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with (  # noqa: SIM117 -- nested context managers; merge when touched
+        patch.object(endpoint.integration_registry, "get_provider", return_value=provider),
+        patch.object(endpoint.integration_registry, "get_config_flow", return_value=flow),
+    ):
         with pytest.raises(HTTPException) as ei:
             await endpoint.integration_webhook(
                 domain="webhook",

@@ -18,7 +18,7 @@ import io
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -94,9 +94,7 @@ async def test_anatomy_seed_prefers_class_concept_slug_over_legacy_category(db):
     await db.commit()
 
     struct = (
-        await db.execute(
-            select(AnatomyStructure).where(AnatomyStructure.slug == node_slug)
-        )
+        await db.execute(select(AnatomyStructure).where(AnatomyStructure.slug == node_slug))
     ).scalar_one()
     assert struct.class_concept_id == target.id  # NOT the legacy "organ"
 
@@ -130,9 +128,7 @@ async def test_anatomy_seed_class_concept_slug_handles_non_legacy_class(db):
     await db.commit()
 
     struct = (
-        await db.execute(
-            select(AnatomyStructure).where(AnatomyStructure.slug == node_slug)
-        )
+        await db.execute(select(AnatomyStructure).where(AnatomyStructure.slug == node_slug))
     ).scalar_one()
     assert struct.class_concept_id == niche.id
 
@@ -194,7 +190,7 @@ def _shipped_seeds_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "data" / "seeds"
 
 
-def _load_shipped(filename: str) -> Dict[str, Any]:
+def _load_shipped(filename: str) -> dict[str, Any]:
     return json.loads((_shipped_seeds_dir() / filename).read_text())
 
 
@@ -313,10 +309,7 @@ async def test_export_anatomy_relations_preserves_seeded_data(seeded_db):
         for e in shipped_edges
         if e.get("src_type") == "anatomy" and e.get("dst_type") == "anatomy"
     }
-    got_set = {
-        (it["source_slug"], it["target_slug"], it["relation_type"])
-        for it in out["items"]
-    }
+    got_set = {(it["source_slug"], it["target_slug"], it["relation_type"]) for it in out["items"]}
     assert shipped_set <= got_set, "export dropped anatomy relations"
 
 
@@ -439,9 +432,7 @@ async def test_export_anatomy_emits_class_concept_slug_for_non_legacy(db):
     cannot represent it, so the slug is the only path back)."""
     from app.services.seed_export_service import SeedExportService
 
-    niche = _make_concept(
-        _uslug("lymphatic-class"), "Lymphatic", [ConceptKind.ANATOMY_CLASS]
-    )
+    niche = _make_concept(_uslug("lymphatic-class"), "Lymphatic", [ConceptKind.ANATOMY_CLASS])
     db.add(niche)
     await db.flush()
     struct_slug = _uslug("ln")
@@ -500,9 +491,7 @@ async def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch, capsys, seeded_
     import scripts.export_seeds as cli
 
     out = tmp_path / "out"
-    monkeypatch.setattr(
-        sys, "argv", ["export_seeds.py", "--dry-run", "--out", str(out)]
-    )
+    monkeypatch.setattr(sys, "argv", ["export_seeds.py", "--dry-run", "--out", str(out)])
     await cli.main()
     captured = capsys.readouterr().out
     assert "Dry run" in captured
@@ -556,9 +545,7 @@ async def test_cli_no_backup_flag_skips_backup(tmp_path, monkeypatch):
     out = tmp_path / "seeds"
     out.mkdir()
     (out / "concepts.json").write_text('{"old": true}')
-    monkeypatch.setattr(
-        sys, "argv", ["export_seeds.py", "--out", str(out), "--no-backup"]
-    )
+    monkeypatch.setattr(sys, "argv", ["export_seeds.py", "--out", str(out), "--no-backup"])
     await cli.main()
     assert not list(out.glob(".backup-*")), "--no-backup should skip backup"
 
@@ -605,6 +592,7 @@ async def test_build_zip_bytes_produces_valid_zip_with_all_files(seeded_db):
 async def test_seeds_export_endpoint_system_admin_200(monkeypatch):
     """SYSTEM_ADMIN gets a ZIP download with every seed file."""
     import zipfile
+
     from httpx import ASGITransport, AsyncClient
 
     from app.core.security import get_current_user
@@ -620,9 +608,7 @@ async def test_seeds_export_endpoint_system_admin_200(monkeypatch):
     tid = uuid4()
     monkeypatch.setattr(
         "app.core.security.get_current_user",
-        lambda: TokenData(
-            user_id=uuid4(), sub="sys", tenant_id=tid, role="SYSTEM_ADMIN"
-        ),
+        lambda: TokenData(user_id=uuid4(), sub="sys", tenant_id=tid, role="SYSTEM_ADMIN"),
     )
     # bypass the real dependency override wiring used elsewhere
     app.dependency_overrides[get_current_user] = lambda: TokenData(
@@ -658,9 +644,7 @@ async def test_seeds_export_endpoint_rejects_non_system_admin(monkeypatch):
         app.dependency_overrides[get_current_user] = lambda t=token: t
         try:
             transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as client:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get("/api/v1/admin/seeds/export.zip")
             assert resp.status_code == 403, f"{role} should be forbidden"
         finally:
@@ -688,9 +672,7 @@ def test_unpack_seeds_zip_backs_up_and_extracts(tmp_path, monkeypatch):
         zf.writestr("concepts.json", '{"metadata": {}, "items": []}')
         zf.writestr("allergies.json", '{"metadata": {}, "items": []}')
 
-    monkeypatch.setattr(
-        sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)]
-    )
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
     unpack.main()
 
     # extracted
@@ -718,9 +700,7 @@ def test_unpack_seeds_zip_rejects_unknown_entries(tmp_path, monkeypatch):
         zf.writestr("concepts.json", "{}")
         zf.writestr("../../etc/evil", "pwned")  # path traversal / unknown entry
 
-    monkeypatch.setattr(
-        sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)]
-    )
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
     with pytest.raises(SystemExit):
         unpack.main()
     # nothing extracted

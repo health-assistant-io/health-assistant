@@ -1,21 +1,23 @@
-import json
-import os
 import importlib
+import json
 import logging
-from typing import Dict, Any, Type, Optional, List
-from sqlalchemy.ext.asyncio import AsyncSession
+import os
+from typing import Any
+
+from integrations.base import BaseConfigFlow, BaseHealthProvider
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.system_integration import SystemIntegration
-from integrations.base import BaseHealthProvider, BaseConfigFlow
 
 logger = logging.getLogger(__name__)
 
 
 class IntegrationRegistry:
     def __init__(self):
-        self._providers: Dict[str, BaseHealthProvider] = {}
-        self._config_flows: Dict[str, BaseConfigFlow] = {}
-        self._manifests: Dict[str, dict] = {}
+        self._providers: dict[str, BaseHealthProvider] = {}
+        self._config_flows: dict[str, BaseConfigFlow] = {}
+        self._manifests: dict[str, dict] = {}
         self._base_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "..",
@@ -37,18 +39,15 @@ class IntegrationRegistry:
         # empty dict for newly-enabled integrations that haven't been
         # configured yet.
         system_config_by_domain: dict[str, dict] = {
-            si.domain: dict(si.global_config or {})
-            for si in system_integrations
+            str(si.domain): dict(si.global_config or {}) for si in system_integrations
         }
 
         # Integrations are ENABLED BY DEFAULT: a domain is only skipped
         # when a SYSTEM_ADMIN has explicitly written an is_enabled=False
         # row via the admin console. Missing row == available.
-        disabled_domains = {
-            si.domain for si in system_integrations if not si.is_enabled
-        }
+        disabled_domains = {si.domain for si in system_integrations if not si.is_enabled}
 
-        for domain, manifest in self._manifests.items():
+        for domain, _manifest in self._manifests.items():
             if domain in disabled_domains:
                 logger.debug(
                     f"Integration {domain} is discovered but explicitly "
@@ -68,7 +67,7 @@ class IntegrationRegistry:
                 manifest_path = os.path.join(item_path, "manifest.json")
                 if os.path.exists(manifest_path):
                     try:
-                        with open(manifest_path, "r") as f:
+                        with open(manifest_path) as f:
                             manifest = json.load(f)
                             domain = manifest.get("domain")
                             if domain:
@@ -80,17 +79,11 @@ class IntegrationRegistry:
         try:
             # Dynamically import the modules
             provider_module = importlib.import_module(f"integrations.{domain}.provider")
-            config_flow_module = importlib.import_module(
-                f"integrations.{domain}.config_flow"
-            )
+            config_flow_module = importlib.import_module(f"integrations.{domain}.config_flow")
 
             # Find the classes
-            provider_class = self._find_class_by_base(
-                provider_module, BaseHealthProvider
-            )
-            config_flow_class = self._find_class_by_base(
-                config_flow_module, BaseConfigFlow
-            )
+            provider_class = self._find_class_by_base(provider_module, BaseHealthProvider)
+            config_flow_class = self._find_class_by_base(config_flow_module, BaseConfigFlow)
 
             if provider_class and config_flow_class:
                 provider_instance = provider_class()
@@ -111,29 +104,25 @@ class IntegrationRegistry:
         except Exception as e:
             logger.error(f"Error loading integration {domain}: {e}")
 
-    def _find_class_by_base(self, module: Any, base_class: Type) -> Optional[Type]:
+    def _find_class_by_base(self, module: Any, base_class: type) -> type | None:
         for item_name in dir(module):
             item = getattr(module, item_name)
-            if (
-                isinstance(item, type)
-                and issubclass(item, base_class)
-                and item is not base_class
-            ):
+            if isinstance(item, type) and issubclass(item, base_class) and item is not base_class:  # noqa: SIM102 -- nested conditional; merge when touched
                 if item.__module__ == module.__name__:
                     return item
         return None
 
-    def get_provider(self, domain: str) -> Optional[BaseHealthProvider]:
+    def get_provider(self, domain: str) -> BaseHealthProvider | None:
         return self._providers.get(domain)
 
-    def get_all_providers(self) -> List[BaseHealthProvider]:
+    def get_all_providers(self) -> list[BaseHealthProvider]:
         """All loaded provider instances (for generic shutdown / iteration)."""
         return list(self._providers.values())
 
-    def get_config_flow(self, domain: str) -> Optional[BaseConfigFlow]:
+    def get_config_flow(self, domain: str) -> BaseConfigFlow | None:
         return self._config_flows.get(domain)
 
-    def get_all_manifests(self) -> List[dict]:
+    def get_all_manifests(self) -> list[dict]:
         return list(self._manifests.values())
 
 

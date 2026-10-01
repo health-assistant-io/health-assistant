@@ -3,10 +3,10 @@
 Tenant- (+ optional patient-) scoped ILIKE over ``notes`` / ``patient_notes``
 / ``impressions``. Self-registers with the instance-search registry.
 """
-from uuid import UUID
-from typing import Optional
 
-from sqlalchemy import select, or_
+from uuid import UUID
+
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.instances._helpers import ilike_pattern, iso
@@ -17,7 +17,7 @@ from app.models.examination_model import ExaminationModel
 async def search(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
     limit: int,
 ) -> list[dict]:

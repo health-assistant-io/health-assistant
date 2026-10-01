@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 import httpx
 
@@ -38,7 +37,7 @@ logger = logging.getLogger(__name__)
 class STTTarget:
     """Resolved STT provider/model to call + the auth/base URL."""
 
-    api_key: Optional[str]
+    api_key: str | None
     api_base: str
     model_name: str
 
@@ -60,9 +59,7 @@ def _resolve_stt_target(provider, model) -> STTTarget:
     clear message instead of a cryptic provider 400.
     """
     api_key = provider.get_api_key_plaintext() if provider else None
-    api_base = (
-        provider.api_base if provider and provider.api_base else "https://api.openai.com/v1"
-    )
+    api_base = provider.api_base if provider and provider.api_base else "https://api.openai.com/v1"
     model_name = model.model_name if model else settings.OPENAI_STT_MODEL
 
     required = required_capabilities_for_task(TaskType.TRANSCRIPTION.value)
@@ -127,9 +124,7 @@ async def transcribe_audio(
             raise TranscriptionError("Speech-to-text authentication failed.")
         if resp.status_code == 429:
             raise TranscriptionError("Speech-to-text rate limit reached. Try again shortly.")
-        raise TranscriptionError(
-            f"Speech-to-text failed (HTTP {resp.status_code})."
-        )
+        raise TranscriptionError(f"Speech-to-text failed (HTTP {resp.status_code}).")
 
     try:
         payload = resp.json()
@@ -146,7 +141,7 @@ async def transcribe_audio(
     return str(text).strip()
 
 
-def split_filename(filename: str) -> Tuple[str, str]:
+def split_filename(filename: str) -> tuple[str, str]:
     """Return ``(stem, ext)`` for a filename, lowercased extension with dot."""
     if "." in filename:
         stem, ext = filename.rsplit(".", 1)

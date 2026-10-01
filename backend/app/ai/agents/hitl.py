@@ -16,7 +16,7 @@ load, while this module needs ``chat_engine_iter`` only at call time.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -27,7 +27,7 @@ from app.models.enums import HitlTaskStatus
 logger = logging.getLogger(__name__)
 
 
-def _parse_hitl_proposal(observation: Any) -> Optional[Dict[str, Any]]:
+def _parse_hitl_proposal(observation: Any) -> dict[str, Any] | None:
     """Inspect a chatbot tool result for a human-in-the-loop proposal.
 
     Proposal tools return a JSON string (or dict) shaped like:
@@ -51,7 +51,7 @@ def _parse_hitl_proposal(observation: Any) -> Optional[Dict[str, Any]]:
     return task
 
 
-def _hitl_proposal_note(observation: Any) -> Optional[str]:
+def _hitl_proposal_note(observation: Any) -> str | None:
     """Extract the optional LLM-facing ``note`` a propose_* tool attaches to its
     ``__hitl__`` result (sibling to ``task``). Used by tools that do pre-flight
     work worth telling the LLM about (e.g. ``propose_anatomy_graph_generation``
@@ -69,13 +69,13 @@ def _hitl_proposal_note(observation: Any) -> Optional[str]:
     return note if isinstance(note, str) and note.strip() else None
 
 
-def _hitl_llm_feedback(task: Dict[str, Any], note: Optional[str] = None) -> str:
+def _hitl_llm_feedback(task: dict[str, Any], note: str | None = None) -> str:
     """Concise note appended to the LLM history so the agent knows a proposal
     was emitted and that it must wait for human confirmation (no auto-retry).
 
     ``note`` is an optional tool-supplied pre-flight summary (e.g. "Found 8
     existing structures for 'Heart'") prepended to the standard wait-message."""
-    parts: List[str] = []
+    parts: list[str] = []
     if note:
         parts.append(note)
     parts.append(
@@ -88,7 +88,7 @@ def _hitl_llm_feedback(task: Dict[str, Any], note: Optional[str] = None) -> str:
     return "\n".join(parts)
 
 
-def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
+def _hitl_resolution_summary(tasks: list[dict[str, Any]]) -> str:
     """Build the structured outcomes message fed back to the agent when a HITL
     continuation turn is triggered. Reads status + final_payload + result +
     error from each resolved task. Returned text becomes the body of a synthetic
@@ -143,28 +143,18 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
                     keys = ("id", "biomarker_id", "catalog_id", "event_id", "slug")
                     trimmed = {k: result[k] for k in keys if k in result}
                     if trimmed:
-                        parts.append(
-                            f"result={json.dumps(trimmed, ensure_ascii=False)}"
-                        )
+                        parts.append(f"result={json.dumps(trimmed, ensure_ascii=False)}")
             err = resolved.get("error")
             if err:
                 parts.append(f"error={err}")
-            lines.append(
-                f"- [{task_type}] {title} ({proposal_id[:8]}): "
-                + ", ".join(parts)
-                + "."
-            )
+            lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): " + ", ".join(parts) + ".")
         elif status_raw == HitlTaskStatus.DISMISSED:
             dismissed += 1
-            lines.append(
-                f"- [{task_type}] {title} ({proposal_id[:8]}): DISMISSED by the user."
-            )
+            lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): DISMISSED by the user.")
         elif status_raw == HitlTaskStatus.FAILED:
             failed += 1
             err = resolved.get("error", "unknown error")
-            lines.append(
-                f"- [{task_type}] {title} ({proposal_id[:8]}): FAILED ({err})."
-            )
+            lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): FAILED ({err}).")
         else:
             unanswered += 1
             lines.append(
@@ -185,8 +175,7 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
     counts_str = ", ".join(counts) if counts else "no items"
 
     header = (
-        f"[HITL RESOLUTION FEEDBACK] The user has finished acting on your "
-        f"proposals ({counts_str})."
+        f"[HITL RESOLUTION FEEDBACK] The user has finished acting on your proposals ({counts_str})."
     )
 
     # Guidance varies based on whether there are unanswered items.
@@ -210,7 +199,7 @@ def _hitl_resolution_summary(tasks: List[Dict[str, Any]]) -> str:
     return f"{header}\n" + "\n".join(lines) + f"\n{guidance}"
 
 
-def _format_ask_user_answers(resolved: Dict[str, Any]) -> Optional[str]:
+def _format_ask_user_answers(resolved: dict[str, Any]) -> str | None:
     """Format the answers of a confirmed ``ask_user`` task for the LLM.
 
     Emits ONE BULLET PER QUESTION on its own line, with the answer as a flat
@@ -237,11 +226,9 @@ def _format_ask_user_answers(resolved: Dict[str, Any]) -> Optional[str]:
     if not isinstance(answers, dict) or not answers:
         return None
 
-    lines: List[str] = []
+    lines: list[str] = []
     for q_id, raw in answers.items():
-        lines.append(
-            f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}"
-        )
+        lines.append(f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}")
     return "answers:\n" + "\n".join(lines)
 
 
@@ -311,10 +298,10 @@ _CANDIDATE_FIELD_CAPS: dict = {
 }
 
 
-def _compact_candidate(value: Dict[str, Any]) -> Dict[str, Any]:
+def _compact_candidate(value: dict[str, Any]) -> dict[str, Any]:
     """Drop None + unknown keys, apply per-field length caps, return an
     identity-ordered dict. Returns ``{}`` for an all-empty input."""
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for k in _CANDIDATE_FIELD_ORDER:
         v = value.get(k)
         if v is None or v == "":
@@ -326,7 +313,7 @@ def _compact_candidate(value: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _hitl_resolved_brief(tasks: List[Dict[str, Any]]) -> Optional[str]:
+def _hitl_resolved_brief(tasks: list[dict[str, Any]]) -> str | None:
     """Compact one-line summary of resolved tasks on a past assistant message,
     injected into history reconstruction so the agent remembers prior HITL
     outcomes across user turns. Returns None if no tasks were resolved."""
@@ -337,9 +324,7 @@ def _hitl_resolved_brief(tasks: List[Dict[str, Any]]) -> Optional[str]:
         if status_raw not in terminal:
             continue
         # Normalize enum -> plain string for display.
-        status = (
-            status_raw.value if isinstance(status_raw, HitlTaskStatus) else status_raw
-        )
+        status = status_raw.value if isinstance(status_raw, HitlTaskStatus) else status_raw
         task_type = t.get("task_type", "action")
         title = t.get("title") or task_type
         result = (t.get("resolved") or {}).get("result") or {}
@@ -374,18 +359,14 @@ def _append_assistant_turn_to_history(msg: Any, history: list) -> None:
     tool_call_id, which some providers reject).
     """
     raw_calls = list(msg.tool_calls or [])
-    t_calls: List[Dict[str, Any]] = []
+    t_calls: list[dict[str, Any]] = []
     for idx, tc in enumerate(raw_calls):
         # Fall back to a unique synthetic id (per index) if none was stored —
         # the AIMessage.tool_calls and the ToolMessage response MUST share it.
         tc_id = tc.get("id") or f"call_{msg.id.hex[:8]}_{idx}"
-        t_calls.append(
-            {"name": tc.get("name", "tool"), "args": tc.get("args", {}), "id": tc_id}
-        )
+        t_calls.append({"name": tc.get("name", "tool"), "args": tc.get("args", {}), "id": tc_id})
 
-    history.append(
-        AIMessage(content=(msg.content or {}).get("text"), tool_calls=t_calls)
-    )
+    history.append(AIMessage(content=(msg.content or {}).get("text"), tool_calls=t_calls))
 
     # One ToolMessage per tool_call_id — satisfies OpenAI's contract and
     # replays the actual past observation so the model retains prior context.
@@ -409,7 +390,7 @@ async def resume_after_hitl(
     session_id: UUID,
     tenant_id: UUID,
     user_id: UUID,
-    message_id: Optional[UUID] = None,
+    message_id: UUID | None = None,
     flow_events: bool = False,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
@@ -431,11 +412,11 @@ async def resume_after_hitl(
         reconstruct_history,
         stream_loop_as_sse,
     )
+    from app.ai.agents.prompts import build_resume_system_prompt
     from app.ai.graphs.chat_agent import (
         chat_engine_iter,
         resume_interrupted_chat_graph,
     )
-    from app.ai.agents.prompts import build_resume_system_prompt
     from app.models.chat_model import ChatSession as _ChatSession
 
     # Verify ownership + pull patient_id for tool context.
@@ -460,9 +441,7 @@ async def resume_after_hitl(
         # summary labels unanswered items as "NOT YET ANSWERED".
         terminal = HitlTaskStatus.terminal()
         pending = [
-            t
-            for t in target.tasks
-            if isinstance(t, dict) and t.get("status") not in terminal
+            t for t in target.tasks if isinstance(t, dict) and t.get("status") not in terminal
         ]
         if pending:
             logger.info(
@@ -502,9 +481,7 @@ async def resume_after_hitl(
         db, tenant_id, patient_id, user_id, examination_id=None, label="resume"
     )
 
-    llm = await ai_provider_service.get_llm(
-        "chat", tenant_id=tenant_id, user_id=user_id
-    )
+    llm = await ai_provider_service.get_llm("chat", tenant_id=tenant_id, user_id=user_id)
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     system_prompt = build_resume_system_prompt()

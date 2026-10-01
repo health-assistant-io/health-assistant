@@ -21,8 +21,8 @@ Post-fix contract pinned here:
 5. Running two ``@async_task`` functions back-to-back in the same
    process does not raise (the original failure mode).
 """
-import inspect
 
+import inspect
 
 
 def test_get_async_engine_is_process_singleton():
@@ -75,10 +75,9 @@ def test_get_async_session_returns_shared_engine():
     worker_tasks._worker_engine = None
     try:
         shared_engine = worker_tasks.get_async_engine()
-        session, returned_engine = worker_tasks.get_async_session()
+        _session, returned_engine = worker_tasks.get_async_session()
         assert returned_engine is shared_engine, (
-            "get_async_session() must return the shared worker engine, not a "
-            "per-task one."
+            "get_async_session() must return the shared worker engine, not a per-task one."
         )
     finally:
         worker_tasks._worker_engine = None
@@ -93,8 +92,8 @@ def test_tasks_do_not_dispose_engine_in_finally():
     The lifecycle helpers (``dispose_worker_engine``, signal handlers) are
     exempt — disposing the shared engine is their job.
     """
-    from app.workers import tasks as worker_tasks
     from app.workers import ai_tasks as worker_ai_tasks
+    from app.workers import tasks as worker_tasks
 
     # Functions whose job IS to dispose the engine — exempt from the check.
     exempt = {

@@ -7,11 +7,11 @@ A9: ``_get_observation_status`` used ``< 0 -> Low`` / ``> 1.0 -> High`` on
 A10: Magic Fill prompt hardcoded ``"Today's date is 2026-03-22."`` instead
      of the live date — relative-date parsing degraded over time.
 """
+
 import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # B8: SVG sanitizer
@@ -26,13 +26,13 @@ import pytest
         ("<svg onload=alert(1)><path/></svg>", "unquoted handler"),
         ('<svg ONCLICK="alert(1)"><path/></svg>', "uppercase attr"),
         ('<svg onload = "alert(1)"><path/></svg>', "whitespace around ="),
-        ('<svg><script>alert(1)</script></svg>', "script element"),
+        ("<svg><script>alert(1)</script></svg>", "script element"),
         ('<svg><script type="text/javascript">x</script></svg>', "script with attrs"),
-        ('<svg><foreignObject><body>x</body></foreignObject></svg>', "foreignObject"),
+        ("<svg><foreignObject><body>x</body></foreignObject></svg>", "foreignObject"),
         ("<svg><script/></svg>", "self-closing script"),
         ('<svg><a xlink:href="javascript:alert(1)">click</a></svg>', "xlink javascript:"),
         ('<svg><a href="javascript:alert(1)">click</a></svg>', "href javascript:"),
-        ('<svg><a href=\'javascript:alert(1)\'>click</a></svg>', "single-quote javascript:"),
+        ("<svg><a href='javascript:alert(1)'>click</a></svg>", "single-quote javascript:"),
         ('<svg><a href="vbscript:msgbox(1)">x</a></svg>', "vbscript:"),
         ('<svg><a href="data:text/html,<script>alert(1)</script>">x</a></svg>', "data:text/html"),
         ('<svg><path onmouseover="evil()" d="M0 0"/></svg>', "handler on child element"),
@@ -51,9 +51,7 @@ def test_b8_svg_sanitizer_strips_attack(payload, description):
     )
     # No script / foreignObject element may remain.
     assert "<script" not in lowered, f"{description}: <script> survived: {out!r}"
-    assert "<foreignobject" not in lowered, (
-        f"{description}: <foreignObject> survived: {out!r}"
-    )
+    assert "<foreignobject" not in lowered, f"{description}: <foreignObject> survived: {out!r}"
     # No dangerous URL protocol may remain.
     for proto in ("javascript:", "vbscript:", "data:text/html"):
         assert proto not in lowered, f"{description}: {proto} survived: {out!r}"
@@ -88,7 +86,7 @@ def test_b8_svg_sanitizer_no_double_counting_regression():
     already_styled = (
         '<svg stroke="currentColor" fill="none" stroke-width="2" '
         'stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">'
-        "<path d=\"M0 0\"/></svg>"
+        '<path d="M0 0"/></svg>'
     )
     out = sanitize_svg(already_styled)
     # Each default attribute should appear exactly once.
@@ -215,9 +213,7 @@ def test_a10_no_hardcoded_date_in_source():
     assert "Today's date is 2026-03-22" not in code, (
         "ai_assistance prompt body still hardcodes the 2026-03-22 date."
     )
-    assert "assume 2026" not in code, (
-        "ai_assistance prompt body still hardcodes the year 2026."
-    )
+    assert "assume 2026" not in code, "ai_assistance prompt body still hardcodes the year 2026."
     # And the live injection variables must be present.
     assert "today_iso" in code, "Missing live today_iso injection."
     assert "current_year" in code, "Missing live current_year injection."
@@ -230,7 +226,11 @@ async def test_a10_magic_fill_prompt_contains_today(monkeypatch):
 
     svc = AIAssistanceService.__new__(AIAssistanceService)
     svc.db = MagicMock()
-    svc.db.execute = AsyncMock(return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))))
+    svc.db.execute = AsyncMock(
+        return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        )
+    )
 
     captured_prompt = {}
 
@@ -273,6 +273,6 @@ def test_a10_date_is_current():
     src = _ai_assistance_package_source()
     # The code computes datetime.now(timezone.utc) and strftime — confirm
     # those calls exist so the prompt can never serve a stale date.
-    assert "datetime.now(timezone.utc)" in src, (
-        "Magic Fill must compute the date from datetime.now(timezone.utc)."
+    assert re.search(r"datetime\.now\((?:timezone\.utc|UTC)\)", src), (
+        "Magic Fill must compute the date from the current UTC time."
     )

@@ -1,27 +1,27 @@
-from .patient import Patient, Gender, Observation, DiagnosticReport
-from .medication import Medication, MedicationCatalog, MedicationStatus
 from .allergy import (
     AllergyCatalog,
-    AllergyIntolerance,
     AllergyCategory,
-    AllergyCriticality,
     AllergyClinicalStatus,
+    AllergyCriticality,
+    AllergyIntolerance,
 )
-from .vaccine import VaccineCatalog, PatientImmunization
+from .medication import Medication, MedicationCatalog, MedicationStatus
+from .patient import DiagnosticReport, Gender, Observation, Patient
+from .vaccine import PatientImmunization, VaccineCatalog
 
 __all__ = [
-    "Patient",
-    "Gender",
-    "Observation",
+    "AllergyCatalog",
+    "AllergyCategory",
+    "AllergyClinicalStatus",
+    "AllergyCriticality",
+    "AllergyIntolerance",
     "DiagnosticReport",
+    "Gender",
     "Medication",
     "MedicationCatalog",
     "MedicationStatus",
-    "AllergyCatalog",
-    "AllergyIntolerance",
-    "AllergyCategory",
-    "AllergyCriticality",
-    "AllergyClinicalStatus",
-    "VaccineCatalog",
+    "Observation",
+    "Patient",
     "PatientImmunization",
+    "VaccineCatalog",
 ]

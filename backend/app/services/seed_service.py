@@ -1,26 +1,31 @@
+import contextlib
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Dict, Any
-from sqlalchemy import select, func, or_ as sa_or, and_ as sa_and
+from typing import Any, ClassVar
+from uuid import uuid4
+
+from sqlalchemy import and_ as sa_and
+from sqlalchemy import func, select
+from sqlalchemy import or_ as sa_or
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.fhir.medication import MedicationCatalog
-from app.models.fhir.allergy import AllergyCatalog
+
+from app.core.database import AsyncSessionLocal
+from app.models.anatomy_model import AnatomyFigure, AnatomyStructure
 from app.models.clinical_event import ClinicalEventType
-from app.models.anatomy_model import AnatomyStructure, AnatomyFigure
 from app.models.enums import (
     CodingSystem,
     ConceptKind,
     ScheduleKind,
 )
-from app.core.database import AsyncSessionLocal
+from app.models.fhir.allergy import AllergyCatalog
+from app.models.fhir.medication import MedicationCatalog
 from app.services.concept_service import (
-    resolve_concept_by_slug,
     concepts_with_kind,
+    resolve_concept_by_slug,
     sync_concept_kind_tags,
 )
-from uuid import uuid4
-from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +34,7 @@ class SeedService:
     def __init__(self):
         self.seeds_dir = Path(__file__).parent.parent.parent / "data" / "seeds"
 
-    async def seed_clinical_event_types(
-        self, session: AsyncSession = None
-    ) -> Dict[str, int]:
+    async def seed_clinical_event_types(self, session: AsyncSession = None) -> dict[str, int]:
         """
         Sync clinical event types from JSON to Database.
         """
@@ -41,7 +44,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 event_types_data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load clinical event types seeds: {e}")
@@ -51,19 +54,18 @@ class SeedService:
             return await self._process_clinical_event_types(session, event_types_data)
         else:
             async with AsyncSessionLocal() as new_session:
-                result = await self._process_clinical_event_types(
-                    new_session, event_types_data
-                )
+                result = await self._process_clinical_event_types(new_session, event_types_data)
                 await new_session.commit()
                 return result
 
     async def _process_clinical_event_types(
         self, session: AsyncSession, data: Any
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
+        from pydantic import ValidationError
+
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
         from app.schemas.clinical_event import MetadataSchema
-        from pydantic import ValidationError
 
         items = data if isinstance(data, list) else data.get("items", [])
 
@@ -71,12 +73,10 @@ class SeedService:
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         if not await self._table_exists(session, "clinical_event_types"):
-            logger.error(
-                "Table 'clinical_event_types' does not exist. Skipping seeding."
-            )
+            logger.error("Table 'clinical_event_types' does not exist. Skipping seeding.")
             return {"added": 0, "updated": 0, "skipped": len(items), "errors": 0}
 
-        cat_cache: Dict[str, Any] = {}
+        cat_cache: dict[str, Any] = {}
 
         for type_item in items:
             try:
@@ -116,16 +116,12 @@ class SeedService:
                         cat_cache[cat_slug] = cat_res
                     cat_concept_id = cat_cache[cat_slug]
 
-                stmt = select(ClinicalEventType).where(
-                    ClinicalEventType.slug == type_item["slug"]
-                )
+                stmt = select(ClinicalEventType).where(ClinicalEventType.slug == type_item["slug"])
                 db_type = await session.scalar(stmt)
 
                 if db_type:
                     db_type.name = type_item.get("name", db_type.name)
-                    db_type.description = type_item.get(
-                        "description", db_type.description
-                    )
+                    db_type.description = type_item.get("description", db_type.description)
                     db_type.icon = type_item.get("icon", db_type.icon)
                     db_type.color = type_item.get("color", db_type.color)
                     db_type.metadata_schema = type_item.get(
@@ -150,25 +146,21 @@ class SeedService:
                         # Phase 8a: required (NOT NULL). The seed loader falls
                         # back to STATE when the JSON omits the field; every
                         # shipped seed already declares it.
-                        schedule_kind=ScheduleKind.from_string(
-                            type_item.get("schedule_kind")
-                        )
+                        schedule_kind=ScheduleKind.from_string(type_item.get("schedule_kind"))
                         or ScheduleKind.STATE,
                         category_concept_id=cat_concept_id,
                         tenant_id=None,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                     session.add(new_type)
                     stats["added"] += 1
             except Exception as e:
-                logger.error(
-                    f"Error seeding clinical event type {type_item.get('slug')}: {e}"
-                )
+                logger.error(f"Error seeding clinical event type {type_item.get('slug')}: {e}")
                 stats["errors"] += 1
 
         return stats
 
-    async def seed_medications(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_medications(self, session: AsyncSession = None) -> dict[str, int]:
         """
         Sync medications from JSON to Database.
         Returns a summary of changes.
@@ -179,7 +171,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 medications_data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load medication seeds: {e}")
@@ -195,7 +187,7 @@ class SeedService:
                 await new_session.commit()
                 return result
 
-    async def seed_body_parts(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_body_parts(self, session: AsyncSession = None) -> dict[str, int]:
         """
         Sync anatomy structures from JSON to Database.
 
@@ -229,15 +221,15 @@ class SeedService:
             logger.warning(f"Seed file not found: {file_path}")
             return None
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"Failed to load {file_path}: {e}")
             return None
 
     async def _process_body_parts(
-        self, session: AsyncSession, data: Dict[str, Any]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: dict[str, Any]
+    ) -> dict[str, int]:
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         if not await self._table_exists(session, "anatomy_structures"):
@@ -254,9 +246,7 @@ class SeedService:
 
         for item in nodes:
             try:
-                stmt = select(AnatomyStructure).where(
-                    AnatomyStructure.slug == item["slug"]
-                )
+                stmt = select(AnatomyStructure).where(AnatomyStructure.slug == item["slug"])
                 result = await session.execute(stmt)
                 db_part = result.scalar_one_or_none()
 
@@ -272,10 +262,8 @@ class SeedService:
 
                 standard_sys = None
                 if item.get("standard_system"):
-                    try:
+                    with contextlib.suppress(ValueError):
                         standard_sys = CodingSystem(item["standard_system"])
-                    except ValueError:
-                        pass
 
                 if db_part:
                     db_part.name = item.get("name", db_part.name)
@@ -286,9 +274,7 @@ class SeedService:
                     if class_concept_id is not None:
                         db_part.class_concept_id = class_concept_id
                     db_part.standard_system = standard_sys
-                    db_part.standard_code = item.get(
-                        "standard_code", db_part.standard_code
-                    )
+                    db_part.standard_code = item.get("standard_code", db_part.standard_code)
                     db_part.description = item.get("description", db_part.description)
                     db_part.display = item.get("display", db_part.display)
                     stats["updated"] += 1
@@ -305,7 +291,7 @@ class SeedService:
                         display=item.get("display"),
                         is_custom=False,
                         tenant_id=None,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                     session.add(new_part)
                     await session.flush()
@@ -315,9 +301,7 @@ class SeedService:
                 logger.error(f"Error seeding anatomy node {item.get('slug')}: {e}")
                 stats["errors"] += 1
 
-        all_nodes_result = await session.execute(
-            select(AnatomyStructure.slug, AnatomyStructure.id)
-        )
+        all_nodes_result = await session.execute(select(AnatomyStructure.slug, AnatomyStructure.id))
         for slug, node_id in all_nodes_result.all():
             slug_to_id[slug] = node_id
 
@@ -328,9 +312,7 @@ class SeedService:
 
         return stats
 
-    async def seed_anatomy_figures(
-        self, session: AsyncSession = None
-    ) -> Dict[str, int]:
+    async def seed_anatomy_figures(self, session: AsyncSession = None) -> dict[str, int]:
         """
         Seed the four default body figures (man/woman x front/back) from WebP
         files under data/seeds/anatomy_figures/. Each file is copied into
@@ -354,15 +336,13 @@ class SeedService:
             ("woman-back", "woman-back.webp", "Female \u2014 Back", "woman", "back", 3),
         ]
         seeds_dir = self.seeds_dir / "anatomy_figures"
-        from app.services.anatomy_service import _figures_base_dir, FIGURES_DIR
         from app.core.config import settings
+        from app.services.anatomy_service import FIGURES_DIR, _figures_base_dir
 
-        async def _do(s: AsyncSession) -> Dict[str, int]:
+        async def _do(s: AsyncSession) -> dict[str, int]:
             local = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
             if not await self._table_exists(s, "anatomy_figures"):
-                logger.error(
-                    "Table 'anatomy_figures' does not exist. Skipping figure seeding."
-                )
+                logger.error("Table 'anatomy_figures' does not exist. Skipping figure seeding.")
                 local["errors"] = 1
                 return local
             _figures_base_dir()  # ensure the upload dir exists (side effect)
@@ -374,8 +354,9 @@ class SeedService:
                         local["errors"] += 1
                         continue
                     data = src.read_bytes()
-                    from PIL import Image as PILImage
                     import io
+
+                    from PIL import Image as PILImage
 
                     with PILImage.open(io.BytesIO(data)) as img:
                         w, h = img.size
@@ -413,7 +394,7 @@ class SeedService:
                             height=h,
                             sort_order=order,
                             is_active=True,
-                            created_at=datetime.now(timezone.utc),
+                            created_at=datetime.now(UTC),
                         )
                     )
                     local["added"] += 1
@@ -440,8 +421,8 @@ class SeedService:
         return await session.run_sync(check)
 
     async def _process_medications(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         data = data if isinstance(data, list) else data.get("items", [])
@@ -479,7 +460,7 @@ class SeedService:
                         contraindications=item.get("contraindications"),
                         dosage_info=item.get("dosage_info"),
                         tenant_id=None,  # System-wide
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                     session.add(new_med)
                     stats["added"] += 1
@@ -489,7 +470,7 @@ class SeedService:
 
         return stats
 
-    async def seed_vaccines(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_vaccines(self, session: AsyncSession = None) -> dict[str, int]:
         """Sync CVX-coded vaccine reference definitions from JSON (Phase 5).
 
         Upserts by ``slug`` (global, ``tenant_id=None``). ``PREVENTS`` edges to
@@ -500,7 +481,7 @@ class SeedService:
             logger.warning(f"Vaccine seed file not found: {file_path}")
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load vaccine seeds: {e}")
@@ -513,8 +494,8 @@ class SeedService:
             return result
 
     async def _process_vaccines(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         from app.models.fhir.vaccine import VaccineCatalog
 
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
@@ -533,15 +514,9 @@ class SeedService:
                     db_vac.name = item.get("name", db_vac.name)
                     db_vac.description = item.get("description", db_vac.description)
                     db_vac.code = item.get("code", db_vac.code)
-                    db_vac.coding_system = item.get(
-                        "coding_system", db_vac.coding_system
-                    )
-                    db_vac.target_diseases = item.get(
-                        "target_diseases", db_vac.target_diseases
-                    )
-                    db_vac.dose_schedule = item.get(
-                        "dose_schedule", db_vac.dose_schedule
-                    )
+                    db_vac.coding_system = item.get("coding_system", db_vac.coding_system)
+                    db_vac.target_diseases = item.get("target_diseases", db_vac.target_diseases)
+                    db_vac.dose_schedule = item.get("dose_schedule", db_vac.dose_schedule)
                     db_vac.contraindications = item.get(
                         "contraindications", db_vac.contraindications
                     )
@@ -560,7 +535,7 @@ class SeedService:
                         contraindications=item.get("contraindications"),
                         side_effects=item.get("side_effects"),
                         tenant_id=None,  # system-wide
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                     session.add(new_vac)
                     stats["added"] += 1
@@ -569,7 +544,7 @@ class SeedService:
                 stats["errors"] += 1
         return stats
 
-    async def seed_allergies(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_allergies(self, session: AsyncSession = None) -> dict[str, int]:
         """
         Sync allergies from JSON to Database.
         """
@@ -579,7 +554,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 allergies_data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load allergy seeds: {e}")
@@ -594,8 +569,8 @@ class SeedService:
                 return result
 
     async def _process_allergies(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         data = data if isinstance(data, list) else data.get("items", [])
@@ -613,9 +588,7 @@ class SeedService:
 
                 if db_allergy:
                     db_allergy.category = item.get("category", db_allergy.category)
-                    db_allergy.description = item.get(
-                        "description", db_allergy.description
-                    )
+                    db_allergy.description = item.get("description", db_allergy.description)
                     db_allergy.typical_reactions = item.get(
                         "typical_reactions", db_allergy.typical_reactions
                     )
@@ -628,7 +601,7 @@ class SeedService:
                         description=item.get("description"),
                         typical_reactions=item.get("typical_reactions"),
                         tenant_id=None,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                     )
                     session.add(new_allergy)
                     stats["added"] += 1
@@ -638,7 +611,7 @@ class SeedService:
 
         return stats
 
-    async def seed_concepts(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_concepts(self, session: AsyncSession = None) -> dict[str, int]:
         """Sync the unified concept taxonomy from JSON to Database."""
 
         file_path = self.seeds_dir / "concepts.json"
@@ -647,7 +620,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load concepts seed: {e}")
@@ -662,8 +635,8 @@ class SeedService:
                 return result
 
     async def _process_concepts(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         from app.models.concept_model import Concept, ConceptKindTag
         from app.models.enums import CatalogScope, ConceptKind, ConceptStatus
 
@@ -674,7 +647,7 @@ class SeedService:
             logger.error("Table 'concepts' does not exist. Skipping seeding.")
             return {"added": 0, "updated": 0, "skipped": len(data), "errors": 0}
 
-        slug_to_id: Dict[str, Any] = {}
+        slug_to_id: dict[str, Any] = {}
 
         for item in data:
             try:
@@ -704,19 +677,13 @@ class SeedService:
 
                 if db_concept:
                     db_concept.name = item.get("name", db_concept.name)
-                    db_concept.description = item.get(
-                        "description", db_concept.description
-                    )
-                    db_concept.coding_system = item.get(
-                        "coding_system", db_concept.coding_system
-                    )
+                    db_concept.description = item.get("description", db_concept.description)
+                    db_concept.coding_system = item.get("coding_system", db_concept.coding_system)
                     db_concept.code = item.get("code", db_concept.code)
                     db_concept.aliases = item.get("aliases", db_concept.aliases)
                     db_concept.icon = item.get("icon", db_concept.icon)
                     db_concept.color = item.get("color", db_concept.color)
-                    db_concept.display_order = item.get(
-                        "display_order", db_concept.display_order
-                    )
+                    db_concept.display_order = item.get("display_order", db_concept.display_order)
                     if parent_id:
                         db_concept.parent_id = parent_id
                     # Reconcile kind tags to the JSON's `kinds` — without this,
@@ -756,7 +723,7 @@ class SeedService:
         await session.flush()
         return stats
 
-    async def seed_diseases(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_diseases(self, session: AsyncSession = None) -> dict[str, int]:
         """Sync disease reference concepts (``kind=disease``, ICD-10 codes) from JSON.
 
         Diseases live as concepts — they inherit full CRUD/search/edges/FHIR for
@@ -773,7 +740,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load diseases seed: {e}")
@@ -786,14 +753,14 @@ class SeedService:
             await new_session.commit()
             return result
 
-    async def seed_concept_edges(self, session: AsyncSession = None) -> Dict[str, int]:
+    async def seed_concept_edges(self, session: AsyncSession = None) -> dict[str, int]:
         """Sync concept relationships (edges) from JSON to Database."""
         file_path = self.seeds_dir / "concept_edges.json"
         if not file_path.exists():
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load concept edges seed: {e}")
@@ -808,12 +775,12 @@ class SeedService:
                 return result
 
     async def _process_concept_edges(
-        self, session: AsyncSession, data: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+        self, session: AsyncSession, data: list[dict[str, Any]]
+    ) -> dict[str, int]:
         from app.models.concept_model import Concept, ConceptEdge
         from app.models.enums import (
-            ConceptRelationType,
             ConceptProvenance,
+            ConceptRelationType,
             EdgeApprovalStatus,
             EdgeEndpointType,
         )
@@ -839,9 +806,7 @@ class SeedService:
                 return None
             if etype == "concept":
                 row = await session.execute(
-                    select(Concept.id).where(
-                        Concept.slug == slug, Concept.tenant_id.is_(None)
-                    )
+                    select(Concept.id).where(Concept.slug == slug, Concept.tenant_id.is_(None))
                 )
                 eid = row.scalar_one_or_none()
                 return (EdgeEndpointType.CONCEPT, eid) if eid else None
@@ -853,9 +818,7 @@ class SeedService:
                 return (EdgeEndpointType.ANATOMY, eid) if eid else None
             if etype == "biomarker":
                 row = await session.execute(
-                    select(BiomarkerDefinition.id).where(
-                        BiomarkerDefinition.slug == slug
-                    )
+                    select(BiomarkerDefinition.id).where(BiomarkerDefinition.slug == slug)
                 )
                 eid = row.scalar_one_or_none()
                 return (EdgeEndpointType.BIOMARKER, eid) if eid else None
@@ -879,9 +842,7 @@ class SeedService:
                 )
                 eid = row.scalar_one_or_none()
                 return (EdgeEndpointType.IMMUNIZATION, eid) if eid else None
-            logger.warning(
-                f"Unknown seed endpoint type '{etype}' (slug={slug}); skipping."
-            )
+            logger.warning(f"Unknown seed endpoint type '{etype}' (slug={slug}); skipping.")
             return None
 
         for item in data:
@@ -933,9 +894,7 @@ class SeedService:
         await session.flush()
         return stats
 
-    async def seed_default_catalog(
-        self, session: AsyncSession = None
-    ) -> Dict[str, int]:
+    async def seed_default_catalog(self, session: AsyncSession = None) -> dict[str, int]:
         """Seed the default biomarker catalog (units + biomarker definitions).
 
         Loads ``data/seeds/default_catalog.json`` and upserts via
@@ -950,12 +909,10 @@ class SeedService:
         from app.schemas.biomarker import CatalogImportPayload
         from app.services.catalog_import_service import CatalogImportService
 
-        def _wrap(details: Dict[str, int]) -> Dict[str, int]:
+        def _wrap(details: dict[str, int]) -> dict[str, int]:
             return {
-                "added": details.get("units_added", 0)
-                + details.get("biomarkers_added", 0),
-                "updated": details.get("units_updated", 0)
-                + details.get("biomarkers_updated", 0),
+                "added": details.get("units_added", 0) + details.get("biomarkers_added", 0),
+                "updated": details.get("units_updated", 0) + details.get("biomarkers_updated", 0),
                 "skipped": 0,
                 "errors": details.get("errors", 0),
                 "details": details,
@@ -974,7 +931,7 @@ class SeedService:
             )
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
             payload = CatalogImportPayload.model_validate(data)
         except Exception as e:
@@ -998,9 +955,7 @@ class SeedService:
                 result = await svc.import_catalog(payload)
                 return _wrap(result)
 
-    async def seed_biomarker_panels(
-        self, session: AsyncSession = None
-    ) -> Dict[str, int]:
+    async def seed_biomarker_panels(self, session: AsyncSession = None) -> dict[str, int]:
         """Seed biomarker panel membership edges (MEMBER_OF).
 
         Loads ``data/seeds/biomarker_panels.json`` — ``{metadata, items}`` where
@@ -1011,14 +966,14 @@ class SeedService:
         Must run AFTER :meth:`seed_concepts` (panels exist) AND
         :meth:`seed_default_catalog` (biomarkers exist).
         """
-        from app.models.concept_model import Concept, ConceptEdge
         from app.models.biomarker_model import BiomarkerDefinition
+        from app.models.concept_model import Concept, ConceptEdge
         from app.models.enums import (
-            EdgeEndpointType,
-            ConceptRelationType,
-            ConceptProvenance,
-            EdgeApprovalStatus,
             ConceptKind,
+            ConceptProvenance,
+            ConceptRelationType,
+            EdgeApprovalStatus,
+            EdgeEndpointType,
         )
 
         file_path = self.seeds_dir / "biomarker_panels.json"
@@ -1026,7 +981,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load biomarker panels seed: {e}")
@@ -1034,13 +989,11 @@ class SeedService:
 
         items = data.get("items", []) if isinstance(data, dict) else data
 
-        async def _process(s: AsyncSession) -> Dict[str, int]:
+        async def _process(s: AsyncSession) -> dict[str, int]:
             stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
             # Batch-resolve panels + biomarkers once (avoid N+1 over the membership list).
             panel_slugs = {it["panel_slug"] for it in items if it.get("panel_slug")}
-            bio_slugs = {
-                it["biomarker_slug"] for it in items if it.get("biomarker_slug")
-            }
+            bio_slugs = {it["biomarker_slug"] for it in items if it.get("biomarker_slug")}
             panel_rows = (
                 (
                     await s.execute(
@@ -1058,9 +1011,7 @@ class SeedService:
             bio_rows = (
                 (
                     await s.execute(
-                        select(BiomarkerDefinition).where(
-                            BiomarkerDefinition.slug.in_(bio_slugs)
-                        )
+                        select(BiomarkerDefinition).where(BiomarkerDefinition.slug.in_(bio_slugs))
                     )
                 )
                 .scalars()
@@ -1117,9 +1068,7 @@ class SeedService:
                 await new_session.commit()
                 return result
 
-    async def seed_biomarker_states(
-        self, session: AsyncSession = None
-    ) -> Dict[str, int]:
+    async def seed_biomarker_states(self, session: AsyncSession = None) -> dict[str, int]:
         """Seed the canonical ``biomarker_states`` catalog (universal, no tenant).
 
         Loads ``data/seeds/biomarker_states.json`` and upserts by
@@ -1142,7 +1091,7 @@ class SeedService:
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         try:
-            with open(file_path, "r") as f:
+            with open(file_path) as f:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load biomarker states seed: {e}")
@@ -1150,12 +1099,10 @@ class SeedService:
 
         items = data.get("items", []) if isinstance(data, dict) else data
 
-        async def _process(s: AsyncSession) -> Dict[str, int]:
+        async def _process(s: AsyncSession) -> dict[str, int]:
             stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
             if not await self._table_exists(s, "biomarker_states"):
-                logger.error(
-                    "Table 'biomarker_states' does not exist. Skipping state seed."
-                )
+                logger.error("Table 'biomarker_states' does not exist. Skipping state seed.")
                 return {"added": 0, "updated": 0, "skipped": len(items), "errors": 0}
             # Pre-fetch existing rows indexed by (code, system) so the upsert
             # is a single round-trip rather than N queries.
@@ -1208,9 +1155,7 @@ class SeedService:
                         )
                         stats["added"] += 1
                 except Exception as e:
-                    logger.error(
-                        f"Error seeding biomarker state {item.get('slug')}: {e}"
-                    )
+                    logger.error(f"Error seeding biomarker state {item.get('slug')}: {e}")
                     stats["errors"] += 1
             await s.flush()
             return stats
@@ -1226,7 +1171,7 @@ class SeedService:
     # Dependencies are documented inline — moving a stage here is the single
     # place to review ordering, replacing the hardcoded call sequence that
     # used to live in ``main.py``.
-    _SEED_STAGE_NAMES: list[str] = [
+    _SEED_STAGE_NAMES: ClassVar[list[str]] = [
         "concepts",  # FIRST — anatomy_class/biomarker_class/… are referenced by
         #   body_parts (class_concept_slug→id), default_catalog (biomarker_class)
         #   and concept_edges. Must run before any stage that resolves a concept.
@@ -1243,7 +1188,7 @@ class SeedService:
         "biomarker_panels",  # after concepts + default_catalog
     ]
 
-    async def seed_all(self) -> Dict[str, Dict[str, int]]:
+    async def seed_all(self) -> dict[str, dict[str, int]]:
         """Run every seed stage in declared dependency order.
 
         Returns ``{stage_name: stats}``. Order is explicit in
@@ -1252,7 +1197,7 @@ class SeedService:
         ``concept_edges`` that resolve anatomy slugs) are reviewable in one
         place rather than scattered across call sites.
         """
-        out: Dict[str, Dict[str, int]] = {}
+        out: dict[str, dict[str, int]] = {}
         for name in self._SEED_STAGE_NAMES:
             logger.info("Seeding %s...", name)
             fn = getattr(self, f"seed_{name}")

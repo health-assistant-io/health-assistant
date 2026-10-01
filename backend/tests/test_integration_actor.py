@@ -9,8 +9,10 @@ interactive UI requests call — by deriving a ``TokenData`` from the
 These tests use a minimal fake session (no DB) so they exercise the resolver
 logic in isolation.
 """
-import pytest
+
 from uuid import uuid4
+
+import pytest
 
 from app.core.errors import NotFoundError
 from app.schemas.user import TokenData
@@ -93,9 +95,7 @@ async def test_resolve_actor_uses_user_role_not_integration_tenant():
     owner_id = uuid4()
     user_tenant = uuid4()
     integration_tenant = uuid4()  # different from the user's current tenant
-    integration = _FakeIntegration(
-        user_id=owner_id, tenant_id=integration_tenant
-    )
+    integration = _FakeIntegration(user_id=owner_id, tenant_id=integration_tenant)
     user = _FakeUser(user_id=owner_id, tenant_id=user_tenant, role_value="USER")
     db = _FakeSession(user)
 

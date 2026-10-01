@@ -1,3 +1,4 @@
+# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
 """Unified read/write contract over the two notification-preference stores.
 
 Hides the storage split behind one service so callers (the
@@ -19,7 +20,7 @@ routes reads + writes to the right store.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -51,8 +52,8 @@ class NotificationPreferencesService:
     async def get_all(
         self,
         user_id: UUID,
-        tenant_id: Optional[UUID],
-        integration_id: Optional[str] = None,
+        tenant_id: UUID | None,
+        integration_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """All kinds for ``user_id`` with their current enabled state.
 
@@ -63,9 +64,7 @@ class NotificationPreferencesService:
         metas = await enumerate_for_user(self.db, user_id)
 
         # Tiered effective values (sources + channels).
-        tiered_values, _ = await SettingsService(self.db).resolve_effective(
-            user_id, tenant_id
-        )
+        tiered_values, _ = await SettingsService(self.db).resolve_effective(user_id, tenant_id)
         # Raw user JSONB (integration per-instance keys are not in the tiered
         # registry, so resolve_effective doesn't surface them).
         user_settings = await self._load_user_settings(user_id)
@@ -89,7 +88,7 @@ class NotificationPreferencesService:
     async def set(
         self,
         user_id: UUID,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         kind_id: str,
         enabled: bool,
     ) -> NotificationKindMeta:
@@ -104,9 +103,7 @@ class NotificationPreferencesService:
         if meta is None:
             raise NotFoundError(f"Unknown notification kind: {kind_id}")
         if not enabled and not meta.mutable:
-            raise ValidationError(
-                f"Notification kind '{kind_id}' cannot be disabled"
-            )
+            raise ValidationError(f"Notification kind '{kind_id}' cannot be disabled")
 
         if kind_id.startswith("source:"):
             await self._set_tiered(
@@ -143,9 +140,7 @@ class NotificationPreferencesService:
         if meta.group == "integration":
             # Per-instance keys live in user JSONB; absent = provider default.
             parts = meta.kind_id.split(":", 2)
-            stored = user_settings.get(
-                f"notifications.integration.{parts[1]}.{parts[2]}"
-            )
+            stored = user_settings.get(f"notifications.integration.{parts[1]}.{parts[2]}")
             if stored is not None:
                 return bool(stored)
             return bool(meta.default_enabled)
@@ -168,7 +163,7 @@ class NotificationPreferencesService:
     async def _set_tiered(
         self,
         user_id: UUID,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         key: str,
         enabled: bool,
     ) -> None:
@@ -185,9 +180,7 @@ class NotificationPreferencesService:
             tenant_id,
         )
 
-    async def _set_integration_key(
-        self, user_id: UUID, kind_id: str, enabled: bool
-    ) -> None:
+    async def _set_integration_key(self, user_id: UUID, kind_id: str, enabled: bool) -> None:
         """Mutate an ad-hoc per-instance key in ``UserModel.settings``.
 
         Re-enabling removes the override (fall back to provider default);
@@ -213,9 +206,7 @@ class NotificationPreferencesService:
     # Lookups
     # ------------------------------------------------------------------
 
-    async def _find_kind_for_user(
-        self, user_id: UUID, kind_id: str
-    ) -> Optional[NotificationKindMeta]:
+    async def _find_kind_for_user(self, user_id: UUID, kind_id: str) -> NotificationKindMeta | None:
         """Confirm ``kind_id`` is one of the user's addressable kinds."""
         metas = await enumerate_for_user(self.db, user_id)
         for meta in metas:
@@ -225,9 +216,7 @@ class NotificationPreferencesService:
 
     async def _load_user_settings(self, user_id: UUID) -> dict[str, Any]:
         row = (
-            await self.db.execute(
-                select(UserModel.settings).where(UserModel.id == user_id)
-            )
+            await self.db.execute(select(UserModel.settings).where(UserModel.id == user_id))
         ).scalar_one_or_none()
         return dict(row or {})
 

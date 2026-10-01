@@ -1,16 +1,18 @@
-from typing import List, Optional, Any
+from typing import Any
 from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.doctor_model import DoctorModel
 from app.models.enums import ConceptKind
-from app.services.concept_service import resolve_concept_by_slug, concepts_with_kind
+from app.services.concept_service import concepts_with_kind, resolve_concept_by_slug
 from app.services.fhir_helpers import assert_valid_fhir
 
 
 async def _resolve_specialty_concept(
-    db: AsyncSession, specialty: Optional[str], tenant_id: Optional[UUID] = None
-) -> Optional[UUID]:
+    db: AsyncSession, specialty: str | None, tenant_id: UUID | None = None
+) -> UUID | None:
     """Best-effort resolve a free-text specialty to a ``specialty`` concept.
 
     Tries by slug first (case-insensitive, slugified), then by exact name
@@ -29,8 +31,9 @@ async def _resolve_specialty_concept(
         if cid:
             return cid
     # Fallback: match by name (case-insensitive equality on the lowercase name)
-    from app.models.concept_model import Concept
     from sqlalchemy import func as sa_func
+
+    from app.models.concept_model import Concept
 
     res = await db.execute(
         select(Concept.id).where(
@@ -44,8 +47,8 @@ async def _resolve_specialty_concept(
 
 
 async def list_doctors(
-    tenant_id: UUID | None, db: AsyncSession, user_id: Optional[UUID] = None
-) -> List[DoctorModel]:
+    tenant_id: UUID | None, db: AsyncSession, user_id: UUID | None = None
+) -> list[DoctorModel]:
     query = select(DoctorModel)
     if tenant_id:
         query = query.where(DoctorModel.tenant_id == tenant_id)
@@ -57,13 +60,9 @@ async def list_doctors(
     return list(result.scalars().all())
 
 
-async def get_doctor(
-    doctor_id: UUID, tenant_id: UUID, db: AsyncSession
-) -> Optional[DoctorModel]:
+async def get_doctor(doctor_id: UUID, tenant_id: UUID, db: AsyncSession) -> DoctorModel | None:
     result = await db.execute(
-        select(DoctorModel).where(
-            DoctorModel.id == doctor_id, DoctorModel.tenant_id == tenant_id
-        )
+        select(DoctorModel).where(DoctorModel.id == doctor_id, DoctorModel.tenant_id == tenant_id)
     )
     return result.scalar_one_or_none()
 
@@ -72,24 +71,22 @@ async def create_doctor(
     tenant_id: UUID,
     creator_id: UUID,
     name: str,
-    specialty: Optional[str] = None,
-    specialty_concept_id: Optional[UUID] = None,
-    license_number: Optional[str] = None,
-    email: Optional[str] = None,
-    phone: Optional[str] = None,
-    telecom: Optional[List[Any]] = None,
-    address: Optional[Any] = None,
-    office_number: Optional[str] = None,
-    office_details: Optional[str] = None,
-    user_id: Optional[UUID] = None,  # Linked identity
+    specialty: str | None = None,
+    specialty_concept_id: UUID | None = None,
+    license_number: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    telecom: list[Any] | None = None,
+    address: Any | None = None,
+    office_number: str | None = None,
+    office_details: str | None = None,
+    user_id: UUID | None = None,  # Linked identity
     db: AsyncSession = None,
 ) -> DoctorModel:
     # Prefer an explicit ``specialty_concept_id``; fall back to resolving the
     # legacy ``specialty`` free-text against the ``specialty`` concept catalog.
     if specialty_concept_id is None and specialty:
-        specialty_concept_id = await _resolve_specialty_concept(
-            db, specialty, tenant_id=tenant_id
-        )
+        specialty_concept_id = await _resolve_specialty_concept(db, specialty, tenant_id=tenant_id)
     doctor = DoctorModel(
         tenant_id=tenant_id,
         created_by=creator_id,
@@ -116,7 +113,7 @@ async def create_doctor(
 
 async def update_doctor(
     doctor_id: UUID, tenant_id: UUID, db: AsyncSession, **kwargs
-) -> Optional[DoctorModel]:
+) -> DoctorModel | None:
     doctor = await get_doctor(doctor_id, tenant_id, db)
     if not doctor:
         return None

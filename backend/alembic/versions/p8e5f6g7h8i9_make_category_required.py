@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """make clinical_event_types.category_concept_id NOT NULL
 
 Phase 8e of the calendar-ongoing-events plan: tighten the wire format for
@@ -23,9 +24,9 @@ Revises: p8a1b2c3d4e5
 Create Date: 2026-07-20
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "p8e5f6g7h8i9"
 down_revision = "p8a1b2c3d4e5"

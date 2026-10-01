@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import uuid
-from typing import Optional
 
 import pytest
 from sqlalchemy import create_engine, select, text
@@ -32,7 +31,6 @@ from app.models.audit_model import AuditEvent
 from app.models.enums import Role
 from app.models.fhir.patient import Observation, Patient
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -40,11 +38,11 @@ from app.models.fhir.patient import Observation, Patient
 
 async def _audit_rows(
     *,
-    action: Optional[str] = None,
+    action: str | None = None,
     resource_id=None,
     user_id=None,
     tenant_id=None,
-    outcome: Optional[str] = None,
+    outcome: str | None = None,
 ) -> list[AuditEvent]:
     """Read the audit stream for the given filters (real test DB)."""
     from app.services.audit_service import _coerce_uuid
@@ -90,10 +88,13 @@ async def _make_observation(tenant_id, patient_id) -> uuid.UUID:
                 id=oid,
                 tenant_id=tenant_id,
                 patient_id=patient_id,
-                code={"coding": [{"system": "http://loinc.org", "code": "8867-4"}], "text": "Heart Rate"},
+                code={
+                    "coding": [{"system": "http://loinc.org", "code": "8867-4"}],
+                    "text": "Heart Rate",
+                },
                 subject={"reference": f"Patient/{patient_id}"},
                 value_quantity={"value": 72.0, "unit": "bpm"},
-                effective_datetime=_dt.datetime.now(_dt.timezone.utc),
+                effective_datetime=_dt.datetime.now(_dt.UTC),
                 status="final",
                 biomarker_id=None,
             )
@@ -109,16 +110,14 @@ def _table_names() -> set[str]:
     try:
         with engine.connect() as conn:
             rows = conn.execute(
-                text(
-                    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-                )
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             ).all()
             return {r[0] for r in rows}
     finally:
         engine.dispose()
 
 
-def _columns(table: str) -> dict[str, Optional[str]]:
+def _columns(table: str) -> dict[str, str | None]:
     """{column: column_default} for a table (sync introspection)."""
     sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
@@ -163,9 +162,11 @@ def test_h2_migration_applied_shape():
 def test_h2_migration_round_trip():
     """a1u2d3i4t5e6 downgrades to h1c2o3n4t5r6 (audit_logs, no outcome)
     and upgrades back — the rename must survive a round-trip."""
-    from alembic import command
-    from alembic.config import Config
     import logging
+
+    from alembic.config import Config
+
+    from alembic import command
 
     logging.getLogger("alembic").setLevel(logging.WARNING)
     cfg = Config("alembic.ini")
@@ -305,7 +306,9 @@ async def test_h2_login_ok_and_denied_audited(async_client):
     assert anon.status_code == 401
     # Anonymous denial: NULL actor + a tenant-less row is the marker.
     rows = await _audit_rows(action="auth.login", outcome="denied")
-    anon_rows = [r for r in rows if r.new_value == {"reason": "invalid_credentials"} and r.user_id is None]
+    anon_rows = [
+        r for r in rows if r.new_value == {"reason": "invalid_credentials"} and r.user_id is None
+    ]
     assert anon_rows, "unknown-email login denial must be audited (NULL actor)"
 
 
@@ -319,7 +322,7 @@ async def test_h2_refresh_reuse_audited(async_client):
     user = await create_user(
         role=Role.USER, password="rotate-me-please", email="h2-rotate@test.local", unique=False
     )
-    headers = await auth_headers(user)  # signs in → refresh token issued
+    await auth_headers(user)  # signs in → refresh token issued
 
     # Sign in directly to hold a refresh token of our own.
     signed_in = await async_client.post(
@@ -329,14 +332,10 @@ async def test_h2_refresh_reuse_audited(async_client):
     assert signed_in.status_code == 200, signed_in.text
     refresh_1 = signed_in.json()["refresh_token"]
 
-    rotated = await async_client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": refresh_1}
-    )
+    rotated = await async_client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_1})
     assert rotated.status_code == 200, rotated.text
 
-    replay = await async_client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": refresh_1}
-    )
+    replay = await async_client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_1})
     assert replay.status_code == 423, replay.text
 
     rows = await _audit_rows(action="auth.refresh_reuse", user_id=user.id)
@@ -376,9 +375,7 @@ async def test_h2_admin_user_actions_audited(async_client, system_admin_headers)
     assert rows[0].old_value["role"] == "USER"
     assert rows[0].new_value["role"] == "MANAGER"
 
-    deleted = await async_client.delete(
-        f"/api/v1/users/{user_id}", headers=system_admin_headers
-    )
+    deleted = await async_client.delete(f"/api/v1/users/{user_id}", headers=system_admin_headers)
     assert deleted.status_code == 200, deleted.text
     rows = await _audit_rows(action="user.delete", resource_id=user_id)
     assert rows and rows[0].old_value["email"] == email
@@ -437,7 +434,5 @@ async def test_h2_cross_tenant_audit_viewer(async_client, system_admin_headers):
     from tests._auth_helpers import auth_headers, create_user
 
     plain = await create_user(role=Role.USER)
-    forbidden = await async_client.get(
-        "/api/v1/admin/audit", headers=await auth_headers(plain)
-    )
+    forbidden = await async_client.get("/api/v1/admin/audit", headers=await auth_headers(plain))
     assert forbidden.status_code == 403

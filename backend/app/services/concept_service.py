@@ -36,10 +36,11 @@ Enforces:
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional
+from datetime import UTC
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,11 +48,11 @@ from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
     CatalogScope,
     ConceptKind,
-    ConceptStatus,
     ConceptProvenance,
+    ConceptRelationType,
+    ConceptStatus,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    ConceptRelationType,
     Role,
 )
 
@@ -64,12 +65,10 @@ def concepts_with_kind(kind: ConceptKind):
     Replaces every legacy ``Concept.kind == kind`` filter now that domain
     membership lives in the ``concept_kind_tags`` join table.
     """
-    return Concept.id.in_(
-        select(ConceptKindTag.concept_id).where(ConceptKindTag.kind == kind)
-    )
+    return Concept.id.in_(select(ConceptKindTag.concept_id).where(ConceptKindTag.kind == kind))
 
 
-def sync_concept_kind_tags(concept: Concept, desired: List[ConceptKind]) -> None:
+def sync_concept_kind_tags(concept: Concept, desired: list[ConceptKind]) -> None:
     """Reconcile ``concept.kind_tags`` to match ``desired`` — diffing in place.
 
     Removes tags no longer desired, adds missing ones, leaves shared tags
@@ -98,9 +97,9 @@ def sync_concept_kind_tags(concept: Concept, desired: List[ConceptKind]) -> None
 async def resolve_concept_by_slug(
     db: AsyncSession,
     slug: str,
-    kind: Optional[ConceptKind] = None,
-    tenant_id: Optional[UUID] = None,
-) -> Optional[UUID]:
+    kind: ConceptKind | None = None,
+    tenant_id: UUID | None = None,
+) -> UUID | None:
     """Look up a concept by ``slug`` (optionally + ``kind`` tag) and return its ID.
 
     Tenant-aware: matches either global rows (``tenant_id IS NULL``) or rows
@@ -125,7 +124,7 @@ async def resolve_concept_by_slug(
     return row[0] if row else None
 
 
-def biomarker_category_to_concept_slug(category: Optional[str]) -> Optional[str]:
+def biomarker_category_to_concept_slug(category: str | None) -> str | None:
     """Convert a legacy biomarker ``category`` string (e.g. ``blood_laboratory``,
     ``vital_signs``) into the matching concept slug.
 
@@ -146,16 +145,14 @@ def biomarker_category_to_concept_slug(category: Optional[str]) -> Optional[str]
 
 async def resolve_biomarker_class_concept(
     db: AsyncSession,
-    category: Optional[str],
-    tenant_id: Optional[UUID] = None,
-) -> Optional[UUID]:
+    category: str | None,
+    tenant_id: UUID | None = None,
+) -> UUID | None:
     """Resolve a legacy biomarker ``category`` string to a concept ID."""
     slug = biomarker_category_to_concept_slug(category)
     if not slug:
         return None
-    return await resolve_concept_by_slug(
-        db, slug, ConceptKind.BIOMARKER_CLASS, tenant_id=tenant_id
-    )
+    return await resolve_concept_by_slug(db, slug, ConceptKind.BIOMARKER_CLASS, tenant_id=tenant_id)
 
 
 class ConceptService:
@@ -175,7 +172,7 @@ class ConceptService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _scope_for_tenant(tenant_id: Optional[UUID]) -> CatalogScope:
+    def _scope_for_tenant(tenant_id: UUID | None) -> CatalogScope:
         """Derive the catalog ``scope`` from ``tenant_id``.
 
         ``tenant_id IS NULL`` → ``SYSTEM`` (global canonical); otherwise
@@ -193,9 +190,9 @@ class ConceptService:
         operation: str,
         obj: Concept,
         *,
-        from_scope: Optional[str] = None,
-        to_scope: Optional[str] = None,
-        details: Optional[dict] = None,
+        from_scope: str | None = None,
+        to_scope: str | None = None,
+        details: dict | None = None,
     ) -> None:
         """Best-effort audit record (plan AD-10).
 
@@ -235,14 +232,14 @@ class ConceptService:
 
     async def list_concepts(
         self,
-        tenant_id: Optional[UUID],
-        kind: Optional[ConceptKind] = None,
-        status: Optional[ConceptStatus] = None,
-        parent_id: Optional[UUID] = None,
+        tenant_id: UUID | None,
+        kind: ConceptKind | None = None,
+        status: ConceptStatus | None = None,
+        parent_id: UUID | None = None,
         include_retired: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Concept]:
+    ) -> list[Concept]:
         """List concepts visible to the caller's tenant, optionally filtered."""
         stmt = select(Concept).where(
             or_(
@@ -270,9 +267,7 @@ class ConceptService:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_concept(
-        self, concept_id: UUID, tenant_id: Optional[UUID]
-    ) -> Optional[Concept]:
+    async def get_concept(self, concept_id: UUID, tenant_id: UUID | None) -> Concept | None:
         """Fetch a single concept by ID, enforcing tenancy."""
         stmt = select(Concept).where(
             Concept.id == concept_id,
@@ -294,20 +289,20 @@ class ConceptService:
         *,
         slug: str,
         name: str,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         role: str,
-        kind: Optional[ConceptKind] = None,
-        kinds: Optional[List[ConceptKind]] = None,
-        description: Optional[str] = None,
-        parent_id: Optional[UUID] = None,
-        coding_system: Optional[str] = None,
-        code: Optional[str] = None,
-        aliases: Optional[List[str]] = None,
-        icon: Optional[dict] = None,
-        color: Optional[str] = None,
+        kind: ConceptKind | None = None,
+        kinds: list[ConceptKind] | None = None,
+        description: str | None = None,
+        parent_id: UUID | None = None,
+        coding_system: str | None = None,
+        code: str | None = None,
+        aliases: list[str] | None = None,
+        icon: dict | None = None,
+        color: str | None = None,
         display_order: int = 0,
-        meta_data: Optional[dict] = None,
-        created_by: Optional[UUID] = None,
+        meta_data: dict | None = None,
+        created_by: UUID | None = None,
         actor: Any = None,
     ) -> Concept:
         """Create a concept. Global concepts (tenant_id=None) require SYSTEM_ADMIN.
@@ -328,7 +323,7 @@ class ConceptService:
         if tenant_id is None and role != Role.SYSTEM_ADMIN.value:
             raise PermissionError("Only SYSTEM_ADMIN can create global concepts")
 
-        resolved_kinds: List[ConceptKind] = (
+        resolved_kinds: list[ConceptKind] = (
             list(kinds) if kinds is not None else ([kind] if kind is not None else [])
         )
         if not resolved_kinds:
@@ -366,7 +361,7 @@ class ConceptService:
     async def update_concept(
         self,
         concept_id: UUID,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         role: str,
         *,
         actor: Any = None,
@@ -417,7 +412,7 @@ class ConceptService:
     async def delete_concept(
         self,
         concept_id: UUID,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         role: str,
         *,
         actor: Any = None,
@@ -463,21 +458,19 @@ class ConceptService:
         concept.status = ConceptStatus.RETIRED
         operation = "retire"
         if not has_edges:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
-            concept.deleted_at = datetime.now(timezone.utc)
+            concept.deleted_at = datetime.now(UTC)
             operation = "delete"
 
         await self.db.flush()
-        await self._audit(
-            actor, operation, concept, from_scope=from_scope
-        )
+        await self._audit(actor, operation, concept, from_scope=from_scope)
         return concept
 
     async def restore_concept(
         self,
         concept_id: UUID,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         role: str,
         *,
         actor: Any = None,
@@ -519,15 +512,15 @@ class ConceptService:
 
     async def get_edges(
         self,
-        tenant_id: Optional[UUID],
-        src_type: Optional[EdgeEndpointType] = None,
-        src_id: Optional[UUID] = None,
-        dst_type: Optional[EdgeEndpointType] = None,
-        dst_id: Optional[UUID] = None,
-        relation: Optional[ConceptRelationType] = None,
+        tenant_id: UUID | None,
+        src_type: EdgeEndpointType | None = None,
+        src_id: UUID | None = None,
+        dst_type: EdgeEndpointType | None = None,
+        dst_id: UUID | None = None,
+        relation: ConceptRelationType | None = None,
         include_proposed: bool = False,
         limit: int = 200,
-    ) -> List[ConceptEdge]:
+    ) -> list[ConceptEdge]:
         """List edges matching the given filters, tenant-scoped."""
         stmt = select(ConceptEdge).where(
             or_(
@@ -554,10 +547,10 @@ class ConceptService:
     async def get_neighbors(
         self,
         concept_id: UUID,
-        tenant_id: Optional[UUID],
-        relation: Optional[ConceptRelationType] = None,
+        tenant_id: UUID | None,
+        relation: ConceptRelationType | None = None,
         include_proposed: bool = False,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """One-hop neighbor lookup: returns edges + resolved polymorphic endpoints.
 
         Returns a list of dicts: ``{edge, direction, endpoint}`` where
@@ -609,9 +602,9 @@ class ConceptService:
         self,
         entity_type: EdgeEndpointType,
         entity_id: UUID,
-        tenant_id: Optional[UUID],
-        relation: Optional[ConceptRelationType] = None,
-    ) -> List[Concept]:
+        tenant_id: UUID | None,
+        relation: ConceptRelationType | None = None,
+    ) -> list[Concept]:
         """Return all concepts linked to a domain entity (e.g. biomarker panels).
 
         ``entity_type`` is the polymorphic tag (``BIOMARKER``, ``DOCTOR``, …);
@@ -624,9 +617,7 @@ class ConceptService:
             src_id=entity_id,
             relation=relation,
         )
-        concept_ids = [
-            e.dst_id for e in edges if e.dst_type == EdgeEndpointType.CONCEPT
-        ]
+        concept_ids = [e.dst_id for e in edges if e.dst_type == EdgeEndpointType.CONCEPT]
         if not concept_ids:
             return []
         stmt = select(Concept).where(
@@ -649,13 +640,13 @@ class ConceptService:
         dst_type: EdgeEndpointType,
         dst_id: UUID,
         relation: ConceptRelationType,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         role: str,
-        properties: Optional[dict] = None,
-        evidence: Optional[dict] = None,
+        properties: dict | None = None,
+        evidence: dict | None = None,
         source: ConceptProvenance = ConceptProvenance.MANUAL,
         status: EdgeApprovalStatus = EdgeApprovalStatus.APPROVED,
-        created_by: Optional[UUID] = None,
+        created_by: UUID | None = None,
     ) -> ConceptEdge:
         """Create a typed edge. Validates concept endpoints exist.
 
@@ -695,9 +686,7 @@ class ConceptService:
             ) from exc
         return edge
 
-    async def delete_edge(
-        self, edge_id: UUID, tenant_id: Optional[UUID], role: str
-    ) -> None:
+    async def delete_edge(self, edge_id: UUID, tenant_id: UUID | None, role: str) -> None:
         """Hard-delete an edge (edges are cheap to recreate; no soft-delete)."""
         self._check_write_role(role)
         stmt = select(ConceptEdge).where(ConceptEdge.id == edge_id)
@@ -731,16 +720,14 @@ class ConceptService:
         if role == Role.USER.value:
             raise PermissionError("USER role cannot modify the taxonomy")
 
-    async def _require_concept(
-        self, concept_id: UUID, tenant_id: Optional[UUID]
-    ) -> None:
+    async def _require_concept(self, concept_id: UUID, tenant_id: UUID | None) -> None:
         """Assert that a concept exists and is visible to the caller."""
         c = await self.get_concept(concept_id, tenant_id)
         if c is None:
             raise ValueError(f"Concept {concept_id} not found")
 
     async def _count_active_edges_for_concept(
-        self, concept_id: UUID, tenant_id: Optional[UUID]
+        self, concept_id: UUID, tenant_id: UUID | None
     ) -> int:
         """Count approved edges touching this concept (either direction).
 

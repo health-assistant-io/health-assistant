@@ -40,11 +40,7 @@ async def bridge_with_two_patients():
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge P3 T.", slug=f"bp3-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge P3 T.", slug=f"bp3-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -94,9 +90,7 @@ async def bridge_with_two_patients():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -257,9 +251,7 @@ async def test_vaccines_list_returns_patient_rows(bridge_with_two_patients):
                 patient_id=ctx["patient_a"],
                 status="completed",
                 vaccine_code={"text": "COVID-19 mRNA"},
-                administered_at=datetime.datetime(
-                    2026, 7, 15, tzinfo=datetime.timezone.utc
-                ),
+                administered_at=datetime.datetime(2026, 7, 15, tzinfo=datetime.UTC),
                 dose_number="1",
             )
         )
@@ -284,9 +276,7 @@ async def test_vaccines_list_is_patient_scoped(bridge_with_two_patients):
                 patient_id=ctx["patient_b"],
                 status="completed",
                 vaccine_code={"text": "PatientB Hidden Vaccine"},
-                administered_at=datetime.datetime(
-                    2026, 1, 1, tzinfo=datetime.timezone.utc
-                ),
+                administered_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
             )
         )
         await db.commit()
@@ -294,10 +284,7 @@ async def test_vaccines_list_is_patient_scoped(bridge_with_two_patients):
     result = await provider.handle_api_request(
         integration=integration, path="vaccines", method="GET", request=_get_request()
     )
-    assert all(
-        v["vaccine_code"].get("text") != "PatientB Hidden Vaccine"
-        for v in result["data"]
-    )
+    assert all(v["vaccine_code"].get("text") != "PatientB Hidden Vaccine" for v in result["data"])
 
 
 # --- Clinical events ---
@@ -316,7 +303,7 @@ async def test_clinical_events_list_returns_patient_rows(bridge_with_two_patient
                 patient_id=ctx["patient_a"],
                 status="ACTIVE",
                 title="Hypertension diagnosis",
-                onset_date=datetime.datetime(2026, 6, 1, tzinfo=datetime.timezone.utc),
+                onset_date=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
             )
         )
         await db.commit()
@@ -370,7 +357,7 @@ async def test_clinical_event_detail_returns_to_dict_shape(bridge_with_two_patie
             patient_id=ctx["patient_a"],
             status="ACTIVE",
             title="Detail test",
-            onset_date=datetime.datetime(2026, 6, 1, tzinfo=datetime.timezone.utc),
+            onset_date=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
         )
         db.add(event)
         await db.commit()
@@ -452,11 +439,7 @@ async def test_doctors_list_is_tenant_scoped(bridge_with_two_patients):
     provider = HealthAssistantBridgeProvider()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=other_tenant, name="Other", slug=f"other-{other_tenant.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=other_tenant, name="Other", slug=f"other-{other_tenant.hex[:8]}"))
         await db.flush()
         db.add(DoctorModel(tenant_id=other_tenant, name="Dr. Other Tenant"))
         await db.commit()

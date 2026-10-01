@@ -1,20 +1,24 @@
 from sqlalchemy import (
+    CheckConstraint,
     Column,
-    String,
+    DateTime,
     ForeignKey,
     Integer,
+    String,
     Text,
-    DateTime,
-    Enum as SQLEnum,
-    CheckConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
+    Base,
+    TenantMixin,
     TimestampMixin,
+    UUIDMixin,
 )
 from app.models.enums import ExportScope, ExportType, JobStatus
 
@@ -33,9 +37,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
         index=True,
     )
     scope = Column(SQLEnum(ExportScope, values_callable=_enum_values), nullable=False)
-    export_type = Column(
-        SQLEnum(ExportType, values_callable=_enum_values), nullable=False
-    )
+    export_type = Column(SQLEnum(ExportType, values_callable=_enum_values), nullable=False)
     status = Column(
         SQLEnum(JobStatus, values_callable=_enum_values),
         default=JobStatus.PENDING,
@@ -54,9 +56,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "progress BETWEEN 0 AND 100", name="ck_export_jobs_progress_bounds"
-        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_export_jobs_progress_bounds"),
     )
 
     def to_dict(self) -> dict:
@@ -75,9 +75,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
             "resource_counts": self.resource_counts,
             "smart_scope": self.smart_scope,
             "error_message": self.error_message,
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -111,9 +109,7 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "progress BETWEEN 0 AND 100", name="ck_import_jobs_progress_bounds"
-        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_import_jobs_progress_bounds"),
     )
 
     def to_dict(self) -> dict:
@@ -131,9 +127,7 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
             "errors": self.errors,
             "warnings": self.warnings,
             "error_message": self.error_message,
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

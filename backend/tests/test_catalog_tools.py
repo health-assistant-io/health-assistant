@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+
 from app.ai.tools.registry import ToolContext
 
 
@@ -124,9 +125,7 @@ async def test_explore_relations_from_medication(catalogs_ctx):
     tools = build(catalogs_ctx)
     explore = next(t for t in tools if t.name == "explore_catalog_relations")
 
-    result = await explore.ainvoke(
-        {"type": "medication", "id": str(metformin_id), "max_depth": 1}
-    )
+    result = await explore.ainvoke({"type": "medication", "id": str(metformin_id), "max_depth": 1})
     data = json.loads(result)
     assert "nodes" in data and "edges" in data
     labels = [n.get("label", "") for n in data["nodes"]]
@@ -188,9 +187,7 @@ async def test_explore_relations_from_vaccine(catalogs_ctx):
     tools = build(catalogs_ctx)
     explore = next(t for t in tools if t.name == "explore_catalog_relations")
 
-    result = await explore.ainvoke(
-        {"type": "vaccine", "id": str(mmr_id), "max_depth": 1}
-    )
+    result = await explore.ainvoke({"type": "vaccine", "id": str(mmr_id), "max_depth": 1})
     data = json.loads(result)
     labels = [n.get("label", "") for n in data["nodes"]]
     assert any("measles" in (lbl or "").lower() for lbl in labels), labels
@@ -214,9 +211,7 @@ async def test_explore_relations_returns_truncation_metadata(catalogs_ctx):
     tools = build(catalogs_ctx)
     explore = next(t for t in tools if t.name == "explore_catalog_relations")
 
-    result = await explore.ainvoke(
-        {"type": "medication", "id": str(metformin_id), "max_depth": 1}
-    )
+    result = await explore.ainvoke({"type": "medication", "id": str(metformin_id), "max_depth": 1})
     data = json.loads(result)
     assert "truncated" in data
     assert data["truncated"] is False  # the seed graph is small, no truncation
@@ -245,9 +240,7 @@ async def test_explore_relations_types_filter(catalogs_ctx):
 
     # No filter — TREATS edges to concepts are present.
     unfiltered = json.loads(
-        await explore.ainvoke(
-            {"type": "medication", "id": str(metformin_id), "max_depth": 1}
-        )
+        await explore.ainvoke({"type": "medication", "id": str(metformin_id), "max_depth": 1})
     )
     assert any(e["relation"] == "TREATS" for e in unfiltered["edges"])
 
@@ -302,9 +295,7 @@ async def test_explore_relations_depth_clamp(catalogs_ctx):
     explore = next(t for t in tools if t.name == "explore_catalog_relations")
 
     # depth=10 would crash the service (max 5) without the clamp.
-    result = await explore.ainvoke(
-        {"type": "medication", "id": str(metformin_id), "max_depth": 10}
-    )
+    result = await explore.ainvoke({"type": "medication", "id": str(metformin_id), "max_depth": 10})
     data = json.loads(result)
     assert "nodes" in data  # no crash → clamp worked
 
@@ -315,8 +306,8 @@ async def test_traverse_truncation_flag(catalogs_ctx):
     using the limit+1 probe pattern (no extra round-trip)."""
     from sqlalchemy import func, select
 
-    from app.models.fhir.medication import MedicationCatalog
     from app.models.enums import EdgeEndpointType
+    from app.models.fhir.medication import MedicationCatalog
     from app.services.catalog_graph_service import traverse
 
     metformin_id = await catalogs_ctx.db.scalar(

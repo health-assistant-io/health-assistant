@@ -1,8 +1,7 @@
-from sqlalchemy import Column, String, Float, DateTime, Index
+from sqlalchemy import Column, DateTime, Float, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy import text
 
-from app.models.base import Base, TenantMixin, AuditMixin, VersionedMixin
+from app.models.base import AuditMixin, Base, TenantMixin, VersionedMixin
 
 
 class TelemetryDataModel(Base, TenantMixin, AuditMixin, VersionedMixin):
@@ -27,9 +26,7 @@ class TelemetryDataModel(Base, TenantMixin, AuditMixin, VersionedMixin):
     tenant_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
 
     # Composite Primary Key (required by TimescaleDB for hypertables).
-    id = Column(
-        PG_UUID(as_uuid=True), primary_key=True, default=text("gen_random_uuid()")
-    )
+    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=text("gen_random_uuid()"))
     timestamp = Column(DateTime(timezone=True), primary_key=True, index=True)
 
     device_id = Column(String(255), nullable=False, index=True)

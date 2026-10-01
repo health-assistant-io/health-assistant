@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
 """AI-related Celery tasks: OCR, cumulative extraction, anomaly/interaction
 checks, and stuck-extraction cleanup.
 
@@ -11,10 +12,11 @@ Celery task names now derive from this module (e.g.
 beat schedule were updated accordingly.
 """
 
+import contextlib
 import datetime
 import os
+from datetime import UTC
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from celery.utils.log import get_task_logger
@@ -38,14 +40,14 @@ async def ocr_document(
     document_id: str,
     file_path: str,
     tenant_id: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ):
     logger.info(f"Starting OCR for document {document_id} at {file_path}")
     doc_uuid = UUID(document_id)
     tenant_uuid = UUID(tenant_id)
     user_uuid = UUID(user_id) if user_id else None
 
-    db, engine = get_async_session()
+    db, _engine = get_async_session()
     task_logger = TaskLogger("ocr_document", document_id, tenant_uuid, db=db)
     progress_tracker = TaskProgressTracker(db=db, document_id=doc_uuid)
 
@@ -128,9 +130,7 @@ async def _check_trigger_cumulative(db, document_id: UUID):
     the pending count. If the lock can't be acquired, another OCR
     completion is already mid-check — we skip and let that one fire.
     """
-    doc_res = await db.execute(
-        select(DocumentModel).where(DocumentModel.id == document_id)
-    )
+    doc_res = await db.execute(select(DocumentModel).where(DocumentModel.id == document_id))
     doc = doc_res.scalar_one_or_none()
 
     if not doc or not doc.examination_id:
@@ -213,14 +213,12 @@ async def _check_trigger_cumulative(db, document_id: UUID):
 
 @celery_app.task(bind=True, max_retries=3)
 @async_task
-async def cumulative_extraction(
-    self, examination_id: str, user_id: Optional[str] = None
-):
+async def cumulative_extraction(self, examination_id: str, user_id: str | None = None):
     logger.info(f"Starting cumulative extraction for examination {examination_id}")
     exam_uuid = UUID(examination_id)
     user_uuid = UUID(user_id) if user_id else None
 
-    db, engine = get_async_session()
+    db, _engine = get_async_session()
     progress_tracker = TaskProgressTracker(db=db, examination_id=exam_uuid)
     task_logger = None
 
@@ -228,9 +226,7 @@ async def cumulative_extraction(
         async with db:
             # Resolve Tenant
             exam_res = await db.execute(
-                select(ExaminationModel.tenant_id).where(
-                    ExaminationModel.id == exam_uuid
-                )
+                select(ExaminationModel.tenant_id).where(ExaminationModel.id == exam_uuid)
             )
             tenant_id = exam_res.scalar()
             if not tenant_id:
@@ -259,10 +255,8 @@ async def cumulative_extraction(
         logger.exception(f"Extraction failed for exam {examination_id}")
         # Log to technical task logs too
         if task_logger:
-            try:
+            with contextlib.suppress(Exception):
                 await task_logger.log_error(e, "cumulative_extraction")
-            except Exception:
-                pass
         await progress_tracker.mark_failed(str(e))
         raise
     finally:
@@ -281,20 +275,17 @@ async def check_medication_interactions(self, medications: list, user_id: str):
 
 @celery_app.task(bind=True)
 @async_task
-async def detect_anomalies(self, patient_id: str, biomarker_code: str = None):
+async def detect_anomalies(self, patient_id: str, biomarker_code: str | None = None):
     """Detect anomalies for a patient's biomarkers via the analytics service."""
     from app.models.fhir.patient import Observation
     from app.services.analytics_service import get_biomarker_anomalies
 
-    db, engine = get_async_session()
+    db, _engine = get_async_session()
     try:
         async with db:
             tenant_row = await db.execute(
                 select(Observation.tenant_id)
-                .where(
-                    Observation.subject["reference"].as_string()
-                    == f"Patient/{patient_id}"
-                )
+                .where(Observation.subject["reference"].as_string() == f"Patient/{patient_id}")
                 .limit(1)
             )
             tenant_id = tenant_row.scalar_one_or_none()
@@ -326,12 +317,10 @@ async def cleanup_stuck_extractions():
     task killed at exactly 15 min doesn't race with this cleanup. We
     use 20 min — a 5-minute safety margin beyond the hard kill.
     """
-    db, engine = get_async_session()
+    db, _engine = get_async_session()
     try:
         async with db:
-            threshold = datetime.datetime.now(
-                datetime.timezone.utc
-            ) - datetime.timedelta(minutes=20)
+            threshold = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=20)
             await db.execute(
                 update(ExaminationModel)
                 .where(
@@ -359,7 +348,7 @@ async def cleanup_stuck_extractions():
 
 # Helper for direct calls from API
 def process_document_sync(
-    document_id: str, file_path: str, tenant_id: str, user_id: Optional[str] = None
+    document_id: str, file_path: str, tenant_id: str, user_id: str | None = None
 ):
     """In-process OCR fallback for when Celery/Redis is unavailable (audit C10).
 
@@ -380,7 +369,7 @@ def process_document(
     document_id: str,
     file_path: str,
     tenant_id: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ):
     return ocr_document.delay(document_id, file_path, tenant_id, user_id)
 
@@ -402,13 +391,13 @@ async def prune_checkpoint_threads():
     the app ever started. The job is idempotent; HITL task cards live in
     ``chat_messages.tasks`` JSONB and are NOT affected by checkpoint pruning.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import bindparam, text
 
     from app.core.config import settings
 
-    db, engine = get_async_session()
+    db, _engine = get_async_session()
     try:
         async with db:
             # Fresh-install guard: the tables exist only after the backend's
@@ -420,9 +409,7 @@ async def prune_checkpoint_threads():
             if checkpoints_rel is None:
                 logger.info("Checkpoint tables not present yet — nothing to prune.")
                 return {"threads": 0, "rows_deleted": 0}
-            cutoff = datetime.now(timezone.utc) - timedelta(
-                days=settings.AI_CHECKPOINT_RETENTION_DAYS
-            )
+            cutoff = datetime.now(UTC) - timedelta(days=settings.AI_CHECKPOINT_RETENTION_DAYS)
             stale = (
                 (
                     await db.execute(

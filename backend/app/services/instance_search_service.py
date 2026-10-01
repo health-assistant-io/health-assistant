@@ -13,8 +13,8 @@ applies the tenant (+ patient) filter in its own SQL, so a type can't forget
 to scope. The cross-tenant negative test (``test_instances_endpoint``) gates
 this module's merge.
 """
+
 from uuid import UUID
-from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,9 +25,9 @@ from app.instances.registry import get_instance_search, registered_types
 async def search_instances(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
-    types: Optional[list[str]] = None,
+    types: list[str] | None = None,
     limit_per_type: int = 5,
 ) -> list[dict]:
     """Search across instance entity types.
@@ -56,7 +56,7 @@ async def search_instances(
         try:
             type_hits = await fn(db, tenant_id, patient_id, q, limit_per_type)
             hits.extend(type_hits)
-        except Exception:  # noqa: BLE001 — one type failing must not break others
+        except Exception:
             # A single entity type erroring (e.g. a missing column after a
             # partial migration) must not blank out the whole search. Log via
             # the dispatcher's module logger and continue.

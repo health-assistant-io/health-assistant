@@ -1,6 +1,7 @@
 import os
 
 from celery import Celery
+
 from app.core.config import settings
 from app.core.logging_setup import setup_logging
 

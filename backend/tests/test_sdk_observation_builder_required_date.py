@@ -7,13 +7,13 @@
 * ``set_reference_range(low=None, high=None)`` clears the range (was setting
   ``{}`` and tripping the truthiness branch).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 from integrations.sdk.observation_builder import ObservationBuilder
 
 TENANT = uuid4()
@@ -21,7 +21,7 @@ PATIENT = uuid4()
 
 
 def _a_tz() -> datetime:
-    return datetime(2026, 7, 23, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 7, 23, 12, 0, 0, tzinfo=UTC)
 
 
 def _base() -> ObservationBuilder:
@@ -92,12 +92,7 @@ def test_reset_clears_interpretation():
     assert first.interpretation == "high"
 
     b.reset()
-    second = (
-        b.set_biomarker("c2", "n2")
-        .set_value(2.0, "u")
-        .set_effective_date(_a_tz())
-        .build()
-    )
+    second = b.set_biomarker("c2", "n2").set_value(2.0, "u").set_effective_date(_a_tz()).build()
     assert second.interpretation is None
 
 

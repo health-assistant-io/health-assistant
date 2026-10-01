@@ -1,12 +1,15 @@
-from typing import List
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Body
+from uuid import UUID
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from sqlalchemy import delete, or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update as sa_update, or_
 from sqlalchemy.orm import selectinload
+
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.user import TokenData
 from app.models.biomarker_model import (
     BiomarkerAllowedState,
     BiomarkerDefinition,
@@ -14,24 +17,23 @@ from app.models.biomarker_model import (
     BiomarkerState,
     Unit,
 )
+from app.models.enums import BiomarkerValueType
 from app.models.fhir.patient import Observation
 from app.schemas.biomarker import (
     AllowedStateSpec,
     BiomarkerCreate,
+    BiomarkerReferenceRangeCreate,
+    BiomarkerReferenceRangeResponse,
+    BiomarkerReferenceRangeUpdate,
+    BiomarkerRemapRequest,
+    BiomarkerResponse,
     BiomarkerStateResponse,
     BiomarkerUpdate,
-    BiomarkerResponse,
-    BiomarkerRemapRequest,
-    BiomarkerReferenceRangeCreate,
-    BiomarkerReferenceRangeUpdate,
-    BiomarkerReferenceRangeResponse,
-    UnitResponse,
     UnitCreate,
+    UnitResponse,
 )
+from app.schemas.user import TokenData
 from app.services.concept_service import resolve_biomarker_class_concept
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-from app.models.enums import BiomarkerValueType
-from uuid import UUID
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
 
@@ -61,26 +63,23 @@ async def _reload_biomarker(db: AsyncSession, bio_id) -> BiomarkerDefinition:
     by a plain ``selectinload`` when the parent is already in the map).
     """
     return (
-        (
-            await db.execute(
-                select(BiomarkerDefinition)
-                .options(
-                    selectinload(BiomarkerDefinition.allowed_states).selectinload(
-                        BiomarkerAllowedState.state
-                    ),
-                    selectinload(BiomarkerDefinition.reference_ranges),
-                    selectinload(BiomarkerDefinition.preferred_unit),
-                    selectinload(BiomarkerDefinition.class_concept),
-                )
-                .where(BiomarkerDefinition.id == bio_id)
-                .execution_options(populate_existing=True)
+        await db.execute(
+            select(BiomarkerDefinition)
+            .options(
+                selectinload(BiomarkerDefinition.allowed_states).selectinload(
+                    BiomarkerAllowedState.state
+                ),
+                selectinload(BiomarkerDefinition.reference_ranges),
+                selectinload(BiomarkerDefinition.preferred_unit),
+                selectinload(BiomarkerDefinition.class_concept),
             )
+            .where(BiomarkerDefinition.id == bio_id)
+            .execution_options(populate_existing=True)
         )
-        .scalar_one()
-    )
+    ).scalar_one()
 
 
-def _serialize_allowed_states(bio: BiomarkerDefinition) -> List[dict]:
+def _serialize_allowed_states(bio: BiomarkerDefinition) -> list[dict]:
     """Resolve a STATE biomarker's ``allowed_states`` join rows into the
     ``BiomarkerAllowedStateResponse`` payload shape.
 
@@ -138,8 +137,8 @@ def _serialize_biomarker(bio: BiomarkerDefinition, symbol) -> dict:
 
 
 async def _resolve_state_slugs(
-    db: AsyncSession, specs: List[AllowedStateSpec]
-) -> List[BiomarkerAllowedState]:
+    db: AsyncSession, specs: list[AllowedStateSpec]
+) -> list[BiomarkerAllowedState]:
     """Resolve a list of ``AllowedStateSpec`` (slug-keyed input) to
     ``BiomarkerAllowedState`` ORM rows ready to attach to a definition.
 
@@ -149,11 +148,7 @@ async def _resolve_state_slugs(
         return []
     slugs = [s.state_slug for s in specs]
     rows = (
-        (
-            await db.execute(
-                select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))
-            )
-        )
+        (await db.execute(select(BiomarkerState).where(BiomarkerState.slug.in_(slugs))))
         .scalars()
         .all()
     )
@@ -177,11 +172,11 @@ async def _resolve_state_slugs(
     return out
 
 
-# TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (from DEVELOPMENT_PLAN.md)
-# TODO: Add endpoints to retrieve correlated biomarkers for a given clinical event (from DEVELOPMENT_PLAN.md)
+# TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (from DEVELOPMENT_PLAN.md)  # noqa: E501 -- long template/message string; reflow when touched
+# TODO: Add endpoints to retrieve correlated biomarkers for a given clinical event (from DEVELOPMENT_PLAN.md)  # noqa: E501 -- long template/message string; reflow when touched
 
 
-@router.get("/", response_model=List[BiomarkerResponse])
+@router.get("/", response_model=list[BiomarkerResponse])
 async def get_biomarkers(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -199,7 +194,7 @@ async def get_biomarkers(
     return response
 
 
-@router.get("/units", response_model=List[UnitResponse])
+@router.get("/units", response_model=list[UnitResponse])
 async def get_units(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -234,13 +229,13 @@ async def create_unit(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
 
 
-@router.get("/states", response_model=List[BiomarkerStateResponse])
+@router.get("/states", response_model=list[BiomarkerStateResponse])
 async def list_biomarker_states(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -333,7 +328,7 @@ async def create_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -371,7 +366,7 @@ async def delete_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -379,7 +374,7 @@ async def delete_biomarker(
 
 @router.post("/bulk-delete")
 async def bulk_delete_biomarkers(
-    biomarker_ids: List[UUID] = Body(..., embed=True),
+    biomarker_ids: list[UUID] = Body(..., embed=True),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -419,7 +414,7 @@ async def bulk_delete_biomarkers(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -489,14 +484,11 @@ async def retry_biomarker_migration(
 
     # We only allow retrying if it actually was marked as in progress or failed
     if meta.get("migration_status") not in ["failed", "in_progress"]:
-        raise HTTPException(
-            status_code=400, detail="No active or failed migration to retry"
-        )
+        raise HTTPException(status_code=400, detail="No active or failed migration to retry")
 
     meta["migration_status"] = "in_progress"
     meta["migration_progress"] = 0
-    if "migration_error" in meta:
-        del meta["migration_error"]
+    meta.pop("migration_error", None)
 
     db_biomarker.meta_data = meta
 
@@ -519,15 +511,13 @@ async def retry_biomarker_migration(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
 
     # Return with symbol
-    u_res = await db.execute(
-        select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id)
-    )
+    u_res = await db.execute(select(Unit.symbol).where(Unit.id == db_biomarker.preferred_unit_id))
     symbol = u_res.scalar_one_or_none()
 
     return _serialize_biomarker(db_biomarker, symbol)
@@ -553,9 +543,7 @@ async def remap_observations(
         select(BiomarkerDefinition).where(BiomarkerDefinition.id == biomarker_id)
     )
     if not target_res.scalar_one_or_none():
-        raise HTTPException(
-            status_code=404, detail="Target biomarker definition not found"
-        )
+        raise HTTPException(status_code=404, detail="Target biomarker definition not found")
 
     # Build the match conditions: same tenant, code.text matches source_name,
     # biomarker_id is null (genuinely unmapped), optional patient scope.
@@ -578,7 +566,7 @@ async def remap_observations(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -636,9 +624,7 @@ async def update_biomarker(
     update_data.pop("allowed_states", None)
 
     new_is_telemetry = update_data.get("is_telemetry")
-    needs_migration = (
-        new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
-    )
+    needs_migration = new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
 
     # Hard guard (plan state-biomarkers Step 6/11): STATE biomarkers cannot
     # be telemetry — ``telemetry_data.value`` is Float NOT NULL. The Pydantic
@@ -699,8 +685,7 @@ async def update_biomarker(
             meta = dict(db_biomarker.meta_data or {})
             meta["migration_status"] = "in_progress"
             meta["migration_progress"] = 0
-            if "migration_error" in meta:
-                del meta["migration_error"]
+            meta.pop("migration_error", None)
             db_biomarker.meta_data = meta
 
             # Need to flagged the JSONB column as modified
@@ -733,7 +718,7 @@ async def update_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -769,7 +754,7 @@ async def _load_parent_biomarker(
 
 @router.get(
     "/{biomarker_id}/reference-ranges",
-    response_model=List[BiomarkerReferenceRangeResponse],
+    response_model=list[BiomarkerReferenceRangeResponse],
 )
 async def list_reference_ranges(
     biomarker_id: UUID,
@@ -830,7 +815,7 @@ async def create_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range create failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -876,7 +861,7 @@ async def update_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range update failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -913,7 +898,7 @@ async def delete_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range delete failed")
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )

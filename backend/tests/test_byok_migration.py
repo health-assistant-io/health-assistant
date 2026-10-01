@@ -9,8 +9,9 @@ import uuid
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 REVISION = "b1y2o3k4s5e6"
 PARENT = "r1e2a3l4t5i6"

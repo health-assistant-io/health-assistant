@@ -3,10 +3,11 @@ Task Logging Utility - Structured logging for Celery tasks
 Follows security best practices: no sensitive data, proper error handling
 """
 
-import logging
+import contextlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+import logging
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 
@@ -25,7 +26,7 @@ class TaskLogger:
         self,
         task_name: str,
         task_id: str,
-        tenant_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
         db=None,
     ):
         self.task_name = task_name
@@ -33,14 +34,14 @@ class TaskLogger:
         self.tenant_id = tenant_id
         self.db = db
         self.logger = logging.getLogger(f"celery.{task_name}")
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
 
     async def _persist_log(
         self,
         level: str,
         message: str,
-        stage: Optional[str] = None,
-        data: Optional[Dict[str, Any]] = None,
+        stage: str | None = None,
+        data: dict[str, Any] | None = None,
     ):
         """Save log to database if session is available"""
         if not self.db:
@@ -53,8 +54,9 @@ class TaskLogger:
             return
 
         try:
-            from app.models.task_log import TaskLog
             import uuid
+
+            from app.models.task_log import TaskLog
 
             # Ensure task_id is a string for the field
             task_id_str = str(self.task_id)
@@ -64,10 +66,8 @@ class TaskLogger:
             if isinstance(self.task_id, uuid.UUID):
                 res_id = self.task_id
             elif isinstance(self.task_id, str) and len(self.task_id) == 36:
-                try:
+                with contextlib.suppress(ValueError):
                     res_id = uuid.UUID(self.task_id)
-                except ValueError:
-                    pass
 
             log_entry = TaskLog(
                 id=uuid.uuid4(),
@@ -84,12 +84,10 @@ class TaskLogger:
             await self.db.commit()
         except Exception as e:
             self.logger.error(f"Failed to persist log to DB: {e}")
-            try:
+            with contextlib.suppress(Exception):
                 await self.db.rollback()
-            except Exception:
-                pass
 
-    def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _sanitize_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """
         Remove sensitive data from log output
 
@@ -113,7 +111,7 @@ class TaskLogger:
 
         return sanitized
 
-    def _format_log(self, level: str, message: str, **kwargs) -> Dict[str, Any]:
+    def _format_log(self, level: str, message: str, **kwargs) -> dict[str, Any]:
         """
         Create structured log entry
 
@@ -129,16 +127,14 @@ class TaskLogger:
         }
         """
         return {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": level,
             "task_name": self.task_name,
             "task_id": str(self.task_id),
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "message": message,
             "data": self._sanitize_data(kwargs),
-            "duration_seconds": (
-                datetime.now(timezone.utc) - self.start_time
-            ).total_seconds(),
+            "duration_seconds": (datetime.now(UTC) - self.start_time).total_seconds(),
         }
 
     async def log_start(self, **kwargs):
@@ -175,9 +171,7 @@ class TaskLogger:
             **kwargs,
         )
         self.logger.error(json.dumps(log_entry))
-        await self._persist_log(
-            "ERROR", f"Error in {stage}", stage=stage, data=log_entry["data"]
-        )
+        await self._persist_log("ERROR", f"Error in {stage}", stage=stage, data=log_entry["data"])
 
     def _categorize_error(self, error: Exception) -> str:
         """
@@ -213,19 +207,20 @@ class TaskProgressTracker:
     def __init__(
         self,
         db,
-        document_id: Optional[UUID] = None,
-        examination_id: Optional[UUID] = None,
+        document_id: UUID | None = None,
+        examination_id: UUID | None = None,
     ):
         self.db = db
         self.document_id = document_id
         self.examination_id = examination_id
 
     async def update_document_status(
-        self, status: str, progress: int, error_message: Optional[str] = None
+        self, status: str, progress: int, error_message: str | None = None
     ):
         """Update document processing status"""
+        from sqlalchemy import select, update
+
         from app.models.document_model import DocumentModel
-        from sqlalchemy import update, select
 
         if not self.document_id:
             return
@@ -237,23 +232,20 @@ class TaskProgressTracker:
         }
 
         await self.db.execute(
-            update(DocumentModel)
-            .where(DocumentModel.id == self.document_id)
-            .values(**update_data)
+            update(DocumentModel).where(DocumentModel.id == self.document_id).values(**update_data)
         )
         await self.db.commit()
 
         # Publish to Redis for WebSocket
-        from app.core.redis import publish_message
         import json
+
+        from app.core.redis import publish_message
 
         try:
             # We need tenant_id to channel to the correct user.
             # But we might not have it in tracker. Let's fetch it or just broadcast doc id.
             doc_result = await self.db.execute(
-                select(DocumentModel.tenant_id).where(
-                    DocumentModel.id == self.document_id
-                )
+                select(DocumentModel.tenant_id).where(DocumentModel.id == self.document_id)
             )
             tenant_id = doc_result.scalar_one_or_none()
             if tenant_id:
@@ -269,11 +261,12 @@ class TaskProgressTracker:
             pass
 
     async def update_examination_status(
-        self, status: str, progress: int, error_message: Optional[str] = None
+        self, status: str, progress: int, error_message: str | None = None
     ):
         """Update examination extraction status"""
-        from app.models.examination_model import ExaminationModel
         from sqlalchemy import update
+
+        from app.models.examination_model import ExaminationModel
 
         if not self.examination_id:
             return
@@ -308,15 +301,15 @@ class TaskProgressTracker:
                 await self.db.commit()
 
         # Publish to Redis for WebSocket
-        from app.core.redis import publish_message
         import json
+
         from sqlalchemy import select
+
+        from app.core.redis import publish_message
 
         try:
             exam_result = await self.db.execute(
-                select(ExaminationModel.tenant_id).where(
-                    ExaminationModel.id == self.examination_id
-                )
+                select(ExaminationModel.tenant_id).where(ExaminationModel.id == self.examination_id)
             )
             tenant_id = exam_result.scalar_one_or_none()
             if tenant_id:
@@ -348,14 +341,14 @@ class TaskTimeoutMonitor:
 
     def __init__(self, max_duration_seconds: int = 300):  # 5 minutes default
         self.max_duration = max_duration_seconds
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
 
     def check_timeout(self) -> bool:
         """Check if task has exceeded max duration"""
-        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - self.start_time).total_seconds()
         return elapsed > self.max_duration
 
     def get_remaining_seconds(self) -> int:
         """Get remaining seconds before timeout"""
-        elapsed = (datetime.now(timezone.utc) - self.start_time).total_seconds()
+        elapsed = (datetime.now(UTC) - self.start_time).total_seconds()
         return max(0, int(self.max_duration - elapsed))

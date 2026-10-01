@@ -1,6 +1,7 @@
-from sqlalchemy import Column, String, ForeignKey, Boolean, Index, UUID
+from sqlalchemy import UUID, Boolean, Column, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin
+
+from app.models.base import AuditMixin, Base, TenantMixin, UUIDMixin, VersionedMixin
 
 
 class PatientLayoutModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):

@@ -1,7 +1,8 @@
+# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
 import logging
-from typing import Dict
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.anatomy_model import AnatomyStructure
 from app.models.concept_model import ConceptEdge
@@ -21,7 +22,7 @@ class AnatomyImportService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def import_graph(self, payload: AnatomyImportPayload) -> Dict[str, int]:
+    async def import_graph(self, payload: AnatomyImportPayload) -> dict[str, int]:
         stats = {
             "nodes_added": 0,
             "nodes_updated": 0,
@@ -36,9 +37,7 @@ class AnatomyImportService:
         for node_data in payload.nodes:
             try:
                 result = await self.db.execute(
-                    select(AnatomyStructure).where(
-                        AnatomyStructure.slug == node_data.slug
-                    )
+                    select(AnatomyStructure).where(AnatomyStructure.slug == node_data.slug)
                 )
                 existing_node = result.scalar_one_or_none()
 
@@ -82,9 +81,7 @@ class AnatomyImportService:
                 stats["errors"] += 1
 
         # Refresh map for all nodes to allow edges to resolve even if node wasn't in payload
-        all_nodes_result = await self.db.execute(
-            select(AnatomyStructure.slug, AnatomyStructure.id)
-        )
+        all_nodes_result = await self.db.execute(select(AnatomyStructure.slug, AnatomyStructure.id))
         for slug, node_id in all_nodes_result.all():
             node_id_map[slug] = node_id
 

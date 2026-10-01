@@ -5,6 +5,7 @@ endpoint guard (Step 6) + the DB CHECK constraint (Step 1) already prevent
 the toggle from being queued, but the task shouldn't trust its input. This
 file invokes the underlying coroutine directly.
 """
+
 import uuid
 
 import pytest
@@ -21,7 +22,6 @@ from app.models.enums import (
     CatalogScope,
     CodingSystem,
 )
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -44,9 +44,7 @@ async def _cleanup():
         await session.execute(
             text("DELETE FROM biomarker_definitions WHERE slug LIKE 'state-tg-%'")
         )
-        await session.execute(
-            text("DELETE FROM biomarker_states WHERE slug LIKE 'state-tg-%'")
-        )
+        await session.execute(text("DELETE FROM biomarker_states WHERE slug LIKE 'state-tg-%'"))
         await session.commit()
 
 
@@ -59,6 +57,7 @@ async def _seed_state_biomarker():
     from sqlalchemy import select as sa_select
 
     async with AsyncSessionLocal() as session:
+
         async def _get_or_create_state(code, display):
             existing = (
                 await session.execute(
@@ -94,12 +93,8 @@ async def _seed_state_biomarker():
         await session.flush()
         session.add_all(
             [
-                BiomarkerAllowedState(
-                    biomarker_id=bio.id, state_id=pos.id, is_normal=False
-                ),
-                BiomarkerAllowedState(
-                    biomarker_id=bio.id, state_id=neg.id, is_normal=True
-                ),
+                BiomarkerAllowedState(biomarker_id=bio.id, state_id=pos.id, is_normal=False),
+                BiomarkerAllowedState(biomarker_id=bio.id, state_id=neg.id, is_normal=True),
             ]
         )
         await session.commit()
@@ -128,9 +123,7 @@ async def test_migrate_state_biomarker_to_telemetry_is_rejected():
     async with AsyncSessionLocal() as session:
         meta = (
             await session.execute(
-                text(
-                    "SELECT meta_data FROM biomarker_definitions WHERE id = :id"
-                ),
+                text("SELECT meta_data FROM biomarker_definitions WHERE id = :id"),
                 {"id": str(bio_id)},
             )
         ).scalar_one()
@@ -139,9 +132,7 @@ async def test_migrate_state_biomarker_to_telemetry_is_rejected():
         # And the biomarker itself is unchanged (still STATE, still not telemetry).
         row = (
             await session.execute(
-                text(
-                    "SELECT value_type, is_telemetry FROM biomarker_definitions WHERE id = :id"
-                ),
+                text("SELECT value_type, is_telemetry FROM biomarker_definitions WHERE id = :id"),
                 {"id": str(bio_id)},
             )
         ).one()

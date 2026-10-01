@@ -1,5 +1,6 @@
-from typing import List, Dict, Any
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 from statistics import mean, stdev
+from typing import Any
 
 
 class AnomalyDetector:
@@ -9,8 +10,8 @@ class AnomalyDetector:
         self.threshold_std = threshold_std
 
     def detect_biomarker_anomalies(
-        self, historical_values: List[Dict[str, Any]], new_value: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, historical_values: list[dict[str, Any]], new_value: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Detect anomalies in biomarker trends"""
         anomalies = []
 
@@ -61,8 +62,8 @@ class AnomalyDetector:
         return anomalies
 
     def detect_reference_range_violations(
-        self, value: float, unit: str, reference_ranges: Dict[str, Dict[str, float]]
-    ) -> List[Dict[str, Any]]:
+        self, value: float, unit: str, reference_ranges: dict[str, dict[str, float]]
+    ) -> list[dict[str, Any]]:
         """Check if value is outside reference range"""
         violations = []
 

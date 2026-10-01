@@ -29,13 +29,13 @@ limits here prevent abuse (huge payloads, non-image content, token blowups).
 import base64
 import binascii
 import re
-from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from enum import StrEnum
+from typing import Any
 
 from app.core.config import settings
 
 
-class AllowedImageMime(str, Enum):
+class AllowedImageMime(StrEnum):
     """MIME types accepted as chat image attachments.
 
     Restricted to common web image formats that vision models understand.
@@ -96,15 +96,11 @@ def validate_image_data_url(data_url: str) -> str:
 
     if mime not in _ALLOWED_MIME:
         allowed = ", ".join(sorted(_ALLOWED_MIME))
-        raise ImageValidationError(
-            f"Unsupported image type '{mime}'. Allowed: {allowed}."
-        )
+        raise ImageValidationError(f"Unsupported image type '{mime}'. Allowed: {allowed}.")
 
     if _decode_size(payload) > settings.AI_CHAT_MAX_IMAGE_BYTES:
         limit_mb = settings.AI_CHAT_MAX_IMAGE_BYTES / (1024 * 1024)
-        raise ImageValidationError(
-            f"Image exceeds the {limit_mb:.0f} MiB per-image limit."
-        )
+        raise ImageValidationError(f"Image exceeds the {limit_mb:.0f} MiB per-image limit.")
 
     # Confirm the payload is genuinely base64-decodable (catch corruption /
     # disguised content) without keeping the bytes around.
@@ -116,7 +112,7 @@ def validate_image_data_url(data_url: str) -> str:
     return f"data:{mime};base64,{payload}"
 
 
-def validate_chat_images(images: Optional[List[str]]) -> List[str]:
+def validate_chat_images(images: list[str] | None) -> list[str]:
     """Validate a list of chat image attachments.
 
     Enforces the per-request image count limit and validates each entry via
@@ -137,8 +133,8 @@ def validate_chat_images(images: Optional[List[str]]) -> List[str]:
 
 
 def build_multimodal_content(
-    text: str, images: Optional[List[str]] = None
-) -> Union[str, List[Dict[str, Any]]]:
+    text: str, images: list[str] | None = None
+) -> str | list[dict[str, Any]]:
     """Build the LangChain ``HumanMessage`` content for a chat turn.
 
     Returns a plain ``str`` when there are no images (the common, cheapest
@@ -157,13 +153,13 @@ def build_multimodal_content(
     if not images:
         return text or ""
 
-    blocks: List[Dict[str, Any]] = [{"type": "text", "text": text or ""}]
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": text or ""}]
     for data_url in images:
         blocks.append({"type": "image_url", "image_url": {"url": data_url}})
     return blocks
 
 
-def has_images(content_json: Optional[Dict[str, Any]]) -> bool:
+def has_images(content_json: dict[str, Any] | None) -> bool:
     """True when a persisted ``ChatMessage.content`` JSONB carries images."""
     if not content_json or not isinstance(content_json, dict):
         return False

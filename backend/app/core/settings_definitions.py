@@ -12,8 +12,6 @@ Storage model
   legitimately differ per device, e.g. light/dark theme.
 """
 
-from typing import Dict, List, Optional
-
 from app.schemas.settings import (
     SettingCategory,
     SettingDefinition,
@@ -23,8 +21,7 @@ from app.schemas.settings import (
     SettingType,
 )
 
-
-SETTINGS_CATEGORIES: List[SettingCategory] = [
+SETTINGS_CATEGORIES: list[SettingCategory] = [
     SettingCategory(
         key="appearance",
         label_key="settings.category.appearance",
@@ -55,7 +52,7 @@ SETTINGS_CATEGORIES: List[SettingCategory] = [
 ALL_LEVELS = [SettingLevel.SYSTEM, SettingLevel.TENANT, SettingLevel.USER]
 
 
-SETTINGS_REGISTRY: List[SettingDefinition] = [
+SETTINGS_REGISTRY: list[SettingDefinition] = [
     # ---------------- Appearance / Visualization ----------------
     SettingDefinition(
         key="appearance.biomarker_precision",
@@ -213,9 +210,7 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
         description_key="settings.unit_system_desc",
         options=[
             SettingEnumOption(value="metric", label_key="settings.unit_system_metric"),
-            SettingEnumOption(
-                value="imperial", label_key="settings.unit_system_imperial"
-            ),
+            SettingEnumOption(value="imperial", label_key="settings.unit_system_imperial"),
         ],
         order=20,
     ),
@@ -363,28 +358,20 @@ SETTINGS_REGISTRY: List[SettingDefinition] = [
 ]
 
 
-_REGISTRY_BY_KEY: Dict[str, SettingDefinition] = {d.key: d for d in SETTINGS_REGISTRY}
+_REGISTRY_BY_KEY: dict[str, SettingDefinition] = {d.key: d for d in SETTINGS_REGISTRY}
 
 
-def get_all_definitions() -> List[SettingDefinition]:
+def get_all_definitions() -> list[SettingDefinition]:
     return list(SETTINGS_REGISTRY)
 
 
-def get_definition(key: str) -> Optional[SettingDefinition]:
+def get_definition(key: str) -> SettingDefinition | None:
     return _REGISTRY_BY_KEY.get(key)
 
 
-def get_tiered_defaults() -> Dict[str, object]:
-    return {
-        d.key: d.default
-        for d in SETTINGS_REGISTRY
-        if d.storage == SettingStorage.TIERED
-    }
+def get_tiered_defaults() -> dict[str, object]:
+    return {d.key: d.default for d in SETTINGS_REGISTRY if d.storage == SettingStorage.TIERED}
 
 
-def get_device_defaults() -> Dict[str, object]:
-    return {
-        d.key: d.default
-        for d in SETTINGS_REGISTRY
-        if d.storage == SettingStorage.DEVICE
-    }
+def get_device_defaults() -> dict[str, object]:
+    return {d.key: d.default for d in SETTINGS_REGISTRY if d.storage == SettingStorage.DEVICE}

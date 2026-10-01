@@ -1,28 +1,27 @@
 from sqlalchemy import (
     Column,
-    String,
-    Text,
-    ForeignKey,
     DateTime,
     Enum,
+    ForeignKey,
     Index,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
+    Base,
+    TenantMixin,
     TimestampMixin,
+    UUIDMixin,
 )
 from app.models.enums import HitlTaskStatus
 
 
-class IntegrationProposal(
-    Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
-):
+class IntegrationProposal(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     """A pending catalog write proposed by an integration, awaiting human
     review.
 

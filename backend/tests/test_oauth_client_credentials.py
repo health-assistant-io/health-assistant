@@ -13,6 +13,8 @@ These are end-to-end tests through the real ASGI app against the test DB
 (the session-scoped migration fixture in ``conftest.py`` creates the
 ``oauth_clients`` table).
 """
+
+from datetime import UTC
 from uuid import uuid4
 
 import jwt
@@ -44,17 +46,15 @@ async def admin_headers():
     """SYSTEM_ADMIN session headers backed by real tenant + user rows."""
     from app.core.database import AsyncSessionLocal
     from app.core.security import get_password_hash
-    from tests._auth_helpers import auth_headers
     from app.models.enums import Role
     from app.models.tenant_model import TenantModel
     from app.models.user_model import UserModel
+    from tests._auth_helpers import auth_headers
 
     tenant_id = uuid4()
     user_id = uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(id=tenant_id, name="OAuth Test Tenant", slug=f"oauth-{tenant_id}")
-        )
+        session.add(TenantModel(id=tenant_id, name="OAuth Test Tenant", slug=f"oauth-{tenant_id}"))
         session.add(
             UserModel(
                 id=user_id,
@@ -72,7 +72,9 @@ async def admin_headers():
     yield headers, tenant_id
 
 
-async def _create_client(client, headers, *, scopes, display_name="Test Client", bound_patient_id=None):
+async def _create_client(
+    client, headers, *, scopes, display_name="Test Client", bound_patient_id=None
+):
     """Register an OAuth client; returns (response_json, plaintext_secret)."""
     payload = {"display_name": display_name, "scopes": scopes}
     if bound_patient_id is not None:
@@ -84,7 +86,11 @@ async def _create_client(client, headers, *, scopes, display_name="Test Client",
 
 async def _mint_token(client, client_id, client_secret, *, scope=None):
     """Exchange client credentials for an api token via /oauth/token."""
-    data = {"grant_type": "client_credentials", "client_id": client_id, "client_secret": client_secret}
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
     if scope is not None:
         data["scope"] = scope
     r = await client.post(
@@ -163,7 +169,9 @@ async def test_token_ungranted_scope_rejected_400(client, admin_headers):
 
 async def test_token_no_scope_returns_all_registered(client, admin_headers):
     headers, _ = admin_headers
-    created = await _create_client(client, headers, scopes=["system/Observation.read", "system/Patient.read"])
+    created = await _create_client(
+        client, headers, scopes=["system/Observation.read", "system/Patient.read"]
+    )
     r = await _mint_token(client, created["client_id"], created["client_secret"])
     assert r.status_code == 200
     granted = set(r.json()["scope"].split())
@@ -196,7 +204,7 @@ async def test_token_supports_http_basic_auth(client, admin_headers):
 async def test_create_client_returns_secret_once_then_never(client, admin_headers):
     headers, _ = admin_headers
     created = await _create_client(client, headers, scopes=["system/*.read"])
-    assert "client_secret" in created and created["client_secret"]
+    assert created.get("client_secret")
 
     r = await client.get("/api/v1/oauth/clients", headers=headers)
     assert r.status_code == 200
@@ -212,9 +220,7 @@ async def test_rotate_secret_invalidates_old(client, admin_headers):
     r = await _mint_token(client, created["client_id"], created["client_secret"])
     assert r.status_code == 200
     # Rotate.
-    r = await client.post(
-        f"/api/v1/oauth/clients/{created['id']}/rotate-secret", headers=headers
-    )
+    r = await client.post(f"/api/v1/oauth/clients/{created['id']}/rotate-secret", headers=headers)
     assert r.status_code == 200
     new_secret = r.json()["client_secret"]
     # Old secret now fails.
@@ -332,7 +338,7 @@ async def test_facade_metadata_remains_unauthenticated(client):
 
 async def test_audience_mismatch_rejected_on_facade(client):
     """A token signed by us but with the wrong audience → 401."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from app.core.security import PRODUCT_SLUG
 
@@ -348,8 +354,8 @@ async def test_audience_mismatch_rejected_on_facade(client):
             # so the rejection is specifically the audience check.
             "iss": PRODUCT_SLUG,
             "jti": uuid4().hex,
-            "iat": datetime.now(timezone.utc),
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         key_for(API_TOKEN_KIND),
         algorithm=settings.JWT_ALGORITHM,

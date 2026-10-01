@@ -8,12 +8,10 @@ them; ``ADMIN``/``MANAGER`` see the tenant-wide view.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import check_patient_access
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.notification import (
@@ -24,6 +22,7 @@ from app.schemas.notification import (
 )
 from app.schemas.user import TokenData
 from app.services import notification_rule_service
+from app.services.access import check_patient_access
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +49,9 @@ async def create_rule(
 
 @router.get("", response_model=NotificationRuleListResponse)
 async def list_rules(
-    patient_id: Optional[str] = Query(None),
-    biomarker_id: Optional[str] = Query(None),
-    enabled: Optional[bool] = Query(None),
+    patient_id: str | None = Query(None),
+    biomarker_id: str | None = Query(None),
+    enabled: bool | None = Query(None),
     limit: int = Query(100, le=200),
     offset: int = Query(0, ge=0),
     current_user: TokenData = Depends(get_current_user),

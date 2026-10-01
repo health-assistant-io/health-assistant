@@ -3,8 +3,8 @@
 Tenant- (+ optional patient-) scoped ILIKE over the FHIR ``code.text`` JSONB
 field (the allergen substance). Self-registers.
 """
+
 from uuid import UUID
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ from app.models.fhir.allergy import AllergyIntolerance
 async def search(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
     limit: int,
 ) -> list[dict]:

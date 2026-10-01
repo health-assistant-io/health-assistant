@@ -11,11 +11,11 @@ B14: ``catalog_search_service._set_similarity_threshold`` interpolated
      ``threshold`` into raw SQL via f-string. Now validates a finite float
      in [0, 1] before inlining.
 """
+
 import importlib
 import inspect
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # B7: no print() leaks in ai_assistance_service
@@ -81,9 +81,7 @@ async def test_b7_define_biomarker_uses_logger_not_print(monkeypatch, caplog):
         out = await svc._define_biomarker(llm, "Hemoglobin A1c", {})
 
     assert out["success"] is True
-    assert "printed" not in captured, (
-        "_define_biomarker called print() — must use logger"
-    )
+    assert "printed" not in captured, "_define_biomarker called print() — must use logger"
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +158,7 @@ def test_b13_production_rejects_weak_password(weak):
             POSTGRES_PASSWORD=weak,
             HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
             HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
         )
     assert "insecure database credentials" in str(exc_info.value)
 
@@ -198,9 +196,7 @@ def test_b13_env_example_has_no_admin123():
     if not env_example.exists():
         pytest.skip(".env.example not present")
     content = env_example.read_text()
-    assert "admin123" not in content, (
-        ".env.example still references the legacy admin123 password."
-    )
+    assert "admin123" not in content, ".env.example still references the legacy admin123 password."
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +211,8 @@ def test_b13_env_example_has_no_admin123():
         None,
         "not a number",
         "1; DROP TABLE users; --",
-        1.5,        # out of range high
-        -0.1,       # out of range low
+        1.5,  # out of range high
+        -0.1,  # out of range low
         float("inf"),
         float("nan"),
     ],

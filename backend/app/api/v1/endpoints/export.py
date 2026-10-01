@@ -1,5 +1,5 @@
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
 from pathlib import Path
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,20 +34,19 @@ def _authorize_scope(scope: ExportScope, current_user: TokenData) -> None:
                 detail="Group export requires MANAGER, ADMIN or SYSTEM_ADMIN role.",
             )
         return
-    if scope == ExportScope.SYSTEM:
-        if role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
-            raise HTTPException(
-                status_code=403,
-                detail="System export requires ADMIN or SYSTEM_ADMIN role.",
-            )
+    if scope == ExportScope.SYSTEM and role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
+        raise HTTPException(
+            status_code=403,
+            detail="System export requires ADMIN or SYSTEM_ADMIN role.",
+        )
 
 
 async def _validate_patient_scoping(
     scope: ExportScope,
-    patient_ids: Optional[List[str]],
+    patient_ids: list[str] | None,
     current_user: TokenData,
     db: AsyncSession,
-) -> Optional[List[str]]:
+) -> list[str] | None:
     from app.services.access import check_patient_access
 
     if scope == ExportScope.PATIENT:

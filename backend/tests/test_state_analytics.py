@@ -6,7 +6,8 @@ Covers:
 3. ``get_biomarker_state_history`` — chronological state list.
 4. ``get_multi_state_history`` — per-component tracks.
 """
-from datetime import datetime, timezone, timedelta
+
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -28,7 +29,6 @@ from app.services.analytics_service import (
     get_biomarker_state_history,
     get_multi_state_history,
 )
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -96,9 +96,7 @@ def test_state_status_defaults_to_normal_when_no_normal_set_configured():
 
 
 def test_state_status_multi_returns_abnormal_if_any_component_non_normal():
-    bio = _bio(
-        [_allowed(POS, is_normal=False), _allowed(NEG, is_normal=True)], multi=True
-    )
+    bio = _bio([_allowed(POS, is_normal=False), _allowed(NEG, is_normal=True)], multi=True)
     obs = _obs(
         component=[
             _comp("staph", _cc("POS")),  # abnormal
@@ -109,9 +107,7 @@ def test_state_status_multi_returns_abnormal_if_any_component_non_normal():
 
 
 def test_state_status_multi_all_normal_returns_normal():
-    bio = _bio(
-        [_allowed(POS, is_normal=False), _allowed(NEG, is_normal=True)], multi=True
-    )
+    bio = _bio([_allowed(POS, is_normal=False), _allowed(NEG, is_normal=True)], multi=True)
     obs = _obs(
         component=[
             _comp("org1", _cc("NEG")),
@@ -175,9 +171,7 @@ async def _scrub():
 async def _cleanup():
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text(
-                "DELETE FROM fhir_observations WHERE code->>'text' LIKE 'PCR-test%'"
-            )
+            text("DELETE FROM fhir_observations WHERE code->>'text' LIKE 'PCR-test%'")
         )
         await session.execute(
             text(
@@ -188,15 +182,9 @@ async def _cleanup():
         await session.execute(
             text("DELETE FROM biomarker_definitions WHERE slug LIKE 'state-an-%'")
         )
-        await session.execute(
-            text("DELETE FROM biomarker_states WHERE slug LIKE 'state-an-%'")
-        )
-        await session.execute(
-            text("DELETE FROM fhir_patients WHERE name->>'family' = 'StateAn'")
-        )
-        await session.execute(
-            text("DELETE FROM tenants WHERE slug LIKE 'state-an-%'")
-        )
+        await session.execute(text("DELETE FROM biomarker_states WHERE slug LIKE 'state-an-%'"))
+        await session.execute(text("DELETE FROM fhir_patients WHERE name->>'family' = 'StateAn'"))
+        await session.execute(text("DELETE FROM tenants WHERE slug LIKE 'state-an-%'"))
         await session.commit()
 
 
@@ -210,9 +198,7 @@ async def _seed_world(multi=False):
     from sqlalchemy import select as sa_select
 
     async with AsyncSessionLocal() as session:
-        tenant = TenantModel(
-            id=uuid4(), name="StateAn", slug=f"state-an-{uuid4().hex[:8]}"
-        )
+        tenant = TenantModel(id=uuid4(), name="StateAn", slug=f"state-an-{uuid4().hex[:8]}")
         session.add(tenant)
         await session.flush()
         patient = Patient(
@@ -292,25 +278,30 @@ async def _add_observation(tenant_id, patient_id, bio_id, *, value_cc, ts, compo
 @pytest.mark.asyncio
 async def test_biomarker_state_history_chronological():
     tenant_id, patient_id, bio_id, slug = await _seed_world()
-    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    base = datetime(2024, 1, 1, tzinfo=UTC)
     await _add_observation(
-        tenant_id, patient_id, bio_id,
-        value_cc={"coding": [{"code": "POS", "system": V3}]}, ts=base,
+        tenant_id,
+        patient_id,
+        bio_id,
+        value_cc={"coding": [{"code": "POS", "system": V3}]},
+        ts=base,
     )
     await _add_observation(
-        tenant_id, patient_id, bio_id,
+        tenant_id,
+        patient_id,
+        bio_id,
         value_cc={"coding": [{"code": "NEG", "system": V3}]},
         ts=base + timedelta(days=30),
     )
     await _add_observation(
-        tenant_id, patient_id, bio_id,
+        tenant_id,
+        patient_id,
+        bio_id,
         value_cc={"coding": [{"code": "POS", "system": V3}]},
         ts=base + timedelta(days=60),
     )
 
-    history = await get_biomarker_state_history(
-        str(tenant_id), str(patient_id), slug
-    )
+    history = await get_biomarker_state_history(str(tenant_id), str(patient_id), slug)
     assert len(history) == 3
     # Chronological order
     assert history[0]["state_code"] == "POS"
@@ -340,9 +331,7 @@ async def test_biomarker_state_history_empty_for_quantity():
         bio_slug = bio.slug
 
     try:
-        history = await get_biomarker_state_history(
-            str(uuid4()), str(uuid4()), bio_slug
-        )
+        history = await get_biomarker_state_history(str(uuid4()), str(uuid4()), bio_slug)
         assert history == []
     finally:
         async with AsyncSessionLocal() as session:
@@ -356,7 +345,7 @@ async def test_biomarker_state_history_empty_for_quantity():
 @pytest.mark.asyncio
 async def test_multi_state_history_returns_per_component_tracks():
     tenant_id, patient_id, bio_id, slug = await _seed_world(multi=True)
-    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    base = datetime(2024, 1, 1, tzinfo=UTC)
     component = [
         {
             "code": {"coding": [{"code": "staph"}]},
@@ -368,13 +357,15 @@ async def test_multi_state_history_returns_per_component_tracks():
         },
     ]
     await _add_observation(
-        tenant_id, patient_id, bio_id,
-        value_cc=None, ts=base, component=component,
+        tenant_id,
+        patient_id,
+        bio_id,
+        value_cc=None,
+        ts=base,
+        component=component,
     )
 
-    tracks = await get_multi_state_history(
-        str(tenant_id), str(patient_id), slug
-    )
+    tracks = await get_multi_state_history(str(tenant_id), str(patient_id), slug)
     assert set(tracks.keys()) == {"staph", "e-coli"}
     assert tracks["staph"][0]["state_code"] == "POS"
     assert tracks["staph"][0]["is_normal"] is False
@@ -397,14 +388,18 @@ async def test_get_biomarker_trends_includes_state_observations():
     from app.services.analytics_service import get_biomarker_trends
 
     tenant_id, patient_id, bio_id, slug = await _seed_world()
-    base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    base = datetime(2024, 1, 1, tzinfo=UTC)
     await _add_observation(
-        tenant_id, patient_id, bio_id,
+        tenant_id,
+        patient_id,
+        bio_id,
         value_cc={"coding": [{"code": "POS", "system": V3, "display": "Positive"}]},
         ts=base,
     )
     await _add_observation(
-        tenant_id, patient_id, bio_id,
+        tenant_id,
+        patient_id,
+        bio_id,
         value_cc={"coding": [{"code": "NEG", "system": V3, "display": "Negative"}]},
         ts=base + timedelta(days=30),
     )
@@ -480,7 +475,7 @@ async def test_get_biomarker_trends_quantity_unchanged():
             biomarker_id=bio.id,
             value_quantity={"value": 95.0, "unit": "mg/dL"},
             raw_value=95.0,
-            effective_datetime=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            effective_datetime=datetime(2024, 1, 1, tzinfo=UTC),
         )
         session.add(obs)
         await session.commit()
@@ -512,4 +507,3 @@ async def test_get_biomarker_trends_quantity_unchanged():
                 text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant_id)}
             )
             await session.commit()
-

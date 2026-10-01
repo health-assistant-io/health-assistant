@@ -1,20 +1,21 @@
-import os
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from starlette.requests import ClientDisconnect
-from app.core.logging_setup import setup_logging
+
 from app.api.v1 import api_router
+from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
 from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
 from app.core.cookies import CsrfMiddleware
-from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
+from app.core.errors import DomainError
+from app.core.logging_setup import setup_logging
 from app.services.fhir_helpers import FhirSerializationError
 from app.services.observation_value_validator import InvalidObservationValue
-from app.core.errors import DomainError
 
 # Configure logging
 setup_logging(log_name="backend", debug=settings.DEBUG)
@@ -64,19 +65,19 @@ async def lifespan(app: FastAPI):
     # only target exams whose ``updated_at`` is older than the Celery
     # hard ``task_time_limit`` (900s) plus a safety margin (5 min) —
     # matching the periodic ``cleanup_stuck_extractions`` beat.
-    from app.core.database import DATABASE_AVAILABLE
     import datetime as _dt
+
+    from app.core.database import DATABASE_AVAILABLE
 
     if DATABASE_AVAILABLE:
         try:
             from sqlalchemy import update
-            from app.models.examination_model import ExaminationModel
+
             from app.core.database import AsyncSessionLocal
+            from app.models.examination_model import ExaminationModel
 
             async with AsyncSessionLocal() as db:
-                stuck_threshold = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(
-                    minutes=20
-                )
+                stuck_threshold = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=20)
                 # Target statuses that indicate the process is active.
                 stuck_statuses = [
                     "aggregating",
@@ -110,9 +111,9 @@ async def lifespan(app: FastAPI):
             logger.error(f"Failed to cleanup stuck extractions: {e}")
 
     # Seed initial data
-    from app.services.seed_service import seed_service
-    from app.core.integration_registry import integration_registry
     from app.core.database import DATABASE_AVAILABLE
+    from app.core.integration_registry import integration_registry
+    from app.services.seed_service import seed_service
 
     if DATABASE_AVAILABLE:
         # Instance facts (identity-auth §4): init-only — the empty DB
@@ -168,14 +169,12 @@ async def lifespan(app: FastAPI):
         try:
             from sqlalchemy import func, select
 
-            from app.core.database import AsyncSessionLocal
             from app.core import setup_token
+            from app.core.database import AsyncSessionLocal
             from app.models.user_model import UserModel
 
             async with AsyncSessionLocal() as db:
-                count_result = await db.execute(
-                    select(func.count()).select_from(UserModel)
-                )
+                count_result = await db.execute(select(func.count()).select_from(UserModel))
                 user_count = count_result.scalar() or 0
 
             if user_count == 0:
@@ -377,9 +376,7 @@ async def fhir_validation_handler(request: Request, exc: FhirSerializationError)
 
 
 @app.exception_handler(InvalidObservationValue)
-async def invalid_observation_value_handler(
-    request: Request, exc: InvalidObservationValue
-):
+async def invalid_observation_value_handler(request: Request, exc: InvalidObservationValue):
     """Map the Observation↔BiomarkerDefinition contract violation to HTTP 422.
 
     Raised by ``validate_observation_value`` (the single chokepoint on every
@@ -400,16 +397,12 @@ async def domain_error_handler(request: Request, exc: DomainError):
     ``status_code``. Logged at INFO (these are expected client errors, not server
     faults) — unlike the global 500 handler, no correlation id is needed.
     """
-    logger.info(
-        "Domain error [%s] %s: %s", exc.status_code, type(exc).__name__, exc.detail
-    )
+    logger.info("Domain error [%s] %s: %s", exc.status_code, type(exc).__name__, exc.detail)
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 @app.exception_handler(CatalogPermissionDenied)
-async def catalog_permission_denied_handler(
-    request: Request, exc: CatalogPermissionDenied
-):
+async def catalog_permission_denied_handler(request: Request, exc: CatalogPermissionDenied):
     """Map the uniform catalog RBAC exception to HTTP 403.
 
     Both the ``/catalogs`` meta-layer adapters and the domain catalog endpoints
@@ -469,9 +462,7 @@ async def security_headers_middleware(request: Request, call_next):
     # setdefault so an explicit per-route value wins. See documents.py.
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = (
-        "max-age=31536000; includeSubDomains"
-    )
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 

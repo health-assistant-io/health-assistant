@@ -28,10 +28,10 @@ Revises: e1x2a3m4i5n6
 Create Date: 2026-07-21
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "g1h2i3t4l5pr"
 down_revision = "e1x2a3m4i5n6"
@@ -43,7 +43,8 @@ _DEDUP_INDEX = "uq_integration_proposals_integration_dedup"
 
 
 def upgrade() -> None:
-    op.create_table('integration_proposals',
+    op.create_table(
+        "integration_proposals",
         sa.Column(
             "id",
             sa.UUID(),
@@ -104,12 +105,8 @@ def upgrade() -> None:
             ["user_integrations.id"],
             ondelete="CASCADE",
         ),
-        sa.ForeignKeyConstraint(
-            ["patient_id"], ["fhir_patients.id"], ondelete="CASCADE"
-        ),
-        sa.ForeignKeyConstraint(
-            ["tenant_id"], ["tenants.id"], ondelete="CASCADE"
-        ),
+        sa.ForeignKeyConstraint(["patient_id"], ["fhir_patients.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("integration_proposals", schema=None) as batch_op:
@@ -123,9 +120,7 @@ def upgrade() -> None:
             ["proposal_type"],
             unique=False,
         )
-        batch_op.create_index(
-            "ix_integration_proposals_status", ["status"], unique=False
-        )
+        batch_op.create_index("ix_integration_proposals_status", ["status"], unique=False)
         batch_op.create_index(
             "ix_integration_proposals_dedup_key",
             ["dedup_key"],

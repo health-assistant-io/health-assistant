@@ -9,6 +9,7 @@ Covers:
    extract carries a state code, and skips the numeric pipeline entirely.
 3. The legacy QUANTITY path is unchanged.
 """
+
 import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -20,7 +21,6 @@ from pydantic import ValidationError
 from app.ai.pipeline.persistence import save_observation
 from app.ai.schemas.nlp import KnownBiomarkerExtract
 from app.models.enums import BiomarkerValueType, QuantityType
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -178,9 +178,7 @@ async def test_save_observation_state_branch_builds_value_codeable_concept():
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.begin_nested = MagicMock(
-        return_value=MagicMock(
-            __aenter__=AsyncMock(), __aexit__=AsyncMock()
-        )
+        return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
     )
 
     b = KnownBiomarkerExtract(
@@ -199,7 +197,7 @@ async def test_save_observation_state_branch_builds_value_codeable_concept():
         units_by_symbol={},
         exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.datetime.now(datetime.timezone.utc),
+        effective_date=datetime.datetime.now(datetime.UTC),
     )
 
     obs = _intercept_obs(db)
@@ -242,7 +240,7 @@ async def test_save_observation_state_branch_skips_when_target_is_quantity():
         units_by_symbol={},
         exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.datetime.now(datetime.timezone.utc),
+        effective_date=datetime.datetime.now(datetime.UTC),
     )
 
     assert not db.add.called, "save_observation should skip the row entirely"
@@ -256,9 +254,7 @@ async def test_save_observation_state_branch_defaults_system_when_model_omits():
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.begin_nested = MagicMock(
-        return_value=MagicMock(
-            __aenter__=AsyncMock(), __aexit__=AsyncMock()
-        )
+        return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
     )
 
     b = KnownBiomarkerExtract(
@@ -275,7 +271,7 @@ async def test_save_observation_state_branch_defaults_system_when_model_omits():
         units_by_symbol={},
         exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.datetime.now(datetime.timezone.utc),
+        effective_date=datetime.datetime.now(datetime.UTC),
     )
 
     obs = _intercept_obs(db)
@@ -296,9 +292,7 @@ async def test_save_observation_quantity_path_unchanged():
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.begin_nested = MagicMock(
-        return_value=MagicMock(
-            __aenter__=AsyncMock(), __aexit__=AsyncMock()
-        )
+        return_value=MagicMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
     )
 
     b = KnownBiomarkerExtract(
@@ -318,7 +312,7 @@ async def test_save_observation_quantity_path_unchanged():
         units_by_symbol={"mmol/l": _unit(uuid4(), "mmol/L", 1.0)},
         exam=exam,
         patient_ref=f"Patient/{exam.patient_id}",
-        effective_date=datetime.datetime.now(datetime.timezone.utc),
+        effective_date=datetime.datetime.now(datetime.UTC),
     )
 
     obs = _intercept_obs(db)

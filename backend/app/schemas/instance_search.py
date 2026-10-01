@@ -8,8 +8,6 @@ fetch. The generic frontend ``InstancePicker`` consumes exactly this shape.
 See ``dev/plans/instance-browser-unified-picker-2026-07-16.md`` (Phase 2).
 """
 
-from typing import List, Optional
-
 from pydantic import BaseModel, ConfigDict
 
 
@@ -22,10 +20,10 @@ class InstanceSearchHit(BaseModel):
     type: str
     id: str
     label: str
-    subtitle: Optional[str] = None
+    subtitle: str | None = None
     # ISO 8601 date string (the record's primary date), or None.
-    date: Optional[str] = None
+    date: str | None = None
 
 
 class InstanceSearchResponse(BaseModel):
-    results: List[InstanceSearchHit]
+    results: list[InstanceSearchHit]

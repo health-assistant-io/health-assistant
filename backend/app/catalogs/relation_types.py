@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Relation-type reference metadata — the single source of truth for the
 human-facing description of each ``ConceptRelationType``.
 
@@ -25,7 +26,7 @@ GROUP_MEDICAL = "Medical knowledge"
 class RelationTypeMeta:
     """Static metadata for one relation type (not a Pydantic model — pure data)."""
 
-    __slots__ = ("value", "label", "group", "description", "icon")
+    __slots__ = ("description", "group", "icon", "label", "value")
 
     def __init__(self, value: str, label: str, group: str, description: str, icon: str):
         self.value = value

@@ -20,21 +20,21 @@ the AI tools, and analytics.
 
 import datetime as _dt
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
 class JourneyInsights:
     """Computed insights for a single clinical event."""
 
-    current_phase: Optional[Dict[str, Any]] = None
-    upcoming_milestones: List[Dict[str, Any]] = field(default_factory=list)
-    overdue_milestones: List[Dict[str, Any]] = field(default_factory=list)
-    recommended_biomarkers: List[Dict[str, Any]] = field(default_factory=list)
+    current_phase: dict[str, Any] | None = None
+    upcoming_milestones: list[dict[str, Any]] = field(default_factory=list)
+    overdue_milestones: list[dict[str, Any]] = field(default_factory=list)
+    recommended_biomarkers: list[dict[str, Any]] = field(default_factory=list)
     is_overdue: bool = False
-    days_since_onset: Optional[int] = None
+    days_since_onset: int | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "current_phase": self.current_phase,
             "upcoming_milestones": self.upcoming_milestones,
@@ -48,9 +48,9 @@ class JourneyInsights:
 def compute_insights(
     event: Any,
     *,
-    type_template: Optional[Any] = None,
-    recommended_biomarkers: Optional[List[Dict[str, Any]]] = None,
-    now: Optional[_dt.datetime] = None,
+    type_template: Any | None = None,
+    recommended_biomarkers: list[dict[str, Any]] | None = None,
+    now: _dt.datetime | None = None,
 ) -> JourneyInsights:
     """Compute journey insights for ``event``.
 
@@ -67,7 +67,7 @@ def compute_insights(
     The engine never raises on partial data — missing templates / dates simply
     yield empty insights, so callers can always ask.
     """
-    now = now or _dt.datetime.now(_dt.timezone.utc)
+    now = now or _dt.datetime.now(_dt.UTC)
     tpl = type_template if type_template is not None else getattr(event, "type_entity", None)
 
     phases = _as_list(_get(tpl, "phases"))
@@ -79,9 +79,7 @@ def compute_insights(
     status_value = _status_value(getattr(event, "status", None))
     metadata = getattr(event, "event_metadata", None) or {}
 
-    insights = JourneyInsights(
-        recommended_biomarkers=list(recommended_biomarkers or [])
-    )
+    insights = JourneyInsights(recommended_biomarkers=list(recommended_biomarkers or []))
 
     # Days since onset + overdue flag.
     if onset is not None:
@@ -143,13 +141,13 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
-def _as_list(value: Any) -> List[Any]:
+def _as_list(value: Any) -> list[Any]:
     if not value:
         return []
     return list(value)
 
 
-def _coerce_int(value: Any) -> Optional[int]:
+def _coerce_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -166,7 +164,7 @@ def _status_value(status: Any) -> str:
     return str(val).lower()
 
 
-def _ensure_aware(dt_value: Any) -> Optional[_dt.datetime]:
+def _ensure_aware(dt_value: Any) -> _dt.datetime | None:
     if dt_value is None:
         return None
     if isinstance(dt_value, str):
@@ -177,11 +175,11 @@ def _ensure_aware(dt_value: Any) -> Optional[_dt.datetime]:
     if not isinstance(dt_value, _dt.datetime):
         return None
     if dt_value.tzinfo is None:
-        return dt_value.replace(tzinfo=_dt.timezone.utc)
+        return dt_value.replace(tzinfo=_dt.UTC)
     return dt_value
 
 
-def _milestone_date(ms: Any, metadata: Dict[str, Any]) -> Optional[_dt.datetime]:
+def _milestone_date(ms: Any, metadata: dict[str, Any]) -> _dt.datetime | None:
     """Resolve a milestone's date from either an absolute ``date`` or a
     ``date_field`` key into ``event_metadata``."""
     raw = _get(ms, "date")

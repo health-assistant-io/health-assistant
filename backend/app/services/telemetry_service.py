@@ -12,7 +12,7 @@ uniform metric discriminator.
 
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -50,12 +50,12 @@ def _parse_iso_date(value: str) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except (ValueError, TypeError):
         pass
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(value).replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 
@@ -252,7 +252,7 @@ async def get_telemetry_anomalies(
     if tenant_uuid is None:
         return []
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+    cutoff = datetime.now(UTC) - timedelta(days=period_days)
     query = (
         select(TelemetryDataModel.timestamp, TelemetryDataModel.value)
         .where(
@@ -288,13 +288,11 @@ def _bound_dt(value: Any) -> datetime | None:
     (naive assumed UTC). Returns None on parse failure.
     """
     if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     return _parse_iso_date(value)
 
 
-async def _patient_scope_predicate(
-    db: AsyncSession, tenant_uuid: UUID, patient_uuid: UUID
-):
+async def _patient_scope_predicate(db: AsyncSession, tenant_uuid: UUID, patient_uuid: UUID):
     """Telemetry patient-scoping predicate, including the legacy fallback.
 
     Fresh rows always carry ``patient_id`` (``apply_telemetry_split`` persists
@@ -306,9 +304,7 @@ async def _patient_scope_predicate(
     """
     from app.models.fhir.patient import Patient
 
-    count = await db.execute(
-        select(func.count(Patient.id)).where(Patient.tenant_id == tenant_uuid)
-    )
+    count = await db.execute(select(func.count(Patient.id)).where(Patient.tenant_id == tenant_uuid))
     if (count.scalar() or 0) == 1:
         return or_(
             TelemetryDataModel.patient_id == patient_uuid,

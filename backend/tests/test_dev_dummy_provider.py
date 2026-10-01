@@ -1,3 +1,4 @@
+# ruff: noqa: SIM102 -- long immutable strings; reflow when touched
 """Unit tests for the dev_dummy reference integration.
 
 These tests instantiate :class:`DevDummyProvider` and
@@ -36,18 +37,18 @@ Coverage map (each test pins one capability):
 * ``test_notifications_fire_for_elevated_hr``                — §G
 * ``test_notifications_fire_for_sensor_malfunction``         — §G + §B (glitch)
 """
+
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import hmac
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from integrations.dev_dummy.config_flow import DevDummyConfigFlow
 from integrations.dev_dummy.provider import DevDummyProvider
 from integrations.sdk.exceptions import (
@@ -56,7 +57,6 @@ from integrations.sdk.exceptions import (
     IntegrationRateLimitError,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ from integrations.sdk.exceptions import (
 
 def make_integration(
     *,
-    config: Dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
     patient_id: Any = None,
     debug: bool = False,
     instance_name: str = "test-instance",
@@ -99,7 +99,7 @@ def flow() -> DevDummyConfigFlow:
 class FakeRequest:
     """Minimal stand-in for ``fastapi.Request`` used by webhook tests."""
 
-    def __init__(self, body_bytes: bytes = b"", headers: Dict[str, str] | None = None):
+    def __init__(self, body_bytes: bytes = b"", headers: dict[str, str] | None = None):
         self._body = body_bytes
         self.headers = headers or {}
 
@@ -309,9 +309,7 @@ async def test_webhook_rejects_invalid_signature(provider: DevDummyProvider, mon
 async def test_webhook_accepts_valid_signature(provider: DevDummyProvider, monkeypatch):
     secret = "topsecret"
     integration = make_integration(config={"webhook_secret": secret})
-    monkeypatch.setattr(
-        DevDummyProvider, "_resolve_webhook_secret", staticmethod(lambda i: secret)
-    )
+    monkeypatch.setattr(DevDummyProvider, "_resolve_webhook_secret", staticmethod(lambda i: secret))
     body = b'{"metrics":[{"code":"8867-4","value":80,"unit":"bpm"}]}'
     sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     request = FakeRequest(body_bytes=body, headers={"X-DevDummy-Signature": sig})
@@ -390,7 +388,10 @@ async def test_supports_tools_returns_langchain_tools(provider: DevDummyProvider
     integration = make_integration(config={"enable_tools": True})
     tools = await provider.get_tools(integration)
     assert len(tools) == 2, "dev_dummy should expose two demo tools"
-    assert all(hasattr(t, "coroutine") or asyncio.iscoroutinefunction(getattr(t, "func", None)) for t in tools)
+    assert all(
+        hasattr(t, "coroutine") or asyncio.iscoroutinefunction(getattr(t, "func", None))
+        for t in tools
+    )
 
 
 @pytest.mark.asyncio
@@ -571,11 +572,14 @@ def _build_obs(
 ):
     """Build a minimal duck-typed stand-in for ObservationCreate."""
     return SimpleNamespace(
-        code={"coding": [{"code": code, "system": "http://loinc.org", "display": "X"}], "text": "X"},
+        code={
+            "coding": [{"code": code, "system": "http://loinc.org", "display": "X"}],
+            "text": "X",
+        },
         value_quantity={"value": raw_value} if raw_value is not None else None,
         value_string=value_string,
         raw_value=raw_value,
-        effective_datetime=effective or datetime.now(timezone.utc),
+        effective_datetime=effective or datetime.now(UTC),
     )
 
 
@@ -613,8 +617,8 @@ def test_latest_numeric_picks_most_recent(provider: DevDummyProvider):
     """Regression: the previous implementation parsed effective_datetime
     as a string (would TypeError under the bare except), so the helper
     returned the FIRST match instead of the LATEST."""
-    earlier = _build_obs(raw_value=70.0, effective=datetime(2025, 1, 1, tzinfo=timezone.utc))
-    later = _build_obs(raw_value=95.0, effective=datetime(2025, 1, 2, tzinfo=timezone.utc))
+    earlier = _build_obs(raw_value=70.0, effective=datetime(2025, 1, 1, tzinfo=UTC))
+    later = _build_obs(raw_value=95.0, effective=datetime(2025, 1, 2, tzinfo=UTC))
     # Insert in chronological order so the naive first-match would also
     # return 70.0; the fixed helper must return 95.0.
     result = DevDummyProvider._latest_numeric([earlier, later], "8867-4")

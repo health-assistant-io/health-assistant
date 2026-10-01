@@ -1,7 +1,8 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 import hashlib
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,6 +25,7 @@ def _silence_import_provenance(monkeypatch):
 
 
 # ---------- _apply_remap (pure) ----------
+
 
 def test_apply_remap_rewrites_patient_reference():
     d = {
@@ -52,6 +54,7 @@ def test_apply_remap_nested_context():
 
 # ---------- G11: _apply_remap reference routing ----------
 
+
 def test_apply_remap_routes_encounter_urn_uuid_to_encounter():
     """G11 headline bug: a bare urn:uuid in an 'encounter' field must map to
     Encounter, not Patient (the old default for every non-performer/partOf hint)."""
@@ -75,7 +78,9 @@ def test_apply_remap_routes_sender_recipient_via_bundle_lookahead():
         "recipient": {"reference": "urn:uuid:prac1"},
     }
     urn_type_index = {"dev1": "Device", "prac1": "Practitioner"}
-    out = ImportService._apply_remap(d, {"dev1": "new-dev", "prac1": "new-prac"}, urn_type_index=urn_type_index)
+    out = ImportService._apply_remap(
+        d, {"dev1": "new-dev", "prac1": "new-prac"}, urn_type_index=urn_type_index
+    )
     assert out["sender"]["reference"] == "Device/new-dev"
     assert out["recipient"]["reference"] == "Practitioner/new-prac"
 
@@ -90,18 +95,23 @@ def test_apply_remap_sender_without_index_falls_back_to_patient():
 
 def test_apply_remap_author_routes_to_practitioner():
     """G11: 'author' field is now recursed (was previously ignored)."""
-    d = {"resourceType": "DocumentReference", "id": "d1", "author": [{"reference": "urn:uuid:doc1"}]}
+    d = {
+        "resourceType": "DocumentReference",
+        "id": "d1",
+        "author": [{"reference": "urn:uuid:doc1"}],
+    }
     out = ImportService._apply_remap(d, {"doc1": "new-doc"})
     assert out["author"][0]["reference"] == "Practitioner/new-doc"
 
 
 # ---------- manifest verification ----------
 
+
 def test_verify_manifest_from_zip_valid(tmp_path):
     payload = b'{"resourceType":"Bundle","type":"transaction","entry":[]}'
     sha = hashlib.sha256(payload).hexdigest()
     manifest = BackupManifest(
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         scope="patient",
         export_type="fhir_only",
         smart_scope="patient/*.rs",
@@ -122,7 +132,7 @@ def test_verify_manifest_from_zip_valid(tmp_path):
 def test_verify_manifest_from_zip_mismatch(tmp_path):
     payload = b'{"x":1}'
     manifest = BackupManifest(
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         scope="patient",
         export_type="fhir_only",
         smart_scope="patient/*.rs",
@@ -133,7 +143,7 @@ def test_verify_manifest_from_zip_mismatch(tmp_path):
         zf.writestr("manifest.json", manifest.model_dump_json())
         zf.writestr("fhir/bundle.json", payload)
     with zipfile.ZipFile(zip_path, "r") as zf:
-        ok, m, errs = ImportService.verify_manifest_from_zip(zf)
+        ok, _m, errs = ImportService.verify_manifest_from_zip(zf)
     assert not ok
     assert any("mismatch" in e for e in errs)
 
@@ -151,6 +161,7 @@ def test_verify_manifest_from_zip_missing_manifest(tmp_path):
 
 # ---------- restore_fhir_bundle (mocked DB) ----------
 
+
 @pytest.mark.asyncio
 async def test_restore_fhir_bundle_creates_patient_and_remaps_observation():
     tid = uuid.uuid4()
@@ -160,9 +171,23 @@ async def test_restore_fhir_bundle_creates_patient_and_remaps_observation():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(old_pid), "name": [{"family": "Doe"}], "gender": "female"}},
-            {"resource": {"resourceType": "Observation", "id": str(old_oid), "status": "final",
-                          "code": {"text": "HR"}, "subject": {"reference": f"Patient/{old_pid}"}}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(old_pid),
+                    "name": [{"family": "Doe"}],
+                    "gender": "female",
+                }
+            },
+            {
+                "resource": {
+                    "resourceType": "Observation",
+                    "id": str(old_oid),
+                    "status": "final",
+                    "code": {"text": "HR"},
+                    "subject": {"reference": f"Patient/{old_pid}"},
+                }
+            },
         ],
     }
     db = AsyncMock()
@@ -173,9 +198,7 @@ async def test_restore_fhir_bundle_creates_patient_and_remaps_observation():
     db.flush = AsyncMock()
     svc = ImportService(db)
 
-    result = await svc.restore_fhir_bundle(
-        bundle, tid, validate=False
-    )
+    result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
     assert result.created["Patient"] == 1
     assert result.created["Observation"] == 1
     assert result.errors == []
@@ -193,7 +216,14 @@ async def test_restore_fhir_bundle_updates_existing_same_tenant():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(pid), "name": [{"family": "Updated"}], "gender": "male"}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "Updated"}],
+                    "gender": "male",
+                }
+            },
         ],
     }
     existing = MagicMock()
@@ -207,9 +237,7 @@ async def test_restore_fhir_bundle_updates_existing_same_tenant():
     db.flush = AsyncMock()
     svc = ImportService(db)
 
-    result = await svc.restore_fhir_bundle(
-        bundle, tid, validate=False
-    )
+    result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
     created, updated = result.created, result.updated
     assert updated["Patient"] == 1
     assert created == {}
@@ -226,7 +254,14 @@ async def test_restore_fhir_bundle_remaps_when_id_in_other_tenant():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(pid), "name": [{"family": "X"}], "gender": "female"}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "X"}],
+                    "gender": "female",
+                }
+            },
         ],
     }
     existing = MagicMock()
@@ -240,9 +275,7 @@ async def test_restore_fhir_bundle_remaps_when_id_in_other_tenant():
     db.flush = AsyncMock()
     svc = ImportService(db)
 
-    result = await svc.restore_fhir_bundle(
-        bundle, tid, validate=False
-    )
+    result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
     created = result.created
     assert created["Patient"] == 1
     assert result.id_remap[str(pid)] != str(pid)
@@ -264,9 +297,7 @@ async def test_restore_fhir_bundle_invalid_resource_records_error():
     }
     db = AsyncMock()
     svc = ImportService(db)
-    result = await svc.restore_fhir_bundle(
-        bundle, tid, validate=True
-    )
+    result = await svc.restore_fhir_bundle(bundle, tid, validate=True)
     assert result.errors
     assert result.created == {}
 
@@ -303,9 +334,7 @@ async def test_restore_fhir_bundle_skips_invalid_keeps_valid():
     db.flush = AsyncMock()
     svc = ImportService(db)
 
-    result = await svc.restore_fhir_bundle(
-        bundle, tid, validate=False
-    )
+    result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
     created, errors = result.created, result.errors
     # Valid resource still created
     assert created["Patient"] == 1
@@ -347,10 +376,13 @@ async def test_restore_fhir_bundle_unsupported_type_skipped():
 
 # ---------- G7/I4: entry.request.method + ifNoneExist (verb routing) ----------
 
+
 def test_parse_request_id_extracts_id_from_type_id_url():
     assert ImportService._parse_request_id("Observation/abc-123") == "abc-123"
-    assert ImportService._parse_request_id("Patient/00000000-0000-0000-0000-000000000000") == \
-        "00000000-0000-0000-0000-000000000000"
+    assert (
+        ImportService._parse_request_id("Patient/00000000-0000-0000-0000-000000000000")
+        == "00000000-0000-0000-0000-000000000000"
+    )
 
 
 def test_parse_request_id_returns_none_for_conditional_or_malformed():
@@ -575,7 +607,14 @@ async def test_bundle_post_without_request_block_defaults_to_create_new():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(pid), "name": [{"family": "Doe"}], "gender": "female"}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "Doe"}],
+                    "gender": "female",
+                }
+            },
         ],
     }
     db = AsyncMock()
@@ -594,6 +633,7 @@ async def test_bundle_post_without_request_block_defaults_to_create_new():
 
 # ---------- G8: import all 15 resource types (dispatcher branches) ----------
 
+
 def _mock_db_for_create():
     """Mocked DB that reports 'no existing row' so every entry creates fresh."""
     db = AsyncMock()
@@ -609,20 +649,60 @@ def _mock_db_for_create():
 @pytest.mark.parametrize(
     "rt, resource",
     [
-        ("Condition", {"resourceType": "Condition", "id": "c1", "subject": {"reference": "Patient/x"},
-                       "code": {"text": "Hypertension"}, "clinicalStatus": {"coding": [{"code": "active"}]}}),
-        ("Encounter", {"resourceType": "Encounter", "id": "e1", "status": "finished",
-                       "subject": {"reference": "Patient/x"},
-                       "class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB"},
-                       "period": {"start": "2026-01-15T10:00:00Z"}}),
-        ("Device", {"resourceType": "Device", "id": "dev1", "status": "active",
-                    "type": {"coding": [{"system": "http://snomed.info/sct", "code": "257"}]},
-                    "patient": {"reference": "Patient/x"}}),
-        ("Communication", {"resourceType": "Communication", "id": "comm1", "status": "completed",
-                           "subject": {"reference": "Patient/x"}}),
-        ("MedicationRequest", {"resourceType": "MedicationRequest", "id": "mr1", "status": "active",
-                               "intent": "order", "subject": {"reference": "Patient/x"},
-                               "medicationCodeableConcept": {"text": "Lisinopril"}}),
+        (
+            "Condition",
+            {
+                "resourceType": "Condition",
+                "id": "c1",
+                "subject": {"reference": "Patient/x"},
+                "code": {"text": "Hypertension"},
+                "clinicalStatus": {"coding": [{"code": "active"}]},
+            },
+        ),
+        (
+            "Encounter",
+            {
+                "resourceType": "Encounter",
+                "id": "e1",
+                "status": "finished",
+                "subject": {"reference": "Patient/x"},
+                "class": {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                    "code": "AMB",
+                },
+                "period": {"start": "2026-01-15T10:00:00Z"},
+            },
+        ),
+        (
+            "Device",
+            {
+                "resourceType": "Device",
+                "id": "dev1",
+                "status": "active",
+                "type": {"coding": [{"system": "http://snomed.info/sct", "code": "257"}]},
+                "patient": {"reference": "Patient/x"},
+            },
+        ),
+        (
+            "Communication",
+            {
+                "resourceType": "Communication",
+                "id": "comm1",
+                "status": "completed",
+                "subject": {"reference": "Patient/x"},
+            },
+        ),
+        (
+            "MedicationRequest",
+            {
+                "resourceType": "MedicationRequest",
+                "id": "mr1",
+                "status": "active",
+                "intent": "order",
+                "subject": {"reference": "Patient/x"},
+                "medicationCodeableConcept": {"text": "Lisinopril"},
+            },
+        ),
     ],
 )
 async def test_import_round_trips_each_newly_supported_type(rt, resource):
@@ -633,7 +713,9 @@ async def test_import_round_trips_each_newly_supported_type(rt, resource):
     svc = ImportService(db)
     result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
     # The resource was created (not silently dropped, not errored)
-    assert result.created.get(rt) == 1, f"{rt} not created; errors={result.errors}, warnings={result.warnings}"
+    assert result.created.get(rt) == 1, (
+        f"{rt} not created; errors={result.errors}, warnings={result.warnings}"
+    )
     assert rt not in result.skipped
     assert db.add.called, f"{rt}: no row added"
 
@@ -645,15 +727,25 @@ async def test_import_provenance_creates_with_target_and_agent():
     bundle = {
         "resourceType": "Bundle",
         "type": "transaction",
-        "entry": [{
-            "resource": {
-                "resourceType": "Provenance", "id": "p1",
-                "target": [{"reference": "Observation/abc"}],
-                "recorded": "2026-06-30T12:00:00Z",
-                "activity": {"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType", "code": "CREATE"}]},
-                "agent": [{"who": {"reference": "Device/dev1"}}],
+        "entry": [
+            {
+                "resource": {
+                    "resourceType": "Provenance",
+                    "id": "p1",
+                    "target": [{"reference": "Observation/abc"}],
+                    "recorded": "2026-06-30T12:00:00Z",
+                    "activity": {
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType",
+                                "code": "CREATE",
+                            }
+                        ]
+                    },
+                    "agent": [{"who": {"reference": "Device/dev1"}}],
+                }
             }
-        }],
+        ],
     }
     db = _mock_db_for_create()
     svc = ImportService(db)
@@ -682,6 +774,7 @@ async def test_import_unknown_resource_type_surfaces_warning():
 
 # ---------- G6: record Provenance per imported entry ----------
 
+
 @pytest.mark.asyncio
 async def test_g6_provenance_recorded_for_each_created_entry():
     """Each created entry triggers _record_import_provenance with activity=CREATE."""
@@ -692,9 +785,23 @@ async def test_g6_provenance_recorded_for_each_created_entry():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(pid), "name": [{"family": "D"}], "gender": "female"}},
-            {"resource": {"resourceType": "Observation", "id": str(oid), "status": "final",
-                          "code": {"text": "HR"}, "subject": {"reference": f"Patient/{pid}"}}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "D"}],
+                    "gender": "female",
+                }
+            },
+            {
+                "resource": {
+                    "resourceType": "Observation",
+                    "id": str(oid),
+                    "status": "final",
+                    "code": {"text": "HR"},
+                    "subject": {"reference": f"Patient/{pid}"},
+                }
+            },
         ],
     }
     db = _mock_db_for_create()
@@ -736,8 +843,15 @@ async def test_g6_provenance_activity_matches_verb():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"request": {"method": "PUT", "url": f"Patient/{rid}"},
-             "resource": {"resourceType": "Patient", "id": str(rid), "name": [{"family": "U"}], "gender": "male"}},
+            {
+                "request": {"method": "PUT", "url": f"Patient/{rid}"},
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(rid),
+                    "name": [{"family": "U"}],
+                    "gender": "male",
+                },
+            },
         ],
     }
     await svc.restore_fhir_bundle(bundle, tid, validate=False)
@@ -755,10 +869,16 @@ async def test_g6_provenance_not_recorded_for_conditional_skip():
     bundle = {
         "resourceType": "Bundle",
         "type": "transaction",
-        "entry": [{
-            "request": {"method": "POST", "ifNoneExist": "identifier=urn:local|MRN-42"},
-            "resource": {"resourceType": "Patient", "name": [{"family": "D"}], "gender": "female"},
-        }],
+        "entry": [
+            {
+                "request": {"method": "POST", "ifNoneExist": "identifier=urn:local|MRN-42"},
+                "resource": {
+                    "resourceType": "Patient",
+                    "name": [{"family": "D"}],
+                    "gender": "female",
+                },
+            }
+        ],
     }
     db = AsyncMock()
     find_res = MagicMock()
@@ -818,7 +938,14 @@ async def test_g9_collision_warning_surfaces_in_bundle_result():
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
-            {"resource": {"resourceType": "Patient", "id": str(pid), "name": [{"family": "X"}], "gender": "female"}},
+            {
+                "resource": {
+                    "resourceType": "Patient",
+                    "id": str(pid),
+                    "name": [{"family": "X"}],
+                    "gender": "female",
+                }
+            },
         ],
     }
     result = await svc.restore_fhir_bundle(bundle, tid, validate=False)
@@ -834,10 +961,21 @@ async def test_restore_sidecar_telemetry_inserts_rows():
     db.flush = AsyncMock()
     svc = ImportService(db)
     payload = [
-        {"device_id": "d1", "timestamp": "2026-06-18T10:00:00+00:00", "slug": "heart-rate", "value": 72.0, "unit": "bpm"},
-        {"device_id": "d1", "timestamp": "2026-06-18T10:01:00+00:00", "slug": "steps", "value": 10.0},
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:00:00+00:00",
+            "slug": "heart-rate",
+            "value": 72.0,
+            "unit": "bpm",
+        },
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:01:00+00:00",
+            "slug": "steps",
+            "value": 10.0,
+        },
     ]
-    created, errors, warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
+    created, errors, _warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
     assert created["telemetry"] == 2
     assert errors == []
     assert db.add.call_count == 2
@@ -853,11 +991,24 @@ async def test_restore_sidecar_telemetry_skips_rows_missing_required_fields():
     db.flush = AsyncMock()
     svc = ImportService(db)
     payload = [
-        {"device_id": "d1", "timestamp": "2026-06-18T10:00:00+00:00", "slug": "heart-rate"},  # missing value
-        {"device_id": "d1", "timestamp": "2026-06-18T10:01:00+00:00", "value": 10.0},  # missing slug
-        {"device_id": "d1", "timestamp": "2026-06-18T10:02:00+00:00", "slug": "steps", "value": 5.0},  # ok
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:00:00+00:00",
+            "slug": "heart-rate",
+        },  # missing value
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:01:00+00:00",
+            "value": 10.0,
+        },  # missing slug
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:02:00+00:00",
+            "slug": "steps",
+            "value": 5.0,
+        },  # ok
     ]
-    created, errors, warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
+    created, errors, _warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
     assert created["telemetry"] == 1
     assert errors == []
     assert db.add.call_count == 1
@@ -868,7 +1019,7 @@ async def test_restore_sidecar_ai_config_warns_unsupported():
     tid = uuid.uuid4()
     db = AsyncMock()
     svc = ImportService(db)
-    created, errors, warnings = await svc.restore_sidecar(
+    created, _errors, warnings = await svc.restore_sidecar(
         "ai_config.json", {"providers": []}, tid, {}
     )
     assert created == {}
@@ -880,7 +1031,7 @@ async def test_restore_sidecar_unknown_name_skipped():
     tid = uuid.uuid4()
     db = AsyncMock()
     svc = ImportService(db)
-    created, errors, warnings = await svc.restore_sidecar("mystery.json", {}, tid, {})
+    created, _errors, warnings = await svc.restore_sidecar("mystery.json", {}, tid, {})
     assert created == {}
     assert any("mystery" in w for w in warnings)
 
@@ -902,7 +1053,7 @@ async def test_restore_sidecar_medication_catalog_inserts_rows():
             {"name": "Aspirin"},
         ]
     }
-    created, errors, warnings = await svc.restore_sidecar(
+    created, errors, _warnings = await svc.restore_sidecar(
         "medication_catalog.json", payload, tid, {}
     )
     assert created["medication_catalog"] == 2
@@ -926,9 +1077,7 @@ async def test_restore_sidecar_allergy_catalog_inserts_and_normalizes_category()
             {"name": "Latex", "category": "WEIRD"},  # unknown -> OTHER fallback
         ]
     }
-    created, errors, warnings = await svc.restore_sidecar(
-        "allergy_catalog.json", payload, tid, {}
-    )
+    created, errors, _warnings = await svc.restore_sidecar("allergy_catalog.json", payload, tid, {})
     assert created["allergy_catalog"] == 2
     assert errors == []
     # Inspect the AllergyCatalog instances added: category normalized to the enum.
@@ -940,14 +1089,19 @@ async def test_restore_sidecar_allergy_catalog_inserts_and_normalizes_category()
 
 # ---------- run_import orchestrator (patched) ----------
 
+
 @pytest.mark.asyncio
 async def test_run_import_zip_path_calls_restore_and_completes(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     job = ImportJobModel(
-        id=jid, tenant_id=tid, user_id=uid, source_filename="b.zip",
-        status=JobStatus.PENDING, progress=0,
+        id=jid,
+        tenant_id=tid,
+        user_id=uid,
+        source_filename="b.zip",
+        status=JobStatus.PENDING,
+        progress=0,
     )
     db = AsyncMock()
     svc = ImportService(db)
@@ -956,7 +1110,7 @@ async def test_run_import_zip_path_calls_restore_and_completes(tmp_path, monkeyp
     payload = b'{"resourceType":"Bundle","type":"transaction","entry":[]}'
     sha = hashlib.sha256(payload).hexdigest()
     manifest = BackupManifest(
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         scope="patient",
         export_type="fhir_only",
         smart_scope="patient/*.rs",
@@ -970,9 +1124,13 @@ async def test_run_import_zip_path_calls_restore_and_completes(tmp_path, monkeyp
     monkeypatch.setattr(svc, "_update_progress", AsyncMock())
     monkeypatch.setattr(svc, "_complete_job", AsyncMock())
     monkeypatch.setattr(svc, "_fail_job", AsyncMock())
-    monkeypatch.setattr(svc, "restore_fhir_bundle", AsyncMock(
-        return_value=BundleRestoreResult(created={"Patient": 1}, id_remap={"old": "new"})
-    ))
+    monkeypatch.setattr(
+        svc,
+        "restore_fhir_bundle",
+        AsyncMock(
+            return_value=BundleRestoreResult(created={"Patient": 1}, id_remap={"old": "new"})
+        ),
+    )
     monkeypatch.setattr(svc, "restore_sidecar", AsyncMock(return_value=({}, [], [])))
     monkeypatch.setattr(svc, "restore_documents", AsyncMock(return_value=0))
     monkeypatch.setattr("app.services.import_service.validate_bundle", lambda b: (True, []))
@@ -991,8 +1149,12 @@ async def test_run_import_bare_bundle_json(tmp_path, monkeypatch):
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     job = ImportJobModel(
-        id=jid, tenant_id=tid, user_id=uid, source_filename="b.json",
-        status=JobStatus.PENDING, progress=0,
+        id=jid,
+        tenant_id=tid,
+        user_id=uid,
+        source_filename="b.json",
+        status=JobStatus.PENDING,
+        progress=0,
     )
     db = AsyncMock()
     svc = ImportService(db)
@@ -1004,9 +1166,11 @@ async def test_run_import_bare_bundle_json(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "_update_progress", AsyncMock())
     monkeypatch.setattr(svc, "_complete_job", AsyncMock())
     monkeypatch.setattr(svc, "_fail_job", AsyncMock())
-    monkeypatch.setattr(svc, "restore_fhir_bundle", AsyncMock(
-        return_value=BundleRestoreResult(created={"Observation": 2})
-    ))
+    monkeypatch.setattr(
+        svc,
+        "restore_fhir_bundle",
+        AsyncMock(return_value=BundleRestoreResult(created={"Observation": 2})),
+    )
     monkeypatch.setattr("app.services.import_service.validate_bundle", lambda b: (True, []))
 
     result = await svc.run_import(jid, str(path), uid)
@@ -1022,8 +1186,12 @@ async def test_run_import_bare_catalog_json(tmp_path, monkeypatch):
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     job = ImportJobModel(
-        id=jid, tenant_id=tid, user_id=uid, source_filename="c.json",
-        status=JobStatus.PENDING, progress=0,
+        id=jid,
+        tenant_id=tid,
+        user_id=uid,
+        source_filename="c.json",
+        status=JobStatus.PENDING,
+        progress=0,
     )
     db = AsyncMock()
     svc = ImportService(db)
@@ -1049,8 +1217,12 @@ async def test_run_import_fail_job_on_exception(tmp_path, monkeypatch):
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     job = ImportJobModel(
-        id=jid, tenant_id=tid, user_id=uid, source_filename="b.zip",
-        status=JobStatus.PENDING, progress=0,
+        id=jid,
+        tenant_id=tid,
+        user_id=uid,
+        source_filename="b.zip",
+        status=JobStatus.PENDING,
+        progress=0,
     )
     db = AsyncMock()
     svc = ImportService(db)
@@ -1071,7 +1243,7 @@ async def test_run_import_fail_job_on_exception(tmp_path, monkeypatch):
     payload = b'{"resourceType":"Bundle","type":"transaction","entry":[]}'
     sha = hashlib.sha256(payload).hexdigest()
     manifest = BackupManifest(
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         scope="patient",
         export_type="fhir_only",
         smart_scope="patient/*.rs",

@@ -1,12 +1,14 @@
+import datetime
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock, AsyncMock
-import uuid
-import datetime
+
+from app.models.doctor_model import DoctorModel
 
 # Use the real model classes instead of mocking them to avoid SQLAlchemy select() errors
 from app.models.examination_model import ExaminationModel
-from app.models.doctor_model import DoctorModel
 
 
 def override_get_current_user():
@@ -19,9 +21,9 @@ def override_get_current_user():
 
 @pytest.mark.asyncio
 async def test_create_examination(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -86,9 +88,9 @@ async def test_create_examination(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_examination_with_doctors(async_client: AsyncClient):
-    from app.main import app
-    from app.core.security import get_current_user
     from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     doctor_id = uuid.uuid4()
@@ -157,9 +159,9 @@ async def test_create_examination_with_doctors(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_examination(async_client: AsyncClient):
-    from app.main import app
     from app.core.database import get_db
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -171,8 +173,8 @@ async def test_get_examination(async_client: AsyncClient):
         tenant_id=uuid.uuid4(),
         created_at=datetime.datetime.now(),
         updated_at=datetime.datetime.now(),
-        observations=[], # Do not pass raw mocks as Pydantic fails validation
-        medications=[] 
+        observations=[],  # Do not pass raw mocks as Pydantic fails validation
+        medications=[],
     )
 
     db_mock = AsyncMock()
@@ -196,9 +198,9 @@ async def test_get_examination(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_examination(async_client: AsyncClient):
-    from app.main import app
     from app.core.database import get_db
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 

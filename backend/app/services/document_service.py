@@ -1,3 +1,5 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
+import contextlib
 import os
 from datetime import datetime
 from pathlib import Path
@@ -110,8 +112,7 @@ async def _read_capped(file, max_bytes: int) -> bytes:
         if total > max_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large. Maximum allowed size is "
-                f"{max_bytes // (1024 * 1024)} MB.",
+                detail=f"File too large. Maximum allowed size is {max_bytes // (1024 * 1024)} MB.",
             )
         chunks.append(chunk)
     return b"".join(chunks)
@@ -291,9 +292,7 @@ async def ingest_document_bytes(
         tenant_id=tenant_id,
         patient_id=UUID(str(patient_id)) if patient_id else None,
         examination_id=UUID(str(examination_id)) if examination_id else None,
-        category_concept_id=(
-            UUID(str(category_concept_id)) if category_concept_id else None
-        ),
+        category_concept_id=(UUID(str(category_concept_id)) if category_concept_id else None),
         include_in_extraction=include_in_extraction,
         status="uploaded",
         progress=0,
@@ -551,16 +550,12 @@ async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
     return f"ocr-{document_id}"
 
 
-async def trigger_full_examination_extraction(
-    examination_id: str, db: AsyncSession
-) -> str:
+async def trigger_full_examination_extraction(examination_id: str, db: AsyncSession) -> str:
     """Trigger OCR for all included documents in an examination, followed by LLM analysis"""
     from app.models.document_model import DocumentModel
     from app.models.examination_model import ExaminationModel
 
-    result = await db.execute(
-        select(ExaminationModel).where(ExaminationModel.id == examination_id)
-    )
+    result = await db.execute(select(ExaminationModel).where(ExaminationModel.id == examination_id))
     exam = result.scalar_one_or_none()
     if not exam:
         raise ValueError(f"Examination {examination_id} not found")
@@ -595,9 +590,7 @@ async def trigger_cumulative_extraction(examination_id: str, db: AsyncSession) -
     """Trigger cumulative extraction for an examination"""
     from app.models.examination_model import ExaminationModel
 
-    result = await db.execute(
-        select(ExaminationModel).where(ExaminationModel.id == examination_id)
-    )
+    result = await db.execute(select(ExaminationModel).where(ExaminationModel.id == examination_id))
     exam = result.scalar_one_or_none()
     if not exam:
         raise ValueError(f"Examination {examination_id} not found")
@@ -664,9 +657,7 @@ async def edit_document_service(
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.info(
-        f"edit_document_service called for {document_id} with params: {edit_params}"
-    )
+    logger.info(f"edit_document_service called for {document_id} with params: {edit_params}")
 
     original = await get_document(document_id, db)
     if not original:
@@ -791,24 +782,18 @@ async def delete_document(
     from app.models.fhir import Observation
 
     try:
-        await db.execute(
-            delete(Observation).where(Observation.document_id == document.id)
-        )
+        await db.execute(delete(Observation).where(Observation.document_id == document.id))
     except Exception as e:
         import logging
 
-        logging.getLogger(__name__).warning(
-            f"Failed to clean up associated FHIR data: {e}"
-        )
+        logging.getLogger(__name__).warning(f"Failed to clean up associated FHIR data: {e}")
 
     await db.delete(document)
     await db.commit()
 
     # Re-trigger cumulative if it was part of an exam and requested
     if examination_id and trigger_cumulative:
-        try:
+        with contextlib.suppress(Exception):
             await trigger_cumulative_extraction(str(examination_id), db)
-        except Exception:
-            pass
 
     return True

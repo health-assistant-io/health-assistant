@@ -17,24 +17,23 @@ Covers the new capabilities added by the unified hybrid search pipeline:
 
 import json
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
 
-from app.core.database import AsyncSessionLocal
 from app.ai.tools.registry import ToolContext
+from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
 from app.services.catalog_search_service import (
-    search_catalogs,
-    search_biomarkers,
-    search_medications,
-    _specs_by_type,
     _hybrid_search_one,
+    _specs_by_type,
+    search_biomarkers,
+    search_catalogs,
+    search_medications,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -125,7 +124,9 @@ async def test_search_biomarkers_matches_multi_word_fts():
         bio_id = bio.id
 
     async with AsyncSessionLocal() as db:
-        results = await search_biomarkers(db, tenant_id, f"sparklyunicorn blood sugar {suffix}", limit=5)
+        results = await search_biomarkers(
+            db, tenant_id, f"sparklyunicorn blood sugar {suffix}", limit=5
+        )
 
     assert any(b.id == bio_id for b in results), "multi-word FTS did not find biomarker"
 

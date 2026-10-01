@@ -5,9 +5,10 @@ logic is consistent (no copy-paste drift). Security-relevant note: these
 helpers NEVER decide scope — the caller passes already-scoped queries. Tenant
 and patient filters are applied by each entity module's ``search`` function.
 """
+
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 def ilike_pattern(q: str) -> str:
@@ -43,7 +44,7 @@ def code_text(code_col_value: Any) -> str:
     return str(code_col_value)
 
 
-def iso(value: Any) -> Optional[str]:
+def iso(value: Any) -> str | None:
     """Best-effort ISO date string from a date/datetime column value."""
     if value is None:
         return None

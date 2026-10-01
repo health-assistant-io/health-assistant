@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -90,9 +90,7 @@ _LOCKED_CHANNELS = frozenset({NotificationChannel.EMAIL})
 # Safety-critical combinations: never mutable. The mute button is hidden but
 # the manage link is still offered (so the user can see what's happening).
 _IMMUTABLE_TYPES = frozenset({NotificationType.SYSTEM_ERROR})
-_IMMUTABLE_CRITICAL_SOURCES = frozenset(
-    {NotificationSource.SYSTEM, NotificationSource.CLINICAL}
-)
+_IMMUTABLE_CRITICAL_SOURCES = frozenset({NotificationSource.SYSTEM, NotificationSource.CLINICAL})
 
 
 @dataclass(frozen=True)
@@ -117,18 +115,13 @@ class NotificationKindMeta:
 
 def _is_source_mutable(
     source: NotificationSource,
-    type_: Optional[NotificationType],
-    severity: Optional[NotificationSeverity],
+    type_: NotificationType | None,
+    severity: NotificationSeverity | None,
 ) -> bool:
     """Return False for safety-critical notifications that must never be muted."""
     if type_ is not None and type_ in _IMMUTABLE_TYPES:
         return False
-    if (
-        severity == NotificationSeverity.CRITICAL
-        and source in _IMMUTABLE_CRITICAL_SOURCES
-    ):
-        return False
-    return True
+    return not (severity == NotificationSeverity.CRITICAL and source in _IMMUTABLE_CRITICAL_SOURCES)
 
 
 def _source_manage_url(source: NotificationSource) -> str:
@@ -141,7 +134,7 @@ def _source_manage_url(source: NotificationSource) -> str:
 
 
 async def _integration_instance_label(
-    session: AsyncSession, integration_id: str, provider: Optional[str]
+    session: AsyncSession, integration_id: str, provider: str | None
 ) -> str:
     """Resolve a human label for the integration kind.
 
@@ -161,7 +154,7 @@ async def _integration_instance_label(
         ).scalar_one_or_none()
         if row:
             return row
-    except (ValueError, Exception) as exc:  # noqa: BLE001
+    except (ValueError, Exception) as exc:
         # ValueError: bad UUID string. Anything else: DB / driver issue.
         logger.debug(
             "Could not resolve integration instance label for %s: %s",
@@ -180,9 +173,9 @@ async def resolve_kind(
     session: AsyncSession,
     source: NotificationSource,
     type_: NotificationType,
-    source_ref: Optional[dict[str, Any]],
+    source_ref: dict[str, Any] | None,
     severity: NotificationSeverity = NotificationSeverity.INFO,
-) -> Optional[NotificationKindMeta]:
+) -> NotificationKindMeta | None:
     """Derive the notification kind for an emission.
 
     Returns ``None`` when no kind can be derived (the frontend then shows no
@@ -226,9 +219,7 @@ async def resolve_kind(
 # ---------------------------------------------------------------------------
 
 
-async def enumerate_for_user(
-    session: AsyncSession, user_id: UUID
-) -> list[NotificationKindMeta]:
+async def enumerate_for_user(session: AsyncSession, user_id: UUID) -> list[NotificationKindMeta]:
     """Every kind addressable by ``user_id`` (sources + channels + integrations).
 
     Sources + channels are static. Integration kinds are dynamic — one per
@@ -279,11 +270,15 @@ async def _enumerate_integration_kinds(
 
     try:
         integrations = (
-            await session.execute(
-                select(UserIntegration).where(UserIntegration.user_id == user_id)
+            (
+                await session.execute(
+                    select(UserIntegration).where(UserIntegration.user_id == user_id)
+                )
             )
-        ).scalars().all()
-    except Exception as exc:  # noqa: BLE001
+            .scalars()
+            .all()
+        )
+    except Exception as exc:
         logger.debug("Failed to enumerate integration kinds for %s: %s", user_id, exc)
         return []
 
@@ -298,9 +293,7 @@ async def _enumerate_integration_kinds(
         try:
             types = getter() or []
         except Exception:
-            logger.exception(
-                "get_notification_types failed for %s", integration.provider
-            )
+            logger.exception("get_notification_types failed for %s", integration.provider)
             continue
         if not types:
             continue
@@ -323,9 +316,9 @@ async def _enumerate_integration_kinds(
 
 
 __all__ = [
-    "NotificationKindMeta",
-    "resolve_kind",
-    "enumerate_for_user",
-    "SETTINGS_URL",
     "RULES_URL",
+    "SETTINGS_URL",
+    "NotificationKindMeta",
+    "enumerate_for_user",
+    "resolve_kind",
 ]

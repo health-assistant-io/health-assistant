@@ -1,9 +1,7 @@
-import uuid
-from typing import Dict
-
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from app.main import app
 
 
@@ -18,9 +16,11 @@ def run_migrations():
     test rows off the first page of paginated endpoints — causing catalog
     search / concept list assertions to flake.
     """
-    from alembic import command
-    from alembic.config import Config
     import logging
+
+    from alembic.config import Config
+
+    from alembic import command
 
     # Suppress verbose alembic logs during test setup unless needed
     logging.getLogger("alembic").setLevel(logging.WARNING)
@@ -56,11 +56,7 @@ def run_migrations():
             )
             tables = [r[0] for r in cur.fetchall()]
             if tables:
-                cur.execute(
-                    'TRUNCATE TABLE "'
-                    + '", "'.join(tables)
-                    + '" RESTART IDENTITY CASCADE'
-                )
+                cur.execute('TRUNCATE TABLE "' + '", "'.join(tables) + '" RESTART IDENTITY CASCADE')
         conn.commit()
     finally:
         conn.close()
@@ -79,7 +75,7 @@ async def async_client():
 
 
 @pytest_asyncio.fixture
-async def system_admin_headers() -> Dict[str, str]:
+async def system_admin_headers() -> dict[str, str]:
     """Authorization headers carrying a real JWT for a SYSTEM_ADMIN user.
 
     Creates a real tenant row (so tenant-scoped FK constraints — e.g.
@@ -94,7 +90,7 @@ async def system_admin_headers() -> Dict[str, str]:
     via a UUID-derived slug.
     """
     from app.models.enums import Role
-    from tests._auth_helpers import create_user, auth_headers
+    from tests._auth_helpers import auth_headers, create_user
 
     user = await create_user(role=Role.SYSTEM_ADMIN, full_name="Test Sysadmin")
     return await auth_headers(user)
@@ -104,5 +100,6 @@ async def system_admin_headers() -> Dict[str, str]:
 async def clear_db_engine_pool():
     yield
     from app.core.database import engine
+
     if engine:
         await engine.dispose()

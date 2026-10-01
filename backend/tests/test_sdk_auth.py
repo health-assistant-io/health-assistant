@@ -4,34 +4,34 @@ HTTP is mocked via ``httpx.MockTransport``; the OAuth state store uses a tiny
 in-memory async fake (no fakeredis dependency). The token-store cipher is
 injected (a throwaway Fernet key) so tests don't depend on settings.
 """
+
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import httpx
 import pytest
 from cryptography.fernet import Fernet
-
 from integrations.sdk.auth import (
     DEFAULT_SCOPES,
     OAuthStateStore,
     OAuthTokenStore,
     SmartOAuth,
+    _normalize_token,
     build_authorize_url,
     discover_smart,
     exchange_code,
     generate_pkce,
     generate_state,
-    register_client,
     refresh_token,
-    _normalize_token,
+    register_client,
 )
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 from integrations.sdk.secrets import SecretCipher
 
-
 # ---------- fixtures ----------
+
 
 def _mock_client(handler):
     transport = httpx.MockTransport(handler)
@@ -57,9 +57,9 @@ class _FakeRedis:
         if nx and key in self._store:
             existing = self._store[key]
             # Still live (not expired)?
-            if not (existing[1] and datetime.now(timezone.utc).timestamp() >= existing[1]):
+            if not (existing[1] and datetime.now(UTC).timestamp() >= existing[1]):
                 return None
-        expiry = datetime.now(timezone.utc).timestamp() + ex if ex is not None else None
+        expiry = datetime.now(UTC).timestamp() + ex if ex is not None else None
         self._store[key] = (value, expiry)
         return True
 
@@ -67,7 +67,7 @@ class _FakeRedis:
         if key not in self._store:
             return None
         value, expiry = self._store[key]
-        if expiry and datetime.now(timezone.utc).timestamp() >= expiry:
+        if expiry and datetime.now(UTC).timestamp() >= expiry:
             self._store.pop(key, None)
             return None
         return value
@@ -103,6 +103,7 @@ class _FakeRedis:
 
 # ---------- pure functions ----------
 
+
 def test_pkce_shape():
     verifier, challenge, method = generate_pkce()
     assert method == "S256"
@@ -120,8 +121,13 @@ def test_build_authorize_url_contains_required_params():
         "https://ehr/authorize", "CID", "https://app/cb", "ST", "CH", aud="https://ehr/fhir"
     )
     for expected in (
-        "response_type=code", "client_id=CID", "redirect_uri=", "state=ST",
-        "code_challenge=CH", "code_challenge_method=S256", "aud=",
+        "response_type=code",
+        "client_id=CID",
+        "redirect_uri=",
+        "state=ST",
+        "code_challenge=CH",
+        "code_challenge_method=S256",
+        "aud=",
     ):
         assert expected in url, expected
 
@@ -138,16 +144,21 @@ def test_normalize_token_adds_expires_at_and_carries_patient():
 
 # ---------- discover_smart ----------
 
+
 @pytest.mark.asyncio
 async def test_discover_smart_ok():
     def handler(request):
         assert request.url.path.endswith("/.well-known/smart-configuration")
-        return httpx.Response(200, json={
-            "authorization_endpoint": "https://ehr/authorize",
-            "token_endpoint": "https://ehr/token",
-            "registration_endpoint": "https://ehr/register",
-            "scopes_supported": ["patient/*.read"],
-        })
+        return httpx.Response(
+            200,
+            json={
+                "authorization_endpoint": "https://ehr/authorize",
+                "token_endpoint": "https://ehr/token",
+                "registration_endpoint": "https://ehr/register",
+                "scopes_supported": ["patient/*.read"],
+            },
+        )
+
     async with _mock_client(handler) as http:
         cfg = await discover_smart("https://ehr/fhir/", http)
     assert cfg["token_endpoint"] == "https://ehr/token"
@@ -179,9 +190,11 @@ async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
     a server that always returns 503, and asserts the handler is hit
     multiple times before the eventual raise.
     """
+
     # Squat the jittered sleeps so the test doesn't actually wait.
     async def _no_sleep(_):
         return None
+
     monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
@@ -206,8 +219,10 @@ async def test_discover_smart_429_retries_then_raises_rate_limit(monkeypatch):
     :class:`IntegrationRateLimitError` after retries exhaust — the prior
     single-shot implementation raised it on the first 429 without retrying.
     """
+
     async def _no_sleep(_):
         return None
+
     monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
 
     from integrations.sdk.exceptions import IntegrationRateLimitError
@@ -219,13 +234,17 @@ async def test_discover_smart_429_retries_then_raises_rate_limit(monkeypatch):
 
 # ---------- DCR ----------
 
+
 @pytest.mark.asyncio
 async def test_register_client_ok():
     def handler(request):
         body = json.loads(request.content)
         assert body["token_endpoint_auth_method"] == "none"
         assert body["redirect_uris"] == ["https://app/cb"]
-        return httpx.Response(200, json={"client_id": "CID-123", "client_name": body["client_name"]})
+        return httpx.Response(
+            200, json={"client_id": "CID-123", "client_name": body["client_name"]}
+        )
+
     async with _mock_client(handler) as http:
         reg = await register_client(
             "https://ehr/register", ["https://app/cb"], "Health Assistant", http=http
@@ -242,14 +261,22 @@ async def test_register_client_missing_client_id_raises():
 
 # ---------- exchange / refresh ----------
 
+
 @pytest.mark.asyncio
 async def test_exchange_code_ok_normalizes():
     def handler(request):
         assert request.headers["content-type"].startswith("application/x-www-form-urlencoded")
-        return httpx.Response(200, json={
-            "access_token": "AT", "refresh_token": "RT",
-            "expires_in": 3600, "patient": "pat-1", "scope": "patient/*.read",
-        })
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "AT",
+                "refresh_token": "RT",
+                "expires_in": 3600,
+                "patient": "pat-1",
+                "scope": "patient/*.read",
+            },
+        )
+
     async with _mock_client(handler) as http:
         token = await exchange_code(
             "https://ehr/token", "CODE", "VER", "https://app/cb", "CID", http=http
@@ -277,14 +304,21 @@ async def test_refresh_token_ok():
 
 # ---------- OAuthTokenStore ----------
 
+
 @pytest.mark.asyncio
 async def test_token_store_encrypts_and_roundtrips():
     store = OAuthTokenStore(cipher=_cipher())
     integ = _integration()
-    token = _normalize_token({
-        "access_token": "AT", "refresh_token": "RT", "expires_in": 3600,
-        "patient": "pat-1", "token_endpoint": "https://ehr/token", "client_id": "CID",
-    })
+    token = _normalize_token(
+        {
+            "access_token": "AT",
+            "refresh_token": "RT",
+            "expires_in": 3600,
+            "patient": "pat-1",
+            "token_endpoint": "https://ehr/token",
+            "client_id": "CID",
+        }
+    )
     store.store(integ, token)
     # access_token is encrypted at rest
     at_rest = integ.user_config["_oauth"]["access_token"]
@@ -306,7 +340,7 @@ def test_token_store_expired_when_no_expires_at():
 def test_token_store_expired_when_past():
     store = OAuthTokenStore(cipher=_cipher())
     integ = _integration()
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     store.store(integ, {"access_token": "AT", "expires_at": past})
     assert store.is_expired(integ)
 
@@ -315,15 +349,23 @@ def test_token_store_expired_when_past():
 async def test_token_store_refresh_if_needed_refreshes():
     store = OAuthTokenStore(cipher=_cipher())
     integ = _integration()
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    store.store(integ, {
-        "access_token": "AT", "refresh_token": "RT", "expires_at": past,
-        "token_endpoint": "https://ehr/token", "client_id": "CID",
-    })
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    store.store(
+        integ,
+        {
+            "access_token": "AT",
+            "refresh_token": "RT",
+            "expires_at": past,
+            "token_endpoint": "https://ehr/token",
+            "client_id": "CID",
+        },
+    )
     async with _mock_client(
         lambda r: httpx.Response(200, json={"access_token": "AT2", "expires_in": 3600})
     ) as http:
-        live = await store.refresh_if_needed(integ, http, token_endpoint="https://ehr/token", client_id="CID")
+        live = await store.refresh_if_needed(
+            integ, http, token_endpoint="https://ehr/token", client_id="CID"
+        )
     assert live == "AT2"
     assert store.get_access_token(integ) == "AT2"
 
@@ -332,14 +374,17 @@ async def test_token_store_refresh_if_needed_refreshes():
 async def test_token_store_refresh_without_token_raises_auth():
     store = OAuthTokenStore(cipher=_cipher())
     integ = _integration()
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     store.store(integ, {"access_token": "AT", "expires_at": past})  # no refresh_token
     async with _mock_client(lambda r: httpx.Response(200, json={})) as http:
         with pytest.raises(IntegrationAuthError):
-            await store.refresh_if_needed(integ, http, token_endpoint="https://ehr/token", client_id="CID")
+            await store.refresh_if_needed(
+                integ, http, token_endpoint="https://ehr/token", client_id="CID"
+            )
 
 
 # ---------- OAuthStateStore ----------
+
 
 @pytest.mark.asyncio
 async def test_state_store_issue_and_consume_one_shot():
@@ -378,6 +423,7 @@ async def test_state_store_expires_after_ttl():
 
 # ---------- SmartOAuth end-to-end ----------
 
+
 @pytest.mark.asyncio
 async def test_smart_oauth_begin_and_complete_connect():
     """Full discover -> DCR -> authorize -> callback -> token round-trip, mocked."""
@@ -385,30 +431,42 @@ async def test_smart_oauth_begin_and_complete_connect():
 
     def handler(request):
         if request.url.path.endswith("/.well-known/smart-configuration"):
-            return httpx.Response(200, json={
-                "authorization_endpoint": "https://ehr/authorize",
-                "token_endpoint": "https://ehr/token",
-                "registration_endpoint": "https://ehr/register",
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "authorization_endpoint": "https://ehr/authorize",
+                    "token_endpoint": "https://ehr/token",
+                    "registration_endpoint": "https://ehr/register",
+                },
+            )
         if request.url.path == "/register":
             calls["register"] += 1
             return httpx.Response(200, json={"client_id": "DCR-CID"})
         if request.url.path == "/token":
             calls["token"] += 1
-            return httpx.Response(200, json={
-                "access_token": "AT", "refresh_token": "RT",
-                "expires_in": 3600, "patient": "pat-42", "scope": DEFAULT_SCOPES,
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "AT",
+                    "refresh_token": "RT",
+                    "expires_in": 3600,
+                    "patient": "pat-42",
+                    "scope": DEFAULT_SCOPES,
+                },
+            )
         return httpx.Response(404)
 
     fake_redis = _FakeRedis()
     async with _mock_client(handler) as http:
         oauth = SmartOAuth(
-            http, token_store=OAuthTokenStore(cipher=_cipher()),
+            http,
+            token_store=OAuthTokenStore(cipher=_cipher()),
             state_store=OAuthStateStore(redis_client=fake_redis),
         )
         authorize_url, state = await oauth.begin_connect(
-            "https://ehr/fhir", "https://app/cb", "Health Assistant",
+            "https://ehr/fhir",
+            "https://app/cb",
+            "Health Assistant",
             extra_state={"integration_id": "int-1", "tenant_id": "t-1"},
         )
         assert "client_id=DCR-CID" in authorize_url and f"state={state}" in authorize_url
@@ -430,7 +488,8 @@ async def test_smart_oauth_begin_and_complete_connect():
 async def test_smart_oauth_complete_with_unknown_state_raises_auth():
     async with _mock_client(lambda r: httpx.Response(200, json={})) as http:
         oauth = SmartOAuth(
-            http, token_store=OAuthTokenStore(cipher=_cipher()),
+            http,
+            token_store=OAuthTokenStore(cipher=_cipher()),
             state_store=OAuthStateStore(redis_client=_FakeRedis()),
         )
         with pytest.raises(IntegrationAuthError):
@@ -446,7 +505,7 @@ def test_pkce_rejects_out_of_range_bytes():
     """A caller asking for too few/many random bytes must fail loudly rather
     than produce an out-of-spec verifier (RFC 7636 §4.1: 43-128 chars)."""
     with pytest.raises(ValueError):
-        generate_pkce(verifier_bytes=8)   # too short
+        generate_pkce(verifier_bytes=8)  # too short
     with pytest.raises(ValueError):
         generate_pkce(verifier_bytes=200)  # would exceed 128 chars
 
@@ -491,6 +550,7 @@ async def test_request_json_non_oauth_400_still_data_error():
 async def test_exchange_code_redacts_token_in_error():
     """A token response missing access_token must not leak a partial token
     value into the exception string (logs/exc-info)."""
+
     def handler(request):
         # No access_token key, but a refresh_token that must be redacted.
         return httpx.Response(200, json={"refresh_token": "rt-secret", "scope": "x"})
@@ -508,16 +568,13 @@ async def test_exchange_code_redacts_token_in_error():
 @pytest.mark.asyncio
 async def test_register_client_redacts_secret_in_error():
     """A DCR response missing client_id must not leak a client_secret."""
+
     def handler(request):
-        return httpx.Response(
-            200, json={"client_secret": "DCR-SECRET-XYZ", "client_name": "ha"}
-        )
+        return httpx.Response(200, json={"client_secret": "DCR-SECRET-XYZ", "client_name": "ha"})
 
     async with _mock_client(handler) as http:
         with pytest.raises(IntegrationDataError) as ei:
-            await register_client(
-                "https://ehr/register", ["https://app/cb"], "ha", http=http
-            )
+            await register_client("https://ehr/register", ["https://app/cb"], "ha", http=http)
     msg = str(ei.value)
     assert "DCR-SECRET-XYZ" not in msg
     assert "client_secret" in msg or "redacted" in msg
@@ -531,7 +588,6 @@ async def test_register_client_redacts_secret_in_error():
 def _smart_with_stored_oauth(http, cipher, oauth_blob):
     """Build a SmartOAuth whose token store returns ``oauth_blob`` for any
     integration (the cipher is injected so no settings are read)."""
-    from unittest.mock import MagicMock
 
     store = OAuthTokenStore(cipher=cipher)
     # Bypass encryption: plant the plaintext blob directly as ``_read`` output.
@@ -570,12 +626,16 @@ async def test_revoke_routes_through_retry_request_not_raw_post(monkeypatch):
 
         monkeypatch.setattr(http_module, "_retry_request", _spy_retry)
 
-        smart = _smart_with_stored_oauth(http, cipher, {
-            "revocation_endpoint": "https://ehr/revoke",
-            "refresh_token": "rt-xyz",
-            "access_token": "at-xyz",
-            "client_id": "cid",
-        })
+        smart = _smart_with_stored_oauth(
+            http,
+            cipher,
+            {
+                "revocation_endpoint": "https://ehr/revoke",
+                "refresh_token": "rt-xyz",
+                "access_token": "at-xyz",
+                "client_id": "cid",
+            },
+        )
         await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000001"))
 
     assert calls["retry"] == 1, "revoke must go through _retry_request"
@@ -587,15 +647,18 @@ async def test_revoke_blocks_ssrf_cloud_metadata_url(monkeypatch):
     """A malicious ``revocation_endpoint`` pointing at a cloud-metadata IP is
     blocked by ``net_guard`` (the SSRF gate inside ``_retry_request``). The
     best-effort ``except`` swallows it — the integration is still deleted."""
-    from integrations.sdk.exceptions import IntegrationDataError
 
     cipher = SecretCipher(Fernet.generate_key())
 
     async with _mock_client(lambda r: httpx.Response(200)) as http:
-        smart = _smart_with_stored_oauth(http, cipher, {
-            "revocation_endpoint": "http://169.254.169.254/latest/meta-data/",
-            "refresh_token": "rt-xyz",
-        })
+        smart = _smart_with_stored_oauth(
+            http,
+            cipher,
+            {
+                "revocation_endpoint": "http://169.254.169.254/latest/meta-data/",
+                "refresh_token": "rt-xyz",
+            },
+        )
         # Must not raise — revoke is best-effort.
         await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000002"))
         # No assertion on response: the SSRF block is swallowed; the win is
@@ -615,10 +678,14 @@ async def test_revoke_no_revocation_endpoint_is_noop():
             posted["n"] += 1
             return httpx.Response(200)
 
-    smart = _smart_with_stored_oauth(_Client(), cipher, {
-        "refresh_token": "rt-xyz",
-        # no revocation_endpoint
-    })
+    smart = _smart_with_stored_oauth(
+        _Client(),
+        cipher,
+        {
+            "refresh_token": "rt-xyz",
+            # no revocation_endpoint
+        },
+    )
     await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000003"))
     assert posted["n"] == 0
 
@@ -634,9 +701,13 @@ async def test_revoke_no_tokens_is_noop():
             posted["n"] += 1
             return httpx.Response(200)
 
-    smart = _smart_with_stored_oauth(_Client(), cipher, {
-        "revocation_endpoint": "https://ehr/revoke",
-    })
+    smart = _smart_with_stored_oauth(
+        _Client(),
+        cipher,
+        {
+            "revocation_endpoint": "https://ehr/revoke",
+        },
+    )
     await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000004"))
     assert posted["n"] == 0
 
@@ -651,10 +722,14 @@ async def test_revoke_swallows_failure_best_effort():
         raise httpx.ConnectError("network down")
 
     async with _mock_client(handler) as http:
-        smart = _smart_with_stored_oauth(http, cipher, {
-            "revocation_endpoint": "https://ehr/revoke",
-            "refresh_token": "rt-xyz",
-        })
+        smart = _smart_with_stored_oauth(
+            http,
+            cipher,
+            {
+                "revocation_endpoint": "https://ehr/revoke",
+                "refresh_token": "rt-xyz",
+            },
+        )
         # Must not raise.
         await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000005"))
 
@@ -683,6 +758,7 @@ def _smart_with_state_store(http, cipher, fake_redis, oauth_blob):
         state_store=OAuthStateStore(redis_client=fake_redis),
         cipher=cipher,
     )
+
     # ``is_expired`` reads the blob from ``_read`` (our fixed plant); patch it
     # to consult the latest stored blob so concurrent refreshes are visible.
     def _is_expired(integration):
@@ -695,7 +771,7 @@ def _smart_with_state_store(http, cipher, fake_redis, oauth_blob):
                 exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
             except ValueError:
                 return True
-        return datetime.now(timezone.utc) >= exp
+        return datetime.now(UTC) >= exp
 
     store.is_expired = _is_expired  # type: ignore[method-assign]
     smart._test_blob = stored  # type: ignore[attr-defined]
@@ -720,22 +796,30 @@ async def test_concurrent_get_live_token_refreshes_once(monkeypatch):
     def handler(request):
         refresh_calls["n"] += 1
         # Simulate the refresh taking a moment so the waiter actually polls.
-        return httpx.Response(200, json={
-            "access_token": f"at-{refresh_calls['n']}",
-            "refresh_token": f"rt-{refresh_calls['n']}",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        })
+        return httpx.Response(
+            200,
+            json={
+                "access_token": f"at-{refresh_calls['n']}",
+                "refresh_token": f"rt-{refresh_calls['n']}",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
     async with _mock_client(handler) as http:
-        past = (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat()
-        smart = _smart_with_state_store(http, cipher, fake_redis, {
-            "access_token": "at-old",
-            "refresh_token": "rt-old",
-            "token_endpoint": "https://ehr/token",
-            "client_id": "cid",
-            "expires_at": past,  # expired → triggers refresh
-        })
+        past = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            fake_redis,
+            {
+                "access_token": "at-old",
+                "refresh_token": "rt-old",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                "expires_at": past,  # expired → triggers refresh
+            },
+        )
         integration = SimpleNamespace(id="00000000-0000-0000-0000-000000000010")
 
         # Two concurrent refreshers.
@@ -762,10 +846,13 @@ async def test_refresh_lock_fails_open_when_redis_down(monkeypatch):
     class _BrokenRedis:
         async def set(self, *a, **kw):
             raise ConnectionError("redis down")
+
         async def eval(self, *a, **kw):
             raise ConnectionError("redis down")
+
         async def get(self, *a, **kw):
             raise ConnectionError("redis down")
+
         async def delete(self, *a, **kw):
             raise ConnectionError("redis down")
 
@@ -773,18 +860,32 @@ async def test_refresh_lock_fails_open_when_redis_down(monkeypatch):
 
     def handler(request):
         refresh_calls["n"] += 1
-        return httpx.Response(200, json={
-            "access_token": "at-fresh", "refresh_token": "rt-fresh",
-            "expires_in": 3600, "token_type": "Bearer",
-        })
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "at-fresh",
+                "refresh_token": "rt-fresh",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
     async with _mock_client(handler) as http:
-        smart = _smart_with_state_store(http, cipher, _BrokenRedis(), {
-            "access_token": "at-old", "refresh_token": "rt-old",
-            "token_endpoint": "https://ehr/token", "client_id": "cid",
-            "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat(),
-        })
-        result = await smart.get_live_token(SimpleNamespace(id="00000000-0000-0000-0000-000000000011"))
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            _BrokenRedis(),
+            {
+                "access_token": "at-old",
+                "refresh_token": "rt-old",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                "expires_at": (datetime.now(UTC) - timedelta(seconds=10)).isoformat(),
+            },
+        )
+        result = await smart.get_live_token(
+            SimpleNamespace(id="00000000-0000-0000-0000-000000000011")
+        )
 
     assert result == "at-fresh"
     assert refresh_calls["n"] == 1
@@ -794,7 +895,7 @@ async def test_refresh_lock_fails_open_when_redis_down(monkeypatch):
 async def test_get_live_token_returns_cached_when_not_expired():
     """A still-valid token short-circuits before any lock/refresh work."""
     cipher = SecretCipher(Fernet.generate_key())
-    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    future = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
     refresh_calls = {"n": 0}
 
     def handler(request):
@@ -802,12 +903,21 @@ async def test_get_live_token_returns_cached_when_not_expired():
         return httpx.Response(200, json={"access_token": "x"})
 
     async with _mock_client(handler) as http:
-        smart = _smart_with_state_store(http, cipher, _FakeRedis(), {
-            "access_token": "at-live", "refresh_token": "rt-live",
-            "token_endpoint": "https://ehr/token", "client_id": "cid",
-            "expires_at": future,
-        })
-        result = await smart.get_live_token(SimpleNamespace(id="00000000-0000-0000-0000-000000000012"))
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            _FakeRedis(),
+            {
+                "access_token": "at-live",
+                "refresh_token": "rt-live",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                "expires_at": future,
+            },
+        )
+        result = await smart.get_live_token(
+            SimpleNamespace(id="00000000-0000-0000-0000-000000000012")
+        )
 
     assert result == "at-live"
     assert refresh_calls["n"] == 0
@@ -829,17 +939,29 @@ async def test_force_refresh_acquires_lock_and_refreshes(monkeypatch):
 
     def handler(request):
         refresh_calls["n"] += 1
-        return httpx.Response(200, json={
-            "access_token": "at-force", "refresh_token": "rt-force",
-            "expires_in": 3600, "token_type": "Bearer",
-        })
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "at-force",
+                "refresh_token": "rt-force",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
     async with _mock_client(handler) as http:
-        smart = _smart_with_state_store(http, cipher, fake_redis, {
-            "access_token": "at-old", "refresh_token": "rt-old",
-            "token_endpoint": "https://ehr/token", "client_id": "cid",
-            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-        })
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            fake_redis,
+            {
+                "access_token": "at-old",
+                "refresh_token": "rt-old",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                "expires_at": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+            },
+        )
         result = await smart.force_refresh(
             SimpleNamespace(id="00000000-0000-0000-0000-000000000020")
         )
@@ -860,17 +982,29 @@ async def test_force_refresh_lock_held_waits_for_leader(monkeypatch):
 
     def handler(request):
         refresh_calls["n"] += 1
-        return httpx.Response(200, json={
-            "access_token": "at-shared", "refresh_token": "rt-shared",
-            "expires_in": 3600, "token_type": "Bearer",
-        })
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "at-shared",
+                "refresh_token": "rt-shared",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            },
+        )
 
     async with _mock_client(handler) as http:
-        smart = _smart_with_state_store(http, cipher, fake_redis, {
-            "access_token": "at-old", "refresh_token": "rt-old",
-            "token_endpoint": "https://ehr/token", "client_id": "cid",
-            "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat(),
-        })
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            fake_redis,
+            {
+                "access_token": "at-old",
+                "refresh_token": "rt-old",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                "expires_at": (datetime.now(UTC) - timedelta(seconds=10)).isoformat(),
+            },
+        )
         integration = SimpleNamespace(id="00000000-0000-0000-0000-000000000021")
 
         # Pre-acquire the lock so force_refresh hits the held branch. Run the
@@ -897,12 +1031,16 @@ async def test_force_refresh_no_refresh_token_raises():
     cipher = SecretCipher(Fernet.generate_key())
 
     async with _mock_client(lambda r: httpx.Response(200, json={})) as http:
-        smart = _smart_with_state_store(http, cipher, _FakeRedis(), {
-            "access_token": "at-old",
-            "token_endpoint": "https://ehr/token", "client_id": "cid",
-            # no refresh_token
-        })
+        smart = _smart_with_state_store(
+            http,
+            cipher,
+            _FakeRedis(),
+            {
+                "access_token": "at-old",
+                "token_endpoint": "https://ehr/token",
+                "client_id": "cid",
+                # no refresh_token
+            },
+        )
         with pytest.raises(IntegrationAuthError, match="no refresh_token"):
-            await smart.force_refresh(
-                SimpleNamespace(id="00000000-0000-0000-0000-000000000022")
-            )
+            await smart.force_refresh(SimpleNamespace(id="00000000-0000-0000-0000-000000000022"))

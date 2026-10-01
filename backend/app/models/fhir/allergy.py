@@ -1,19 +1,20 @@
-from sqlalchemy import Column, String, DateTime, Enum, Text, ForeignKey
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.models.enums import (
     AllergyCategory,
-    AllergyCriticality,
     AllergyClinicalStatus,
+    AllergyCriticality,
     CatalogScope,
 )
 from app.services.fhir_helpers import (
@@ -72,15 +73,9 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "category": self.category.value if self.category else "other",
             "description": self.description,
             "typical_reactions": self.typical_reactions,
-            "class_concept_id": str(self.class_concept_id)
-            if self.class_concept_id
-            else None,
-            "class_concept_slug": self.class_concept.slug
-            if self.class_concept
-            else None,
-            "class_concept_name": self.class_concept.name
-            if self.class_concept
-            else None,
+            "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
+            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
+            "class_concept_name": self.class_concept.name if self.class_concept else None,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
@@ -119,7 +114,16 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
                 "resourceType": "Substance",
                 "id": str(self.id),
                 "status": "active",
-                "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/substance-category", "code": fhir_category}]}],
+                "category": [
+                    {
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/substance-category",
+                                "code": fhir_category,
+                            }
+                        ]
+                    }
+                ],
                 "code": {"text": self.name} if self.name else None,
                 "meta": build_meta(str(self.id)),
             },
@@ -194,12 +198,8 @@ class AllergyIntolerance(
             "criticality": self.criticality.value if self.criticality else None,
             "code": self.code,
             "onset_date": self.onset_date.isoformat() if self.onset_date else None,
-            "resolved_date": self.resolved_date.isoformat()
-            if self.resolved_date
-            else None,
-            "last_occurrence": self.last_occurrence.isoformat()
-            if self.last_occurrence
-            else None,
+            "resolved_date": self.resolved_date.isoformat() if self.resolved_date else None,
+            "last_occurrence": self.last_occurrence.isoformat() if self.last_occurrence else None,
             "note": self.note,
             "reactions": self.reactions or [],
             "source_integration_id": str(self.source_integration_id)
@@ -270,9 +270,7 @@ class AllergyIntolerance(
                 "category": [category] if category else None,
                 "criticality": criticality,
                 "code": allergy_code,
-                "patient": {"reference": f"Patient/{self.patient_id}"}
-                if self.patient_id
-                else None,
+                "patient": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
                 "onsetDateTime": fhir_isoformat(self.onset_date),
                 "lastOccurrence": fhir_isoformat(self.last_occurrence),
                 "note": [{"text": self.note}] if self.note else None,

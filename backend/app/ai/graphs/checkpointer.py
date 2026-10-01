@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
-from contextlib import AsyncExitStack
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -55,11 +54,11 @@ class CheckpointStore:
     Graph runs must execute inside :meth:`run` so shutdown can drain them.
     """
 
-    def __init__(self, conninfo: Optional[str] = None, drain_timeout: float = 30.0):
+    def __init__(self, conninfo: str | None = None, drain_timeout: float = 30.0):
         self._conninfo = conninfo or get_checkpoint_conninfo()
         self._drain_timeout = drain_timeout
-        self._stack: Optional[AsyncExitStack] = None
-        self._saver: Optional[AsyncPostgresSaver] = None
+        self._stack: AsyncExitStack | None = None
+        self._saver: AsyncPostgresSaver | None = None
         self._in_flight_runs = 0
 
     @property
@@ -77,9 +76,7 @@ class CheckpointStore:
         if self._saver is not None:
             return
         stack = AsyncExitStack()
-        saver = await stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(self._conninfo)
-        )
+        saver = await stack.enter_async_context(AsyncPostgresSaver.from_conn_string(self._conninfo))
         await saver.setup()
         self._stack = stack
         self._saver = saver
@@ -124,16 +121,16 @@ class CheckpointStore:
 # graph engines can attach its checkpointer without reaching into app.state.
 # ---------------------------------------------------------------------------
 
-_runtime_store: Optional["CheckpointStore"] = None
+_runtime_store: CheckpointStore | None = None
 
 
-def bind_runtime_store(store: Optional["CheckpointStore"]) -> None:
+def bind_runtime_store(store: CheckpointStore | None) -> None:
     """Register (or clear) the process-wide store. Called by the lifespan."""
     global _runtime_store
     _runtime_store = store
 
 
-def get_runtime_saver() -> Optional[AsyncPostgresSaver]:
+def get_runtime_saver() -> AsyncPostgresSaver | None:
     """The open checkpointer, or ``None`` (tests / no-DB dev mode)."""
     if _runtime_store is None or _runtime_store._saver is None:
         return None

@@ -8,6 +8,7 @@ Covers:
 - get_allergy_usage cross-patient join
 - check_allergy_access filters deleted_at
 """
+
 import datetime as _dt
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -45,7 +46,7 @@ def test_valid_allergy_intolerance_passes_gate():
         category=AllergyCategory.FOOD,
         criticality=AllergyCriticality.HIGH,
         code={"text": "Peanuts"},
-        onset_date=_dt.datetime(2020, 1, 1, tzinfo=_dt.timezone.utc),
+        onset_date=_dt.datetime(2020, 1, 1, tzinfo=_dt.UTC),
     )
     fhir = assert_valid_fhir(allergy)
     assert fhir["resourceType"] == "AllergyIntolerance"
@@ -119,7 +120,10 @@ async def test_add_patient_allergy_calls_assert_valid_fhir(monkeypatch):
         code={"text": "Peanuts"},
     )
     actor = TokenData(
-        user_id=uuid4(), tenant_id=uuid4(), role="ADMIN", sub="admin@test",
+        user_id=uuid4(),
+        tenant_id=uuid4(),
+        role="ADMIN",
+        sub="admin@test",
     )
     await allergy_service.add_patient_allergy(fake_db, actor, payload)
 
@@ -210,9 +214,7 @@ async def test_reprocess_allergy_no_nlp_returns_entry_unchanged(monkeypatch):
     def boom(*a, **kw):
         raise RuntimeError("no NLP configured")
 
-    monkeypatch.setattr(
-        "app.ai.processors.nlp.get_nlp_extractor_from_db", boom, raising=False
-    )
+    monkeypatch.setattr("app.ai.processors.nlp.get_nlp_extractor_from_db", boom, raising=False)
 
     result = await allergy_service.reprocess_allergy(fake_db, entry.id, uuid4())
     assert result is entry

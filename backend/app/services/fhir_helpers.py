@@ -7,18 +7,18 @@ call time rather than breaking module import.
 """
 
 import datetime as dt
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from app.models.enums import ExportScope  # noqa: F401  (re-exported for callers)
-from app.schemas.backup import PROVENANCE_SYSTEM, PROVENANCE_CODE
+from app.schemas.backup import PROVENANCE_CODE, PROVENANCE_SYSTEM
 
 
 class FhirSerializationError(Exception):
     """Raised when a value cannot be serialized to / parsed from a FHIR resource."""
 
 
-def fhir_isoformat(value: Optional[dt.datetime]) -> Optional[str]:
+def fhir_isoformat(value: dt.datetime | None) -> str | None:
     """Serialize a datetime to a FHIR-conformant ISO-8601 string.
 
     FHIR R4 regex requires a timezone offset (``Z`` or ``+HH:MM``); a naive
@@ -32,7 +32,7 @@ def fhir_isoformat(value: Optional[dt.datetime]) -> Optional[str]:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=dt.timezone.utc)
+        value = value.replace(tzinfo=dt.UTC)
     iso = value.isoformat()
     # Normalize '+00:00' to 'Z' for the canonical FHIR form (fhir.resources
     # accepts both, but 'Z' is the spec-preferred UTC designator).
@@ -41,7 +41,7 @@ def fhir_isoformat(value: Optional[dt.datetime]) -> Optional[str]:
     return iso
 
 
-def build_fhir_resource(resource_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+def build_fhir_resource(resource_type: str, data: dict[str, Any]) -> dict[str, Any]:
     """Validate a FHIR-shaped dict via ``fhir.resources`` and return its canonical
     camelCase dump (None values excluded).
 
@@ -67,7 +67,7 @@ def build_fhir_resource(resource_type: str, data: Dict[str, Any]) -> Dict[str, A
     return validated.model_dump(by_alias=True, exclude_none=True, mode="json")
 
 
-def assert_valid_fhir(obj: Any) -> Dict[str, Any]:
+def assert_valid_fhir(obj: Any) -> dict[str, Any]:
     """Validate an ORM object's FHIR projection and return it.
 
     Calls ``obj.to_fhir_dict()`` (which constructs + validates via
@@ -77,15 +77,11 @@ def assert_valid_fhir(obj: Any) -> Dict[str, Any]:
     ``update_*`` so invalid data can never be persisted — the root-cause fix
     for the FHIR shape-drift bug class. Call this right before ``commit()``."""
     if not hasattr(obj, "to_fhir_dict"):
-        raise FhirSerializationError(
-            f"{type(obj).__name__} has no to_fhir_dict(); cannot validate"
-        )
+        raise FhirSerializationError(f"{type(obj).__name__} has no to_fhir_dict(); cannot validate")
     return obj.to_fhir_dict()
 
 
-def validate_and_filter_observations(
-    observations: list, logger=None
-) -> Tuple[List[Any], int]:
+def validate_and_filter_observations(observations: list, logger=None) -> tuple[list[Any], int]:
     """Drop observations that cannot be projected to valid FHIR (skip-and-log).
 
     The write-time gate for the integration data path: every Observation is run
@@ -99,7 +95,7 @@ def validate_and_filter_observations(
     valid``, which was a fragile contract — callers holding a reference saw a
     shorter list with no signal that items were removed).
     """
-    valid: List[Any] = []
+    valid: list[Any] = []
     dropped = 0
     for obs in observations:
         try:
@@ -116,7 +112,7 @@ def validate_and_filter_observations(
     return valid, dropped
 
 
-def _enum_value(v: Any, default: Optional[str] = None) -> Optional[str]:
+def _enum_value(v: Any, default: str | None = None) -> str | None:
     """Return the string value of an enum *or* pass a raw string through.
 
     SQLAlchemy ``Enum`` columns hold enum instances once loaded/flushed, but a
@@ -128,7 +124,7 @@ def _enum_value(v: Any, default: Optional[str] = None) -> Optional[str]:
     return getattr(v, "value", v)
 
 
-def parse_fhir_resource(resource_type: str, data: Dict[str, Any]):
+def parse_fhir_resource(resource_type: str, data: dict[str, Any]):
     """Parse + validate a canonical FHIR dict into a typed ``fhir.resources`` model.
 
     The inverse of :func:`build_fhir_resource`, used by the import path. Raises
@@ -150,12 +146,12 @@ def parse_fhir_resource(resource_type: str, data: Dict[str, Any]):
         raise FhirSerializationError(f"Could not parse {resource_type}: {e}") from e
 
 
-def _clean(d: Dict[str, Any]) -> Dict[str, Any]:
+def _clean(d: dict[str, Any]) -> dict[str, Any]:
     """Drop keys whose value is None."""
     return {k: v for k, v in d.items() if v is not None}
 
 
-def _as_list(v: Any) -> Optional[List[Any]]:
+def _as_list(v: Any) -> list[Any] | None:
     """Wrap a scalar in a list; pass lists/None through unchanged."""
     if v is None:
         return None
@@ -164,7 +160,7 @@ def _as_list(v: Any) -> Optional[List[Any]]:
     return [v]
 
 
-def _coerce_human_name_list(v: Any) -> Optional[List[Any]]:
+def _coerce_human_name_list(v: Any) -> list[Any] | None:
     """Normalize a stored Patient.name value into FHIR List[HumanName].
 
     FHIR ``Patient.name`` is 0..* (a list of HumanName). Some legacy rows and
@@ -199,7 +195,7 @@ def _primary_human_name(v: Any) -> Any:
     return {"text": str(v)}
 
 
-def _clean_quantity(q: Any) -> Optional[Dict[str, Any]]:
+def _clean_quantity(q: Any) -> dict[str, Any] | None:
     """Strip empty/whitespace-only string values from a FHIR Quantity dict.
 
     FHIR ``Quantity`` fields have strict pattern constraints — e.g. ``code``
@@ -217,7 +213,7 @@ def _clean_quantity(q: Any) -> Optional[Dict[str, Any]]:
     human-readable form) is independent and kept on its own."""
     if not isinstance(q, dict):
         return q
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for k, val in q.items():
         if isinstance(val, str):
             if val.strip():
@@ -253,20 +249,18 @@ def _normalize_timing(timing: Any) -> Any:
 
 
 def build_meta(
-    version_id: Optional[str] = None,
-    last_updated: Optional[str] = None,
+    version_id: str | None = None,
+    last_updated: str | None = None,
     provenance: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a FHIR ``meta`` block with versionId, lastUpdated, source and tag."""
-    meta: Dict[str, Any] = {}
+    meta: dict[str, Any] = {}
     if version_id:
         meta["versionId"] = str(version_id)
     if last_updated:
         meta["lastUpdated"] = last_updated
     meta["versionId"] = meta.get("versionId") or "1"
-    meta["lastUpdated"] = (
-        meta.get("lastUpdated") or dt.datetime.now(dt.timezone.utc).isoformat()
-    )
+    meta["lastUpdated"] = meta.get("lastUpdated") or dt.datetime.now(dt.UTC).isoformat()
     meta["source"] = PROVENANCE_SYSTEM
     if provenance:
         meta["tag"] = [
@@ -279,7 +273,7 @@ def build_meta(
     return meta
 
 
-def _extract_patient_id(ref: Optional[Dict[str, Any]]) -> Optional[str]:
+def _extract_patient_id(ref: dict[str, Any] | None) -> str | None:
     """Pull the trailing id from a FHIR reference like {"reference": "Patient/<id>"}."""
     if not ref:
         return None
@@ -292,9 +286,7 @@ def _extract_patient_id(ref: Optional[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
-def coerce_patient_id(
-    explicit: Any, subject: Optional[Dict[str, Any]]
-) -> Optional[UUID]:
+def coerce_patient_id(explicit: Any, subject: dict[str, Any] | None) -> UUID | None:
     """Resolve a relational ``patient_id`` for an Observation/DiagnosticReport
     (audit B3). Prefers an explicit value, then derives it from the FHIR
     ``subject`` reference; returns a validated ``UUID`` or ``None``.
@@ -308,7 +300,7 @@ def coerce_patient_id(
         return None
 
 
-def _flatten_interpretation(interpretation: Any) -> Optional[str]:
+def _flatten_interpretation(interpretation: Any) -> str | None:
     """Flatten a FHIR interpretation value into a single display string.
 
     Accepts a string (passed through) or a FHIR list of CodeableConcepts
@@ -338,7 +330,7 @@ def _flatten_interpretation(interpretation: Any) -> Optional[str]:
     return None
 
 
-def _normalize_interpretation(value: Any) -> Optional[List[Dict[str, Any]]]:
+def _normalize_interpretation(value: Any) -> list[dict[str, Any]] | None:
     """Normalize any interpretation input to the canonical FHIR R4 list shape.
 
     The ORM column is JSONB (``0..* CodeableConcept``). This helper accepts:

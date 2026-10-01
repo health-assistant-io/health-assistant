@@ -1,8 +1,10 @@
 import asyncio
-from app.core.database import AsyncSessionLocal
-from app.models.examination_model import ExaminationModel
-from app.models.document_model import DocumentModel
+
 from sqlalchemy import select
+
+from app.core.database import AsyncSessionLocal
+from app.models.document_model import DocumentModel
+from app.models.examination_model import ExaminationModel
 
 
 async def check():
@@ -16,9 +18,7 @@ async def check():
         print(f"Found {len(exams)} non-completed exams")
         for exam in exams:
             print(f"Exam ID: {exam.id}")
-            print(
-                f"  Status: {exam.extraction_status}, Progress: {exam.extraction_progress}"
-            )
+            print(f"  Status: {exam.extraction_status}, Progress: {exam.extraction_progress}")
             print(f"  Error: {exam.error_message}")
             docs_res = await db.execute(
                 select(DocumentModel).where(DocumentModel.examination_id == exam.id)

@@ -1,3 +1,4 @@
+# ruff: noqa: RUF002 -- intentional set-union notation in a docstring
 """Telemetry caggs: enable realtime aggregation
 
 Fixes the biomarker-trends telemetry path (2026-08-18):
@@ -30,9 +31,7 @@ _CAGGS = ("telemetry_hourly", "telemetry_daily", "telemetry_monthly")
 def _has_timescaledb() -> bool:
     conn = op.get_bind()
     return bool(
-        conn.exec_driver_sql(
-            "SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'"
-        ).scalar()
+        conn.exec_driver_sql("SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'").scalar()
     )
 
 
@@ -40,17 +39,11 @@ def upgrade() -> None:
     if not _has_timescaledb():
         return
     for view in _CAGGS:
-        op.execute(
-            f"ALTER MATERIALIZED VIEW {view} "
-            "SET (timescaledb.materialized_only = false)"
-        )
+        op.execute(f"ALTER MATERIALIZED VIEW {view} SET (timescaledb.materialized_only = false)")
 
 
 def downgrade() -> None:
     if not _has_timescaledb():
         return
     for view in _CAGGS:
-        op.execute(
-            f"ALTER MATERIALIZED VIEW {view} "
-            "SET (timescaledb.materialized_only = true)"
-        )
+        op.execute(f"ALTER MATERIALIZED VIEW {view} SET (timescaledb.materialized_only = true)")

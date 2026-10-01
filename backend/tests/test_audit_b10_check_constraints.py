@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Regression tests for audit B10 — obvious CHECK constraints.
 
 Three layers of coverage:
@@ -9,6 +10,7 @@ Three layers of coverage:
    good ones. The remaining tables (documents/examinations/ai_models/jobs)
    carry heavy FK scaffolding; the metadata + DB-existence checks cover them.
 """
+
 import uuid
 
 import pytest
@@ -35,10 +37,7 @@ def test_models_declare_check_constraints():
     found = set()
     for table in Base.metadata.tables.values():
         for constraint in table.constraints:
-            if (
-                isinstance(constraint, CheckConstraint)
-                and constraint.name in EXPECTED
-            ):
+            if isinstance(constraint, CheckConstraint) and constraint.name in EXPECTED:
                 found.add(constraint.name)
     missing = EXPECTED - found
     assert not missing, f"Model metadata missing constraints: {missing}"
@@ -49,10 +48,14 @@ async def test_constraints_exist_in_db():
     """The migration created every B10 constraint in the live DB."""
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                text("SELECT conname FROM pg_constraint WHERE conname LIKE 'ck\\_%'")
+            (
+                await session.execute(
+                    text("SELECT conname FROM pg_constraint WHERE conname LIKE 'ck\\_%'")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     missing = EXPECTED - set(rows)
     assert not missing, f"DB missing constraints: {missing}"
 

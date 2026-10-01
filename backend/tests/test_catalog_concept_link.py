@@ -52,9 +52,7 @@ async def _seed_anatomy(suffix):
 async def test_anatomy_projects_class(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     await _seed_anatomy(suffix)
-    resp = await async_client.get(
-        "/api/v1/catalogs/anatomy", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/catalogs/anatomy", headers=system_admin_headers)
     assert resp.status_code == 200
     items = {it["slug"]: it for it in resp.json()["items"]}
     heart = items[f"heart-{suffix}"]
@@ -65,9 +63,7 @@ async def test_anatomy_projects_class(async_client, system_admin_headers):
 
 
 @pytest.mark.asyncio
-async def test_anatomy_class_filter_single_and_multi(
-    async_client, system_admin_headers
-):
+async def test_anatomy_class_filter_single_and_multi(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     await _seed_anatomy(suffix)
     resp = await async_client.get(
@@ -89,9 +85,7 @@ async def test_anatomy_class_filter_single_and_multi(
 
 
 @pytest.mark.asyncio
-async def test_anatomy_class_filter_unknown_returns_empty(
-    async_client, system_admin_headers
-):
+async def test_anatomy_class_filter_unknown_returns_empty(async_client, system_admin_headers):
     resp = await async_client.get(
         "/api/v1/catalogs/anatomy?class=does-not-exist",
         headers=system_admin_headers,
@@ -101,9 +95,7 @@ async def test_anatomy_class_filter_unknown_returns_empty(
 
 
 @pytest.mark.asyncio
-async def test_biomarker_class_filter_and_projection(
-    async_client, system_admin_headers
-):
+async def test_biomarker_class_filter_and_projection(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     cls = _make_concept(f"bio-class-{suffix}", "Bio Class", ConceptKind.BIOMARKER_CLASS)
     async with AsyncSessionLocal() as db:

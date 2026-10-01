@@ -1,36 +1,37 @@
 from __future__ import annotations
 
-from typing import List
-
 from sqlalchemy import (
     Column,
-    String,
-    Text,
-    Integer,
-    Enum as SQLEnum,
     ForeignKey,
     Index,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
     AuditMixin,
-    TenantMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
 from app.models.enums import (
+    CatalogScope,
     ConceptKind,
-    ConceptStatus,
     ConceptProvenance,
+    ConceptRelationType,
+    ConceptStatus,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    ConceptRelationType,
-    CatalogScope,
 )
 
 
@@ -144,7 +145,7 @@ class Concept(
         return self.deleted_at is None and self.status == ConceptStatus.ACTIVE
 
     @property
-    def kinds(self) -> List[str]:
+    def kinds(self) -> list[str]:
         """All kind-domain tags on this concept, as their string values."""
         return [t.kind.value for t in (self.kind_tags or [])]
 

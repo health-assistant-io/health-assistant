@@ -26,9 +26,10 @@ timing the connection out.
 """
 
 import asyncio
+import contextlib
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -99,9 +100,7 @@ def _origin_allowed(websocket: WebSocket) -> bool:
         http_scheme = "https" if scheme in ("wss", "https") else "http"
         if origin.lower() == f"{http_scheme}://{host}".lower():
             return True
-    if settings.APP_ENV == "development" and _DEV_LAN_ORIGIN.match(origin):
-        return True
-    return False
+    return bool(settings.APP_ENV == "development" and _DEV_LAN_ORIGIN.match(origin))
 
 
 async def _extract_token(websocket: WebSocket) -> str | None:
@@ -130,9 +129,7 @@ async def _extract_token(websocket: WebSocket) -> str | None:
     if header_subs:
         parts.extend([p.strip() for p in header_subs.split(",") if p.strip()])
 
-    logger.debug(
-        "WS auth: scope_subprotocols=%r header=%r", scope_subs, header_subs[:40]
-    )
+    logger.debug("WS auth: scope_subprotocols=%r header=%r", scope_subs, header_subs[:40])
 
     for i, part in enumerate(parts):
         if part.lower() == "bearer" and i + 1 < len(parts):
@@ -222,7 +219,7 @@ async def websocket_tasks_endpoint(
                 pass
 
         read_task = asyncio.create_task(_read_loop())
-        last_ping = datetime.now(timezone.utc)
+        last_ping = datetime.now(UTC)
 
         while True:
             if read_task.done():
@@ -237,7 +234,7 @@ async def websocket_tasks_endpoint(
                     data = data.decode("utf-8", errors="replace")
                 await websocket.send_text(data)
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if (now - last_ping).total_seconds() >= _PING_INTERVAL_SECONDS:
                 try:
                     await websocket.send_json({"type": "ping", "ts": now.isoformat()})
@@ -253,10 +250,8 @@ async def websocket_tasks_endpoint(
         # B11: was previously a silent close(1011). Log so operators can
         # diagnose unexpected drops.
         logger.warning("WebSocket error for tenant=%s: %s", tenant_id, e, exc_info=True)
-        try:
+        with contextlib.suppress(Exception):
             await websocket.close(code=1011)
-        except Exception:
-            pass
     finally:
         try:
             await pubsub.unsubscribe(channel)
@@ -300,7 +295,7 @@ async def websocket_notifications_endpoint(
                 pass
 
         read_task = asyncio.create_task(_read_loop())
-        last_ping = datetime.now(timezone.utc)
+        last_ping = datetime.now(UTC)
 
         while True:
             if read_task.done():
@@ -315,7 +310,7 @@ async def websocket_notifications_endpoint(
                     data = data.decode("utf-8", errors="replace")
                 await websocket.send_text(data)
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             if (now - last_ping).total_seconds() >= _PING_INTERVAL_SECONDS:
                 try:
                     await websocket.send_json({"type": "ping", "ts": now.isoformat()})
@@ -327,13 +322,9 @@ async def websocket_notifications_endpoint(
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logger.warning(
-            "Notification WebSocket error for user=%s: %s", user_id, e, exc_info=True
-        )
-        try:
+        logger.warning("Notification WebSocket error for user=%s: %s", user_id, e, exc_info=True)
+        with contextlib.suppress(Exception):
             await websocket.close(code=1011)
-        except Exception:
-            pass
     finally:
         try:
             await pubsub.unsubscribe(channel)

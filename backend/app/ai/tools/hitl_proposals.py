@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Human-in-the-loop proposal tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3). Each ``propose_*`` tool does NOT
@@ -7,8 +8,8 @@ before anything is saved.
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -30,7 +31,6 @@ async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
     if not ctx.user_id:
         return
     try:
-        from app.services.notification_service import emit
         from app.models.enums import (
             NotificationCategory,
             NotificationSeverity,
@@ -38,6 +38,7 @@ async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
             NotificationType,
             RecipientKind,
         )
+        from app.services.notification_service import emit
 
         await emit(
             source=NotificationSource.AGENT,
@@ -78,7 +79,7 @@ async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
 
 async def _search_existing_anatomy(
     ctx: ToolContext, target_structure: str
-) -> tuple[Optional[dict], str]:
+) -> tuple[dict | None, str]:
     """Look up the target in the existing anatomy catalog (tenant + global) and,
     when found, traverse its 2-hop neighborhood so the generation step can fill
     gaps instead of duplicating existing structures/edges.
@@ -108,16 +109,14 @@ async def _search_existing_anatomy(
         )
 
     try:
-        graph = await anatomy_service.get_anatomy_graph(
-            ctx.db, root, ctx.tenant_id, depth=2
-        )
+        graph = await anatomy_service.get_anatomy_graph(ctx.db, root, ctx.tenant_id, depth=2)
     except Exception:
         graph = {"nodes": [{"structure": root, "depth": 0}], "edges": []}
 
     # Map node UUIDs → slugs so edges can be expressed in slug form (what the
     # generation LLM + the import pipeline expect).
-    id_to_slug: Dict[str, str] = {}
-    node_slugs: List[str] = []
+    id_to_slug: dict[str, str] = {}
+    node_slugs: list[str] = []
     for n in graph.get("nodes", []):
         struct = n.get("structure") if isinstance(n, dict) else None
         if struct is None:
@@ -126,7 +125,7 @@ async def _search_existing_anatomy(
         if struct.slug not in node_slugs:
             node_slugs.append(struct.slug)
 
-    existing_edges: List[Dict[str, str]] = []
+    existing_edges: list[dict[str, str]] = []
     for e in graph.get("edges", []):
         src = id_to_slug.get(str(e.get("source_id")))
         dst = id_to_slug.get(str(e.get("target_id")))
@@ -155,16 +154,16 @@ async def _search_existing_anatomy(
 
 
 @register_chat_tool("hitl_proposals")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def propose_create_clinical_event(
         title: str,
         type_slug: str,
-        onset_date: Optional[str] = None,
-        description: Optional[str] = None,
+        onset_date: str | None = None,
+        description: str | None = None,
         status: str = "ACTIVE",
-        reason: Optional[str] = None,
-        links: Optional[List[dict]] = None,
+        reason: str | None = None,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose creating a new clinical event (a longitudinal health journey such as
         a pregnancy, chronic pain cycle, surgical recovery, or allergy episode).
@@ -205,7 +204,7 @@ def build(ctx: ToolContext) -> List[Any]:
         type_name = event_type.name if event_type else type_slug
 
         # Validate + snapshot any proposed links (clinical_event_type is the src).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from app.ai.tools.propose_link import build_link_specs
             from app.models.enums import EdgeEndpointType
@@ -242,7 +241,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "patient_id": str(ctx.patient_id),
                 "reason": reason,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -259,10 +258,10 @@ def build(ctx: ToolContext) -> List[Any]:
     async def propose_record_biomarker_result(
         biomarker_name: str,
         value: float,
-        unit: Optional[str] = None,
-        note: Optional[str] = None,
-        examination_id: Optional[str] = None,
-        reason: Optional[str] = None,
+        unit: str | None = None,
+        note: str | None = None,
+        examination_id: str | None = None,
+        reason: str | None = None,
     ) -> str:
         """Propose recording a biomarker measurement (a lab result) on an examination —
         a PATIENT-INSTANCE data point.
@@ -295,9 +294,7 @@ def build(ctx: ToolContext) -> List[Any]:
             reason: Optional clinical rationale for the proposal.
         """
         # --- Resolve + authorize the target examination (hard-fail on miss) ---
-        candidate = examination_id or (
-            str(ctx.examination_id) if ctx.examination_id else None
-        )
+        candidate = examination_id or (str(ctx.examination_id) if ctx.examination_id else None)
         if not candidate:
             return json.dumps(
                 {
@@ -310,9 +307,7 @@ def build(ctx: ToolContext) -> List[Any]:
 
             exam_uuid = UUID(candidate)
         except (ValueError, AttributeError, TypeError):
-            return json.dumps(
-                {"error": f"Invalid examination_id '{candidate}' (expected a UUID)."}
-            )
+            return json.dumps({"error": f"Invalid examination_id '{candidate}' (expected a UUID)."})
 
         exam_result = await ctx.db.execute(
             select(ExaminationModel)
@@ -334,12 +329,8 @@ def build(ctx: ToolContext) -> List[Any]:
             )
 
         resolved_exam_id = str(exam.id)
-        examination_date = (
-            exam.examination_date.isoformat() if exam.examination_date else None
-        )
-        examination_category = (
-            exam.category_concept.name if exam.category_concept else None
-        )
+        examination_date = exam.examination_date.isoformat() if exam.examination_date else None
+        examination_category = exam.category_concept.name if exam.category_concept else None
 
         # --- Resolve the biomarker by name/slug (tenant-scoped or global) ---
         biomarker_id = None
@@ -388,7 +379,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "examination_category": examination_category,
                 "reason": reason,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -397,12 +388,12 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def propose_prescribe_medication(
         medication_name: str,
-        dosage: Optional[str] = None,
-        frequency_label: Optional[str] = None,
-        reason: Optional[str] = None,
-        note: Optional[str] = None,
-        start_date: Optional[str] = None,
-        links: Optional[List[dict]] = None,
+        dosage: str | None = None,
+        frequency_label: str | None = None,
+        reason: str | None = None,
+        note: str | None = None,
+        start_date: str | None = None,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose prescribing a medication to the patient — a PATIENT-INSTANCE
         prescription (the patient takes this drug).
@@ -458,7 +449,7 @@ def build(ctx: ToolContext) -> List[Any]:
         # When the catalog entry already exists, pass primary_existing_id so dedup
         # surfaces "Link exists" badges in the form. When it's a new custom entry,
         # dedup is skipped (there can't be a pre-existing edge to a not-yet-row).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from uuid import UUID
 
@@ -505,7 +496,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id),
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -521,16 +512,16 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def propose_define_biomarker(
         name: str,
-        category: Optional[str] = None,
-        unit_symbol: Optional[str] = None,
-        reference_range_min: Optional[float] = None,
-        reference_range_max: Optional[float] = None,
-        coding_system: Optional[str] = "loinc",
-        code: Optional[str] = None,
-        aliases: Optional[List[str]] = None,
-        info: Optional[str] = None,
-        is_telemetry: Optional[bool] = False,
-        links: Optional[List[dict]] = None,
+        category: str | None = None,
+        unit_symbol: str | None = None,
+        reference_range_min: float | None = None,
+        reference_range_max: float | None = None,
+        coding_system: str | None = "loinc",
+        code: str | None = None,
+        aliases: list[str] | None = None,
+        info: str | None = None,
+        is_telemetry: bool | None = False,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose defining a NEW biomarker in the tenant catalog — a reference
         definition (the metric itself, not a measurement).
@@ -579,7 +570,7 @@ def build(ctx: ToolContext) -> List[Any]:
         slug = "".join(c for c in slug if c.isalnum() or c == "-").strip("-")
 
         # Validate + snapshot any proposed links (biomarker is the src).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from app.ai.tools.propose_link import build_link_specs
             from app.models.enums import EdgeEndpointType
@@ -614,7 +605,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -630,12 +621,12 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def propose_define_medication(
         name: str,
-        description: Optional[str] = None,
-        indications: Optional[str] = None,
-        dosage_info: Optional[str] = None,
-        contraindications: Optional[str] = None,
-        side_effects: Optional[List[str]] = None,
-        links: Optional[List[dict]] = None,
+        description: str | None = None,
+        indications: str | None = None,
+        dosage_info: str | None = None,
+        contraindications: str | None = None,
+        side_effects: list[str] | None = None,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose defining a NEW medication in the tenant catalog — a reference
         definition (the drug itself, not a prescription).
@@ -671,7 +662,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 tool result).
         """
         # Validate + snapshot any proposed links (medication is the src).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from app.ai.tools.propose_link import build_link_specs
             from app.models.enums import EdgeEndpointType
@@ -701,7 +692,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -717,13 +708,13 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def propose_record_allergy(
         allergen_name: str,
-        criticality: Optional[str] = "low",
-        category: Optional[str] = None,
-        note: Optional[str] = None,
-        onset_date: Optional[str] = None,
-        reactions: Optional[List[dict]] = None,
-        reason: Optional[str] = None,
-        links: Optional[List[dict]] = None,
+        criticality: str | None = "low",
+        category: str | None = None,
+        note: str | None = None,
+        onset_date: str | None = None,
+        reactions: list[dict] | None = None,
+        reason: str | None = None,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose recording an allergy / intolerance on the patient's chart —
         a PATIENT-INSTANCE record (the patient reacts to this substance).
@@ -776,13 +767,9 @@ def build(ctx: ToolContext) -> List[Any]:
         resolved_name = best.name if best else allergen_name
         matched = best is not None
         resolved_category = (
-            category
-            or (getattr(best, "category", None) if best else None)
-            or "OTHER"
+            category or (getattr(best, "category", None) if best else None) or "OTHER"
         ).upper()
-        typical_reactions = (
-            list(getattr(best, "typical_reactions", None) or []) if best else []
-        )
+        typical_reactions = list(getattr(best, "typical_reactions", None) or []) if best else []
 
         # Normalize criticality.
         crit = (criticality or "low").upper()
@@ -790,7 +777,7 @@ def build(ctx: ToolContext) -> List[Any]:
             crit = "LOW"
 
         # Validate + snapshot any proposed links (allergy catalog entry is src).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from uuid import UUID
 
@@ -837,7 +824,7 @@ def build(ctx: ToolContext) -> List[Any]:
                 "patient_id": str(ctx.patient_id),
                 "reason": reason,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -853,10 +840,10 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def propose_define_allergy(
         name: str,
-        category: Optional[str] = "OTHER",
-        description: Optional[str] = None,
-        typical_reactions: Optional[List[str]] = None,
-        links: Optional[List[dict]] = None,
+        category: str | None = "OTHER",
+        description: str | None = None,
+        typical_reactions: list[str] | None = None,
+        links: list[dict] | None = None,
     ) -> str:
         """Propose defining a NEW allergen in the tenant catalog — a reference
         definition (the substance itself, not a patient's reaction).
@@ -895,7 +882,7 @@ def build(ctx: ToolContext) -> List[Any]:
         cat = (category or "OTHER").upper()
 
         # Validate + snapshot any proposed links (allergy is the src).
-        link_specs: Dict[str, Any] = {"kept": [], "dropped": []}
+        link_specs: dict[str, Any] = {"kept": [], "dropped": []}
         if links:
             from app.ai.tools.propose_link import build_link_specs
             from app.models.enums import EdgeEndpointType
@@ -923,7 +910,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)
@@ -961,16 +948,14 @@ def build(ctx: ToolContext) -> List[Any]:
         #    tools-layer deps; AIProviderService has no tools-layer deps).
         generated = None
         try:
-            from app.ai.providers.service import AIProviderService
             from app.ai.assistance.definitions import define_anatomy_graph
             from app.ai.providers.enums import TaskType
+            from app.ai.providers.service import AIProviderService
 
             llm = await AIProviderService(ctx.db).get_llm(
                 TaskType.DEFINE_ANATOMY_GRAPH, ctx.tenant_id, ctx.user_id
             )
-            gen = await define_anatomy_graph(
-                llm, target_structure, {"existing": existing}
-            )
+            gen = await define_anatomy_graph(llm, target_structure, {"existing": existing})
             if gen.get("success"):
                 suggested = gen.get("suggested_data") or {}
                 if suggested.get("nodes"):
@@ -984,6 +969,7 @@ def build(ctx: ToolContext) -> List[Any]:
             # frontend handler falls back to a client-side generation call
             # (with a Retry button) when the user opens the card.
             import logging
+
             logging.getLogger(__name__).warning(
                 "propose_anatomy_graph_generation: in-tool generation failed; "
                 "falling back to client-side generation on card open.",
@@ -1005,7 +991,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         await _notify_hitl_proposal(ctx, task)

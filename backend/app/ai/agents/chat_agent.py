@@ -23,7 +23,8 @@ Public surface:
 
 import json
 import logging
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+from collections.abc import AsyncIterator
+from typing import Any
 from uuid import UUID
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -45,12 +46,12 @@ logger = logging.getLogger(__name__)
 
 async def build_chat_tools(
     db: AsyncSession,
-    tenant_id: Optional[UUID],
-    patient_id: Optional[str],
-    user_id: Optional[UUID],
-    examination_id: Optional[str] = None,
+    tenant_id: UUID | None,
+    patient_id: str | None,
+    user_id: UUID | None,
+    examination_id: str | None = None,
     label: str = "chat",
-) -> List[Any]:
+) -> list[Any]:
     """Assemble the built-in chatbot tools + any integration tools.
 
     Returns an empty list when patient/tenant context is missing (the chatbot
@@ -61,20 +62,15 @@ async def build_chat_tools(
         return []
 
     exam_id = UUID(examination_id) if examination_id else None
-    tools = get_tools(
-        db, tenant_id, UUID(patient_id), examination_id=exam_id, user_id=user_id
-    )
+    tools = get_tools(db, tenant_id, UUID(patient_id), examination_id=exam_id, user_id=user_id)
     try:
         from app.ai.tools.aggregator import aggregate as integration_aggregate
 
-        integration_tools = await integration_aggregate(
-            db, user_id, tenant_id, UUID(patient_id)
-        )
+        integration_tools = await integration_aggregate(db, user_id, tenant_id, UUID(patient_id))
         tools = tools + integration_tools
     except Exception as e:
         logger.warning(
-            f"Failed to load integration tools for {label} "
-            f"(continuing with built-ins): {e}"
+            f"Failed to load integration tools for {label} (continuing with built-ins): {e}"
         )
     return tools
 
@@ -86,12 +82,12 @@ async def build_chat_tools(
 
 async def reconstruct_history(
     chat_session_service,
-    session_id: Optional[UUID],
-    user_id: Optional[UUID],
-    tenant_id: Optional[UUID],
+    session_id: UUID | None,
+    user_id: UUID | None,
+    tenant_id: UUID | None,
     system_prompt: str,
-    driving_input: Union[str, List[Dict[str, Any]]],
-) -> List[Any]:
+    driving_input: str | list[dict[str, Any]],
+) -> list[Any]:
     """Build the in-memory LLM message list for a chat turn.
 
     Layout: ``[SystemMessage(prompt)] + [replayed past turns] + [HumanMessage(driving_input)]``.
@@ -107,7 +103,7 @@ async def reconstruct_history(
     ``400 tool_call_ids did not have response messages`` on non-streaming turns
     that followed a tool-calling turn. Unifying on this helper fixes that.
     """
-    current_history: List[Any] = [SystemMessage(content=system_prompt)]
+    current_history: list[Any] = [SystemMessage(content=system_prompt)]
     if session_id:
         past_messages = await chat_session_service.get_session_messages(
             session_id, user_id, tenant_id
@@ -130,9 +126,7 @@ async def reconstruct_history(
                         )
                     )
                 else:
-                    current_history.append(
-                        HumanMessage(content=content_json.get("text"))
-                    )
+                    current_history.append(HumanMessage(content=content_json.get("text")))
             elif msg.role == "assistant":
                 _append_assistant_turn_to_history(msg, current_history)
     current_history.append(HumanMessage(content=driving_input))
@@ -148,7 +142,7 @@ FLOW_EVENT_PREFIX = "[FLOW_EVENT] "
 
 
 async def stream_loop_as_sse(
-    loop: AsyncIterator[Tuple[str, Any]],
+    loop: AsyncIterator[tuple[str, Any]],
     *,
     flow_events: bool = False,
 ) -> AsyncIterator[str]:

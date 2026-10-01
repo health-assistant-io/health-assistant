@@ -45,45 +45,46 @@ def _literal_sql(predicate) -> str:
 # _parse_fhir_date_range — precision semantics
 # ---------------------------------------------------------------------------
 
+
 def test_year_precision_returns_whole_year_range():
     start, end = _parse_fhir_date_range("2024")
-    assert start == _dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc)
-    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC)
+    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.UTC)
 
 
 def test_month_precision_returns_whole_month_range():
     start, end = _parse_fhir_date_range("2024-05")
-    assert start == _dt.datetime(2024, 5, 1, tzinfo=_dt.timezone.utc)
-    assert end == _dt.datetime(2024, 6, 1, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 5, 1, tzinfo=_dt.UTC)
+    assert end == _dt.datetime(2024, 6, 1, tzinfo=_dt.UTC)
 
 
 def test_month_precision_december_wraps_to_next_year():
     start, end = _parse_fhir_date_range("2024-12")
-    assert start == _dt.datetime(2024, 12, 1, tzinfo=_dt.timezone.utc)
-    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 12, 1, tzinfo=_dt.UTC)
+    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.UTC)
 
 
 def test_day_precision_returns_whole_day_range():
     start, end = _parse_fhir_date_range("2024-05-15")
-    assert start == _dt.datetime(2024, 5, 15, tzinfo=_dt.timezone.utc)
-    assert end == _dt.datetime(2024, 5, 16, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 5, 15, tzinfo=_dt.UTC)
+    assert end == _dt.datetime(2024, 5, 16, tzinfo=_dt.UTC)
 
 
 def test_day_precision_end_of_month_wraps():
-    start, end = _parse_fhir_date_range("2024-02-28")
+    _start, end = _parse_fhir_date_range("2024-02-28")
     # 2024 is a leap year — Feb 28 + 1 day = Feb 29.
-    assert end == _dt.datetime(2024, 2, 29, tzinfo=_dt.timezone.utc)
+    assert end == _dt.datetime(2024, 2, 29, tzinfo=_dt.UTC)
 
 
 def test_day_precision_end_of_year_wraps():
-    start, end = _parse_fhir_date_range("2024-12-31")
-    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.timezone.utc)
+    _start, end = _parse_fhir_date_range("2024-12-31")
+    assert end == _dt.datetime(2025, 1, 1, tzinfo=_dt.UTC)
 
 
 def test_datetime_precision_is_point_range():
     """A full datetime is an exact instant — range is [instant, instant+1µs)."""
     start, end = _parse_fhir_date_range("2024-05-15T13:30:00Z")
-    assert start == _dt.datetime(2024, 5, 15, 13, 30, 0, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 5, 15, 13, 30, 0, tzinfo=_dt.UTC)
     # End is start + 1µs so the eq overlap check includes the instant itself.
     assert end == start + _dt.timedelta(microseconds=1)
 
@@ -96,14 +97,15 @@ def test_parse_fhir_date_range_invalid_returns_none():
 
 
 def test_parse_fhir_date_range_still_accepts_full_iso_with_offset():
-    start, end = _parse_fhir_date_range("2024-05-15T13:30:00+02:00")
+    start, _end = _parse_fhir_date_range("2024-05-15T13:30:00+02:00")
     # The +02:00 offset is normalized to UTC.
-    assert start == _dt.datetime(2024, 5, 15, 11, 30, 0, tzinfo=_dt.timezone.utc)
+    assert start == _dt.datetime(2024, 5, 15, 11, 30, 0, tzinfo=_dt.UTC)
 
 
 # ---------------------------------------------------------------------------
 # DateFilter.to_orm_filter — prefix matrix with precision
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def date_col():
@@ -239,6 +241,7 @@ def test_all_date_prefixes_have_a_path(date_col):
 # ---------------------------------------------------------------------------
 # DRY — _build_resource_filter delegates to DateFilter.to_orm_filter (F13.2)
 # ---------------------------------------------------------------------------
+
 
 def test_crud_resource_filter_uses_datefilter_implementation():
     """F13.2: crud._build_resource_filter must route date params through

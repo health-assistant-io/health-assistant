@@ -13,10 +13,11 @@ catalog write — see ``catalog_audit_service.record``).
 
 from typing import Any
 
-from sqlalchemy import Column, String, Text, Index
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import Column, Index, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
-from app.models.base import Base, UUIDMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin, UUIDMixin
 
 
 class CatalogAuditLog(Base, UUIDMixin, TimestampMixin):

@@ -1,16 +1,17 @@
-from sqlalchemy import Column, String, Enum, Text, ForeignKey, Date, Index
+from sqlalchemy import Column, Date, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
-from app.models.enums import MedicationIntent, MedicationStatus, CatalogScope
+from app.models.enums import CatalogScope, MedicationIntent, MedicationStatus
 from app.services.fhir_helpers import (
     _enum_value,
     _normalize_timing,
@@ -74,15 +75,9 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "side_effects": self.side_effects or [],
             "contraindications": self.contraindications,
             "dosage_info": self.dosage_info,
-            "class_concept_id": str(self.class_concept_id)
-            if self.class_concept_id
-            else None,
-            "class_concept_slug": self.class_concept.slug
-            if self.class_concept
-            else None,
-            "class_concept_name": self.class_concept.name
-            if self.class_concept
-            else None,
+            "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
+            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
+            "class_concept_name": self.class_concept.name if self.class_concept else None,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
@@ -257,9 +252,7 @@ class Medication(
                 "id": str(self.id),
                 "status": status,
                 "medicationCodeableConcept": med_cc,
-                "subject": {"reference": f"Patient/{self.patient_id}"}
-                if self.patient_id
-                else None,
+                "subject": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
                 "effectivePeriod": effective or None,
                 "dosage": dosage or None,
                 "reasonCode": [{"text": self.reason}] if self.reason else None,
@@ -304,9 +297,7 @@ class Medication(
             "status": status,
             "intent": intent_value,
             "medicationCodeableConcept": med_cc,
-            "subject": {"reference": f"Patient/{self.patient_id}"}
-            if self.patient_id
-            else None,
+            "subject": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
             "dosageInstruction": dosage or None,
             "reasonCode": [{"text": self.reason}] if self.reason else None,
             "note": [{"text": self.note}] if self.note else None,

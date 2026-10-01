@@ -19,7 +19,6 @@ patients (child + parent) sees one inbox. Tests verify that owner-scoping
 holds — a notification for a different user in the same tenant is invisible.
 """
 
-import datetime
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -109,9 +108,7 @@ async def bridge_with_two_users():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -222,9 +219,7 @@ async def test_mark_read_moves_recipient_to_read(bridge_with_two_users):
     ctx = bridge_with_two_users
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
-    _, recipient_id = await _seed_notification(
-        ctx["tenant_id"], ctx["user_a"], title="Read me"
-    )
+    _, recipient_id = await _seed_notification(ctx["tenant_id"], ctx["user_a"], title="Read me")
 
     ok = await provider.handle_api_request(
         integration=integration,
@@ -252,9 +247,7 @@ async def test_mark_read_rejects_other_users_recipient(bridge_with_two_users):
     ctx = bridge_with_two_users
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
-    _, recipient_id = await _seed_notification(
-        ctx["tenant_id"], ctx["user_b"], title="Not yours"
-    )
+    _, recipient_id = await _seed_notification(ctx["tenant_id"], ctx["user_b"], title="Not yours")
     with pytest.raises(ValueError):
         await provider.handle_api_request(
             integration=integration,
@@ -269,9 +262,7 @@ async def test_mark_dismiss_works(bridge_with_two_users):
     ctx = bridge_with_two_users
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
-    _, recipient_id = await _seed_notification(
-        ctx["tenant_id"], ctx["user_a"], title="Dismiss me"
-    )
+    _, recipient_id = await _seed_notification(ctx["tenant_id"], ctx["user_a"], title="Dismiss me")
     ok = await provider.handle_api_request(
         integration=integration,
         path=f"notifications/{recipient_id}/dismiss",
@@ -365,7 +356,6 @@ async def test_set_preference_toggles_kind(bridge_with_two_users):
 @pytest.mark.asyncio
 async def test_trigger_crud_round_trip(bridge_with_two_users):
     """POST a trigger, GET it back, DELETE it."""
-    from app.services.notification_rule_service import create_rule
 
     ctx = bridge_with_two_users
     integration = await _load_integration(ctx["integration_id"])

@@ -1,3 +1,4 @@
+# ruff: noqa: B008,B904 -- long immutable strings; reflow when touched
 """Admin endpoints for system-wide operations.
 
 Currently exposes ontology-catalog import (URL + file upload), the
@@ -19,7 +20,6 @@ in ``app.workers.task_logger`` and ``app.core.database``.
 
 import json
 import logging
-from typing import Dict, Optional
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
@@ -95,7 +95,7 @@ async def import_catalog_from_url(
     background_tasks: BackgroundTasks,
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
     db: AsyncSession = Depends(get_db),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Import a clinical ontology catalog from an external JSON URL.
 
     Requires SYSTEM_ADMIN privileges. Runs in the background; check the Task
@@ -134,9 +134,7 @@ async def import_catalog_from_url(
             "biomarkers": len(payload.biomarkers),
         },
     )
-    return {
-        "message": "Catalog import started in the background. Check task logs for progress."
-    }
+    return {"message": "Catalog import started in the background. Check task logs for progress."}
 
 
 @router.post("/catalogs/import/file")
@@ -144,7 +142,7 @@ async def import_catalog_from_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Import a clinical ontology catalog from an uploaded JSON file.
 
     Requires SYSTEM_ADMIN privileges. Runs in the background.
@@ -173,9 +171,7 @@ async def import_catalog_from_file(
             outcome=OUTCOME_ERROR,
             new_value={"source_file": file.filename, "error": "invalid payload"},
         )
-        raise HTTPException(
-            status_code=400, detail="Invalid catalog payload (see server log)."
-        )
+        raise HTTPException(status_code=400, detail="Invalid catalog payload (see server log).")
 
     background_tasks.add_task(
         _run_catalog_import,
@@ -196,9 +192,7 @@ async def import_catalog_from_file(
             "biomarkers": len(payload.biomarkers),
         },
     )
-    return {
-        "message": "Catalog import started in the background. Check task logs for progress."
-    }
+    return {"message": "Catalog import started in the background. Check task logs for progress."}
 
 
 @router.post("/notifications/broadcast")
@@ -209,7 +203,7 @@ async def broadcast_notification(
     scope: str = "tenant",
     tenant_id: str | None = None,
     current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Broadcast a system notification.
 
     ADMIN/MANAGER may broadcast to their own tenant (``scope=tenant``).
@@ -245,15 +239,11 @@ async def broadcast_notification(
         targets = [{"kind": RecipientKind.SYSTEM.value}]
         tenant_scope = None
     elif scope == "tenant":
-        target_tenant = (
-            tenant_id if (is_system_admin and tenant_id) else current_user.tenant_id
-        )
+        target_tenant = tenant_id if (is_system_admin and tenant_id) else current_user.tenant_id
         targets = [{"kind": RecipientKind.TENANT.value, "id": str(target_tenant)}]
         tenant_scope = target_tenant
     else:
-        raise HTTPException(
-            status_code=400, detail="scope must be 'tenant' or 'system'."
-        )
+        raise HTTPException(status_code=400, detail="scope must be 'tenant' or 'system'.")
 
     notification = await emit(
         source=NotificationSource.SYSTEM,
@@ -292,13 +282,13 @@ async def broadcast_notification(
 
 @router.get("/audit", response_model=AuditListResponse)
 async def list_audit_events(
-    tenant_id: Optional[UUID] = Query(
+    tenant_id: UUID | None = Query(
         default=None,
         description="Filter to one tenant; omit for the full cross-tenant stream.",
     ),
-    action: Optional[str] = Query(default=None),
-    outcome: Optional[str] = Query(default=None),
-    user_id: Optional[UUID] = Query(default=None),
+    action: str | None = Query(default=None),
+    outcome: str | None = Query(default=None),
+    user_id: UUID | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),

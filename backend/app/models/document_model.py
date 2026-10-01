@@ -1,26 +1,27 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, Text, Index, Boolean, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from sqlalchemy import text as sa_text
-from sqlalchemy.orm import relationship
-from app.models.base import (
-    Base,
-    UUIDMixin,
-    AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
-    SoftDeleteMixin,
-)
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 from typing import TYPE_CHECKING
 from uuid import uuid4
+
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import text as sa_text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
+
+from app.models.base import (
+    AuditMixin,
+    Base,
+    SoftDeleteMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
+)
+from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 if TYPE_CHECKING:
     pass
 
 
-class DocumentModel(
-    Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin
-):
+class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "documents"
 
     # Use UUID for id to match database schema
@@ -113,9 +114,7 @@ class DocumentModel(
             sa_text("entities"),
             postgresql_using="gin",
         ),
-        CheckConstraint(
-            "progress BETWEEN 0 AND 100", name="ck_documents_progress_bounds"
-        ),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_documents_progress_bounds"),
     )
 
     def to_dict(self) -> dict:
@@ -154,9 +153,7 @@ class DocumentModel(
             "created_at": created_at_value.isoformat()
             if created_at_value is not None
             else (updated_at_value.isoformat() if updated_at_value else None),
-            "updated_at": updated_at_value.isoformat()
-            if updated_at_value is not None
-            else None,
+            "updated_at": updated_at_value.isoformat() if updated_at_value is not None else None,
         }
 
     def to_fhir_dict(self) -> dict:
@@ -189,9 +186,7 @@ class DocumentModel(
         # the doc was deleted/superseded).
         dr_status = "current"
         if self.status in ("deleted", "archived"):
-            dr_status = (
-                "superseded" if self.status == "archived" else "entered-in-error"
-            )
+            dr_status = "superseded" if self.status == "archived" else "entered-in-error"
 
         # docStatus: limited enum (preliminary|final|amended|entered-in-error).
         # The app status vocabulary is broader; map the common ones.
@@ -230,9 +225,7 @@ class DocumentModel(
         if self.practitioner_id:
             data["author"] = [{"reference": f"Practitioner/{self.practitioner_id}"}]
         if self.examination_id:
-            data["context"] = {
-                "encounter": [{"reference": f"Encounter/{self.examination_id}"}]
-            }
+            data["context"] = {"encounter": [{"reference": f"Encounter/{self.examination_id}"}]}
         if self.created_at:
             ts = fhir_isoformat(self.created_at)
             if "context" not in data:

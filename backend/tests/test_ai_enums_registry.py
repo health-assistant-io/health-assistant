@@ -5,8 +5,10 @@ enum membership, tolerant lookups, and the registry fallback semantics. They
 guard against drift in later refactor phases.
 """
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+from langchain_openai import ChatOpenAI
 
 from app.ai import chat_models
 from app.ai.providers.enums import ProviderType, TaskType
@@ -15,7 +17,6 @@ from app.ai.providers.registry import (
     PROVIDER_FACTORIES,
     get_llm_builder,
 )
-from langchain_openai import ChatOpenAI
 
 # ---------------------------------------------------------------------------
 # TaskType
@@ -166,7 +167,6 @@ class TestBuildOpenAI:
         assert llm.model_name == "gpt-4o-mini"
         # max_tokens is exposed as max_tokens on the ChatOpenAI instance
         assert llm.max_tokens == 1234
-
 
     def test_reasoning_effort_setting_forwarded(self):
         llm = chat_models.build_openai(

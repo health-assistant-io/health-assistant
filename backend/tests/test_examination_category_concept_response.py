@@ -14,6 +14,7 @@ Fix: the field is typed ``Optional[ConceptResponse]`` (a Pydantic model with
 test pins that contract against a real DB so a regression to ``Dict[str, Any]``
 (or to a type that can't read the ORM relationship) fails fast.
 """
+
 import datetime
 import uuid
 
@@ -45,13 +46,17 @@ async def test_examination_response_serializes_category_concept():
         tenant_id = await _make_tenant(db)
         # Pick any active concept tagged as an examination_category (seeded).
         concept = (
-            await db.execute(
-                select(Concept)
-                .where(Concept.deleted_at.is_(None))
-                .order_by(Concept.name.asc())
-                .limit(1)
+            (
+                await db.execute(
+                    select(Concept)
+                    .where(Concept.deleted_at.is_(None))
+                    .order_by(Concept.name.asc())
+                    .limit(1)
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert concept is not None, "test DB has no concepts to attach"
 
         exam = ExaminationModel(

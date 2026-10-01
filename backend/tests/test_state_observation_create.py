@@ -5,6 +5,7 @@ Real-DB end-to-end: creates a STATE biomarker (with allowed_states), then
 exercises ``create_observation`` against it with valid and invalid value[x]
 shapes. Verifies the validator is actually wired in (not just unit-tested).
 """
+
 import uuid
 
 import pytest
@@ -19,9 +20,8 @@ from app.models.biomarker_model import (
 from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
-from app.services.observation_value_validator import InvalidObservationValue
 from app.services.fhir_service import create_observation
-
+from app.services.observation_value_validator import InvalidObservationValue
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -52,18 +52,10 @@ async def _cleanup_all():
                 "(SELECT id FROM biomarker_definitions WHERE slug LIKE '__test_%')"
             )
         )
-        await session.execute(
-            text("DELETE FROM biomarker_definitions WHERE slug LIKE '__test_%'")
-        )
-        await session.execute(
-            text("DELETE FROM biomarker_states WHERE slug LIKE '__test_%'")
-        )
-        await session.execute(
-            text("DELETE FROM fhir_patients WHERE name->>'family' = 'State'")
-        )
-        await session.execute(
-            text("DELETE FROM tenants WHERE slug LIKE 'state-%'")
-        )
+        await session.execute(text("DELETE FROM biomarker_definitions WHERE slug LIKE '__test_%'"))
+        await session.execute(text("DELETE FROM biomarker_states WHERE slug LIKE '__test_%'"))
+        await session.execute(text("DELETE FROM fhir_patients WHERE name->>'family' = 'State'"))
+        await session.execute(text("DELETE FROM tenants WHERE slug LIKE 'state-%'"))
         await session.commit()
 
 
@@ -127,9 +119,7 @@ async def _seed_state_biomarker(session, *, multi=False):
 
 
 async def _seed_tenant_and_patient(session):
-    tenant = TenantModel(
-        id=uuid.uuid4(), name="StateTest", slug=f"state-{uuid.uuid4().hex[:8]}"
-    )
+    tenant = TenantModel(id=uuid.uuid4(), name="StateTest", slug=f"state-{uuid.uuid4().hex[:8]}")
     session.add(tenant)
     await session.flush()
     patient = Patient(

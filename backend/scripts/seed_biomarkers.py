@@ -1,32 +1,31 @@
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.core.config import settings
 from app.models.biomarker_model import (
-    Unit,
     BiomarkerDefinition,
+    Unit,
 )
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import ConceptEdge
 from app.models.enums import (
-    QuantityType,
     CodingSystem,
     ConceptProvenance,
     ConceptRelationType,
     EdgeApprovalStatus,
     EdgeEndpointType,
+    QuantityType,
 )
 from app.services.concept_service import resolve_biomarker_class_concept
 
 engine = create_async_engine(settings.DATABASE_URL)
-LocalSession = async_sessionmaker(
-    bind=engine, class_=AsyncSession, expire_on_commit=False
-)
+LocalSession = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def seed_data():
@@ -132,9 +131,7 @@ async def seed_data():
 
         unit_map = {}
         for u_data in units:
-            result = await db.execute(
-                select(Unit).where(Unit.symbol == u_data["symbol"])
-            )
+            result = await db.execute(select(Unit).where(Unit.symbol == u_data["symbol"]))
             unit = result.scalar_one_or_none()
             if not unit:
                 unit = Unit(**u_data)
@@ -222,14 +219,10 @@ async def seed_data():
             # ``biomarker_class`` concept ID; pop it off so the dict matches
             # the new BiomarkerDefinition columns.
             legacy_category = b_data.pop("category", None)
-            b_data["class_concept_id"] = await resolve_biomarker_class_concept(
-                db, legacy_category
-            )
+            b_data["class_concept_id"] = await resolve_biomarker_class_concept(db, legacy_category)
 
             result = await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.slug == b_data["slug"]
-                )
+                select(BiomarkerDefinition).where(BiomarkerDefinition.slug == b_data["slug"])
             )
             bio = result.scalar_one_or_none()
             if not bio:

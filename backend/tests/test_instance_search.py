@@ -136,9 +136,7 @@ async def test_dispatcher_tenant_scoped():
     other_patient = await _seed_patient(other_tenant)
     await _seed_medication(other_tenant, other_patient, f"{token} Pill")
     async with AsyncSessionLocal() as db:
-        hits = await search_instances(
-            db, caller_tenant, None, token, limit_per_type=5
-        )
+        hits = await search_instances(db, caller_tenant, None, token, limit_per_type=5)
     assert hits == []
 
 
@@ -168,9 +166,7 @@ async def test_dispatcher_type_filter_restricts():
     await _seed_medication(tenant_id, patient_id, f"{token} Med")
     await _seed_document(tenant_id, patient_id, f"{token}.pdf", owner)
     async with AsyncSessionLocal() as db:
-        hits = await search_instances(
-            db, tenant_id, patient_id, token, types=["medication"]
-        )
+        hits = await search_instances(db, tenant_id, patient_id, token, types=["medication"])
     assert {h["type"] for h in hits} == {"medication"}
 
 
@@ -178,9 +174,7 @@ async def test_dispatcher_type_filter_restricts():
 async def test_dispatcher_unknown_type_ignored():
     tenant_id = await _tenant()
     async with AsyncSessionLocal() as db:
-        hits = await search_instances(
-            db, tenant_id, None, "anything", types=["nonexistent"]
-        )
+        hits = await search_instances(db, tenant_id, None, "anything", types=["nonexistent"])
     assert hits == []
 
 

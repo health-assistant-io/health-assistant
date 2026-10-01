@@ -1,14 +1,17 @@
-import pytest
-import uuid
+# ruff: noqa: E501,SIM117 -- long immutable strings; reflow when touched
 import datetime
-from uuid import UUID
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
+
+import pytest
 from httpx import AsyncClient
-from app.main import app
-from app.core.security import get_current_user
+
 from app.core.database import get_db
-from app.models.examination_model import ExaminationModel
+from app.core.security import get_current_user
+from app.main import app
 from app.models.document_model import DocumentModel
+from app.models.examination_model import ExaminationModel
 from app.schemas.user import TokenData
 
 
@@ -91,9 +94,7 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
         assert "deleted successfully" in response.json()["message"]
 
         # Verify document deletion was called with trigger_cumulative=False
-        mock_delete_doc.assert_called_once_with(
-            str(mock_doc.id), db_mock, trigger_cumulative=False
-        )
+        mock_delete_doc.assert_called_once_with(str(mock_doc.id), db_mock, trigger_cumulative=False)
 
         # Verify exam itself was deleted
         db_mock.delete.assert_called_with(mock_exam)
@@ -106,6 +107,7 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
 async def test_cumulative_extraction_error_logging():
     """Verify that cumulative extraction task logs errors to the database"""
     from app.workers.ai_tasks import cumulative_extraction
+
     async def _cumulative_extraction_async(examination_id: str):
         return await cumulative_extraction.__wrapped__.__wrapped__(None, examination_id)
 
@@ -152,7 +154,13 @@ async def test_cumulative_extraction_error_logging():
             return res_exam
         if "from documents" in q_str:
             return res_docs
-        if "from fhir_patients" in q_str or "from fhir_observations" in q_str or "from fhir_medications" in q_str or "from biomarker_definitions" in q_str or "from units" in q_str:
+        if (
+            "from fhir_patients" in q_str
+            or "from fhir_observations" in q_str
+            or "from fhir_medications" in q_str
+            or "from biomarker_definitions" in q_str
+            or "from units" in q_str
+        ):
             return res_cats
         return res_update
 

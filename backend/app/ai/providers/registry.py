@@ -13,7 +13,7 @@ processor factories instead.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, Optional
+from collections.abc import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 LLMBuilder = Callable[..., BaseChatModel]
 
 # Registered LLM builders keyed by provider type. Add new providers here.
-PROVIDER_FACTORIES: Dict[ProviderType, LLMBuilder] = {
+PROVIDER_FACTORIES: dict[ProviderType, LLMBuilder] = {
     ProviderType.OPENAI: chat_models.build_openai,
     ProviderType.ANTHROPIC: chat_models.build_anthropic,
     ProviderType.OLLAMA: chat_models.build_ollama,
@@ -43,7 +43,7 @@ PROVIDER_FACTORIES: Dict[ProviderType, LLMBuilder] = {
 DEFAULT_BUILDER: LLMBuilder = chat_models.build_openai
 
 
-def get_llm_builder(provider_type: Optional[str]) -> LLMBuilder:
+def get_llm_builder(provider_type: str | None) -> LLMBuilder:
     """Resolve an LLM builder for a ``provider_type`` string (from the DB row).
 
     Returns the matching registered builder, or ``DEFAULT_BUILDER`` (with a

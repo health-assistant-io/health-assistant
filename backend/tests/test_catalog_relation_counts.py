@@ -6,7 +6,6 @@ batched count query (no N+1). ``count_relations`` is also exercised directly.
 """
 
 import uuid
-from typing import Dict, Tuple
 
 import pytest
 
@@ -16,7 +15,7 @@ from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
 
 
-async def _tenant_and_headers(role: str = "ADMIN") -> Tuple[uuid.UUID, Dict[str, str]]:
+async def _tenant_and_headers(role: str = "ADMIN") -> tuple[uuid.UUID, dict[str, str]]:
     from tests._auth_helpers import headers_for_claims
 
     tenant_id = uuid.uuid4()
@@ -113,9 +112,7 @@ async def test_list_without_include_has_no_count(async_client):
     """Without include=relations, items are NOT annotated (backward-compat)."""
     _, headers = await _tenant_and_headers("ADMIN")
     a = await _create_medication("Plain-A")
-    resp = await async_client.get(
-        "/api/v1/catalogs/medication?search=Plain-", headers=headers
-    )
+    resp = await async_client.get("/api/v1/catalogs/medication?search=Plain-", headers=headers)
     assert resp.status_code == 200, resp.text
     by_id = {it["id"]: it for it in resp.json()["items"]}
     assert "relation_count" not in by_id[a]

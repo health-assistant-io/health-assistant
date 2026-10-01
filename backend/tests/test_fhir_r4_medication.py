@@ -8,12 +8,12 @@ Covers:
 - fhir_to_medication_request_orm() handles intent routing
 - Status mapping for both resources
 """
+
 import datetime as _dt
 from uuid import uuid4
 
-
-from app.models.fhir.medication import Medication, MedicationCatalog
 from app.models.enums import MedicationIntent, MedicationStatus
+from app.models.fhir.medication import Medication, MedicationCatalog
 from app.services.fhir_converter import (
     fhir_to_medication_orm,
     fhir_to_medication_request_orm,
@@ -23,21 +23,21 @@ from app.services.fhir_helpers import parse_fhir_resource
 
 
 def _make_med(**overrides) -> Medication:
-    defaults = dict(
-        id=str(uuid4()),
-        patient_id=str(uuid4()),
-        tenant_id=str(uuid4()),
-        status=MedicationStatus.ACTIVE,
-        intent=MedicationIntent.STATEMENT,
-        code={"text": "Aspirin"},
-        start_date=None,
-        end_date=None,
-        dosage=None,
-        frequency=None,
-        reason=None,
-        note=None,
-        created_at=_dt.datetime(2024, 3, 1, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "patient_id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "status": MedicationStatus.ACTIVE,
+        "intent": MedicationIntent.STATEMENT,
+        "code": {"text": "Aspirin"},
+        "start_date": None,
+        "end_date": None,
+        "dosage": None,
+        "frequency": None,
+        "reason": None,
+        "note": None,
+        "created_at": _dt.datetime(2024, 3, 1, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return Medication(**defaults)
 
@@ -45,6 +45,7 @@ def _make_med(**overrides) -> Medication:
 # ---------------------------------------------------------------------------
 # MedicationStatement projection (intent=statement, default)
 # ---------------------------------------------------------------------------
+
 
 def test_med_statement_minimal_to_fhir_dict():
     med = _make_med()
@@ -67,7 +68,9 @@ def test_med_statement_subject():
 
 
 def test_med_statement_with_dosage():
-    med = _make_med(dosage="81 mg daily", frequency={"repeat": {"frequency": 1, "period": 1, "periodUnit": "d"}})
+    med = _make_med(
+        dosage="81 mg daily", frequency={"repeat": {"frequency": 1, "period": 1, "periodUnit": "d"}}
+    )
     fhir = med.to_fhir_dict()
     assert fhir["dosage"][0]["text"] == "81 mg daily"
     assert "timing" in fhir["dosage"][0]
@@ -82,6 +85,7 @@ def test_med_statement_status_lowercase():
 # ---------------------------------------------------------------------------
 # MedicationRequest projection (intent in {order, plan, proposal})
 # ---------------------------------------------------------------------------
+
 
 def test_med_request_order_emits_medication_request():
     med = _make_med(intent=MedicationIntent.ORDER)
@@ -150,7 +154,7 @@ def test_med_request_encounter_reference():
 def test_med_request_authored_on_from_created_at():
     med = _make_med(
         intent=MedicationIntent.ORDER,
-        created_at=_dt.datetime(2024, 6, 1, 12, 0, tzinfo=_dt.timezone.utc),
+        created_at=_dt.datetime(2024, 6, 1, 12, 0, tzinfo=_dt.UTC),
     )
     fhir = med.to_fhir_dict()
     assert fhir["authoredOn"].startswith("2024-06-01")
@@ -159,6 +163,7 @@ def test_med_request_authored_on_from_created_at():
 # ---------------------------------------------------------------------------
 # MedicationCatalog → Medication (standalone drug definition)
 # ---------------------------------------------------------------------------
+
 
 def test_medication_catalog_to_fhir_dict():
     catalog = MedicationCatalog(id=str(uuid4()), name="Ibuprofen")
@@ -177,6 +182,7 @@ def test_medication_catalog_validates():
 # ---------------------------------------------------------------------------
 # Reverse converters
 # ---------------------------------------------------------------------------
+
 
 def _canonical_statement(**overrides) -> dict:
     base = {
@@ -253,6 +259,7 @@ def test_fhir_to_medication_request_orm_dosage_instruction():
 # Round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_round_trip_request():
     """ORM (intent=order) → FHIR → ORM preserves key fields."""
     pid = str(uuid4())
@@ -276,6 +283,7 @@ def test_round_trip_request():
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def test_canonical_statement_validates():
     fhir = _canonical_statement()

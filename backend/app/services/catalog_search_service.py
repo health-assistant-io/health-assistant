@@ -26,7 +26,7 @@ fuses them via Reciprocal Rank Fusion (RRF, k=60 — the standard constant):
    that trigram similarity may miss for very short queries.
 
 RRF combines the two ranked lists into one without needing to reconcile the
-incompatible score scales (trigram is 0–1, ``ts_rank_cd`` is unbounded).
+incompatible score scales (trigram is 0-1, ``ts_rank_cd`` is unbounded).
 Each catalog is queried independently, then the dispatcher fuses GLOBALLY
 across catalogs so the LLM sees the best N hits regardless of which catalog
 they live in.
@@ -48,19 +48,18 @@ expression verbatim for the GIN index to be used — there is a test
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, or_, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biomarker_model import BiomarkerDefinition
-from app.models.fhir.medication import MedicationCatalog
-from app.models.fhir.allergy import AllergyCatalog
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept
 from app.models.enums import ConceptKind, ConceptStatus
-
+from app.models.fhir.allergy import AllergyCatalog
+from app.models.fhir.medication import MedicationCatalog
 
 DEFAULT_LIMIT = 20
 DEFAULT_THRESHOLD = 0.2  # trigram similarity minimum; default pg_trgm is 0.3
@@ -92,7 +91,7 @@ async def _set_similarity_threshold(db: AsyncSession, threshold: float) -> None:
     await db.execute(text(f"SET pg_trgm.similarity_threshold = {safe_threshold}"))
 
 
-def _normalize(query: Optional[str]) -> Optional[str]:
+def _normalize(query: str | None) -> str | None:
     if not query:
         return None
     q = query.strip()
@@ -124,15 +123,15 @@ class _CatalogSearchSpec:
     label_column: str
     # Extra text columns searched via the ``%`` trigram operator. Must have
     # a trigram GIN index covering them.
-    extra_trgm_columns: Tuple[str, ...] = ()
+    extra_trgm_columns: tuple[str, ...] = ()
     # Extra text columns searched via ``ILIKE '%q%'`` substring containment.
-    extra_ilike_columns: Tuple[str, ...] = ()
+    extra_ilike_columns: tuple[str, ...] = ()
     # JSONB column (e.g. ``aliases``) searched via ``::text ILIKE``. Already
     # included in the FTS expression; this enables substring alias matches.
-    alias_column: Optional[str] = None
+    alias_column: str | None = None
     # Text column from which to extract a ts_headline snippet (usually
     # ``description`` or ``info``).
-    snippet_column: Optional[str] = None
+    snippet_column: str | None = None
     # Raw SQL expression fed to ``to_tsvector('simple', <expr>)``. MUST match
     # the migration index expression verbatim.
     fts_expression: str = ""
@@ -166,10 +165,7 @@ _ANATOMY_FTS = (
     "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
     "coalesce(description, '') || ' ' || coalesce(standard_code, '')"
 )
-_VACCINE_FTS = (
-    "coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || "
-    "coalesce(code, '')"
-)
+_VACCINE_FTS = "coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || coalesce(code, '')"
 _CONCEPT_FTS = (
     "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
     "coalesce(description, '') || ' ' || coalesce(code, '') || ' ' || "
@@ -177,7 +173,7 @@ _CONCEPT_FTS = (
 )
 
 
-_CATALOG_SPECS: Tuple[_CatalogSearchSpec, ...] = (
+_CATALOG_SPECS: tuple[_CatalogSearchSpec, ...] = (
     _CatalogSearchSpec(
         type_name="biomarker",
         model=BiomarkerDefinition,
@@ -230,9 +226,7 @@ _CATALOG_SPECS: Tuple[_CatalogSearchSpec, ...] = (
         alias_column="aliases",
         snippet_column="description",
         fts_expression=_CONCEPT_FTS,
-        extra_where_sql=(
-            "AND t.status = 'active' AND t.deleted_at IS NULL"
-        ),
+        extra_where_sql=("AND t.status = 'active' AND t.deleted_at IS NULL"),
         soft_delete=True,
     ),
     _CatalogSearchSpec(
@@ -243,8 +237,7 @@ _CATALOG_SPECS: Tuple[_CatalogSearchSpec, ...] = (
         extra_ilike_columns=("description",),
         snippet_column="description",
         fts_expression=(
-            "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
-            "coalesce(description, '')"
+            "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(description, '')"
         ),
     ),
 )
@@ -292,8 +285,8 @@ class _HybridHit:
     row_id: Any
     label: str
     score: float
-    matched_on: List[str]
-    snippet: Optional[str] = None
+    matched_on: list[str]
+    snippet: str | None = None
 
 
 def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
@@ -310,21 +303,19 @@ def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
     # Build the per-column match flags and OR clauses.
     # Always include the label column for trigram + ilike; aliases via ilike
     # on the ::text cast; FTS via the tsvector expression.
-    match_flag_selects: List[str] = [
+    match_flag_selects: list[str] = [
         f"CASE WHEN t.{label} % :q THEN 1 ELSE 0 END AS m_label_tri",
         f"CASE WHEN t.{label} ILIKE :pattern THEN 1 ELSE 0 END AS m_label_ilike",
     ]
-    or_clauses: List[str] = [
+    or_clauses: list[str] = [
         f"t.{label} % :q",
         f"t.{label} ILIKE :pattern",
     ]
 
-    for i, col in enumerate(spec.extra_trgm_columns):
-        match_flag_selects.append(
-            f"CASE WHEN t.{col} % :q THEN 1 ELSE 0 END AS m_tri_{col}"
-        )
+    for _i, col in enumerate(spec.extra_trgm_columns):
+        match_flag_selects.append(f"CASE WHEN t.{col} % :q THEN 1 ELSE 0 END AS m_tri_{col}")
         or_clauses.append(f"t.{col} % :q")
-    for i, col in enumerate(spec.extra_ilike_columns):
+    for _i, col in enumerate(spec.extra_ilike_columns):
         match_flag_selects.append(
             f"CASE WHEN t.{col} ILIKE :pattern THEN 1 ELSE 0 END AS m_ilike_{col}"
         )
@@ -340,9 +331,7 @@ def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
         "CASE WHEN to_tsvector('simple', " + fts + ") @@ (SELECT tsq FROM q_ts) "
         "THEN 1 ELSE 0 END AS m_fts"
     )
-    or_clauses.append(
-        "to_tsvector('simple', " + fts + ") @@ (SELECT tsq FROM q_ts)"
-    )
+    or_clauses.append("to_tsvector('simple', " + fts + ") @@ (SELECT tsq FROM q_ts)")
 
     snippet_select = "NULL::text AS snippet"
     if spec.snippet_column:
@@ -382,12 +371,14 @@ def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
         r.label,
         r.snippet,
         r.m_label_tri, r.m_label_ilike, r.m_fts,
-        {", ".join(
+        {
+        ", ".join(
             "r." + s.split(" AS ")[-1]
             for s in match_flag_selects
             if not s.startswith("CASE WHEN t." + label)
             and not s.startswith("CASE WHEN to_tsvector")
-        )},
+        )
+    },
         (CASE WHEN r.tri_score > 0 THEN 1.0 / ({RRF_K} + r.tri_rank) ELSE 0 END)
         + (CASE WHEN r.fts_score > 0 THEN 1.0 / ({RRF_K} + r.fts_rank) ELSE 0 END)
         AS rrf_score
@@ -410,7 +401,7 @@ _MATCHED_ON_FTS = "fts"
 
 def _row_to_hit(row) -> _HybridHit:
     """Convert a raw SQL row to a :class:`_HybridHit`, computing matched_on."""
-    matched_on: List[str] = []
+    matched_on: list[str] = []
     fts_matched = False
     alias_matched = False
     for key, val in row._mapping.items():
@@ -424,11 +415,11 @@ def _row_to_hit(row) -> _HybridHit:
         elif key == "m_alias":
             alias_matched = True
         elif key.startswith(_MATCHED_ON_EXTRA_TRI):
-            col = key[len(_MATCHED_ON_EXTRA_TRI):]
+            col = key[len(_MATCHED_ON_EXTRA_TRI) :]
             if col not in matched_on:
                 matched_on.append(col)
         elif key.startswith(_MATCHED_ON_EXTRA_ILIKE):
-            col = key[len(_MATCHED_ON_EXTRA_ILIKE):]
+            col = key[len(_MATCHED_ON_EXTRA_ILIKE) :]
             if col not in matched_on:
                 matched_on.append(col)
     if alias_matched and "alias" not in matched_on:
@@ -451,12 +442,12 @@ async def _hybrid_search_one(
     db: AsyncSession,
     spec: _CatalogSearchSpec,
     q: str,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     *,
     limit: int = DEFAULT_LIMIT,
     extra_where_sql: str = "",
-    extra_params: Optional[dict] = None,
-) -> List[_HybridHit]:
+    extra_params: dict | None = None,
+) -> list[_HybridHit]:
     """Run the hybrid SQL for one catalog spec.
 
     Returns ranked :class:`_HybridHit` objects. ``extra_where_sql`` lets
@@ -506,7 +497,7 @@ async def _hybrid_search_one(
 async def _fetch_orm_in_rank_order(
     db: AsyncSession,
     model: type,
-    hits: List[_HybridHit],
+    hits: list[_HybridHit],
 ) -> list:
     """Fetch ORM rows for the hit IDs, preserving the rank order of ``hits``."""
     if not hits:
@@ -525,10 +516,10 @@ async def _fetch_orm_in_rank_order(
 async def search_medications(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
+    query: str | None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[MedicationCatalog]:
+) -> list[MedicationCatalog]:
     """Tenant-scoped hybrid search over the medication catalog.
 
     Returns ORM rows ranked by RRF over trigram + FTS. Ranking: trigram
@@ -543,10 +534,10 @@ async def search_medications(
 async def search_biomarkers(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
+    query: str | None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[BiomarkerDefinition]:
+) -> list[BiomarkerDefinition]:
     """Tenant-scoped hybrid search over biomarker definitions.
 
     Replaces the legacy ``search_available_biomarkers`` chatbot tool that
@@ -562,10 +553,10 @@ async def search_biomarkers(
 async def search_allergies(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
+    query: str | None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[AllergyCatalog]:
+) -> list[AllergyCatalog]:
     """Tenant-scoped hybrid search over the allergy catalog."""
     specs = _specs_by_type()
     hits = await _hybrid_search_one(db, specs["allergy"], query or "", tenant_id, limit=limit)
@@ -575,10 +566,10 @@ async def search_allergies(
 async def search_clinical_event_types(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
+    query: str | None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[ClinicalEventType]:
+) -> list[ClinicalEventType]:
     """Tenant-scoped hybrid search over clinical event types."""
     specs = _specs_by_type()
     hits = await _hybrid_search_one(
@@ -590,17 +581,15 @@ async def search_clinical_event_types(
 async def search_clinical_event_categories(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
+    query: str | None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[Concept]:
+) -> list[Concept]:
     """Tenant-scoped hybrid search over clinical event categories.
 
     Event categories now live in the unified ``concepts`` table
     (``kind=event_category``)."""
-    return await search_concepts(
-        db, tenant_id, query, kind=ConceptKind.EVENT_CATEGORY, limit=limit
-    )
+    return await search_concepts(db, tenant_id, query, kind=ConceptKind.EVENT_CATEGORY, limit=limit)
 
 
 # ---------------------------------------------------------------------------
@@ -611,11 +600,11 @@ async def search_clinical_event_categories(
 async def search_concepts(
     db: AsyncSession,
     tenant_id: UUID,
-    query: Optional[str],
-    kind: Optional[ConceptKind] = None,
+    query: str | None,
+    kind: ConceptKind | None = None,
     limit: int = DEFAULT_LIMIT,
     threshold: float = DEFAULT_THRESHOLD,
-) -> List[Concept]:
+) -> list[Concept]:
     """Tenant-scoped hybrid search over the unified concept table.
 
     Optionally filtered by ``kind`` (specialty, examination_category,
@@ -633,9 +622,7 @@ async def search_concepts(
         # Resolve kind member ids up front, then filter via an IN-list. This
         # keeps the hybrid SQL template free of JOINs and lets Postgres pick
         # the existing concept_kind_tags index.
-        kind_ids_result = await db.execute(
-            select(Concept.id).where(concepts_with_kind(kind))
-        )
+        kind_ids_result = await db.execute(select(Concept.id).where(concepts_with_kind(kind)))
         kind_ids = [r[0] for r in kind_ids_result.all()]
         if not kind_ids:
             return []
@@ -647,13 +634,10 @@ async def search_concepts(
     norm = _normalize(query)
     if norm is None:
         # Empty/too-short query: list active concepts (alphabetical).
-        stmt = (
-            select(Concept)
-            .where(
-                or_(Concept.tenant_id.is_(None), Concept.tenant_id == tenant_id),
-                Concept.status == ConceptStatus.ACTIVE,
-                Concept.deleted_at.is_(None),
-            )
+        stmt = select(Concept).where(
+            or_(Concept.tenant_id.is_(None), Concept.tenant_id == tenant_id),
+            Concept.status == ConceptStatus.ACTIVE,
+            Concept.deleted_at.is_(None),
         )
         if kind is not None:
             stmt = stmt.where(concepts_with_kind(kind))
@@ -662,8 +646,13 @@ async def search_concepts(
         return list(result.scalars().all())
 
     hits = await _hybrid_search_one(
-        db, spec, norm, tenant_id, limit=limit,
-        extra_where_sql=extra_sql, extra_params=extra_params,
+        db,
+        spec,
+        norm,
+        tenant_id,
+        limit=limit,
+        extra_where_sql=extra_sql,
+        extra_params=extra_params,
     )
     return await _fetch_orm_in_rank_order(db, Concept, hits)
 
@@ -677,7 +666,7 @@ async def _enrich_hit(
     db: AsyncSession,
     type_name: str,
     hit: _HybridHit,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
 ) -> dict:
     """Resolve a hit to a rich payload via the catalog adapter's serialize().
 
@@ -704,15 +693,15 @@ async def _enrich_hit(
 
 async def search_catalogs(
     db: AsyncSession,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     query: str,
     *,
-    types: Optional[List[str]] = None,
-    kind: Optional[ConceptKind] = None,
+    types: list[str] | None = None,
+    kind: ConceptKind | None = None,
     limit_per_type: int = 5,
     limit_total: int = 20,
     enrich: bool = True,
-) -> List[dict]:
+) -> list[dict]:
     """Hybrid cross-catalog search with global RRF ranking.
 
     Iterates the catalog registry (filtered by ``types``), runs the hybrid
@@ -756,14 +745,12 @@ async def search_catalogs(
     # loop stays free of JOINs. ``kind`` is only applied on the concept spec;
     # other catalogs ignore it (documented). If the kind resolves to no
     # concepts, concept hits will be empty — handled naturally below.
-    concept_kind_ids: Optional[List] = None
+    concept_kind_ids: list | None = None
     if kind is not None and "concept" in selected:
-        kind_ids_result = await db.execute(
-            select(Concept.id).where(concepts_with_kind(kind))
-        )
+        kind_ids_result = await db.execute(select(Concept.id).where(concepts_with_kind(kind)))
         concept_kind_ids = [r[0] for r in kind_ids_result.all()]
 
-    all_hits: List[Tuple[str, _HybridHit]] = []
+    all_hits: list[tuple[str, _HybridHit]] = []
     for type_name in selected:
         # Prefer the spec (drives the hybrid SQL); fall back to the registry
         # adapter's older search() for catalogs without a spec (none today,
@@ -772,12 +759,8 @@ async def search_catalogs(
         if spec is not None:
             # Apply the kind filter only on the concept catalog.
             extra_where_sql = ""
-            extra_params: Optional[dict] = None
-            if (
-                kind is not None
-                and type_name == "concept"
-                and concept_kind_ids is not None
-            ):
+            extra_params: dict | None = None
+            if kind is not None and type_name == "concept" and concept_kind_ids is not None:
                 if not concept_kind_ids:
                     # No concepts of this kind exist — skip concept search
                     # entirely (avoids ANY(:kind_ids) with an empty list,
@@ -787,23 +770,24 @@ async def search_catalogs(
                 extra_params = {"kind_ids": concept_kind_ids}
             try:
                 hits = await _hybrid_search_one(
-                    db, spec, norm, tenant_id, limit=limit_per_type * 2,
-                    extra_where_sql=extra_where_sql, extra_params=extra_params,
+                    db,
+                    spec,
+                    norm,
+                    tenant_id,
+                    limit=limit_per_type * 2,
+                    extra_where_sql=extra_where_sql,
+                    extra_params=extra_params,
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 import logging
 
-                logging.getLogger(__name__).warning(
-                    "hybrid search '%s' failed: %s", type_name, exc
-                )
+                logging.getLogger(__name__).warning("hybrid search '%s' failed: %s", type_name, exc)
                 hits = []
         elif CatalogRegistry.is_registered(type_name):
             # Legacy adapter fallback (older search() contract).
             descriptor = CatalogRegistry.get(type_name)
             try:
-                rows = await descriptor.service.search(
-                    db, tenant_id, norm, limit=limit_per_type
-                )
+                rows = await descriptor.service.search(db, tenant_id, norm, limit=limit_per_type)
             except Exception as exc:  # pragma: no cover
                 import logging
 
@@ -842,7 +826,7 @@ async def search_catalogs(
     # though the user explicitly matched something in those catalogs.
     if limit_total and len(all_hits) > limit_total:
         kept = set()
-        preserved: List[Tuple[str, _HybridHit]] = []
+        preserved: list[tuple[str, _HybridHit]] = []
         for type_name, hit in all_hits:
             if type_name not in kept:
                 kept.add(type_name)
@@ -861,17 +845,14 @@ async def search_catalogs(
         all_hits = preserved
 
     if not enrich:
-        return [
-            {"type": t, "id": str(h.row_id), "label": h.label}
-            for t, h in all_hits
-        ]
+        return [{"type": t, "id": str(h.row_id), "label": h.label} for t, h in all_hits]
 
     # Enriched payload — one adapter.get() per hit. Hits are bounded by
     # limit_total (default 20), so this is at most 20 extra queries — fine
     # at catalog scale; the alternative (single SELECT IN per catalog) would
     # bypass the adapter's serialization (biomarker's Unit join, concept's
     # parent_slug attachment, etc.).
-    out: List[dict] = []
+    out: list[dict] = []
     for type_name, hit in all_hits:
         payload = await _enrich_hit(db, type_name, hit, tenant_id)
         payload["type"] = type_name

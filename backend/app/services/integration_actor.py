@@ -24,10 +24,10 @@ service-layer writes go through the same code path as interactive UI writes
 "integration user" is created — the integration acts as its owner, with
 whatever role the owner has.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -41,9 +41,7 @@ from app.schemas.user import TokenData
 logger = logging.getLogger(__name__)
 
 
-async def resolve_integration_actor(
-    db: AsyncSession, integration: UserIntegration
-) -> TokenData:
+async def resolve_integration_actor(db: AsyncSession, integration: UserIntegration) -> TokenData:
     """Build a :class:`TokenData` representing the integration's owning user.
 
     The integration inherits the tenant_id and user_id of the
@@ -77,7 +75,10 @@ async def resolve_integration_actor(
 
     logger.debug(
         "Resolved integration actor: integration=%s owner=%s tenant=%s role=%s",
-        integration.id, user.id, user.tenant_id, role_value,
+        integration.id,
+        user.id,
+        user.tenant_id,
+        role_value,
     )
 
     return TokenData(
@@ -97,7 +98,7 @@ async def _fetch_owner(db: AsyncSession, user_id: UUID) -> UserModel:
     "row is gone entirely" case (hard delete / FK cascade).
     """
     result = await db.execute(select(UserModel).where(UserModel.id == user_id))
-    user: Optional[UserModel] = result.scalar_one_or_none()
+    user: UserModel | None = result.scalar_one_or_none()
     if user is None:
         raise NotFoundError(
             f"Integration owner user {user_id} no longer exists — the "

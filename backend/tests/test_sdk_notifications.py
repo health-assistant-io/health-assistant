@@ -5,6 +5,7 @@ the behavior end-to-end via the integration endpoints, but there was no
 unit-level guard that the ``NotificationSpec`` defaults are stable. This file
 pins the defaults so future edits can't silently regress them.
 """
+
 from uuid import uuid4
 
 from integrations.sdk.notifications import (
@@ -12,7 +13,6 @@ from integrations.sdk.notifications import (
     NotificationSpec,
     NotificationTypeSpec,
 )
-
 
 # ---------------------------------------------------------------------------
 # NotificationSpec defaults
@@ -60,9 +60,7 @@ def test_notification_spec_to_payload_serializes_actions_and_blocks():
     payload = spec.to_payload()
     assert payload["foo"] == "bar"
     assert payload["actions"] == [action.to_dict()]
-    assert payload["display_blocks"] == [
-        {"type": "kv", "title": "t", "items": {}}
-    ]
+    assert payload["display_blocks"] == [{"type": "kv", "title": "t", "items": {}}]
 
 
 # ---------------------------------------------------------------------------
@@ -138,11 +136,11 @@ def test_action_url_accepts_safe_urls(url):
     [
         "javascript:alert(document.cookie)",
         "data:text/html,<script>alert(1)</script>",
-        "//evil.com/path",            # protocol-relative
-        "/\\evil.com/path",           # backslash trick -> browser treats as //
+        "//evil.com/path",  # protocol-relative
+        "/\\evil.com/path",  # backslash trick -> browser treats as //
         "file:///etc/passwd",
         "vbscript:msgbox",
-        " JavaScript:alert(1)",       # leading space
+        " JavaScript:alert(1)",  # leading space
     ],
 )
 def test_action_url_rejects_unsafe_urls(url):
@@ -152,9 +150,7 @@ def test_action_url_rejects_unsafe_urls(url):
 
 def test_action_post_endpoint_must_be_in_app_path():
     # Safe: in-app path.
-    a = NotificationAction(
-        id="x", label="x", type="post", endpoint="/integrations/foo/action/bar"
-    )
+    a = NotificationAction(id="x", label="x", type="post", endpoint="/integrations/foo/action/bar")
     assert a.endpoint.startswith("/")
 
     # Unsafe: absolute URL / external host.

@@ -1,6 +1,9 @@
-from app.core.database import engine
-from sqlalchemy import text
 import asyncio
+
+from sqlalchemy import text
+
+from app.core.database import engine
+
 
 async def main():
     async with engine.connect() as conn:
@@ -8,6 +11,7 @@ async def main():
         await conn.execute(text("DELETE FROM fhir_observations CASCADE"))
         await conn.commit()
         print("Deleted examinations and observations")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

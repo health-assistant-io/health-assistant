@@ -9,6 +9,7 @@ Verifies:
 - Leaves the post-consolidation invariants: unified concept tables present,
   the legacy scattered category tables gone.
 """
+
 import glob
 import importlib.util
 import re
@@ -25,9 +26,7 @@ VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 
 
 def _migration_files():
-    return sorted(
-        p for p in glob.glob(str(VERSIONS_DIR / "*.py")) if not p.endswith("__init__.py")
-    )
+    return sorted(p for p in glob.glob(str(VERSIONS_DIR / "*.py")) if not p.endswith("__init__.py"))
 
 
 def _load_migration_module(revision_attr: str = "down_revision", want=None):
@@ -42,9 +41,7 @@ def _load_migration_module(revision_attr: str = "down_revision", want=None):
         if getattr(mod, revision_attr, object()) is want:
             baseline = (mod, Path(path))
             break
-    assert baseline is not None, (
-        f"no baseline migration (down_revision is None) found in {files}"
-    )
+    assert baseline is not None, f"no baseline migration (down_revision is None) found in {files}"
     return baseline
 
 
@@ -58,9 +55,7 @@ def test_there_is_exactly_one_root_baseline():
         spec.loader.exec_module(mod)
         if mod.down_revision is None:
             roots.append(path)
-    assert len(roots) == 1, (
-        f"expected exactly one root baseline migration, found {roots}"
-    )
+    assert len(roots) == 1, f"expected exactly one root baseline migration, found {roots}"
 
 
 def test_revision_identifiers():
@@ -118,15 +113,19 @@ def test_every_model_table_is_created_by_the_baseline(table):
         # any of the three. The table name may be single- or double-quoted
         # and may sit on the line after the opening paren
         # (black-formatted migrations).
-        created = bool(
-            re.search(
-                rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]",
-                migration_src,
+        created = (
+            bool(
+                re.search(
+                    rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]",
+                    migration_src,
+                )
             )
-        ) or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src or bool(
-            re.search(
-                rf"op\.rename_table\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]{re.escape(table)}['\"]",
-                migration_src,
+            or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src
+            or bool(
+                re.search(
+                    rf"op\.rename_table\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]{re.escape(table)}['\"]",
+                    migration_src,
+                )
             )
         )
         assert created, (
@@ -135,9 +134,9 @@ def test_every_model_table_is_created_by_the_baseline(table):
         )
         return  # exception honored
 
-    mod, path = _load_migration_module()
+    _mod, path = _load_migration_module()
     src = path.read_text()
-    assert f"op.create_table('{table}'" in src, (
+    assert re.search(rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]", src), (
         f"Table '{table}' is missing from the consolidated baseline"
     )
 
@@ -150,10 +149,7 @@ def test_concept_tables_exist():
         with engine.connect() as conn:
             for table in ("concepts", "concept_edges", "concept_kind_tags"):
                 result = conn.execute(
-                    text(
-                        "SELECT count(*) FROM information_schema.tables "
-                        "WHERE table_name = :t"
-                    ),
+                    text("SELECT count(*) FROM information_schema.tables WHERE table_name = :t"),
                     {"t": table},
                 ).scalar()
                 assert result == 1, f"Table '{table}' does not exist"
@@ -177,10 +173,7 @@ def test_old_category_tables_dropped():
                 "body_parts",
             ):
                 result = conn.execute(
-                    text(
-                        "SELECT count(*) FROM information_schema.tables "
-                        "WHERE table_name = :t"
-                    ),
+                    text("SELECT count(*) FROM information_schema.tables WHERE table_name = :t"),
                     {"t": table},
                 ).scalar()
                 assert result == 0, f"Old table '{table}' should not exist"

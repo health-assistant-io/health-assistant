@@ -43,11 +43,12 @@ async def test_seed_all_runs_stages_in_declared_order(monkeypatch):
 async def test_seed_biomarker_panels_creates_membership_edges():
     """The migrated {metadata, items:[{panel_slug, biomarker_slug}]} envelope
     seeds MEMBER_OF edges biomarker -> panel and returns the standard stats."""
-    from app.services.seed_service import SeedService
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import ConceptEdge
-    from app.models.enums import EdgeEndpointType, ConceptRelationType
-    from sqlalchemy import select, func
+    from app.models.enums import ConceptRelationType, EdgeEndpointType
+    from app.services.seed_service import SeedService
 
     svc = SeedService()
     # Prerequisites: panels (concepts) + biomarker definitions (default catalog).
@@ -79,12 +80,13 @@ async def test_seed_body_parts_reads_split_anatomy_files():
     """anatomy_structures.json seeds nodes; anatomy hierarchy edges now live
     in concept_edges.json (src_type=anatomy, dst_type=anatomy) and are seeded
     by seed_concept_edges, not seed_body_parts."""
-    from app.services.seed_service import SeedService
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
     from app.models.anatomy_model import AnatomyStructure
     from app.models.concept_model import ConceptEdge
     from app.models.enums import EdgeEndpointType
-    from sqlalchemy import select, func
+    from app.services.seed_service import SeedService
 
     svc = SeedService()
     stats = await svc.seed_body_parts()
@@ -92,13 +94,13 @@ async def test_seed_body_parts_reads_split_anatomy_files():
         assert k in stats, f"missing {k}: {stats}"
 
     async with AsyncSessionLocal() as session:
-        node_count = await session.scalar(
-            select(func.count()).select_from(AnatomyStructure)
-        )
+        node_count = await session.scalar(select(func.count()).select_from(AnatomyStructure))
         # Anatomy hierarchy edges are now in concept_edges (seeded by
         # seed_concept_edges, not seed_body_parts).
         edge_count = await session.scalar(
-            select(func.count()).select_from(ConceptEdge).where(
+            select(func.count())
+            .select_from(ConceptEdge)
+            .where(
                 ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
                 ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
             )

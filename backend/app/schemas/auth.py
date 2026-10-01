@@ -1,7 +1,6 @@
 """Authentication schemas"""
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Optional
 
 # Lenient email pattern: one ``@`` with non-blank, whitespace-free text on
 # both sides. We deliberately do NOT use ``EmailStr``/email-validator here
@@ -16,9 +15,7 @@ class LoginRequest(BaseModel):
     """Login request schema"""
 
     username: str = Field(..., description="User email address")
-    password: str = Field(
-        ..., min_length=6, max_length=100, description="User password"
-    )
+    password: str = Field(..., min_length=6, max_length=100, description="User password")
 
 
 class TokenResponse(BaseModel):
@@ -43,7 +40,7 @@ class TokenRefresh(BaseModel):
     rotation / revocation machinery.
     """
 
-    refresh_token: Optional[str] = Field(
+    refresh_token: str | None = Field(
         None, description="Refresh JWT — omitted by browsers (nx_refresh cookie)."
     )
 
@@ -58,17 +55,15 @@ class UserRegister(BaseModel):
     additionally gated by ``HA_REGISTRATION_ENABLED`` (§12/§16).
     """
 
-    email: str = Field(
-        ..., pattern=_LENIENT_EMAIL_PATTERN, description="User email address"
-    )
+    email: str = Field(..., pattern=_LENIENT_EMAIL_PATTERN, description="User email address")
     password: str = Field(
         ..., min_length=10, max_length=100, description="Password (min 10 characters)"
     )
     full_name: str = Field(default="", max_length=200)
-    tenant_id: Optional[str] = Field(
+    tenant_id: str | None = Field(
         None, description="Tenant/Organization ID. If omitted, a new tenant is created."
     )
-    invite_token: Optional[str] = Field(
+    invite_token: str | None = Field(
         None,
         description=(
             "Required when tenant_id is provided. Minted by POST /auth/invite "
@@ -98,9 +93,7 @@ class SetupStatus(BaseModel):
     ``POST /auth/demo-login``.
     """
 
-    initialized: bool = Field(
-        ..., description="True once at least one user exists in the system."
-    )
+    initialized: bool = Field(..., description="True once at least one user exists in the system.")
     setup_token_required: bool = Field(
         ...,
         description=(
@@ -112,7 +105,7 @@ class SetupStatus(BaseModel):
         ...,
         description="Resolved SETUP_TOKEN_MODE: 'log' | 'env' | 'time' | 'disabled'.",
     )
-    setup_url_hint: Optional[str] = Field(
+    setup_url_hint: str | None = Field(
         None,
         description=(
             "Deprecated: always null. The endpoint never returns the setup "
@@ -133,9 +126,7 @@ class SetupStatus(BaseModel):
 class SetupRequest(BaseModel):
     """First-run setup payload — creates the initial SYSTEM_ADMIN + tenant."""
 
-    email: str = Field(
-        ..., pattern=_LENIENT_EMAIL_PATTERN, description="Admin email address"
-    )
+    email: str = Field(..., pattern=_LENIENT_EMAIL_PATTERN, description="Admin email address")
     password: str = Field(
         ..., min_length=10, max_length=100, description="Password (min 10 characters)"
     )
@@ -143,7 +134,7 @@ class SetupRequest(BaseModel):
     tenant_name: str = Field(
         ..., min_length=1, max_length=120, description="Name for the initial tenant"
     )
-    setup_token: Optional[str] = Field(
+    setup_token: str | None = Field(
         None,
         description=(
             "One-time setup token printed to the backend logs on first boot. "
@@ -212,9 +203,7 @@ class MFAEnrollResponse(BaseModel):
 
     secret: str = Field(..., description="Base32 TOTP secret (20 random bytes).")
     uri: str = Field(..., description="otpauth:// provisioning URI.")
-    recovery_codes: List[str] = Field(
-        ..., description="Single-use recovery codes — shown once."
-    )
+    recovery_codes: list[str] = Field(..., description="Single-use recovery codes — shown once.")
 
 
 class MFAStatusResponse(BaseModel):

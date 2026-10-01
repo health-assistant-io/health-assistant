@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Plan 16 H7 — demo hygiene: §13 verifier sweep + seeder refusals.
 
 identity-auth §13: "every verifier rejects ``demo`` tokens while
@@ -30,11 +31,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient as FastTestClient
 from fastapi import HTTPException
-from starlette.websockets import WebSocketDisconnect
-
+from fastapi.testclient import TestClient as FastTestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from starlette.websockets import WebSocketDisconnect
 
 from app.core import instance_state
 from app.core.config import settings
@@ -170,8 +170,9 @@ async def test_demo_refresh_refused_off_demo(async_client):
 
 @pytest.mark.asyncio
 async def test_demo_refresh_refusal_writes_denied_audit_row(async_client):
-    from app.core.database import AsyncSessionLocal
     from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
 
     user = await create_user()
     issued = await sign_in(user, auth_mode="demo")
@@ -182,17 +183,21 @@ async def test_demo_refresh_refusal_writes_denied_audit_row(async_client):
     assert r.status_code == 401
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                select(AuditEvent)
-                .where(
-                    AuditEvent.action == "auth.refresh",
-                    AuditEvent.user_id == user.id,
-                    AuditEvent.outcome == "denied",
+            (
+                await session.execute(
+                    select(AuditEvent)
+                    .where(
+                        AuditEvent.action == "auth.refresh",
+                        AuditEvent.user_id == user.id,
+                        AuditEvent.outcome == "denied",
+                    )
+                    .order_by(AuditEvent.created_at.desc())
+                    .limit(1)
                 )
-                .order_by(AuditEvent.created_at.desc())
-                .limit(1)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert rows, "expected a denied auth.refresh audit row for the demo family"
     assert rows[0].new_value["reason"] == "demo_refresh_on_non_demo_instance"
 
@@ -270,24 +275,29 @@ async def test_non_demo_admin_can_still_switch_tenants(async_client):
 
 @pytest.mark.asyncio
 async def test_demo_login_404_and_audited_off_demo(async_client):
-    from app.core.database import AsyncSessionLocal
     from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
 
     with patch.object(instance_state, "get_state", new=_state_with(False)):
         r = await async_client.post("/api/v1/auth/demo-login")
     assert r.status_code == 404
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                select(AuditEvent)
-                .where(
-                    AuditEvent.action == "auth.demo_login",
-                    AuditEvent.outcome == "denied",
+            (
+                await session.execute(
+                    select(AuditEvent)
+                    .where(
+                        AuditEvent.action == "auth.demo_login",
+                        AuditEvent.outcome == "denied",
+                    )
+                    .order_by(AuditEvent.created_at.desc())
+                    .limit(1)
                 )
-                .order_by(AuditEvent.created_at.desc())
-                .limit(1)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert rows
     assert rows[0].new_value["reason"] == "demo_mode_off"
 
@@ -558,9 +568,7 @@ def test_seeder_init_demo_refused_on_non_empty(seeder_scratch):
     )
     result = _run_seeder(seeder_scratch.url, "--init-demo")
     assert result.returncode == 2
-    assert "--init-demo requires an EMPTY demo database" in (
-        result.stderr + result.stdout
-    )
+    assert "--init-demo requires an EMPTY demo database" in (result.stderr + result.stdout)
 
 
 @pytest.mark.asyncio

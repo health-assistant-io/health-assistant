@@ -36,7 +36,7 @@ def _parse_source(raw: str):
     try:
         return UUID(raw)
     except ValueError:
-        raise argparse.ArgumentTypeError(
+        raise argparse.ArgumentTypeError(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             f"--source must be 'global' or a UUID tenant id, got: {raw!r}"
         )
 
@@ -49,8 +49,7 @@ async def main() -> None:
         "--source",
         type=_parse_source,
         default=None,
-        help="'global' (default; tenant_id IS NULL rows) or a tenant UUID to "
-        "treat as a template.",
+        help="'global' (default; tenant_id IS NULL rows) or a tenant UUID to treat as a template.",
     )
     default_out = Path(__file__).parent.parent / "data" / "seeds"
     parser.add_argument(

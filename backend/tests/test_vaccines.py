@@ -7,16 +7,16 @@ search, and the CatalogRegistry registration (vaccines appear in /catalogs).
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.fhir.patient import Patient
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
 from app.models.tenant_model import TenantModel
 from app.services.fhir_helpers import assert_valid_fhir
+from tests._auth_helpers import headers_for_claims
 from tests._facade_auth import facade_api_headers
 
 
@@ -27,7 +27,7 @@ async def _tenant_and_headers(role="ADMIN"):
         await db.commit()
     tok_headers = await headers_for_claims(
         {
-        "sub": f"{role.lower()}@test.local",
+            "sub": f"{role.lower()}@test.local",
             "tenant_id": str(tenant_id),
             "role": role,
         }
@@ -80,7 +80,7 @@ def test_patient_immunization_to_fhir_validates():
             "text": "MMR",
             "coding": [{"system": "http://hl7.org/fhir/sid/cvx", "code": "03"}],
         },
-        administered_at=datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc),
+        administered_at=datetime(2026, 1, 15, 10, 0, tzinfo=UTC),
         dose_number="1",
         lot_number="L123",
         status="completed",
@@ -105,7 +105,7 @@ def test_patient_immunization_to_fhir_encounter_when_linked():
         patient_id=pid,
         examination_id=eid,
         vaccine_code={"text": "Flu"},
-        administered_at=datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc),
+        administered_at=datetime(2026, 2, 1, 9, 0, tzinfo=UTC),
         status="completed",
     )
     fhir = assert_valid_fhir(imm)
@@ -141,9 +141,7 @@ async def test_vaccine_catalog_crud(async_client):
     assert put.status_code == 200
     assert put.json()["description"] == "updated"
 
-    delete = await async_client.delete(
-        f"/api/v1/vaccines/catalog/{vid}", headers=headers
-    )
+    delete = await async_client.delete(f"/api/v1/vaccines/catalog/{vid}", headers=headers)
     assert delete.status_code == 200
 
 
@@ -164,9 +162,7 @@ async def test_vaccine_catalog_user_creates_user_scope(async_client):
 async def test_vaccine_catalog_admin_cannot_delete_global(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     async with AsyncSessionLocal() as db:
-        v = VaccineCatalog(
-            slug=f"g-{uuid.uuid4().hex[:6]}", name="Global V", tenant_id=None
-        )
+        v = VaccineCatalog(slug=f"g-{uuid.uuid4().hex[:6]}", name="Global V", tenant_id=None)
         db.add(v)
         await db.commit()
         await db.refresh(v)
@@ -217,9 +213,7 @@ async def test_patient_immunization_crud(async_client):
 async def test_patient_immunization_cross_patient_denied(async_client):
     tenant_id, headers = await _tenant_and_headers("USER")
     other_pid = await _make_patient(tenant_id)  # patient not linked to this USER
-    resp = await async_client.get(
-        f"/api/v1/vaccines/patient/{other_pid}", headers=headers
-    )
+    resp = await async_client.get(f"/api/v1/vaccines/patient/{other_pid}", headers=headers)
     assert resp.status_code == 403
 
 
@@ -249,11 +243,7 @@ async def test_patient_immunization_examination_link_roundtrip(async_client):
         f"/api/v1/fhir/R4/Immunization?patient={pid}",
         headers=await facade_api_headers(tenant_id),
     )
-    entry = next(
-        e["resource"]
-        for e in fhir.json()["entry"]
-        if e["resource"]["id"] == iid
-    )
+    entry = next(e["resource"] for e in fhir.json()["entry"] if e["resource"]["id"] == iid)
     assert entry["encounter"]["reference"] == f"Encounter/{eid}"
 
     # Update clears the link.
@@ -285,15 +275,13 @@ async def test_fhir_immunization_facade_search(async_client):
                 patient_id=pid,
                 tenant_id=tenant_id,
                 vaccine_code={"text": "Flu Shot"},
-                administered_at=datetime(2026, 2, 1, 9, 0, tzinfo=timezone.utc),
+                administered_at=datetime(2026, 2, 1, 9, 0, tzinfo=UTC),
                 status="completed",
             )
         )
         await db.commit()
 
-    resp = await async_client.get(
-        f"/api/v1/fhir/R4/Immunization?patient={pid}", headers=headers
-    )
+    resp = await async_client.get(f"/api/v1/fhir/R4/Immunization?patient={pid}", headers=headers)
     assert resp.status_code == 200, resp.text
     bundle = resp.json()
     assert bundle["resourceType"] == "Bundle"
@@ -321,11 +309,7 @@ async def test_vaccine_in_catalogs_search(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     suffix = uuid.uuid4().hex[:8]
     async with AsyncSessionLocal() as db:
-        db.add(
-            VaccineCatalog(
-                slug=f"sch-{suffix}", name=f"ZebraVax {suffix}", tenant_id=None
-            )
-        )
+        db.add(VaccineCatalog(slug=f"sch-{suffix}", name=f"ZebraVax {suffix}", tenant_id=None))
         await db.commit()
     resp = await async_client.get(
         f"/api/v1/catalogs/search?q=ZebraVax%20{suffix}&types=vaccine",

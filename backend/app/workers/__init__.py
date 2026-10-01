@@ -1,9 +1,9 @@
+from .ai_tasks import check_medication_interactions, detect_anomalies, process_document
 from .celery_app import celery_app
-from .ai_tasks import process_document, check_medication_interactions, detect_anomalies
 
 __all__ = [
     "celery_app",
-    "process_document",
     "check_medication_interactions",
     "detect_anomalies",
+    "process_document",
 ]

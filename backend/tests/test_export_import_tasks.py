@@ -5,7 +5,6 @@ import pytest
 
 from app.workers.tasks import export_backup, import_backup
 
-
 _EXPORT_ASYNC = export_backup.run.__wrapped__
 _IMPORT_ASYNC = import_backup.run.__wrapped__
 

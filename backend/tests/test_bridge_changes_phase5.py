@@ -37,11 +37,7 @@ async def bridge_with_two_patients():
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge P5 T.", slug=f"bp5-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge P5 T.", slug=f"bp5-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -91,9 +87,7 @@ async def bridge_with_two_patients():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -111,9 +105,9 @@ async def test_changes_returns_only_rows_updated_after_since(bridge_with_two_pat
 
     # Seed an OLD medication (updated_at ≈ now because we just inserted it, so
     # we set it explicitly to a timestamp in the past).
-    old_ts = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=10)
-    new_ts = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    old_ts = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=10)
+    new_ts = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
 
     async with AsyncSessionLocal() as db:
         old_med = Medication(
@@ -156,10 +150,8 @@ async def test_changes_cursor_advances_to_max_updated_at(bridge_with_two_patient
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
 
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
-    new_ts = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-        minutes=10
-    )
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
+    new_ts = datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10)
 
     async with AsyncSessionLocal() as db:
         m = Medication(
@@ -182,9 +174,7 @@ async def test_changes_cursor_advances_to_max_updated_at(bridge_with_two_patient
         request=_get_request({"since": cutoff.isoformat()}),
     )
     assert result["cursor"] is not None
-    returned_cursor = datetime.datetime.fromisoformat(
-        result["cursor"].replace("Z", "+00:00")
-    )
+    returned_cursor = datetime.datetime.fromisoformat(result["cursor"].replace("Z", "+00:00"))
     # The cursor should be ≥ the seeded row's updated_at (could exceed it
     # only if another row updated concurrently, which doesn't happen here).
     assert abs((returned_cursor - expected_cursor).total_seconds()) < 1
@@ -199,7 +189,7 @@ async def test_changes_returns_null_cursor_when_nothing_changed(
     provider = HealthAssistantBridgeProvider()
 
     # Future `since` → no rows match.
-    future = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+    future = datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=1)
     result = await provider.handle_api_request(
         integration=integration,
         path="changes",
@@ -217,7 +207,7 @@ async def test_changes_is_patient_scoped(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
 
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
     async with AsyncSessionLocal() as db:
         db.add(
             AllergyIntolerance(
@@ -247,7 +237,7 @@ async def test_changes_types_filter_narrows_response(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
 
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
     async with AsyncSessionLocal() as db:
         db.add(
             Medication(
@@ -320,7 +310,7 @@ async def test_changes_default_since_is_last_7_days(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
 
-    old_ts = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)
+    old_ts = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=8)
     async with AsyncSessionLocal() as db:
         old_med = Medication(
             tenant_id=ctx["tenant_id"],
@@ -352,7 +342,7 @@ async def test_changes_envelope_carries_since_echo(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
 
-    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=2)
+    cutoff = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=2)
     result = await provider.handle_api_request(
         integration=integration,
         path="changes",

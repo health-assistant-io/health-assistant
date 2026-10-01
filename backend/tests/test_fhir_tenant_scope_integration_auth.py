@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Tests for audit items B5 and B16 (endpoint/service security).
 
 B5:  ``get_observation`` / ``get_diagnostic_report`` / ``get_medication``
@@ -10,12 +11,12 @@ B16: ``GET /integrations/available`` and ``GET /integrations/{domain}/documentat
      had no authentication — anonymous callers could enumerate enabled
      integrations and read their docs.
 """
+
 import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
 TENANT_B = UUID("22222222-2222-2222-2222-222222222222")
@@ -59,7 +60,12 @@ def test_b5_service_signatures_accept_tenant_id():
     """B5: each single-resource service fn must accept an optional tenant_id."""
     from app.services import fhir_service
 
-    for fn_name in ("get_observation", "get_diagnostic_report", "get_medication", "delete_observation"):
+    for fn_name in (
+        "get_observation",
+        "get_diagnostic_report",
+        "get_medication",
+        "delete_observation",
+    ):
         fn = getattr(fhir_service, fn_name)
         sig = inspect.signature(fn)
         assert "tenant_id" in sig.parameters, (
@@ -94,8 +100,10 @@ async def test_b5_get_observation_filters_by_tenant():
             captured["stmt"] = stmt
             return FakeResult()
 
-    with patch.object(fhir_service, "AsyncSessionLocal", return_value=FakeSession()), \
-         patch.object(fhir_service, "DATABASE_AVAILABLE", True):
+    with (
+        patch.object(fhir_service, "AsyncSessionLocal", return_value=FakeSession()),
+        patch.object(fhir_service, "DATABASE_AVAILABLE", True),
+    ):
         await fhir_service.get_observation(uuid4(), tenant_id=TENANT_A)
 
     # The compiled WHERE clause must reference tenant_id (not just the SELECT col list).
@@ -128,8 +136,10 @@ async def test_b5_get_observation_without_tenant_is_unscoped():
             captured["stmt"] = stmt
             return FakeResult()
 
-    with patch.object(fhir_service, "AsyncSessionLocal", return_value=FakeSession()), \
-         patch.object(fhir_service, "DATABASE_AVAILABLE", True):
+    with (
+        patch.object(fhir_service, "AsyncSessionLocal", return_value=FakeSession()),
+        patch.object(fhir_service, "DATABASE_AVAILABLE", True),
+    ):
         await fhir_service.get_observation(uuid4())
 
     compiled = str(captured["stmt"].compile())
@@ -186,7 +196,9 @@ async def test_b5_get_medication_endpoint_404s_on_cross_tenant(async_client):
     try:
         with patch(
             "app.api.v1.endpoints.medications.check_medication_access",
-            new=AsyncMock(side_effect=HTTPException(status_code=404, detail="Medication record not found")),
+            new=AsyncMock(
+                side_effect=HTTPException(status_code=404, detail="Medication record not found")
+            ),
         ):
             response = await async_client.get(f"/api/v1/medications/{uuid4()}")
         assert response.status_code == 404
@@ -242,8 +254,7 @@ async def test_b16_list_available_rejects_anonymous(async_client):
     response = await async_client.get("/api/v1/integrations/available")
     # 401 (no token) or 403 — either is acceptable; 200 would be the bug.
     assert response.status_code in (401, 403), (
-        f"Anonymous access to /integrations/available returned {response.status_code} "
-        "."
+        f"Anonymous access to /integrations/available returned {response.status_code} ."
     )
 
 
@@ -252,8 +263,7 @@ async def test_b16_documentation_rejects_anonymous(async_client):
     """B16: an unauthenticated request to /documentation must not be 200."""
     response = await async_client.get("/api/v1/integrations/dev_dummy/documentation")
     assert response.status_code in (401, 403), (
-        f"Anonymous access to /integrations/documentation returned {response.status_code} "
-        "."
+        f"Anonymous access to /integrations/documentation returned {response.status_code} ."
     )
 
 
@@ -265,7 +275,9 @@ async def test_b16_list_available_accepts_authenticated(async_client):
         # Patch the DB lookup so we don't need a real DB.
         fake_db = MagicMock()
         fake_db.execute = AsyncMock(
-            return_value=MagicMock(scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[]))))
+            return_value=MagicMock(
+                scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+            )
         )
         with patch("app.api.v1.endpoints.integrations.get_db", return_value=iter([fake_db])):
             with patch(

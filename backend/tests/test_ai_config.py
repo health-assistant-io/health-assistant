@@ -1,9 +1,10 @@
-import pytest_asyncio
-from httpx import AsyncClient
 from uuid import uuid4
 
-from app.main import app
+import pytest_asyncio
+from httpx import AsyncClient
+
 from app.core.security import get_current_user
+from app.main import app
 from app.schemas.user import TokenData
 
 
@@ -47,9 +48,7 @@ async def test_provider(authenticated_client: AsyncClient):
         "is_default": True,
         "is_active": True,
     }
-    response = await authenticated_client.post(
-        "/api/v1/ai-config/providers", json=provider_data
-    )
+    response = await authenticated_client.post("/api/v1/ai-config/providers", json=provider_data)
     assert response.status_code == 201
     return response.json()
 
@@ -94,9 +93,7 @@ class TestAIProviderEndpoints:
         assert response.json()["name"] == "OpenAI Production"
         assert response.json()["provider_type"] == "openai"
 
-    async def test_get_providers(
-        self, authenticated_client: AsyncClient, test_provider: dict
-    ):
+    async def test_get_providers(self, authenticated_client: AsyncClient, test_provider: dict):
         """Test listing providers"""
         response = await authenticated_client.get("/api/v1/ai-config/providers")
         assert response.status_code == 200
@@ -104,9 +101,7 @@ class TestAIProviderEndpoints:
         assert len(providers) >= 1
         assert any(p["id"] == test_provider["id"] for p in providers)
 
-    async def test_get_provider(
-        self, authenticated_client: AsyncClient, test_provider: dict
-    ):
+    async def test_get_provider(self, authenticated_client: AsyncClient, test_provider: dict):
         """Test getting a single provider"""
         response = await authenticated_client.get(
             f"/api/v1/ai-config/providers/{test_provider['id']}"
@@ -127,9 +122,7 @@ class TestAIProviderEndpoints:
         assert len(response.json()["models"]) >= 1
         assert response.json()["models"][0]["id"] == test_model["id"]
 
-    async def test_update_provider(
-        self, authenticated_client: AsyncClient, test_provider: dict
-    ):
+    async def test_update_provider(self, authenticated_client: AsyncClient, test_provider: dict):
         """Test updating a provider"""
         update_data = {"name": "Updated Provider Name", "is_active": False}
         response = await authenticated_client.put(
@@ -155,24 +148,18 @@ class TestAIProviderEndpoints:
         provider_id = response.json()["id"]
 
         # Delete
-        response = await authenticated_client.delete(
-            f"/api/v1/ai-config/providers/{provider_id}"
-        )
+        response = await authenticated_client.delete(f"/api/v1/ai-config/providers/{provider_id}")
         assert response.status_code == 204
 
         # Verify deletion
-        response = await authenticated_client.get(
-            f"/api/v1/ai-config/providers/{provider_id}"
-        )
+        response = await authenticated_client.get(f"/api/v1/ai-config/providers/{provider_id}")
         assert response.status_code == 404
 
 
 class TestAIModelEndpoints:
     """Test AI model CRUD endpoints"""
 
-    async def test_create_model(
-        self, authenticated_client: AsyncClient, test_provider: dict
-    ):
+    async def test_create_model(self, authenticated_client: AsyncClient, test_provider: dict):
         """Test creating a new model"""
         model_data = {
             "provider_id": test_provider["id"],
@@ -199,9 +186,7 @@ class TestAIModelEndpoints:
         assert len(models) >= 1
         assert models[0]["id"] == test_model["id"]
 
-    async def test_update_model(
-        self, authenticated_client: AsyncClient, test_model: dict
-    ):
+    async def test_update_model(self, authenticated_client: AsyncClient, test_model: dict):
         """Test updating a model"""
         update_data = {"max_tokens": 16384, "temperature": 0.5}
         response = await authenticated_client.put(
@@ -211,9 +196,7 @@ class TestAIModelEndpoints:
         assert response.json()["max_tokens"] == 16384
         assert response.json()["temperature"] == 0.5
 
-    async def test_delete_model(
-        self, authenticated_client: AsyncClient, test_provider: dict
-    ):
+    async def test_delete_model(self, authenticated_client: AsyncClient, test_provider: dict):
         """Test deleting a model"""
         # Create model to delete
         model_data = {
@@ -228,9 +211,7 @@ class TestAIModelEndpoints:
         model_id = response.json()["id"]
 
         # Delete
-        response = await authenticated_client.delete(
-            f"/api/v1/ai-config/models/{model_id}"
-        )
+        response = await authenticated_client.delete(f"/api/v1/ai-config/models/{model_id}")
         assert response.status_code == 204
 
 
@@ -279,9 +260,7 @@ class TestAITaskAssignmentEndpoints:
         assert response.status_code == 201
 
         # Get active
-        response = await authenticated_client.get(
-            "/api/v1/ai-config/task-assignments/active/nlp"
-        )
+        response = await authenticated_client.get("/api/v1/ai-config/task-assignments/active/nlp")
         assert response.status_code == 200
         assert response.json()["task_type"] == "nlp"
 
@@ -345,9 +324,7 @@ class TestAIConfigSummary:
             "model_id": test_model["id"],
             "is_active": True,
         }
-        await authenticated_client.post(
-            "/api/v1/ai-config/task-assignments", json=assignment_data
-        )
+        await authenticated_client.post("/api/v1/ai-config/task-assignments", json=assignment_data)
 
         # Get summary
         response = await authenticated_client.get("/api/v1/ai-config/summary")
@@ -370,13 +347,9 @@ class TestAIConfigSummary:
             "model_id": test_model["id"],
             "is_active": True,
         }
-        await authenticated_client.post(
-            "/api/v1/ai-config/task-assignments", json=assignment_data
-        )
+        await authenticated_client.post("/api/v1/ai-config/task-assignments", json=assignment_data)
 
         # Get default
-        response = await authenticated_client.get(
-            "/api/v1/ai-config/default-for-task/ocr"
-        )
+        response = await authenticated_client.get("/api/v1/ai-config/default-for-task/ocr")
         assert response.status_code == 200
         assert response.json()["provider"]["id"] == test_provider["id"]

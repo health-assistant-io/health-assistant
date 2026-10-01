@@ -1,0 +1,123 @@
+[project]
+name = "healthassistant"
+description = "Health Assistant — FHIR-flavoured clinical records platform (Class S, server-first)"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20",
+    "asyncpg>=0.31",
+    "bcrypt>=5.0",
+    "celery>=5.6",
+    "cryptography>=50",
+    "email-validator>=2.3",
+    "fastapi>=0.141",
+    "fhir.resources[all]>=8.3",
+    "fastmcp>=4.0",
+    "flower>=2.1",
+    "httpx>=0.28",
+    "jsonpath-ng>=1.8",
+    "langchain-core>=1.6,<2",
+    "langchain-openai>=1.6,<2",
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-postgres>=3,<4",
+    "numpy>=2.5",
+    "openai>=2.54",
+    "pdf2image>=1.17",
+    "pillow>=12.3",
+    # pydicom decode backends — loaded dynamically by pydicom via entry
+    # points (never imported directly); without them DICOM decoding fails.
+    "pydicom>=3.0",
+    "pylibjpeg>=2.1",
+    "pylibjpeg-libjpeg>=2.4",
+    "python-gdcm>=3.2",
+    "psycopg[binary,pool]>=3.3",
+    "psycopg2-binary>=2.9",
+    "py-vapid>=1.9",
+    "pydantic>=2.13",
+    "pyjwt>=2.14",
+    "pydantic-settings>=2.15",
+    "pytesseract>=0.3",
+    "pywebpush>=2.5",
+    "python-multipart>=0.0.32",
+    "python-slugify>=9.0",
+    "redis>=8.1",
+    "requests>=2.34",
+    "sqlalchemy[asyncio]>=2.0",
+    "starlette>=1.6",
+    "uvicorn>=0.52",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+# Local AI/OCR processing (former requirements.optional.txt) — local
+# models instead of the OpenAI API. `scispacy` is deliberately excluded:
+# every released scispacy pins spacy<3.8 + numpy<2, which is
+# irreconcilable with this project's numpy>=2 stack (the old optional
+# requirements file could never co-install either) — use a dedicated
+# environment for biomedical NLP models.
+local-ai = [
+    "nltk>=3.10.3",
+    "spacy>=3.8.16",
+    "torch>=2.1.2",
+    "transformers>=4.57.6",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.16",
+    "mypy>=1.11",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
+    "pytest-dotenv>=0.5",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "app/core/config.py"
+pattern = 'VERSION:\s*str\s*=\s*"(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Header",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+]
+
+[tool.mypy]
+# The type gate grows by ratchet: packages join `files` only when clean,
+# and never leave (the family pattern — career's ratchet is the template).
+files = ["app/core"]
+ignore_missing_imports = true
+follow_imports = "silent"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `..` adds the repo root so the `integrations` package (source of truth,
+# imported via PYTHONPATH) resolves — kept from pytest.ini.
+pythonpath = [".", ".."]
+env_files = [".env.test", ".env"]
+addopts = "-v --tb=short"
+asyncio_mode = "auto"
+markers = [
+    # identity-auth §18 contract cases — the drift gate against the family
+    # test kit (CI runs `pytest -m contract` as an explicit step).
+    "contract: implements an identity-auth §18 contract case (family drift gate)",
+]

@@ -10,6 +10,7 @@ Pin the ``emit(dedup_key=..., dedup_ttl_seconds=...)`` contract:
 * TTL is clamped to a sane floor/ceiling.
 * NotificationSpec carries ``digest_key`` and the builder exposes it.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -32,9 +33,9 @@ from app.models.notification import Notification
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
 from app.services.notification_service import (
-    _compute_dedup_expires_at,
     _DIGEST_TTL_CEILING_SECONDS,
     _DIGEST_TTL_FLOOR_SECONDS,
+    _compute_dedup_expires_at,
     _resolve_digest_ttl,
     emit,
 )
@@ -158,10 +159,10 @@ async def test_emit_collapses_duplicate_within_ttl_window(tenant_and_user):
     # Only one row exists for this key.
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(Notification).where(Notification.dedup_key == key)
-            )
-        ).scalars().all()
+            (await db.execute(select(Notification).where(Notification.dedup_key == key)))
+            .scalars()
+            .all()
+        )
     assert len(rows) == 1
 
 
@@ -186,9 +187,7 @@ async def test_emit_creates_new_row_after_ttl_expires(tenant_and_user, monkeypat
         tenant_id, user_id = tenant_and_user
         key = f"test:expired:{uuid.uuid4()}"
 
-        first = await _emit_one(
-            tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=300
-        )
+        first = await _emit_one(tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=300)
         assert first is not None
 
         # Manually expire the first row.
@@ -197,9 +196,7 @@ async def test_emit_creates_new_row_after_ttl_expires(tenant_and_user, monkeypat
             first_row.dedup_expires_at = utcnow() - timedelta(seconds=1)
             await db.commit()
 
-        second = await _emit_one(
-            tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=300
-        )
+        second = await _emit_one(tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=300)
         assert second is not None
         assert second.id != first.id, "expired dedup must create a new row"
     finally:
@@ -225,9 +222,7 @@ async def test_emit_dedup_key_is_stored_on_row(tenant_and_user):
     tenant_id, user_id = tenant_and_user
     key = f"test:store:{uuid.uuid4()}"
 
-    notif = await _emit_one(
-        tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=120
-    )
+    notif = await _emit_one(tenant_id, user_id, dedup_key=key, dedup_ttl_seconds=120)
     assert notif is not None
 
     async with AsyncSessionLocal() as db:
@@ -246,7 +241,8 @@ async def test_emit_dedup_is_best_effort_no_unique_constraint():
     a unique index can't express — Postgres partial indexes can't
     reference now() in the predicate). The lookup-then-insert in
     emit() handles the common case; the race window is benign."""
-    from sqlalchemy import create_engine, text as sa_text
+    from sqlalchemy import create_engine
+    from sqlalchemy import text as sa_text
 
     from app.core.config import settings
 
@@ -292,11 +288,7 @@ def test_notification_spec_builder_digest_key():
     """The fluent builder exposes ``.digest_key(key)``."""
     from integrations.sdk import NotificationSpec
 
-    spec = (
-        NotificationSpec.builder(title="x")
-        .digest_key("dev_dummy:hr:patient/abc")
-        .build()
-    )
+    spec = NotificationSpec.builder(title="x").digest_key("dev_dummy:hr:patient/abc").build()
     assert spec.digest_key == "dev_dummy:hr:patient/abc"
 
 

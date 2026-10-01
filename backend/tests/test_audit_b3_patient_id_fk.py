@@ -9,6 +9,7 @@ Covers:
    no-op before the column existed — ``_build_resource_filter`` keys on
    ``hasattr(model, "patient_id")``).
 """
+
 import uuid
 
 import pytest
@@ -48,10 +49,7 @@ async def test_patient_id_columns_and_cascade_fk_exist():
             )
             assert res.scalar_one() == "uuid", f"{table}.patient_id must be uuid"
             res2 = await session.execute(
-                text(
-                    "SELECT confdeltype FROM pg_constraint "
-                    "WHERE conname LIKE :p"
-                ),
+                text("SELECT confdeltype FROM pg_constraint WHERE conname LIKE :p"),
                 {"p": f"fk_{table}_patient_id"},
             )
             deltype = res2.scalar_one()
@@ -166,21 +164,15 @@ async def test_patient_delete_cascades_to_observations_and_reports():
         await session.commit()
 
         remaining_obs = (
-            await session.execute(
-                select(Observation).where(Observation.id == obs_id)
-            )
+            await session.execute(select(Observation).where(Observation.id == obs_id))
         ).scalar_one_or_none()
         remaining_rep = (
-            await session.execute(
-                select(DiagnosticReport).where(DiagnosticReport.id == report_id)
-            )
+            await session.execute(select(DiagnosticReport).where(DiagnosticReport.id == report_id))
         ).scalar_one_or_none()
         assert remaining_obs is None, "Observation must cascade-delete with its patient"
         assert remaining_rep is None, "DiagnosticReport must cascade-delete with its patient"
 
-        await session.execute(
-            text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant.id)}
-        )
+        await session.execute(text("DELETE FROM tenants WHERE id = :id"), {"id": str(tenant.id)})
         await session.commit()
 
 

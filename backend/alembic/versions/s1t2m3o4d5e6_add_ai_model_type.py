@@ -15,9 +15,10 @@ Revises: 8ddb7ef7ca4d
 Create Date: 2026-07-16
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "s1t2m3o4d5e6"
 down_revision = "8ddb7ef7ca4d"

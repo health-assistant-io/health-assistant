@@ -17,13 +17,13 @@ round-trip that simulates following the ``next`` link repeatedly.
 
 from urllib.parse import parse_qs, urlparse
 
-from app.facade.bundle import build_search_bundle, _with_page
+from app.facade.bundle import _with_page, build_search_bundle
 from app.facade.search_params import parse_search_params
-
 
 # ---------------------------------------------------------------------------
 # Output side — links must carry `page=N`, not `_offset=N`
 # ---------------------------------------------------------------------------
+
 
 def test_pagination_links_emit_page_not_offset():
     bundle = build_search_bundle(
@@ -118,6 +118,7 @@ def test_with_page_offset_zero_is_page_one():
 # Input side — parser accepts both `page` and `_offset`
 # ---------------------------------------------------------------------------
 
+
 def test_parse_search_params_accepts_offset_alias():
     """Legacy clients (and the previous version of this server) emit
     _offset=N. The parser must honor it."""
@@ -166,6 +167,7 @@ def test_parse_search_params_three_cursor_forms_equivalent():
 # ---------------------------------------------------------------------------
 # Round-trip — following the `next` link lands on the next page
 # ---------------------------------------------------------------------------
+
 
 def test_pagination_round_trip_walks_all_pages():
     """The headline F6 bug: following `next` always landed on page 1.

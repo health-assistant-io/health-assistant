@@ -5,10 +5,10 @@ where FKs aren't supported) must have a foreign key constraint to
 ``tenants.id`` with ``ON DELETE CASCADE`` so deleting a tenant purges all
 their data instead of orphaning it.
 """
+
 from sqlalchemy import create_engine, text
 
 from app.core.config import settings
-
 
 # Tables that carry tenant_id but legitimately lack an FK.
 # - telemetry_data: TimescaleDB hypertable; FKs not supported.
@@ -61,10 +61,7 @@ def test_tenant_tables_have_fk():
     """Every tenant-owned table (except the documented exceptions) must
     have a tenant_id FK to tenants.id."""
     table_map = _get_tenant_tables()
-    missing = {
-        t for t, has_fk in table_map.items()
-        if not has_fk and t not in TABLES_WITHOUT_FK
-    }
+    missing = {t for t, has_fk in table_map.items() if not has_fk and t not in TABLES_WITHOUT_FK}
     assert not missing, (
         f"Tables missing tenant_id FK: {sorted(missing)}. "
         f"Expected exceptions: {sorted(TABLES_WITHOUT_FK)}"
@@ -103,9 +100,7 @@ def test_tenant_fk_uses_on_delete_cascade():
                 )
             ).all()
             non_cascade = [row[0] for row in rows]
-            assert not non_cascade, (
-                f"Tables with tenant_id FK NOT using CASCADE: {non_cascade}"
-            )
+            assert not non_cascade, f"Tables with tenant_id FK NOT using CASCADE: {non_cascade}"
     finally:
         engine.dispose()
 
@@ -117,9 +112,7 @@ def test_tenant_mixin_model_has_fk_declaration():
     from app.models.notification_rule import NotificationRule
 
     col = NotificationRule.__table__.columns.get("tenant_id")
-    assert col is not None, (
-        "NotificationRule (TenantMixin inheritor) must have tenant_id"
-    )
+    assert col is not None, "NotificationRule (TenantMixin inheritor) must have tenant_id"
     fks = list(col.foreign_keys)
     assert len(fks) == 1, (
         f"NotificationRule.tenant_id must have exactly one FK (from TenantMixin), got {len(fks)}"
@@ -128,9 +121,7 @@ def test_tenant_mixin_model_has_fk_declaration():
     assert fk.column.table.name == "tenants", (
         f"FK target must be tenants.id, got {fk.column.table.name}"
     )
-    assert fk.ondelete == "CASCADE", (
-        f"FK must use ON DELETE CASCADE, got ondelete={fk.ondelete}"
-    )
+    assert fk.ondelete == "CASCADE", f"FK must use ON DELETE CASCADE, got ondelete={fk.ondelete}"
 
 
 def test_telemetry_model_overrides_without_fk():
@@ -140,6 +131,5 @@ def test_telemetry_model_overrides_without_fk():
     col = TelemetryDataModel.__table__.columns["tenant_id"]
     fks = list(col.foreign_keys)
     assert len(fks) == 0, (
-        f"TelemetryDataModel.tenant_id must NOT have an FK (hypertable), "
-        f"got {len(fks)}"
+        f"TelemetryDataModel.tenant_id must NOT have an FK (hypertable), got {len(fks)}"
     )

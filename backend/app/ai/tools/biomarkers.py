@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Biomarker tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3). Covers clinical lab history,
@@ -5,7 +6,7 @@ telemetry trends, catalog search, and definition lookup.
 """
 
 import json
-from typing import Any, List, Optional
+from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
@@ -17,7 +18,7 @@ from app.models.fhir.patient import Observation
 
 
 @register_chat_tool("biomarkers")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_recent_biomarkers(limit: int = 15) -> str:
         """Fetch the most recent biomarker observations (lab results) for the patient.
@@ -43,16 +44,12 @@ def build(ctx: ToolContext) -> List[Any]:
                 {
                     "id": str(obs.id),
                     "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
-                    "date": obs.effective_datetime.isoformat()
-                    if obs.effective_datetime
-                    else None,
+                    "date": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
                     "name": obs.code.get("text"),
                     "value": obs.value_quantity.get("value")
                     if obs.value_quantity
                     else obs.value_string,
-                    "unit": obs.value_quantity.get("unit")
-                    if obs.value_quantity
-                    else None,
+                    "unit": obs.value_quantity.get("unit") if obs.value_quantity else None,
                     "interpretation": obs.interpretation,
                     "biomarker_slug": obs.biomarker.slug if obs.biomarker else None,
                 }
@@ -93,23 +90,19 @@ def build(ctx: ToolContext) -> List[Any]:
                 {
                     "id": str(obs.id),
                     "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
-                    "date": obs.effective_datetime.isoformat()
-                    if obs.effective_datetime
-                    else None,
+                    "date": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
                     "name": obs.code.get("text"),
                     "value": obs.value_quantity.get("value")
                     if obs.value_quantity
                     else obs.value_string,
-                    "unit": obs.value_quantity.get("unit")
-                    if obs.value_quantity
-                    else None,
+                    "unit": obs.value_quantity.get("unit") if obs.value_quantity else None,
                     "interpretation": obs.interpretation,
                 }
             )
         return json.dumps(history)
 
     @tool
-    async def search_available_biomarkers(search_term: Optional[str] = None) -> str:
+    async def search_available_biomarkers(search_term: str | None = None) -> str:
         """Search the clinical catalog to find the exact ID and type (telemetry vs clinical) of a biomarker.
         Use this tool BEFORE querying data if you are unsure of the exact ID or whether it is high-frequency telemetry.
 
@@ -140,9 +133,7 @@ def build(ctx: ToolContext) -> List[Any]:
                         "slug": b.slug,
                         "category": b.category,
                         "is_telemetry": b.is_telemetry,
-                        "preferred_unit": b.preferred_unit.symbol
-                        if b.preferred_unit
-                        else None,
+                        "preferred_unit": b.preferred_unit.symbol if b.preferred_unit else None,
                     }
                 )
             return json.dumps(summary)
@@ -178,10 +169,10 @@ def build(ctx: ToolContext) -> List[Any]:
     @tool
     async def get_aggregated_biomarker_trends(
         biomarker_id_or_slug: str,
-        start_date_iso: Optional[str] = None,
-        end_date_iso: Optional[str] = None,
+        start_date_iso: str | None = None,
+        end_date_iso: str | None = None,
         period: str = "last-30-days",
-        aggregation: Optional[str] = None,
+        aggregation: str | None = None,
         limit: int = 100,
     ) -> str:
         """Fetch historical, aggregated timeseries data for a biomarker (especially telemetry like heart rate or steps).
@@ -197,9 +188,7 @@ def build(ctx: ToolContext) -> List[Any]:
         end_date = None
         if start_date_iso:
             try:
-                start_date = datetime.fromisoformat(
-                    start_date_iso.replace("Z", "+00:00")
-                )
+                start_date = datetime.fromisoformat(start_date_iso.replace("Z", "+00:00"))
             except ValueError:
                 return "Invalid start_date_iso format. Use ISO 8601."
         if end_date_iso:
@@ -241,7 +230,7 @@ def build(ctx: ToolContext) -> List[Any]:
         if not target_data:
             # If exact match fails, return the first one if there is only one
             if len(trends) == 1:
-                target_data = list(trends.values())[0]
+                target_data = next(iter(trends.values()))
             else:
                 return json.dumps([])
 
@@ -272,9 +261,7 @@ def build(ctx: ToolContext) -> List[Any]:
         try:
             # Try by UUID first
             bio_uuid = UUID(biomarker_id_or_slug)
-            query = select(BiomarkerDefinition).where(
-                BiomarkerDefinition.id == bio_uuid
-            )
+            query = select(BiomarkerDefinition).where(BiomarkerDefinition.id == bio_uuid)
         except ValueError:
             # Try by slug
             query = select(BiomarkerDefinition).where(

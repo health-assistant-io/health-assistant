@@ -14,9 +14,8 @@ recorded, a Provenance row never changes. The Provenance-on-write hook
 from sqlalchemy import Column, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.models.base import Base, UUIDMixin, TenantMixin, TimestampMixin
+from app.models.base import Base, TenantMixin, TimestampMixin, UUIDMixin
 from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
-
 
 # HL7 v3 ProvenanceActivityType codes (the canonical "what happened" codes).
 # https://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType
@@ -77,8 +76,7 @@ class ProvenanceModel(Base, UUIDMixin, TenantMixin, TimestampMixin):
                 "resourceType": "Provenance",
                 "id": str(self.id) if self.id else None,
                 "target": self.target,
-                "recorded": fhir_isoformat(self.recorded)
-                or fhir_isoformat(self.created_at),
+                "recorded": fhir_isoformat(self.recorded) or fhir_isoformat(self.created_at),
                 "activity": self.activity,
                 "agent": self.agent,
                 "entity": self.entity,

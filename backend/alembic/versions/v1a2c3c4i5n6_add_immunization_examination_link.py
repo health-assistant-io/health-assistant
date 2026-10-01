@@ -9,9 +9,9 @@ Revises: n1o2t3i4f5y6
 Create Date: 2026-07-22
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "v1a2c3c4i5n6"
 down_revision = "n1o2t3i4f5y6"
@@ -21,9 +21,7 @@ depends_on = None
 
 def upgrade() -> None:
     with op.batch_alter_table("patient_immunizations", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("examination_id", sa.UUID(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("examination_id", sa.UUID(), nullable=True))
         batch_op.create_index(
             "ix_patient_immunizations_examination_id",
             ["examination_id"],

@@ -21,21 +21,20 @@ Resolution rule (unchanged behaviour):
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ai_provider_model import AITaskAssignment, AIScope
+from app.models.ai_provider_model import AIScope, AITaskAssignment
 
 
 async def resolve_active_assignment(
     db: AsyncSession,
     task_type: str,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-) -> Optional[AITaskAssignment]:
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> AITaskAssignment | None:
     """Resolve the active provider/model assignment for a task type.
 
     Order of specificity: USER > TENANT > SYSTEM (via ``scope.desc()``), then
@@ -51,13 +50,11 @@ async def resolve_active_assignment(
     conditions = [AITaskAssignment.scope == AIScope.SYSTEM]
     if tenant_id:
         conditions.append(
-            (AITaskAssignment.scope == AIScope.TENANT)
-            & (AITaskAssignment.tenant_id == tenant_id)
+            (AITaskAssignment.scope == AIScope.TENANT) & (AITaskAssignment.tenant_id == tenant_id)
         )
     if user_id:
         conditions.append(
-            (AITaskAssignment.scope == AIScope.USER)
-            & (AITaskAssignment.user_id == user_id)
+            (AITaskAssignment.scope == AIScope.USER) & (AITaskAssignment.user_id == user_id)
         )
     query = query.where(or_(*conditions))
 

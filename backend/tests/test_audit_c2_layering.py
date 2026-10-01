@@ -11,6 +11,7 @@ exceptions instead of ``HTTPException``) and deleted the router-layer
 silently return: no module under ``app/services/`` (or ``app/ai/``,
 ``app/workers/``, ``app/facade/``) may import from ``app.api.v1.endpoints``.
 """
+
 from __future__ import annotations
 
 import ast
@@ -47,12 +48,15 @@ def _imports_from_endpoints(source: str, module_file: Path) -> list[str]:
                     "app.api.v1.endpoints."
                 ):
                     hits.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and (
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and (
                 node.module == "app.api.v1.endpoints"
                 or node.module.startswith("app.api.v1.endpoints.")
-            ):
-                hits.append(node.module)
+            )
+        ):
+            hits.append(node.module)
     return hits
 
 
@@ -60,8 +64,7 @@ def _iter_python_files(roots: list[Path]):
     for root in roots:
         if not root.exists():
             continue
-        for path in root.rglob("*.py"):
-            yield path
+        yield from root.rglob("*.py")
 
 
 def test_access_module_defines_all_seven_helpers():
@@ -101,7 +104,9 @@ def test_no_lower_layer_imports_from_router(file: Path):
     hits = _imports_from_endpoints(source, file)
     # The access module's own docstring mentions the old path for historical
     # context — that's a string literal, not an import, so ast won't match it.
-    assert hits == [], f"{file.relative_to(_SERVICES_ROOT.parent.parent)} imports from router layer: {hits}"
+    assert hits == [], (
+        f"{file.relative_to(_SERVICES_ROOT.parent.parent)} imports from router layer: {hits}"
+    )
 
 
 def test_clinical_event_service_uses_access_module():

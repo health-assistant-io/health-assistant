@@ -11,8 +11,9 @@ Adding a new resource to the facade = register here + ensure the model has
 ``to_fhir_dict()`` + a converter exists in ``fhir_converter``. Typically <50 LOC.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, FrozenSet, List, Optional, Type
+from typing import Any
 
 
 @dataclass
@@ -20,25 +21,23 @@ class ResourceEntry:
     """Registration record for one FHIR resource type."""
 
     resource_type: str
-    model: Type[Any]
+    model: type[Any]
     to_fhir_dict_attr: str = "to_fhir_dict"
-    fhir_to_orm_fn: Optional[Callable] = None
-    search_params: FrozenSet[str] = field(default_factory=frozenset)
-    interactions: FrozenSet[str] = field(
-        default_factory=lambda: frozenset(
-            {"read", "search-type", "create", "update", "delete"}
-        )
+    fhir_to_orm_fn: Callable | None = None
+    search_params: frozenset[str] = field(default_factory=frozenset)
+    interactions: frozenset[str] = field(
+        default_factory=lambda: frozenset({"read", "search-type", "create", "update", "delete"})
     )
     versioned: bool = True
     soft_delete: bool = True
     # The reference path under ``/fhir/R4/`` (e.g. ``/Condition``).
-    path: Optional[str] = None
+    path: str | None = None
     # The tenant scoping strategy: 'tenant_id' (default) or 'none' (e.g. for
     # global catalog resources like Medication). 'patient' for patient-scoped only.
     tenant_scope: str = "tenant_id"
     # Optional additional filter to apply on every search (e.g. MedicationRequest
     # only sees rows where intent='order'). Use a SQLAlchemy lambda.
-    search_filter: Optional[Callable] = None
+    search_filter: Callable | None = None
     # Optional per-search-param predicate builder for resource-specific params
     # that the generic dispatcher in ``facade.crud._build_resource_filter``
     # cannot infer (typically because they require a join/EXISTS against another
@@ -47,7 +46,7 @@ class ResourceEntry:
     # falls through to the generic logic. This keeps model-specific knowledge in
     # the registry (where the model mapping already lives) instead of polluting
     # the generic crud layer.
-    param_filter: Optional[Callable] = None
+    param_filter: Callable | None = None
     # Optional custom read/search callables for "computed" resources that don't
     # map 1:1 to a single table (e.g. ``CodeSystem``/``ValueSet`` which project
     # from the ``concepts`` table as a single aggregate resource). When set, the
@@ -55,8 +54,8 @@ class ResourceEntry:
     # path. Signatures:
     #   read_fn(db, resource_id, current_user) -> dict | None
     #   search_fn(db, query_params, current_user, base_url) -> dict (Bundle)
-    read_fn: Optional[Callable] = None
-    search_fn: Optional[Callable] = None
+    read_fn: Callable | None = None
+    search_fn: Callable | None = None
 
     @property
     def route_path(self) -> str:
@@ -67,7 +66,7 @@ class _ResourceRegistry:
     """Mutable registry, accessed via :data:`RESOURCE_REGISTRY`."""
 
     def __init__(self) -> None:
-        self._entries: Dict[str, ResourceEntry] = {}
+        self._entries: dict[str, ResourceEntry] = {}
 
     def register(self, entry: ResourceEntry) -> ResourceEntry:
         if entry.resource_type in self._entries:
@@ -75,14 +74,14 @@ class _ResourceRegistry:
         self._entries[entry.resource_type] = entry
         return entry
 
-    def get(self, resource_type: str) -> Optional[ResourceEntry]:
+    def get(self, resource_type: str) -> ResourceEntry | None:
         return self._entries.get(resource_type)
 
-    def all(self) -> List[ResourceEntry]:
+    def all(self) -> list[ResourceEntry]:
         # Stable order by resource_type for CapabilityStatement determinism.
         return sorted(self._entries.values(), key=lambda e: e.resource_type)
 
-    def types(self) -> List[str]:
+    def types(self) -> list[str]:
         return sorted(self._entries.keys())
 
     def __contains__(self, resource_type: str) -> bool:
@@ -109,17 +108,16 @@ def register_all() -> None:
     from app.models.concept_model import Concept
     from app.models.doctor_model import DoctorModel
     from app.models.document_model import DocumentModel
+    from app.models.enums import MedicationIntent
     from app.models.examination_model import ExaminationModel
     from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
     from app.models.fhir.communication import CommunicationModel
     from app.models.fhir.device import DeviceModel
     from app.models.fhir.medication import Medication, MedicationCatalog
-    from app.models.fhir.vaccine import PatientImmunization
     from app.models.fhir.organization import OrganizationModel
     from app.models.fhir.patient import DiagnosticReport, Observation, Patient
     from app.models.fhir.provenance import ProvenanceModel
-    from app.models.enums import MedicationIntent
-
+    from app.models.fhir.vaccine import PatientImmunization
     from app.services.fhir_converter import (
         fhir_to_allergy_orm,
         fhir_to_communication_orm,
@@ -147,7 +145,8 @@ def register_all() -> None:
     # the generic crud builder. Returns None to defer to the generic builder
     # for any other param.
     def _condition_param_filter(model, key: str, value: str):
-        from sqlalchemy import exists, select as _select
+        from sqlalchemy import exists
+        from sqlalchemy import select as _select
 
         from app.models.clinical_event import (
             ClinicalEventType,
@@ -198,7 +197,8 @@ def register_all() -> None:
         ``?status=finished`` would compare against the raw 'RESOLVED' value and
         match nothing.
         """
-        from sqlalchemy import func, String as _SAString
+        from sqlalchemy import String as _SAString
+        from sqlalchemy import func
 
         base_key = key.split(":", 1)[0]
         if base_key == "status":

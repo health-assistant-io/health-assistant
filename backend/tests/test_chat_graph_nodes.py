@@ -94,9 +94,7 @@ async def test_update_state_mid_flow_on_paused_run():
         async def astream(self, history):
             yield AIMessageChunk(
                 content="",
-                tool_call_chunks=[
-                    {"name": "ask_user", "args": "", "id": "c1", "index": None}
-                ],
+                tool_call_chunks=[{"name": "ask_user", "args": "", "id": "c1", "index": None}],
             )
 
     ask_tool = MagicMock()
@@ -139,8 +137,7 @@ async def test_update_state_mid_flow_on_paused_run():
         config,
         {
             "pending_interrupt": None,
-            "history": snapshot.values["history"]
-            + [HumanMessage("resume answer: 500mg")],
+            "history": snapshot.values["history"] + [HumanMessage("resume answer: 500mg")],
         },
         as_node="await_user",
     )

@@ -1,3 +1,4 @@
+# ruff: noqa: F401 -- side-effect registration imports (see docstring)
 """Unified Instance Search — package init.
 
 Patient-scoped clinical records (examinations, medications, observations,
@@ -20,12 +21,24 @@ single endpoint chokepoint can't be bypassed per-entity.
 # registry (side effect). Done here so any importer of the package (the
 # dispatcher service, the endpoint, tests) gets the full set registered. Each
 # module imports only sibling/standard modules, so there is no import cycle.
-from app.instances import (  # noqa: F401 (side-effect registration)
-    examination as _examination,
-    medication as _medication,
-    observation as _observation,
-    document as _document,
-    event as _event,
+from app.instances import (
     allergy as _allergy,
+)
+from app.instances import (
+    document as _document,
+)
+from app.instances import (
+    event as _event,
+)
+from app.instances import (
+    examination as _examination,
+)
+from app.instances import (
+    medication as _medication,
+)
+from app.instances import (
+    observation as _observation,
+)
+from app.instances import (
     vaccine as _vaccine,
 )

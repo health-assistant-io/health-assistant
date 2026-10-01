@@ -149,7 +149,7 @@ Generated files are written to `UPLOAD_DIR/exports/<tenant_id>/`. There is no au
 
 ## 8. Adding it to a new deployment
 
-`fhir.resources` is in `backend/requirements.txt`. The migration `2f60048dd5ec_add_export_import_jobs_tables` creates the `export_jobs` and `import_jobs` tables. Run `alembic upgrade head` after pulling.
+`fhir.resources` is in `backend/pyproject.toml`. The migration `2f60048dd5ec_add_export_import_jobs_tables` creates the `export_jobs` and `import_jobs` tables. Run `alembic upgrade head` after pulling.
 
 ---
 

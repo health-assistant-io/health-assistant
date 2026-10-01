@@ -1,33 +1,32 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, UploadFile
-from fastapi.responses import FileResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models.user_model import UserModel
+from app.core.security import RoleChecker, get_current_user
 from app.models.concept_model import Concept
+from app.models.enums import ConceptRelationType
+from app.models.user_model import Role, UserModel
 from app.schemas.anatomy import (
-    AnatomyStructureResponse,
-    AnatomyStructureCreate,
-    AnatomyStructureUpdate,
-    AnatomyRelationCreate,
-    AnatomyRelationResponse,
+    AnatomyFigureResponse,
     AnatomyGraphNode,
+    AnatomyGraphResponse,
     AnatomyListResponse,
     AnatomyRelatedResponse,
-    AnatomyGraphResponse,
-    AnatomyFigureResponse,
+    AnatomyRelationCreate,
+    AnatomyRelationResponse,
+    AnatomyStructureCreate,
+    AnatomyStructureResponse,
+    AnatomyStructureUpdate,
 )
 from app.schemas.anatomy_import import AnatomyImportPayload
-from app.models.enums import ConceptRelationType
-from app.models.user_model import Role
 from app.services import anatomy_service
 from app.services.anatomy_import_service import AnatomyImportService
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-from app.core.security import RoleChecker
 
 router = APIRouter()
 
@@ -48,14 +47,14 @@ def _ext_for(upload: UploadFile) -> str:
 
 @router.get("", response_model=AnatomyListResponse)
 async def list_anatomy_structures(
-    class_concept_id: Optional[UUID] = None,
-    class_: Optional[str] = Query(
+    class_concept_id: UUID | None = None,
+    class_: str | None = Query(
         None,
         alias="class",
         description="Anatomy-class concept slug(s) to filter by, e.g. "
         "``organ`` or ``organ,organ-part``.",
     ),
-    search: Optional[str] = None,
+    search: str | None = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -103,9 +102,7 @@ async def create_anatomy_structure(
         db, structure_in.slug, current_user.tenant_id
     )
     if existing:
-        raise HTTPException(
-            status_code=400, detail="Structure with this slug already exists."
-        )
+        raise HTTPException(status_code=400, detail="Structure with this slug already exists.")
 
     return await anatomy_service.create_anatomy_structure(
         db,
@@ -175,9 +172,7 @@ async def get_anatomy_figure_source_image(
         raise HTTPException(status_code=404, detail="Figure not found")
     abspath = anatomy_service.figure_source_abspath(figure)
     if not abspath or not abspath.exists():
-        raise HTTPException(
-            status_code=404, detail="No source image stored for this figure"
-        )
+        raise HTTPException(status_code=404, detail="No source image stored for this figure")
     media = (
         "image/webp"
         if abspath.suffix == ".webp"
@@ -186,16 +181,14 @@ async def get_anatomy_figure_source_image(
     return FileResponse(str(abspath), media_type=media)
 
 
-@router.post(
-    "/figures", response_model=AnatomyFigureResponse, dependencies=[_admin_only]
-)
+@router.post("/figures", response_model=AnatomyFigureResponse, dependencies=[_admin_only])
 async def create_anatomy_figure(
     label: str = Form(...),
     figure_key: str = Form(...),
     view_key: str = Form(...),
     image: UploadFile = File(...),
-    slug: Optional[str] = Form(None),
-    source: Optional[UploadFile] = File(None),
+    slug: str | None = Form(None),
+    source: UploadFile | None = File(None),
     sort_order: int = Form(0),
     is_active: bool = Form(True),
     db: AsyncSession = Depends(get_db),
@@ -227,22 +220,20 @@ async def create_anatomy_figure(
             )
         ).to_dict()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
 
 
-@router.patch(
-    "/figures/{slug}", response_model=AnatomyFigureResponse, dependencies=[_admin_only]
-)
+@router.patch("/figures/{slug}", response_model=AnatomyFigureResponse, dependencies=[_admin_only])
 async def update_anatomy_figure(
     slug: str,
     db: AsyncSession = Depends(get_db),
-    label: Optional[str] = Form(None),
-    figure_key: Optional[str] = Form(None),
-    view_key: Optional[str] = Form(None),
-    sort_order: Optional[int] = Form(None),
-    is_active: Optional[bool] = Form(None),
-    image: Optional[UploadFile] = File(None),
-    source: Optional[UploadFile] = File(None),
+    label: str | None = Form(None),
+    figure_key: str | None = Form(None),
+    view_key: str | None = Form(None),
+    sort_order: int | None = Form(None),
+    is_active: bool | None = Form(None),
+    image: UploadFile | None = File(None),
+    source: UploadFile | None = File(None),
     clear_source: bool = Form(False),
 ) -> Any:
     """Update a figure (metadata and/or image). SYSTEM_ADMIN.
@@ -380,9 +371,7 @@ async def create_anatomy_relation(
     )
 
     if not source or not target:
-        raise HTTPException(
-            status_code=404, detail="Source or Target structure not found"
-        )
+        raise HTTPException(status_code=404, detail="Source or Target structure not found")
 
     edge = await anatomy_service.create_relation(db, relation_in)
     return {
@@ -396,7 +385,7 @@ async def create_anatomy_relation(
 @router.get("/{identifier}/related", response_model=AnatomyRelatedResponse)
 async def get_related(
     identifier: str,
-    relation_type: Optional[ConceptRelationType] = None,
+    relation_type: ConceptRelationType | None = None,
     direction: str = Query("both", pattern="^(both|outgoing|incoming)$"),
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
@@ -439,7 +428,7 @@ async def get_related(
 async def get_anatomy_graph(
     identifier: str,
     depth: int = Query(1, ge=1, le=3),
-    relation_type: Optional[ConceptRelationType] = None,
+    relation_type: ConceptRelationType | None = None,
     direction: str = Query("both", pattern="^(both|outgoing|incoming)$"),
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
@@ -482,7 +471,7 @@ async def get_anatomy_graph(
 async def import_anatomy_graph(
     payload: AnatomyImportPayload,
     db: AsyncSession = Depends(get_db),
-    _: UserModel = Depends(RoleChecker([Role.SYSTEM_ADMIN])),
+    _: UserModel = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
 ) -> Any:
     """
     Import an Anatomy Graph (nodes and edges) from JSON.

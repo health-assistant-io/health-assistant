@@ -1,9 +1,11 @@
 import json
-from uuid import UUID
-from datetime import datetime, date
-from typing import AsyncGenerator
 import logging
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from collections.abc import AsyncGenerator
+from datetime import date, datetime
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ class DatabaseUnavailableError(DatabaseError):
 
 # Create engine with error handling
 try:
+    assert settings.DATABASE_URL, "HA_DATABASE_URL must be configured"
     engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
@@ -47,14 +50,12 @@ try:
         echo=settings.DEBUG,
         json_serializer=json_serializer,
     )
-    AsyncSessionLocal = async_sessionmaker(
-        bind=engine, class_=AsyncSession, expire_on_commit=False
-    )
+    AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     DATABASE_AVAILABLE = True
 except Exception as e:
     logger.error(f"Could not initialize database engine: {e}")
-    engine = None
-    AsyncSessionLocal = None
+    engine = None  # type: ignore[assignment]  # fail-soft; DATABASE_AVAILABLE gates use
+    AsyncSessionLocal = None  # type: ignore[assignment]  # fail-soft; DATABASE_AVAILABLE gates use
     DATABASE_AVAILABLE = False
 
 

@@ -1,17 +1,21 @@
 from sqlalchemy import (
-    Column,
-    String,
     Boolean,
-    Text,
-    Integer,
+    Column,
     ForeignKey,
-    Enum as SQLEnum,
     Index,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
-from app.models.enums import CodingSystem, CatalogScope
+
+from app.models.base import AuditMixin, Base, TenantMixin, TimestampMixin, UUIDMixin
+from app.models.enums import CatalogScope, CodingSystem
 
 
 class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
@@ -71,14 +75,10 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
             "id": str(self.id),
             "name": self.name,
             "slug": self.slug,
-            "class_concept_id": str(self.class_concept_id)
-            if self.class_concept_id
-            else None,
+            "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
             "class_concept_slug": self.class_concept_slug,
             "class_concept_name": self.class_concept_name,
-            "standard_system": self.standard_system.value
-            if self.standard_system
-            else None,
+            "standard_system": self.standard_system.value if self.standard_system else None,
             "standard_code": self.standard_code,
             "description": self.description,
             "is_custom": self.is_custom,

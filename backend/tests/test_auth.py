@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock
+
 from app.models.enums import Role
 
 from ._auth_helpers import create_user
@@ -21,9 +23,7 @@ async def mock_user():
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
-async def test_login_success(
-    mock_get_user_by_email, async_client: AsyncClient, mock_user
-):
+async def test_login_success(mock_get_user_by_email, async_client: AsyncClient, mock_user):
     mock_get_user_by_email.return_value = mock_user
 
     response = await async_client.post(
@@ -43,9 +43,7 @@ async def test_login_success(
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.auth.get_user_by_email")
 @pytest.mark.contract  # §18.10 — generic login error (wrong password)
-async def test_login_wrong_password(
-    mock_get_user_by_email, async_client: AsyncClient, mock_user
-):
+async def test_login_wrong_password(mock_get_user_by_email, async_client: AsyncClient, mock_user):
     mock_get_user_by_email.return_value = mock_user
 
     response = await async_client.post(
@@ -121,8 +119,8 @@ async def test_setup_success(
         def add(self, obj):
             created_users.append(obj)
 
-    from app.main import app
     from app.core.database import get_db
+    from app.main import app
 
     fake_db = _FakeDB()
     app.dependency_overrides[get_db] = lambda: fake_db

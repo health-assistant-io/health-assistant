@@ -2,6 +2,7 @@
 (plan Step 3). Confirms the seed loads all expected states, is idempotent,
 and reconciles mutable fields on re-run.
 """
+
 import pytest
 from sqlalchemy import select, text
 
@@ -39,14 +40,7 @@ async def test_seed_biomarker_states_loads_catalog():
     assert stats["added"] + stats["updated"] >= 22
 
     async with AsyncSessionLocal() as session:
-        rows = (
-            (
-                await session.execute(
-                    select(BiomarkerState.code, BiomarkerState.system)
-                )
-            )
-            .all()
-        )
+        rows = (await session.execute(select(BiomarkerState.code, BiomarkerState.system))).all()
         present = {(r[0], r[1]) for r in rows}
         missing = EXPECTED_CORE_STATES - present
         assert not missing, f"Missing canonical states: {missing}"
@@ -63,9 +57,7 @@ async def test_seed_biomarker_states_is_idempotent():
     assert second["updated"] >= 22
 
     async with AsyncSessionLocal() as session:
-        total = (
-            await session.execute(text("SELECT COUNT(*) FROM biomarker_states"))
-        ).scalar()
+        total = (await session.execute(text("SELECT COUNT(*) FROM biomarker_states"))).scalar()
         # Each (code, system) appears exactly once.
         assert total == second["updated"], (
             f"row count {total} != updated count {second['updated']} — duplicate inserts?"
@@ -79,11 +71,7 @@ async def test_seed_reconciles_mutable_fields():
     async with AsyncSessionLocal() as session:
         # Mutate a row away from the seed value
         row = (
-            await session.execute(
-                select(BiomarkerState).where(
-                    BiomarkerState.slug == "positive"
-                )
-            )
+            await session.execute(select(BiomarkerState).where(BiomarkerState.slug == "positive"))
         ).scalar_one()
         original_display = row.display
         row.display = "__mutated_for_test__"
@@ -94,13 +82,8 @@ async def test_seed_reconciles_mutable_fields():
 
     async with AsyncSessionLocal() as session:
         row = (
-            await session.execute(
-                select(BiomarkerState).where(
-                    BiomarkerState.slug == "positive"
-                )
-            )
+            await session.execute(select(BiomarkerState).where(BiomarkerState.slug == "positive"))
         ).scalar_one()
         assert row.display == original_display, (
-            f"seed did not reconcile display; got {row.display!r}, "
-            f"expected {original_display!r}"
+            f"seed did not reconcile display; got {row.display!r}, expected {original_display!r}"
         )

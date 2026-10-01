@@ -10,14 +10,14 @@ B4: Global 500 handler returned {"detail": str(exc)} to clients — leaked
 
 B9: fetch-external-models had no RBAC and no SSRF guard on api_base.
 """
+
 import importlib
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
 TENANT_B = UUID("22222222-2222-2222-2222-222222222222")
@@ -45,6 +45,7 @@ def _override_user(user):
 
 def _clear_overrides():
     from app.main import app
+
     app.dependency_overrides = {}
 
 
@@ -70,8 +71,8 @@ def _make_provider(provider_id, scope, tenant_id=None, user_id=None, api_key="se
     p.company_name = None
     p.company_website = None
     p.company_country = None
-    p.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    p.updated_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    p.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    p.updated_at = datetime(2026, 1, 1, tzinfo=UTC)
     p.to_dict = lambda: {
         "id": str(p.id),
         "scope": scope.value if hasattr(scope, "value") else scope,
@@ -111,9 +112,7 @@ async def test_global_exception_handler_no_detail_in_prod(monkeypatch):
     response = await global_exception_handler(request, exc)
     assert response.status_code == 500
     body = response.body.decode() if hasattr(response, "body") else ""
-    assert "hunter2" not in body, (
-        "Production 500 response leaked internal exception detail"
-    )
+    assert "hunter2" not in body, "Production 500 response leaked internal exception detail"
     assert "correlation_id" in body, "Missing correlation_id in 500 response"
 
 
@@ -127,6 +126,7 @@ async def test_global_exception_handler_includes_correlation_id(monkeypatch):
     response = await global_exception_handler(MagicMock(), ValueError("x"))
     body = response.body.decode()
     import json
+
     payload = json.loads(body)
     assert "correlation_id" in payload
     # Must be a UUID (correlatable)
@@ -158,18 +158,16 @@ async def test_get_provider_rejects_cross_tenant_user(async_client):
     try:
         provider_b = _make_provider(
             uuid4(),
-            scope="TENANT" if False else __import__(
-                "app.models.enums", fromlist=["AIScope"]
-            ).AIScope.TENANT,
+            scope="TENANT"
+            if False
+            else __import__("app.models.enums", fromlist=["AIScope"]).AIScope.TENANT,
             tenant_id=TENANT_B,
         )
         with patch(
             "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
             new=AsyncMock(return_value=provider_b),
         ):
-            response = await async_client.get(
-                f"/api/v1/ai-config/providers/{provider_b.id}"
-            )
+            response = await async_client.get(f"/api/v1/ai-config/providers/{provider_b.id}")
         assert response.status_code == 403, response.text
     finally:
         _clear_overrides()
@@ -190,9 +188,7 @@ async def test_get_provider_rejects_other_users_personal_key(async_client):
             "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
             new=AsyncMock(return_value=provider_b),
         ):
-            response = await async_client.get(
-                f"/api/v1/ai-config/providers/{provider_b.id}"
-            )
+            response = await async_client.get(f"/api/v1/ai-config/providers/{provider_b.id}")
         assert response.status_code == 403
         assert "user-b-secret" not in response.text
     finally:
@@ -214,9 +210,7 @@ async def test_get_provider_allows_owner(async_client):
             "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
             new=AsyncMock(return_value=provider_a),
         ):
-            response = await async_client.get(
-                f"/api/v1/ai-config/providers/{provider_a.id}"
-            )
+            response = await async_client.get(f"/api/v1/ai-config/providers/{provider_a.id}")
         assert response.status_code == 200, response.text
     finally:
         _clear_overrides()
@@ -230,16 +224,12 @@ async def test_get_provider_allows_system_admin(async_client):
     admin = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="SYSTEM_ADMIN")
     _override_user(admin)
     try:
-        provider_b = _make_provider(
-            uuid4(), scope=AIScope.TENANT, tenant_id=TENANT_B
-        )
+        provider_b = _make_provider(uuid4(), scope=AIScope.TENANT, tenant_id=TENANT_B)
         with patch(
             "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
             new=AsyncMock(return_value=provider_b),
         ):
-            response = await async_client.get(
-                f"/api/v1/ai-config/providers/{provider_b.id}"
-            )
+            response = await async_client.get(f"/api/v1/ai-config/providers/{provider_b.id}")
         assert response.status_code == 200, response.text
     finally:
         _clear_overrides()
@@ -253,15 +243,16 @@ async def test_get_provider_with_models_rejects_cross_tenant(async_client):
     user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
     _override_user(user_a)
     try:
-        provider_b = _make_provider(
-            uuid4(), scope=AIScope.TENANT, tenant_id=TENANT_B
-        )
-        with patch(
-            "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
-            new=AsyncMock(return_value=provider_b),
-        ), patch(
-            "app.api.v1.endpoints.ai_config.AIProviderService.get_models",
-            new=AsyncMock(return_value=[]),
+        provider_b = _make_provider(uuid4(), scope=AIScope.TENANT, tenant_id=TENANT_B)
+        with (
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
+                new=AsyncMock(return_value=provider_b),
+            ),
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_models",
+                new=AsyncMock(return_value=[]),
+            ),
         ):
             response = await async_client.get(
                 f"/api/v1/ai-config/providers/{provider_b.id}/with-models"
@@ -279,9 +270,7 @@ async def test_get_model_rejects_cross_user(async_client):
     user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
     _override_user(user_a)
     try:
-        provider_b = _make_provider(
-            uuid4(), scope=AIScope.USER, user_id=USER_B
-        )
+        provider_b = _make_provider(uuid4(), scope=AIScope.USER, user_id=USER_B)
         model = MagicMock()
         model.id = uuid4()
         model.provider_id = provider_b.id
@@ -308,7 +297,9 @@ async def test_fetch_external_models_rejects_non_scoped_user(async_client):
     _override_user(user_a)
     try:
         provider_b = _make_provider(
-            uuid4(), scope=AIScope.USER, user_id=USER_B,
+            uuid4(),
+            scope=AIScope.USER,
+            user_id=USER_B,
             api_key="not-yours",
         )
         # api_base must be a public host so we don't trip the SSRF guard
@@ -336,9 +327,7 @@ async def test_fetch_external_models_ssrf_guard(monkeypatch, async_client):
     admin = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="SYSTEM_ADMIN")
     _override_user(admin)
     try:
-        provider = _make_provider(
-            uuid4(), scope=AIScope.SYSTEM, tenant_id=None, user_id=None
-        )
+        provider = _make_provider(uuid4(), scope=AIScope.SYSTEM, tenant_id=None, user_id=None)
         provider.api_base = "http://127.0.0.1:8087/admin"  # loopback
         with patch(
             "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
@@ -363,9 +352,7 @@ def test_get_provider_endpoint_calls_verify_provider_access():
 
     Catches accidental removal of the scope check at source level.
     """
-    src = inspect.getsource(
-        importlib.import_module("app.api.v1.endpoints.ai_config")
-    )
+    src = inspect.getsource(importlib.import_module("app.api.v1.endpoints.ai_config"))
     # Every entry point that loads a provider must call verify_*_access.
     for fn_name in (
         "async def get_provider(",
@@ -382,6 +369,4 @@ def test_get_provider_endpoint_calls_verify_provider_access():
     # Count verify_provider_access / verify_model_access calls — at least 8
     # (one per endpoint above).
     calls = src.count("verify_provider_access(") + src.count("verify_model_access(")
-    assert calls >= 7, (
-        f"Expected at least 7 verify_*_access calls in ai_config.py, found {calls}"
-    )
+    assert calls >= 7, f"Expected at least 7 verify_*_access calls in ai_config.py, found {calls}"

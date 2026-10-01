@@ -14,9 +14,10 @@ ai-presets.json.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from app.ai.providers.enums import ProviderType
+
 from .presets_data import KEY_PREFIX_HINTS as _KEY_PREFIX_HINT_DATA
 from .presets_data import PRESET_ORDER as _PRESET_ORDER
 from .presets_data import PRESETS as _PRESET_DATA
@@ -75,7 +76,7 @@ def is_preset_key(key: str) -> bool:
     return key in SETUP_PRESETS
 
 
-def guess_preset_for_key(api_key: str | None) -> Optional[str]:
+def guess_preset_for_key(api_key: str | None) -> str | None:
     """Most-specific-first vendor guess from the key prefix (§15 hints)."""
     trimmed = (api_key or "").strip()
     if not trimmed:

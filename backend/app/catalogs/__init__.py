@@ -7,6 +7,7 @@ the registry with every registered catalog via
 See ``dev/plans/unified-catalog-architecture-2026-07-08.md``.
 """
 
+from app.catalogs import registrations  # noqa: F401 — populates the registry
 from app.catalogs.descriptors import CatalogDescriptor
 from app.catalogs.policy import (
     DEFAULT_CATALOG_POLICY,
@@ -19,9 +20,9 @@ from app.catalogs.protocol import (
     ConceptLink,
 )
 from app.catalogs.registry import CatalogRegistry
-from app.catalogs import registrations  # noqa: F401 — populates the registry
 
 __all__ = [
+    "DEFAULT_CATALOG_POLICY",
     "CatalogAccessPolicy",
     "CatalogDescriptor",
     "CatalogPermissionDenied",
@@ -29,5 +30,4 @@ __all__ = [
     "CatalogServiceProtocol",
     "CatalogUiMeta",
     "ConceptLink",
-    "DEFAULT_CATALOG_POLICY",
 ]

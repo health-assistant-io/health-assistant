@@ -1,37 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List, Dict, Any
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
+from typing import Any
 from uuid import UUID
 
-from app.core.database import get_db
-from app.core.config import settings
-from app.ai.providers.service import AIProviderService
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.ai.providers import setup as byok_setup
+from app.ai.providers.service import AIProviderService
 from app.ai.schemas.config import (
-    AIProviderCreate,
-    AIProviderUpdate,
-    AIProviderResponse,
-    AIModelCreate,
-    AIModelUpdate,
-    AIModelResponse,
-    AITaskAssignmentCreate,
-    AITaskAssignmentUpdate,
-    AITaskAssignmentResponse,
-    AIProviderWithModelsResponse,
     AIConfigSummary,
     AIConfigUpdate,
-    ProviderSetupRequest,
-    ProviderSetupResponse,
+    AIModelCreate,
+    AIModelResponse,
+    AIModelUpdate,
+    AIProviderCreate,
+    AIProviderResponse,
+    AIProviderUpdate,
+    AIProviderWithModelsResponse,
+    AITaskAssignmentCreate,
+    AITaskAssignmentResponse,
+    AITaskAssignmentUpdate,
+    ProviderPresetResponse,
+    ProviderPresetsResponse,
     ProviderSetDefaultRequest,
     ProviderSetDefaultResponse,
-    ProviderPresetsResponse,
-    ProviderPresetResponse,
+    ProviderSetupRequest,
+    ProviderSetupResponse,
 )
+from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.user import TokenData
 from app.models.ai_provider_model import AIScope
 from app.models.enums import Role
-
+from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/ai-config", tags=["AI Configuration"])
 
@@ -39,8 +39,8 @@ router = APIRouter(prefix="/ai-config", tags=["AI Configuration"])
 def check_scope_access(
     scope: AIScope,
     current_user: TokenData,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
 ):
     """Verify if the user has access to a specific configuration scope"""
     if scope == AIScope.SYSTEM:
@@ -54,22 +54,18 @@ def check_scope_access(
             raise HTTPException(
                 status_code=403, detail="Only admins can manage tenant configuration"
             )
-        if current_user.role == Role.ADMIN.value and str(tenant_id) != str(
-            current_user.tenant_id
-        ):
+        if current_user.role == Role.ADMIN.value and str(tenant_id) != str(current_user.tenant_id):
             raise HTTPException(
                 status_code=403, detail="Cannot manage configuration for another tenant"
             )
-    elif scope == AIScope.USER:
-        if (
-            str(user_id) != str(current_user.user_id)
-            and current_user.role != Role.SYSTEM_ADMIN.value
-        ):
-            # Standard admins can't even see other users' personal keys
-            raise HTTPException(
-                status_code=403,
-                detail="Not authorized to manage this user's configuration",
-            )
+    elif scope == AIScope.USER and (
+        str(user_id) != str(current_user.user_id) and current_user.role != Role.SYSTEM_ADMIN.value
+    ):
+        # Standard admins can't even see other users' personal keys
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to manage this user's configuration",
+        )
 
 
 def verify_provider_access(provider, current_user: TokenData) -> None:
@@ -97,9 +93,7 @@ def verify_model_access(model, provider, current_user: TokenData) -> None:
 
 
 # Provider endpoints
-@router.post(
-    "/providers", response_model=AIProviderResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/providers", response_model=AIProviderResponse, status_code=status.HTTP_201_CREATED)
 async def create_provider(
     provider_data: AIProviderCreate,
     db: AsyncSession = Depends(get_db),
@@ -125,13 +119,13 @@ async def create_provider(
     return AIProviderResponse.model_validate(provider)
 
 
-@router.get("/providers", response_model=List[AIProviderResponse])
+@router.get("/providers", response_model=list[AIProviderResponse])
 async def get_providers(
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-    scope: Optional[AIScope] = None,
-    is_active: Optional[bool] = True,
-    include_models: Optional[bool] = False,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+    scope: AIScope | None = None,
+    is_active: bool | None = True,
+    include_models: bool | None = False,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -192,9 +186,7 @@ async def get_provider(
     return AIProviderResponse.model_validate(provider)
 
 
-@router.get(
-    "/providers/{provider_id}/with-models", response_model=AIProviderWithModelsResponse
-)
+@router.get("/providers/{provider_id}/with-models", response_model=AIProviderWithModelsResponse)
 async def get_provider_with_models(
     provider_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -324,10 +316,10 @@ async def create_model(
     return AIModelResponse.model_validate(model)
 
 
-@router.get("/providers/{provider_id}/models", response_model=List[AIModelResponse])
+@router.get("/providers/{provider_id}/models", response_model=list[AIModelResponse])
 async def get_models_for_provider(
     provider_id: UUID,
-    is_active: Optional[bool] = True,
+    is_active: bool | None = True,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -447,13 +439,13 @@ async def create_task_assignment(
     return AITaskAssignmentResponse.model_validate(assignment)
 
 
-@router.get("/task-assignments", response_model=List[AITaskAssignmentResponse])
+@router.get("/task-assignments", response_model=list[AITaskAssignmentResponse])
 async def get_task_assignments(
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-    scope: Optional[AIScope] = None,
-    task_type: Optional[str] = None,
-    is_active: Optional[bool] = True,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+    scope: AIScope | None = None,
+    task_type: str | None = None,
+    is_active: bool | None = True,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -485,9 +477,7 @@ async def get_task_assignments(
     return [AITaskAssignmentResponse.model_validate(a) for a in assignments]
 
 
-@router.get(
-    "/task-assignments/{assignment_id}", response_model=AITaskAssignmentResponse
-)
+@router.get("/task-assignments/{assignment_id}", response_model=AITaskAssignmentResponse)
 async def get_task_assignment(
     assignment_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -510,9 +500,7 @@ async def get_task_assignment(
     return AITaskAssignmentResponse.model_validate(assignment)
 
 
-@router.put(
-    "/task-assignments/{assignment_id}", response_model=AITaskAssignmentResponse
-)
+@router.put("/task-assignments/{assignment_id}", response_model=AITaskAssignmentResponse)
 async def update_task_assignment(
     assignment_id: UUID,
     assignment_data: AITaskAssignmentUpdate,
@@ -556,9 +544,7 @@ async def update_task_assignment(
     return AITaskAssignmentResponse.model_validate(updated)
 
 
-@router.delete(
-    "/task-assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/task-assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task_assignment(
     assignment_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -582,13 +568,11 @@ async def delete_task_assignment(
     return None
 
 
-@router.get(
-    "/task-assignments/active/{task_type}", response_model=AITaskAssignmentResponse
-)
+@router.get("/task-assignments/active/{task_type}", response_model=AITaskAssignmentResponse)
 async def get_active_task_assignment(
     task_type: str,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -604,9 +588,7 @@ async def get_active_task_assignment(
     )
 
     if not assignment:
-        raise HTTPException(
-            status_code=404, detail="No active assignment found for task type"
-        )
+        raise HTTPException(status_code=404, detail="No active assignment found for task type")
 
     return AITaskAssignmentResponse.model_validate(assignment)
 
@@ -614,9 +596,9 @@ async def get_active_task_assignment(
 # Summary endpoint
 @router.get("/summary", response_model=AIConfigSummary)
 async def get_config_summary(
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-    scope: Optional[AIScope] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+    scope: AIScope | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -646,8 +628,8 @@ async def get_config_summary(
 @router.put("/settings", status_code=status.HTTP_204_NO_CONTENT)
 async def update_ai_settings(
     config_data: AIConfigUpdate,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
     scope: AIScope = AIScope.TENANT,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -675,11 +657,11 @@ async def update_ai_settings(
     return None
 
 
-@router.get("/default-for-task/{task_type}", response_model=Dict[str, Any])
+@router.get("/default-for-task/{task_type}", response_model=dict[str, Any])
 async def get_default_for_task(
     task_type: str,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -694,14 +676,10 @@ async def get_default_for_task(
     )
 
     if not assignment:
-        raise HTTPException(
-            status_code=404, detail="No active assignment found for task type"
-        )
+        raise HTTPException(status_code=404, detail="No active assignment found for task type")
 
     provider = await service.get_provider(assignment.provider_id)
-    model = (
-        await service.get_model(assignment.model_id) if assignment.model_id else None
-    )
+    model = await service.get_model(assignment.model_id) if assignment.model_id else None
 
     return {
         "provider": AIProviderResponse.model_validate(provider),
@@ -751,7 +729,7 @@ async def list_provider_presets():
     )
 
 
-def _scope_context(scope: AIScope, current_user: TokenData) -> Dict[str, Any]:
+def _scope_context(scope: AIScope, current_user: TokenData) -> dict[str, Any]:
     """The (tenant_id, user_id) pair the requested scope binds to.
 
     Mirrors ``create_provider``: SYSTEM rows carry neither id, TENANT rows
@@ -859,6 +837,4 @@ async def set_provider_default(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    return ProviderSetDefaultResponse(
-        task=body.task, model=AIModelResponse.model_validate(model)
-    )
+    return ProviderSetDefaultResponse(task=body.task, model=AIModelResponse.model_validate(model))

@@ -1,16 +1,15 @@
-from typing import List, Optional
-from uuid import UUID
 import logging
-from sqlalchemy import select, update, delete, and_
+from uuid import UUID
+
+from sqlalchemy import and_, delete, select, update
+
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.models.patient_layout import PatientLayoutModel
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
 
-async def get_patient_layouts(
-    user_id: UUID, patient_id: UUID
-) -> List[PatientLayoutModel]:
+async def get_patient_layouts(user_id: UUID, patient_id: UUID) -> list[PatientLayoutModel]:
     """Get all layouts for a user-patient pair"""
     if not DATABASE_AVAILABLE:
         return []
@@ -29,9 +28,7 @@ async def get_patient_layouts(
         return list(result.scalars().all())
 
 
-async def get_active_layout(
-    user_id: UUID, patient_id: UUID
-) -> Optional[PatientLayoutModel]:
+async def get_active_layout(user_id: UUID, patient_id: UUID) -> PatientLayoutModel | None:
     """Get the active (default) layout for a user-patient pair"""
     if not DATABASE_AVAILABLE:
         return None
@@ -117,7 +114,7 @@ async def create_patient_layout(
 
 async def update_patient_layout(
     layout_id: UUID, user_id: UUID, **kwargs
-) -> Optional[PatientLayoutModel]:
+) -> PatientLayoutModel | None:
     """Update an existing layout"""
     if not DATABASE_AVAILABLE:
         return None

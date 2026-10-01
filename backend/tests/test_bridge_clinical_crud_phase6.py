@@ -15,7 +15,6 @@ Each test seeds its own rows inside the shared ``bridge_with_two_patients``
 fixture (tenant + ADMIN owner + patient_a bound + patient_b unbound).
 """
 
-import datetime
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -124,9 +123,7 @@ async def bridge_with_two_patients():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -187,9 +184,7 @@ async def test_create_medication_returns_row_and_persists(bridge_with_two_patien
 
 
 @pytest.mark.asyncio
-async def test_create_medication_is_idempotent_on_external_id(
-    bridge_with_two_patients
-):
+async def test_create_medication_is_idempotent_on_external_id(bridge_with_two_patients):
     ctx = bridge_with_two_patients
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
@@ -202,17 +197,23 @@ async def test_create_medication_is_idempotent_on_external_id(
         "intent": "statement",
     }
     first = await provider.handle_api_request(
-        integration=integration, path="medications", method="POST",
+        integration=integration,
+        path="medications",
+        method="POST",
         request=_post_request(payload),
     )
     second = await provider.handle_api_request(
-        integration=integration, path="medications", method="POST",
+        integration=integration,
+        path="medications",
+        method="POST",
         request=_post_request(payload),
     )
     assert first["id"] == second["id"]
 
     listing = await provider.handle_api_request(
-        integration=integration, path="medications", method="GET",
+        integration=integration,
+        path="medications",
+        method="GET",
         request=_get_request(),
     )
     matches = [m for m in listing["data"] if m["external_id"] == external]
@@ -226,7 +227,9 @@ async def test_update_medication_mutates_fields(bridge_with_two_patients):
     provider = HealthAssistantBridgeProvider()
 
     created = await provider.handle_api_request(
-        integration=integration, path="medications", method="POST",
+        integration=integration,
+        path="medications",
+        method="POST",
         request=_post_request(
             {"code": {"text": "Atorvastatin"}, "status": "ACTIVE", "intent": "plan"}
         ),
@@ -248,7 +251,9 @@ async def test_delete_medication_soft_deletes(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="medications", method="POST",
+        integration=integration,
+        path="medications",
+        method="POST",
         request=_post_request(
             {"code": {"text": "Ibuprofen"}, "status": "ACTIVE", "intent": "statement"}
         ),
@@ -263,7 +268,9 @@ async def test_delete_medication_soft_deletes(bridge_with_two_patients):
 
     # GET must not list soft-deleted rows.
     listing = await provider.handle_api_request(
-        integration=integration, path="medications", method="GET",
+        integration=integration,
+        path="medications",
+        method="GET",
         request=_get_request(),
     )
     ids = [m["id"] for m in listing["data"]]
@@ -320,7 +327,9 @@ async def test_create_allergy_returns_row_and_persists(bridge_with_two_patients)
     external = f"alg-{uuid.uuid4()}"
 
     result = await provider.handle_api_request(
-        integration=integration, path="allergies", method="POST",
+        integration=integration,
+        path="allergies",
+        method="POST",
         request=_post_request(
             {
                 "id": external,
@@ -341,10 +350,10 @@ async def test_update_and_delete_allergy(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="allergies", method="POST",
-        request=_post_request(
-            {"code": {"text": "Latex"}, "category": "ENVIRONMENT"}
-        ),
+        integration=integration,
+        path="allergies",
+        method="POST",
+        request=_post_request({"code": {"text": "Latex"}, "category": "ENVIRONMENT"}),
     )
     updated = await provider.handle_api_request(
         integration=integration,
@@ -404,7 +413,9 @@ async def test_create_vaccine_returns_row_and_persists(bridge_with_two_patients)
     external = f"vac-{uuid.uuid4()}"
 
     result = await provider.handle_api_request(
-        integration=integration, path="vaccines", method="POST",
+        integration=integration,
+        path="vaccines",
+        method="POST",
         request=_post_request(
             {
                 "id": external,
@@ -424,7 +435,9 @@ async def test_update_and_delete_vaccine(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="vaccines", method="POST",
+        integration=integration,
+        path="vaccines",
+        method="POST",
         request=_post_request(
             {
                 "vaccine_code": {"text": "Influenza"},
@@ -488,7 +501,9 @@ async def test_create_clinical_event_returns_dict(bridge_with_two_patients):
     external = f"ce-{uuid.uuid4()}"
 
     result = await provider.handle_api_request(
-        integration=integration, path="clinical-events", method="POST",
+        integration=integration,
+        path="clinical-events",
+        method="POST",
         request=_post_request(
             {
                 "id": external,
@@ -514,7 +529,9 @@ async def test_update_clinical_event(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="clinical-events", method="POST",
+        integration=integration,
+        path="clinical-events",
+        method="POST",
         request=_post_request({"type_slug": "symptom", "title": "Cough"}),
     )
     updated = await provider.handle_api_request(
@@ -533,7 +550,9 @@ async def test_delete_clinical_event_soft_deletes(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="clinical-events", method="POST",
+        integration=integration,
+        path="clinical-events",
+        method="POST",
         request=_post_request({"type_slug": "symptom", "title": "Fatigue"}),
     )
     result = await provider.handle_api_request(
@@ -555,7 +574,9 @@ async def test_clinical_event_occurrence_logs(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="clinical-events", method="POST",
+        integration=integration,
+        path="clinical-events",
+        method="POST",
         request=_post_request({"type_slug": "symptom", "title": "Migraine"}),
     )
     occ = await provider.handle_api_request(
@@ -605,10 +626,10 @@ async def test_create_doctor_returns_row(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     result = await provider.handle_api_request(
-        integration=integration, path="doctors", method="POST",
-        request=_post_request(
-            {"name": "Dr. House", "specialty": "Diagnostics", "phone": "+1-555"}
-        ),
+        integration=integration,
+        path="doctors",
+        method="POST",
+        request=_post_request({"name": "Dr. House", "specialty": "Diagnostics", "phone": "+1-555"}),
     )
     assert result["name"] == "Dr. House"
     # ``specialty`` is a @property resolved from specialty_concept; without a
@@ -625,7 +646,9 @@ async def test_update_and_delete_doctor(bridge_with_two_patients):
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()
     created = await provider.handle_api_request(
-        integration=integration, path="doctors", method="POST",
+        integration=integration,
+        path="doctors",
+        method="POST",
         request=_post_request({"name": "Dr. Wilson"}),
     )
     updated = await provider.handle_api_request(
@@ -646,9 +669,7 @@ async def test_update_and_delete_doctor(bridge_with_two_patients):
 
 
 @pytest.mark.asyncio
-async def test_create_medication_rejects_missing_required_code(
-    bridge_with_two_patients
-):
+async def test_create_medication_rejects_missing_required_code(bridge_with_two_patients):
     """The MedicationRecordCreate schema requires ``code``; a missing field is
     a 400 — never a 500."""
     ctx = bridge_with_two_patients
@@ -656,6 +677,8 @@ async def test_create_medication_rejects_missing_required_code(
     provider = HealthAssistantBridgeProvider()
     with pytest.raises(ValueError):
         await provider.handle_api_request(
-            integration=integration, path="medications", method="POST",
+            integration=integration,
+            path="medications",
+            method="POST",
             request=_post_request({"dosage": "10mg"}),  # no code
         )

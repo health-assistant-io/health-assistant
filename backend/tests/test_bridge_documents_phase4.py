@@ -1,3 +1,4 @@
+# ruff: noqa: RUF003 -- long immutable strings / legacy patterns; reflow when touched
 """Phase 4 — DB-backed integration tests for the bridge document paths.
 
 Gold-standard cross-patient isolation + idempotent-upload coverage (the mock
@@ -36,11 +37,7 @@ async def bridge_with_two_patients():
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge Phase4 T.", slug=f"bp4-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge Phase4 T.", slug=f"bp4-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -106,9 +103,7 @@ async def bridge_with_two_patients():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -173,9 +168,7 @@ async def test_document_upload_is_idempotent_via_external_id(bridge_with_two_pat
     )
 
     assert first["external_id"] == client_id
-    assert first["id"] == second["id"], (
-        "re-upload of the same client id must be idempotent"
-    )
+    assert first["id"] == second["id"], "re-upload of the same client id must be idempotent"
 
 
 @pytest.mark.asyncio
@@ -507,7 +500,7 @@ async def test_documents_excludes_soft_deleted(bridge_with_two_patients):
         await db.execute(
             update(DocumentModel)
             .where(DocumentModel.id == upload["id"])
-            .values(deleted_at=datetime.datetime.now(datetime.timezone.utc))
+            .values(deleted_at=datetime.datetime.now(datetime.UTC))
         )
         await db.commit()
 

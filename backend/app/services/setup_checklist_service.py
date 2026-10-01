@@ -41,8 +41,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -63,8 +64,8 @@ from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
 from app.schemas.setup_checklist import (
-    ExtensionCatalogResponse,
     ExtensionCatalogItem,
+    ExtensionCatalogResponse,
     ExtensionOption,
     SetupChecklistResponse,
     StepResult,
@@ -76,12 +77,10 @@ from app.services.fhir_extensions import SUPPORTED_PATIENT_EXTENSIONS
 logger = logging.getLogger(__name__)
 
 
-StepEvaluator = Callable[
-    [AsyncSession, TokenData, Dict[str, Any]], Awaitable[StepResult]
-]
+StepEvaluator = Callable[[AsyncSession, TokenData, dict[str, Any]], Awaitable[StepResult]]
 
 
-SUPPORTED_ENTITIES: Tuple[str, ...] = ("patient",)
+SUPPORTED_ENTITIES: tuple[str, ...] = ("patient",)
 
 
 def _step(
@@ -89,10 +88,10 @@ def _step(
     title_i18n_key: str,
     kind: str,
     *,
-    entity: Optional[str] = None,
+    entity: str | None = None,
     completed: bool = False,
     optional: bool = False,
-    payload_hint: Optional[Dict[str, Any]] = None,
+    payload_hint: dict[str, Any] | None = None,
 ) -> StepResult:
     return StepResult(
         id=step_id,
@@ -122,7 +121,7 @@ def _step(
 MANUAL_COMPLETE_KEY = "setup.manual_complete"
 
 
-def _manual_scope_key(entity: Optional[str], entity_id: Optional[UUID | str]) -> str:
+def _manual_scope_key(entity: str | None, entity_id: UUID | str | None) -> str:
     """Storage namespace for manual overrides.
 
     Role steps → ``"role"``; entity steps → ``"<entity>:<entity_id>"`` so
@@ -137,22 +136,20 @@ def _manual_scope_key(entity: Optional[str], entity_id: Optional[UUID | str]) ->
 async def _load_manual_overrides(
     db: AsyncSession,
     user: TokenData,
-    entity: Optional[str],
-    entity_id: Optional[UUID | str],
+    entity: str | None,
+    entity_id: UUID | str | None,
 ) -> set[str]:
     """Return the set of step ids the user has manually marked complete."""
     if user.user_id is None:
         return set()
-    result = await db.execute(
-        select(UserModel.settings).where(UserModel.id == user.user_id)
-    )
+    result = await db.execute(select(UserModel.settings).where(UserModel.id == user.user_id))
     raw = result.scalar_one_or_none() or {}
     scope = _manual_scope_key(entity, entity_id)
     bucket = (raw.get(MANUAL_COMPLETE_KEY) or {}).get(scope) or {}
     return {str(k) for k, v in bucket.items() if v}
 
 
-def _apply_manual_overrides(steps: List[StepResult], overrides: set[str]) -> None:
+def _apply_manual_overrides(steps: list[StepResult], overrides: set[str]) -> None:
     """Fold manual overrides into each step (mutates in place).
 
     A step is effectively complete when the evaluator said so OR the user
@@ -183,14 +180,12 @@ async def _user_preferences_language(db, user, scope) -> StepResult:
     from app.services.settings_service import SettingsService
 
     service = SettingsService(db)
-    values, sources = await service.resolve_effective(
-        user.user_id, user.tenant_id
-    )
+    values, sources = await service.resolve_effective(user.user_id, user.tenant_id)
     value = values.get("localization.language")
     resolved_at_user = sources.get("localization.language") in ("user", "tenant", "system")
-    completed = bool(value) and resolved_at_user and sources.get(
-        "localization.language"
-    ) != "default"
+    completed = (
+        bool(value) and resolved_at_user and sources.get("localization.language") != "default"
+    )
     return _step(
         "user.preferences_language",
         "setup.steps.user.preferences_language",
@@ -283,25 +278,31 @@ async def _tenant_ai_config(db, user, scope) -> StepResult:
     that opens the real AI config page at the right tab — NOT an inline
     duplicate of the settings forms.
     """
-    has_provider = (await db.scalar(
-        select(func.count(AIProviderModel.id)).where(
-            AIProviderModel.tenant_id == user.tenant_id,
-            AIProviderModel.is_active.is_(True),
-            AIProviderModel.scope.in_([AIScope.USER, AIScope.TENANT]),
+    has_provider = (
+        await db.scalar(
+            select(func.count(AIProviderModel.id)).where(
+                AIProviderModel.tenant_id == user.tenant_id,
+                AIProviderModel.is_active.is_(True),
+                AIProviderModel.scope.in_([AIScope.USER, AIScope.TENANT]),
+            )
         )
-    ) or 0) > 0
+        or 0
+    ) > 0
     if not has_provider:
         has_provider = await _has_ai_provider(db, user, scope, AIScope.SYSTEM)
 
-    has_model = (await db.scalar(
-        select(func.count(AIModel.id))
-        .join(AIProviderModel, AIModel.provider_id == AIProviderModel.id)
-        .where(
-            AIModel.is_active.is_(True),
-            AIProviderModel.tenant_id == user.tenant_id,
-            AIProviderModel.scope.in_([AIScope.USER, AIScope.TENANT]),
+    has_model = (
+        await db.scalar(
+            select(func.count(AIModel.id))
+            .join(AIProviderModel, AIModel.provider_id == AIProviderModel.id)
+            .where(
+                AIModel.is_active.is_(True),
+                AIProviderModel.tenant_id == user.tenant_id,
+                AIProviderModel.scope.in_([AIScope.USER, AIScope.TENANT]),
+            )
         )
-    ) or 0) > 0
+        or 0
+    ) > 0
     if not has_model:
         has_model = await _has_ai_model(db, user, scope, AIScope.SYSTEM)
 
@@ -314,19 +315,19 @@ async def _tenant_ai_config(db, user, scope) -> StepResult:
         "external_config",
         completed=has_provider and has_model and has_assignment,
         optional=True,
-        payload_hint={"sub_steps": [
-            {"id": "provider", "done": has_provider, "route": f"{base}?tab=providers"},
-            {"id": "model", "done": has_model, "route": f"{base}?tab=models"},
-            {"id": "assignment", "done": has_assignment, "route": f"{base}?tab=tasks"},
-        ]},
+        payload_hint={
+            "sub_steps": [
+                {"id": "provider", "done": has_provider, "route": f"{base}?tab=providers"},
+                {"id": "model", "done": has_model, "route": f"{base}?tab=models"},
+                {"id": "assignment", "done": has_assignment, "route": f"{base}?tab=tasks"},
+            ]
+        },
     )
 
 
 async def _tenant_member_invited(db, user, scope) -> StepResult:
     count = await db.scalar(
-        select(func.count(UserModel.id)).where(
-            UserModel.tenant_id == user.tenant_id
-        )
+        select(func.count(UserModel.id)).where(UserModel.tenant_id == user.tenant_id)
     )
     return _step(
         "tenant.member_invited",
@@ -401,11 +402,13 @@ async def _system_ai_config(db, user, scope) -> StepResult:
         "external_config",
         completed=has_provider and has_model and has_assignment,
         optional=True,
-        payload_hint={"sub_steps": [
-            {"id": "provider", "done": has_provider, "route": f"{base}?tab=providers"},
-            {"id": "model", "done": has_model, "route": f"{base}?tab=models"},
-            {"id": "assignment", "done": has_assignment, "route": f"{base}?tab=tasks"},
-        ]},
+        payload_hint={
+            "sub_steps": [
+                {"id": "provider", "done": has_provider, "route": f"{base}?tab=providers"},
+                {"id": "model", "done": has_model, "route": f"{base}?tab=models"},
+                {"id": "assignment", "done": has_assignment, "route": f"{base}?tab=tasks"},
+            ]
+        },
     )
 
 
@@ -443,7 +446,7 @@ async def _system_integrations_review(db, user, scope) -> StepResult:
     )
 
 
-ROLE_CHECKLISTS: Dict[Role, Tuple[StepEvaluator, ...]] = {
+ROLE_CHECKLISTS: dict[Role, tuple[StepEvaluator, ...]] = {
     Role.SYSTEM_ADMIN: (
         _system_first_tenant,
         _system_catalog_seeded,
@@ -631,7 +634,7 @@ async def _patient_current_events(db, user, scope) -> StepResult:
     )
 
 
-ENTITY_CHECKLISTS: Dict[str, Tuple[StepEvaluator, ...]] = {
+ENTITY_CHECKLISTS: dict[str, tuple[StepEvaluator, ...]] = {
     "patient": (
         _patient_birth_date,
         _patient_address,
@@ -652,17 +655,17 @@ ENTITY_CHECKLISTS: Dict[str, Tuple[StepEvaluator, ...]] = {
 # ---------------------------------------------------------------------------
 
 _SEEDS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "seeds"
-_OMB_SEED_CACHE: Optional[Dict[str, Any]] = None
+_OMB_SEED_CACHE: dict[str, Any] | None = None
 
 
-def _load_omb_seed() -> Dict[str, Any]:
+def _load_omb_seed() -> dict[str, Any]:
     """Load + cache the OMB race/ethnicity/language picklist seed."""
     global _OMB_SEED_CACHE
     if _OMB_SEED_CACHE is not None:
         return _OMB_SEED_CACHE
     seed_path = _SEEDS_DIR / "omb_race_ethnicity.json"
     try:
-        with open(seed_path, "r", encoding="utf-8") as fh:
+        with open(seed_path, encoding="utf-8") as fh:
             _OMB_SEED_CACHE = json.load(fh)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         logger.warning("could not load OMB seed %s: %s", seed_path, exc)
@@ -673,7 +676,7 @@ def _load_omb_seed() -> Dict[str, Any]:
 # Map each supported patient extension key to a value_type the client renders.
 # ``omb_category`` → dropdown (CDC OMB codes); ``code`` → dropdown (languages);
 # ``string`` → free text.
-_EXTENSION_VALUE_TYPE: Dict[str, str] = {
+_EXTENSION_VALUE_TYPE: dict[str, str] = {
     "race": "omb_category",
     "ethnicity": "omb_category",
     "preferred_language": "code",
@@ -681,7 +684,7 @@ _EXTENSION_VALUE_TYPE: Dict[str, str] = {
 }
 
 
-def _extension_options(key: str) -> Optional[List[ExtensionOption]]:
+def _extension_options(key: str) -> list[ExtensionOption] | None:
     seed = _load_omb_seed()
     if key in ("race", "ethnicity"):
         seed_field = "ethnicities" if key == "ethnicity" else "races"
@@ -712,23 +715,19 @@ class SetupChecklistService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_role_checklist(
-        self, user: TokenData
-    ) -> List[StepResult]:
+    async def get_role_checklist(self, user: TokenData) -> list[StepResult]:
         role = _role_value(user)
         evaluators = ROLE_CHECKLISTS.get(role, ())
-        scope: Dict[str, Any] = {
+        scope: dict[str, Any] = {
             "tenant_id": user.tenant_id,
             "user_id": user.user_id,
         }
-        steps: List[StepResult] = []
+        steps: list[StepResult] = []
         for ev in evaluators:
             try:
                 steps.append(await ev(self.db, user, scope))
             except Exception as exc:
-                logger.warning(
-                    "setup role evaluator %s raised: %s", ev.__name__, exc
-                )
+                logger.warning("setup role evaluator %s raised: %s", ev.__name__, exc)
                 steps.append(
                     _step(
                         getattr(ev, "__name__", "unknown"),
@@ -742,13 +741,13 @@ class SetupChecklistService:
 
     async def get_entity_checklist(
         self, user: TokenData, entity: str, entity_id: UUID | str
-    ) -> List[StepResult]:
+    ) -> list[StepResult]:
         if entity not in SUPPORTED_ENTITIES:
             raise ValidationError(f"Unsupported checklist entity: {entity}")
         entity_uuid = to_uuid(entity_id)
         if entity == "patient":
             patient = await check_patient_access(entity_uuid, user, self.db)
-            scope: Dict[str, Any] = {
+            scope: dict[str, Any] = {
                 "tenant_id": user.tenant_id,
                 "user_id": user.user_id,
                 "patient_id": patient.id,
@@ -758,14 +757,12 @@ class SetupChecklistService:
             raise ValidationError(f"Unsupported checklist entity: {entity}")
 
         evaluators = ENTITY_CHECKLISTS.get(entity, ())
-        steps: List[StepResult] = []
+        steps: list[StepResult] = []
         for ev in evaluators:
             try:
                 steps.append(await ev(self.db, user, scope))
             except Exception as exc:
-                logger.warning(
-                    "setup entity evaluator %s raised: %s", ev.__name__, exc
-                )
+                logger.warning("setup entity evaluator %s raised: %s", ev.__name__, exc)
                 steps.append(
                     _step(
                         getattr(ev, "__name__", "unknown"),
@@ -781,35 +778,27 @@ class SetupChecklistService:
     async def get_checklist(
         self,
         user: TokenData,
-        entity: Optional[str] = None,
-        entity_id: Optional[UUID | str] = None,
+        entity: str | None = None,
+        entity_id: UUID | str | None = None,
     ) -> SetupChecklistResponse:
         role_steps = await self.get_role_checklist(user)
-        entity_steps: List[StepResult] = []
-        resolved_entity_id: Optional[UUID] = None
+        entity_steps: list[StepResult] = []
+        resolved_entity_id: UUID | None = None
         if entity:
             if not entity_id:
-                raise ValidationError(
-                    "entity_id is required when entity is given"
-                )
-            entity_steps = await self.get_entity_checklist(
-                user, entity, entity_id
-            )
+                raise ValidationError("entity_id is required when entity is given")
+            entity_steps = await self.get_entity_checklist(user, entity, entity_id)
             resolved_entity_id = to_uuid(entity_id)
 
         all_steps = role_steps + entity_steps
 
         # Fold per-user manual-completion overrides into the effective state.
-        overrides = await _load_manual_overrides(
-            self.db, user, entity, resolved_entity_id
-        )
+        overrides = await _load_manual_overrides(self.db, user, entity, resolved_entity_id)
         _apply_manual_overrides(all_steps, overrides)
 
         mandatory = [s for s in all_steps if not s.optional]
         completion = (
-            (sum(1 for s in mandatory if s.completed) / len(mandatory))
-            if mandatory
-            else 1.0
+            (sum(1 for s in mandatory if s.completed) / len(mandatory)) if mandatory else 1.0
         )
         return SetupChecklistResponse(
             role=user.role,
@@ -824,8 +813,8 @@ class SetupChecklistService:
         user: TokenData,
         step_id: str,
         completed: bool,
-        entity: Optional[str] = None,
-        entity_id: Optional[UUID | str] = None,
+        entity: str | None = None,
+        entity_id: UUID | str | None = None,
     ) -> StepResult:
         """Persist (or clear) a manual-completion override for one step.
 
@@ -835,27 +824,19 @@ class SetupChecklistService:
         part of the caller's current checklist (defends against arbitrary
         storage writes for step ids that don't belong to this role/entity).
         """
-        resolved_entity_id: Optional[UUID] = None
+        resolved_entity_id: UUID | None = None
         if entity:
             if not entity_id:
-                raise ValidationError(
-                    "entity_id is required when entity is given"
-                )
+                raise ValidationError("entity_id is required when entity is given")
             resolved_entity_id = to_uuid(entity_id)
 
         # Validate the step id belongs to this caller's scope before writing.
-        checklist = await self.get_checklist(
-            user, entity=entity, entity_id=resolved_entity_id
-        )
+        checklist = await self.get_checklist(user, entity=entity, entity_id=resolved_entity_id)
         if not any(s.id == step_id for s in checklist.steps):
-            raise ValidationError(
-                f"Unknown step id '{step_id}' for this checklist scope."
-            )
+            raise ValidationError(f"Unknown step id '{step_id}' for this checklist scope.")
 
         # Persist into UserModel.settings["setup.manual_complete"][scope].
-        result = await self.db.execute(
-            select(UserModel).where(UserModel.id == user.user_id)
-        )
+        result = await self.db.execute(select(UserModel).where(UserModel.id == user.user_id))
         user_model = result.scalar_one_or_none()
         if user_model is None:
             raise ValidationError("User not found.")
@@ -885,14 +866,10 @@ class SetupChecklistService:
 
         # Re-evaluate so the returned step reflects the freshly-persisted
         # override folded onto the latest evaluator state.
-        refreshed = await self.get_checklist(
-            user, entity=entity, entity_id=resolved_entity_id
-        )
+        refreshed = await self.get_checklist(user, entity=entity, entity_id=resolved_entity_id)
         return next(s for s in refreshed.steps if s.id == step_id)
 
-    async def get_extension_catalog(
-        self, entity: str = "patient"
-    ) -> ExtensionCatalogResponse:
+    async def get_extension_catalog(self, entity: str = "patient") -> ExtensionCatalogResponse:
         """Return the supported-extension catalog for an entity.
 
         Today only ``patient`` is supported. The catalog is derived from
@@ -904,7 +881,7 @@ class SetupChecklistService:
             raise ValidationError(
                 f"Unsupported catalog entity: {entity} (only 'patient' is supported)"
             )
-        items: List[ExtensionCatalogItem] = []
+        items: list[ExtensionCatalogItem] = []
         for ext in SUPPORTED_PATIENT_EXTENSIONS:
             items.append(
                 ExtensionCatalogItem(

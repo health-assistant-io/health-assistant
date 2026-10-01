@@ -1,6 +1,7 @@
-from sqlalchemy import Column, String, UUID, DateTime, func, Text
+from sqlalchemy import UUID, Column, DateTime, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
-from app.models.base import Base, UUIDMixin, TenantMixin
+
+from app.models.base import Base, TenantMixin, UUIDMixin
 
 
 class TaskLog(Base, UUIDMixin, TenantMixin):

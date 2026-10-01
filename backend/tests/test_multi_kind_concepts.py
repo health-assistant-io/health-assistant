@@ -140,11 +140,7 @@ async def test_cascade_delete_removes_tags(tenant_id):
         await session.commit()
 
         remaining = (
-            (
-                await session.execute(
-                    select(ConceptKindTag).where(ConceptKindTag.concept_id == cid)
-                )
-            )
+            (await session.execute(select(ConceptKindTag).where(ConceptKindTag.concept_id == cid)))
             .scalars()
             .all()
         )

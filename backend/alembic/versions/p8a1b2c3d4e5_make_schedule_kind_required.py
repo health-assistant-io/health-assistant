@@ -14,9 +14,9 @@ Revises: p4c1e2v3e4n5
 Create Date: 2026-07-20
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "p8a1b2c3d4e5"
 down_revision = "p4c1e2v3e4n5"
@@ -30,8 +30,7 @@ def upgrade() -> None:
     #    defensive no-op for greenfield deploys — but cheap insurance against
     #    a half-applied Phase 4 migration or manual edits.
     op.execute(
-        "UPDATE clinical_event_types SET schedule_kind = 'state' "
-        "WHERE schedule_kind IS NULL"
+        "UPDATE clinical_event_types SET schedule_kind = 'state' WHERE schedule_kind IS NULL"
     )
     # 2. Add the server default + NOT NULL constraint.
     op.alter_column(

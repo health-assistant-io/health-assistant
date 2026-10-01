@@ -37,7 +37,6 @@ Create Date: 2026-07-23
 
 from alembic import op
 
-
 revision = "f1m2u3l4t5i6"
 down_revision = "d1r2o3p4s5a6"
 branch_labels = None
@@ -82,12 +81,8 @@ def upgrade() -> None:
               ADD COLUMN IF NOT EXISTS external_id VARCHAR(255)
             """
         )
-        op.execute(
-            f"CREATE INDEX IF NOT EXISTS {src_ix} ON {table} (source_integration_id)"
-        )
-        op.execute(
-            f"CREATE INDEX IF NOT EXISTS {ext_ix} ON {table} (external_id)"
-        )
+        op.execute(f"CREATE INDEX IF NOT EXISTS {src_ix} ON {table} (source_integration_id)")
+        op.execute(f"CREATE INDEX IF NOT EXISTS {ext_ix} ON {table} (external_id)")
         op.execute(
             f"""
             CREATE UNIQUE INDEX IF NOT EXISTS {dedup_ix}
@@ -104,6 +99,4 @@ def downgrade() -> None:
         op.execute(f"DROP INDEX IF EXISTS {ext_ix}")
         op.execute(f"DROP INDEX IF EXISTS {src_ix}")
         op.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS external_id")
-        op.execute(
-            f"ALTER TABLE {table} DROP COLUMN IF EXISTS source_integration_id"
-        )
+        op.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS source_integration_id")

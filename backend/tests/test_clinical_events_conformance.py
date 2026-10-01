@@ -12,6 +12,7 @@ Pins the correctness fixes from the clinical-events architecture plan
    advertised in ``facade.search_params.RESOURCE_PARAMS['Condition']`` must
    actually filter results. Previously 5 of 8 silently no-op'd.
 """
+
 import datetime
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -20,7 +21,6 @@ import pytest
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.clinical_event import (
     ClinicalEvent,
     ClinicalEventType,
@@ -31,7 +31,7 @@ from app.models.enums import ClinicalEventStatus, CodingSystem, Gender
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
-
+from tests._auth_helpers import headers_for_claims
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,7 +46,7 @@ async def _tenant_and_headers():
         await db.commit()
     tok_headers = await headers_for_claims(
         {
-        "sub": "ceconf@test.local",
+            "sub": "ceconf@test.local",
             "tenant_id": str(tid),
             "role": "SYSTEM_ADMIN",
         }
@@ -87,9 +87,7 @@ async def _make_patient(tenant_id):
     return pid
 
 
-async def _make_type(
-    tenant_id, *, slug, name, category_concept_id=None, **template_fields
-):
+async def _make_type(tenant_id, *, slug, name, category_concept_id=None, **template_fields):
     # Phase 8e: category is NOT NULL on the column. If the caller didn't pass
     # one, mint a throwaway concept — most tests don't care which category
     # the type belongs to. Callers that DO care pass their own concept id.
@@ -147,15 +145,11 @@ async def test_soft_delete_tombstones_and_excludes(async_client):
     assert create.status_code == 200, create.text
     eid = create.json()["id"]
 
-    dele = await async_client.delete(
-        f"/api/v1/clinical-events/{eid}", headers=headers
-    )
+    dele = await async_client.delete(f"/api/v1/clinical-events/{eid}", headers=headers)
     assert dele.status_code == 200
 
     # GET returns 404 (check_event_access filters deleted_at).
-    got = await async_client.get(
-        f"/api/v1/clinical-events/{eid}", headers=headers
-    )
+    got = await async_client.get(f"/api/v1/clinical-events/{eid}", headers=headers)
     assert got.status_code == 404
 
     # List excludes the tombstoned event.
@@ -168,9 +162,7 @@ async def test_soft_delete_tombstones_and_excludes(async_client):
     # The row still physically exists with deleted_at set (facade 410 Gone).
     async with AsyncSessionLocal() as db:
         row = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid))
-            )
+            await db.execute(select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid)))
         ).scalar_one_or_none()
         assert row is not None, "soft-delete must not remove the row"
         assert row.deleted_at is not None
@@ -215,9 +207,7 @@ async def test_lifecycle_notifications_emitted(async_client):
             json={"status": "RESOLVED"},
         )
         # Delete → "deleted".
-        await async_client.delete(
-            f"/api/v1/clinical-events/{eid}", headers=headers
-        )
+        await async_client.delete(f"/api/v1/clinical-events/{eid}", headers=headers)
 
     actions = [call.args[1] for call in mock_emit.call_args_list]
     assert "created" in actions
@@ -301,9 +291,7 @@ async def _seed_two_conditions(tenant_id, patient_id):
                 title="Pregnancy",
                 coding_system=CodingSystem.SNOMED,
                 code="SNOMED-123",
-                onset_date=datetime.datetime(
-                    2026, 1, 15, tzinfo=datetime.timezone.utc
-                ),
+                onset_date=datetime.datetime(2026, 1, 15, tzinfo=datetime.UTC),
             )
         )
         db.add(
@@ -314,9 +302,7 @@ async def _seed_two_conditions(tenant_id, patient_id):
                 type_id=pain_type,
                 status=ClinicalEventStatus.RESOLVED,
                 title="Back pain",
-                onset_date=datetime.datetime(
-                    2025, 6, 1, tzinfo=datetime.timezone.utc
-                ),
+                onset_date=datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC),
             )
         )
         # An examination linked to the pregnancy for the `encounter` param.
@@ -329,9 +315,7 @@ async def _seed_two_conditions(tenant_id, patient_id):
             )
         )
         db.add(
-            EventExaminationLink(
-                event_id=preg_id, examination_id=exam_id, reason="Booking visit"
-            )
+            EventExaminationLink(event_id=preg_id, examination_id=exam_id, reason="Booking visit")
         )
         await db.commit()
     return preg_id, pain_id, exam_id
@@ -382,7 +366,7 @@ async def test_condition_search_code(async_client):
     tenant_id, _session = await _tenant_and_headers()
     headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
-    preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
+    preg_id, _pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
     bundle = await async_client.get(
         f"/api/v1/fhir/R4/Condition?patient={patient_id}&code=SNOMED-123",
@@ -393,8 +377,7 @@ async def test_condition_search_code(async_client):
 
     # system|code form — code segment is honored.
     bundle = await async_client.get(
-        f"/api/v1/fhir/R4/Condition?patient={patient_id}"
-        "&code=http://snomed.info/sct|SNOMED-123",
+        f"/api/v1/fhir/R4/Condition?patient={patient_id}&code=http://snomed.info/sct|SNOMED-123",
         headers=headers,
     )
     assert bundle.status_code == 200, bundle.text
@@ -407,7 +390,7 @@ async def test_condition_search_category(async_client):
     tenant_id, _session = await _tenant_and_headers()
     headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
-    preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
+    preg_id, _pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
     cat_slug = f"reproductive-health-{str(tenant_id)[:8]}"
 
     bundle = await async_client.get(
@@ -423,7 +406,7 @@ async def test_condition_search_onset_date(async_client):
     tenant_id, _session = await _tenant_and_headers()
     headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
-    preg_id, pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
+    preg_id, _pain_id, _ = await _seed_two_conditions(tenant_id, patient_id)
 
     bundle = await async_client.get(
         f"/api/v1/fhir/R4/Condition?patient={patient_id}&onset-date=gt2025-12-01",
@@ -439,7 +422,7 @@ async def test_condition_search_encounter(async_client):
     tenant_id, _session = await _tenant_and_headers()
     headers = await _facade_headers(tenant_id)
     patient_id = await _make_patient(tenant_id)
-    preg_id, pain_id, exam_id = await _seed_two_conditions(tenant_id, patient_id)
+    preg_id, _pain_id, exam_id = await _seed_two_conditions(tenant_id, patient_id)
 
     bundle = await async_client.get(
         f"/api/v1/fhir/R4/Condition?patient={patient_id}&encounter={exam_id}",
@@ -450,8 +433,7 @@ async def test_condition_search_encounter(async_client):
 
     # Encounter/<id> reference form also honored.
     bundle = await async_client.get(
-        f"/api/v1/fhir/R4/Condition?patient={patient_id}"
-        f"&encounter=Encounter/{exam_id}",
+        f"/api/v1/fhir/R4/Condition?patient={patient_id}&encounter=Encounter/{exam_id}",
         headers=headers,
     )
     assert bundle.status_code == 200, bundle.text
@@ -700,9 +682,7 @@ async def test_occurrence_jsonb_backfill_and_readback(async_client):
             "patient_id": str(patient_id),
             "title": "Legacy JSONB",
             "status": "ACTIVE",
-            "occurrences": [
-                {"date": "2026-06-01T00:00:00Z", "intensity": 5, "notes": "old"}
-            ],
+            "occurrences": [{"date": "2026-06-01T00:00:00Z", "intensity": 5, "notes": "old"}],
         },
     )
     assert create.status_code == 200, create.text
@@ -741,9 +721,7 @@ async def test_anatomy_link_crud(async_client):
     tenant_id, headers = await _tenant_and_headers()
     patient_id = await _make_patient(tenant_id)
     suffix = str(tenant_id)[:8]
-    anatomy_id = await _make_anatomy(
-        tenant_id, slug=f"lower-back-{suffix}", name="Lower Back"
-    )
+    anatomy_id = await _make_anatomy(tenant_id, slug=f"lower-back-{suffix}", name="Lower Back")
 
     create = await async_client.post(
         "/api/v1/clinical-events",
@@ -819,9 +797,7 @@ async def test_episode_of_care_facade_search(async_client):
         res = e["resource"]
         assert res["resourceType"] == "EpisodeOfCare"
         assert res["patient"]["reference"] == f"Patient/{patient_id}"
-        assert res["diagnosis"][0]["condition"]["reference"].startswith(
-            "Condition/"
-        )
+        assert res["diagnosis"][0]["condition"]["reference"].startswith("Condition/")
 
     # status filter: 'active' (FHIR) → ACTIVE rows (pregnancy is ACTIVE).
     bundle = await async_client.get(
@@ -852,8 +828,8 @@ async def test_episode_of_care_projection_round_trip():
         patient_id=uuid.uuid4(),
         status=ClinicalEventStatus.RESOLVED,
         title="Some journey",
-        onset_date=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
-        resolved_date=datetime.datetime(2026, 4, 1, tzinfo=datetime.timezone.utc),
+        onset_date=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        resolved_date=datetime.datetime(2026, 4, 1, tzinfo=datetime.UTC),
         version=3,
     )
     eoc = event.to_fhir_episode_of_care_dict()
@@ -886,9 +862,7 @@ async def test_version_advances_on_update(async_client):
     # Initial version is 1.
     async with AsyncSessionLocal() as db:
         row = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid))
-            )
+            await db.execute(select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid)))
         ).scalar_one()
         assert row.version == 1
 
@@ -905,9 +879,7 @@ async def test_version_advances_on_update(async_client):
 
     async with AsyncSessionLocal() as db:
         row = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid))
-            )
+            await db.execute(select(ClinicalEvent).where(ClinicalEvent.id == uuid.UUID(eid)))
         ).scalar_one()
         assert row.version == 3  # 1 + two updates
 
@@ -941,18 +913,14 @@ async def test_insights_endpoint(async_client):
         milestones=[
             {
                 "name": "Follow-up",
-                "date": (
-                    datetime.date.today() + datetime.timedelta(days=5)
-                ).isoformat(),
+                "date": (datetime.date.today() + datetime.timedelta(days=5)).isoformat(),
                 "alert_before_days": 14,
             }
         ],
     )
 
     # Onset 20 days ago → "Late" phase.
-    onset = (
-        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=20)
-    ).isoformat()
+    onset = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=20)).isoformat()
     create = await async_client.post(
         "/api/v1/clinical-events",
         headers=headers,
@@ -967,9 +935,7 @@ async def test_insights_endpoint(async_client):
     assert create.status_code == 200, create.text
     eid = create.json()["id"]
 
-    resp = await async_client.get(
-        f"/api/v1/clinical-events/{eid}/insights", headers=headers
-    )
+    resp = await async_client.get(f"/api/v1/clinical-events/{eid}/insights", headers=headers)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["current_phase"]["name"] == "Late"
@@ -991,9 +957,7 @@ async def test_insights_overdue_flag(async_client):
         name="Short",
         default_duration_days=10,
     )
-    onset = (
-        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=25)
-    ).isoformat()
+    onset = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=25)).isoformat()
     create = await async_client.post(
         "/api/v1/clinical-events",
         headers=headers,
@@ -1007,9 +971,7 @@ async def test_insights_overdue_flag(async_client):
     )
     eid = create.json()["id"]
 
-    resp = await async_client.get(
-        f"/api/v1/clinical-events/{eid}/insights", headers=headers
-    )
+    resp = await async_client.get(f"/api/v1/clinical-events/{eid}/insights", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["is_overdue"] is True
 
@@ -1026,9 +988,7 @@ async def test_type_response_includes_template_fields(async_client):
         severity_scale={"type": "numeric", "min": 1, "max": 10},
         phases=[{"name": "Only", "start_offset_days": 0, "end_offset_days": 42}],
     )
-    resp = await async_client.get(
-        "/api/v1/clinical-events/types", headers=headers
-    )
+    resp = await async_client.get("/api/v1/clinical-events/types", headers=headers)
     assert resp.status_code == 200
     matched = [t for t in resp.json() if t["id"] == str(type_id)]
     assert matched, "templated type not returned"
@@ -1066,12 +1026,8 @@ async def test_correlation_crud(async_client):
     """POST/DELETE /clinical-events/types/{id}/biomarkers manage correlations
     (previously seed-script-only). Add is idempotent on the (type, biomarker) pair."""
     tenant_id, headers = await _tenant_and_headers()
-    type_id = await _make_type(
-        tenant_id, slug=f"corr-{str(tenant_id)[:8]}", name="CorrType"
-    )
-    bio_id = await _make_biomarker(
-        tenant_id, slug=f"hr-{str(tenant_id)[:8]}", name="Heart Rate"
-    )
+    type_id = await _make_type(tenant_id, slug=f"corr-{str(tenant_id)[:8]}", name="CorrType")
+    bio_id = await _make_biomarker(tenant_id, slug=f"hr-{str(tenant_id)[:8]}", name="Heart Rate")
 
     add = await async_client.post(
         f"/api/v1/clinical-events/types/{type_id}/biomarkers",
@@ -1130,9 +1086,7 @@ async def test_correlation_recommendation_in_insights(async_client):
     recommended_biomarkers (the engine wires them together)."""
     tenant_id, headers = await _tenant_and_headers()
     patient_id = await _make_patient(tenant_id)
-    type_id = await _make_type(
-        tenant_id, slug=f"rec-{str(tenant_id)[:8]}", name="RecType"
-    )
+    type_id = await _make_type(tenant_id, slug=f"rec-{str(tenant_id)[:8]}", name="RecType")
     bio_id = await _make_biomarker(
         tenant_id, slug=f"bp-{str(tenant_id)[:8]}", name="Blood Pressure"
     )
@@ -1153,9 +1107,7 @@ async def test_correlation_recommendation_in_insights(async_client):
         },
     )
     eid = create.json()["id"]
-    resp = await async_client.get(
-        f"/api/v1/clinical-events/{eid}/insights", headers=headers
-    )
+    resp = await async_client.get(f"/api/v1/clinical-events/{eid}/insights", headers=headers)
     assert resp.status_code == 200
     recs = resp.json()["recommended_biomarkers"]
     assert len(recs) == 1
@@ -1208,9 +1160,7 @@ async def test_examination_surfaces_linked_clinical_events_and_condition_ref(asy
     eid = create.json()["id"]
 
     # (a) REST examination detail surfaces the journey (event_links eager-loaded).
-    detail = await async_client.get(
-        f"/api/v1/examinations/{exam_id}", headers=headers
-    )
+    detail = await async_client.get(f"/api/v1/examinations/{exam_id}", headers=headers)
     assert detail.status_code == 200, detail.text
     ces = detail.json().get("clinical_events", [])
     assert any(c["id"] == eid for c in ces)

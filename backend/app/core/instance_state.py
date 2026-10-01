@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 
@@ -76,12 +77,12 @@ async def get_state() -> InstanceState:
         return InstanceState(auth_mode=None, demo_mode=False)
     try:
         async with AsyncSessionLocal() as session:
-            rows = await session.execute(
+            rows: Any = await session.execute(
                 select(InstanceSettingModel.key, InstanceSettingModel.value).where(
                     InstanceSettingModel.key.in_([AUTH_MODE_KEY, DEMO_MODE_KEY])
                 )
             )
-            values = {key: value for key, value in rows.all()}
+            values = dict(rows.all())
     except Exception as e:  # fail closed — never fail open
         logger.warning("instance_settings unavailable, failing closed: %s", e)
         return InstanceState(auth_mode=None, demo_mode=False)
@@ -135,9 +136,7 @@ async def initialize() -> None:
 
     async with AsyncSessionLocal() as session:
         existing_mode = await _get_value(session, AUTH_MODE_KEY)
-        user_count = (
-            await session.execute(select(UserModel.id).limit(1))
-        ).first()
+        user_count: Any = (await session.execute(select(UserModel.id).limit(1))).first()
 
         if existing_mode is not None:
             # Post-init: env flips are ignored — DB is authoritative (§4.1).

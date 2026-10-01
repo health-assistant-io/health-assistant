@@ -16,6 +16,7 @@ Post-fix contract pinned here:
 4. Redis-down degrades gracefully to the legacy always-sync mode but
    logs a warning.
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -29,7 +30,6 @@ def _async_engine():
     e = MagicMock()
     e.dispose = AsyncMock()
     return e
-
 
 
 def _integration(provider="withings", integration_id=None):
@@ -55,9 +55,7 @@ def _db_with_integrations(integrations):
     db.__aexit__ = AsyncMock(return_value=False)
     db.execute = AsyncMock(
         return_value=MagicMock(
-            scalars=MagicMock(
-                return_value=MagicMock(all=MagicMock(return_value=integrations))
-            )
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=integrations)))
         )
     )
     return db
@@ -97,9 +95,11 @@ async def test_sync_active_integrations_acquires_lock_per_integration():
     provider.pull_data = AsyncMock(return_value=[])
     provider.push_data = AsyncMock()
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 
@@ -132,16 +132,19 @@ async def test_sync_active_integrations_skips_when_lock_not_acquired():
     provider = MagicMock()
     provider.pull_data = AsyncMock()
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 
         await worker_tasks.sync_active_integrations.__wrapped__.__wrapped__(None)
 
-    provider.pull_data.assert_not_awaited(), (
-        "pull_data must NOT be called when the Redis lock is held by another worker"
+    (
+        provider.pull_data.assert_not_awaited(),
+        ("pull_data must NOT be called when the Redis lock is held by another worker"),
     )
 
 
@@ -169,9 +172,11 @@ async def test_sync_active_integrations_releases_lock_on_success():
     provider.pull_data = AsyncMock(return_value=[])
     provider.push_data = AsyncMock()
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 
@@ -205,9 +210,11 @@ async def test_sync_active_integrations_releases_lock_on_sync_failure():
     provider = MagicMock()
     provider.pull_data = AsyncMock(side_effect=RuntimeError("sync blew up"))
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 
@@ -245,11 +252,13 @@ async def test_sync_active_integrations_degrades_when_redis_down():
     def _warn(fmt, *a, **kw):
         warnings_seen.append(fmt % a if a else fmt)
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis), \
-         patch.object(worker_tasks.logger, "warning", _warn), \
-         patch("app.services.integration_sync_service.logger.warning", _warn):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+        patch.object(worker_tasks.logger, "warning", _warn),
+        patch("app.services.integration_sync_service.logger.warning", _warn),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 
@@ -285,9 +294,11 @@ async def test_sync_active_integrations_multiple_integrations_independent_locks(
     provider.pull_data = AsyncMock(return_value=[])
     provider.push_data = AsyncMock()
 
-    with patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())), \
-         patch.object(worker_tasks, "integration_registry"), \
-         patch("app.core.redis.redis_client", fake_redis):
+    with (
+        patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
+        patch.object(worker_tasks, "integration_registry"),
+        patch("app.core.redis.redis_client", fake_redis),
+    ):
         worker_tasks.integration_registry.initialize = AsyncMock()
         worker_tasks.integration_registry.get_provider = MagicMock(return_value=provider)
 

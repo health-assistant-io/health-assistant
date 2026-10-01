@@ -1,3 +1,4 @@
+# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
 """Tiered settings resolution + per-level overrides.
 
 Resolution order for a tiered setting: USER > TENANT > SYSTEM > built-in default.
@@ -5,7 +6,7 @@ Device settings are never stored server-side; this service only deals with the
 ``tiered`` storage scope.
 """
 
-from typing import Any, Dict, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -45,7 +46,7 @@ class SettingsService:
     # --------------------------------------------------------------
     async def resolve_effective(
         self, user_id: UUID, tenant_id: UUID
-    ) -> Tuple[Dict[str, Any], Dict[str, str]]:
+    ) -> tuple[dict[str, Any], dict[str, str]]:
         """Return (values, sources) for every tiered setting.
 
         ``sources[key]`` is one of ``user|tenant|system|default`` so the UI can
@@ -55,8 +56,8 @@ class SettingsService:
         tenant_overrides = await self._load_tenant_overrides(tenant_id)
         system_overrides = await self._load_system_overrides()
 
-        values: Dict[str, Any] = {}
-        sources: Dict[str, str] = {}
+        values: dict[str, Any] = {}
+        sources: dict[str, str] = {}
 
         for key, default in get_tiered_defaults().items():
             if key in user_overrides:
@@ -79,7 +80,7 @@ class SettingsService:
     # --------------------------------------------------------------
     async def get_level_overrides(
         self, level: SettingLevel, user_id: UUID, tenant_id: UUID
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         raw = await self._load_raw_overrides(level, user_id, tenant_id)
         allowed = {
             d.key
@@ -123,23 +124,21 @@ class SettingsService:
     # --------------------------------------------------------------
     async def _load_raw_overrides(
         self, level: SettingLevel, user_id: UUID, tenant_id: UUID
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if level == SettingLevel.USER:
             return await self._load_user_overrides(user_id)
         if level == SettingLevel.TENANT:
             return await self._load_tenant_overrides(tenant_id)
         return await self._load_system_overrides()
 
-    async def _load_user_overrides(self, user_id: UUID) -> Dict[str, Any]:
+    async def _load_user_overrides(self, user_id: UUID) -> dict[str, Any]:
         if user_id is None:
             return {}
-        result = await self.db.execute(
-            select(UserModel.settings).where(UserModel.id == user_id)
-        )
+        result = await self.db.execute(select(UserModel.settings).where(UserModel.id == user_id))
         settings = result.scalar_one_or_none()
         return dict(settings or {})
 
-    async def _load_tenant_overrides(self, tenant_id: UUID) -> Dict[str, Any]:
+    async def _load_tenant_overrides(self, tenant_id: UUID) -> dict[str, Any]:
         if tenant_id is None:
             return {}
         result = await self.db.execute(
@@ -148,14 +147,14 @@ class SettingsService:
         settings = result.scalar_one_or_none()
         return dict(settings or {})
 
-    async def _load_system_overrides(self) -> Dict[str, Any]:
+    async def _load_system_overrides(self) -> dict[str, Any]:
         result = await self.db.execute(select(SystemSetting.key, SystemSetting.value))
         return {row[0]: row[1] for row in result.all()}
 
     async def _persist_raw_overrides(
         self,
         level: SettingLevel,
-        raw: Dict[str, Any],
+        raw: dict[str, Any],
         user_id: UUID,
         tenant_id: UUID,
     ) -> None:
@@ -167,7 +166,7 @@ class SettingsService:
             await self._persist_system(raw)
         await self.db.commit()
 
-    async def _persist_user(self, raw: Dict[str, Any], user_id: UUID) -> None:
+    async def _persist_user(self, raw: dict[str, Any], user_id: UUID) -> None:
         result = await self.db.execute(select(UserModel).where(UserModel.id == user_id))
         user = result.scalar_one_or_none()
         if user is None:
@@ -175,17 +174,15 @@ class SettingsService:
         user.settings = raw
         flag_modified(user, "settings")
 
-    async def _persist_tenant(self, raw: Dict[str, Any], tenant_id: UUID) -> None:
-        result = await self.db.execute(
-            select(TenantModel).where(TenantModel.id == tenant_id)
-        )
+    async def _persist_tenant(self, raw: dict[str, Any], tenant_id: UUID) -> None:
+        result = await self.db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         tenant = result.scalar_one_or_none()
         if tenant is None:
             raise ValueError("Tenant not found")
         tenant.settings = raw
         flag_modified(tenant, "settings")
 
-    async def _persist_system(self, raw: Dict[str, Any]) -> None:
+    async def _persist_system(self, raw: dict[str, Any]) -> None:
         result = await self.db.execute(select(SystemSetting))
         existing = {row.key: row for row in result.scalars().all()}
         for key, value in raw.items():

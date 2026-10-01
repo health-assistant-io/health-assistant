@@ -10,7 +10,7 @@ and ``last`` when applicable.
 """
 
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlencode
 
 
@@ -18,15 +18,15 @@ def build_search_bundle(
     base_url: str,
     path: str,
     query_string: bytes,
-    resources: List[Dict[str, Any]],
+    resources: list[dict[str, Any]],
     total: int,
     offset: int,
     count: int,
     *,
-    include_resources: Optional[List[Dict[str, Any]]] = None,
-    meta: Optional[Dict[str, Any]] = None,
+    include_resources: list[dict[str, Any]] | None = None,
+    meta: dict[str, Any] | None = None,
     include_total: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a FHIR Bundle for a search response.
 
     Args:
@@ -49,11 +49,7 @@ def build_search_bundle(
         ``entry[]``, and ``link[]`` for self/first/previous/next/last.
     """
     # Parse the raw query string so we can mutate it for pagination links.
-    raw_qs = (
-        query_string.decode("utf-8")
-        if isinstance(query_string, bytes)
-        else query_string
-    )
+    raw_qs = query_string.decode("utf-8") if isinstance(query_string, bytes) else query_string
     parsed = _parse_qs(raw_qs)
 
     # Compute total pages.
@@ -64,7 +60,7 @@ def build_search_bundle(
     # ``search.mode = "match"`` and every ``_include`` entry carries
     # ``search.mode = "include"`` (spec-required once _include ships; strict
     # clients expect it today).
-    entries: List[Dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
     for r in resources:
         rt = r.get("resourceType")
         rid = r.get("id")
@@ -81,7 +77,7 @@ def build_search_bundle(
             rid = r.get("id")
             rt = r.get("resourceType")
             full_url = f"{base_url}/{rt}/{rid}" if rid and rt else None
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "resource": r,
                 "search": {"mode": "include"},
             }
@@ -90,7 +86,7 @@ def build_search_bundle(
             entries.append(entry)
 
     # Build pagination links.
-    links: List[Dict[str, Any]] = []
+    links: list[dict[str, Any]] = []
     links.append({"relation": "self", "url": _build_url(base_url, path, parsed)})
     links.append(
         {
@@ -101,9 +97,7 @@ def build_search_bundle(
     links.append(
         {
             "relation": "last",
-            "url": _build_url(
-                base_url, path, _with_page(parsed, (total_pages - 1) * count, count)
-            ),
+            "url": _build_url(base_url, path, _with_page(parsed, (total_pages - 1) * count, count)),
         }
     )
     if current_page > 1:
@@ -119,13 +113,11 @@ def build_search_bundle(
         links.append(
             {
                 "relation": "next",
-                "url": _build_url(
-                    base_url, path, _with_page(parsed, offset + count, count)
-                ),
+                "url": _build_url(base_url, path, _with_page(parsed, offset + count, count)),
             }
         )
 
-    bundle: Dict[str, Any] = {
+    bundle: dict[str, Any] = {
         "resourceType": "Bundle",
         "type": "searchset",
         "link": links,
@@ -145,12 +137,12 @@ def build_search_bundle(
     return bundle
 
 
-def _parse_qs(raw: str) -> List[tuple]:
+def _parse_qs(raw: str) -> list[tuple]:
     """Parse a query string into a list of (key, value) pairs, preserving order
     and repeated keys. Empty input returns []."""
     if not raw:
         return []
-    pairs: List[tuple] = []
+    pairs: list[tuple] = []
     for chunk in raw.split("&"):
         if not chunk:
             continue
@@ -162,14 +154,14 @@ def _parse_qs(raw: str) -> List[tuple]:
     return pairs
 
 
-def _build_url(base_url: str, path: str, pairs: List[tuple]) -> str:
+def _build_url(base_url: str, path: str, pairs: list[tuple]) -> str:
     if not pairs:
         return f"{base_url}{path}"
     qs = urlencode(pairs)
     return f"{base_url}{path}?{qs}"
 
 
-def _with_page(pairs: List[tuple], offset: int, count: int) -> List[tuple]:
+def _with_page(pairs: list[tuple], offset: int, count: int) -> list[tuple]:
     """Replace any existing pagination param with a ``page`` cursor for ``offset``.
 
     The FHIR R4 spec does not mandate a specific pagination cursor param —

@@ -5,23 +5,22 @@ onset + phase offsets, upcoming/overdue milestones (absolute or via
 ``date_field`` into event_metadata), the overdue flag, and recommended
 biomarker pass-through.
 """
-import datetime as _dt
 
+import datetime as _dt
 
 from app.models.clinical_event import ClinicalEvent, ClinicalEventType
 from app.models.enums import ClinicalEventStatus
 from app.services.clinical_event_engine import compute_insights
 
-
-NOW = _dt.datetime(2026, 4, 15, tzinfo=_dt.timezone.utc)
+NOW = _dt.datetime(2026, 4, 15, tzinfo=_dt.UTC)
 
 
 def _event(**kw):
-    defaults = dict(
-        patient_id=None,
-        title="J",
-        status=ClinicalEventStatus.ACTIVE,
-    )
+    defaults = {
+        "patient_id": None,
+        "title": "J",
+        "status": ClinicalEventStatus.ACTIVE,
+    }
     defaults.update(kw)
     return ClinicalEvent(**defaults)
 
@@ -51,9 +50,7 @@ def test_no_phases_yields_no_current_phase():
 
 
 def test_overdue_flag_when_duration_elapsed_and_active():
-    type_tpl = ClinicalEventType(
-        name="Acute", slug="acute", default_duration_days=30
-    )
+    type_tpl = ClinicalEventType(name="Acute", slug="acute", default_duration_days=30)
     event = _event(
         onset_date=NOW - _dt.timedelta(days=45),
         status=ClinicalEventStatus.ACTIVE,
@@ -64,9 +61,7 @@ def test_overdue_flag_when_duration_elapsed_and_active():
 
 
 def test_overdue_flag_not_set_when_resolved():
-    type_tpl = ClinicalEventType(
-        name="Acute", slug="acute", default_duration_days=30
-    )
+    type_tpl = ClinicalEventType(name="Acute", slug="acute", default_duration_days=30)
     event = _event(
         onset_date=NOW - _dt.timedelta(days=45),
         resolved_date=NOW - _dt.timedelta(days=1),
@@ -110,9 +105,10 @@ def test_milestone_date_field_resolved_from_event_metadata():
     )
     out = compute_insights(event, type_template=type_tpl, now=NOW)
     assert len(out.upcoming_milestones) == 1
-    assert out.upcoming_milestones[0]["date"] == _dt.datetime.fromisoformat(edd).replace(
-        tzinfo=_dt.timezone.utc
-    ).isoformat()
+    assert (
+        out.upcoming_milestones[0]["date"]
+        == _dt.datetime.fromisoformat(edd).replace(tzinfo=_dt.UTC).isoformat()
+    )
 
 
 def test_milestone_past_date_is_overdue():

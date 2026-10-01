@@ -1,3 +1,4 @@
+# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
 """Notification inbox + admin endpoints.
 
 Role-aware scoping (the established pattern: ``get_current_user`` +
@@ -15,15 +16,14 @@ Tenant isolation: every read/mutation helper in
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import check_patient_access
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.errors import DomainError
 from app.core.security import get_current_user
 from app.models.enums import (
     NotificationCategory,
@@ -33,8 +33,8 @@ from app.models.enums import (
     Role,
 )
 from app.schemas.notification import (
-    InboxResponse,
     AdminFeedResponse,
+    InboxResponse,
     NotificationPreferencesResponse,
     NotificationPreferenceUpdate,
     SubscribeRequest,
@@ -43,11 +43,11 @@ from app.schemas.notification import (
 )
 from app.schemas.user import TokenData
 from app.services import notification_service
+from app.services.access import check_patient_access
 from app.services.notification_manager import NotificationManager
 from app.services.notification_preferences_service import (
     NotificationPreferencesService,
 )
-from app.core.errors import DomainError
 
 logger = logging.getLogger(__name__)
 
@@ -95,10 +95,10 @@ async def subscribe_user(
 
 @router.get("/inbox", response_model=InboxResponse)
 async def get_inbox(
-    status: Optional[str] = Query(None, description="unread|read|dismissed"),
-    category: Optional[str] = Query(None),
-    source: Optional[str] = Query(None),
-    patient_id: Optional[str] = Query(None),
+    status: str | None = Query(None, description="unread|read|dismissed"),
+    category: str | None = Query(None),
+    source: str | None = Query(None),
+    patient_id: str | None = Query(None),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
     current_user: TokenData = Depends(get_current_user),
@@ -176,10 +176,10 @@ async def mark_all_read(current_user: TokenData = Depends(get_current_user)):
 
 @router.get("/admin", response_model=AdminFeedResponse)
 async def get_admin_feed(
-    tenant_id: Optional[str] = Query(None),
-    type: Optional[str] = Query(None),
-    source: Optional[str] = Query(None),
-    category: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
+    type: str | None = Query(None),
+    source: str | None = Query(None),
+    category: str | None = Query(None),
     limit: int = Query(50, le=100),
     offset: int = Query(0, ge=0),
     current_user: TokenData = Depends(get_current_user),
@@ -195,9 +195,7 @@ async def get_admin_feed(
         raise HTTPException(status_code=403, detail="Admin access required")
 
     # SYSTEM_ADMIN may target any tenant; others are pinned to their own.
-    target_tenant = (
-        tenant_id if is_system_admin and tenant_id else current_user.tenant_id
-    )
+    target_tenant = tenant_id if is_system_admin and tenant_id else current_user.tenant_id
 
     items, total = await notification_service.get_admin_feed(
         tenant_id=target_tenant,
@@ -213,7 +211,7 @@ async def get_admin_feed(
 
 @router.get("/admin/stats")
 async def get_admin_stats(
-    tenant_id: Optional[str] = Query(None),
+    tenant_id: str | None = Query(None),
     current_user: TokenData = Depends(get_current_user),
 ):
     """Aggregated notification delivery stats for the admin dashboard."""
@@ -226,9 +224,7 @@ async def get_admin_stats(
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    target_tenant = (
-        tenant_id if is_system_admin and tenant_id else current_user.tenant_id
-    )
+    target_tenant = tenant_id if is_system_admin and tenant_id else current_user.tenant_id
     return await notification_service.get_admin_stats(
         tenant_id=target_tenant,
         is_system_admin=is_system_admin,
@@ -281,7 +277,8 @@ async def create_trigger(
     if payload.patient_id:
         await check_patient_access(str(payload.patient_id), current_user, db)
 
-    from app.models.enums import NotificationType as NT, TriggerType as TT
+    from app.models.enums import NotificationType as NT
+    from app.models.enums import TriggerType as TT
 
     trigger = await NotificationManager.create_trigger(
         patient_id=payload.patient_id,
@@ -299,7 +296,7 @@ async def create_trigger(
 
 @router.get("/triggers")
 async def list_triggers(
-    patient_id: Optional[str] = Query(None),
+    patient_id: str | None = Query(None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -319,9 +316,7 @@ async def list_triggers(
         return await NotificationManager.list_triggers_for_user(
             tenant_id=current_user.tenant_id, user_id=current_user.user_id
         )
-    return await NotificationManager.list_triggers_for_tenant(
-        tenant_id=current_user.tenant_id
-    )
+    return await NotificationManager.list_triggers_for_tenant(tenant_id=current_user.tenant_id)
 
 
 async def _check_trigger_ownership(
@@ -333,8 +328,8 @@ async def _check_trigger_ownership(
         return
     from sqlalchemy import select
 
-    from app.models.notification import NotificationTrigger
     from app.models.fhir.patient import Patient
+    from app.models.notification import NotificationTrigger
 
     result = await db.execute(
         select(NotificationTrigger.created_by, NotificationTrigger.patient_id).where(
@@ -349,9 +344,7 @@ async def _check_trigger_ownership(
     if created_by is not None and str(created_by) == str(current_user.user_id):
         return
     if trig_patient_id is not None:
-        patient = await db.execute(
-            select(Patient.user_id).where(Patient.id == trig_patient_id)
-        )
+        patient = await db.execute(select(Patient.user_id).where(Patient.id == trig_patient_id))
         owner = patient.scalar_one_or_none()
         if owner is not None and str(owner) == str(current_user.user_id):
             return
@@ -396,7 +389,7 @@ async def test_trigger(
 
 @router.get("/preferences")
 async def get_preferences(
-    integration_id: Optional[str] = Query(
+    integration_id: str | None = Query(
         None,
         description="Restrict to one integration instance (per-instance tab).",
     ),
@@ -410,9 +403,7 @@ async def get_preferences(
     safety-critical kinds — the UI hides their mute control).
     """
     service = NotificationPreferencesService(db)
-    prefs = await service.get_all(
-        current_user.user_id, current_user.tenant_id, integration_id
-    )
+    prefs = await service.get_all(current_user.user_id, current_user.tenant_id, integration_id)
     return NotificationPreferencesResponse(preferences=prefs)  # type: ignore[arg-type]
 
 
@@ -452,7 +443,7 @@ async def set_preference(
 # ---------------------------------------------------------------------------
 
 
-def _parse_status(value: Optional[str]) -> Optional[RecipientStatus]:
+def _parse_status(value: str | None) -> RecipientStatus | None:
     if value is None:
         return None
     try:
@@ -461,7 +452,7 @@ def _parse_status(value: Optional[str]) -> Optional[RecipientStatus]:
         raise HTTPException(status_code=400, detail=f"Invalid status: {value}")
 
 
-def _parse_category(value: Optional[str]) -> Optional[NotificationCategory]:
+def _parse_category(value: str | None) -> NotificationCategory | None:
     if value is None:
         return None
     try:
@@ -470,7 +461,7 @@ def _parse_category(value: Optional[str]) -> Optional[NotificationCategory]:
         raise HTTPException(status_code=400, detail=f"Invalid category: {value}")
 
 
-def _parse_source(value: Optional[str]) -> Optional[NotificationSource]:
+def _parse_source(value: str | None) -> NotificationSource | None:
     if value is None:
         return None
     try:
@@ -479,7 +470,7 @@ def _parse_source(value: Optional[str]) -> Optional[NotificationSource]:
         raise HTTPException(status_code=400, detail=f"Invalid source: {value}")
 
 
-def _parse_type(value: Optional[str]) -> Optional[NotificationType]:
+def _parse_type(value: str | None) -> NotificationType | None:
     if value is None:
         return None
     try:

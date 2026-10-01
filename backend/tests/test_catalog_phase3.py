@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Phase 3 tests — biomarker↔event-type correlation migration + cross-domain seed edges + legacy table drops.
 
 Covers:
@@ -12,10 +13,10 @@ Covers:
 import uuid
 
 import pytest
-from sqlalchemy import inspect as sa_inspect, select
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept, ConceptEdge
@@ -27,6 +28,7 @@ from app.models.enums import (
     EdgeEndpointType,
 )
 from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 
 async def _tenant_and_headers(role="ADMIN"):

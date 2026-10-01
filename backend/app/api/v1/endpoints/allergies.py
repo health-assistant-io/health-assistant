@@ -5,7 +5,6 @@ Mirrors :mod:`app.api.v1.endpoints.medications`: db-injected service calls,
 parity surface (single-instance GET, catalog usage, AI reprocess).
 """
 
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -47,16 +46,14 @@ def _enforce_catalog_create(current_user: TokenData) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/catalog", response_model=List[AllergyCatalogResponse])
+@router.get("/catalog", response_model=list[AllergyCatalogResponse])
 async def list_catalog(
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
     """Search the global + tenant allergy catalog (hybrid search)."""
-    return await allergy_service.get_allergy_catalog(
-        db, current_user.tenant_id, search
-    )
+    return await allergy_service.get_allergy_catalog(db, current_user.tenant_id, search)
 
 
 @router.get("/catalog/{catalog_id}", response_model=AllergyCatalogResponse)
@@ -65,9 +62,7 @@ async def get_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    entry = await allergy_service.get_catalog_allergy(
-        db, catalog_id, current_user.tenant_id
-    )
+    entry = await allergy_service.get_catalog_allergy(db, catalog_id, current_user.tenant_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
     return entry
@@ -92,9 +87,7 @@ async def update_catalog_entry(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Update an allergy catalog entry (scope + ownership enforced in service)."""
-    entry = await allergy_service.update_catalog_allergy(
-        db, catalog_id, current_user, data
-    )
+    entry = await allergy_service.update_catalog_allergy(db, catalog_id, current_user, data)
     if entry is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
     return entry
@@ -106,9 +99,7 @@ async def delete_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    success = await allergy_service.delete_catalog_allergy(
-        db, catalog_id, current_user
-    )
+    success = await allergy_service.delete_catalog_allergy(db, catalog_id, current_user)
     if not success:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
     return {"message": "Allergy catalog entry deleted"}
@@ -121,23 +112,17 @@ async def get_allergy_usage(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Cross-patient usage of one allergen (drives the detail-page tab)."""
-    return await allergy_service.get_allergy_usage(
-        db, catalog_id, current_user.tenant_id
-    )
+    return await allergy_service.get_allergy_usage(db, catalog_id, current_user.tenant_id)
 
 
-@router.post(
-    "/catalog/{catalog_id}/reprocess", response_model=AllergyCatalogResponse
-)
+@router.post("/catalog/{catalog_id}/reprocess", response_model=AllergyCatalogResponse)
 async def reprocess_allergy(
     catalog_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
     """AI re-enrich the allergen catalog entry (best-effort)."""
-    result = await allergy_service.reprocess_allergy(
-        db, catalog_id, current_user.tenant_id
-    )
+    result = await allergy_service.reprocess_allergy(db, catalog_id, current_user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
     return result
@@ -149,7 +134,7 @@ async def reprocess_allergy(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/active", response_model=List[AllergyIntoleranceResponse])
+@router.get("/active", response_model=list[AllergyIntoleranceResponse])
 async def get_all_active_allergies(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -157,8 +142,9 @@ async def get_all_active_allergies(
     """Active intolerances in the tenant (or just the user's own patients
     for the ``USER`` role). Powers the dashboard ``AllergyAlertsCard``."""
     if current_user.role == Role.USER.value:
-        from app.models.fhir.allergy import AllergyClinicalStatus, AllergyIntolerance
         from sqlalchemy import select
+
+        from app.models.fhir.allergy import AllergyClinicalStatus, AllergyIntolerance
 
         query = (
             select(AllergyIntolerance)
@@ -173,9 +159,7 @@ async def get_all_active_allergies(
         result = await db.execute(query)
         return result.scalars().all()
 
-    rows = await allergy_service.get_active_allergies_by_tenant(
-        db, current_user.tenant_id
-    )
+    rows = await allergy_service.get_active_allergies_by_tenant(db, current_user.tenant_id)
     # The service returns enriched dicts (with patient_name_display) — return
     # as-is; the response_model accepts ORM objects OR dicts.
     return rows
@@ -186,23 +170,17 @@ async def get_all_active_allergies(
 # ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/patient/{patient_id}", response_model=List[AllergyIntoleranceResponse]
-)
+@router.get("/patient/{patient_id}", response_model=list[AllergyIntoleranceResponse])
 async def get_patient_allergies(
     patient_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
     await check_patient_access(patient_id, current_user, db)
-    return await allergy_service.get_patient_allergies(
-        db, patient_id, current_user.tenant_id
-    )
+    return await allergy_service.get_patient_allergies(db, patient_id, current_user.tenant_id)
 
 
-@router.post(
-    "/patient/{patient_id}", response_model=AllergyIntoleranceResponse
-)
+@router.post("/patient/{patient_id}", response_model=AllergyIntoleranceResponse)
 async def add_patient_allergy(
     patient_id: UUID,
     data: AllergyIntoleranceCreate,
@@ -265,9 +243,7 @@ async def delete_allergy(
     current_user: TokenData = Depends(get_current_user),
 ):
     await check_allergy_access(allergy_id, current_user, db)
-    success = await allergy_service.delete_patient_allergy(
-        db, allergy_id, current_user.tenant_id
-    )
+    success = await allergy_service.delete_patient_allergy(db, allergy_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Allergy record not found")
     await log_audit_action(

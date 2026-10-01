@@ -73,7 +73,7 @@ _AUTO_PULL_DISABLED = {"push_only", "none"}
 _AUTO_PUSH_DISABLED = {"pull_only", "none"}
 _PUSH_BATCH_LIMIT = 500
 
-# Multi-resource pull (Phases 1–4 of the fhir-server multi-resource sync
+# Multi-resource pull (Phases 1-4 of the fhir-server multi-resource sync
 # plan). The config key ``pull_resources`` (a list of tokens, or ``"all"``)
 # selects which resource types an instance pulls. Tokens are deliberately
 # coarse-grained — a single "Medication" token covers both FHIR
@@ -682,7 +682,7 @@ class FhirServerProvider(BaseHealthProvider):
         return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # --------------------------------------------------- multi-resource pull
-    # Phases 1–4 of the fhir-server multi-resource sync plan
+    # Phases 1-4 of the fhir-server multi-resource sync plan
     # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Every hook
     # below mirrors the established supports_X / pull_X opt-in shape. Each
     # ``pull_*`` honours ``sync_direction`` (no-op when auto-pull is

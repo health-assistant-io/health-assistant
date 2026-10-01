@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 #!/usr/bin/env python3
 """
 Health Assistant - Document Upload and Processing Test Suite
@@ -11,12 +12,13 @@ from pathlib import Path
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy import select, func
-from app.models.document_model import DocumentModel
-from app.models.user_model import UserModel
-from app.models.tenant_model import TenantModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
 from app.core.config import settings
+from app.models.document_model import DocumentModel
+from app.models.tenant_model import TenantModel
+from app.models.user_model import UserModel
 
 
 async def test_database_connection():
@@ -141,9 +143,7 @@ async def test_document_ownership():
 
             # Get orphaned documents
             result = await session.execute(
-                select(DocumentModel).where(
-                    ~DocumentModel.owner_id.in_(select(UserModel.id))
-                )
+                select(DocumentModel).where(~DocumentModel.owner_id.in_(select(UserModel.id)))
             )
             orphans = result.scalars().all()
 
@@ -175,9 +175,7 @@ async def test_extraction_status():
             processing = result.scalars().all()
 
             result = await session.execute(
-                select(func.count(DocumentModel.id)).where(
-                    DocumentModel.status == "uploaded"
-                )
+                select(func.count(DocumentModel.id)).where(DocumentModel.status == "uploaded")
             )
             uploaded_count = result.scalar()
 
@@ -187,9 +185,7 @@ async def test_extraction_status():
             print(f"   - Completed (has text): {len(extracted)}")
 
             if uploaded_count > 0:
-                print(
-                    f"\n⚠️  WARNING: {uploaded_count} documents have not been processed!"
-                )
+                print(f"\n⚠️  WARNING: {uploaded_count} documents have not been processed!")
                 print("   To process them, you need to:")
                 print("   1. Start Redis: redis-server")
                 print(
@@ -234,9 +230,7 @@ async def main():
         print("\n🎉 All tests passed! System is working correctly.")
         return 0
     else:
-        print(
-            f"\n⚠️  {total_count - passed_count} test(s) failed. Review the output above."
-        )
+        print(f"\n⚠️  {total_count - passed_count} test(s) failed. Review the output above.")
         return 1
 
 

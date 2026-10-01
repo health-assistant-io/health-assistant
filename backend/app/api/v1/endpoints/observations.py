@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import Role
+from app.schemas.user import TokenData
 from app.services.access import check_patient_access
+from app.services.audit_service import audit_read, log_audit_action
 from app.services.fhir_service import (
+    create_observation,
+    delete_observation,
     get_observation,
     list_observations,
-    create_observation,
     update_observation,
-    delete_observation,
 )
-from app.schemas.user import TokenData
-from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/observations", tags=["observations"])
 
@@ -137,9 +138,7 @@ async def get_observation_endpoint(
         else:
             subject_ref = (observation.subject or {}).get("reference", "")
             if subject_ref.startswith("Patient/"):
-                await check_patient_access(
-                    subject_ref.split("/", 1)[1], current_user, db
-                )
+                await check_patient_access(subject_ref.split("/", 1)[1], current_user, db)
     return observation
 
 

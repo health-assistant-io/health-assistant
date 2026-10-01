@@ -4,12 +4,12 @@ Phase 3.2 hardening: ``filename`` is sanitized at the SDK boundary (rejects
 path traversal, absolute paths, NUL/control chars, overlong names) and the
 identifier fields carry ``max_length`` caps.
 """
+
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from integrations.sdk.documents import DocumentPull
+from pydantic import ValidationError
 
 
 def _valid() -> dict:
@@ -56,11 +56,11 @@ def test_document_pull_full():
         "/etc/passwd",
         "/absolute/path/report.pdf",
         "C:\\Windows\\system32\\evil.dll",
-        "report\x00.pdf",          # NUL byte
-        "report\n.pdf",            # control char (newline)
-        "report\x1b[31m.pdf",      # ESC (control)
-        "",                        # empty
-        "   ",                     # whitespace only
+        "report\x00.pdf",  # NUL byte
+        "report\n.pdf",  # control char (newline)
+        "report\x1b[31m.pdf",  # ESC (control)
+        "",  # empty
+        "   ",  # whitespace only
     ],
 )
 def test_filename_rejects_unsafe(bad_name):
@@ -73,9 +73,9 @@ def test_filename_rejects_unsafe(bad_name):
     [
         "report.pdf",
         "lab_report_2026-07-23.PDF",
-        "sub dir/ecg.png",     # a subdirectory component is fine, just no '..'
+        "sub dir/ecg.png",  # a subdirectory component is fine, just no '..'
         "scan (1).tiff",
-        "café-results.dcm",     # non-ASCII filename is fine
+        "café-results.dcm",  # non-ASCII filename is fine
     ],
 )
 def test_filename_accepts_safe(good_name):

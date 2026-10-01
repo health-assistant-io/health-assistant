@@ -1,8 +1,9 @@
+# ruff: noqa: SIM115 -- long immutable strings / legacy patterns; reflow when touched
 import json
 import os
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -103,8 +104,10 @@ def _make_doc(did, tenant_id, pid, tmp_path, filename="report.pdf"):
 
 # ---------- helpers ----------
 
+
 def test_patient_filter_conditions_returns_in_clause():
     import uuid as _u
+
     from app.models.fhir.patient import Patient
 
     cond = _patient_filter_conditions(Patient, [str(_u.uuid4()), str(_u.uuid4())], "id")
@@ -118,6 +121,7 @@ def test_patient_filter_conditions_empty_returns_none():
 
 
 # ---------- pure build methods ----------
+
 
 def test_build_fhir_bundle_counts_and_validates():
     pid = uuid.uuid4()
@@ -188,11 +192,16 @@ def test_build_fhir_bundle_fails_loud_on_invalid_resource():
 def test_build_nonfhir_sidecars_patient_scope_excludes_telemetry_with_note():
     tid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    sidecars, counts, notes = svc.build_nonfhir_sidecars(
+    sidecars, _counts, notes = svc.build_nonfhir_sidecars(
         tid,
         None,
         ExportScope.PATIENT,
-        {"include_documents": True, "include_telemetry": True, "include_integrations": True, "include_ai_config": False},
+        {
+            "include_documents": True,
+            "include_telemetry": True,
+            "include_integrations": True,
+            "include_ai_config": False,
+        },
         examinations=[],
         clinical_events=[],
         clinical_event_types={"types": [], "categories": []},
@@ -222,7 +231,12 @@ def test_build_nonfhir_sidecars_system_scope_includes_telemetry():
         tid,
         None,
         ExportScope.SYSTEM,
-        {"include_documents": True, "include_telemetry": True, "include_integrations": True, "include_ai_config": False},
+        {
+            "include_documents": True,
+            "include_telemetry": True,
+            "include_integrations": True,
+            "include_ai_config": False,
+        },
         examinations=[],
         clinical_events=[],
         clinical_event_types={"types": [], "categories": []},
@@ -256,7 +270,7 @@ def test_integration_to_export_dict_keeps_user_config_and_tokens():
     integ.status.value = "ACTIVE"
     integ.access_token = "tok"
     integ.refresh_token = "ref"
-    integ.expires_at = datetime(2026, 6, 18, tzinfo=timezone.utc)
+    integ.expires_at = datetime(2026, 6, 18, tzinfo=UTC)
     integ.scopes = "scope1"
     integ.provider_account_id = "acc"
     integ.instance_name = "My Phone"
@@ -273,9 +287,11 @@ def test_integration_to_export_dict_keeps_user_config_and_tokens():
 
 # ---------- write methods ----------
 
+
 def test_compute_sha256_matches_known_value():
-    import tempfile
     import hashlib
+    import tempfile
+
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(b"hello")
         path = f.name
@@ -288,9 +304,7 @@ def test_write_fhir_only_file_writes_bundle_and_manifest(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FHIR_ONLY, {})
     path, size, manifest = svc.write_fhir_only_file(bundle, tid, jid, manifest)
@@ -307,16 +321,14 @@ def test_write_catalog_file_writes_catalog(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     catalog = {
         "units": [{"symbol": "mg/dL", "name": "mg/dL"}],
         "biomarkers": [{"slug": "glucose", "name": "Glucose"}],
         "clinical_event_types": {"types": [{"slug": "pregnancy"}], "categories": []},
     }
     manifest = svc.build_manifest(tid, ExportScope.SYSTEM, ExportType.CATALOG_ONLY, {})
-    path, size, manifest = svc.write_catalog_file(catalog, tid, jid, manifest)
+    path, _size, manifest = svc.write_catalog_file(catalog, tid, jid, manifest)
     assert os.path.exists(path)
     assert path.endswith(".catalog.json")
     loaded = json.loads(open(path).read())
@@ -330,9 +342,7 @@ def test_write_full_backup_zip_creates_bagit_structure(tmp_path, monkeypatch):
     jid = uuid.uuid4()
     pid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     doc = _make_doc(uuid.uuid4(), tid, pid, tmp_path)
     sidecars = {
@@ -340,9 +350,7 @@ def test_write_full_backup_zip_creates_bagit_structure(tmp_path, monkeypatch):
         "documents.json": [{"id": str(doc.id), "_archive_path": f"documents/{doc.id}.pdf"}],
     }
     manifest = svc.build_manifest(tid, ExportScope.SYSTEM, ExportType.FULL_BACKUP, {})
-    path, size, manifest = svc.write_full_backup_zip(
-        bundle, sidecars, [doc], tid, jid, manifest
-    )
+    path, size, manifest = svc.write_full_backup_zip(bundle, sidecars, [doc], tid, jid, manifest)
     assert os.path.exists(path)
     assert path.endswith(".zip")
     with zipfile.ZipFile(path) as zf:
@@ -368,9 +376,7 @@ def test_manifest_sha256_matches_file_in_zip(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     sidecars = {"x.json": [{"a": 1}]}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FULL_BACKUP, {})
@@ -378,8 +384,9 @@ def test_manifest_sha256_matches_file_in_zip(tmp_path, monkeypatch):
     with zipfile.ZipFile(path) as zf:
         bundle_bytes = zf.read("fhir/bundle.json")
         import hashlib
+
         expected = hashlib.sha256(bundle_bytes).hexdigest()
-        listed = [f for f in manifest.files if f.path == "fhir/bundle.json"][0]
+        listed = next(f for f in manifest.files if f.path == "fhir/bundle.json")
         assert listed.sha256 == expected
         sha_txt = zf.read("manifest-sha256.txt").decode()
         assert expected in sha_txt
@@ -387,19 +394,23 @@ def test_manifest_sha256_matches_file_in_zip(tmp_path, monkeypatch):
 
 # ---------- run_export (orchestrator, patched gathers) ----------
 
+
 @pytest.mark.asyncio
 async def test_run_export_fhir_only_completes(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
-        id=jid, tenant_id=tid, user_id=uid,
-        scope=ExportScope.PATIENT, export_type=ExportType.FHIR_ONLY,
-        status=JobStatus.PENDING, progress=0, patient_ids=[str(pid)],
+        id=jid,
+        tenant_id=tid,
+        user_id=uid,
+        scope=ExportScope.PATIENT,
+        export_type=ExportType.FHIR_ONLY,
+        status=JobStatus.PENDING,
+        progress=0,
+        patient_ids=[str(pid)],
     )
     db = AsyncMock()
     svc = ExportService(db)
@@ -450,13 +461,16 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
-        id=jid, tenant_id=tid, user_id=uuid.uuid4(),
-        scope=ExportScope.SYSTEM, export_type=ExportType.FULL_BACKUP,
-        status=JobStatus.PENDING, progress=0, patient_ids=None,
+        id=jid,
+        tenant_id=tid,
+        user_id=uuid.uuid4(),
+        scope=ExportScope.SYSTEM,
+        export_type=ExportType.FULL_BACKUP,
+        status=JobStatus.PENDING,
+        progress=0,
+        patient_ids=None,
     )
     db = AsyncMock()
     svc = ExportService(db)
@@ -482,16 +496,24 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "gather_documents", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_examinations", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_clinical_events", AsyncMock(return_value=[]))
-    monkeypatch.setattr(svc, "gather_clinical_event_types", AsyncMock(return_value={"types": [], "categories": []}))
-    monkeypatch.setattr(svc, "gather_biomarker_catalog", AsyncMock(return_value={"units": [], "biomarkers": []}))
-    monkeypatch.setattr(svc, "gather_medication_catalog", AsyncMock(return_value={"medications": []}))
+    monkeypatch.setattr(
+        svc, "gather_clinical_event_types", AsyncMock(return_value={"types": [], "categories": []})
+    )
+    monkeypatch.setattr(
+        svc, "gather_biomarker_catalog", AsyncMock(return_value={"units": [], "biomarkers": []})
+    )
+    monkeypatch.setattr(
+        svc, "gather_medication_catalog", AsyncMock(return_value={"medications": []})
+    )
     monkeypatch.setattr(svc, "gather_allergy_catalog", AsyncMock(return_value={"allergies": []}))
     monkeypatch.setattr(svc, "gather_telemetry", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_integrations", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_notification_triggers", AsyncMock(return_value=[]))
     monkeypatch.setattr(svc, "gather_concepts", AsyncMock(return_value={"concepts": []}))
     monkeypatch.setattr(svc, "gather_concept_edges", AsyncMock(return_value={"edges": []}))
-    monkeypatch.setattr(svc, "gather_anatomy", AsyncMock(return_value={"structures": [], "relations": []}))
+    monkeypatch.setattr(
+        svc, "gather_anatomy", AsyncMock(return_value={"structures": [], "relations": []})
+    )
     monkeypatch.setattr("app.services.export_service.validate_bundle", lambda b: (True, []))
 
     await svc.run_export(jid)
@@ -506,13 +528,16 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
 async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
-        id=jid, tenant_id=tid, user_id=uuid.uuid4(),
-        scope=ExportScope.SYSTEM, export_type=ExportType.CATALOG_ONLY,
-        status=JobStatus.PENDING, progress=0, patient_ids=None,
+        id=jid,
+        tenant_id=tid,
+        user_id=uuid.uuid4(),
+        scope=ExportScope.SYSTEM,
+        export_type=ExportType.CATALOG_ONLY,
+        status=JobStatus.PENDING,
+        progress=0,
+        patient_ids=None,
     )
     db = AsyncMock()
     svc = ExportService(db)
@@ -527,10 +552,26 @@ async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
     monkeypatch.setattr(svc, "update_job_progress", AsyncMock())
     monkeypatch.setattr(svc, "complete_job", fake_complete)
     monkeypatch.setattr(svc, "fail_job", AsyncMock())
-    monkeypatch.setattr(svc, "gather_biomarker_catalog", AsyncMock(return_value={"units": [{"symbol": "mg/dL"}], "biomarkers": [{"slug": "glucose"}]}))
-    monkeypatch.setattr(svc, "gather_clinical_event_types", AsyncMock(return_value={"types": [{"slug": "p"}], "categories": []}))
-    monkeypatch.setattr(svc, "gather_medication_catalog", AsyncMock(return_value={"medications": [{"name": "Metformin"}]}))
-    monkeypatch.setattr(svc, "gather_allergy_catalog", AsyncMock(return_value={"allergies": [{"name": "Peanuts"}]}))
+    monkeypatch.setattr(
+        svc,
+        "gather_biomarker_catalog",
+        AsyncMock(
+            return_value={"units": [{"symbol": "mg/dL"}], "biomarkers": [{"slug": "glucose"}]}
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "gather_clinical_event_types",
+        AsyncMock(return_value={"types": [{"slug": "p"}], "categories": []}),
+    )
+    monkeypatch.setattr(
+        svc,
+        "gather_medication_catalog",
+        AsyncMock(return_value={"medications": [{"name": "Metformin"}]}),
+    )
+    monkeypatch.setattr(
+        svc, "gather_allergy_catalog", AsyncMock(return_value={"allergies": [{"name": "Peanuts"}]})
+    )
 
     await svc.run_export(jid)
 
@@ -545,13 +586,16 @@ async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
 async def test_run_export_fail_job_on_exception(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr(
-        "app.services.document_service.UPLOAD_DIR", str(tmp_path)
-    )
+    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
-        id=jid, tenant_id=tid, user_id=uuid.uuid4(),
-        scope=ExportScope.PATIENT, export_type=ExportType.FHIR_ONLY,
-        status=JobStatus.PENDING, progress=0, patient_ids=None,
+        id=jid,
+        tenant_id=tid,
+        user_id=uuid.uuid4(),
+        scope=ExportScope.PATIENT,
+        export_type=ExportType.FHIR_ONLY,
+        status=JobStatus.PENDING,
+        progress=0,
+        patient_ids=None,
     )
     db = AsyncMock()
     svc = ExportService(db)

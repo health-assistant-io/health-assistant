@@ -117,7 +117,7 @@ if [[ "$NO_BOOTSTRAP" = false ]]; then
   if [[ -d ".venv" ]]; then
     VENV_DIR=".venv"
   fi
-  dc_ensure_venv "$VENV_DIR" requirements.txt
+  uv sync --frozen
   export PATH="$PWD/$VENV_DIR/bin:$PATH"
 
   # PYTHONPATH must include backend (for `app.*`) and project root (for

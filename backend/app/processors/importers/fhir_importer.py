@@ -1,24 +1,25 @@
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
+
 from app.schemas.import_data import FHIRImportConfig, ImportResult, ImportStatus
 
 
 class FHIRImporter:
     """Import FHIR resources from JSON files"""
 
-    def __init__(self, config: Optional[FHIRImportConfig] = None):
+    def __init__(self, config: FHIRImportConfig | None = None):
         self.config = config or FHIRImportConfig()
 
     async def import_from_file(
         self,
         file_path: Path,
         tenant_id: str,
-        patient_id: Optional[str] = None,
+        patient_id: str | None = None,
     ) -> ImportResult:
         """Import FHIR resources from file"""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             return await self.import_from_dict(data, tenant_id, patient_id)
@@ -36,7 +37,7 @@ class FHIRImporter:
         self,
         content: str,
         tenant_id: str,
-        patient_id: Optional[str] = None,
+        patient_id: str | None = None,
     ) -> ImportResult:
         """Import FHIR resources from JSON string"""
         try:
@@ -54,9 +55,9 @@ class FHIRImporter:
 
     async def import_from_dict(
         self,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         tenant_id: str,
-        patient_id: Optional[str] = None,
+        patient_id: str | None = None,
     ) -> ImportResult:
         """Import FHIR resources from dictionary"""
         try:
@@ -108,10 +109,10 @@ class FHIRImporter:
 
     def _process_resource(
         self,
-        resource: Dict[str, Any],
+        resource: dict[str, Any],
         tenant_id: str,
-        patient_id: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        patient_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Process a single FHIR resource"""
         try:
             resource_type = resource.get("resourceType")
@@ -121,9 +122,7 @@ class FHIRImporter:
 
             # Validate resource type if configured
             if self.config.resource_type and resource_type != self.config.resource_type:
-                raise ValueError(
-                    f"Expected {self.config.resource_type}, got {resource_type}"
-                )
+                raise ValueError(f"Expected {self.config.resource_type}, got {resource_type}")
 
             # Add tenant_id to resource
             resource["tenant_id"] = tenant_id
@@ -145,11 +144,11 @@ class FHIRImporter:
 
             return resource
         except Exception as e:
-            raise ValueError(
-                f"Failed to process {resource.get('resourceType', 'unknown')}: {str(e)}"
+            raise ValueError(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+                f"Failed to process {resource.get('resourceType', 'unknown')}: {e!s}"
             )
 
-    def _validate_resource(self, resource: Dict[str, Any]) -> None:
+    def _validate_resource(self, resource: dict[str, Any]) -> None:
         """Validate FHIR resource structure"""
         # Basic validation - can be extended with full FHIR validation
         required_fields = {

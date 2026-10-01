@@ -1,6 +1,5 @@
 import datetime as _dt
 import logging
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,7 +48,7 @@ router = APIRouter(prefix="/clinical-events", tags=["clinical-events"])
 # ---------------------------------------------------------------------------
 
 
-@router.get("/types", response_model=List[ClinicalEventTypeResponse])
+@router.get("/types", response_model=list[ClinicalEventTypeResponse])
 async def list_event_types(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -67,7 +66,7 @@ async def list_event_types(
     return result.scalars().all()
 
 
-@router.get("/types/{type_id}/biomarkers", response_model=List[BiomarkerResponse])
+@router.get("/types/{type_id}/biomarkers", response_model=list[BiomarkerResponse])
 async def get_correlated_biomarkers(
     type_id: UUID,
     current_user: TokenData = Depends(get_current_user),
@@ -79,25 +78,27 @@ async def get_correlated_biomarkers(
     — replaces the legacy BiomarkerEventCorrelation table (Phase 3).
     """
     edge_rows = (
-        await db.execute(
-            select(ConceptEdge.src_id).where(
-                ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
-                ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
-                ConceptEdge.dst_id == type_id,
-                ConceptEdge.relation == ConceptRelationType.MONITORS,
-                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+        (
+            await db.execute(
+                select(ConceptEdge.src_id).where(
+                    ConceptEdge.src_type == EdgeEndpointType.BIOMARKER,
+                    ConceptEdge.dst_type == EdgeEndpointType.CLINICAL_EVENT_TYPE,
+                    ConceptEdge.dst_id == type_id,
+                    ConceptEdge.relation == ConceptRelationType.MONITORS,
+                    ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     response = []
     if edge_rows:
         bio_rows = (
             await db.execute(
                 select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
-                .outerjoin(
-                    Unit, BiomarkerDefinition.preferred_unit_id == Unit.id
-                )
+                .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
                 .where(BiomarkerDefinition.id.in_(edge_rows))
             )
         ).all()
@@ -166,9 +167,7 @@ async def create_event_type(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Event type slug already exists")
 
-    new_type = ClinicalEventType(
-        **type_in.model_dump(), tenant_id=current_user.tenant_id
-    )
+    new_type = ClinicalEventType(**type_in.model_dump(), tenant_id=current_user.tenant_id)
     db.add(new_type)
     await db.commit()
     await db.refresh(new_type)
@@ -180,14 +179,14 @@ async def create_event_type(
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=List[ClinicalEventResponse])
+@router.get("", response_model=list[ClinicalEventResponse])
 async def list_events(
-    patient_id: Optional[UUID] = None,
-    examination_id: Optional[UUID] = None,
-    status: Optional[ClinicalEventStatus] = None,
-    active_on: Optional[_dt.date] = None,
-    onset_on: Optional[_dt.date] = None,
-    date_range: Optional[str] = None,
+    patient_id: UUID | None = None,
+    examination_id: UUID | None = None,
+    status: ClinicalEventStatus | None = None,
+    active_on: _dt.date | None = None,
+    onset_on: _dt.date | None = None,
+    date_range: str | None = None,
     limit: int = 50,
     offset: int = 0,
     current_user: TokenData = Depends(get_current_user),
@@ -322,14 +321,10 @@ async def add_occurrence(
     db: AsyncSession = Depends(get_db),
 ):
     """Append a discrete occurrence (episode) to a health journey."""
-    return await ce_service.add_occurrence(
-        db, event_id, current_user, occurrence_in
-    )
+    return await ce_service.add_occurrence(db, event_id, current_user, occurrence_in)
 
 
-@router.delete(
-    "/{event_id}/occurrences/{occurrence_id}", response_model=ClinicalEventResponse
-)
+@router.delete("/{event_id}/occurrences/{occurrence_id}", response_model=ClinicalEventResponse)
 async def delete_occurrence(
     event_id: UUID,
     occurrence_id: UUID,
@@ -337,9 +332,7 @@ async def delete_occurrence(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a single occurrence from a journey."""
-    return await ce_service.delete_occurrence(
-        db, event_id, occurrence_id, current_user
-    )
+    return await ce_service.delete_occurrence(db, event_id, occurrence_id, current_user)
 
 
 @router.post("/{event_id}/link-anatomy", response_model=ClinicalEventResponse)
@@ -361,9 +354,7 @@ async def link_anatomy(
     )
 
 
-@router.delete(
-    "/{event_id}/unlink-anatomy/{anatomy_id}", response_model=ClinicalEventResponse
-)
+@router.delete("/{event_id}/unlink-anatomy/{anatomy_id}", response_model=ClinicalEventResponse)
 async def unlink_anatomy(
     event_id: UUID,
     anatomy_id: UUID,
@@ -371,9 +362,7 @@ async def unlink_anatomy(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove an anatomy link from an event."""
-    return await ce_service.unlink_anatomy(
-        db, event_id, anatomy_id, current_user
-    )
+    return await ce_service.unlink_anatomy(db, event_id, anatomy_id, current_user)
 
 
 @router.get("/{event_id}/insights")

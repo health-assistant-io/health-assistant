@@ -42,7 +42,7 @@ class TestSecurityHeaders:
         from app.main import app
 
         @app.get("/__xfo_override_probe__")
-        async def _probe():  # noqa: D401
+        async def _probe():
             return PlainTextResponse("ok", headers={"X-Frame-Options": "SAMEORIGIN"})
 
         try:
@@ -166,6 +166,7 @@ class TestWSTokenFallbackDeprecation:
         """Audit 2026-08 AUTH-L4: the ?token= query fallback is gone
         entirely (it leaked JWTs into proxy logs / browser history)."""
         import inspect
+
         from app.api.v1.endpoints import websockets
 
         src = inspect.getsource(websockets._extract_token)
@@ -175,16 +176,16 @@ class TestWSTokenFallbackDeprecation:
 # --------------------------------------------------------------------------- A13
 class TestAnatomySlugSanitization:
     def test_traversal_slug_sanitised_into_base_dir(self, tmp_path, monkeypatch):
-        from app.services import anatomy_service as anat
-        from PIL import Image
         import io
+
+        from PIL import Image
+
+        from app.services import anatomy_service as anat
 
         monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
         buf = io.BytesIO()
         Image.new("RGB", (1, 1), (1, 2, 3)).save(buf, format="WEBP")
-        rel, w, h = anat.save_figure_image(
-            "../../etc/passwd", buf.getvalue(), ext="webp"
-        )
+        rel, w, h = anat.save_figure_image("../../etc/passwd", buf.getvalue(), ext="webp")
         # No path separators survive into the filename, and the file written
         # is contained inside the base dir (no escape).
         fname = rel.split("/")[-1]
@@ -196,9 +197,11 @@ class TestAnatomySlugSanitization:
         assert w == 1 and h == 1
 
     def test_safe_slug_normalised(self, tmp_path, monkeypatch):
-        from app.services import anatomy_service as anat
-        from PIL import Image
         import io
+
+        from PIL import Image
+
+        from app.services import anatomy_service as anat
 
         monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
         buf = io.BytesIO()

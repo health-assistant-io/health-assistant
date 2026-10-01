@@ -26,8 +26,7 @@ import hashlib
 import hmac
 import secrets
 import struct
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 # RFC 6238 interoperability parameters.
@@ -78,7 +77,7 @@ def verify_totp(
     secret_b32: str,
     code: str,
     *,
-    at: Optional[float] = None,
+    at: float | None = None,
     window: int = TOTP_DRIFT_STEPS,
 ) -> bool:
     """Constant-time TOTP check with ``±window`` drift steps.
@@ -91,7 +90,7 @@ def verify_totp(
     presented = normalize_code(code)
     if len(presented) != TOTP_DIGITS or not presented.isdigit():
         return False
-    now = at if at is not None else datetime.now(timezone.utc).timestamp()
+    now = at if at is not None else datetime.now(UTC).timestamp()
     counter = int(now // TOTP_STEP_SECONDS)
     for drift in range(-window, window + 1):
         expected = totp_code_at(secret_b32, (counter + drift) * TOTP_STEP_SECONDS)

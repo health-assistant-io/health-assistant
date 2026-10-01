@@ -1,6 +1,7 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
 from app.models.enums import ImportFormat, ImportSourceType, ImportStatus
 
 
@@ -14,7 +15,7 @@ class ImportOptions(BaseModel):
     validate_fhir: bool = True
     ocr_enabled: bool = True
     ocr_provider: str = "openai"
-    model_name: Optional[str] = None
+    model_name: str | None = None
     extract_images: bool = False
 
     model_config = ConfigDict(from_attributes=True)
@@ -29,17 +30,17 @@ class ImportJob(BaseModel):
     status: ImportStatus
     format: ImportFormat
     source_type: ImportSourceType
-    filename: Optional[str] = None
-    file_path: Optional[str] = None
+    filename: str | None = None
+    file_path: str | None = None
     progress: int = 0
     total_records: int = 0
     processed_records: int = 0
     failed_records: int = 0
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
+    completed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,11 +53,11 @@ class ImportResult(BaseModel):
     total_records: int
     processed_records: int
     failed_records: int
-    created_resources: Dict[str, int] = {}
-    updated_resources: Dict[str, int] = {}
-    errors: List[str] = []
-    warnings: List[str] = []
-    summary: Optional[str] = None
+    created_resources: dict[str, int] = {}
+    updated_resources: dict[str, int] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+    summary: str | None = None
 
 
 class CSVImportConfig(BaseModel):
@@ -65,8 +66,8 @@ class CSVImportConfig(BaseModel):
     delimiter: str = ","
     encoding: str = "utf-8"
     has_header: bool = True
-    date_format: Optional[str] = None
-    column_mappings: Dict[str, str] = {}
+    date_format: str | None = None
+    column_mappings: dict[str, str] = {}
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,7 +75,7 @@ class CSVImportConfig(BaseModel):
 class FHIRImportConfig(BaseModel):
     """Configuration for FHIR import"""
 
-    resource_type: Optional[str] = None
+    resource_type: str | None = None
     bundle_type: str = "collection"
     validate_profiles: bool = True
     auto_map_biomarkers: bool = True
@@ -87,7 +88,7 @@ class OCRImportConfig(BaseModel):
     """Configuration for OCR import"""
 
     provider: str = "openai"
-    model_name: Optional[str] = None
+    model_name: str | None = None
     language: str = "en"
     extract_tables: bool = True
     extract_images: bool = False
@@ -100,10 +101,10 @@ class DataImportRequest(BaseModel):
     """Request to import data"""
 
     format: ImportFormat
-    options: Optional[ImportOptions] = None
-    csv_config: Optional[CSVImportConfig] = None
-    fhir_config: Optional[FHIRImportConfig] = None
-    ocr_config: Optional[OCRImportConfig] = None
+    options: ImportOptions | None = None
+    csv_config: CSVImportConfig | None = None
+    fhir_config: FHIRImportConfig | None = None
+    ocr_config: OCRImportConfig | None = None
 
 
 class DataImportResponse(BaseModel):
@@ -112,4 +113,4 @@ class DataImportResponse(BaseModel):
     job_id: str
     status: ImportStatus
     message: str
-    estimated_time: Optional[int] = None  # seconds
+    estimated_time: int | None = None  # seconds

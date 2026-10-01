@@ -17,6 +17,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.catalog_audit_model import CatalogAuditLog
@@ -24,13 +25,12 @@ from app.models.concept_model import Concept
 from app.models.enums import (
     CatalogScope,
     ConceptKind,
+    ConceptRelationType,
     ConceptStatus,
     EdgeEndpointType,
-    ConceptRelationType,
 )
-from app.services.concept_service import ConceptService
 from app.services.catalog_graph_service import count_relations_both_directions
-from sqlalchemy import select
+from app.services.concept_service import ConceptService
 
 
 @pytest_asyncio.fixture
@@ -96,9 +96,7 @@ async def test_catalog_concept_list_multi_kind_filter(clean_concept_namespace):
         ):
             result = await adapter.list(session, None, kind=kind.value, limit=500)
             ids = {item["id"] for item in result["items"]}
-            assert str(cid) in ids, (
-                f"concept should appear under kind={kind.value}"
-            )
+            assert str(cid) in ids, f"concept should appear under kind={kind.value}"
 
 
 # ---------------------------------------------------------------------------
@@ -189,12 +187,8 @@ async def test_concept_delete_with_incoming_edges_retires(clean_concept_namespac
 async def test_concept_delete_with_outgoing_edges_retires(clean_concept_namespace):
     """A concept with *outgoing* edges is also retired (symmetry check)."""
     p = clean_concept_namespace
-    src_id = await _make_concept(
-        slug=f"{p}-src", name=f"Src {p}", kinds=[ConceptKind.SPECIALTY]
-    )
-    dst_id = await _make_concept(
-        slug=f"{p}-dst", name=f"Dst {p}", kinds=[ConceptKind.BODY_SYSTEM]
-    )
+    src_id = await _make_concept(slug=f"{p}-src", name=f"Src {p}", kinds=[ConceptKind.SPECIALTY])
+    dst_id = await _make_concept(slug=f"{p}-dst", name=f"Dst {p}", kinds=[ConceptKind.BODY_SYSTEM])
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         await svc.create_edge(
@@ -229,9 +223,7 @@ async def test_concept_delete_without_edges_soft_deletes(clean_concept_namespace
     """An edge-less concept is retired AND soft-deleted (``deleted_at`` set);
     excluded from default reads."""
     p = clean_concept_namespace
-    cid = await _make_concept(
-        slug=f"{p}-lonely", name=f"Lonely {p}", kinds=[ConceptKind.DISEASE]
-    )
+    cid = await _make_concept(slug=f"{p}-lonely", name=f"Lonely {p}", kinds=[ConceptKind.DISEASE])
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         await svc.delete_concept(cid, None, "SYSTEM_ADMIN")
@@ -381,14 +373,17 @@ async def test_concept_create_audits(clean_concept_namespace):
 
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                select(CatalogAuditLog)
-                .where(
-                    CatalogAuditLog.catalog_type == "concept",
-                    CatalogAuditLog.item_id == cid,
+            (
+                await session.execute(
+                    select(CatalogAuditLog).where(
+                        CatalogAuditLog.catalog_type == "concept",
+                        CatalogAuditLog.item_id == cid,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) >= 1
         assert rows[-1].operation == "create"
         assert rows[-1].user_email == "audittest@test.local"
@@ -415,13 +410,17 @@ async def test_concept_create_without_actor_does_not_audit(
 
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                select(CatalogAuditLog).where(
-                    CatalogAuditLog.catalog_type == "concept",
-                    CatalogAuditLog.item_id == cid,
+            (
+                await session.execute(
+                    select(CatalogAuditLog).where(
+                        CatalogAuditLog.catalog_type == "concept",
+                        CatalogAuditLog.item_id == cid,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 0
 
 
@@ -535,12 +534,8 @@ async def test_catalog_concept_search_finds_by_description(clean_concept_namespa
 async def test_whole_concept_graph_returns_nodes_and_edges(clean_concept_namespace):
     """The rootless graph loader returns concepts + edges between them."""
     p = clean_concept_namespace
-    a_id = await _make_concept(
-        slug=f"{p}-graph-a", name=f"GraphA {p}", kinds=[ConceptKind.DISEASE]
-    )
-    b_id = await _make_concept(
-        slug=f"{p}-graph-b", name=f"GraphB {p}", kinds=[ConceptKind.SYMPTOM]
-    )
+    a_id = await _make_concept(slug=f"{p}-graph-a", name=f"GraphA {p}", kinds=[ConceptKind.DISEASE])
+    b_id = await _make_concept(slug=f"{p}-graph-b", name=f"GraphB {p}", kinds=[ConceptKind.SYMPTOM])
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         await svc.create_edge(
@@ -560,15 +555,12 @@ async def test_whole_concept_graph_returns_nodes_and_edges(clean_concept_namespa
         # Use a kind filter to narrow the result set (the test DB accumulates
         # concepts across runs; the default limit_nodes=1000 would cut off
         # the test's concepts otherwise).
-        result = await whole_concept_graph(
-            session, tenant_id=None, kinds=["disease", "symptom"]
-        )
+        result = await whole_concept_graph(session, tenant_id=None, kinds=["disease", "symptom"])
         node_ids = {n["id"] for n in result["nodes"]}
         assert str(a_id) in node_ids
         assert str(b_id) in node_ids
         assert any(
-            e["src"]["id"] == str(a_id) and e["dst"]["id"] == str(b_id)
-            for e in result["edges"]
+            e["src"]["id"] == str(a_id) and e["dst"]["id"] == str(b_id) for e in result["edges"]
         )
         assert result["truncated"] is False
 
@@ -614,23 +606,18 @@ async def test_whole_concept_graph_kind_filter_narrows(clean_concept_namespace):
     async with AsyncSessionLocal() as session:
         from app.services.catalog_graph_service import whole_concept_graph
 
-        result = await whole_concept_graph(
-            session, tenant_id=None, kinds=["disease", "symptom"]
-        )
+        result = await whole_concept_graph(session, tenant_id=None, kinds=["disease", "symptom"])
         node_ids = {n["id"] for n in result["nodes"]}
         assert str(disease_id) in node_ids
         assert str(symptom_id) in node_ids
         assert str(specialty_id) not in node_ids
         # The disease→symptom edge survives (both endpoints in the kind set).
         assert any(
-            e["src"]["id"] == str(disease_id)
-            and e["dst"]["id"] == str(symptom_id)
+            e["src"]["id"] == str(disease_id) and e["dst"]["id"] == str(symptom_id)
             for e in result["edges"]
         )
         # The specialty→disease edge does NOT survive (specialty excluded).
-        assert not any(
-            e["src"]["id"] == str(specialty_id) for e in result["edges"]
-        )
+        assert not any(e["src"]["id"] == str(specialty_id) for e in result["edges"])
 
 
 @pytest.mark.asyncio
@@ -640,9 +627,7 @@ async def test_whole_concept_graph_endpoint_works(
     """``GET /catalogs/graph`` returns a valid payload via HTTP."""
     p = clean_concept_namespace
     # Create two concepts + an edge so they appear in the edge-driven graph.
-    a_id = await _make_concept(
-        slug=f"{p}-ep-a", name=f"EndpointA {p}", kinds=[ConceptKind.ORGAN]
-    )
+    a_id = await _make_concept(slug=f"{p}-ep-a", name=f"EndpointA {p}", kinds=[ConceptKind.ORGAN])
     b_id = await _make_concept(
         slug=f"{p}-ep-b", name=f"EndpointB {p}", kinds=[ConceptKind.BODY_SYSTEM]
     )

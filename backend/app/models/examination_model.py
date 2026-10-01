@@ -1,19 +1,31 @@
-from sqlalchemy import Column, String, Date, ForeignKey, Index, Text, Integer, Boolean, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from sqlalchemy.orm import relationship
-from app.models.base import (
-    Base,
-    UUIDMixin,
-    AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
-    SoftDeleteMixin,
-)
-from app.models.associations import examination_doctors
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
-from typing import TYPE_CHECKING
 import datetime as _dt
-from datetime import timezone
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Date,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import relationship
+
+from app.models.associations import examination_doctors
+from app.models.base import (
+    AuditMixin,
+    Base,
+    SoftDeleteMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
+)
+from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 if TYPE_CHECKING:
     pass
@@ -134,13 +146,9 @@ class ExaminationModel(
             "category_concept_id": str(self.category_concept_id)
             if self.category_concept_id
             else None,
-            "category_concept": self.category_concept.to_dict()
-            if self.category_concept
-            else None,
+            "category_concept": self.category_concept.to_dict() if self.category_concept else None,
             "category": self.category,
-            "organization_id": str(self.organization_id)
-            if self.organization_id
-            else None,
+            "organization_id": str(self.organization_id) if self.organization_id else None,
             "organization": self.organization.to_dict() if self.organization else None,
             "source_integration_id": str(self.source_integration_id)
             if self.source_integration_id
@@ -152,12 +160,8 @@ class ExaminationModel(
             "extraction_status": self.extraction_status,
             "extraction_progress": self.extraction_progress,
             "error_message": self.error_message,
-            "medications": [m.to_dict() for m in self.medications]
-            if self.medications
-            else [],
-            "observations": [o.to_dict() for o in self.observations]
-            if self.observations
-            else [],
+            "medications": [m.to_dict() for m in self.medications] if self.medications else [],
+            "observations": [o.to_dict() for o in self.observations] if self.observations else [],
             "doctors": [d.to_dict() for d in self.doctors] if self.doctors else [],
             "clinical_events": self._serialize_clinical_events(),
             "created_at": created_at_value.isoformat() if created_at_value else None,
@@ -240,10 +244,10 @@ class ExaminationModel(
         period = None
         if self.examination_date:
             start_dt = _dt.datetime.combine(
-                self.examination_date, _dt.time(0, 0, 0), tzinfo=timezone.utc
+                self.examination_date, _dt.time(0, 0, 0), tzinfo=_dt.UTC
             )
             end_dt = _dt.datetime.combine(
-                self.examination_date, _dt.time(23, 59, 59), tzinfo=timezone.utc
+                self.examination_date, _dt.time(23, 59, 59), tzinfo=_dt.UTC
             )
             period = {
                 "start": fhir_isoformat(start_dt),
@@ -312,9 +316,7 @@ class ExaminationModel(
             "id": str(self.id) if self.id else None,
             "status": status,
             "class": encounter_class,
-            "subject": {"reference": f"Patient/{self.patient_id}"}
-            if self.patient_id
-            else None,
+            "subject": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
             "period": period,
             "reasonCode": reason_code,
             "diagnosis": diagnosis,

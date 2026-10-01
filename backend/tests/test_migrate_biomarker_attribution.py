@@ -26,6 +26,7 @@ Because the full ``migrate_biomarker_data`` task involves Celery decorators
 + a fresh engine, the integration test exercises the actual task with a
 mocked session.
 """
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -40,9 +41,7 @@ def _build_resolver(all_tenant_patients: list):
     ``patient_id``; fall back to the single-patient-tenant default; skip
     otherwise.
     """
-    default_patient_id = (
-        all_tenant_patients[0] if len(all_tenant_patients) == 1 else None
-    )
+    default_patient_id = all_tenant_patients[0] if len(all_tenant_patients) == 1 else None
 
     def resolve(patient_id_on_row):
         if patient_id_on_row is not None:
@@ -82,9 +81,7 @@ def test_resolver_multi_patient_tenant_uses_persisted_patient_id():
     patient_b = uuid.uuid4()
     other_patient = uuid.uuid4()
 
-    resolver, default = _build_resolver(
-        all_tenant_patients=[patient_a, patient_b, other_patient]
-    )
+    resolver, default = _build_resolver(all_tenant_patients=[patient_a, patient_b, other_patient])
     # Multi-patient → NO default fallback.
     assert default is None
     # Row with patient_id → use it directly.
@@ -101,9 +98,7 @@ def test_resolver_unknown_patient_in_multi_patient_tenant_skips():
     patient_a = uuid.uuid4()
     patient_b = uuid.uuid4()
 
-    resolver, default = _build_resolver(
-        all_tenant_patients=[patient_a, patient_b]
-    )
+    resolver, default = _build_resolver(all_tenant_patients=[patient_a, patient_b])
     assert default is None
     assert resolver(None) is None  # previously returned patient_a
 
@@ -150,8 +145,8 @@ async def test_migrate_biomarker_data_telemetry_to_fhir_uses_persisted_patient_i
             self.patient_id = patient_id
 
     rows = [
-        _Tel(70.0, patient_a, _dt.datetime.now(_dt.timezone.utc)),
-        _Tel(80.0, None, _dt.datetime.now(_dt.timezone.utc)),  # no patient_id
+        _Tel(70.0, patient_a, _dt.datetime.now(_dt.UTC)),
+        _Tel(80.0, None, _dt.datetime.now(_dt.UTC)),  # no patient_id
     ]
 
     # Build a sequence of db.execute responses:

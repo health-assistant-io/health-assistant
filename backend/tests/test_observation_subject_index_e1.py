@@ -5,6 +5,7 @@ The most-used query pattern in the codebase is
 sites). Without an expression index on ``(subject->>'reference')`` every
 per-patient observation query is a full scan within tenant.
 """
+
 from sqlalchemy import create_engine, text
 
 from app.core.config import settings
@@ -16,10 +17,7 @@ def _index_exists(table: str, index_name: str) -> bool:
     try:
         with engine.connect() as conn:
             result = conn.execute(
-                text(
-                    "SELECT 1 FROM pg_indexes "
-                    "WHERE tablename = :t AND indexname = :i"
-                ),
+                text("SELECT 1 FROM pg_indexes WHERE tablename = :t AND indexname = :i"),
                 {"t": table, "i": index_name},
             ).scalar()
             return bool(result)
@@ -37,9 +35,7 @@ def test_observation_subject_ref_index_exists():
 
 def test_diagnostic_report_subject_ref_index_exists():
     """The expression index on fhir_diagnostic_reports must exist."""
-    assert _index_exists(
-        "fhir_diagnostic_reports", "ix_fhir_diagnostic_reports_subject_ref"
-    ), (
+    assert _index_exists("fhir_diagnostic_reports", "ix_fhir_diagnostic_reports_subject_ref"), (
         "Expression index ix_fhir_diagnostic_reports_subject_ref is missing"
     )
 
@@ -80,6 +76,5 @@ def test_model_declares_expression_index():
 
     index_names = {idx.name for idx in Observation.__table__.indexes}
     assert "ix_fhir_observations_subject_ref" in index_names, (
-        f"ObservationModel is missing the expression index. "
-        f"Got: {sorted(index_names)}"
+        f"ObservationModel is missing the expression index. Got: {sorted(index_names)}"
     )

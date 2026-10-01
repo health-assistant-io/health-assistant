@@ -1,9 +1,10 @@
-from typing import List, Optional
 from uuid import UUID
+
+from sqlalchemy import and_, case, delete, desc, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, desc, and_, update, func, case, literal
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.chat_model import ChatSession, ChatMessage
+
+from app.models.chat_model import ChatMessage, ChatSession
 
 
 def _has_tasks_filter():
@@ -49,9 +50,7 @@ def is_internal_message(content) -> bool:
     if content.get("kind") == "hitl_feedback":
         return True
     text = content.get("text")
-    if isinstance(text, str) and text.startswith("[HITL RESOLUTION FEEDBACK]"):
-        return True
-    return False
+    return bool(isinstance(text, str) and text.startswith("[HITL RESOLUTION FEEDBACK]"))
 
 
 class ChatSessionService:
@@ -59,8 +58,8 @@ class ChatSessionService:
         self.db = db
 
     async def list_sessions(
-        self, user_id: UUID, tenant_id: UUID, patient_id: Optional[UUID] = None
-    ) -> List[ChatSession]:
+        self, user_id: UUID, tenant_id: UUID, patient_id: UUID | None = None
+    ) -> list[ChatSession]:
         query = select(ChatSession).where(
             and_(ChatSession.user_id == user_id, ChatSession.tenant_id == tenant_id)
         )
@@ -73,7 +72,7 @@ class ChatSessionService:
 
     async def get_owned_session(
         self, session_id: UUID, user_id: UUID, tenant_id: UUID
-    ) -> Optional[ChatSession]:
+    ) -> ChatSession | None:
         result = await self.db.execute(
             select(ChatSession).where(
                 and_(
@@ -87,7 +86,7 @@ class ChatSessionService:
 
     async def get_session_messages(
         self, session_id: UUID, user_id: UUID, tenant_id: UUID
-    ) -> List[ChatMessage]:
+    ) -> list[ChatMessage]:
         # Verify ownership
         session_result = await self.db.execute(
             select(ChatSession).where(
@@ -112,7 +111,7 @@ class ChatSessionService:
         self,
         user_id: UUID,
         tenant_id: UUID,
-        patient_id: Optional[UUID] = None,
+        patient_id: UUID | None = None,
         title: str = "New Chat",
     ) -> ChatSession:
         session = ChatSession(
@@ -131,10 +130,10 @@ class ChatSessionService:
         session_id: UUID,
         role: str,
         content: dict,
-        tool_calls: Optional[list] = None,
-        citations: Optional[list] = None,
-        tasks: Optional[list] = None,
-        owner_user_id: Optional[UUID] = None,
+        tool_calls: list | None = None,
+        citations: list | None = None,
+        tasks: list | None = None,
+        owner_user_id: UUID | None = None,
     ) -> ChatMessage:
         """Persist one message.
 
@@ -148,9 +147,7 @@ class ChatSessionService:
             select(ChatSession).where(ChatSession.id == session_id)
         )
         session = session_result.scalars().first()
-        if session is None or (
-            owner_user_id is not None and session.user_id != owner_user_id
-        ):
+        if session is None or (owner_user_id is not None and session.user_id != owner_user_id):
             raise LookupError("Chat session not found.")
 
         message = ChatMessage(
@@ -172,7 +169,7 @@ class ChatSessionService:
         message_id: UUID,
         user_id: UUID,
         tenant_id: UUID,
-    ) -> Optional[ChatMessage]:
+    ) -> ChatMessage | None:
         """Load a single message, verifying ownership via its session."""
         result = await self.db.execute(
             select(ChatMessage)
@@ -193,7 +190,7 @@ class ChatSessionService:
         proposal_id: str,
         user_id: UUID,
         tenant_id: UUID,
-    ) -> Optional[ChatMessage]:
+    ) -> ChatMessage | None:
         """Find the message in a session whose `tasks` JSONB contains a given
         proposal_id. Verifies session ownership first. Used by the HITL resolve
         endpoint (proposal_ids are unique within a session)."""
@@ -233,8 +230,8 @@ class ChatSessionService:
         session_id: UUID,
         user_id: UUID,
         tenant_id: UUID,
-        message_id: Optional[UUID] = None,
-    ) -> Optional[ChatMessage]:
+        message_id: UUID | None = None,
+    ) -> ChatMessage | None:
         """Locate the assistant message whose HITL tasks should drive a resume
         continuation turn. If `message_id` is provided, load it directly;
         otherwise pick the most recent message in the session that has tasks.
@@ -294,10 +291,10 @@ class ChatSessionService:
     async def update_message_fields(
         self,
         message: ChatMessage,
-        content: Optional[dict] = None,
-        tool_calls: Optional[list] = None,
-        citations: Optional[list] = None,
-        tasks: Optional[list] = None,
+        content: dict | None = None,
+        tool_calls: list | None = None,
+        citations: list | None = None,
+        tasks: list | None = None,
     ) -> ChatMessage:
         """Update one or more JSONB fields on an existing message in place.
         Used by the chat stream to proactively persist a HITL task as soon as

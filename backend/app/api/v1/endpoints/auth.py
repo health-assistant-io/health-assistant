@@ -1,3 +1,4 @@
+# ruff: noqa: B008,SIM102 -- long immutable strings; reflow when touched
 """Authentication endpoints — login, register, invite, first-run setup.
 
 Family contract (identity-auth §7/§8/§12) on the Class S base (§17):
@@ -24,7 +25,7 @@ Family contract (identity-auth §7/§8/§12) on the Class S base (§17):
    login errors per §7.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -50,7 +51,6 @@ from app.core.security import (
     create_mfa_challenge_token,
     decode_refresh_token,
     get_current_user,
-    get_current_user_id,
     get_password_hash,
     get_token,
     invite_jti,
@@ -71,12 +71,12 @@ from app.schemas.auth import (
     UserRegister,
 )
 from app.schemas.user import PublicUser, TokenData, UserResponse
+from app.services import mfa_service
 from app.services.audit_service import (
     OUTCOME_DENIED,
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services import mfa_service
 from app.services.auth_session_service import (
     device_hint,
     issue_session,
@@ -87,12 +87,14 @@ from app.services.auth_session_service import (
 from app.services.tenant_service import create_tenant, get_tenant
 from app.services.user_service import (
     bump_token_version,
-    create_user as service_create_user,
     get_user_by_email,
     get_user_by_id,
     normalize_email,
     reset_login_failures,
     set_login_failures,
+)
+from app.services.user_service import (
+    create_user as service_create_user,
 )
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -140,7 +142,7 @@ _BOOTSTRAP_ADVISORY_KEY = 0x48414F424F4F54  # 'HAOBOOT' as int56
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _ensure_aware(value: datetime | None) -> datetime | None:
@@ -148,8 +150,8 @@ def _ensure_aware(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _token_response(issued) -> TokenResponse:
@@ -199,9 +201,7 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     """
     initialized = await _is_initialized(db)
     mode = setup_token.current_mode()
-    token_required = (
-        False if initialized else setup_token.is_setup_token_required(request)
-    )
+    token_required = False if initialized else setup_token.is_setup_token_required(request)
     return SetupStatus(
         initialized=initialized,
         setup_token_required=token_required,
@@ -270,9 +270,7 @@ async def setup(
     # Race-protected bootstrap: the advisory lock serializes the count +
     # insert so two concurrent setup attempts cannot both succeed. Same
     # pattern as the old register bootstrap path.
-    await db.execute(
-        text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY}
-    )
+    await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY})
 
     # Re-check inside the lock — a concurrent setup may have initialized
     # while we waited.
@@ -345,9 +343,7 @@ async def login(
     stored_hash = _dummy_hash()
     if user is not None and getattr(user, "password_hash", None):
         stored_hash = user.password_hash
-    authenticated = user is not None and verify_password(
-        form_data.password, stored_hash
-    )
+    authenticated = user is not None and verify_password(form_data.password, stored_hash)
 
     if user is not None:
         now = _utcnow()
@@ -908,9 +904,7 @@ async def validate_token(current_user: TokenData = Depends(get_current_user)):
         "auth_mode": current_user.auth_mode,
         "switched": bool(current_user.switched),
         "original_tenant_id": (
-            str(current_user.original_tenant_id)
-            if current_user.original_tenant_id
-            else None
+            str(current_user.original_tenant_id) if current_user.original_tenant_id else None
         ),
     }
 
@@ -1010,9 +1004,7 @@ async def refresh_token(
             detail="Refresh token has been revoked",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if payload.get("ver") is not None and int(user.token_version or 1) != int(
-        payload["ver"]
-    ):
+    if payload.get("ver") is not None and int(user.token_version or 1) != int(payload["ver"]):
         # token_version bump = global sign-out (§8).
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1042,11 +1034,7 @@ async def refresh_token(
     from app.services.auth_session_service import get_family
 
     family = await get_family(family_id) if family_id else None
-    if (
-        family is None
-        or str(family.user_id) != str(user.id)
-        or family.revoked_at is not None
-    ):
+    if family is None or str(family.user_id) != str(user.id) or family.revoked_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
@@ -1054,9 +1042,7 @@ async def refresh_token(
         )
 
     now = _utcnow()
-    if now >= _ensure_aware(family.absolute_expires_at) or now >= _ensure_aware(
-        family.expires_at
-    ):
+    if now >= _ensure_aware(family.absolute_expires_at) or now >= _ensure_aware(family.expires_at):
         await revoke_family(family_id)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1092,8 +1078,8 @@ async def refresh_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    db_role = getattr(user.role, "value", user.role)
-    db_tenant_id = str(user.tenant_id)
+    getattr(user.role, "value", user.role)
+    str(user.tenant_id)
 
     extra_claims: dict = {}
     # The auth_mode (password / demo) travels with the family — but a demo
@@ -1168,9 +1154,7 @@ async def logout(
             await revoke_family(payload["fid"])
     access_payload = verify_access_token(token)
     if access_payload and access_payload.get("jti"):
-        await token_store.revoke_session(
-            str(access_payload["user_id"]), str(access_payload["jti"])
-        )
+        await token_store.revoke_session(str(access_payload["user_id"]), str(access_payload["jti"]))
         # No refresh body? Still drop the access token's own family row.
         if not (payload and payload.get("fid")) and access_payload.get("fid"):
             await revoke_family(access_payload["fid"])
@@ -1194,8 +1178,6 @@ async def logout_all(
     count = await revoke_all_for_user(current_user.user_id)
     await bump_token_version(current_user.user_id)
     await token_store.revoke_everything(current_user.user_id)
-    await _audit_auth_event(
-        "auth.logout_all", current_user, new_value={"revoked": count}
-    )
+    await _audit_auth_event("auth.logout_all", current_user, new_value={"revoked": count})
     clear_session_cookies(response)
     return {"revoked": count}

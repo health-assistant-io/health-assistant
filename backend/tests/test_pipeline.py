@@ -1,13 +1,20 @@
-import pytest
+import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-import datetime
-from app.workers.ai_tasks import ocr_document, cumulative_extraction
+
+import pytest
+
+from app.workers.ai_tasks import cumulative_extraction, ocr_document
+
+
 async def _ocr_document_async(document_id: str, file_path: str, tenant_id: str):
     return await ocr_document.__wrapped__.__wrapped__(None, document_id, file_path, tenant_id)
 
+
 async def _cumulative_extraction_async(examination_id: str):
     return await cumulative_extraction.__wrapped__.__wrapped__(None, examination_id)
+
+
 from app.models.document_model import DocumentModel  # noqa: E402
 from app.models.examination_model import ExaminationModel  # noqa: E402
 
@@ -120,9 +127,7 @@ async def test_cumulative_extraction_async():
     )
 
     # Mock Docs
-    mock_doc = DocumentModel(
-        id=uuid4(), extracted_text="Doc Text", include_in_extraction=True
-    )
+    mock_doc = DocumentModel(id=uuid4(), extracted_text="Doc Text", include_in_extraction=True)
 
     # Setup DB results
     res_exam = MagicMock()
@@ -159,7 +164,13 @@ async def test_cumulative_extraction_async():
             return res_exam
         if "from documents" in q_str:
             return res_docs
-        if "from fhir_patients" in q_str or "from fhir_observations" in q_str or "from fhir_medications" in q_str or "from biomarker_definitions" in q_str or "from units" in q_str:
+        if (
+            "from fhir_patients" in q_str
+            or "from fhir_observations" in q_str
+            or "from fhir_medications" in q_str
+            or "from biomarker_definitions" in q_str
+            or "from units" in q_str
+        ):
             return res_empty
         return MagicMock()
 
@@ -191,7 +202,7 @@ async def test_cumulative_extraction_async():
         assert result["status"] == "completed"
         assert mock_nlp.parse_document_pass_1.called
         # Check that it combined text
-        args, kwargs = mock_nlp.parse_document_pass_1.call_args
+        args, _kwargs = mock_nlp.parse_document_pass_1.call_args
         assert "Doc Text" in args[0]
 
 

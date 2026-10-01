@@ -25,7 +25,6 @@ import pytest
 from app.ai.tools import propose_link as pl
 from app.models.enums import ConceptRelationType, EdgeEndpointType
 
-
 # ---------------------------------------------------------------------------
 # LINK_SCHEMA integrity
 # ---------------------------------------------------------------------------
@@ -33,26 +32,20 @@ from app.models.enums import ConceptRelationType, EdgeEndpointType
 
 def test_link_schema_keys_are_valid_endpoint_pairs():
     """Every (src, dst) key references real EdgeEndpointType values."""
-    for src, dst in pl.LINK_SCHEMA.keys():
-        assert isinstance(src, EdgeEndpointType), (
-            f"src {src!r} must be an EdgeEndpointType"
-        )
-        assert isinstance(dst, EdgeEndpointType), (
-            f"dst {dst!r} must be an EdgeEndpointType"
-        )
+    for src, dst in pl.LINK_SCHEMA:
+        assert isinstance(src, EdgeEndpointType), f"src {src!r} must be an EdgeEndpointType"
+        assert isinstance(dst, EdgeEndpointType), f"dst {dst!r} must be an EdgeEndpointType"
 
 
 def test_link_schema_values_are_valid_relations():
     """Every relation in the matrix references a real ConceptRelationType."""
     for (src, dst), relations in pl.LINK_SCHEMA.items():
         assert relations, (
-            f"empty relations list for {src.value}->{dst.value} — "
-            "drop the entry instead"
+            f"empty relations list for {src.value}->{dst.value} — drop the entry instead"
         )
         for r in relations:
             assert isinstance(r, ConceptRelationType), (
-                f"relation {r!r} for {src.value}->{dst.value} "
-                "must be a ConceptRelationType"
+                f"relation {r!r} for {src.value}->{dst.value} must be a ConceptRelationType"
             )
 
 
@@ -198,9 +191,7 @@ async def test_build_link_specs_keeps_valid_and_snapshots(fake_dst_payload):
     tenant_id = uuid4()
     dst_id = fake_dst_payload["id"]
 
-    with patch.object(
-        pl, "resolve_endpoint", return_value=fake_dst_payload
-    ) as mock_resolve:
+    with patch.object(pl, "resolve_endpoint", return_value=fake_dst_payload) as mock_resolve:
         out = await pl.build_link_specs(
             db=object(),  # passed through to the mocked resolver
             tenant_id=tenant_id,
@@ -343,9 +334,7 @@ async def test_build_link_specs_skips_dedup_when_primary_new(fake_dst_payload):
     is skipped entirely — there can't be a pre-existing edge to a not-yet-row."""
     with (
         patch.object(pl, "resolve_endpoint", return_value=fake_dst_payload),
-        patch.object(
-            pl, "check_existing_edge", side_effect=AssertionError("must not be called")
-        ),
+        patch.object(pl, "check_existing_edge", side_effect=AssertionError("must not be called")),
     ):
         out = await pl.build_link_specs(
             db=None,
@@ -400,9 +389,7 @@ async def test_build_link_specs_mixed_batch(fake_dst_payload):
 
 @pytest.mark.asyncio
 async def test_schema_endpoint_full(async_client, system_admin_headers):
-    resp = await async_client.get(
-        "/api/v1/concept-edges/schema", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/concept-edges/schema", headers=system_admin_headers)
     assert resp.status_code == 200
     rows = resp.json()
     assert isinstance(rows, list)

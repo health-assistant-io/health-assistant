@@ -16,13 +16,12 @@ SELECT) and skips the COUNT when ``_total=none``.
 
 from __future__ import annotations
 
-
 from app.facade.bundle import build_search_bundle
-
 
 # ---------------------------------------------------------------------------
 # F15 — search.mode on every entry
 # ---------------------------------------------------------------------------
+
 
 def test_primary_entries_carry_match_mode():
     """F15: every primary (non-include) entry must carry search.mode = match."""
@@ -80,6 +79,7 @@ def test_entry_search_block_is_dict():
 # F16 — _summary=count returns count only (empty entry[], total present)
 # ---------------------------------------------------------------------------
 
+
 def test_summary_count_returns_empty_entries_with_total():
     """The crud dispatcher short-circuits on _summary=count: it returns a
     Bundle with an empty entry[] and the total. The main SELECT is skipped.
@@ -114,6 +114,7 @@ def test_summary_true_treated_as_count_in_dispatcher():
 # ---------------------------------------------------------------------------
 # F16 — _total=none omits `total` from Bundle
 # ---------------------------------------------------------------------------
+
 
 def test_total_none_omits_total_key():
     """When _total=none is requested, the Bundle must not include the `total`
@@ -167,6 +168,7 @@ def test_total_estimated_treated_as_accurate():
 # F15 + F16 combo — search.mode + summary=count
 # ---------------------------------------------------------------------------
 
+
 def test_summary_count_bundle_still_has_correct_shape():
     """A _summary=count Bundle must still be a valid Bundle: resourceType,
     type, link[], and an empty entry[] (no search.mode needed since empty)."""
@@ -193,6 +195,7 @@ def test_summary_count_bundle_still_has_correct_shape():
 # ---------------------------------------------------------------------------
 # Dispatcher integration — _total=none is parsed and propagated
 # ---------------------------------------------------------------------------
+
 
 def test_dispatcher_parses_total_none():
     """Verify the parser picks up _total=none so the dispatcher can act on it.

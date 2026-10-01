@@ -5,6 +5,7 @@ import uuid
 
 import pytest
 import pytest_asyncio
+
 from app.ai.tools.registry import ToolContext
 from app.ai.tools.taxonomy import build
 
@@ -64,6 +65,7 @@ async def test_search_concepts_by_alias(taxonomy_ctx):
 async def test_get_concept_neighborhood_tool(taxonomy_ctx):
     """get_concept_neighborhood returns one-hop graph neighbors."""
     from sqlalchemy import select
+
     from app.models.concept_model import Concept
 
     tools = build(taxonomy_ctx)

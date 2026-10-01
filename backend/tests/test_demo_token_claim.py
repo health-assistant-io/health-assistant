@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Audit 2026-09-11 S-7 — demo-token claim hygiene.
 
 A session token minted with ``auth_mode="demo"`` (the ``/auth/demo-login``
@@ -57,9 +58,7 @@ def _state_with(demo_mode: bool) -> AsyncMock:
 async def test_demo_token_accepted_with_demo_mode():
     user = await create_user()
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
-    with patch.object(
-        instance_state, "get_state", new=_state_with(demo_mode=True)
-    ):
+    with patch.object(instance_state, "get_state", new=_state_with(demo_mode=True)):
         token_data = await get_current_user(token)
     assert str(token_data.user_id) == str(user.id)
 
@@ -68,9 +67,7 @@ async def test_demo_token_accepted_with_demo_mode():
 async def test_demo_token_rejected_without_demo_mode():
     user = await create_user()
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
-    with patch.object(
-        instance_state, "get_state", new=_state_with(demo_mode=False)
-    ):
+    with patch.object(instance_state, "get_state", new=_state_with(demo_mode=False)):
         with pytest.raises(HTTPException) as exc:
             await get_current_user(token)
     assert exc.value.status_code == 401
@@ -80,8 +77,6 @@ async def test_demo_token_rejected_without_demo_mode():
 async def test_regular_token_unaffected():
     user = await create_user()
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_PASSWORD)
-    with patch.object(
-        instance_state, "get_state", new=_state_with(demo_mode=False)
-    ):
+    with patch.object(instance_state, "get_state", new=_state_with(demo_mode=False)):
         token_data = await get_current_user(token)
     assert str(token_data.user_id) == str(user.id)

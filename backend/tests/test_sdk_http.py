@@ -2,12 +2,16 @@
 
 All HTTP is mocked via httpx.MockTransport — no network, no DB.
 """
+
 import json
 
 import httpx
 import pytest
-
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError, IntegrationRateLimitError
+from integrations.sdk.exceptions import (
+    IntegrationAuthError,
+    IntegrationDataError,
+    IntegrationRateLimitError,
+)
 from integrations.sdk.http import DEFAULT_MAX_PAGES, _backoff_delay, http_request, paginate_bundle
 
 
@@ -40,8 +44,11 @@ async def test_http_request_post_json_body():
 
     async with _client(handler) as http:
         data = await http_request(
-            http, "POST", "https://ehr/Observation",
-            access_token="T", json_body={"resourceType": "Observation"},
+            http,
+            "POST",
+            "https://ehr/Observation",
+            access_token="T",
+            json_body={"resourceType": "Observation"},
         )
     assert data == {"id": "new"}
 
@@ -89,6 +96,7 @@ async def test_http_request_429_raises_rate_limit_after_retries():
 
 # ---------- paginate_bundle ----------
 
+
 def _bundle(resources, next_url=None):
     entry = [{"resource": r} for r in resources]
     link = [{"relation": "next", "url": next_url}] if next_url else []
@@ -97,7 +105,9 @@ def _bundle(resources, next_url=None):
 
 @pytest.mark.asyncio
 async def test_paginate_bundle_single_page_yields_resources():
-    async with _client(lambda r: httpx.Response(200, json=_bundle([{"id": "1"}, {"id": "2"}]))) as http:
+    async with _client(
+        lambda r: httpx.Response(200, json=_bundle([{"id": "1"}, {"id": "2"}]))
+    ) as http:
         out = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")]
     assert [r["id"] for r in out] == ["1", "2"]
 
@@ -111,7 +121,9 @@ async def test_paginate_bundle_follows_next_link():
             page["p2"] = str(request.url)
             return httpx.Response(200, json=_bundle([{"id": "B"}]))
         page["p1"] = str(request.url)
-        return httpx.Response(200, json=_bundle([{"id": "A"}], next_url="https://ehr/Observation?page=2"))
+        return httpx.Response(
+            200, json=_bundle([{"id": "A"}], next_url="https://ehr/Observation?page=2")
+        )
 
     async with _client(handler) as http:
         out = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")]
@@ -123,10 +135,17 @@ async def test_paginate_bundle_follows_next_link():
 @pytest.mark.asyncio
 async def test_paginate_bundle_max_pages_caps_iteration():
     def handler(request):
-        return httpx.Response(200, json=_bundle([{"id": "x"}], next_url="https://ehr/Observation?more"))
+        return httpx.Response(
+            200, json=_bundle([{"id": "x"}], next_url="https://ehr/Observation?more")
+        )
 
     async with _client(handler) as http:
-        out = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T", max_pages=2)]
+        out = [
+            r
+            async for r in paginate_bundle(
+                http, "https://ehr/Observation", access_token="T", max_pages=2
+            )
+        ]
     assert len(out) == 2  # one resource per page, capped at 2 pages
 
 
@@ -134,7 +153,9 @@ async def test_paginate_bundle_max_pages_caps_iteration():
 async def test_paginate_bundle_non_bundle_raises_data_error():
     async with _client(lambda r: httpx.Response(200, json={"resourceType": "Patient"})) as http:
         with pytest.raises(IntegrationDataError):
-            _ = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")]
+            _ = [
+                r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")
+            ]
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +168,7 @@ def test_backoff_delay_returns_uniform_random_in_expected_range():
     ``[0, base * 2**attempt]`` (full-jitter). Cap at 60s for high attempts."""
     # Sample many times to verify the bounds empirically.
     for attempt in range(8):
-        cap = min(1.0 * (2 ** attempt), 60.0)
+        cap = min(1.0 * (2**attempt), 60.0)
         for _ in range(50):
             delay = _backoff_delay(attempt)
             assert 0.0 <= delay <= cap, (
@@ -197,7 +218,7 @@ async def test_http_request_applies_jitter_on_5xx_retry(monkeypatch):
     # max_retries=4 → initial attempt + 3 retries → 3 sleeps at attempts 1, 2, 3.
     assert len(sleeps) == 3, f"expected 3 retry sleeps, got {sleeps}"
     for index, delay in enumerate(sleeps, start=1):
-        cap = min(1.0 * (2 ** index), 60.0)
+        cap = min(1.0 * (2**index), 60.0)
         assert 0.0 <= delay <= cap, (
             f"retry #{index} slept {delay}s, expected full-jitter range [0, {cap}]"
         )
@@ -222,9 +243,7 @@ async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch
         with pytest.raises(IntegrationRateLimitError):
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=3)
 
-    assert sleeps == [7.0, 7.0], (
-        f"Retry-After=7 must override jitter on every retry; got {sleeps}"
-    )
+    assert sleeps == [7.0, 7.0], f"Retry-After=7 must override jitter on every retry; got {sleeps}"
 
 
 @pytest.mark.asyncio
@@ -245,9 +264,7 @@ async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
 
     async with _client(handler) as http:
         with pytest.raises(IntegrationRateLimitError) as exc_info:
-            await http_request(
-                http, "GET", "https://ehr/x", access_token="T", max_retries=2
-            )
+            await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
 
     assert exc_info.value.retry_after_seconds == 120.0, (
         "retry_after_seconds must be the last-seen Retry-After header value"
@@ -271,9 +288,7 @@ async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatc
 
     async with _client(handler) as http:
         with pytest.raises(IntegrationRateLimitError) as exc_info:
-            await http_request(
-                http, "GET", "https://ehr/x", access_token="T", max_retries=2
-            )
+            await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
 
     assert exc_info.value.retry_after_seconds is None
 
@@ -307,9 +322,7 @@ async def test_http_request_429_http_date_retry_after_is_parsed(monkeypatch):
 
     async with _client(handler) as http:
         with pytest.raises(IntegrationRateLimitError) as exc_info:
-            await http_request(
-                http, "GET", "https://ehr/x", access_token="T", max_retries=2
-            )
+            await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
     assert exc_info.value.retry_after_seconds is not None
     assert exc_info.value.retry_after_seconds > 0
 
@@ -352,12 +365,7 @@ async def test_paginate_bundle_default_max_pages_caps_iteration():
         )
 
     async with _client(handler) as http:
-        out = [
-            r
-            async for r in paginate_bundle(
-                http, "https://ehr/Observation", access_token="T"
-            )
-        ]
+        out = [r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")]
     # Capped at DEFAULT_MAX_PAGES pages, one resource per page.
     assert len(out) == DEFAULT_MAX_PAGES, (
         f"default max_pages cap not enforced — got {len(out)} resources, "
@@ -373,6 +381,7 @@ async def test_paginate_bundle_max_pages_none_opt_out_of_cap():
     Bundle would have no way to do it. The default cap is a safety net, not
     a hard limit.
     """
+
     # Build a finite 5-page chain so the test terminates without the cap.
     def handler(request):
         url = str(request.url)

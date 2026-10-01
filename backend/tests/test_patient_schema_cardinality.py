@@ -9,6 +9,7 @@ JSON like ``{"name": [{"family": "Doe"}]}`` produced a Pydantic 422.
 Post-fix contract pinned here: all four fields accept lists.
 ``PatientResponse`` inherits the list shape from ``PatientBase``.
 """
+
 import pytest
 from pydantic import ValidationError
 

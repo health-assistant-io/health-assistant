@@ -1,37 +1,39 @@
+# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import or_, func
-from typing import List, Optional, Dict, Any, Tuple
-from uuid import UUID
-from pathlib import Path
 
-from app.models.anatomy_model import AnatomyStructure, AnatomyFigure
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.core.config import settings
+from app.models.anatomy_model import AnatomyFigure, AnatomyStructure
 from app.models.concept_model import ConceptEdge
 from app.models.enums import (
+    ConceptKind,
     ConceptRelationType,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    ConceptKind,
 )
 from app.schemas.anatomy import (
+    AnatomyRelationCreate,
     AnatomyStructureCreate,
     AnatomyStructureUpdate,
-    AnatomyRelationCreate,
 )
-from app.core.config import settings
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.services.concept_service import resolve_concept_by_slug
 
 
 async def get_anatomy_structures(
     db: AsyncSession,
-    tenant_id: Optional[UUID] = None,
-    class_concept_id: Optional[UUID] = None,
-    class_concept_ids: Optional[List[UUID]] = None,
-    search: Optional[str] = None,
+    tenant_id: UUID | None = None,
+    class_concept_id: UUID | None = None,
+    class_concept_ids: list[UUID] | None = None,
+    search: str | None = None,
     limit: int = 100,
     offset: int = 0,
-) -> tuple[List[AnatomyStructure], int]:
+) -> tuple[list[AnatomyStructure], int]:
 
     query = select(AnatomyStructure)
 
@@ -74,8 +76,8 @@ async def get_anatomy_structures(
 
 
 async def get_anatomy_structure_by_id_or_slug(
-    db: AsyncSession, identifier: str, tenant_id: Optional[UUID] = None
-) -> Optional[AnatomyStructure]:
+    db: AsyncSession, identifier: str, tenant_id: UUID | None = None
+) -> AnatomyStructure | None:
 
     query = select(AnatomyStructure)
 
@@ -104,8 +106,8 @@ async def create_anatomy_structure(
     structure_in: AnatomyStructureCreate,
     *,
     role: str,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
 ) -> AnatomyStructure:
     """Create a new anatomy structure. Scope/tenant_id/created_by are stamped
     by the shared ``DEFAULT_CATALOG_POLICY.assign_create_scope`` (same path
@@ -120,9 +122,7 @@ async def create_anatomy_structure(
             db, slug, ConceptKind.ANATOMY_CLASS
         )
     db_structure = AnatomyStructure(**data)
-    DEFAULT_CATALOG_POLICY.assign_create_scope(
-        role, db_structure, tenant_id, user_id
-    )
+    DEFAULT_CATALOG_POLICY.assign_create_scope(role, db_structure, tenant_id, user_id)
     db.add(db_structure)
     await db.commit()
     await db.refresh(db_structure)
@@ -139,9 +139,7 @@ async def update_anatomy_structure(
     slug = update_data.pop("class_concept_slug", None)
     if slug is not None:
         update_data["class_concept_id"] = (
-            await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS)
-            if slug
-            else None
+            await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS) if slug else None
         )
     for field, value in update_data.items():
         setattr(structure, field, value)
@@ -159,9 +157,7 @@ async def delete_anatomy_structure(
     await db.commit()
 
 
-async def create_relation(
-    db: AsyncSession, relation_in: AnatomyRelationCreate
-) -> ConceptEdge:
+async def create_relation(db: AsyncSession, relation_in: AnatomyRelationCreate) -> ConceptEdge:
     """Create an anatomy→anatomy edge in the unified ``concept_edges`` table.
 
     The legacy ``anatomy_relations`` table is gone (migration
@@ -201,16 +197,16 @@ async def create_relation(
 async def get_related_structures(
     db: AsyncSession,
     structure_id: UUID,
-    relation_type: Optional[ConceptRelationType] = None,
+    relation_type: ConceptRelationType | None = None,
     direction: str = "both",  # "outgoing", "incoming", "both"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Returns related anatomy structures for a given node, queried from the
     unified ``concept_edges`` table (anatomy→anatomy edges only).
 
     Returns ``{"outgoing": [{"relation_type": str, "structure": AnatomyStructure}],
     "incoming": [...]}`` — the endpoint serializes this directly.
     """
-    response: Dict[str, Any] = {"outgoing": [], "incoming": []}
+    response: dict[str, Any] = {"outgoing": [], "incoming": []}
 
     if direction in ("both", "outgoing"):
         q = (
@@ -229,9 +225,7 @@ async def get_related_structures(
         if relation_type:
             q = q.where(ConceptEdge.relation == relation_type)
         for edge, struct in (await db.execute(q)).all():
-            response["outgoing"].append(
-                {"relation_type": edge.relation, "structure": struct}
-            )
+            response["outgoing"].append({"relation_type": edge.relation, "structure": struct})
 
     if direction in ("both", "incoming"):
         q = (
@@ -250,9 +244,7 @@ async def get_related_structures(
         if relation_type:
             q = q.where(ConceptEdge.relation == relation_type)
         for edge, struct in (await db.execute(q)).all():
-            response["incoming"].append(
-                {"relation_type": edge.relation, "structure": struct}
-            )
+            response["incoming"].append({"relation_type": edge.relation, "structure": struct})
 
     return response
 
@@ -260,11 +252,11 @@ async def get_related_structures(
 async def get_anatomy_graph(
     db: AsyncSession,
     root: AnatomyStructure,
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
     depth: int = 1,
-    relation_type: Optional[ConceptRelationType] = None,
+    relation_type: ConceptRelationType | None = None,
     direction: str = "both",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Breadth-first traversal of the anatomy graph from ``root`` up to ``depth``
     hops, querying the unified ``concept_edges`` table (anatomy→anatomy edges
     only).
@@ -276,10 +268,10 @@ async def get_anatomy_graph(
         depth = 1
 
     root_id = root.id
-    nodes: Dict[UUID, Dict[str, Any]] = {root_id: {"structure": root, "depth": 0}}
+    nodes: dict[UUID, dict[str, Any]] = {root_id: {"structure": root, "depth": 0}}
     visible_ids: set = {root_id}
     edges_seen: set = set()
-    edge_rows: List[Dict[str, Any]] = []
+    edge_rows: list[dict[str, Any]] = []
     frontier: set = {root_id}
 
     for hop in range(1, depth + 1):
@@ -287,7 +279,7 @@ async def get_anatomy_graph(
             break
 
         neighbor_ids: set = set()
-        new_edges: List[tuple] = []
+        new_edges: list[tuple] = []
 
         if direction in ("both", "outgoing"):
             q = select(ConceptEdge).where(
@@ -315,7 +307,7 @@ async def get_anatomy_graph(
                 new_edges.append((e.src_id, e.dst_id, e.relation, e))
                 neighbor_ids.add(e.src_id)
 
-        for src_id, dst_id, rel, edge in new_edges:
+        for src_id, dst_id, rel, _edge in new_edges:
             key = (src_id, dst_id, rel)
             if key not in edges_seen:
                 edges_seen.add(key)
@@ -348,9 +340,7 @@ async def get_anatomy_graph(
 
     # Drop edges whose endpoints were filtered out by tenant scoping.
     edge_rows = [
-        e
-        for e in edge_rows
-        if e["source_id"] in visible_ids and e["target_id"] in visible_ids
+        e for e in edge_rows if e["source_id"] in visible_ids and e["target_id"] in visible_ids
     ]
 
     return {"nodes": list(nodes.values()), "edges": edge_rows}
@@ -370,12 +360,13 @@ def _figures_base_dir() -> Path:
 
 def save_figure_image(
     slug: str, data: bytes, ext: str = "webp", kind: str = "image"
-) -> Tuple[str, int, int]:
+) -> tuple[str, int, int]:
     """Write image bytes to UPLOAD_DIR/anatomy_figures/{slug}.{ext} (or
     {slug}-source.{ext} when kind='source') and return (relative_path, w, h)."""
-    from PIL import Image as PILImage
     import io
     import re
+
+    from PIL import Image as PILImage
 
     base = _figures_base_dir()
     suffix = "-source" if kind == "source" else ""
@@ -395,13 +386,13 @@ def save_figure_image(
     return f"{FIGURES_DIR}/{safe_slug}{suffix}.{ext}", w, h
 
 
-def figure_image_abspath(figure: AnatomyFigure) -> Optional[Path]:
+def figure_image_abspath(figure: AnatomyFigure) -> Path | None:
     if not figure.image_path:
         return None
     return Path(str(settings.UPLOAD_DIR)) / figure.image_path
 
 
-def figure_source_abspath(figure: AnatomyFigure) -> Optional[Path]:
+def figure_source_abspath(figure: AnatomyFigure) -> Path | None:
     if not figure.source_image_path:
         return None
     return Path(str(settings.UPLOAD_DIR)) / figure.source_image_path
@@ -410,7 +401,7 @@ def figure_source_abspath(figure: AnatomyFigure) -> Optional[Path]:
 async def list_anatomy_figures(
     db: AsyncSession,
     active_only: bool = True,
-) -> List[AnatomyFigure]:
+) -> list[AnatomyFigure]:
     query = select(AnatomyFigure).order_by(
         AnatomyFigure.figure_key.asc(), AnatomyFigure.sort_order.asc()
     )
@@ -420,7 +411,7 @@ async def list_anatomy_figures(
     return list(result.scalars().all())
 
 
-async def get_anatomy_figure(db: AsyncSession, slug: str) -> Optional[AnatomyFigure]:
+async def get_anatomy_figure(db: AsyncSession, slug: str) -> AnatomyFigure | None:
     result = await db.execute(select(AnatomyFigure).where(AnatomyFigure.slug == slug))
     return result.scalars().first()
 
@@ -434,7 +425,7 @@ async def create_anatomy_figure(
     view_key: str,
     image_data: bytes,
     ext: str = "webp",
-    source_data: Optional[bytes] = None,
+    source_data: bytes | None = None,
     source_ext: str = "webp",
     sort_order: int = 0,
     is_active: bool = True,
@@ -445,9 +436,7 @@ async def create_anatomy_figure(
     rel_path, w, h = save_figure_image(slug, image_data, ext)
     source_path = None
     if source_data:
-        source_path, _, _ = save_figure_image(
-            slug, source_data, source_ext, kind="source"
-        )
+        source_path, _, _ = save_figure_image(slug, source_data, source_ext, kind="source")
     db_figure = AnatomyFigure(
         slug=slug,
         label=label,
@@ -470,14 +459,14 @@ async def update_anatomy_figure(
     db: AsyncSession,
     figure: AnatomyFigure,
     *,
-    label: Optional[str] = None,
-    figure_key: Optional[str] = None,
-    view_key: Optional[str] = None,
-    sort_order: Optional[int] = None,
-    is_active: Optional[bool] = None,
-    image_data: Optional[bytes] = None,
+    label: str | None = None,
+    figure_key: str | None = None,
+    view_key: str | None = None,
+    sort_order: int | None = None,
+    is_active: bool | None = None,
+    image_data: bytes | None = None,
     ext: str = "webp",
-    source_data: Optional[bytes] = None,
+    source_data: bytes | None = None,
     source_ext: str = "webp",
     clear_source: bool = False,
 ) -> AnatomyFigure:
@@ -503,9 +492,7 @@ async def update_anatomy_figure(
         old_src = figure_source_abspath(figure)
         if old_src and old_src.exists():
             old_src.unlink()
-        source_path, _, _ = save_figure_image(
-            figure.slug, source_data, source_ext, kind="source"
-        )
+        source_path, _, _ = save_figure_image(figure.slug, source_data, source_ext, kind="source")
         figure.source_image_path = source_path
     elif clear_source:
         old_src = figure_source_abspath(figure)

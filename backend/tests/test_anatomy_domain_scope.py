@@ -11,6 +11,7 @@ Covers:
   * PATCH/DELETE respects ``check_modify`` (USER edits own user-scope row;
     cannot edit system; ADMIN edits tenant).
 """
+
 import uuid
 
 import pytest
@@ -96,9 +97,7 @@ async def test_system_admin_create_lands_in_system_scope(async_client):
 
 
 async def _insert_anatomy(*, slug, tenant_id, scope, created_by=None):
-    node = AnatomyStructure(
-        slug=slug, name=f"Node {slug}", scope=scope, tenant_id=tenant_id
-    )
+    node = AnatomyStructure(slug=slug, name=f"Node {slug}", scope=scope, tenant_id=tenant_id)
     if created_by is not None:
         node.created_by = created_by
     async with AsyncSessionLocal() as db:
@@ -129,7 +128,7 @@ async def test_user_can_update_own_user_scope_row(async_client):
 
 @pytest.mark.asyncio
 async def test_user_cannot_update_system_scope_row(async_client):
-    tenant_id, headers, _ = await _make_tenant(["USER"])
+    _tenant_id, headers, _ = await _make_tenant(["USER"])
     item_id = await _insert_anatomy(
         slug=f"sys-{uuid.uuid4().hex[:6]}", tenant_id=None, scope="system"
     )
@@ -147,9 +146,7 @@ async def test_user_cannot_delete_system_scope_row(async_client):
     item_id = await _insert_anatomy(
         slug=f"sysdel-{uuid.uuid4().hex[:6]}", tenant_id=None, scope="system"
     )
-    resp = await async_client.delete(
-        f"/api/v1/anatomy/{item_id}", headers=headers["USER"]
-    )
+    resp = await async_client.delete(f"/api/v1/anatomy/{item_id}", headers=headers["USER"])
     assert resp.status_code == 403, resp.text
 
 
@@ -159,9 +156,7 @@ async def test_admin_can_delete_tenant_scope_row(async_client):
     item_id = await _insert_anatomy(
         slug=f"ten-{uuid.uuid4().hex[:6]}", tenant_id=tenant_id, scope="tenant"
     )
-    resp = await async_client.delete(
-        f"/api/v1/anatomy/{item_id}", headers=headers["ADMIN"]
-    )
+    resp = await async_client.delete(f"/api/v1/anatomy/{item_id}", headers=headers["ADMIN"])
     assert resp.status_code == 200, resp.text
 
 
@@ -177,7 +172,5 @@ async def test_user_cannot_delete_other_users_user_scope_row(async_client):
         scope="user",
         created_by=other_uid,
     )
-    resp = await async_client.delete(
-        f"/api/v1/anatomy/{item_id}", headers=headers["USER"]
-    )
+    resp = await async_client.delete(f"/api/v1/anatomy/{item_id}", headers=headers["USER"])
     assert resp.status_code == 403, resp.text

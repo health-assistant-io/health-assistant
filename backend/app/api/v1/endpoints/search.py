@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, cast, String
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.user import TokenData
-from app.models.enums import Role
-from app.models.fhir.patient import Patient
-from app.models.examination_model import ExaminationModel
-from app.models.document_model import DocumentModel
 from app.models.clinical_event import ClinicalEvent
+from app.models.document_model import DocumentModel
+from app.models.enums import Role
+from app.models.examination_model import ExaminationModel
+from app.models.fhir.patient import Patient
+from app.schemas.user import TokenData
 from app.services.catalog_search_service import search_catalogs
 
 router = APIRouter()
@@ -32,9 +32,7 @@ async def global_search(
     tenant_id = current_user.tenant_id
     # Escape LIKE wildcards in user input (API-L4, audit 2026-08): a query
     # full of %/_ shouldn't force full-scan matching on every row.
-    search_pattern = "%{}%".format(
-        q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    )
+    search_pattern = "%{}%".format(q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
     results = []
 
     # API-M3 (audit 2026-08): the USER role sees only its own linked
@@ -105,9 +103,7 @@ async def global_search(
     examinations = examinations_result.scalars().all()
 
     for e in examinations:
-        date_str = (
-            e.examination_date.isoformat() if e.examination_date else "Unknown Date"
-        )
+        date_str = e.examination_date.isoformat() if e.examination_date else "Unknown Date"
         results.append(
             {
                 "id": str(e.id),

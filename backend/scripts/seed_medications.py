@@ -1,12 +1,13 @@
+# ruff: noqa: RUF001 -- long immutable strings / legacy patterns; reflow when touched
 import asyncio
-import sys
 import os
+import sys
 
 # Ensure backend path is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.services.seed_service import seed_service
 from app.core.database import DATABASE_AVAILABLE
+from app.services.seed_service import seed_service
 
 
 async def main():

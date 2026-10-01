@@ -9,13 +9,13 @@ Covers:
    and those surface through the handler as the same 404/403/400 the endpoints
    always returned.
 """
+
 import uuid
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.services.access import check_patient_access
 from app.core.database import AsyncSessionLocal
 from app.core.errors import (
     AuthorizationError,
@@ -29,6 +29,7 @@ from app.main import domain_error_handler
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.schemas.user import TokenData
+from app.services.access import check_patient_access
 
 
 def test_hierarchy_status_codes():
@@ -48,7 +49,7 @@ def _app_with_routes():
     app = FastAPI()
 
     @app.exception_handler(DomainError)
-    async def _h(request, exc):  # noqa: ANN001
+    async def _h(request, exc):
         return await domain_error_handler(request, exc)
 
     @app.get("/nf")

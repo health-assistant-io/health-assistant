@@ -1,13 +1,14 @@
 """Tests for audit item A5 — refresh-token rotation + revocation."""
+
 import pytest
 
+from app.core import token_store
 from app.core.security import (
     REFRESH_TOKEN_KIND,
     create_refresh_token,
     create_session_access_token,
     decode_refresh_token,
 )
-from app.core import token_store
 
 
 class FakeRedis:
@@ -78,13 +79,13 @@ class TestRefreshTokenShape:
 class TestRotationAndRevocation:
     @pytest.mark.asyncio
     async def test_register_then_active(self, fake_redis):
-        token, jti = create_refresh_token(CLAIMS)
+        _token, jti = create_refresh_token(CLAIMS)
         await token_store.register_refresh("user-123", jti, 60)
         assert await token_store.is_active("user-123", jti) is True
 
     @pytest.mark.asyncio
     async def test_revoked_not_active(self, fake_redis):
-        token, jti = create_refresh_token(CLAIMS)
+        _token, jti = create_refresh_token(CLAIMS)
         await token_store.register_refresh("user-123", jti, 60)
         await token_store.revoke_refresh("user-123", jti)
         assert await token_store.is_active("user-123", jti) is False
@@ -95,8 +96,8 @@ class TestRotationAndRevocation:
 
     @pytest.mark.asyncio
     async def test_revoke_all_clears_user(self, fake_redis):
-        t1, j1 = create_refresh_token(CLAIMS)
-        t2, j2 = create_refresh_token(CLAIMS)
+        _t1, j1 = create_refresh_token(CLAIMS)
+        _t2, j2 = create_refresh_token(CLAIMS)
         await token_store.register_refresh("user-123", j1, 60)
         await token_store.register_refresh("user-123", j2, 60)
         count = await token_store.revoke_all_refresh("user-123")

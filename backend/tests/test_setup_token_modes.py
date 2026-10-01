@@ -18,7 +18,6 @@ import pytest
 from app.core import setup_token
 from app.core.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -224,8 +223,9 @@ def test_disabled_mode_clear_is_a_noop_for_required_flag():
 
 @pytest.mark.asyncio
 async def test_setup_status_reports_token_mode_for_each_mode():
-    from app.api.v1.endpoints import auth as auth_endpoint
     from unittest.mock import AsyncMock
+
+    from app.api.v1.endpoints import auth as auth_endpoint
 
     for mode in ("log", "env", "time", "disabled"):
         _set_mode(
@@ -237,12 +237,8 @@ async def test_setup_status_reports_token_mode_for_each_mode():
             setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
         if mode == "time":
             setup_token.mark_boot_time()
-        with patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ):
-            result = await auth_endpoint.setup_status(
-                request=_remote_request(), db=MagicMock()
-            )
+        with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)):
+            result = await auth_endpoint.setup_status(request=_remote_request(), db=MagicMock())
         assert result.token_mode == mode
 
 
@@ -251,8 +247,9 @@ async def test_setup_status_never_emits_the_token_even_in_env_mode():
     """Audit 2026-08 C-1: the status endpoint must NEVER return the setup
     token value — anonymous callers could bootstrap the instance with it.
     The launcher (which holds the env token) composes the URL itself."""
-    from app.api.v1.endpoints import auth as auth_endpoint
     from unittest.mock import AsyncMock
+
+    from app.api.v1.endpoints import auth as auth_endpoint
 
     _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="launcher-secret")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
@@ -262,9 +259,7 @@ async def test_setup_status_never_emits_the_token_even_in_env_mode():
     req.url.scheme = "https"
     req.headers = {"host": "example.com"}
 
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-    ):
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)):
         result = await auth_endpoint.setup_status(request=req, db=MagicMock())
 
     assert result.setup_url_hint is None
@@ -273,8 +268,9 @@ async def test_setup_status_never_emits_the_token_even_in_env_mode():
 
 @pytest.mark.asyncio
 async def test_setup_status_no_url_hint_in_log_mode():
-    from app.api.v1.endpoints import auth as auth_endpoint
     from unittest.mock import AsyncMock
+
+    from app.api.v1.endpoints import auth as auth_endpoint
 
     _set_mode("log", APP_ENV="production")
     setup_token.generate()
@@ -284,9 +280,7 @@ async def test_setup_status_no_url_hint_in_log_mode():
     req.url.scheme = "https"
     req.headers = {"host": "example.com"}
 
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-    ):
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)):
         result = await auth_endpoint.setup_status(request=req, db=MagicMock())
 
     assert result.setup_url_hint is None
@@ -296,8 +290,9 @@ async def test_setup_status_no_url_hint_in_log_mode():
 @pytest.mark.asyncio
 async def test_setup_status_no_url_hint_after_initialize_in_env_mode():
     """Once initialized, the env-mode URL hint is suppressed (the token is dead)."""
-    from app.api.v1.endpoints import auth as auth_endpoint
     from unittest.mock import AsyncMock
+
+    from app.api.v1.endpoints import auth as auth_endpoint
 
     _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
@@ -309,9 +304,7 @@ async def test_setup_status_no_url_hint_after_initialize_in_env_mode():
     req.url.scheme = "https"
     req.headers = {"host": "example.com"}
 
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
-    ):
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)):
         result = await auth_endpoint.setup_status(request=req, db=MagicMock())
 
     assert result.setup_url_hint is None
@@ -326,20 +319,23 @@ async def test_setup_status_no_url_hint_after_initialize_in_env_mode():
 def test_config_rejects_unknown_mode():
     """Settings rejects an invalid SETUP_TOKEN_MODE."""
     from pydantic import ValidationError
+
     from app.core.config import Settings
 
     # Settings has its own validators (DB creds, secret key, VAPID).
     # Build with bare-minimum env to satisfy the prod guards, then flip mode.
-    with patch.dict(
-        "os.environ",
-        {
-            "APP_ENV": "development",
-            "SETUP_TOKEN_MODE": "bogus",
-        },
-        clear=False,
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "APP_ENV": "development",
+                "SETUP_TOKEN_MODE": "bogus",
+            },
+            clear=False,
+        ),
+        pytest.raises((ValidationError, ValueError)),
     ):
-        with pytest.raises((ValidationError, ValueError)):
-            Settings()
+        Settings()
 
 
 def test_config_env_mode_with_empty_token_falls_back_to_log():
@@ -359,17 +355,20 @@ def test_config_env_mode_with_empty_token_falls_back_to_log():
 
 
 def test_config_rejects_grace_below_one_minute():
-    from app.core.config import Settings
     from pydantic import ValidationError
 
-    with patch.dict(
-        "os.environ",
-        {
-            "APP_ENV": "development",
-            "SETUP_TOKEN_MODE": "time",
-            "SETUP_TOKEN_GRACE_MINUTES": "0",
-        },
-        clear=False,
+    from app.core.config import Settings
+
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "APP_ENV": "development",
+                "SETUP_TOKEN_MODE": "time",
+                "SETUP_TOKEN_GRACE_MINUTES": "0",
+            },
+            clear=False,
+        ),
+        pytest.raises((ValidationError, ValueError)),
     ):
-        with pytest.raises((ValidationError, ValueError)):
-            Settings()
+        Settings()

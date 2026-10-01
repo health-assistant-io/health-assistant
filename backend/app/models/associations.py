@@ -1,4 +1,5 @@
-from sqlalchemy import Column, ForeignKey, Table, UUID
+from sqlalchemy import UUID, Column, ForeignKey, Table
+
 from app.models.base import Base
 
 # Association table for Many-to-Many relationship between Examinations and Doctors

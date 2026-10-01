@@ -1,7 +1,9 @@
+import uuid
+from unittest.mock import MagicMock, patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, MagicMock
-import uuid
+
 from app.models.fhir.medication import MedicationCatalog
 
 
@@ -22,11 +24,9 @@ def override_get_current_user():
 
 @pytest.mark.asyncio
 @patch("app.services.medication_service.get_catalog_medication")
-async def test_get_catalog_medication_details(
-    mock_get_details, async_client: AsyncClient
-):
-    from app.main import app
+async def test_get_catalog_medication_details(mock_get_details, async_client: AsyncClient):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -57,11 +57,9 @@ async def test_get_catalog_medication_details(
 
 @pytest.mark.asyncio
 @patch("app.services.medication_service.get_catalog_medication")
-async def test_get_catalog_medication_not_found(
-    mock_get_details, async_client: AsyncClient
-):
-    from app.main import app
+async def test_get_catalog_medication_not_found(mock_get_details, async_client: AsyncClient):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_details.return_value = None
@@ -77,13 +75,13 @@ async def test_get_catalog_medication_not_found(
 
 def test_medication_status_enum():
     from app.models.enums import MedicationStatus
-    
+
     # Verify enum names match expected uppercase values
     assert MedicationStatus.ACTIVE == "ACTIVE"
     assert MedicationStatus.COMPLETED == "COMPLETED"
     assert MedicationStatus.ENTERED_IN_ERROR == "ENTERED_IN_ERROR"
     assert MedicationStatus.ON_HOLD == "ON_HOLD"
-    
+
     # Verify we can access by uppercase names
     assert MedicationStatus("ACTIVE") == MedicationStatus.ACTIVE
     assert MedicationStatus("ENTERED_IN_ERROR") == MedicationStatus.ENTERED_IN_ERROR

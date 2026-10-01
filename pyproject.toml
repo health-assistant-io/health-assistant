@@ -1,0 +1,7 @@
+[tool.uv.workspace]
+members = ["backend"]
+
+[dependency-groups]
+dev = [
+    "honcho>=2.0.0",
+]

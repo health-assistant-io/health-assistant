@@ -6,6 +6,7 @@ Proves:
 3. Deleting a document SETS NULL the linked observation's document_id (the FK
    ondelete semantics) instead of leaving a dangling string reference.
 """
+
 import uuid
 
 import pytest
@@ -14,10 +15,10 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.database import AsyncSessionLocal
 from app.models.document_model import DocumentModel
+from app.models.enums import Role
 from app.models.fhir.patient import Observation
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.models.enums import Role
 
 
 async def _seed_tenant_user_doc(session) -> tuple:
@@ -73,16 +74,15 @@ async def test_document_id_is_uuid_column():
 @pytest.mark.asyncio
 async def test_document_fk_rejects_nonexistent_document():
     async with AsyncSessionLocal() as session:
-        tenant = TenantModel(
-            id=uuid.uuid4(), name="B2 FK", slug=f"b2fk-{uuid.uuid4().hex[:8]}"
-        )
+        tenant = TenantModel(id=uuid.uuid4(), name="B2 FK", slug=f"b2fk-{uuid.uuid4().hex[:8]}")
         session.add(tenant)
         await session.flush()
         with pytest.raises(IntegrityError):
             async with session.begin_nested():
                 session.add(
                     _make_observation(
-                        tenant_id=tenant.id, document_id=uuid.uuid4()  # no such document
+                        tenant_id=tenant.id,
+                        document_id=uuid.uuid4(),  # no such document
                     )
                 )
 
@@ -96,9 +96,7 @@ async def test_delete_document_nulls_observation_document_id():
         await session.commit()
 
         # Delete the document; the FK ondelete SET NULL should null the link.
-        await session.execute(
-            text("DELETE FROM documents WHERE id = :did"), {"did": str(doc.id)}
-        )
+        await session.execute(text("DELETE FROM documents WHERE id = :did"), {"did": str(doc.id)})
         await session.commit()
 
         # Read just the column back via a scalar select (avoids lazy-loaded
@@ -106,9 +104,7 @@ async def test_delete_document_nulls_observation_document_id():
         from sqlalchemy import select
 
         val = (
-            await session.execute(
-                select(Observation.document_id).where(Observation.id == obs.id)
-            )
+            await session.execute(select(Observation.document_id).where(Observation.id == obs.id))
         ).scalar_one()
         assert val is None, (
             "Deleting a document must SET NULL the observation's document_id, "
@@ -116,7 +112,9 @@ async def test_delete_document_nulls_observation_document_id():
         )
 
         # Cleanup.
-        await session.execute(text("DELETE FROM fhir_observations WHERE id = :oid"), {"oid": str(obs.id)})
+        await session.execute(
+            text("DELETE FROM fhir_observations WHERE id = :oid"), {"oid": str(obs.id)}
+        )
         await session.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": str(user.id)})
         await session.execute(text("DELETE FROM tenants WHERE id = :tid"), {"tid": str(tenant.id)})
         await session.commit()

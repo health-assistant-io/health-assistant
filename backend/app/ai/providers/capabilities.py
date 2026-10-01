@@ -16,11 +16,10 @@ Examples:
 
 from __future__ import annotations
 
-from typing import Iterable, Optional, Set
+from collections.abc import Iterable
 
 from app.ai.providers.enums import TaskType
 from app.models.enums import AIModelCapability
-
 
 # The capability each task type REQUIRES (a model must advertise it to be
 # eligible). Tasks not listed default to {TEXT} (the baseline modality every
@@ -32,7 +31,7 @@ TASK_REQUIRED_CAPABILITY: dict = {
 }
 
 
-def required_capabilities_for_task(task_type: object) -> Set[AIModelCapability]:
+def required_capabilities_for_task(task_type: object) -> set[AIModelCapability]:
     """Return the set of capabilities a model must have to serve ``task_type``.
 
     Unknown/unmapped task types (the long tail of text-generation tasks) fall
@@ -42,7 +41,7 @@ def required_capabilities_for_task(task_type: object) -> Set[AIModelCapability]:
     return set(TASK_REQUIRED_CAPABILITY.get(key, {AIModelCapability.TEXT}))
 
 
-def normalize_capabilities(values: Optional[Iterable[object]]) -> Set[str]:
+def normalize_capabilities(values: Iterable[object] | None) -> set[str]:
     """Coerce a raw capabilities payload (JSONB list of strings/enum) into a
     clean set of lowercase capability strings.
 
@@ -53,7 +52,7 @@ def normalize_capabilities(values: Optional[Iterable[object]]) -> Set[str]:
     """
     if not values:
         return {AIModelCapability.TEXT.value}
-    result: Set[str] = set()
+    result: set[str] = set()
     for v in values:
         cap = AIModelCapability.from_string(str(v))
         if cap is not None:
@@ -63,7 +62,7 @@ def normalize_capabilities(values: Optional[Iterable[object]]) -> Set[str]:
 
 
 def model_supports(
-    capabilities: Optional[Iterable[object]], required: Iterable[AIModelCapability]
+    capabilities: Iterable[object] | None, required: Iterable[AIModelCapability]
 ) -> bool:
     """True when a model's capability set covers ALL ``required`` capabilities."""
     have = normalize_capabilities(capabilities)

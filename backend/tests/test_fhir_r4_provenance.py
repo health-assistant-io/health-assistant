@@ -7,6 +7,7 @@ Covers:
 - agent block construction (F12: resolved Practitioner/Device or display-only fallback)
 - Provenance is immutable (no soft-delete mixin)
 """
+
 import datetime as _dt
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -19,15 +20,15 @@ from app.models.fhir.provenance import (
 from app.services.fhir_converter import fhir_to_provenance_orm, validate_resource
 from app.services.fhir_helpers import parse_fhir_resource
 from app.services.provenance_service import (
-    _agent_block,
-    record_provenance,
     RECORD_CREATE,
     RECORD_DELETE,
     RECORD_UPDATE,
+    _agent_block,
+    record_provenance,
 )
 
 
-def _synthetic_agent_block(*, who_ref: str = None, display: str = None):
+def _synthetic_agent_block(*, who_ref: str | None = None, display: str | None = None):
     """Build a synthetic agent block for tests that don't need DB resolution."""
     who = {}
     if who_ref:
@@ -51,13 +52,20 @@ def _synthetic_agent_block(*, who_ref: str = None, display: str = None):
 
 
 def _make_provenance(**overrides) -> ProvenanceModel:
-    defaults = dict(
-        id=str(uuid4()),
-        target=[{"reference": "Condition/abc"}],
-        recorded=_dt.datetime(2024, 1, 1, 12, 0, tzinfo=_dt.timezone.utc),
-        activity={"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType", "code": "CREATE"}]},
-        agent=_synthetic_agent_block(who_ref=f"Practitioner/{uuid4()}"),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "target": [{"reference": "Condition/abc"}],
+        "recorded": _dt.datetime(2024, 1, 1, 12, 0, tzinfo=_dt.UTC),
+        "activity": {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType",
+                    "code": "CREATE",
+                }
+            ]
+        },
+        "agent": _synthetic_agent_block(who_ref=f"Practitioner/{uuid4()}"),
+    }
     defaults.update(overrides)
     return ProvenanceModel(**defaults)
 
@@ -65,6 +73,7 @@ def _make_provenance(**overrides) -> ProvenanceModel:
 # ---------------------------------------------------------------------------
 # to_fhir_dict
 # ---------------------------------------------------------------------------
+
 
 def test_provenance_minimal_to_fhir_dict():
     p = _make_provenance()
@@ -83,7 +92,7 @@ def test_provenance_validates_against_fhir_resources():
 
 
 def test_provenance_recorded_iso_format():
-    p = _make_provenance(recorded=_dt.datetime(2024, 6, 1, 12, 30, 45, tzinfo=_dt.timezone.utc))
+    p = _make_provenance(recorded=_dt.datetime(2024, 6, 1, 12, 30, 45, tzinfo=_dt.UTC))
     fhir = p.to_fhir_dict()
     assert fhir["recorded"].startswith("2024-06-01T12:30:45")
     assert fhir["recorded"].endswith("Z")  # UTC normalized
@@ -92,6 +101,7 @@ def test_provenance_recorded_iso_format():
 # ---------------------------------------------------------------------------
 # Immutability
 # ---------------------------------------------------------------------------
+
 
 def test_provenance_no_soft_delete_mixin():
     """Provenance is immutable per spec — no SoftDeleteMixin columns."""
@@ -103,6 +113,7 @@ def test_provenance_no_soft_delete_mixin():
 # ---------------------------------------------------------------------------
 # Agent block — F12 resolution
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_agent_block_user_resolved_to_practitioner():
@@ -117,9 +128,7 @@ async def test_agent_block_user_resolved_to_practitioner():
         "app.services.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=f"Practitioner/{doctor_id}"),
     ) as mock_resolve:
-        agents, degraded = await _agent_block(
-            db, user_id=uid, tenant_id=uuid4()
-        )
+        agents, degraded = await _agent_block(db, user_id=uid, tenant_id=uuid4())
 
     assert len(agents) == 1
     assert agents[0]["who"]["reference"] == f"Practitioner/{doctor_id}"
@@ -140,9 +149,7 @@ async def test_agent_block_user_without_doctor_falls_back_to_display():
         "app.services.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=None),
     ):
-        agents, degraded = await _agent_block(
-            db, user_id=uid, tenant_id=uuid4()
-        )
+        agents, degraded = await _agent_block(db, user_id=uid, tenant_id=uuid4())
 
     assert len(agents) == 1
     # No `reference` key — only `display`.
@@ -164,9 +171,7 @@ async def test_agent_block_integration_resolved_to_device():
         "app.services.provenance_service._resolve_device_ref",
         new=AsyncMock(return_value=f"Device/{device_id}"),
     ):
-        agents, degraded = await _agent_block(
-            db, user_id=None, tenant_id=None, integration_id=iid
-        )
+        agents, degraded = await _agent_block(db, user_id=None, tenant_id=None, integration_id=iid)
 
     assert agents[0]["who"]["reference"] == f"Device/{device_id}"
     assert degraded is False
@@ -181,9 +186,7 @@ async def test_agent_block_integration_without_device_falls_back_to_display():
         "app.services.provenance_service._resolve_device_ref",
         new=AsyncMock(return_value=None),
     ):
-        agents, degraded = await _agent_block(
-            db, user_id=None, tenant_id=None, integration_id=iid
-        )
+        agents, degraded = await _agent_block(db, user_id=None, tenant_id=None, integration_id=iid)
 
     assert "reference" not in agents[0]["who"]
     assert "display" in agents[0]["who"]
@@ -196,9 +199,7 @@ async def test_agent_block_anonymous_when_no_user_no_integration():
     """When neither user_id nor integration_id is provided, the agent.who is
     display-only (anonymous)."""
     db = AsyncMock()
-    agents, degraded = await _agent_block(
-        db, user_id=None, tenant_id=None, integration_id=None
-    )
+    agents, degraded = await _agent_block(db, user_id=None, tenant_id=None, integration_id=None)
     assert len(agents) == 1
     assert "reference" not in agents[0]["who"]
     assert "display" in agents[0]["who"]
@@ -213,12 +214,15 @@ async def test_agent_block_user_and_integration_both_emitted():
     uid = uuid4()
     db = AsyncMock()
 
-    with patch(
-        "app.services.provenance_service._resolve_device_ref",
-        new=AsyncMock(return_value=f"Device/{uuid4()}"),
-    ), patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
-        new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
+    with (
+        patch(
+            "app.services.provenance_service._resolve_device_ref",
+            new=AsyncMock(return_value=f"Device/{uuid4()}"),
+        ),
+        patch(
+            "app.services.provenance_service._resolve_practitioner_ref",
+            new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
+        ),
     ):
         agents, degraded = await _agent_block(
             db, user_id=uid, tenant_id=uuid4(), integration_id=iid
@@ -241,32 +245,34 @@ async def test_agent_block_never_emits_user_or_integration_resource_type():
     db = AsyncMock()
 
     # Resolved path.
-    with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
-        new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
-    ), patch(
-        "app.services.provenance_service._resolve_device_ref",
-        new=AsyncMock(return_value=f"Device/{uuid4()}"),
+    with (
+        patch(
+            "app.services.provenance_service._resolve_practitioner_ref",
+            new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
+        ),
+        patch(
+            "app.services.provenance_service._resolve_device_ref",
+            new=AsyncMock(return_value=f"Device/{uuid4()}"),
+        ),
     ):
-        agents, _ = await _agent_block(
-            db, user_id=uid, tenant_id=uuid4(), integration_id=iid
-        )
+        agents, _ = await _agent_block(db, user_id=uid, tenant_id=uuid4(), integration_id=iid)
         for agent in agents:
             ref = agent["who"].get("reference", "")
             assert not ref.startswith("User/"), f"emitted User/ reference: {ref}"
             assert not ref.startswith("Integration/"), f"emitted Integration/ reference: {ref}"
 
     # Degraded path.
-    with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "app.services.provenance_service._resolve_device_ref",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "app.services.provenance_service._resolve_practitioner_ref",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.provenance_service._resolve_device_ref",
+            new=AsyncMock(return_value=None),
+        ),
     ):
-        agents, _ = await _agent_block(
-            db, user_id=uid, tenant_id=uuid4(), integration_id=iid
-        )
+        agents, _ = await _agent_block(db, user_id=uid, tenant_id=uuid4(), integration_id=iid)
         for agent in agents:
             # Display-only — no reference at all.
             assert "reference" not in agent["who"]
@@ -275,6 +281,7 @@ async def test_agent_block_never_emits_user_or_integration_resource_type():
 # ---------------------------------------------------------------------------
 # Reverse converter
 # ---------------------------------------------------------------------------
+
 
 def _canonical_provenance(**overrides) -> dict:
     base = {
@@ -326,6 +333,7 @@ def test_canonical_provenance_validates():
 # ---------------------------------------------------------------------------
 # record_provenance service
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_record_provenance_creates_row():
@@ -413,6 +421,7 @@ async def test_record_provenance_returns_none_on_db_failure():
 # ---------------------------------------------------------------------------
 # Activity constants
 # ---------------------------------------------------------------------------
+
 
 def test_activity_constants():
     assert RECORD_CREATE == "CREATE"

@@ -20,15 +20,17 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable, Sequence
 from datetime import timedelta
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.converters import to_uuid as _uuid, utcnow as _now
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.core.converters import to_uuid as _uuid
+from app.core.converters import utcnow as _now
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.core.redis import publish_message
 from app.models.enums import (
     NotificationCategory,
@@ -69,7 +71,7 @@ _DIGEST_TTL_CEILING_SECONDS = 7 * 24 * 60 * 60  # 7 days
 _DEFAULT_DIGEST_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 
-def _resolve_digest_ttl(ttl_seconds: Optional[int]) -> Optional[int]:
+def _resolve_digest_ttl(ttl_seconds: int | None) -> int | None:
     """Resolve + clamp the requested TTL against the floor + ceiling.
 
     Returns ``None`` when the caller passed ``None`` AND no platform
@@ -81,9 +83,7 @@ def _resolve_digest_ttl(ttl_seconds: Optional[int]) -> Optional[int]:
         try:
             from app.core.config import get_settings
 
-            ttl_seconds = int(
-                get_settings().NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS
-            )
+            ttl_seconds = int(get_settings().NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS)
         except (AttributeError, TypeError, ValueError):
             ttl_seconds = _DEFAULT_DIGEST_TTL_SECONDS
     if ttl_seconds <= 0:
@@ -94,7 +94,7 @@ def _resolve_digest_ttl(ttl_seconds: Optional[int]) -> Optional[int]:
     )
 
 
-def _compute_dedup_expires_at(ttl_seconds: Optional[int]):
+def _compute_dedup_expires_at(ttl_seconds: int | None):
     """Compute the ``dedup_expires_at`` timestamp for a new row."""
     if ttl_seconds is None:
         return None
@@ -108,9 +108,9 @@ async def emit(
     category: NotificationCategory,
     title: str,
     targets: Sequence[dict],
-    body: Optional[str] = None,
-    payload: Optional[dict] = None,
-    source_ref: Optional[dict] = None,
+    body: str | None = None,
+    payload: dict | None = None,
+    source_ref: dict | None = None,
     severity: NotificationSeverity = NotificationSeverity.INFO,
     patient_id: str | UUID | None = None,
     tenant_id: str | UUID | None = None,
@@ -121,10 +121,10 @@ async def emit(
     sender_user_id: str | UUID | None = None,
     trigger_id: str | UUID | None = None,
     link_communication: bool = False,
-    session: Optional[AsyncSession] = None,
-    dedup_key: Optional[str] = None,
-    dedup_ttl_seconds: Optional[int] = None,
-) -> Optional[Notification]:
+    session: AsyncSession | None = None,
+    dedup_key: str | None = None,
+    dedup_ttl_seconds: int | None = None,
+) -> Notification | None:
     """Create a notification event and fan it out to its recipients.
 
     Parameters mirror the :class:`Notification` fields. ``targets`` is a
@@ -172,7 +172,7 @@ async def emit(
     # write use the same value. ``None`` means "no dedup requested".
     resolved_ttl = _resolve_digest_ttl(dedup_ttl_seconds)
 
-    async def _find_existing_dedup(s: AsyncSession) -> Optional[Notification]:
+    async def _find_existing_dedup(s: AsyncSession) -> Notification | None:
         """Look up an unexpired notification with the same dedup key."""
         if dedup_key is None or tenant_uuid is None:
             return None
@@ -195,16 +195,13 @@ async def emit(
         if existing is not None:
             logger.info(
                 "Notification dedup hit for key=%s → returning existing %s",
-                dedup_key, existing.id,
+                dedup_key,
+                existing.id,
             )
             return existing, set(), []
 
         communication_id = None
-        if (
-            link_communication
-            and patient_uuid is not None
-            and source in _CLINICAL_SOURCES
-        ):
+        if link_communication and patient_uuid is not None and source in _CLINICAL_SOURCES:
             communication_id = await _create_communication(
                 s,
                 tenant_uuid,
@@ -237,9 +234,7 @@ async def emit(
                     "mutable": kind_meta.mutable,
                 }
         except Exception:
-            logger.exception(
-                "Failed to resolve notification kind preferences; skipping hint"
-            )
+            logger.exception("Failed to resolve notification kind preferences; skipping hint")
 
         notification = Notification(
             tenant_id=tenant_uuid,
@@ -266,9 +261,7 @@ async def emit(
         # Apply per-user per-source/channel preferences (USER > TENANT >
         # SYSTEM > default). Users who opted out of the source entirely are
         # dropped; users who opted out of a channel drop just that channel.
-        user_channels = await _resolve_user_channel_preferences(
-            s, resolved, source, channels
-        )
+        user_channels = await _resolve_user_channel_preferences(s, resolved, source, channels)
 
         to_queue: list[tuple[UUID, UUID, NotificationChannel]] = []
         for user_id in resolved:
@@ -287,9 +280,8 @@ async def emit(
                 )
             )
             for channel in wanted_channels:
-                if (
-                    channel == NotificationChannel.PUSH
-                    and not await _has_push_subscription(s, user_id)
+                if channel == NotificationChannel.PUSH and not await _has_push_subscription(
+                    s, user_id
                 ):
                     continue
                 delivery_status = (
@@ -304,9 +296,7 @@ async def emit(
                         tenant_id=tenant_uuid,
                         channel=channel,
                         status=delivery_status,
-                        delivered_at=_now()
-                        if channel == NotificationChannel.IN_APP
-                        else None,
+                        delivered_at=_now() if channel == NotificationChannel.IN_APP else None,
                     )
                 )
                 if channel != NotificationChannel.IN_APP:
@@ -342,7 +332,7 @@ async def emit(
 
 def _infer_recipient_meta(
     user_id: UUID, targets: Sequence[dict]
-) -> tuple[RecipientKind, Optional[UUID]]:
+) -> tuple[RecipientKind, UUID | None]:
     """Best-effort recover the original target spec for a resolved user.
 
     Prefers a direct USER spec; otherwise returns the first PATIENT/DOCTOR
@@ -408,9 +398,9 @@ async def _resolve_user_channel_preferences(
     if not user_ids:
         return {}
 
-    from app.models.user_model import UserModel
-    from app.models.tenant_model import TenantModel
     from app.models.system_setting import SystemSetting
+    from app.models.tenant_model import TenantModel
+    from app.models.user_model import UserModel
 
     source_key = f"notifications.sources.{source.value}"
     channel_keys = {f"notifications.channels.{c.value}" for c in channels}
@@ -429,9 +419,7 @@ async def _resolve_user_channel_preferences(
     if tenant_ids:
         for tid, settings_json in (
             await session.execute(
-                select(TenantModel.id, TenantModel.settings).where(
-                    TenantModel.id.in_(tenant_ids)
-                )
+                select(TenantModel.id, TenantModel.settings).where(TenantModel.id.in_(tenant_ids))
             )
         ).all():
             tenant_rows[tid] = settings_json or {}
@@ -491,14 +479,14 @@ async def _resolve_user_channel_preferences(
 
 async def _create_communication(
     session: AsyncSession,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     patient_id: UUID,
     title: str,
-    body: Optional[str],
-    payload: Optional[dict],
+    body: str | None,
+    payload: dict | None,
     category: str,
-    sender_user_id: Optional[UUID],
-) -> Optional[UUID]:
+    sender_user_id: UUID | None,
+) -> UUID | None:
     """Create a FHIR Communication row and return its id (best-effort)."""
     try:
         comm = CommunicationModel(
@@ -551,9 +539,7 @@ def _public_payload(notification: Notification) -> dict:
         "body": notification.body,
         "payload": notification.payload or {},
         "patient_id": str(notification.patient_id) if notification.patient_id else None,
-        "created_at": notification.created_at.isoformat()
-        if notification.created_at
-        else None,
+        "created_at": notification.created_at.isoformat() if notification.created_at else None,
     }
 
 
@@ -580,9 +566,9 @@ async def get_inbox(
     user_id: str | UUID,
     tenant_id: str | UUID,
     *,
-    status: Optional[RecipientStatus] = None,
-    category: Optional[NotificationCategory] = None,
-    source: Optional[NotificationSource] = None,
+    status: RecipientStatus | None = None,
+    category: NotificationCategory | None = None,
+    source: NotificationSource | None = None,
     patient_id: str | UUID | None = None,
     limit: int = 50,
     offset: int = 0,
@@ -618,9 +604,7 @@ async def get_inbox(
         total = (await session.execute(count_stmt)).scalar() or 0
         rows = (
             await session.execute(
-                base.order_by(NotificationRecipient.created_at.desc())
-                .limit(limit)
-                .offset(offset)
+                base.order_by(NotificationRecipient.created_at.desc()).limit(limit).offset(offset)
             )
         ).all()
 
@@ -648,9 +632,7 @@ async def get_unread_count(user_id: str | UUID, tenant_id: str | UUID) -> int:
         return (await session.execute(stmt)).scalar() or 0
 
 
-async def mark_read(
-    recipient_id: str | UUID, user_id: str | UUID, tenant_id: str | UUID
-) -> bool:
+async def mark_read(recipient_id: str | UUID, user_id: str | UUID, tenant_id: str | UUID) -> bool:
     return await _set_recipient_status(
         recipient_id, user_id, tenant_id, RecipientStatus.READ, "read_at"
     )
@@ -690,9 +672,9 @@ async def get_admin_feed(
     tenant_id: str | UUID,
     *,
     is_system_admin: bool = False,
-    type: Optional[NotificationType] = None,
-    source: Optional[NotificationSource] = None,
-    category: Optional[NotificationCategory] = None,
+    type: NotificationType | None = None,
+    source: NotificationSource | None = None,
+    category: NotificationCategory | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
@@ -717,9 +699,7 @@ async def get_admin_feed(
         rows = (
             (
                 await session.execute(
-                    base.order_by(Notification.created_at.desc())
-                    .limit(limit)
-                    .offset(offset)
+                    base.order_by(Notification.created_at.desc()).limit(limit).offset(offset)
                 )
             )
             .scalars()
@@ -733,7 +713,7 @@ async def get_notification_delivery_detail(
     tenant_id: str | UUID,
     *,
     is_system_admin: bool = False,
-) -> Optional[dict]:
+) -> dict | None:
     """Resolve a single notification to its sender + per-recipient delivery state.
 
     Returns ``None`` if the notification doesn't exist or is outside the
@@ -790,9 +770,7 @@ async def get_notification_delivery_detail(
                 await session.execute(
                     select(NotificationDelivery)
                     .where(NotificationDelivery.notification_id == notif_uuid)
-                    .order_by(
-                        NotificationDelivery.user_id, NotificationDelivery.channel
-                    )
+                    .order_by(NotificationDelivery.user_id, NotificationDelivery.channel)
                 )
             )
             .scalars()
@@ -810,9 +788,7 @@ async def get_notification_delivery_detail(
                     "user_id": str(recipient.user_id),
                     "user_email": email,
                     "inbox_status": recipient.status.value,
-                    "read_at": recipient.read_at.isoformat()
-                    if recipient.read_at
-                    else None,
+                    "read_at": recipient.read_at.isoformat() if recipient.read_at else None,
                     "dismissed_at": recipient.dismissed_at.isoformat()
                     if recipient.dismissed_at
                     else None,
@@ -821,12 +797,8 @@ async def get_notification_delivery_detail(
                         {
                             "channel": d.channel.value,
                             "status": d.status.value,
-                            "attempted_at": d.attempted_at.isoformat()
-                            if d.attempted_at
-                            else None,
-                            "delivered_at": d.delivered_at.isoformat()
-                            if d.delivered_at
-                            else None,
+                            "attempted_at": d.attempted_at.isoformat() if d.attempted_at else None,
+                            "delivered_at": d.delivered_at.isoformat() if d.delivered_at else None,
                             "error": d.error,
                         }
                         for d in deliv_list
@@ -870,12 +842,8 @@ async def get_admin_stats(
     # (``FROM notification_deliveries, notifications WHERE notifications.tenant_id = ...``)
     # and inflated every count by the tenant's notification total.
     notif_filter = None if is_system_admin else Notification.tenant_id == tenant_uuid
-    delivery_filter = (
-        None if is_system_admin else NotificationDelivery.tenant_id == tenant_uuid
-    )
-    recipient_filter = (
-        None if is_system_admin else NotificationRecipient.tenant_id == tenant_uuid
-    )
+    delivery_filter = None if is_system_admin else NotificationDelivery.tenant_id == tenant_uuid
+    recipient_filter = None if is_system_admin else NotificationRecipient.tenant_id == tenant_uuid
 
     async with AsyncSessionLocal() as session:
 
@@ -985,8 +953,6 @@ def _inbox_item(recipient: NotificationRecipient, notification: Notification) ->
         "recipient_id": str(recipient.id),
         "status": recipient.status.value,
         "read_at": recipient.read_at.isoformat() if recipient.read_at else None,
-        "dismissed_at": recipient.dismissed_at.isoformat()
-        if recipient.dismissed_at
-        else None,
+        "dismissed_at": recipient.dismissed_at.isoformat() if recipient.dismissed_at else None,
         "notification": notification.to_dict(),
     }

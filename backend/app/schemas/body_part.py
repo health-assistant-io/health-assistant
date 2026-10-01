@@ -1,13 +1,13 @@
-from pydantic import BaseModel, ConfigDict
 from uuid import UUID
-from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
 
 
 class BodyPartBase(BaseModel):
     name: str
-    slug: Optional[str] = None
-    snomed_code: Optional[str] = None
-    description: Optional[str] = None
+    slug: str | None = None
+    snomed_code: str | None = None
+    description: str | None = None
     is_custom: bool = False
 
 
@@ -16,13 +16,13 @@ class BodyPartCreate(BodyPartBase):
 
 
 class BodyPartUpdate(BaseModel):
-    name: Optional[str] = None
-    snomed_code: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    snomed_code: str | None = None
+    description: str | None = None
 
 
 class BodyPartResponse(BodyPartBase):
     id: UUID
-    tenant_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)

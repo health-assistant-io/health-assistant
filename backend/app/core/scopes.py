@@ -13,16 +13,15 @@ registration.
 
 See ``docs/FHIR_R4_FACADE.md`` (Authentication & SMART scopes).
 """
+
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 # ``<context>/<resource>.<permission>`` — resource is ``*`` or a PascalCase
 # / mixed identifier (e.g. ``Observation``, ``MedicationRequest``).
-_SCOPE_RE = re.compile(
-    r"^(system|patient|user)/(\*|[A-Z][A-Za-z0-9]*)\.(read|write|\*)$"
-)
+_SCOPE_RE = re.compile(r"^(system|patient|user)/(\*|[A-Z][A-Za-z0-9]*)\.(read|write|\*)$")
 
 # Contexts a client may register today. ``user`` requires the deferred
 # authorize flow; ``launch``* / OpenID scopes are not part of the

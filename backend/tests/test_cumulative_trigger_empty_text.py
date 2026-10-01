@@ -12,6 +12,7 @@ extracted text, the else branch marks the exam completed (extraction_status
 = "completed", impressions = "") and DOES NOT call
 ``cumulative_extraction.delay``.
 """
+
 import inspect
 from unittest.mock import AsyncMock, MagicMock
 
@@ -76,7 +77,7 @@ async def test_c11_empty_text_path_marks_exam_completed(monkeypatch):
             r = MagicMock()
             r.scalar.return_value = True  # lock acquired
             return r
-        if "DocumentModel.id ==" in sql_text or "WHERE \"documents\".\"id\" =" in sql_text:
+        if "DocumentModel.id ==" in sql_text or 'WHERE "documents"."id" =' in sql_text:
             # The first lookup: get the doc that triggered the check.
             r = MagicMock()
             r.scalar_one_or_none.return_value = fake_doc
@@ -127,7 +128,6 @@ async def test_c11_empty_text_path_marks_exam_completed(monkeypatch):
 
     # An UPDATE against examinations must have been staged.
     assert any(
-        ("UPDATE examinations" in sql or "examination" in sql.lower())
-        and "UPDATE" in sql.upper()
+        ("UPDATE examinations" in sql or "examination" in sql.lower()) and "UPDATE" in sql.upper()
         for sql in update_calls
     ), f"Expected an UPDATE on the exam table; got: {update_calls}"

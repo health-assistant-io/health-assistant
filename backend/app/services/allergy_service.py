@@ -8,14 +8,13 @@ AI reprocess.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import check_patient_access
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
 from app.schemas.allergy import (
     AllergyCatalogCreate,
@@ -24,6 +23,7 @@ from app.schemas.allergy import (
     AllergyIntoleranceUpdate,
 )
 from app.schemas.user import TokenData
+from app.services.access import check_patient_access
 from app.services.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 async def get_allergy_catalog(
-    db: AsyncSession, tenant_id: UUID, search: Optional[str] = None
-) -> List[AllergyCatalog]:
+    db: AsyncSession, tenant_id: UUID, search: str | None = None
+) -> list[AllergyCatalog]:
     """Search the global + tenant allergy catalog (hybrid search)."""
     from app.services.catalog_search_service import search_allergies
 
@@ -45,7 +45,7 @@ async def get_allergy_catalog(
 
 async def get_catalog_allergy(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> Optional[AllergyCatalog]:
+) -> AllergyCatalog | None:
     query = select(AllergyCatalog).where(
         AllergyCatalog.id == catalog_id,
         or_(
@@ -80,7 +80,7 @@ async def update_catalog_allergy(
     catalog_id: UUID,
     actor,
     data: AllergyCatalogUpdate,
-) -> Optional[AllergyCatalog]:
+) -> AllergyCatalog | None:
     from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
     query = select(AllergyCatalog).where(
@@ -155,7 +155,7 @@ async def delete_catalog_allergy(
 
 async def get_patient_allergies(
     db: AsyncSession, patient_id: UUID, tenant_id: UUID
-) -> List[AllergyIntolerance]:
+) -> list[AllergyIntolerance]:
     query = (
         select(AllergyIntolerance)
         .where(
@@ -175,7 +175,7 @@ async def get_patient_allergies(
 
 async def get_allergy(
     db: AsyncSession, allergy_id: UUID, tenant_id: UUID
-) -> Optional[AllergyIntolerance]:
+) -> AllergyIntolerance | None:
     """Fetch one patient-instance allergy, tenant-scoped + non-deleted."""
     result = await db.execute(
         select(AllergyIntolerance).where(
@@ -192,8 +192,8 @@ async def add_patient_allergy(
     current_user: TokenData,
     data: AllergyIntoleranceCreate,
     *,
-    source_integration_id: Optional[UUID] = None,
-    external_id: Optional[str] = None,
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
 ) -> AllergyIntolerance:
     """Create a patient intolerance (allergy).
 
@@ -229,7 +229,9 @@ async def add_patient_allergy(
             logger.info(
                 "add_patient_allergy: returning existing %s (dedup hit on "
                 "source_integration_id=%s external_id=%r)",
-                existing.id, source_integration_id, effective_external_id,
+                existing.id,
+                source_integration_id,
+                effective_external_id,
             )
             return existing
 
@@ -273,7 +275,7 @@ async def _find_integration_allergy(
     patient_id: UUID,
     source_integration_id: UUID,
     external_id: str,
-) -> Optional[AllergyIntolerance]:
+) -> AllergyIntolerance | None:
     """Look up an existing integration-sourced allergy by dedup key.
 
     Backed by the partial unique index
@@ -294,7 +296,7 @@ async def update_patient_allergy(
     allergy_id: UUID,
     tenant_id: UUID,
     data: AllergyIntoleranceUpdate,
-) -> Optional[AllergyIntolerance]:
+) -> AllergyIntolerance | None:
     result = await db.execute(
         select(AllergyIntolerance).where(
             AllergyIntolerance.id == allergy_id,
@@ -309,7 +311,7 @@ async def update_patient_allergy(
 
     # Merge code partially so a text-only update doesn't wipe catalog_id (and
     # vice versa) — mirrors medication_service.update_patient_medication.
-    if "code" in update_data and update_data["code"]:
+    if update_data.get("code"):
         current_code = record.code or {}
         record.code = {**current_code, **update_data["code"]}
         del update_data["code"]
@@ -323,9 +325,7 @@ async def update_patient_allergy(
     return record
 
 
-async def delete_patient_allergy(
-    db: AsyncSession, allergy_id: UUID, tenant_id: UUID
-) -> bool:
+async def delete_patient_allergy(db: AsyncSession, allergy_id: UUID, tenant_id: UUID) -> bool:
     """Hard-delete the row (parity with medication_service.delete_patient_medication).
 
     Note: the FHIR R4 facade soft-deletes via ``deleted_at`` (audit C5). This
@@ -345,9 +345,7 @@ async def delete_patient_allergy(
     return True
 
 
-async def get_active_allergies_by_tenant(
-    db: AsyncSession, tenant_id: UUID
-) -> List[Dict[str, Any]]:
+async def get_active_allergies_by_tenant(db: AsyncSession, tenant_id: UUID) -> list[dict[str, Any]]:
     """All ACTIVE intolerances in the tenant + the patient display name.
 
     Used by the dashboard ``AllergyAlertsCard`` and the legacy cross-patient
@@ -369,19 +367,17 @@ async def get_active_allergies_by_tenant(
     result = await db.execute(query)
     rows = result.all()
 
-    output: List[Dict[str, Any]] = []
+    output: list[dict[str, Any]] = []
     for allergy, p_name in rows:
         data = allergy.to_dict()
-        data["patient_name_display"] = (
-            f"{p_name.get('given', [''])[0]} {p_name.get('family', '')}"
-        )
+        data["patient_name_display"] = f"{p_name.get('given', [''])[0]} {p_name.get('family', '')}"
         output.append(data)
     return output
 
 
 async def get_allergy_usage(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """All patient intolerances pointing at the given allergy catalog entry.
 
     Mirrors ``medication_service.get_medication_usage``: drives the "patients
@@ -402,7 +398,7 @@ async def get_allergy_usage(
     result = await db.execute(query)
     rows = result.all()
 
-    usage: List[Dict[str, Any]] = []
+    usage: list[dict[str, Any]] = []
     for allergy, patient in rows:
         usage.append(
             {
@@ -419,7 +415,7 @@ async def get_allergy_usage(
 
 async def reprocess_allergy(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> Optional[AllergyCatalog]:
+) -> AllergyCatalog | None:
     """AI re-enrich an existing allergy catalog entry's description and
     typical_reactions.
 
@@ -445,9 +441,7 @@ async def reprocess_allergy(
     try:
         from app.ai.processors.nlp import get_nlp_extractor_from_db
 
-        nlp = await get_nlp_extractor_from_db(
-            db, task_type="nlp", tenant_id=tenant_id
-        )
+        nlp = await get_nlp_extractor_from_db(db, task_type="nlp", tenant_id=tenant_id)
     except Exception as exc:
         logger.warning("Allergy reprocess: NLP extractor unavailable (%s).", exc)
         return entry
@@ -456,9 +450,7 @@ async def reprocess_allergy(
     # invoke it when the configured backend implements it.
     enrich = getattr(nlp, "parse_document_pass_2_allergies", None)
     if enrich is None:
-        logger.info(
-            "Allergy reprocess: extractor has no allergen enrichment; no-op."
-        )
+        logger.info("Allergy reprocess: extractor has no allergen enrichment; no-op.")
         return entry
 
     try:

@@ -1,8 +1,10 @@
+import json
 import logging
 from urllib.parse import urlparse
-from pywebpush import webpush, WebPushException
+
+from pywebpush import WebPushException, webpush
+
 from app.core.config import settings
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,7 @@ def _redact_endpoint(endpoint: str) -> str:
 # For this project, we can generate them if they don't exist or use placeholders
 VAPID_PRIVATE_KEY = getattr(settings, "VAPID_PRIVATE_KEY", None)
 VAPID_PUBLIC_KEY = getattr(settings, "VAPID_PUBLIC_KEY", None)
-VAPID_ADMIN_EMAIL = getattr(
-    settings, "VAPID_ADMIN_EMAIL", "admin@health-assistant.local"
-)
+VAPID_ADMIN_EMAIL = getattr(settings, "VAPID_ADMIN_EMAIL", "admin@health-assistant.local")
 VAPID_CLAIMS = {"sub": f"mailto:{VAPID_ADMIN_EMAIL}"}
 
 
@@ -45,9 +45,7 @@ class SubscriptionExpired(Exception):
     def __init__(self, endpoint: str, status_code: int):
         self.endpoint = endpoint
         self.status_code = status_code
-        super().__init__(
-            f"Web Push subscription {endpoint} expired (HTTP {status_code})"
-        )
+        super().__init__(f"Web Push subscription {endpoint} expired (HTTP {status_code})")
 
 
 def send_web_push(subscription_info, data):
@@ -67,9 +65,7 @@ def send_web_push(subscription_info, data):
     endpoint = subscription_info.get("endpoint", "unknown")
 
     try:
-        logger.info(
-            f"Attempting to send Web Push to endpoint: {_redact_endpoint(endpoint)}"
-        )
+        logger.info(f"Attempting to send Web Push to endpoint: {_redact_endpoint(endpoint)}")
         response = webpush(
             subscription_info=subscription_info,
             data=json.dumps(data) if isinstance(data, dict) else data,

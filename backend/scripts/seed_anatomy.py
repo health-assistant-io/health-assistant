@@ -17,21 +17,22 @@ Docker usage:
     docker compose --env-file .env -f docker/docker-compose.standalone.yml \
         exec backend python scripts/seed_anatomy.py
 """
-import asyncio
-import sys
-import os
-import json
+
 import argparse
+import asyncio
+import json
+import os
+import sys
 from pathlib import Path
 
 import httpx
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.services.seed_service import seed_service
-from app.services.anatomy_import_service import AnatomyImportService
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.schemas.anatomy_import import AnatomyImportPayload
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.services.anatomy_import_service import AnatomyImportService
+from app.services.seed_service import seed_service
 
 
 async def seed_base():
@@ -65,7 +66,7 @@ async def import_file(file_path: str):
     print(f"📦 Importing anatomy pack from file: {file_path}")
 
     try:
-        with open(p, "r", encoding="utf-8") as f:
+        with open(p, encoding="utf-8") as f:
             data = json.load(f)
         await _import_payload(data)
     except json.JSONDecodeError as e:
@@ -120,9 +121,7 @@ async def _import_payload(data: dict):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Seed or expand the anatomy graph catalog."
-    )
+    parser = argparse.ArgumentParser(description="Seed or expand the anatomy graph catalog.")
     parser.add_argument(
         "--file",
         type=str,

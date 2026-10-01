@@ -50,9 +50,7 @@ async def test_codesystem_read_returns_valid_fhir(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     await _seed_diseases()
 
-    resp = await async_client.get(
-        "/api/v1/fhir/R4/CodeSystem/ha-diseases", headers=headers
-    )
+    resp = await async_client.get("/api/v1/fhir/R4/CodeSystem/ha-diseases", headers=headers)
     assert resp.status_code == 200, resp.text
     cs = resp.json()
     assert cs["resourceType"] == "CodeSystem"
@@ -69,9 +67,7 @@ async def test_codesystem_contains_disease_icd10_codes(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     await _seed_diseases()
 
-    resp = await async_client.get(
-        "/api/v1/fhir/R4/CodeSystem/ha-diseases", headers=headers
-    )
+    resp = await async_client.get("/api/v1/fhir/R4/CodeSystem/ha-diseases", headers=headers)
     assert resp.status_code == 200
     codes = {c["code"] for c in resp.json()["concept"]}
     # A few well-known ICD-10 codes from the seed.
@@ -84,9 +80,7 @@ async def test_codesystem_contains_disease_icd10_codes(async_client):
 @pytest.mark.asyncio
 async def test_codesystem_unknown_id_returns_404(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
-    resp = await async_client.get(
-        "/api/v1/fhir/R4/CodeSystem/does-not-exist", headers=headers
-    )
+    resp = await async_client.get("/api/v1/fhir/R4/CodeSystem/does-not-exist", headers=headers)
     assert resp.status_code == 404
     assert resp.json()["resourceType"] == "OperationOutcome"
 
@@ -101,9 +95,7 @@ async def test_valueset_read_returns_valid_fhir(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     await _seed_diseases()
 
-    resp = await async_client.get(
-        "/api/v1/fhir/R4/ValueSet/ha-diseases", headers=headers
-    )
+    resp = await async_client.get("/api/v1/fhir/R4/ValueSet/ha-diseases", headers=headers)
     assert resp.status_code == 200, resp.text
     vs = resp.json()
     assert vs["resourceType"] == "ValueSet"
@@ -120,9 +112,7 @@ async def test_valueset_includes_disease_codes(async_client):
     _, headers = await _tenant_and_headers("ADMIN")
     await _seed_diseases()
 
-    resp = await async_client.get(
-        "/api/v1/fhir/R4/ValueSet/ha-diseases", headers=headers
-    )
+    resp = await async_client.get("/api/v1/fhir/R4/ValueSet/ha-diseases", headers=headers)
     assert resp.status_code == 200
     concepts = resp.json()["compose"]["include"][0]["concept"]
     codes = {c["code"] for c in concepts}

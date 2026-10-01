@@ -29,22 +29,21 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select, update
 
+from app.core.config import settings
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.core.encryption import decrypt_secret, encrypt_secret
 from app.core.security import get_password_hash, verify_password
 from app.core.totp import (
+    build_totp_uri,
     canonical_recovery_code,
     generate_recovery_codes,
     generate_totp_secret,
-    build_totp_uri,
     verify_totp,
 )
-from app.core.config import settings
 from app.models.user_model import UserModel
 
 logger = logging.getLogger(__name__)
@@ -186,7 +185,7 @@ async def consume_recovery_code(user: UserModel, code: str) -> bool:
     return False
 
 
-async def verify_code(user: UserModel, code: str) -> Optional[str]:
+async def verify_code(user: UserModel, code: str) -> str | None:
     """Verify an MFA code (TOTP first, then recovery). Returns the
     matched method (``"totp"`` / ``"recovery"``) or None."""
     if await verify_totp_code(user, code):
@@ -212,7 +211,7 @@ async def clear_mfa(user_id: str | UUID) -> None:
         await session.commit()
 
 
-async def set_enforced(user_id: str | UUID, enforced: bool) -> Optional[UserModel]:
+async def set_enforced(user_id: str | UUID, enforced: bool) -> UserModel | None:
     """Set/clear the admin-forced flag. Returns the fresh row (or None)."""
     async with AsyncSessionLocal() as session:
         await session.execute(

@@ -10,6 +10,7 @@ These tests pin the remaining public contract:
   * ``PATCH /tenants/{id}`` allows tenant-admin self-service updates
     only on their own tenant.
 """
+
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -34,10 +35,21 @@ async def test_get_my_tenant_returns_own_tenant(async_client):
     """A caller always sees their own tenant via GET /tenants."""
     tid = uuid.uuid4()
     app.dependency_overrides[get_current_user] = lambda: _token("USER", tid)
-    fake = type("T", (), {"id": tid, "name": "Mine", "slug": "mine",
-                          "description": None, "is_active": True,
-                          "owner_id": None, "settings": {},
-                          "created_at": None, "updated_at": None})()
+    fake = type(
+        "T",
+        (),
+        {
+            "id": tid,
+            "name": "Mine",
+            "slug": "mine",
+            "description": None,
+            "is_active": True,
+            "owner_id": None,
+            "settings": {},
+            "created_at": None,
+            "updated_at": None,
+        },
+    )()
     with patch("app.api.v1.endpoints.tenants.get_tenant", new=AsyncMock(return_value=fake)):
         resp = await async_client.get("/api/v1/tenants")
     assert resp.status_code == 200
@@ -61,10 +73,21 @@ async def test_get_tenant_by_id_system_admin_can_read_any(async_client):
     """SYSTEM_ADMIN bypasses the same-tenant gate (read-only here)."""
     other = uuid.uuid4()
     app.dependency_overrides[get_current_user] = lambda: _token("SYSTEM_ADMIN", uuid.uuid4())
-    fake = type("T", (), {"id": other, "name": "Other", "slug": "other",
-                          "description": None, "is_active": True,
-                          "owner_id": None, "settings": {},
-                          "created_at": None, "updated_at": None})()
+    fake = type(
+        "T",
+        (),
+        {
+            "id": other,
+            "name": "Other",
+            "slug": "other",
+            "description": None,
+            "is_active": True,
+            "owner_id": None,
+            "settings": {},
+            "created_at": None,
+            "updated_at": None,
+        },
+    )()
     with patch("app.api.v1.endpoints.tenants.get_tenant", new=AsyncMock(return_value=fake)):
         resp = await async_client.get(f"/api/v1/tenants/{other}")
     assert resp.status_code == 200

@@ -57,10 +57,10 @@ def test_no_xff_uses_peer(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ws_query_token_fallback_removed():
-    import asyncio
+
+    from unittest.mock import MagicMock
 
     from app.api.v1.endpoints.websockets import _extract_token
-    from unittest.mock import MagicMock
 
     ws = MagicMock()
     ws.scope = {}

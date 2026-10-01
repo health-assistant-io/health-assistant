@@ -21,14 +21,14 @@ registered catalogs. All read-only — AI never writes; proposals go through HIT
 
 from __future__ import annotations
 
+import contextlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
 
 from app.ai.tools.registry import ToolContext, register_chat_tool
-
 
 #: Cap on the size of ``related`` in ``discover_missing_related``. Bounds the
 #: work and the result payload so the LLM cannot bloat the chat context.
@@ -42,7 +42,7 @@ def build(ctx: ToolContext):
     @tool
     async def search_catalogs(
         query: str,
-        types: Optional[List[str]] = None,
+        types: list[str] | None = None,
         limit: int = 10,
     ) -> str:
         """Search across all clinical catalogs (biomarkers, medications,
@@ -90,8 +90,8 @@ def build(ctx: ToolContext):
         type: str,
         id: str,
         max_depth: int = 2,
-        relations: Optional[List[str]] = None,
-        types: Optional[List[str]] = None,
+        relations: list[str] | None = None,
+        types: list[str] | None = None,
     ) -> str:
         """Explore the knowledge graph around a catalog item.
 
@@ -104,7 +104,7 @@ def build(ctx: ToolContext):
             type: the catalog type — "biomarker", "medication", "vaccine",
                 "allergy", "anatomy", "concept", "clinical_event_type".
             id: the item UUID.
-            max_depth: traversal depth 1–3 (default 2). 1 = direct neighbors.
+            max_depth: traversal depth 1-3 (default 2). 1 = direct neighbors.
                 Clamped to 3 to keep the result LLM-context-safe.
             relations: optional whitelist of relation types (e.g.
                 ["AFFECTS", "TREATS", "PREVENTS"]). None = all relations.
@@ -144,30 +144,24 @@ def build(ctx: ToolContext):
         except (ValueError, TypeError):
             return json.dumps({"error": f"Invalid id UUID: {id!r}"})
 
-        whitelist: Optional[tuple[ConceptRelationType, ...]] = None
+        whitelist: tuple[ConceptRelationType, ...] | None = None
         if relations:
             resolved = []
             for r in relations:
-                try:
+                with contextlib.suppress(ValueError):
                     resolved.append(ConceptRelationType(r))
-                except ValueError:
-                    pass
             whitelist = tuple(resolved) if resolved else None
 
         # Resolve the destination-type whitelist (same alias map).
-        endpoint_whitelist: Optional[tuple[EdgeEndpointType, ...]] = None
+        endpoint_whitelist: tuple[EdgeEndpointType, ...] | None = None
         if types:
             resolved_types = []
             for t in types:
-                try:
-                    resolved_types.append(
-                        EdgeEndpointType(_TYPE_ALIASES.get(t, t))
-                    )
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    resolved_types.append(EdgeEndpointType(_TYPE_ALIASES.get(t, t)))
             endpoint_whitelist = tuple(resolved_types) if resolved_types else None
 
-        # Clamp depth to the documented 1–3 range (the service allows up to 5,
+        # Clamp depth to the documented 1-3 range (the service allows up to 5,
         # but depth >3 saturates the edge cap on any non-trivial graph).
         clamped_depth = max(1, min(3, max_depth))
 
@@ -190,7 +184,7 @@ def build(ctx: ToolContext):
     async def discover_missing_related(
         primary_type: str,
         primary_name: str,
-        related: List[dict],
+        related: list[dict],
     ) -> str:
         """Discover which entities the LLM will need to create when planning a
         multi-step catalog addition with links.
@@ -221,7 +215,7 @@ def build(ctx: ToolContext):
                 ``biomarker``, ``medication``, ``vaccine``, ``allergy``,
                 ``anatomy``, ``concept``, ``clinical_event_type``.
             primary_name: Canonical name of the primary entity (e.g. "Metformin").
-            related: 1–10 items; each ``{"type": <catalog_type>, "name": <str>,
+            related: 1-10 items; each ``{"type": <catalog_type>, "name": <str>,
                 "suggested_relation": <optional relation code like "TREATS">}``.
                 The relation is for YOUR bookkeeping; the tool surfaces it
                 back in the result so you can pass it to ``propose_define_*``
@@ -258,7 +252,7 @@ def build(ctx: ToolContext):
 
         # One primary lookup + one per related item. Search is tenant-scoped
         # via ctx.tenant_id inside _search.
-        async def _lookup(catalog_type: str, name: str) -> List[Dict[str, Any]]:
+        async def _lookup(catalog_type: str, name: str) -> list[dict[str, Any]]:
             try:
                 hits = await _search(
                     ctx.db,
@@ -282,14 +276,14 @@ def build(ctx: ToolContext):
             ]
 
         primary_matches = await _lookup(primary_type, primary_name)
-        primary_block: Dict[str, Any] = {
+        primary_block: dict[str, Any] = {
             "type": primary_type,
             "name": primary_name,
             "exists": bool(primary_matches),
             "match": primary_matches[0] if primary_matches else None,
         }
 
-        items: List[Dict[str, Any]] = []
+        items: list[dict[str, Any]] = []
         for raw in related:
             if not isinstance(raw, dict):
                 items.append(
@@ -341,8 +335,6 @@ def build(ctx: ToolContext):
                 }
             )
 
-        return json.dumps(
-            {"primary": primary_block, "items": items}, default=str
-        )
+        return json.dumps({"primary": primary_block, "items": items}, default=str)
 
     return [search_catalogs, explore_catalog_relations, discover_missing_related]

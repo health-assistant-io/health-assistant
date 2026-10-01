@@ -1,4 +1,5 @@
-from typing import Dict, Any
+from typing import Any
+
 from .base import NLPExtractor
 
 
@@ -8,7 +9,7 @@ class SpaCyExtractor(NLPExtractor):
     def __init__(self, model: str = "en_core_sci_sm"):
         self.model = model
 
-    async def extract_entities(self, text: str) -> Dict[str, Any]:
+    async def extract_entities(self, text: str) -> dict[str, Any]:
         """Extract medical entities from text"""
         return {
             "biomarkers": [],

@@ -1,3 +1,4 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
 """Concept + ConceptEdge API endpoints.
 
 CRUD for the unified taxonomy + graph edges, with RBAC:
@@ -9,7 +10,6 @@ All list reads apply the standard ``or_(tenant_id == caller, tenant_id.is_(None)
 filter so global canonical rows are visible to every tenant.
 """
 
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -36,7 +36,7 @@ from app.services.concept_service import ConceptService
 router = APIRouter(prefix="/concepts", tags=["Concepts"])
 
 
-def _resolve_kind(kind: Optional[str]) -> Optional[ConceptKind]:
+def _resolve_kind(kind: str | None) -> ConceptKind | None:
     if kind is None:
         return None
     try:
@@ -48,7 +48,7 @@ def _resolve_kind(kind: Optional[str]) -> Optional[ConceptKind]:
         )
 
 
-def _resolve_relation(relation: Optional[str]) -> Optional[ConceptRelationType]:
+def _resolve_relation(relation: str | None) -> ConceptRelationType | None:
     if relation is None:
         return None
     try:
@@ -65,10 +65,10 @@ def _resolve_relation(relation: Optional[str]) -> Optional[ConceptRelationType]:
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=List[ConceptResponse])
+@router.get("", response_model=list[ConceptResponse])
 async def list_concepts(
-    kind: Optional[str] = Query(None),
-    parent_id: Optional[UUID] = Query(None),
+    kind: str | None = Query(None),
+    parent_id: UUID | None = Query(None),
     include_retired: bool = Query(False),
     limit: int = Query(100, ge=1, le=2000),
     offset: int = Query(0, ge=0),
@@ -88,10 +88,10 @@ async def list_concepts(
     return [ConceptResponse.model_validate(c) for c in concepts]
 
 
-@router.get("/search", response_model=List[ConceptResponse])
+@router.get("/search", response_model=list[ConceptResponse])
 async def search_concepts(
     q: str = Query(..., min_length=1),
-    kind: Optional[str] = Query(None),
+    kind: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -121,7 +121,7 @@ async def create_concept(
     one kind must be supplied.
     """
     svc = ConceptService(db)
-    resolved_kinds: List[ConceptKind] = []
+    resolved_kinds: list[ConceptKind] = []
     for k in body.kinds:
         try:
             resolved_kinds.append(ConceptKind(k))
@@ -265,10 +265,10 @@ async def restore_concept(
     return ConceptResponse.model_validate(concept)
 
 
-@router.get("/{concept_id}/neighbors", response_model=List[NeighborResponse])
+@router.get("/{concept_id}/neighbors", response_model=list[NeighborResponse])
 async def get_neighbors(
     concept_id: UUID,
-    relation: Optional[str] = Query(None),
+    relation: str | None = Query(None),
     include_proposed: bool = Query(False),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -300,11 +300,11 @@ edge_router = APIRouter(prefix="/concept-edges", tags=["Concept Edges"])
 
 @edge_router.get("/schema")
 async def get_link_schema(
-    src_type: Optional[str] = Query(
+    src_type: str | None = Query(
         None,
         description="Filter to relations FROM this EdgeEndpointType",
     ),
-    dst_type: Optional[str] = Query(
+    dst_type: str | None = Query(
         None,
         description="Filter to relations TO this EdgeEndpointType (requires src_type)",
     ),
@@ -340,13 +340,13 @@ async def get_link_schema(
     return serialize_full_schema()
 
 
-@edge_router.get("", response_model=List[ConceptEdgeResponse])
+@edge_router.get("", response_model=list[ConceptEdgeResponse])
 async def list_edges(
-    src_type: Optional[str] = Query(None),
-    src_id: Optional[UUID] = Query(None),
-    dst_type: Optional[str] = Query(None),
-    dst_id: Optional[UUID] = Query(None),
-    relation: Optional[str] = Query(None),
+    src_type: str | None = Query(None),
+    src_id: UUID | None = Query(None),
+    dst_type: str | None = Query(None),
+    dst_id: UUID | None = Query(None),
+    relation: str | None = Query(None),
     include_proposed: bool = Query(False),
     limit: int = Query(200, ge=1, le=5000),
     current_user: TokenData = Depends(get_current_user),

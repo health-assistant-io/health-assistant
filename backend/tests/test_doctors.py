@@ -1,7 +1,8 @@
+import uuid
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch
-import uuid
 
 
 def override_get_current_user():
@@ -27,10 +28,11 @@ def mock_doctor_data():
 
 @pytest.mark.asyncio
 async def test_list_doctors(async_client: AsyncClient, mock_doctor_data):
-    from app.main import app
-    from app.core.security import get_current_user
-    from app.core.database import get_db
     from unittest.mock import AsyncMock, MagicMock
+
+    from app.core.database import get_db
+    from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 
@@ -40,9 +42,7 @@ async def test_list_doctors(async_client: AsyncClient, mock_doctor_data):
     mock_doctor_obj.to_dict.return_value = mock_doctor_data
 
     result_mock = MagicMock()
-    result_mock.scalars.return_value.unique.return_value.all.return_value = [
-        mock_doctor_obj
-    ]
+    result_mock.scalars.return_value.unique.return_value.all.return_value = [mock_doctor_obj]
     db_mock.execute.return_value = result_mock
 
     async def override_get_db():
@@ -61,8 +61,8 @@ async def test_list_doctors(async_client: AsyncClient, mock_doctor_data):
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.doctors.create_doctor")
 async def test_create_doctor(mock_create, async_client: AsyncClient, mock_doctor_data):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_create.return_value = mock_doctor_data
@@ -79,8 +79,8 @@ async def test_create_doctor(mock_create, async_client: AsyncClient, mock_doctor
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.doctors.delete_doctor")
 async def test_delete_doctor(mock_delete, async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_delete.return_value = True

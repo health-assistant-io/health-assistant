@@ -1,13 +1,14 @@
-from typing import Optional, Dict, Any, List
+from typing import Any
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class PatientLayoutBase(BaseModel):
     name: str = Field(default="Default Layout")
     is_default: bool = Field(default=False)
-    layout_config: Dict[str, Any] = Field(default_factory=dict)
-    cards_config: List[Dict[str, Any]] = Field(default_factory=list)
+    layout_config: dict[str, Any] = Field(default_factory=dict)
+    cards_config: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PatientLayoutCreate(PatientLayoutBase):
@@ -15,10 +16,10 @@ class PatientLayoutCreate(PatientLayoutBase):
 
 
 class PatientLayoutUpdate(BaseModel):
-    name: Optional[str] = None
-    is_default: Optional[bool] = None
-    layout_config: Optional[Dict[str, Any]] = None
-    cards_config: Optional[List[Dict[str, Any]]] = None
+    name: str | None = None
+    is_default: bool | None = None
+    layout_config: dict[str, Any] | None = None
+    cards_config: list[dict[str, Any]] | None = None
 
 
 class PatientLayoutResponse(PatientLayoutBase):

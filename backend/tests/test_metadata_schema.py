@@ -5,6 +5,7 @@ raises a precise Pydantic error instead of silently rendering nothing in the
 dynamic form. Covers valid shapes per field type plus the cross-field
 constraints (CATALOG_SELECT needs catalogs; concept_kind needs CONCEPT-only).
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,7 +16,6 @@ from app.models.enums import (
     MetadataFieldType,
 )
 from app.schemas.clinical_event import MetadataField, MetadataSchema
-
 
 # ---------------------------------------------------------------------------
 # Valid shapes

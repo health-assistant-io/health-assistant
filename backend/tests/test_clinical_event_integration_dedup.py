@@ -9,13 +9,13 @@ duplicate. Mirrors the pattern on ``examinations``.
 These tests use a minimal fake session — they exercise the dedup decision
 tree (lookup-or-skip, return-or-create) without spinning up a real DB.
 """
+
 from uuid import uuid4
 
 import pytest
 
 from app.schemas.user import TokenData
 from app.services import clinical_event_service as svc
-
 
 TENANT = uuid4()
 PATIENT = uuid4()
@@ -91,12 +91,15 @@ async def test_create_event_returns_existing_on_dedup_hit(monkeypatch):
     # Stub out the access check (would otherwise hit the DB).
     async def _noop_access(*a, **kw):
         return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
 
     # Stub out the refetch so we don't need real relationships loaded.
     refetched = {"id": str(existing_id), "dedup_hit": True}
+
     async def _fake_refetch(*a, **kw):
         return refetched
+
     monkeypatch.setattr(svc, "_refetch_with_relations", _fake_refetch)
 
     integration_id = uuid4()
@@ -109,9 +112,7 @@ async def test_create_event_returns_existing_on_dedup_hit(monkeypatch):
     )
 
     assert result is refetched
-    assert db.added == [], (
-        "Dedup hit must not queue a new ClinicalEvent for insert"
-    )
+    assert db.added == [], "Dedup hit must not queue a new ClinicalEvent for insert"
 
 
 @pytest.mark.asyncio
@@ -121,9 +122,15 @@ async def test_create_event_dedup_lookup_uses_all_four_fields(monkeypatch):
     these would either over-match (returning unrelated events) or
     under-match (creating duplicates)."""
     db = _FakeSession(find_result=None)
-    async def _noop_access(*a, **kw): return None
+
+    async def _noop_access(*a, **kw):
+        return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
-    async def _fake_refetch(*a, **kw): return {}
+
+    async def _fake_refetch(*a, **kw):
+        return {}
+
     monkeypatch.setattr(svc, "_refetch_with_relations", _fake_refetch)
 
     integration_id = uuid4()
@@ -138,9 +145,7 @@ async def test_create_event_dedup_lookup_uses_all_four_fields(monkeypatch):
     # The SELECT is the first execute call; compile it to SQL string for
     # assertions. This catches a regression where a filter is dropped.
     assert len(db.executes) >= 1, "dedup lookup should issue a SELECT"
-    compiled = db.executes[0].compile(
-        compile_kwargs={"literal_binds": True}
-    )
+    compiled = db.executes[0].compile(compile_kwargs={"literal_binds": True})
     sql = str(compiled).lower()
     assert "clinical_events" in sql
     # All four predicates should be present (column-name fragments).
@@ -161,9 +166,15 @@ async def test_create_event_creates_with_provenance_on_dedup_miss(monkeypatch):
     create a new row with ``source_integration_id`` and ``external_id``
     populated on the ORM instance — not just on the wire payload."""
     db = _FakeSession(find_result=None)
-    async def _noop_access(*a, **kw): return None
+
+    async def _noop_access(*a, **kw):
+        return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
-    async def _fake_refetch(*a, **kw): return {}
+
+    async def _fake_refetch(*a, **kw):
+        return {}
+
     monkeypatch.setattr(svc, "_refetch_with_relations", _fake_refetch)
 
     integration_id = uuid4()
@@ -195,20 +206,22 @@ async def test_create_event_skips_dedup_when_source_integration_id_absent(monkey
     behavior. Catches a regression where the lookup runs with NULLs and
     accidentally matches an unrelated NULL-keyed row."""
     db = _FakeSession(find_result=None)
-    async def _noop_access(*a, **kw): return None
+
+    async def _noop_access(*a, **kw):
+        return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
-    async def _fake_refetch(*a, **kw): return {}
+
+    async def _fake_refetch(*a, **kw):
+        return {}
+
     monkeypatch.setattr(svc, "_refetch_with_relations", _fake_refetch)
 
     # Only external_id set — should NOT trigger dedup.
-    await svc.create_event(
-        db, _actor(), _payload(), external_id="orphan-id-no-source"
-    )
+    await svc.create_event(db, _actor(), _payload(), external_id="orphan-id-no-source")
 
     # No execute() calls — the dedup SELECT didn't run.
-    assert db.executes == [], (
-        "dedup lookup must NOT run when source_integration_id is absent"
-    )
+    assert db.executes == [], "dedup lookup must NOT run when source_integration_id is absent"
     assert len(db.added) == 1
     assert db.added[0].source_integration_id is None
     assert db.added[0].external_id == "orphan-id-no-source"
@@ -220,9 +233,15 @@ async def test_create_event_skips_dedup_when_external_id_absent(monkeypatch):
     (e.g. an upstream system that doesn't expose stable ids) must also
     skip the dedup lookup."""
     db = _FakeSession(find_result=None)
-    async def _noop_access(*a, **kw): return None
+
+    async def _noop_access(*a, **kw):
+        return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
-    async def _fake_refetch(*a, **kw): return {}
+
+    async def _fake_refetch(*a, **kw):
+        return {}
+
     monkeypatch.setattr(svc, "_refetch_with_relations", _fake_refetch)
 
     await svc.create_event(
@@ -233,9 +252,7 @@ async def test_create_event_skips_dedup_when_external_id_absent(monkeypatch):
         # external_id omitted
     )
 
-    assert db.executes == [], (
-        "dedup lookup must NOT run when external_id is absent"
-    )
+    assert db.executes == [], "dedup lookup must NOT run when external_id is absent"
 
 
 # ---------------------------------------------------------------------------

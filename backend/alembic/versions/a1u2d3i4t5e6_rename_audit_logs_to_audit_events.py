@@ -20,9 +20,9 @@ Revises: h1c2o3n4t5r6
 Create Date: 2026-09-26
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "a1u2d3i4t5e6"
 down_revision = "h1c2o3n4t5r6"
@@ -52,9 +52,7 @@ def upgrade() -> None:
                 server_default="ok",
             )
         )
-        batch_op.create_index(
-            batch_op.f("ix_audit_events_outcome"), ["outcome"], unique=False
-        )
+        batch_op.create_index(batch_op.f("ix_audit_events_outcome"), ["outcome"], unique=False)
 
 
 def downgrade() -> None:

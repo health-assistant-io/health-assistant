@@ -102,9 +102,10 @@ async def test_close_drains_in_flight_run_before_closing():
 async def test_checkpoint_roundtrip_via_store(store):
     """A checkpoint written through the store's saver is readable back."""
     config = {"configurable": {"thread_id": f"store-test-{uuid.uuid4()}"}}
+    from typing import TypedDict
+
     from langgraph.graph import END, START, StateGraph
     from langgraph.types import RetryPolicy  # noqa: F401
-    from typing import TypedDict
 
     class S(TypedDict):
         n: int

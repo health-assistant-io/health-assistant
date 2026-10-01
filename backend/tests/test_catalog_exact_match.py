@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Regression tests for MedicationCatalog / AllergyCatalog uniqueness matching (C9).
 
 Pre-fix contract: catalog "uniqueness" checks at three sites used
@@ -23,6 +24,7 @@ Catalog *search* features (``catalog_search_service.py``,
 ``allergy_service.py``) legitimately use ``ilike('%q%')`` for substring
 search and are intentionally NOT changed.
 """
+
 import inspect
 
 
@@ -52,11 +54,11 @@ def test_c9_seed_service_medication_catalog_uses_exact_match():
     # The medication seeding method lives inline in seed_medications; check
     # the whole module source for the catalog-uniqueness pattern.
     src = inspect.getsource(seed_service)
-    assert "func.lower(MedicationCatalog.name) == func.lower(item[\"name\"])" in src, (
+    assert 'func.lower(MedicationCatalog.name) == func.lower(item["name"])' in src, (
         "seed_service medication seeding must use case-insensitive exact match."
     )
     # The ilike form must NOT be used as a uniqueness check.
-    assert "MedicationCatalog.name.ilike(item[\"name\"])" not in src
+    assert 'MedicationCatalog.name.ilike(item["name"])' not in src
 
 
 def test_c9_seed_service_allergy_catalog_uses_exact_match():
@@ -64,8 +66,8 @@ def test_c9_seed_service_allergy_catalog_uses_exact_match():
     from app.services import seed_service
 
     src = inspect.getsource(seed_service)
-    assert "func.lower(AllergyCatalog.name) == func.lower(item[\"name\"])" in src
-    assert "AllergyCatalog.name.ilike(item[\"name\"])" not in src
+    assert 'func.lower(AllergyCatalog.name) == func.lower(item["name"])' in src
+    assert 'AllergyCatalog.name.ilike(item["name"])' not in src
 
 
 def test_c9_import_service_medication_catalog_uses_exact_match():
@@ -92,17 +94,13 @@ def test_c9_catalog_search_uses_hybrid_pipeline():
     markers are present in the unified search service and the old dedup-hostile
     raw ilike is gone. The per-domain allergy_service delegates entirely to
     ``search_allergies`` from the unified service (no legacy ilike fallback)."""
-    from app.services import catalog_search_service, allergy_service
+    from app.services import allergy_service, catalog_search_service
 
     # catalog_search_service now uses trigram + FTS, fused via RRF.
     cs_src = inspect.getsource(catalog_search_service)
     assert "websearch_to_tsquery" in cs_src, "hybrid FTS matcher missing"
-    assert "pg_trgm" in cs_src or "similarity" in cs_src, (
-        "hybrid trigram matcher missing"
-    )
-    assert "reciprocal" in cs_src.lower() or "rrf" in cs_src.lower(), (
-        "RRF fusion missing"
-    )
+    assert "pg_trgm" in cs_src or "similarity" in cs_src, "hybrid trigram matcher missing"
+    assert "reciprocal" in cs_src.lower() or "rrf" in cs_src.lower(), "RRF fusion missing"
     # The old raw ilike(f"%{q}%") on Medication/Allergy catalogs is gone from
     # the unified search service (replaced by the hybrid matchers).
     assert 'MedicationCatalog.name.ilike(f"%{q}%")' not in cs_src
@@ -114,6 +112,6 @@ def test_c9_catalog_search_uses_hybrid_pipeline():
     assert "search_allergies" in as_src, (
         "allergy_service should delegate catalog search to the unified hybrid pipeline"
     )
-    assert 'AllergyCatalog.name.ilike' not in as_src, (
+    assert "AllergyCatalog.name.ilike" not in as_src, (
         "allergy_service should not carry its own ilike fallback anymore"
     )

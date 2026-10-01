@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, RoleChecker, TokenData
+from app.core.security import RoleChecker, TokenData, get_current_user
 from app.models.enums import Role
 from app.schemas.tenant import TenantResponse, TenantUpdate
 from app.services.tenant_admin_service import TenantAdminService
@@ -31,7 +31,7 @@ def _coerce_uuid(value: str, field: str = "tenant_id") -> UUID:
     try:
         return UUID(value)
     except (ValueError, AttributeError, TypeError):
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid {field}: must be a valid UUID.",
         )
@@ -44,9 +44,7 @@ async def get_my_tenant(
     """Return the caller's own tenant."""
     tenant = await get_tenant(current_user.tenant_id)
     if tenant is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     return TenantResponse.model_validate(tenant)
 
 
@@ -70,9 +68,7 @@ async def get_tenant_endpoint(
         )
     tenant = await get_tenant(tid)
     if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     return TenantResponse.model_validate(tenant)
 
 
@@ -80,7 +76,7 @@ async def get_tenant_endpoint(
 async def update_my_tenant_endpoint(
     tenant_id: str,
     payload: TenantUpdate,
-    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ) -> TenantResponse:
     """Tenant-admin self-service update (name / description / settings).
@@ -89,14 +85,10 @@ async def update_my_tenant_endpoint(
     richer surface at ``PATCH /admin/tenants/{id}`` instead.
     """
     tid = _coerce_uuid(tenant_id)
-    if current_user.role != Role.SYSTEM_ADMIN.value and str(
-        current_user.tenant_id
-    ) != str(tid):
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != str(tid):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this tenant.",
         )
-    tenant = await TenantAdminService(db).update_tenant(
-        tid, payload, actor_id=current_user.user_id
-    )
+    tenant = await TenantAdminService(db).update_tenant(tid, payload, actor_id=current_user.user_id)
     return TenantResponse.model_validate(tenant)

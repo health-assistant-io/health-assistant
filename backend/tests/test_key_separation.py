@@ -37,15 +37,13 @@ from app.core.encryption import (
 from app.core.keys import data_key_family, key_for, verification_keys
 
 # Every test here implements identity-auth §18.12 (key separation) and the
-# wrong-key half of §18.1 — the family contract drift gate.
-pytestmark = pytest.mark.contract
-
 from app.core.security import (
     API_TOKEN_KIND,
     DOWNLOAD_TOKEN_KIND,
     INVITE_TOKEN_KIND,
     REFRESH_TOKEN_KIND,
     SESSION_TOKEN_KIND,
+    _decode_with,
     create_api_access_token,
     create_invite_token,
     create_presigned_token,
@@ -54,7 +52,6 @@ from app.core.security import (
     decode_refresh_token,
     verify_access_token,
 )
-from app.core.security import _decode_with
 
 SESSION_KEY = "sess-Kq9!" + "Kq9!" * 10
 REFRESH_KEY = "refr-Mt7#" + "Mt7#" * 10
@@ -91,23 +88,23 @@ def _clean_env(monkeypatch):
 
 
 def _prod_kwargs(**extra):
-    base = dict(
-        _env_file=None,
-        APP_ENV="production",
-        DEBUG=False,
-        POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
-        VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
-        VAPID_PRIVATE_KEY="test-vapid-private-key-do-not-use",
-    )
+    base = {
+        "_env_file": None,
+        "APP_ENV": "production",
+        "DEBUG": False,
+        "POSTGRES_PASSWORD": "a-strong-unique-passphrase-9f3kQ",
+        "VAPID_PUBLIC_KEY": "test-vapid-public-key-do-not-use",
+        "VAPID_PRIVATE_KEY": "test-vapid-private-key-do-not-use",
+    }
     base.update(extra)
     return base
 
 
-FULL_PIN = dict(
-    HA_SESSION_KEY=SESSION_KEY,
-    HA_REFRESH_KEY=REFRESH_KEY,
-    HA_DATA_KEY=NEW_DATA_KEY,
-)
+FULL_PIN = {
+    "HA_SESSION_KEY": SESSION_KEY,
+    "HA_REFRESH_KEY": REFRESH_KEY,
+    "HA_DATA_KEY": NEW_DATA_KEY,
+}
 
 
 # ===========================================================================
@@ -132,7 +129,7 @@ def test_unknown_kind_fails_closed():
 
 def _forge(kind: str, key: str, **extra) -> str:
     """Hand-mint a contract-shaped JWT under an arbitrary key."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     payload = {
         "iss": "health",
         "token_kind": kind,
@@ -166,9 +163,7 @@ def test_data_key_never_signs_a_usable_token():
 def test_real_mints_verify_under_their_own_family_only():
     session, _ = create_session_access_token({"user_id": "u-1"})
     refresh, _ = create_refresh_token({"user_id": "u-1"})
-    api, _ = create_api_access_token(
-        client_id="c-1", tenant_id="t-1", scopes=["system/*.read"]
-    )
+    api, _ = create_api_access_token(client_id="c-1", tenant_id="t-1", scopes=["system/*.read"])
     invite, _ = create_invite_token("t-1", email="a@b.c")
     download = create_presigned_token("doc-1", "u-1")
 
@@ -371,9 +366,7 @@ def test_sdk_ring_rotation_with_legacy_env_names(monkeypatch):
     monkeypatch.setattr(settings, "HA_DATA_KEY", NEW_DATA_KEY)
     monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", OLD_DATA_KEY)
     ring_cipher = SecretCipher.from_settings()
-    assert ring_cipher.decrypt_value(sealed, context="inst-42") == (
-        "android-pairing-secret"
-    )
+    assert ring_cipher.decrypt_value(sealed, context="inst-42") == ("android-pairing-secret")
     re_sealed = ring_cipher.encrypt_value("android-pairing-secret", context="inst-42")
     assert re_sealed["_kid"] != sealed["_kid"], "re-seal records the new primary"
     # Context binding survives the rotation.
@@ -396,9 +389,7 @@ def test_signing_keys_never_decrypt_at_rest():
 
 
 def test_data_key_family_order_primary_first(monkeypatch):
-    monkeypatch.setattr(
-        settings, "HA_DATA_KEY_PREVIOUS", f" {OLD_DATA_KEY},,{NEW_DATA_KEY} "
-    )
+    monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", f" {OLD_DATA_KEY},,{NEW_DATA_KEY} ")
     family = data_key_family()
     assert family[0] == NEW_DATA_KEY, "primary always first (encrypts)"
     assert OLD_DATA_KEY in family

@@ -9,9 +9,9 @@ forward to the functions here.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biomarker_model import BiomarkerDefinition, Unit
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def process_unknown_biomarkers(
-    db: AsyncSession, unknown_bios, nlp_extractor, tenant_id, slug_map: Dict[str, Any]
+    db: AsyncSession, unknown_bios, nlp_extractor, tenant_id, slug_map: dict[str, Any]
 ) -> None:
     new_bio_defs = await nlp_extractor.parse_document_pass_2_biomarkers(unknown_bios)
 
@@ -40,9 +40,7 @@ async def process_unknown_biomarkers(
         slug_map[def_data.raw_name_match] = proposed_slug
 
         existing = await db.execute(
-            select(BiomarkerDefinition).where(
-                BiomarkerDefinition.slug == proposed_slug
-            )
+            select(BiomarkerDefinition).where(BiomarkerDefinition.slug == proposed_slug)
         )
         if not existing.scalar_one_or_none():
             preferred_unit_id = None
@@ -88,7 +86,7 @@ async def process_unknown_biomarkers(
 
 
 async def process_unknown_medications(
-    db: AsyncSession, unknown_meds, nlp_extractor, tenant_id, name_map: Dict[str, Any]
+    db: AsyncSession, unknown_meds, nlp_extractor, tenant_id, name_map: dict[str, Any]
 ) -> None:
     new_med_defs = await nlp_extractor.parse_document_pass_2_medications(unknown_meds)
     for def_data in new_med_defs.definitions:

@@ -15,12 +15,13 @@ These tests pin both invariants so a future "clean up VersionedMixin" pass
 can't silently drop the live ``version`` column or re-add the dead
 ``is_current`` one.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from app.models.base import Base, VersionedMixin
 import app.models  # noqa: F401  — register every model on Base.metadata
+from app.models.base import Base, VersionedMixin
 
 
 def test_versioned_mixin_defines_only_version():
@@ -33,11 +34,7 @@ def test_versioned_mixin_defines_only_version():
 
 def test_no_table_has_is_current_column():
     """No registered table may carry the dropped ``is_current`` column."""
-    offenders = [
-        tname
-        for tname, table in Base.metadata.tables.items()
-        if "is_current" in table.c
-    ]
+    offenders = [tname for tname, table in Base.metadata.tables.items() if "is_current" in table.c]
     assert offenders == [], f"unexpected is_current column on: {offenders}"
 
 

@@ -23,7 +23,7 @@ Design goals:
 from __future__ import annotations
 
 import logging
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -31,8 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.integration_registry import integration_registry
-from app.models.user_integration import UserIntegration
 from app.models.enums import IntegrationStatus
+from app.models.user_integration import UserIntegration
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def aggregate(
     user_id: UUID,
     tenant_id: UUID,
     patient_id: UUID,
-) -> List[Any]:
+) -> list[Any]:
     """Return LangChain tools from all tool-exposing integrations for this context.
 
     Returns an empty list if no integrations expose tools, none are active,
@@ -68,13 +68,11 @@ async def aggregate(
         return []
 
     cap = settings.INTEGRATION_MAX_TOOLS_PER_SESSION
-    all_tools: List[Any] = []
+    all_tools: list[Any] = []
 
     for integration in integrations:
         if len(all_tools) >= cap:
-            logger.info(
-                f"Integration tool cap ({cap}) reached; skipping remaining instances."
-            )
+            logger.info(f"Integration tool cap ({cap}) reached; skipping remaining instances.")
             break
         provider = integration_registry.get_provider(integration.provider)
         if provider is None or not provider.supports_tools():

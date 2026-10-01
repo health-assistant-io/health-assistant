@@ -6,14 +6,12 @@ scoped). All functions take the request ``db`` session.
 """
 
 import logging
-from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import check_patient_access
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
 from app.schemas.user import TokenData
@@ -23,6 +21,7 @@ from app.schemas.vaccine import (
     VaccineCatalogCreate,
     VaccineCatalogUpdate,
 )
+from app.services.access import check_patient_access
 from app.services.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,8 @@ logger = logging.getLogger(__name__)
 
 
 async def get_vaccine_catalog(
-    db: AsyncSession, tenant_id: UUID, search: Optional[str] = None
-) -> List[VaccineCatalog]:
+    db: AsyncSession, tenant_id: UUID, search: str | None = None
+) -> list[VaccineCatalog]:
     """Tenant-scoped catalog read (global + tenant). Simple ilike search — the
     trigram dispatcher in ``search_catalogs`` handles typo-tolerant search."""
     stmt = select(VaccineCatalog).where(
@@ -60,7 +59,7 @@ async def get_vaccine_catalog(
 
 async def get_catalog_vaccine(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> Optional[VaccineCatalog]:
+) -> VaccineCatalog | None:
     stmt = select(VaccineCatalog).where(
         VaccineCatalog.id == catalog_id,
         or_(
@@ -75,9 +74,7 @@ async def create_catalog_vaccine(
     db: AsyncSession, actor, data: VaccineCatalogCreate
 ) -> VaccineCatalog:
     entry = VaccineCatalog(**data.model_dump())
-    DEFAULT_CATALOG_POLICY.assign_create_scope(
-        actor.role, entry, actor.tenant_id, actor.user_id
-    )
+    DEFAULT_CATALOG_POLICY.assign_create_scope(actor.role, entry, actor.tenant_id, actor.user_id)
     assert_valid_fhir(entry)  # write-time FHIR gate (projects to Medication)
     db.add(entry)
     await db.commit()
@@ -90,7 +87,7 @@ async def update_catalog_vaccine(
     catalog_id: UUID,
     actor,
     data: VaccineCatalogUpdate,
-) -> Optional[VaccineCatalog]:
+) -> VaccineCatalog | None:
     entry = await get_catalog_vaccine(db, catalog_id, actor.tenant_id)
     if entry is None:
         return None
@@ -134,7 +131,7 @@ async def delete_catalog_vaccine(
 
 async def get_patient_immunizations(
     db: AsyncSession, patient_id: UUID, tenant_id: UUID
-) -> List[PatientImmunization]:
+) -> list[PatientImmunization]:
     stmt = (
         select(PatientImmunization)
         .where(
@@ -155,8 +152,8 @@ async def add_patient_immunization(
     current_user: TokenData,
     data: PatientImmunizationCreate,
     *,
-    source_integration_id: Optional[UUID] = None,
-    external_id: Optional[str] = None,
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
 ) -> PatientImmunization:
     """Create a patient immunization (vaccine dose).
 
@@ -190,7 +187,9 @@ async def add_patient_immunization(
             logger.info(
                 "add_patient_immunization: returning existing %s (dedup "
                 "hit on source_integration_id=%s external_id=%r)",
-                existing.id, source_integration_id, effective_external_id,
+                existing.id,
+                source_integration_id,
+                effective_external_id,
             )
             return existing
 
@@ -242,7 +241,7 @@ async def _find_integration_immunization(
     patient_id: UUID,
     source_integration_id: UUID,
     external_id: str,
-) -> Optional[PatientImmunization]:
+) -> PatientImmunization | None:
     """Look up an existing integration-sourced immunization by dedup key.
 
     Backed by the partial unique index
@@ -263,7 +262,7 @@ async def update_patient_immunization(
     immunization_id: UUID,
     tenant_id: UUID,
     data: PatientImmunizationUpdate,
-) -> Optional[PatientImmunization]:
+) -> PatientImmunization | None:
     record = await get_immunization_for_access(db, immunization_id, tenant_id)
     if record is None:
         return None
@@ -291,7 +290,7 @@ async def delete_patient_immunization(
 
 async def get_immunization_for_access(
     db: AsyncSession, immunization_id: UUID, tenant_id: UUID
-) -> Optional[PatientImmunization]:
+) -> PatientImmunization | None:
     """Fetch one patient-immunization row scoped to the caller's tenant."""
     return (
         await db.execute(

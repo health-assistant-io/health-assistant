@@ -271,7 +271,7 @@ class DevDummyProvider(BaseHealthProvider):
             spec = (
                 NotificationSpec.builder(
                     title="Elevated heart rate detected",
-                    body=f"Heart rate reached {int(heart_rate)} bpm (reference 60–100).",
+                    body=f"Heart rate reached {int(heart_rate)} bpm (reference 60-100).",
                     category="alert",
                     severity="warning",
                 )
@@ -302,7 +302,7 @@ class DevDummyProvider(BaseHealthProvider):
                         "Reading",
                         {
                             "Heart rate": f"{int(heart_rate)} bpm",
-                            "Reference range": "60 – 100 bpm",
+                            "Reference range": "60 - 100 bpm",
                             "Detected by": integration.instance_name or domain,
                         },
                     )
@@ -336,7 +336,7 @@ class DevDummyProvider(BaseHealthProvider):
                         {
                             "Systolic": f"{int(bp_sys)} mmHg",
                             "Diastolic": f"{int(bp_dia)} mmHg",
-                            "Reference": "90–120 / 60–80 mmHg",
+                            "Reference": "90-120 / 60-80 mmHg",
                         },
                     )
                 )
@@ -348,11 +348,11 @@ class DevDummyProvider(BaseHealthProvider):
         if len({heart_rate, bp_sys, bp_dia} - {None}) >= 2:
             rows: List[List[Any]] = []
             if heart_rate is not None:
-                rows.append(["Heart rate", f"{int(heart_rate)} bpm", "60–100"])
+                rows.append(["Heart rate", f"{int(heart_rate)} bpm", "60-100"])
             if bp_sys is not None:
-                rows.append(["Systolic BP", f"{int(bp_sys)} mmHg", "90–120"])
+                rows.append(["Systolic BP", f"{int(bp_sys)} mmHg", "90-120"])
             if bp_dia is not None:
-                rows.append(["Diastolic BP", f"{int(bp_dia)} mmHg", "60–80"])
+                rows.append(["Diastolic BP", f"{int(bp_dia)} mmHg", "60-80"])
             spec = (
                 NotificationSpec.builder(
                     title="Sync summary",

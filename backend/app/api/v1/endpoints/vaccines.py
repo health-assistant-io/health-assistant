@@ -6,16 +6,11 @@ patient-instance CRUD (tenant + patient-access scoped). The FHIR R4
 separately in ``app/facade/registry.py``.
 """
 
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.access import (
-    check_immunization_access,
-    check_patient_access,
-)
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -29,6 +24,10 @@ from app.schemas.vaccine import (
     VaccineCatalogUpdate,
 )
 from app.services import vaccine_service
+from app.services.access import (
+    check_immunization_access,
+    check_patient_access,
+)
 from app.services.audit_service import audit_read, log_audit_action
 
 router = APIRouter(prefix="/vaccines", tags=["vaccines"])
@@ -45,9 +44,9 @@ def _enforce_catalog_create(current_user: TokenData) -> None:
 # ---------------------------------------------------------------------------
 
 
-@router.get("/catalog", response_model=List[VaccineCatalogResponse])
+@router.get("/catalog", response_model=list[VaccineCatalogResponse])
 async def list_vaccine_catalog(
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -60,9 +59,7 @@ async def get_vaccine_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    result = await vaccine_service.get_catalog_vaccine(
-        db, catalog_id, current_user.tenant_id
-    )
+    result = await vaccine_service.get_catalog_vaccine(db, catalog_id, current_user.tenant_id)
     if not result:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
     return result
@@ -87,9 +84,7 @@ async def update_vaccine_catalog_entry(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Update a vaccine catalog entry (scope + ownership enforced in service)."""
-    result = await vaccine_service.update_catalog_vaccine(
-        db, catalog_id, current_user, data
-    )
+    result = await vaccine_service.update_catalog_vaccine(db, catalog_id, current_user, data)
     if not result:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
     return result
@@ -102,9 +97,7 @@ async def delete_vaccine_catalog_entry(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Delete a vaccine catalog entry (scope + ownership enforced)."""
-    success = await vaccine_service.delete_catalog_vaccine(
-        db, catalog_id, current_user
-    )
+    success = await vaccine_service.delete_catalog_vaccine(db, catalog_id, current_user)
     if not success:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
     return {"message": "Vaccine catalog entry deleted"}
@@ -115,16 +108,14 @@ async def delete_vaccine_catalog_entry(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/patient/{patient_id}", response_model=List[PatientImmunizationResponse])
+@router.get("/patient/{patient_id}", response_model=list[PatientImmunizationResponse])
 async def get_patient_immunizations(
     patient_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
     await check_patient_access(patient_id, current_user, db)
-    return await vaccine_service.get_patient_immunizations(
-        db, patient_id, current_user.tenant_id
-    )
+    return await vaccine_service.get_patient_immunizations(db, patient_id, current_user.tenant_id)
 
 
 @router.post("/patient/{patient_id}", response_model=PatientImmunizationResponse)

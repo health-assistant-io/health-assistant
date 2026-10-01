@@ -6,6 +6,7 @@ GET /biomarkers/{id}, PATCH /biomarkers/{id} (telemetry-block on STATE).
 Confirms the endpoints serialize value_type + allowed_states correctly and
 that the hard telemetry-block on STATE biomarkers fires.
 """
+
 import uuid
 
 import pytest
@@ -14,7 +15,6 @@ from sqlalchemy import text
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerState
-
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -37,9 +37,7 @@ async def _cleanup():
         await session.execute(
             text("DELETE FROM biomarker_definitions WHERE slug LIKE 'state-e2e-%'")
         )
-        await session.execute(
-            text("DELETE FROM biomarker_states WHERE slug LIKE 'state-e2e-%'")
-        )
+        await session.execute(text("DELETE FROM biomarker_states WHERE slug LIKE 'state-e2e-%'"))
         await session.commit()
 
 
@@ -172,9 +170,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
                     )
                 )
             ).scalar_one()
-        create_body["allowed_states"] = [
-            {"state_slug": pos.slug, "is_normal": False}
-        ]
+        create_body["allowed_states"] = [{"state_slug": pos.slug, "is_normal": False}]
         response = await async_client.post(
             "/api/v1/biomarkers/", json=create_body, headers=auth_headers
         )
@@ -183,9 +179,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
     assert len(response.json()["allowed_states"]) == 1
 
     # Now PATCH: replace with NEG (normal)
-    patch_body = {
-        "allowed_states": [{"state_slug": "negative", "is_normal": True}]
-    }
+    patch_body = {"allowed_states": [{"state_slug": "negative", "is_normal": True}]}
     response = await async_client.patch(
         f"/api/v1/biomarkers/{bio_id}", json=patch_body, headers=auth_headers
     )
@@ -200,9 +194,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
                     )
                 )
             ).scalar_one()
-        patch_body["allowed_states"] = [
-            {"state_slug": neg.slug, "is_normal": True}
-        ]
+        patch_body["allowed_states"] = [{"state_slug": neg.slug, "is_normal": True}]
         response = await async_client.patch(
             f"/api/v1/biomarkers/{bio_id}", json=patch_body, headers=auth_headers
         )
@@ -260,9 +252,7 @@ async def test_patch_state_biomarker_rejects_telemetry_toggle(
         headers=auth_headers,
     )
     assert bad_patch.status_code == 400
-    assert "STATE" in bad_patch.json()["detail"] or "state" in bad_patch.json()[
-        "detail"
-    ].lower()
+    assert "STATE" in bad_patch.json()["detail"] or "state" in bad_patch.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -287,9 +277,7 @@ async def test_post_state_biomarker_rejects_unknown_state_slug(
 
 
 @pytest.mark.asyncio
-async def test_post_quantity_biomarker_unchaged_shape(
-    async_client: AsyncClient, auth_headers
-):
+async def test_post_quantity_biomarker_unchaged_shape(async_client: AsyncClient, auth_headers):
     """A QUANTITY biomarker POST still works exactly as before — the new fields
     default and the response includes value_type=quantity + empty allowed_states."""
     response = await async_client.post(

@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """AI-assisted catalog definitions: biomarker and medication.
 
 Extracted from ``AIAssistanceService`` (Phase 6c). Each handler uses
@@ -12,7 +13,7 @@ shape used in tests.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -26,12 +27,10 @@ from app.utils.prompt_guard import DEFENSE_PREAMBLE
 logger = logging.getLogger(__name__)
 
 
-async def define_biomarker(
-    llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+async def define_biomarker(llm, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
     """AI-driven biomarker definition builder"""
     system_prompt = """You are a medical data expert assisting in creating a new biomarker definition for a clinical catalog.
-        
+
         You MUST provide a valid JSON object with the following fields:
         - name: Full official medical name.
         - category: Clinical category.
@@ -43,7 +42,7 @@ async def define_biomarker(
         - reference_range_max: Typical upper bound (float).
         - is_telemetry: Boolean. True only if this metric is tracked continuously via IoT/wearables (e.g. heart rate, steps).
         - info: Detailed clinical explanation.
-        
+
         Suggested values are mandatory for all fields even if the user only provides a name.
         """
 
@@ -65,12 +64,10 @@ async def define_biomarker(
     return {"suggested_data": result.model_dump(), "success": True}
 
 
-async def define_medication(
-    llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+async def define_medication(llm, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
     """AI-driven medication definition builder"""
     system_prompt = """You are a medical pharmacology expert assisting in creating a new medication entry for a clinical catalog.
-        
+
         You MUST provide a valid JSON object with the following fields:
         - name: Full generic or brand name of the medication.
         - description: A brief but informative overview of the drug and its class.
@@ -78,7 +75,7 @@ async def define_medication(
         - dosage_info: Standard dosage forms and typical instructions.
         - contraindications: Major reasons why this drug should NOT be used.
         - side_effects: A list of common adverse reactions.
-        
+
         Suggested values are mandatory for all fields even if the user only provides a name.
         """
 
@@ -99,9 +96,7 @@ async def define_medication(
     return {"suggested_data": result.model_dump(), "success": True}
 
 
-async def define_anatomy_graph(
-    llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+async def define_anatomy_graph(llm, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
     """AI-driven anatomy graph expansion.
 
     Generates a list of nodes (``AnatomyImportNode``) and edges
@@ -144,7 +139,7 @@ async def define_anatomy_graph(
         return {"success": False, "message": str(e)}
 
 
-def _existing_anatomy_block(existing: Optional[Dict[str, Any]]) -> str:
+def _existing_anatomy_block(existing: dict[str, Any] | None) -> str:
     """Build the 'do not duplicate' instruction block for the anatomy-graph
     generation prompt from a pre-flight existing-graph snapshot. Returns an
     empty string when no snapshot is present (generate from scratch)."""
@@ -162,9 +157,7 @@ def _existing_anatomy_block(existing: Optional[Dict[str, Any]]) -> str:
     for slug in node_slugs[:80]:  # cap to keep the prompt bounded
         parts.append(f"      • {slug}")
     if edges:
-        parts.append(
-            "    - These edges ALREADY EXIST — do NOT recreate them:"
-        )
+        parts.append("    - These edges ALREADY EXIST — do NOT recreate them:")
         for e in edges[:80]:
             parts.append(
                 f"      • {e.get('source_slug')} -> {e.get('target_slug')} "

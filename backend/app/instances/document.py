@@ -9,8 +9,8 @@ Note: the existing ``GET /documents`` endpoint lacks a ``patient_id`` filter
 accepts an optional ``patient_id`` and applies it when provided, so the picker
 never leaks across patients even when an admin browses tenant-wide.
 """
+
 from uuid import UUID
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ from app.models.document_model import DocumentModel
 async def search(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
     limit: int,
 ) -> list[dict]:

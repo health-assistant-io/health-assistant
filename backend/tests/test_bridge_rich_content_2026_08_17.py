@@ -33,11 +33,7 @@ async def rich_content_ctx():
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge R4 T.", slug=f"br4-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge R4 T.", slug=f"br4-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -140,9 +136,7 @@ async def rich_content_ctx():
 
 async def _load_integration(integration_id) -> UserIntegration:
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -167,9 +161,7 @@ async def test_biomarkers_include_markdown_info(rich_content_ctx):
         request=_get_request(),
     )
 
-    ldl = next(
-        (b for b in result["data"] if b.get("id") == str(ctx["biomarker_id"])), None
-    )
+    ldl = next((b for b in result["data"] if b.get("id") == str(ctx["biomarker_id"])), None)
     assert ldl is not None
     assert ldl["info"] == "Low-density lipoprotein — the **bad** cholesterol."
 

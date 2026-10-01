@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Security regression tests — 2026-08 audit Batch 2 (API attack surface).
 
 Covers:
@@ -9,13 +10,10 @@ Covers:
 - M2  GET /observations/{id} enforces the USER patient gate
 """
 
-import io
-import zipfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
 
 from app.models.enums import ExportScope, Role
 from app.schemas.user import TokenData
@@ -62,9 +60,7 @@ async def test_restore_documents_sanitizes_filename_extension(tmp_path):
             frozenset({".pdf", ".txt", ".png"}),
         ),
     ):
-        count = await svc.restore_documents(
-            meta, archive, tenant_id, id_remap={}, owner_id=None
-        )
+        count = await svc.restore_documents(meta, archive, tenant_id, id_remap={}, owner_id=None)
 
     assert count >= 1
     written = list((upload_dir / tenant_id).iterdir())
@@ -98,8 +94,9 @@ def test_no_client_api_base_on_ocr_endpoint():
 
 @pytest.mark.asyncio
 async def test_export_validates_patient_ids():
-    from app.api.v1.endpoints.export import _validate_patient_scoping
     from uuid import uuid4
+
+    from app.api.v1.endpoints.export import _validate_patient_scoping
 
     tenant = uuid4()
     user = uuid4()
@@ -107,9 +104,7 @@ async def test_export_validates_patient_ids():
 
     current_user = _token(Role.USER.value, tenant, user)
 
-    with patch(
-        "app.services.access.check_patient_access", new_callable=AsyncMock
-    ) as mock_check:
+    with patch("app.services.access.check_patient_access", new_callable=AsyncMock) as mock_check:
         await _validate_patient_scoping(
             ExportScope.PATIENT, [other_patient], current_user, db=MagicMock()
         )
@@ -173,10 +168,7 @@ async def test_presign_uses_tenant_scoped_fetch():
     src = inspect.getsource(documents.get_presigned_url_endpoint)
     assert "current_user.tenant_id" in src
     # The fetch must pass the tenant for non-SYSTEM_ADMIN callers.
-    assert (
-        "None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id"
-        in src
-    )
+    assert "None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id" in src
 
 
 # ---------------------------------------------------------------------------

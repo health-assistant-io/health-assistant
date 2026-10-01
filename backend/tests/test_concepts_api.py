@@ -14,19 +14,17 @@ import pytest_asyncio
 async def user_headers(async_client):
     """JWT headers for a regular USER role (read-only on concepts)."""
     from app.core.database import AsyncSessionLocal
-    from tests._auth_helpers import headers_for_claims
     from app.models.tenant_model import TenantModel
+    from tests._auth_helpers import headers_for_claims
 
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(id=tenant_id, name="User Tenant", slug=f"user-{tenant_id}")
-        )
+        session.add(TenantModel(id=tenant_id, name="User Tenant", slug=f"user-{tenant_id}"))
         await session.commit()
 
     tok_headers = await headers_for_claims(
         {
-        "sub": "user@test.local",
+            "sub": "user@test.local",
             "tenant_id": str(tenant_id),
             "role": "USER",
         }
@@ -55,9 +53,7 @@ async def test_create_and_get_concept(async_client, system_admin_headers):
     assert created["tenant_id"] is None
     concept_id = created["id"]
 
-    resp2 = await async_client.get(
-        f"/api/v1/concepts/{concept_id}", headers=system_admin_headers
-    )
+    resp2 = await async_client.get(f"/api/v1/concepts/{concept_id}", headers=system_admin_headers)
     assert resp2.status_code == 200
     assert resp2.json()["name"] == "API Test Concept"
 
@@ -76,9 +72,7 @@ async def test_list_concepts_by_kind(async_client, system_admin_headers):
         headers=system_admin_headers,
     )
 
-    resp = await async_client.get(
-        "/api/v1/concepts?kind=disease", headers=system_admin_headers
-    )
+    resp = await async_client.get("/api/v1/concepts?kind=disease", headers=system_admin_headers)
     assert resp.status_code == 200
     results = resp.json()
     assert any(c["slug"] == slug for c in results)
@@ -151,14 +145,10 @@ async def test_delete_concept(async_client, system_admin_headers):
     )
     cid = create.json()["id"]
 
-    resp = await async_client.delete(
-        f"/api/v1/concepts/{cid}", headers=system_admin_headers
-    )
+    resp = await async_client.delete(f"/api/v1/concepts/{cid}", headers=system_admin_headers)
     assert resp.status_code == 204
 
-    resp2 = await async_client.get(
-        f"/api/v1/concepts/{cid}", headers=system_admin_headers
-    )
+    resp2 = await async_client.get(f"/api/v1/concepts/{cid}", headers=system_admin_headers)
     assert resp2.status_code == 404
 
 
@@ -276,9 +266,7 @@ async def test_get_neighbors_endpoint(async_client, system_admin_headers):
         headers=system_admin_headers,
     )
 
-    resp = await async_client.get(
-        f"/api/v1/concepts/{sid}/neighbors", headers=system_admin_headers
-    )
+    resp = await async_client.get(f"/api/v1/concepts/{sid}/neighbors", headers=system_admin_headers)
     assert resp.status_code == 200
     neighbors = resp.json()
     assert len(neighbors) >= 1

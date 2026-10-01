@@ -442,9 +442,7 @@ async def test_api_proxy_unknown_integration_returns_404():
 
     request = _request("GET")
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
     with pytest.raises(HTTPException) as exc:
         await integrations_endpoint.integration_api_proxy(
             domain="withings",

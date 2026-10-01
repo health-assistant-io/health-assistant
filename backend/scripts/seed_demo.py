@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 #!/usr/bin/env python3
 """Seed a deterministic demo tenant + user + clinical data for UI screenshot capture.
 
@@ -56,7 +57,7 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -65,25 +66,35 @@ if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
 from sqlalchemy import select  # noqa: E402
-from sqlalchemy.exc import IntegrityError  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
+from sqlalchemy.exc import IntegrityError  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import settings  # noqa: E402
 from app.core.database import AsyncSessionLocal  # noqa: E402
 from app.core.instance_state import AUTH_MODE_KEY, DEMO_MODE_KEY  # noqa: E402
 from app.core.security import get_password_hash  # noqa: E402
-from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem, Gender, Role  # noqa: E402
+from app.models.ai_provider_model import AIModel, AIProviderModel, AITaskAssignment  # noqa: E402
 from app.models.biomarker_model import (  # noqa: E402
     BiomarkerAllowedState,
     BiomarkerDefinition,
     BiomarkerState,
 )
-from app.models.fhir.patient import Patient, Observation  # noqa: E402
 from app.models.document_model import DocumentModel  # noqa: E402
+from app.models.enums import (  # noqa: E402
+    AIScope,
+    BiomarkerValueType,
+    CatalogScope,
+    CodingSystem,
+    Gender,
+    Role,
+)
 from app.models.examination_model import ExaminationModel  # noqa: E402
-from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment  # noqa: E402
-from app.models.enums import AIScope  # noqa: E402
+from app.models.fhir.patient import Observation, Patient  # noqa: E402
 from app.models.tenant_model import TenantModel  # noqa: E402
 from app.models.user_model import UserModel  # noqa: E402
 from app.services.import_service import ImportService  # noqa: E402
@@ -211,9 +222,7 @@ async def _instance_is_empty(session: AsyncSession) -> bool:
             ) from e
     for model in (UserModel, TenantModel, Patient):
         try:
-            if (
-                await session.execute(select(model.id).limit(1))
-            ).first() is not None:
+            if (await session.execute(select(model.id).limit(1))).first() is not None:
                 return False
         except Exception as e:
             raise Refusal(
@@ -325,87 +334,148 @@ DEMO_PATIENTS = [
     },
 ]
 
+
 async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id: UUID) -> None:
     """Seed comprehensive clinical data using ImportService."""
     import_service = ImportService(session)
-    
+
     # FHIR Bundle for clinical data (deterministic dates for stable screenshots)
     # Using 2026-06-15T10:00:00Z as "today" (matching FIXED_NOW in capture.mjs)
     base_date = "2026-06-15T10:00:00Z"
-    
+
     # Helper to generate multiple values for a biomarker
-    def create_observation(date_str: str, loinc: str, text: str, value: float, unit: str, ranges=None):
+    def create_observation(
+        date_str: str, loinc: str, text: str, value: float, unit: str, ranges=None
+    ):
         obs = {
             "resource": {
                 "resourceType": "Observation",
                 "status": "final",
-                "code": {
-                    "text": text,
-                    "coding": [{"system": "http://loinc.org", "code": loinc}]
-                },
+                "code": {"text": text, "coding": [{"system": "http://loinc.org", "code": loinc}]},
                 "subject": {"reference": f"Patient/{patient_id}"},
                 "effectiveDateTime": date_str,
-                "valueQuantity": {"value": value, "unit": unit, "system": "http://unitsofmeasure.org", "code": unit}
+                "valueQuantity": {
+                    "value": value,
+                    "unit": unit,
+                    "system": "http://unitsofmeasure.org",
+                    "code": unit,
+                },
             }
         }
         if ranges:
             obs["resource"]["referenceRange"] = ranges
         return obs
 
-    bundle = {
-        "resourceType": "Bundle",
-        "type": "transaction",
-        "entry": []
-    }
+    bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
 
     # Generate 10 days of data ending at base_date
     base = datetime.fromisoformat(base_date.replace("Z", "+00:00"))
     for i in range(10):
         # 1 day intervals, varying the time slightly
-        dt = base - timedelta(days=(9-i))
+        dt = base - timedelta(days=(9 - i))
         date_str = dt.isoformat()
         if "+00:00" in date_str:
             date_str = date_str.replace("+00:00", "Z")
         elif not date_str.endswith("Z"):
             date_str += "Z"
-        
+
         # 1. Glucose (LOINC 2339-0) - 80 to 110
         val_gluc = 85 + (i * 3) % 25
-        bundle["entry"].append(create_observation(date_str, "2339-0", "Glucose", val_gluc, "mg/dL", [{"low": {"value": 70}, "high": {"value": 99}}]))
-        
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "2339-0",
+                "Glucose",
+                val_gluc,
+                "mg/dL",
+                [{"low": {"value": 70}, "high": {"value": 99}}],
+            )
+        )
+
         # 2. Total Cholesterol (LOINC 2093-3) - 170 to 195
         val_chol = 180 + (i * 2) % 15 - (i % 3)
-        bundle["entry"].append(create_observation(date_str, "2093-3", "Total Cholesterol", val_chol, "mg/dL", [{"low": {"value": 120}, "high": {"value": 200}, "text": "< 200 mg/dL"}]))
-        
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "2093-3",
+                "Total Cholesterol",
+                val_chol,
+                "mg/dL",
+                [{"low": {"value": 120}, "high": {"value": 200}, "text": "< 200 mg/dL"}],
+            )
+        )
+
         # 3. Heart Rate (LOINC 8867-4) - 65 to 85
         val_hr = 70 + (i * 4) % 15 - (i % 2)
-        bundle["entry"].append(create_observation(date_str, "8867-4", "Heart rate", val_hr, "/min", [{"low": {"value": 60}, "high": {"value": 100}}]))
-        
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "8867-4",
+                "Heart rate",
+                val_hr,
+                "/min",
+                [{"low": {"value": 60}, "high": {"value": 100}}],
+            )
+        )
+
         # 4. Body Temperature (LOINC 8310-5) - 36.5 to 37.2
         val_temp = 36.6 + ((i * 0.1) % 0.6)
-        bundle["entry"].append(create_observation(date_str, "8310-5", "Body temperature", round(val_temp, 1), "Cel", [{"low": {"value": 36.1}, "high": {"value": 37.2}}]))
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "8310-5",
+                "Body temperature",
+                round(val_temp, 1),
+                "Cel",
+                [{"low": {"value": 36.1}, "high": {"value": 37.2}}],
+            )
+        )
 
         # 5. Systolic Blood Pressure (LOINC 8480-6) - 110 to 125
         val_sys = 115 + (i * 2) % 10
-        bundle["entry"].append(create_observation(date_str, "8480-6", "Systolic blood pressure", val_sys, "mm[Hg]", [{"low": {"value": 90}, "high": {"value": 120}}]))
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "8480-6",
+                "Systolic blood pressure",
+                val_sys,
+                "mm[Hg]",
+                [{"low": {"value": 90}, "high": {"value": 120}}],
+            )
+        )
 
         # 6. Diastolic Blood Pressure (LOINC 8462-4) - 70 to 80
         val_dia = 75 + (i * 1) % 5
-        bundle["entry"].append(create_observation(date_str, "8462-4", "Diastolic blood pressure", val_dia, "mm[Hg]", [{"low": {"value": 60}, "high": {"value": 80}}]))
+        bundle["entry"].append(
+            create_observation(
+                date_str,
+                "8462-4",
+                "Diastolic blood pressure",
+                val_dia,
+                "mm[Hg]",
+                [{"low": {"value": 60}, "high": {"value": 80}}],
+            )
+        )
 
-    bundle["entry"].extend([
-        # 2. Medications
-        {
-            "resource": {
-                "resourceType": "MedicationStatement",
-                "status": "active",
-                "medicationCodeableConcept": {"text": "Metformin 500mg"},
-                "subject": {"reference": f"Patient/{patient_id}"},
-                "effectivePeriod": {"start": "2025-10-15"},
-                "dosage": [{"text": "1 tablet twice daily", "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}}}],
-                "reasonCode": [{"text": "Type 2 Diabetes prevention"}]
-            }
-        },
+    bundle["entry"].extend(
+        [
+            # 2. Medications
+            {
+                "resource": {
+                    "resourceType": "MedicationStatement",
+                    "status": "active",
+                    "medicationCodeableConcept": {"text": "Metformin 500mg"},
+                    "subject": {"reference": f"Patient/{patient_id}"},
+                    "effectivePeriod": {"start": "2025-10-15"},
+                    "dosage": [
+                        {
+                            "text": "1 tablet twice daily",
+                            "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}},
+                        }
+                    ],
+                    "reasonCode": [{"text": "Type 2 Diabetes prevention"}],
+                }
+            },
             {
                 "resource": {
                     "resourceType": "MedicationStatement",
@@ -413,8 +483,13 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                     "medicationCodeableConcept": {"text": "Vitamin D3 2000IU"},
                     "subject": {"reference": f"Patient/{patient_id}"},
                     "effectivePeriod": {"start": "2026-01-20"},
-                    "dosage": [{"text": "1 capsule daily", "timing": {"repeat": {"frequency": 1, "period": 1, "periodUnit": "d"}}}],
-                    "note": [{"text": "Take with fatty meal for better absorption"}]
+                    "dosage": [
+                        {
+                            "text": "1 capsule daily",
+                            "timing": {"repeat": {"frequency": 1, "period": 1, "periodUnit": "d"}},
+                        }
+                    ],
+                    "note": [{"text": "Take with fatty meal for better absorption"}],
                 }
             },
             # 3. Allergies
@@ -422,56 +497,70 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 "resource": {
                     "resourceType": "AllergyIntolerance",
                     "clinicalStatus": {
-                        "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active"}]
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+                                "code": "active",
+                            }
+                        ]
                     },
                     "verificationStatus": {
-                        "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "code": "confirmed"}]
+                        "coding": [
+                            {
+                                "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+                                "code": "confirmed",
+                            }
+                        ]
                     },
                     "category": ["food"],
                     "criticality": "high",
                     "code": {"text": "Peanuts"},
                     "patient": {"reference": f"Patient/{patient_id}"},
                     "note": [{"text": "Severe anaphylactic reaction reported in childhood."}],
-                    "reaction": [{"manifestation": [{"text": "Anaphylaxis"}], "severity": "severe"}]
+                    "reaction": [
+                        {"manifestation": [{"text": "Anaphylaxis"}], "severity": "severe"}
+                    ],
                 }
-            }
-    ])
-    
+            },
+        ]
+    )
 
     # 6. Create mock documents
-    doc_exists = (await session.execute(
-        select(DocumentModel).where(DocumentModel.patient_id == patient_id).limit(1)
-    )).scalar_one_or_none()
-    
+    doc_exists = (
+        await session.execute(
+            select(DocumentModel).where(DocumentModel.patient_id == patient_id).limit(1)
+        )
+    ).scalar_one_or_none()
+
     if not doc_exists:
-        from app.core.config import settings
         from pathlib import Path
-        
+
+        from app.core.config import settings
+
         tenant_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
         tenant_dir.mkdir(parents=True, exist_ok=True)
-        
+
         project_root = Path(backend_dir).parent
         sample_pdf = project_root / "backend" / "data" / "seeds" / "sample_blood_panel.pdf"
-        
+
         if sample_pdf.exists():
             pdf_content = sample_pdf.read_bytes()
         else:
             pdf_content = b"%PDF-1.4\n1 0 obj <</Type/Catalog/Pages 2 0 R>> endobj\n2 0 obj <</Type/Pages/Count 1/Kids[3 0 R]>> endobj\n3 0 obj <</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>> endobj\n4 0 obj <</Length 47>> stream\nBT /F1 24 Tf 100 700 Td (Mock PDF Document) Tj ET\nendstream endobj\nxref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\n0000000188 00000 n\ntrailer <</Size 5/Root 1 0 R>>\nstartxref\n284\n%%EOF\n"
 
-        
         files = [
             "Comprehensive_Blood_Panel_2026.pdf",
             "Annual_Checkup_Notes_2025.pdf",
             "Allergy_Test_Results_2025.pdf",
-            "Vaccination_Record.pdf"
+            "Vaccination_Record.pdf",
         ]
-        
+
         file_paths = []
         for file in files:
             path = tenant_dir / file
             path.write_bytes(pdf_content)
             file_paths.append(str(path))
-            
+
         docs = [
             DocumentModel(
                 patient_id=patient_id,
@@ -481,7 +570,22 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 file_path=file_paths[0],
                 status="completed",
                 extracted_text=RICH_OCR_TEXT,
-                entities={"biomarkers": ["WBC", "RBC", "Hemoglobin", "Hematocrit", "MCV", "MCH", "Glucose", "BUN", "Creatinine", "Cholesterol, Total", "Vitamin D", "TSH"]}
+                entities={
+                    "biomarkers": [
+                        "WBC",
+                        "RBC",
+                        "Hemoglobin",
+                        "Hematocrit",
+                        "MCV",
+                        "MCH",
+                        "Glucose",
+                        "BUN",
+                        "Creatinine",
+                        "Cholesterol, Total",
+                        "Vitamin D",
+                        "TSH",
+                    ]
+                },
             ),
             DocumentModel(
                 patient_id=patient_id,
@@ -491,7 +595,7 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 file_path=file_paths[1],
                 status="completed",
                 extracted_text="Routine checkup notes for Maria Papadopoulou.\nWeight is stable. No new complaints. Blood pressure is 115/75.",
-                entities={"diagnoses": ["Healthy patient"]}
+                entities={"diagnoses": ["Healthy patient"]},
             ),
             DocumentModel(
                 patient_id=patient_id,
@@ -501,7 +605,7 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 file_path=file_paths[2],
                 status="completed",
                 extracted_text="Patient: Maria Papadopoulou\nIgE test results indicating strong reaction to peanuts.",
-                entities={"allergies": ["Peanuts"]}
+                entities={"allergies": ["Peanuts"]},
             ),
             DocumentModel(
                 patient_id=patient_id,
@@ -511,13 +615,11 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
                 file_path=file_paths[3],
                 status="completed",
                 extracted_text="Vaccination record.\nCOVID-19 Booster: 10/2025\nFlu Shot: 09/2025",
-                entities={"medications": ["COVID-19 Vaccine", "Influenza Vaccine"]}
-            )
+                entities={"medications": ["COVID-19 Vaccine", "Influenza Vaccine"]},
+            ),
         ]
         session.add_all(docs)
         await session.flush()
-
-
 
     _brr = await import_service.restore_fhir_bundle(bundle, tenant_id)
     _created, _updated, errors, warnings = _brr.created, _brr.updated, _brr.errors, _brr.warnings
@@ -526,76 +628,78 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
         # Not raising immediately so we can see all errors
     if warnings:
         print(f"⚠️ FHIR Import Warnings: {warnings}")
-    
+
     # 5. Examinations (Sidecar format)
     # Check if an examination already exists to prevent duplicate exams
-    exam_exists = (await session.execute(
-        select(ExaminationModel).where(ExaminationModel.patient_id == patient_id).limit(1)
-    )).scalar_one_or_none()
-    
+    exam_exists = (
+        await session.execute(
+            select(ExaminationModel).where(ExaminationModel.patient_id == patient_id).limit(1)
+        )
+    ).scalar_one_or_none()
+
     if not exam_exists:
         examinations = [
             {
                 "patient_id": str(patient_id),
                 "examination_date": "2026-06-10",
                 "notes": "Maria presented for a routine checkup. Overall health is excellent. "
-                         "Blood glucose levels are stable. Suggested continuation of current supplement regimen.",
+                "Blood glucose levels are stable. Suggested continuation of current supplement regimen.",
                 "extraction_status": "completed",
-                "diagnoses": ["Healthy patient"]
+                "diagnoses": ["Healthy patient"],
             },
             {
                 "patient_id": str(patient_id),
                 "examination_date": "2026-03-15",
                 "notes": "Follow-up visit for previous complaints of fatigue. "
-                         "Patient reports feeling much better after starting Vitamin D supplementation.",
+                "Patient reports feeling much better after starting Vitamin D supplementation.",
                 "extraction_status": "completed",
-                "diagnoses": ["Vitamin D deficiency", "Fatigue (resolved)"]
+                "diagnoses": ["Vitamin D deficiency", "Fatigue (resolved)"],
             },
             {
                 "patient_id": str(patient_id),
                 "examination_date": "2025-11-20",
                 "notes": "Annual physical examination. Patient is actively managing diet and exercise. "
-                         "Weight is stable. No new complaints.",
+                "Weight is stable. No new complaints.",
                 "extraction_status": "completed",
-                "diagnoses": ["Routine physical examination"]
+                "diagnoses": ["Routine physical examination"],
             },
             {
                 "patient_id": str(patient_id),
                 "examination_date": "2025-08-05",
                 "notes": "Patient reported mild allergic reaction (hives) after consuming unknown food at a restaurant. "
-                         "Prescribed antihistamines and advised allergy testing.",
+                "Prescribed antihistamines and advised allergy testing.",
                 "extraction_status": "completed",
-                "diagnoses": ["Allergic reaction", "Urticaria"]
+                "diagnoses": ["Allergic reaction", "Urticaria"],
             },
             {
                 "patient_id": str(patient_id),
                 "examination_date": "2025-02-12",
                 "notes": "Consultation for upper respiratory tract infection. "
-                         "Symptoms include cough, mild fever, and congestion. Prescribed rest and fluids.",
+                "Symptoms include cough, mild fever, and congestion. Prescribed rest and fluids.",
                 "extraction_status": "completed",
-                "diagnoses": ["Upper respiratory tract infection"]
-            }
+                "diagnoses": ["Upper respiratory tract infection"],
+            },
         ]
         await import_service.restore_sidecar("examinations.json", examinations, tenant_id, {})
 
         # Link observations from 2026-06-10 to the 2026-06-10 examination
         from sqlalchemy import update
-        
+
         exam_id_result = await session.execute(
             select(ExaminationModel.id).where(
-                ExaminationModel.patient_id == patient_id, 
-                ExaminationModel.examination_date == date(2026, 6, 10)
+                ExaminationModel.patient_id == patient_id,
+                ExaminationModel.examination_date == date(2026, 6, 10),
             )
         )
         exam_id = exam_id_result.scalar_one_or_none()
-        
+
         if exam_id:
-            target_dt = datetime(2026, 6, 10, 10, 0, tzinfo=timezone.utc)
+            target_dt = datetime(2026, 6, 10, 10, 0, tzinfo=UTC)
             await session.execute(
                 update(Observation)
                 .where(
                     Observation.subject["reference"].astext == f"Patient/{patient_id}",
-                    Observation.effective_datetime == target_dt
+                    Observation.effective_datetime == target_dt,
                 )
                 .values(examination_id=str(exam_id))
             )
@@ -770,11 +874,11 @@ async def seed_state_biomarkers(session, tenant_id: UUID, patient_id: UUID, user
         a.state_id
         for a in (
             await session.execute(
-                select(BiomarkerAllowedState).where(
-                    BiomarkerAllowedState.biomarker_id == bio.id
-                )
+                select(BiomarkerAllowedState).where(BiomarkerAllowedState.biomarker_id == bio.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     }
     if pos_state.id not in existing_allowed:
         session.add(
@@ -889,9 +993,7 @@ async def seed(
 
         # 1. Tenant
         tenant = (
-            await session.execute(
-                select(TenantModel).where(TenantModel.slug == DEMO_TENANT_SLUG)
-            )
+            await session.execute(select(TenantModel).where(TenantModel.slug == DEMO_TENANT_SLUG))
         ).scalar_one_or_none()
         if not tenant:
             tenant = TenantModel(
@@ -910,9 +1012,7 @@ async def seed(
 
         # 2. User
         user = (
-            await session.execute(
-                select(UserModel).where(UserModel.email == DEMO_EMAIL)
-            )
+            await session.execute(select(UserModel).where(UserModel.email == DEMO_EMAIL))
         ).scalar_one_or_none()
         if not user:
             user = UserModel(
@@ -937,16 +1037,14 @@ async def seed(
         primary_patient_id = None
         for i, p in enumerate(DEMO_PATIENTS):
             existing = (
-                await session.execute(
-                    select(Patient).where(Patient.mrn == p["mrn"])
-                )
+                await session.execute(select(Patient).where(Patient.mrn == p["mrn"]))
             ).scalar_one_or_none()
-            
+
             if existing:
                 if i == 0:
                     primary_patient_id = existing.id
                 continue
-                
+
             new_patient = Patient(
                 id=DEMO_PATIENT_IDS[i],
                 tenant_id=tenant.id,
@@ -963,10 +1061,16 @@ async def seed(
         # 4. Clinical Data for the primary patient
         if primary_patient_id:
             # Check if clinical data exists (checking Observations)
-            obs_exists = (await session.execute(
-                select(Observation).where(Observation.subject["reference"].astext == f"Patient/{primary_patient_id}").limit(1)
-            )).scalar_one_or_none()
-            
+            obs_exists = (
+                await session.execute(
+                    select(Observation)
+                    .where(
+                        Observation.subject["reference"].astext == f"Patient/{primary_patient_id}"
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
             if not obs_exists:
                 await seed_clinical_data(session, tenant.id, primary_patient_id, user.id)
                 print("✅ Seeded comprehensive clinical data for Maria Papadopoulou")
@@ -1000,6 +1104,7 @@ async def seed(
     print(f"  Role:     ADMIN  (sees all patients in '{DEMO_TENANT_NAME}')")
     print("──────────────────────────────────────────────────")
     print()
+
 
 # ---------------------------------------------------------------------------
 # CLI — argparse + §13 refusal matrix (exit 2 on a guard rail).
@@ -1053,13 +1158,9 @@ def main(argv: list[str] | None = None) -> int:
             # Explicit target: bind a dedicated engine so the guards and the
             # seeding hit exactly the URL the operator named.
             engine = create_async_engine(args.database_url)
-            factory = async_sessionmaker(
-                bind=engine, class_=AsyncSession, expire_on_commit=False
-            )
+            factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-        asyncio.run(
-            seed(database_url=url, init_demo=args.init_demo, session_factory=factory)
-        )
+        asyncio.run(seed(database_url=url, init_demo=args.init_demo, session_factory=factory))
     except Refusal as refusal:
         print(f"⛔ REFUSED: {refusal}", file=sys.stderr)
         print(

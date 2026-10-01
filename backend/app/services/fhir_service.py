@@ -1,5 +1,7 @@
+# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
+import contextlib
 import logging
-from datetime import date
+from datetime import UTC, date
 from datetime import datetime as dt
 from typing import Any
 from uuid import UUID
@@ -37,17 +39,16 @@ def _parse_date(d):
 
 def _parse_datetime(d):
     """Internal helper to parse datetime strings from FHIR-like dicts"""
-    from datetime import timezone
 
     if not d:
         return None
     if isinstance(d, dt):
-        return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+        return d.replace(tzinfo=UTC) if d.tzinfo is None else d
     if isinstance(d, date):
-        return dt.combine(d, dt.min.time(), tzinfo=timezone.utc)
+        return dt.combine(d, dt.min.time(), tzinfo=UTC)
     try:
         parsed = dt.fromisoformat(d.replace("Z", "+00:00"))
-        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
     except (ValueError, TypeError):
         return None
 
@@ -66,11 +67,7 @@ def _extract_comment_text(raw: Any) -> str | None:
         return None
     if isinstance(raw, list):
         return next(
-            (
-                entry.get("text")
-                for entry in raw
-                if isinstance(entry, dict) and entry.get("text")
-            ),
+            (entry.get("text") for entry in raw if isinstance(entry, dict) and entry.get("text")),
             None,
         )
     if isinstance(raw, str):
@@ -148,10 +145,8 @@ async def get_patient(
             return None
 
     if tenant_id and isinstance(tenant_id, str):
-        try:
+        with contextlib.suppress(ValueError):
             tenant_id = UUID(tenant_id)
-        except ValueError:
-            pass
 
     async with AsyncSessionLocal() as session:
         query = select(Patient).where(Patient.id == patient_id)
@@ -161,9 +156,7 @@ async def get_patient(
         return result.scalar_one_or_none()
 
 
-async def update_patient_layout(
-    patient_id: str | UUID, layout: dict[str, Any]
-) -> Patient | None:
+async def update_patient_layout(patient_id: str | UUID, layout: dict[str, Any]) -> Patient | None:
     """Update patient dashboard layout"""
     if not DATABASE_AVAILABLE:
         return None
@@ -229,9 +222,7 @@ async def update_patient(patient_id: str | UUID, patient_data: dict) -> Patient 
 
             if "extensions" in patient_data:
                 try:
-                    patient.extensions = validate_patient_extensions(
-                        patient_data["extensions"]
-                    )
+                    patient.extensions = validate_patient_extensions(patient_data["extensions"])
                 except ValueError as exc:
                     logger.warning("rejecting patient.extensions on update: %s", exc)
                     raise
@@ -313,10 +304,8 @@ async def list_patients(
                     patient_list.append(item.to_dict())
                 else:
                     patient_list.append(str(item))
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error serializing patient {getattr(item, 'id', 'unknown')}: {e}"
-                )
+            except Exception as e:
+                logger.error(f"Error serializing patient {getattr(item, 'id', 'unknown')}: {e}")
                 # Fallback to a very basic dict if to_dict fails
                 patient_list.append(
                     {
@@ -331,9 +320,7 @@ async def list_patients(
         }
 
 
-async def create_observation(
-    observation_data: dict, tenant_id: str | UUID
-) -> Observation | None:
+async def create_observation(observation_data: dict, tenant_id: str | UUID) -> Observation | None:
     """Create a new observation"""
     if not DATABASE_AVAILABLE:
         return None
@@ -422,9 +409,7 @@ async def create_observation(
         effective_datetime=_parse_datetime(observation_data.get("effective_datetime")),
         examination_id=observation_data.get("examination_id"),
         biomarker_id=observation_data.get("biomarker_id"),
-        interpretation=_normalize_interpretation(
-            observation_data.get("interpretation")
-        ),
+        interpretation=_normalize_interpretation(observation_data.get("interpretation")),
         raw_value=raw_value,
         document_id=_doc_id,
         patient_id=_patient_id,
@@ -540,10 +525,7 @@ async def update_observation(
             obs.value_string = updates.get("value_string", obs.value_string)
 
             # Recompute raw_value for QUANTITY biomarkers.
-            if (
-                _biomarker is None
-                or _biomarker.value_type == BiomarkerValueType.QUANTITY
-            ):
+            if _biomarker is None or _biomarker.value_type == BiomarkerValueType.QUANTITY:
                 new_raw = updates.get("raw_value")
                 if new_raw is None and value_quantity:
                     new_raw = value_quantity.get("value")
@@ -557,9 +539,7 @@ async def update_observation(
             obs.method = updates.get("method") or None
         if "comment" in updates or "note_text" in updates or "note" in updates:
             obs.comment = _extract_comment_text(
-                updates.get("comment")
-                or updates.get("note_text")
-                or updates.get("note")
+                updates.get("comment") or updates.get("note_text") or updates.get("note")
             )
 
         await session.commit()
@@ -666,16 +646,13 @@ async def list_observations(
     subject_ref_patient_id: UUID | None = None
     if patient_id is not None:
         try:
-            subject_ref_patient_id = (
-                UUID(patient_id) if isinstance(patient_id, str) else patient_id
-            )
+            subject_ref_patient_id = UUID(patient_id) if isinstance(patient_id, str) else patient_id
         except ValueError:
             return {"items": [], "total": 0}
         # The FHIR ``subject`` JSONB looks like {"reference": "Patient/<uuid>"}.
         # Match it via the text cast so we use the index-friendly path.
         predicates.append(
-            Observation.subject["reference"].astext
-            == f"Patient/{subject_ref_patient_id}"
+            Observation.subject["reference"].astext == f"Patient/{subject_ref_patient_id}"
         )
 
     if code:
@@ -718,10 +695,8 @@ async def list_observations(
                     obs_list.append(item.to_dict())
                 else:
                     obs_list.append(str(item))
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}"
-                )
+            except Exception as e:
+                logger.error(f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}")
                 obs_list.append(
                     {
                         "id": str(getattr(item, "id", "")),
@@ -735,9 +710,7 @@ async def list_observations(
         }
 
 
-async def resolve_biomarker_definition(
-    db, tenant_id: str | UUID, code_or_slug: str
-) -> Any | None:
+async def resolve_biomarker_definition(db, tenant_id: str | UUID, code_or_slug: str) -> Any | None:
     """Resolve a LOINC/SNOMED/custom code **or slug** to a BiomarkerDefinition.
 
     Scoped to the tenant + global definitions (``tenant_id IS NULL``), with a
@@ -833,10 +806,8 @@ async def list_observations_latest(
                     obs_list.append(item.to_dict())
                 else:
                     obs_list.append(str(item))
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}"
-                )
+            except Exception as e:
+                logger.error(f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}")
                 obs_list.append(
                     {
                         "id": str(getattr(item, "id", "")),
@@ -884,9 +855,9 @@ async def get_observation_history(
         "all": 3650,
     }.get(period, 180)
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=period_days)
+    cutoff = datetime.now(UTC) - timedelta(days=period_days)
 
     combined = and_(
         Observation.tenant_id == tenant_uuid,
@@ -910,10 +881,8 @@ async def get_observation_history(
             try:
                 if hasattr(item, "to_dict"):
                     out.append(item.to_dict())
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}"
-                )
+            except Exception as e:
+                logger.error(f"Error serializing observation {getattr(item, 'id', 'unknown')}: {e}")
         return out
 
 
@@ -937,9 +906,7 @@ async def create_diagnostic_report(
         subject=report_data.get("subject") or {},
         conclusion=report_data.get("conclusion"),
         effective_datetime=_parse_datetime(report_data.get("effective_datetime")),
-        patient_id=coerce_patient_id(
-            report_data.get("patient_id"), report_data.get("subject")
-        ),
+        patient_id=coerce_patient_id(report_data.get("patient_id"), report_data.get("subject")),
     )
     assert_valid_fhir(new_report)
 
@@ -983,9 +950,7 @@ async def get_diagnostic_report(
         return result.scalar_one_or_none()
 
 
-async def create_medication(
-    medication_data: dict, tenant_id: str | UUID
-) -> Medication | None:
+async def create_medication(medication_data: dict, tenant_id: str | UUID) -> Medication | None:
     """Create a new medication"""
     if not DATABASE_AVAILABLE:
         return None
@@ -1003,10 +968,8 @@ async def create_medication(
     patient_id = None
     patient_id_str = medication_data.get("patient_id") or _extract_patient_id(subject)
     if patient_id_str:
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             patient_id = UUID(str(patient_id_str))
-        except (ValueError, TypeError):
-            pass
 
     if not patient_id:
         logger.error("Cannot create medication: No patient_id found")
@@ -1110,9 +1073,7 @@ async def list_medications(
         query = select(Medication).where(Medication.tenant_id == tenant_id)
 
         # Total count - simpler query
-        count_query = select(func.count(Medication.id)).where(
-            Medication.tenant_id == tenant_id
-        )
+        count_query = select(func.count(Medication.id)).where(Medication.tenant_id == tenant_id)
         total = await session.execute(count_query)
         total_count = total.scalar() or 0
 
@@ -1128,10 +1089,8 @@ async def list_medications(
                     med_list.append(item.to_dict())
                 else:
                     med_list.append(str(item))
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    f"Error serializing medication {getattr(item, 'id', 'unknown')}: {e}"
-                )
+            except Exception as e:
+                logger.error(f"Error serializing medication {getattr(item, 'id', 'unknown')}: {e}")
                 med_list.append(
                     {
                         "id": str(getattr(item, "id", "")),
@@ -1177,9 +1136,7 @@ async def map_observations_to_biomarkers(
     # and the FHIR-server provider's pull_now path) since they all funnel here.
     observations, dropped = validate_and_filter_observations(observations, logger)
     if dropped:
-        logger.info(
-            "Dropped %d invalid observation(s) before biomarker mapping", dropped
-        )
+        logger.info("Dropped %d invalid observation(s) before biomarker mapping", dropped)
 
     for obs in observations:
         if not obs.biomarker_id and obs.code:
@@ -1285,7 +1242,7 @@ async def map_observations_to_biomarkers(
                         component=obs.component,
                     )
                     obs.biomarker_id = bdef.id
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning(
                         "Observation code=%s value-shape contract violation "
                         "for biomarker %s — detaching. Detail: %s",

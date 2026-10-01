@@ -169,9 +169,7 @@ def rate_limit_integration(
     return _integration_limiter_dep(prefix, max_requests, window, bucket)
 
 
-def rate_limit_user(
-    prefix: str, max_requests: int, window: int = 60, bucket: str = "ai"
-):
+def rate_limit_user(prefix: str, max_requests: int, window: int = 60, bucket: str = "ai"):
     """Per-user rate limit for authenticated routes (audit 2026-09-11 S-4).
 
     Keyed on the ``user_id`` of the ``get_current_user``-resolved caller —

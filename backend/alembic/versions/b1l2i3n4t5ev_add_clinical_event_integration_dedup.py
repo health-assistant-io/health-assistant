@@ -26,10 +26,10 @@ Revises: p8e5f6g7h8i9
 Create Date: 2026-07-21
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
+from alembic import op
 
 revision = "b1l2i3n4t5ev"
 down_revision = "p8e5f6g7h8i9"
@@ -90,11 +90,7 @@ def downgrade() -> None:
         "clinical_events",
         type_="foreignkey",
     )
-    op.drop_index(
-        "ix_clinical_events_external_id", table_name="clinical_events"
-    )
-    op.drop_index(
-        "ix_clinical_events_source_integration_id", table_name="clinical_events"
-    )
+    op.drop_index("ix_clinical_events_external_id", table_name="clinical_events")
+    op.drop_index("ix_clinical_events_source_integration_id", table_name="clinical_events")
     op.drop_column("clinical_events", "external_id")
     op.drop_column("clinical_events", "source_integration_id")

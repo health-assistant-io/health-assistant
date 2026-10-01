@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Tests for the first-run setup wizard endpoints.
 
 Contract pinned here:
@@ -57,12 +58,8 @@ def _mock_db() -> MagicMock:
 @pytest.mark.asyncio
 async def test_setup_status_uninitialized_local():
     """Localhost + no users → initialized=False, token not required."""
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-    ):
-        result = await auth_endpoint.setup_status(
-            request=_local_request(), db=MagicMock()
-        )
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)):
+        result = await auth_endpoint.setup_status(request=_local_request(), db=MagicMock())
     assert result.initialized is False
     assert result.setup_token_required is False
 
@@ -71,14 +68,10 @@ async def test_setup_status_uninitialized_local():
 async def test_setup_status_uninitialized_remote_requires_token():
     """Remote + no users → token required."""
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
         patch.object(setup_token, "is_setup_token_required", return_value=True),
     ):
-        result = await auth_endpoint.setup_status(
-            request=_remote_request(), db=MagicMock()
-        )
+        result = await auth_endpoint.setup_status(request=_remote_request(), db=MagicMock())
     assert result.initialized is False
     assert result.setup_token_required is True
 
@@ -86,12 +79,8 @@ async def test_setup_status_uninitialized_remote_requires_token():
 @pytest.mark.asyncio
 async def test_setup_status_initialized_never_needs_token():
     """Once initialized, the token is irrelevant."""
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
-    ):
-        result = await auth_endpoint.setup_status(
-            request=_remote_request(), db=MagicMock()
-        )
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)):
+        result = await auth_endpoint.setup_status(request=_remote_request(), db=MagicMock())
     assert result.initialized is True
     assert result.setup_token_required is False
 
@@ -124,15 +113,9 @@ async def test_setup_creates_system_admin_and_returns_tokens():
     db.refresh.side_effect = _refresh
 
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
-        patch.object(
-            auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
+        patch.object(auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
     ):
         tok_mod.is_setup_token_required.return_value = False
@@ -167,9 +150,7 @@ async def test_setup_creates_system_admin_and_returns_tokens():
 @pytest.mark.asyncio
 @pytest.mark.contract  # §18.6 — server init is one-shot; no unauthenticated re-init
 async def test_setup_when_already_initialized_returns_410():
-    with patch.object(
-        auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
-    ):
+    with patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.setup(
                 payload=SetupRequest(
@@ -187,9 +168,7 @@ async def test_setup_when_already_initialized_returns_410():
 @pytest.mark.asyncio
 async def test_setup_remote_without_token_returns_403():
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
     ):
         tok_mod.is_setup_token_required.return_value = True
@@ -223,15 +202,9 @@ async def test_setup_remote_with_valid_token_proceeds():
     db.refresh.side_effect = lambda obj: setattr(obj, "id", real_user.id)
 
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
-        patch.object(
-            auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
+        patch.object(auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
         patch.object(auth_endpoint, "token_store") as ts_mod,
     ):
@@ -261,9 +234,7 @@ async def test_setup_remote_with_valid_token_proceeds():
 @pytest.mark.asyncio
 async def test_setup_duplicate_email_returns_409():
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
         patch.object(
             auth_endpoint,
@@ -299,15 +270,9 @@ async def test_setup_acquires_advisory_lock():
     db.refresh.side_effect = lambda obj: setattr(obj, "id", real_user.id)
 
     with (
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
-        patch.object(
-            auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
+        patch.object(auth_endpoint, "create_tenant", new=AsyncMock(return_value=fake_tenant)),
         patch.object(auth_endpoint, "setup_token") as tok_mod,
         patch.object(auth_endpoint, "token_store") as ts_mod,
     ):
@@ -338,9 +303,7 @@ async def test_setup_acquires_advisory_lock():
 @pytest.mark.asyncio
 async def test_register_without_tenant_id_returns_403():
     """The open bootstrap path is gone — register requires tenant_id + invite."""
-    with patch.object(
-        auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-    ):
+    with patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.register(
                 user_data=UserRegister(
@@ -394,13 +357,9 @@ async def test_setup_status_reports_demo_mode_when_enabled():
             "demo_mode_enabled",
             new=AsyncMock(return_value=True),
         ),
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=True)),
     ):
-        result = await auth_endpoint.setup_status(
-            request=_local_request(), db=MagicMock()
-        )
+        result = await auth_endpoint.setup_status(request=_local_request(), db=MagicMock())
     assert result.demo_mode is True
 
 
@@ -413,13 +372,9 @@ async def test_setup_status_demo_mode_off_by_default():
             "demo_mode_enabled",
             new=AsyncMock(return_value=False),
         ),
-        patch.object(
-            auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)
-        ),
+        patch.object(auth_endpoint, "_is_initialized", new=AsyncMock(return_value=False)),
     ):
-        result = await auth_endpoint.setup_status(
-            request=_local_request(), db=MagicMock()
-        )
+        result = await auth_endpoint.setup_status(request=_local_request(), db=MagicMock())
     assert result.demo_mode is False
 
 
@@ -449,9 +404,8 @@ def _demo_mode_on(enabled: bool = True):
 @pytest.mark.asyncio
 async def test_demo_login_requires_demo_mode():
     """demo-login 404s when demo mode is off (the route must be inert)."""
-    with _demo_mode_on(False):
-        with pytest.raises(HTTPException) as exc:
-            await auth_endpoint.demo_login(request=_local_request(), response=Response())
+    with _demo_mode_on(False), pytest.raises(HTTPException) as exc:
+        await auth_endpoint.demo_login(request=_local_request(), response=Response())
     assert exc.value.status_code == 404
 
 
@@ -460,9 +414,7 @@ async def test_demo_login_503_when_demo_user_missing():
     """If seeding hasn't completed (no demo user), return 503 not a crash."""
     with (
         _demo_mode_on(True),
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=None)),
     ):
         with pytest.raises(HTTPException) as exc:
             await auth_endpoint.demo_login(request=_local_request(), response=Response())
@@ -479,13 +431,12 @@ async def test_demo_login_stamps_demo_claim_and_issues_tokens():
     user = await create_user(role=Role.ADMIN)
     with (
         _demo_mode_on(True),
-        patch.object(
-            auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=user)
-        ),
+        patch.object(auth_endpoint, "get_user_by_email", new=AsyncMock(return_value=user)),
     ):
         result = await auth_endpoint.demo_login(request=_local_request(), response=Response())
 
     import jwt as _jwt
+
     from app.core.config import settings
     from app.core.keys import key_for
     from app.core.security import SESSION_TOKEN_KIND

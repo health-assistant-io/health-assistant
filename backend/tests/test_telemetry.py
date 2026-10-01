@@ -5,10 +5,12 @@ The ``POST /telemetry/data`` body now carries long-format points
 metric/timestamp. The wide ``heart_rate``/``steps``/``calories``/``data``
 fields are gone (migration ``t1e2l3o4n5g6``).
 """
+
+import uuid
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch
-import uuid
 
 
 class MockUser:
@@ -37,11 +39,9 @@ def mock_telemetry_points():
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.telemetry.upload_telemetry_data")
-async def test_upload_telemetry_data(
-    mock_upload, async_client: AsyncClient, mock_telemetry_points
-):
-    from app.main import app
+async def test_upload_telemetry_data(mock_upload, async_client: AsyncClient, mock_telemetry_points):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_upload.return_value = len(mock_telemetry_points)
@@ -59,11 +59,9 @@ async def test_upload_telemetry_data(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.telemetry.get_telemetry_data")
-async def test_get_telemetry_data(
-    mock_get_data, async_client: AsyncClient, mock_telemetry_points
-):
-    from app.main import app
+async def test_get_telemetry_data(mock_get_data, async_client: AsyncClient, mock_telemetry_points):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_data.return_value = mock_telemetry_points
@@ -81,8 +79,8 @@ async def test_get_telemetry_data(
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.telemetry.get_telemetry_summary")
 async def test_get_telemetry_summary(mock_get_summary, async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     # New generic summary shape: {slug: {min,max,avg,sum,count}}.
@@ -107,8 +105,8 @@ async def test_get_telemetry_summary(mock_get_summary, async_client: AsyncClient
 async def test_upload_rejects_wide_format_payload(async_client: AsyncClient):
     """Long-format contract: the old wide-format body (heart_rate/steps/calories)
     must be rejected — Pydantic validation requires ``slug`` + ``value``."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     try:

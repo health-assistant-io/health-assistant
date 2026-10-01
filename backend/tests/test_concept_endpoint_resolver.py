@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
-from app.models.enums import EdgeEndpointType, ConceptRelationType, EdgeApprovalStatus
+from app.models.enums import ConceptRelationType, EdgeApprovalStatus, EdgeEndpointType
 from app.services.concept_endpoint_resolver import resolve_endpoints
 from app.services.concept_service import ConceptService
 
@@ -45,9 +45,7 @@ async def test_resolve_concept_endpoint(tenant_id):
         session.add(c)
         await session.commit()
 
-        out = await resolve_endpoints(
-            session, [(EdgeEndpointType.CONCEPT, c.id)]
-        )
+        out = await resolve_endpoints(session, [(EdgeEndpointType.CONCEPT, c.id)])
         assert out[c.id]["type"] == "concept"
         assert out[c.id]["label"] == "Cardiology"
         assert out[c.id]["color"] == "#dc2626"
@@ -57,8 +55,8 @@ async def test_resolve_concept_endpoint(tenant_id):
 
 @pytest.mark.asyncio
 async def test_resolve_anatomy_endpoint(tenant_id):
-    from app.models.concept_model import Concept, ConceptKindTag
     from app.models.anatomy_model import AnatomyStructure
+    from app.models.concept_model import Concept, ConceptKindTag
     from app.models.enums import ConceptKind, ConceptStatus
 
     async with AsyncSessionLocal() as session:
@@ -83,9 +81,7 @@ async def test_resolve_anatomy_endpoint(tenant_id):
         session.add(struct)
         await session.commit()
 
-        out = await resolve_endpoints(
-            session, [(EdgeEndpointType.ANATOMY, struct.id)]
-        )
+        out = await resolve_endpoints(session, [(EdgeEndpointType.ANATOMY, struct.id)])
         assert out[struct.id]["type"] == "anatomy"
         assert out[struct.id]["label"] == "Heart"
         # color/kind lifted from the class_concept (SSOT — not duplicated).
@@ -98,9 +94,7 @@ async def test_resolve_unknown_type_fallback(tenant_id):
     """An endpoint type with no registered resolver gets a label-only fallback."""
     async with AsyncSessionLocal() as session:
         arbitrary = uuid.uuid4()
-        out = await resolve_endpoints(
-            session, [(EdgeEndpointType.ALLERGY, arbitrary)]
-        )
+        out = await resolve_endpoints(session, [(EdgeEndpointType.ALLERGY, arbitrary)])
         assert out[arbitrary]["type"] == "allergy"
         assert out[arbitrary]["label"].startswith("allergy:")
         assert out[arbitrary]["kind"] is None
@@ -120,8 +114,8 @@ async def test_resolve_stale_id_fallback(tenant_id):
 async def test_get_neighbors_resolves_anatomy_endpoint(tenant_id):
     """End-to-end: a concept->anatomy edge comes back with a resolved endpoint
     payload (label "Heart"), not a bare UUID with None."""
-    from app.models.concept_model import Concept, ConceptKindTag, ConceptEdge
     from app.models.anatomy_model import AnatomyStructure
+    from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
     from app.models.enums import ConceptKind, ConceptStatus
 
     p = uuid.uuid4().hex[:6]
@@ -142,9 +136,7 @@ async def test_get_neighbors_resolves_anatomy_endpoint(tenant_id):
             primary_kind=ConceptKind.EXAMINATION_CATEGORY,
             status=ConceptStatus.ACTIVE,
         )
-        category.kind_tags.append(
-            ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY)
-        )
+        category.kind_tags.append(ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY))
         session.add(category)
         await session.flush()
 

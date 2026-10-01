@@ -1,14 +1,15 @@
 import uuid
-from app.models.export_import_job import ExportJobModel, ImportJobModel
+
 from app.models.enums import ExportScope, ExportType, JobStatus
+from app.models.export_import_job import ExportJobModel, ImportJobModel
 from app.schemas.backup import (
-    BackupRequest,
-    BackupManifest,
-    ManifestFile,
-    RestoreResult,
-    PROVENANCE_CODE,
     BACKUP_SCHEMA_VERSION,
     FHIR_VERSION,
+    PROVENANCE_CODE,
+    BackupManifest,
+    BackupRequest,
+    ManifestFile,
+    RestoreResult,
 )
 
 
@@ -91,8 +92,9 @@ def test_backup_request_full_backup_system():
 
 def test_backup_manifest_round_trip():
     import datetime as dt
+
     m = BackupManifest(
-        exported_at=dt.datetime(2026, 6, 18, tzinfo=dt.timezone.utc),
+        exported_at=dt.datetime(2026, 6, 18, tzinfo=dt.UTC),
         tenant_id=str(uuid.uuid4()),
         scope=ExportScope.PATIENT,
         export_type=ExportType.FULL_BACKUP,

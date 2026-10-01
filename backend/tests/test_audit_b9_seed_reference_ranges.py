@@ -6,25 +6,26 @@ adult ranges + a few stratified examples. The import pipeline
 (b) create the rows, (c) be idempotent (re-import updates in place, no dupes),
 and (d) leave user-added ranges alone on re-import (upsert-only).
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition, BiomarkerReferenceRange
-from app.schemas.biomarker import CatalogImportPayload, BiomarkerCreate, BiomarkerReferenceRangeCreate, UnitCreate
-from app.services.catalog_import_service import CatalogImportService
-from sqlalchemy import select
-
-SEED_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "data"
-    / "seeds"
-    / "default_catalog.json"
+from app.schemas.biomarker import (
+    BiomarkerCreate,
+    BiomarkerReferenceRangeCreate,
+    CatalogImportPayload,
+    UnitCreate,
 )
+from app.services.catalog_import_service import CatalogImportService
+
+SEED_PATH = Path(__file__).resolve().parents[1] / "data" / "seeds" / "default_catalog.json"
 
 
 def test_seed_file_parses_and_carries_stratified_ranges():
@@ -73,12 +74,16 @@ async def test_importer_creates_stratified_ranges():
                 )
             ).scalar_one()
             rows = (
-                await db.execute(
-                    select(BiomarkerReferenceRange).where(
-                        BiomarkerReferenceRange.biomarker_id == bio.id
+                (
+                    await db.execute(
+                        select(BiomarkerReferenceRange).where(
+                            BiomarkerReferenceRange.biomarker_id == bio.id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             # Read attributes while still bound to the session (before cleanup).
             by_sex = {r.sex.value: (r.low, r.high) for r in rows}
         finally:
@@ -140,15 +145,18 @@ async def test_importer_is_idempotent_and_preserves_user_ranges():
             await svc.import_catalog(payload)
 
             rows = (
-                await db.execute(
-                    select(BiomarkerReferenceRange).where(
-                        BiomarkerReferenceRange.biomarker_id == bio.id
+                (
+                    await db.execute(
+                        select(BiomarkerReferenceRange).where(
+                            BiomarkerReferenceRange.biomarker_id == bio.id
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             snapshot = [
-                (r.sex.value if r.sex else None, r.age_min, r.age_max, r.low, r.high)
-                for r in rows
+                (r.sex.value if r.sex else None, r.age_min, r.age_max, r.low, r.high) for r in rows
             ]
         finally:
             # Clean up — import_catalog commits, so rows survive rollback.

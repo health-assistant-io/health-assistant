@@ -15,9 +15,8 @@ These tests pin:
   (not metric-specific ``heart_rate_avg`` etc.).
 - The raw-table path uses ``AVG(value)`` (not ``AVG(heart_rate)``).
 """
+
 import re
-
-
 
 # ---------------------------------------------------------------------------
 # A8: no double-wrapped aggregates in the SQL
@@ -31,9 +30,7 @@ def test_a8_no_double_wrapped_avg_in_source():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert "AVG({avg_col})" not in src, (
-        "analytics_service still double-wraps AVG(AVG(...))."
-    )
+    assert "AVG({avg_col})" not in src, "analytics_service still double-wraps AVG(AVG(...))."
     assert "MAX({max_col})" not in src
     assert "MIN({min_col})" not in src
 
@@ -103,9 +100,7 @@ def test_sql_filters_by_slug_bind_parameter():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert "slug = :slug" in src, (
-        "Telemetry SQL must filter via slug = :slug (bind parameter)."
-    )
+    assert "slug = :slug" in src, "Telemetry SQL must filter via slug = :slug (bind parameter)."
     # Legacy JSONB-key predicates must be gone.
     assert "data ? '{slug}'" not in src
     assert "data ? '{slug}'" not in src.replace("'", '"')
@@ -122,9 +117,7 @@ def test_sql_execute_passes_slug_parameter():
     from app.services import analytics_service
 
     src = inspect.getsource(analytics_service)
-    assert '"slug": slug' in src, (
-        "Telemetry SQL execute must pass slug as a bind parameter."
-    )
+    assert '"slug": slug' in src, "Telemetry SQL execute must pass slug as a bind parameter."
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +238,5 @@ def test_is_safe_slug_guard_still_present():
 
     src = inspect.getsource(analytics_service)
     assert "is_safe_slug(slug)" in src, (
-        "The is_safe_slug defence-in-depth guard must stay in the telemetry "
-        "query loop."
+        "The is_safe_slug defence-in-depth guard must stay in the telemetry query loop."
     )

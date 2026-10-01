@@ -12,7 +12,8 @@ tests pin the new fields the form sends (``method``, ``comment``/``note``,
 3. ``_parse_datetime`` accepts the local datetime-local string the frontend
    form emits (``YYYY-MM-DDTHH:MM``).
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -20,7 +21,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.services.fhir_service import _extract_comment_text, _parse_datetime
-
 
 # ---------------------------------------------------------------------------
 # Helper unit tests (no DB)
@@ -59,7 +59,7 @@ def test_parse_datetime_accepts_local_datetime_local_string():
     assert parsed is not None
     assert isinstance(parsed, datetime)
     assert parsed.tzinfo is not None
-    assert parsed == datetime(2026, 8, 5, 14, 30, tzinfo=timezone.utc)
+    assert parsed == datetime(2026, 8, 5, 14, 30, tzinfo=UTC)
 
 
 def test_parse_datetime_none_passthrough():
@@ -93,8 +93,8 @@ async def test_create_observation_standalone_manual_payload_passes_through(
     """Manual entry sends ``effective_datetime`` + ``method`` + ``note[]``
     and no ``examination_id``. The endpoint must forward these to
     ``create_observation`` verbatim."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: _make_token(role="ADMIN")
     created = MagicMock()

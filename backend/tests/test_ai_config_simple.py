@@ -3,19 +3,20 @@ Simple integration tests for AI Config endpoints
 Tests the basic CRUD operations without complex fixtures
 """
 
-import pytest
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
-from datetime import datetime
 
-from app.main import app
-from app.core.security import get_current_user
-from app.schemas.user import TokenData
-from app.models.enums import AIScope
+import pytest
+
 from app.ai.schemas.config import (
-    AIProviderResponse,
     AIModelResponse,
+    AIProviderResponse,
 )
+from app.core.security import get_current_user
+from app.main import app
+from app.models.enums import AIScope
+from app.schemas.user import TokenData
 
 
 def mock_user():
@@ -37,9 +38,7 @@ async def test_create_provider(async_client):
     provider_id = uuid4()
 
     # Mock the service methods
-    with patch(
-        "app.api.v1.endpoints.ai_config.AIProviderService"
-    ) as mock_service_class:
+    with patch("app.api.v1.endpoints.ai_config.AIProviderService") as mock_service_class:
         mock_instance = MagicMock()
 
         async def mock_create_provider(provider_data):
@@ -49,9 +48,7 @@ async def test_create_provider(async_client):
                 scope=provider_data.scope,
                 provider_type=provider_data.provider_type,
                 api_base=provider_data.api_base,
-                api_key=provider_data.api_key
-                if hasattr(provider_data, "api_key")
-                else None,
+                api_key=provider_data.api_key if hasattr(provider_data, "api_key") else None,
                 is_default=getattr(provider_data, "is_default", False),
                 is_active=True,
                 settings={},
@@ -92,9 +89,7 @@ async def test_get_providers(async_client):
     provider_id = uuid4()
 
     # Mock the service methods
-    with patch(
-        "app.api.v1.endpoints.ai_config.AIProviderService"
-    ) as mock_service_class:
+    with patch("app.api.v1.endpoints.ai_config.AIProviderService") as mock_service_class:
         mock_instance = MagicMock()
 
         async def mock_get_providers(*args, **kwargs):
@@ -138,9 +133,7 @@ async def test_create_model(async_client):
     model_id = uuid4()
 
     # Mock the service methods
-    with patch(
-        "app.api.v1.endpoints.ai_config.AIProviderService"
-    ) as mock_service_class:
+    with patch("app.api.v1.endpoints.ai_config.AIProviderService") as mock_service_class:
         mock_instance = MagicMock()
 
         async def mock_get_provider(provider_id):
@@ -165,9 +158,7 @@ async def test_create_model(async_client):
                 id=model_id,
                 name=model_data.name,
                 model_name=model_data.model_name,
-                description=model_data.description
-                if hasattr(model_data, "description")
-                else None,
+                description=model_data.description if hasattr(model_data, "description") else None,
                 is_default=False,
                 is_active=True,
                 max_tokens=model_data.max_tokens,
@@ -205,9 +196,7 @@ async def test_get_config_summary(async_client):
     app.dependency_overrides[get_current_user] = mock_user
 
     # Mock the service methods
-    with patch(
-        "app.api.v1.endpoints.ai_config.AIProviderService"
-    ) as mock_service_class:
+    with patch("app.api.v1.endpoints.ai_config.AIProviderService") as mock_service_class:
         mock_instance = MagicMock()
 
         async def mock_get_config_summary(*args, **kwargs):
@@ -260,7 +249,7 @@ async def test_ai_config_routes_registered():
 
 def test_models_import():
     """Test that AI models can be imported"""
-    from app.models.ai_provider_model import AIProviderModel, AIModel, AITaskAssignment
+    from app.models.ai_provider_model import AIModel, AIProviderModel, AITaskAssignment
 
     assert AIProviderModel.__tablename__ == "ai_providers"
     assert AIModel.__tablename__ == "ai_models"
@@ -283,8 +272,8 @@ def test_schemas_import():
 
 def test_processor_import():
     """Test that AI processor functions can be imported"""
-    from app.ai.processors.ocr import get_ocr_processor
     from app.ai.processors.nlp import get_nlp_extractor
+    from app.ai.processors.ocr import get_ocr_processor
 
     # Test basic OCR processor creation
     ocr = get_ocr_processor(

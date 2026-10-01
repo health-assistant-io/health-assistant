@@ -16,7 +16,7 @@ _CATALOG_PATH = _BACKEND_DIR / "data" / "catalogs" / "languages.json"
 
 
 def _load_json(path: Path) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -27,6 +27,4 @@ def test_omb_seed_language_codes_exist_in_shared_catalog():
 
     assert seed_codes, "OMB seed 'languages' slice is empty"
     missing = sorted(seed_codes - catalog_codes)
-    assert not missing, (
-        f"seed language codes missing from data/catalogs/languages.json: {missing}"
-    )
+    assert not missing, f"seed language codes missing from data/catalogs/languages.json: {missing}"

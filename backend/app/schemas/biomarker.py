@@ -1,8 +1,9 @@
 import re
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from uuid import UUID
-from typing import Optional, List
-from app.models.enums import CodingSystem, Gender, BiomarkerValueType
+
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from app.models.enums import BiomarkerValueType, CodingSystem, Gender
 
 # Safe identifier for biomarker slugs. The slug is interpolated into raw SQL
 # in the telemetry analytics path (see app/services/analytics_service.py), so
@@ -43,32 +44,32 @@ class UnitResponse(BaseModel):
 class UnitCreate(BaseModel):
     symbol: str
     name: str
-    quantity_type: Optional[str] = "other"
+    quantity_type: str | None = "other"
 
 
 class BiomarkerBase(BaseModel):
     slug: str
-    coding_system: Optional[CodingSystem] = CodingSystem.LOINC
-    code: Optional[str] = None
+    coding_system: CodingSystem | None = CodingSystem.LOINC
+    code: str | None = None
     name: str
     # Backward-compat: ``category`` is the readable string (the linked
     # ``biomarker_class`` concept's name). For writes prefer
     # ``class_concept_id``; ``category`` is best-effort resolved to a concept
     # in the biomarker endpoint / catalog import.
-    category: Optional[str] = None
-    class_concept_id: Optional[UUID] = None
+    category: str | None = None
+    class_concept_id: UUID | None = None
     # The class concept *slug* — the canonical key used by the backup
     # export/import path. ``category`` is the concept *name* and does not
     # round-trip through ``biomarker_category_to_concept_slug`` (which only
     # swaps ``_``→``-``), so without this slug the class link is silently
     # dropped on restore. CatalogImportService resolves this ahead of the
     # legacy ``category`` string when both are present.
-    class_concept_slug: Optional[str] = None
-    aliases: List[str] = []
-    info: Optional[str] = None
-    reference_range_min: Optional[float] = None
-    reference_range_max: Optional[float] = None
-    is_telemetry: Optional[bool] = False
+    class_concept_slug: str | None = None
+    aliases: list[str] = []
+    info: str | None = None
+    reference_range_min: float | None = None
+    reference_range_max: float | None = None
+    is_telemetry: bool | None = False
     # Discriminator (plan state-biomarkers-2026-08-05). QUANTITY = numeric
     # value + unit + numeric reference ranges (the legacy default). STATE =
     # categorical value drawn from ``allowed_states`` (the normal set is
@@ -77,19 +78,17 @@ class BiomarkerBase(BaseModel):
     # STATE biomarkers only: when True the biomarker accepts Observations
     # with FHIR ``component[]`` (one ``valueCodeableConcept`` per
     # sub-context) instead of a single top-level value. Ignored for QUANTITY.
-    supports_multi_state: Optional[bool] = False
+    supports_multi_state: bool | None = False
 
     @model_validator(mode="after")
     def _validate_value_type_invariants(self):
         """Cross-field invariants that the DB also enforces via CHECK
         constraints (defence-in-depth: reject bad payloads at the schema
         layer for a clean 422 instead of an opaque 500)."""
-        if self.value_type == BiomarkerValueType.STATE:
-            if self.is_telemetry:
-                raise ValueError(
-                    "STATE biomarkers cannot be telemetry "
-                    "(telemetry_data.value is Float NOT NULL)"
-                )
+        if self.value_type == BiomarkerValueType.STATE and self.is_telemetry:
+            raise ValueError(
+                "STATE biomarkers cannot be telemetry (telemetry_data.value is Float NOT NULL)"
+            )
             # ``preferred_unit_id`` / ``preferred_unit_symbol`` are not on
             # ``BiomarkerBase`` (they live on Create/Response) — checked by
             # the biomarker endpoint and the create validator below.
@@ -116,8 +115,8 @@ class BiomarkerStateResponse(BaseModel):
     code: str
     system: str
     display: str
-    description: Optional[str] = None
-    category: Optional[str] = None
+    description: str | None = None
+    category: str | None = None
     sort_order: int = 0
 
     model_config = ConfigDict(from_attributes=True)
@@ -138,15 +137,15 @@ class BiomarkerAllowedStateResponse(BaseModel):
 
 
 class BiomarkerCreate(BiomarkerBase):
-    preferred_unit_symbol: Optional[str] = None
-    preferred_unit_id: Optional[UUID] = None
+    preferred_unit_symbol: str | None = None
+    preferred_unit_id: UUID | None = None
     # Stratified reference ranges (audit B9/F3). Carried through the catalog
     # import/seed path so the default catalog can ship demographic-specific
     # ranges. Forward-ref resolved via model_rebuild() at module end.
-    reference_ranges: List["BiomarkerReferenceRangeCreate"] = []
+    reference_ranges: list["BiomarkerReferenceRangeCreate"] = []
     # STATE biomarkers only: the states this biomarker accepts (and which are
     # in its normal set via ``is_normal``). Required non-empty for STATE.
-    allowed_states: List[AllowedStateSpec] = []
+    allowed_states: list[AllowedStateSpec] = []
 
     @field_validator("slug")
     @classmethod
@@ -157,9 +156,7 @@ class BiomarkerCreate(BiomarkerBase):
         # the create (input) path only — the response schema must be able to
         # serialize rows that pre-date this guard or arrived via the pipeline.
         if not is_safe_slug(v):
-            raise ValueError(
-                "slug must be 1-80 chars of [A-Za-z0-9_-] only"
-            )
+            raise ValueError("slug must be 1-80 chars of [A-Za-z0-9_-] only")
         return v
 
     @model_validator(mode="after")
@@ -168,13 +165,9 @@ class BiomarkerCreate(BiomarkerBase):
         (preferred_unit_*, allowed_states)."""
         if self.value_type == BiomarkerValueType.STATE:
             if self.preferred_unit_id is not None or self.preferred_unit_symbol:
-                raise ValueError(
-                    "STATE biomarkers carry no unit (categorical values are unitless)"
-                )
+                raise ValueError("STATE biomarkers carry no unit (categorical values are unitless)")
             if not self.allowed_states:
-                raise ValueError(
-                    "STATE biomarkers must declare at least one allowed_state"
-                )
+                raise ValueError("STATE biomarkers must declare at least one allowed_state")
             if self.reference_range_min is not None or self.reference_range_max is not None:
                 raise ValueError(
                     "STATE biomarkers use allowed_states (is_normal) — "
@@ -186,25 +179,23 @@ class BiomarkerCreate(BiomarkerBase):
                     "allowed_states / supports_multi_state apply to STATE biomarkers only"
                 )
             if self.supports_multi_state:
-                raise ValueError(
-                    "supports_multi_state applies to STATE biomarkers only"
-                )
+                raise ValueError("supports_multi_state applies to STATE biomarkers only")
         return self
 
 
 class BiomarkerUpdate(BaseModel):
-    name: Optional[str] = None
-    category: Optional[str] = None
-    class_concept_id: Optional[UUID] = None
-    aliases: Optional[List[str]] = None
-    info: Optional[str] = None
-    reference_range_min: Optional[float] = None
-    reference_range_max: Optional[float] = None
-    is_telemetry: Optional[bool] = None
-    preferred_unit_id: Optional[UUID] = None
-    value_type: Optional[BiomarkerValueType] = None
-    supports_multi_state: Optional[bool] = None
-    allowed_states: Optional[List[AllowedStateSpec]] = None
+    name: str | None = None
+    category: str | None = None
+    class_concept_id: UUID | None = None
+    aliases: list[str] | None = None
+    info: str | None = None
+    reference_range_min: float | None = None
+    reference_range_max: float | None = None
+    is_telemetry: bool | None = None
+    preferred_unit_id: UUID | None = None
+    value_type: BiomarkerValueType | None = None
+    supports_multi_state: bool | None = None
+    allowed_states: list[AllowedStateSpec] | None = None
 
     @model_validator(mode="after")
     def _validate_value_type_update_invariants(self):
@@ -219,9 +210,7 @@ class BiomarkerUpdate(BaseModel):
                 "biomarker definition (observations would need re-mapping)"
             )
         if self.is_telemetry and self.supports_multi_state:
-            raise ValueError(
-                "STATE biomarkers (supports_multi_state=True) cannot be telemetry"
-            )
+            raise ValueError("STATE biomarkers (supports_multi_state=True) cannot be telemetry")
         return self
 
 
@@ -233,20 +222,20 @@ class BiomarkerRemapRequest(BaseModel):
     """
 
     source_name: str
-    patient_id: Optional[UUID] = None
+    patient_id: UUID | None = None
 
 
 class BiomarkerResponse(BiomarkerBase):
     id: UUID
-    preferred_unit_id: Optional[UUID]
-    preferred_unit_symbol: Optional[str] = None
-    meta_data: Optional[dict] = None
+    preferred_unit_id: UUID | None
+    preferred_unit_symbol: str | None = None
+    meta_data: dict | None = None
     # Stratified reference ranges (audit B9/F3). Forward-ref resolved at the
     # bottom of the module via model_rebuild().
-    reference_ranges: List["BiomarkerReferenceRangeResponse"] = []
+    reference_ranges: list["BiomarkerReferenceRangeResponse"] = []
     # STATE biomarkers only: resolved allowed-state set (the universal catalog
     # rows + per-biomarker is_normal / sort_order). Empty for QUANTITY.
-    allowed_states: List[BiomarkerAllowedStateResponse] = []
+    allowed_states: list[BiomarkerAllowedStateResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -265,24 +254,20 @@ class BiomarkerReferenceRangeBase(BaseModel):
     most-specific applicable row for a patient.
     """
 
-    sex: Optional[Gender] = None
-    age_min: Optional[float] = None
-    age_max: Optional[float] = None
-    unit_id: Optional[UUID] = None
-    low: Optional[float] = None
-    high: Optional[float] = None
-    text: Optional[str] = None
-    applies_to: Optional[str] = None
+    sex: Gender | None = None
+    age_min: float | None = None
+    age_max: float | None = None
+    unit_id: UUID | None = None
+    low: float | None = None
+    high: float | None = None
+    text: str | None = None
+    applies_to: str | None = None
 
     @model_validator(mode="after")
     def _validate_range(self):
         if self.low is not None and self.high is not None and self.low > self.high:
             raise ValueError("low must be <= high")
-        if (
-            self.age_min is not None
-            and self.age_max is not None
-            and self.age_min > self.age_max
-        ):
+        if self.age_min is not None and self.age_max is not None and self.age_min > self.age_max:
             raise ValueError("age_min must be <= age_max")
         return self
 
@@ -293,14 +278,14 @@ class BiomarkerReferenceRangeCreate(BiomarkerReferenceRangeBase):
 
 class BiomarkerReferenceRangeUpdate(BiomarkerReferenceRangeBase):
     # Every field optional on update; only supplied fields are applied.
-    sex: Optional[Gender] = None
-    age_min: Optional[float] = None
-    age_max: Optional[float] = None
-    unit_id: Optional[UUID] = None
-    low: Optional[float] = None
-    high: Optional[float] = None
-    text: Optional[str] = None
-    applies_to: Optional[str] = None
+    sex: Gender | None = None
+    age_min: float | None = None
+    age_max: float | None = None
+    unit_id: UUID | None = None
+    low: float | None = None
+    high: float | None = None
+    text: str | None = None
+    applies_to: str | None = None
 
 
 class BiomarkerReferenceRangeResponse(BiomarkerReferenceRangeBase):
@@ -317,9 +302,9 @@ class CatalogMetadata(BaseModel):
 
 
 class CatalogImportPayload(BaseModel):
-    metadata: Optional[CatalogMetadata] = None
-    units: List[UnitCreate] = []
-    biomarkers: List[BiomarkerCreate] = []
+    metadata: CatalogMetadata | None = None
+    units: list[UnitCreate] = []
+    biomarkers: list[BiomarkerCreate] = []
 
 
 # Resolve the forward reference on BiomarkerResponse.reference_ranges and

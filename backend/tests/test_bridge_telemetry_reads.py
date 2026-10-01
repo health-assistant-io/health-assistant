@@ -21,6 +21,9 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+from sqlalchemy import delete
+
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation, Patient
@@ -28,9 +31,6 @@ from app.models.telemetry_model import TelemetryDataModel
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
-from sqlalchemy import delete
-
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 
 LOINC = "http://loinc.org"
 
@@ -48,16 +48,10 @@ async def _purge_tenant_data(*tenant_ids: uuid.UUID) -> None:
     if not tids:
         return
     async with AsyncSessionLocal() as db:
-        await db.execute(
-            delete(TelemetryDataModel).where(TelemetryDataModel.tenant_id.in_(tids))
-        )
+        await db.execute(delete(TelemetryDataModel).where(TelemetryDataModel.tenant_id.in_(tids)))
         await db.execute(delete(Observation).where(Observation.tenant_id.in_(tids)))
-        await db.execute(
-            delete(UserIntegration).where(UserIntegration.tenant_id.in_(tids))
-        )
-        await db.execute(
-            delete(BiomarkerDefinition).where(BiomarkerDefinition.tenant_id.in_(tids))
-        )
+        await db.execute(delete(UserIntegration).where(UserIntegration.tenant_id.in_(tids)))
+        await db.execute(delete(BiomarkerDefinition).where(BiomarkerDefinition.tenant_id.in_(tids)))
         await db.execute(delete(Patient).where(Patient.tenant_id.in_(tids)))
         await db.execute(delete(UserModel).where(UserModel.tenant_id.in_(tids)))
         await db.execute(delete(TenantModel).where(TenantModel.id.in_(tids)))
@@ -65,7 +59,7 @@ async def _purge_tenant_data(*tenant_ids: uuid.UUID) -> None:
 
 
 def _dt(day: int, hour: int = 12) -> datetime.datetime:
-    return datetime.datetime(2026, 8, day, hour, tzinfo=datetime.timezone.utc)
+    return datetime.datetime(2026, 8, day, hour, tzinfo=datetime.UTC)
 
 
 def _get_request(params: dict | None = None) -> MagicMock:
@@ -96,16 +90,8 @@ async def bridge_with_telemetry():
     chol_def_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Bridge Read T.", slug=f"brt-{tenant_id.hex[:8]}"
-            )
-        )
-        db.add(
-            TenantModel(
-                id=tenant_b, name="Bridge Read T2", slug=f"brt2-{tenant_b.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Bridge Read T.", slug=f"brt-{tenant_id.hex[:8]}"))
+        db.add(TenantModel(id=tenant_b, name="Bridge Read T2", slug=f"brt2-{tenant_b.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -233,7 +219,7 @@ async def bridge_with_telemetry():
                 patient_id=patient_b,
             )
         )
-        # Second-tenant heart-rate (NULL patient_id, single-patient tenant) — cross-tenant isolation.
+        # Second-tenant heart-rate (NULL patient_id, single-patient tenant) — cross-tenant isolation.  # noqa: E501 -- long template/message string; reflow when touched
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_b,
@@ -328,9 +314,7 @@ async def _load_integration(integration_id) -> UserIntegration:
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as db:
-        res = await db.execute(
-            select(UserIntegration).where(UserIntegration.id == integration_id)
-        )
+        res = await db.execute(select(UserIntegration).where(UserIntegration.id == integration_id))
         return res.scalar_one()
 
 
@@ -365,9 +349,7 @@ async def test_observations_by_telemetry_code_returns_series(bridge_with_telemet
     assert row["normalized_unit"] == "bpm"
     assert row["value_quantity"] == {"value": 95, "unit": "bpm"}
     assert row["effective_datetime"] == _dt(3, 8).isoformat()
-    assert row["reference_range"] == {"low": 60, "high": 100}, (
-        "flat {low, high} from the def range"
-    )
+    assert row["reference_range"] == {"low": 60, "high": 100}, "flat {low, high} from the def range"
     assert row["relative_score"] == 0.875, "(95 - 60) / (100 - 60) clamped"
 
 
@@ -504,11 +486,7 @@ async def _seed_patient_telemetry(n_patients: int) -> dict:
     hr_def_id = uuid.uuid4()
     slug = f"heart-rate-{uuid.uuid4().hex[:8]}"
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id, name="Legacy T.", slug=f"lgcy-{tenant_id.hex[:8]}"
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="Legacy T.", slug=f"lgcy-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -628,9 +606,7 @@ async def test_legacy_null_patient_telemetry_hidden_in_multi_patient_tenant():
             request=_get_request({"biomarker": ctx["slug"]}),
         )
 
-        assert len(result["data"]) == 1, (
-            "legacy NULL row excluded in multi-patient tenant"
-        )
+        assert len(result["data"]) == 1, "legacy NULL row excluded in multi-patient tenant"
         assert result["data"][0]["patient_id"] == str(ctx["bound_patient"])
     finally:
         await _purge_tenant_data(ctx["tenant_id"])

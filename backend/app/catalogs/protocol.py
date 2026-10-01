@@ -13,7 +13,7 @@ declared on the protocol so the contract is complete, but adapters raise
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,11 +39,11 @@ class CatalogServiceProtocol(Protocol):
     async def list(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         *,
-        search: Optional[str] = None,
-        kind: Optional[str] = None,
-        scope: Optional[str] = None,
+        search: str | None = None,
+        kind: str | None = None,
+        scope: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> dict[str, Any]:
@@ -56,16 +56,16 @@ class CatalogServiceProtocol(Protocol):
     async def get(
         self,
         db: AsyncSession,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         item_id: UUID,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Return one item as a dict, or ``None`` if not found/invisible."""
         ...
 
     async def create(
         self,
         db: AsyncSession,
-        actor: "Any",
+        actor: Any,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """Create an item. The scope is derived from the creator's role
@@ -76,10 +76,10 @@ class CatalogServiceProtocol(Protocol):
     async def update(
         self,
         db: AsyncSession,
-        actor: "Any",
+        actor: Any,
         item_id: UUID,
         payload: dict[str, Any],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Update one item. Enforced by scope + ownership (creator OR ADMIN
         for user-scope; ADMIN/MANAGER for tenant; SYSTEM_ADMIN for system).
         ``None`` if missing."""
@@ -88,7 +88,7 @@ class CatalogServiceProtocol(Protocol):
     async def delete(
         self,
         db: AsyncSession,
-        actor: "Any",
+        actor: Any,
         item_id: UUID,
     ) -> bool:
         """Delete one item. Same scope/ownership gate as update.
@@ -98,10 +98,10 @@ class CatalogServiceProtocol(Protocol):
     async def promote_scope(
         self,
         db: AsyncSession,
-        actor: "Any",
+        actor: Any,
         item_id: UUID,
         target_scope: str,
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Transition an item's scope (plan §1.3). Role-gated: user↔tenant
         requires ADMIN/MANAGER; any transition involving system requires
         SYSTEM_ADMIN. ``None`` if the item is missing/out of scope."""

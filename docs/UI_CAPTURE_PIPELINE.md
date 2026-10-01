@@ -96,7 +96,7 @@ For screenshots to be useful for Visual Regression Testing, they must be perfect
 To achieve this:
 1. **Idempotent Data:** `backend/scripts/seed_demo.py` creates a fixed patient (Maria Papadopoulou) with exact, non-random observations.
 2. **Frozen Clock:** Playwright freezes the browser clock to exactly `2026-06-15T10:00:00Z` (`capture.fixedNow` in `ui-capture.config.json`). 
-3. **Mock AI:** the seed also creates a `mock`-type chat provider (a scripted model that drives the real graph + DB tools), so the `ai-chat` scene produces a full, deterministic assistant answer — no API key required. Skip it with `HA_AI_MOCK=0` if you want to capture against a real provider configured in the UI instead. You can chat with it from the terminal: `backend/venv/bin/python backend/scripts/mock_chat.py`.
+3. **Mock AI:** the seed also creates a `mock`-type chat provider (a scripted model that drives the real graph + DB tools), so the `ai-chat` scene produces a full, deterministic assistant answer — no API key required. Skip it with `HA_AI_MOCK=0` if you want to capture against a real provider configured in the UI instead. You can chat with it from the terminal: `uv run --directory backend python backend/scripts/mock_chat.py`.
 
 **Important:** If you add new data to `seed_demo.py`, anchor your dates relative to `2026-06-15` so UI components like "2 days ago" or trend charts render identically on every developer's machine!
 

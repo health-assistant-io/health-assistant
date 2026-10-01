@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.concept_model import Concept, ConceptEdge
@@ -28,6 +27,7 @@ from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
 from app.services.catalog_graph_service import traverse
 from app.services.concept_endpoint_resolver import resolve_endpoints
+from tests._auth_helpers import headers_for_claims
 
 
 async def _tenant_and_headers(role="ADMIN"):
@@ -125,9 +125,7 @@ async def _build_biomarker_chain():
         await db.commit()
 
     async with AsyncSessionLocal() as db:
-        alt = BiomarkerDefinition(
-            slug=f"alt-{uuid.uuid4().hex[:6]}", name="ALT", tenant_id=None
-        )
+        alt = BiomarkerDefinition(slug=f"alt-{uuid.uuid4().hex[:6]}", name="ALT", tenant_id=None)
         liver = AnatomyStructure(slug=f"liver-{uuid.uuid4().hex[:6]}", name="Liver")
         med = MedicationCatalog(name="Hepatoprotector", tenant_id=None)
         disease = Concept(
@@ -176,7 +174,7 @@ async def _build_biomarker_chain():
 
 @pytest.mark.asyncio
 async def test_traverse_one_hop(async_client):
-    tenant_id, alt_id, liver_id, *_ = await _build_biomarker_chain()
+    tenant_id, alt_id, _liver_id, *_ = await _build_biomarker_chain()
     async with AsyncSessionLocal() as db:
         result = await traverse(
             db,
@@ -196,7 +194,7 @@ async def test_traverse_one_hop(async_client):
 
 @pytest.mark.asyncio
 async def test_traverse_multi_hop_reaches_medication(async_client):
-    tenant_id, alt_id, liver_id, med_id, disease_id = await _build_biomarker_chain()
+    tenant_id, alt_id, _liver_id, _med_id, _disease_id = await _build_biomarker_chain()
     async with AsyncSessionLocal() as db:
         result = await traverse(
             db,
@@ -235,12 +233,8 @@ async def test_traverse_cycle_safe(async_client):
         db.add(TenantModel(id=tenant_id, name="Cyc", slug=f"cyc-{tenant_id}"))
         await db.commit()
     async with AsyncSessionLocal() as db:
-        a = BiomarkerDefinition(
-            slug=f"cyc-a-{uuid.uuid4().hex[:6]}", name="A", tenant_id=None
-        )
-        b = BiomarkerDefinition(
-            slug=f"cyc-b-{uuid.uuid4().hex[:6]}", name="B", tenant_id=None
-        )
+        a = BiomarkerDefinition(slug=f"cyc-a-{uuid.uuid4().hex[:6]}", name="A", tenant_id=None)
+        b = BiomarkerDefinition(slug=f"cyc-b-{uuid.uuid4().hex[:6]}", name="B", tenant_id=None)
         db.add_all([a, b])
         await db.commit()
         await db.refresh(a)
@@ -284,9 +278,7 @@ async def test_traverse_proposed_edges_hidden_by_default(async_client):
         db.add(TenantModel(id=tenant_id, name="P", slug=f"p-{tenant_id}"))
         await db.commit()
     async with AsyncSessionLocal() as db:
-        a = BiomarkerDefinition(
-            slug=f"pa-{uuid.uuid4().hex[:6]}", name="PA", tenant_id=None
-        )
+        a = BiomarkerDefinition(slug=f"pa-{uuid.uuid4().hex[:6]}", name="PA", tenant_id=None)
         b = AnatomyStructure(slug=f"pb-{uuid.uuid4().hex[:6]}", name="PB")
         db.add_all([a, b])
         await db.commit()
@@ -305,9 +297,7 @@ async def test_traverse_proposed_edges_hidden_by_default(async_client):
         await db.commit()
 
     async with AsyncSessionLocal() as db:
-        default = await traverse(
-            db, EdgeEndpointType.BIOMARKER, a.id, tenant_id=tenant_id
-        )
+        default = await traverse(db, EdgeEndpointType.BIOMARKER, a.id, tenant_id=tenant_id)
         with_proposed = await traverse(
             db,
             EdgeEndpointType.BIOMARKER,
@@ -347,7 +337,7 @@ async def test_traverse_rejects_bad_depth(async_client):
 
 @pytest.mark.asyncio
 async def test_relations_endpoint(async_client):
-    tenant_id, headers = await _tenant_and_headers("ADMIN")
+    _tenant_id, headers = await _tenant_and_headers("ADMIN")
     _, alt_id, *_ = await _build_biomarker_chain()
     resp = await async_client.get(
         f"/api/v1/catalogs/biomarker/{alt_id}/relations?depth=2",
@@ -362,7 +352,7 @@ async def test_relations_endpoint(async_client):
 
 @pytest.mark.asyncio
 async def test_relations_endpoint_relation_whitelist(async_client):
-    tenant_id, headers = await _tenant_and_headers("ADMIN")
+    _tenant_id, headers = await _tenant_and_headers("ADMIN")
     _, alt_id, *_ = await _build_biomarker_chain()
     resp = await async_client.get(
         f"/api/v1/catalogs/biomarker/{alt_id}/relations?depth=3&relation=TREATS",
@@ -397,8 +387,7 @@ async def test_migration_class_concept_id_columns_exist():
         conn = await db.connection()
         med_cols = await conn.run_sync(
             lambda sync_conn: {
-                c["name"]
-                for c in sa_inspect(sync_conn).get_columns("medication_catalog")
+                c["name"] for c in sa_inspect(sync_conn).get_columns("medication_catalog")
             }
         )
         alg_cols = await conn.run_sync(
@@ -413,14 +402,12 @@ async def test_migration_class_concept_id_columns_exist():
 @pytest.mark.asyncio
 async def test_affects_relation_persistable():
     """An AFFECTS edge round-trips through the DB (enum value exists)."""
-    tenant_id, alt_id, liver_id, *_ = await _build_biomarker_chain()
+    _tenant_id, alt_id, liver_id, *_ = await _build_biomarker_chain()
     async with AsyncSessionLocal() as db:
         rows = (
             (
                 await db.execute(
-                    select(ConceptEdge).where(
-                        ConceptEdge.relation == ConceptRelationType.AFFECTS
-                    )
+                    select(ConceptEdge).where(ConceptEdge.relation == ConceptRelationType.AFFECTS)
                 )
             )
             .scalars()

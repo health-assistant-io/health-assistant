@@ -4,14 +4,14 @@ Previously the import path collapsed the FHIR CodeableConcept list to a single
 display string, losing the LOINC/OBSINT coding on re-export. These tests verify
 the list shape survives: import → ORM → to_fhir_dict → validator.
 """
-from uuid import uuid4
 
+from uuid import uuid4
 
 from app.models.fhir.patient import Observation
 from app.services.fhir_helpers import _flatten_interpretation, _normalize_interpretation
 
-
 # ---------- _normalize_interpretation helper ----------
+
 
 def test_normalize_none_returns_none():
     assert _normalize_interpretation(None) is None
@@ -27,7 +27,17 @@ def test_normalize_empty_string_returns_none():
 
 
 def test_normalize_list_passthrough():
-    canonical = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", "code": "H", "display": "High"}]}]
+    canonical = [
+        {
+            "coding": [
+                {
+                    "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+                    "code": "H",
+                    "display": "High",
+                }
+            ]
+        }
+    ]
     assert _normalize_interpretation(canonical) is canonical
 
 
@@ -36,6 +46,7 @@ def test_normalize_empty_list_returns_none():
 
 
 # ---------- _flatten_interpretation (read-side helper) ----------
+
 
 def test_flatten_extracts_display_from_coding():
     interp = [{"coding": [{"system": "...", "code": "H", "display": "High"}]}]
@@ -65,6 +76,7 @@ def test_flatten_string_passthrough():
 
 
 # ---------- ORM round-trip ----------
+
 
 def test_observation_to_fhir_dict_preserves_canonical_coding():
     """The headline I6 bug: a canonical coding list survives the ORM round-trip."""

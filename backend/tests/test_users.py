@@ -1,9 +1,11 @@
+import uuid
+from unittest.mock import patch
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from unittest.mock import patch
+
 from app.models.enums import Role
-import uuid
 
 from ._auth_helpers import create_user
 
@@ -54,21 +56,20 @@ def override_get_switched_admin():
     tok.switched = True
     return tok
 
+
 @pytest_asyncio.fixture
 async def mock_target_user():
     # Real, committed row — responses are serialized through the
     # PublicUser contract (full_name must be a string, not None).
-    return await create_user(
-        email="target@example.com", role=Role.USER, full_name=""
-    )
+    return await create_user(email="target@example.com", role=Role.USER, full_name="")
 
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.users.get_user_by_id")
 async def test_get_me(mock_get_user_by_id, async_client: AsyncClient):
     # Mock the dependency using app.dependency_overrides
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_user_by_id.return_value = override_get_current_user()
@@ -88,8 +89,9 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
     """A switched SYSTEM_ADMIN's user row lives in their ORIGINAL tenant,
     not the scoped tenant. /users/me must look up by original_tenant_id
     or the query returns 404."""
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
+
     from ._auth_helpers import create_tenant
 
     switched_admin = override_get_switched_admin()
@@ -126,11 +128,9 @@ async def test_get_me_switched_admin(mock_get_user_by_id, async_client: AsyncCli
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.users.get_user_by_id")
 @pytest.mark.contract  # §18.7 — non-admin on user management ⇒ 403
-async def test_get_user_forbidden(
-    mock_get_user_by_id, async_client: AsyncClient, mock_target_user
-):
-    from app.main import app
+async def test_get_user_forbidden(mock_get_user_by_id, async_client: AsyncClient, mock_target_user):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_get_user_by_id.return_value = mock_target_user
@@ -147,8 +147,8 @@ async def test_get_user_forbidden(
 async def test_get_user_admin_allowed(
     mock_get_user_by_id, async_client: AsyncClient, mock_target_user
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_admin_user
     mock_get_user_by_id.return_value = mock_target_user
@@ -167,8 +167,8 @@ async def test_get_user_admin_allowed(
 async def test_update_user_admin(
     mock_update_user, mock_get_user_by_id, async_client: AsyncClient, mock_target_user
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_admin_user
 
@@ -192,11 +192,9 @@ async def test_update_user_admin(
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.users.delete_user")
-async def test_delete_user_admin(
-    mock_delete_user, async_client: AsyncClient, mock_target_user
-):
-    from app.main import app
+async def test_delete_user_admin(mock_delete_user, async_client: AsyncClient, mock_target_user):
     from app.core.security import get_current_user
+    from app.main import app
 
     admin_token_data = override_get_admin_user()
     app.dependency_overrides[get_current_user] = lambda: admin_token_data
@@ -207,7 +205,9 @@ async def test_delete_user_admin(
 
     assert response.status_code == 200
     assert response.json()["message"] == "User deleted successfully"
-    mock_delete_user.assert_called_once_with(str(mock_target_user.id), tenant_id=admin_token_data.tenant_id)
+    mock_delete_user.assert_called_once_with(
+        str(mock_target_user.id), tenant_id=admin_token_data.tenant_id
+    )
 
     app.dependency_overrides = {}
 
@@ -215,8 +215,8 @@ async def test_delete_user_admin(
 @pytest.mark.asyncio
 @pytest.mark.contract  # §18.7 — non-admin on user management ⇒ 403
 async def test_delete_user_forbidden(async_client: AsyncClient, mock_target_user):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = override_get_current_user
 

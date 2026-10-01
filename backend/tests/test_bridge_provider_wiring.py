@@ -10,6 +10,7 @@ swallowed into a ``failed`` sync log). The behavioural correctness of the
 split helper itself is covered by ``test_integration_sync_telemetry_split.py``;
 these tests pin the wiring (bridge → shared helper, no inline construction).
 """
+
 import ast
 import inspect
 
@@ -34,7 +35,7 @@ def _calls_to(name: str) -> list[ast.Call]:
 
 def test_bridge_imports_apply_telemetry_split():
     """The shared helper is imported and called in the sync path."""
-    src = inspect.getsource(bridge_module)
+    inspect.getsource(bridge_module)
     assert "from app.services.integration_sync_service import apply_telemetry_split", (
         "bridge must import the shared apply_telemetry_split helper"
     )
@@ -71,7 +72,8 @@ def test_bridge_provider_loads_without_dead_hmac_symbols():
     # No direct import of the verifier — endpoint handles auth.
     tree = _tree()
     imported_names = {
-        alias.name for node in ast.walk(tree)
+        alias.name
+        for node in ast.walk(tree)
         if isinstance(node, ast.ImportFrom)
         for alias in node.names
     }
@@ -82,4 +84,3 @@ def test_bridge_handle_api_request_dispatches_three_paths():
     """The public three-endpoint surface (status/map/sync) is intact."""
     assert hasattr(HealthAssistantBridgeProvider, "handle_api_request")
     assert inspect.iscoroutinefunction(HealthAssistantBridgeProvider.handle_api_request)
-

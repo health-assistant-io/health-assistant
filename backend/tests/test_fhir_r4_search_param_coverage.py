@@ -16,7 +16,8 @@ These tests verify predicate construction for the newly-implemented params
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import Column, Enum as SqlEnum, String
+from sqlalchemy import Column, String
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -43,6 +44,7 @@ def _literal_sql(predicate) -> str:
 # ---------------------------------------------------------------------------
 # value-quantity (Observation)
 # ---------------------------------------------------------------------------
+
 
 class _FakeObservation:
     value_quantity = Column("value_quantity", JSONB)
@@ -94,6 +96,7 @@ def test_value_quantity_dispatched_from_build_resource_filter():
 # criticality (AllergyIntolerance — scalar enum)
 # ---------------------------------------------------------------------------
 
+
 class _FakeAllergy:
     criticality = Column("criticality", SqlEnum)
 
@@ -116,6 +119,7 @@ def test_criticality_missing_column_returns_none():
 # identifier (universal — JSONB list of {system, value})
 # ---------------------------------------------------------------------------
 
+
 class _FakeWithIdentifier:
     identifier = Column("identifier", JSONB)
 
@@ -129,9 +133,7 @@ def test_identifier_bare_value():
 
 
 def test_identifier_system_pipe_value():
-    pred = _jsonb_identifier_match(
-        _FakeWithIdentifier.identifier, "http://example.com/mrn|abc-123"
-    )
+    pred = _jsonb_identifier_match(_FakeWithIdentifier.identifier, "http://example.com/mrn|abc-123")
     compiled = _literal_sql(pred)
     assert "@>" in compiled
     assert '"http://example.com/mrn"' in compiled
@@ -139,9 +141,7 @@ def test_identifier_system_pipe_value():
 
 
 def test_identifier_system_only():
-    pred = _jsonb_identifier_match(
-        _FakeWithIdentifier.identifier, "http://example.com/mrn|"
-    )
+    pred = _jsonb_identifier_match(_FakeWithIdentifier.identifier, "http://example.com/mrn|")
     compiled = _literal_sql(pred)
     assert "@>" in compiled
     assert '"http://example.com/mrn"' in compiled
@@ -155,6 +155,7 @@ def test_identifier_dispatched_from_build_resource_filter():
 # ---------------------------------------------------------------------------
 # Reference fields (performer / sender / recipient / agent / target / partof / parent / author)
 # ---------------------------------------------------------------------------
+
 
 class _FakeWithPerformer:
     performer = Column("performer", JSONB)
@@ -213,6 +214,7 @@ def test_target_dispatched_for_provenance():
 # name / family / given (Patient / Practitioner — JSONB name)
 # ---------------------------------------------------------------------------
 
+
 class _FakePatient:
     name = Column("name", JSONB)
 
@@ -239,6 +241,7 @@ def test_given_search_uses_ilike():
 # gender / active (Patient / Device / Organization / Practitioner)
 # ---------------------------------------------------------------------------
 
+
 class _FakePatientGender:
     gender = Column("gender", String)
     active = Column("active", String)  # Bool in the real model; String suffices for predicate test
@@ -259,6 +262,7 @@ def test_active_dispatched_boolean():
 # medication (MedicationStatement / MedicationRequest)
 # ---------------------------------------------------------------------------
 
+
 class _FakeMedication:
     code = Column("code", JSONB)
 
@@ -276,6 +280,7 @@ def test_medication_dispatched_via_code_column():
 # activity (Provenance — CodeableConcept)
 # ---------------------------------------------------------------------------
 
+
 class _FakeProvenance:
     activity = Column("activity", JSONB)
 
@@ -290,6 +295,7 @@ def test_activity_dispatched_via_codeable_concept_match():
 # ---------------------------------------------------------------------------
 # F8 honest advertisement — RESOURCE_PARAMS no longer advertises dropped params
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "resource,param",
@@ -344,6 +350,7 @@ def test_implemented_params_still_advertised():
 
 class _FakeStateObservation:
     """Observation with all the value[x] + component slots the new params use."""
+
     value_quantity = Column("value_quantity", JSONB)
     value_string = Column("value_string", String)
     value_codeable_concept = Column("value_codeable_concept", JSONB)
@@ -399,9 +406,7 @@ def test_value_string_missing_column_returns_none():
 
 def test_component_code_dispatched():
     """``component-code=staph-aureus`` matches component[].code.coding[].code."""
-    pred = _build_resource_filter(
-        _FakeStateObservation, "component-code", "staph-aureus"
-    )
+    pred = _build_resource_filter(_FakeStateObservation, "component-code", "staph-aureus")
     assert pred is not None
     compiled = _literal_sql(pred)
     assert "staph-aureus" in compiled

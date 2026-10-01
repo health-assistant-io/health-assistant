@@ -41,9 +41,7 @@ async def _live_user(current_user: TokenData):
     """The live row behind the session (is_active/ver already verified)."""
     user = await get_user_by_id(current_user.user_id)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 
@@ -129,9 +127,7 @@ async def disable_my_mfa(
     sessions — §9 Bearer clients are unaffected by design).
     """
     user = await _live_user(current_user)
-    if not getattr(user, "mfa_secret_enc", None) and not getattr(
-        user, "mfa_pending", None
-    ):
+    if not getattr(user, "mfa_secret_enc", None) and not getattr(user, "mfa_pending", None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA is not active on this account.",

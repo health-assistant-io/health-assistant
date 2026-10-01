@@ -5,11 +5,11 @@ previous key after rotating the primary), ``_kid`` tagging, and the opt-in
 ``context`` binding that stops an encrypted blob being replayed into another
 row. Legacy values (no ``_kid``, no envelope) keep decrypting.
 """
+
 from __future__ import annotations
 
 import pytest
 from cryptography.fernet import Fernet
-
 from integrations.sdk.secrets import (
     KEY_ID_MARKER,
     SECRET_MARKER,

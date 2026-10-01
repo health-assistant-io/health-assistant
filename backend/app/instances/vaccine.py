@@ -4,10 +4,10 @@ Tenant- (+ optional patient-) scoped ILIKE over the FHIR ``vaccine_code.text``
 JSONB field and the ``lot_number`` column. Excludes soft-deleted rows.
 Self-registers.
 """
-from uuid import UUID
-from typing import Optional
 
-from sqlalchemy import select, or_
+from uuid import UUID
+
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.instances._helpers import code_text, ilike_pattern, iso
@@ -18,7 +18,7 @@ from app.models.fhir.vaccine import PatientImmunization
 async def search(
     db: AsyncSession,
     tenant_id: UUID,
-    patient_id: Optional[UUID],
+    patient_id: UUID | None,
     q: str,
     limit: int,
 ) -> list[dict]:
@@ -33,9 +33,7 @@ async def search(
     )
     if patient_id is not None:
         stmt = stmt.where(PatientImmunization.patient_id == patient_id)
-    stmt = stmt.order_by(
-        PatientImmunization.administered_at.desc().nullslast()
-    ).limit(limit)
+    stmt = stmt.order_by(PatientImmunization.administered_at.desc().nullslast()).limit(limit)
 
     result = await db.execute(stmt)
     hits: list[dict] = []

@@ -1,8 +1,9 @@
 """Diagnostic Report FHIR schemas"""
 
-from typing import Optional, Dict, Any, List
-from uuid import UUID
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -10,50 +11,50 @@ class DiagnosticReportBase(BaseModel):
     """Base diagnostic report schema"""
 
     status: str = Field(default="final", description="Report status")
-    code: Dict[str, Any] = Field(..., description="Report code object")
-    subject: Dict[str, Any] = Field(..., description="Patient reference")
+    code: dict[str, Any] = Field(..., description="Report code object")
+    subject: dict[str, Any] = Field(..., description="Patient reference")
 
 
 class DiagnosticReportCreate(DiagnosticReportBase):
     """Diagnostic report creation schema"""
 
     tenant_id: UUID
-    conclusion: Optional[str] = None
-    effective_datetime: Optional[datetime] = None
-    issued: Optional[datetime] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    category: Optional[Dict[str, Any]] = None
-    conclusion_code: Optional[Dict[str, Any]] = None
-    presented_form: Optional[Dict[str, Any]] = None
+    conclusion: str | None = None
+    effective_datetime: datetime | None = None
+    issued: datetime | None = None
+    performer: list[dict[str, Any]] | None = None
+    category: dict[str, Any] | None = None
+    conclusion_code: dict[str, Any] | None = None
+    presented_form: dict[str, Any] | None = None
 
 
 class DiagnosticReportUpdate(BaseModel):
     """Diagnostic report update schema"""
 
-    status: Optional[str] = None
-    code: Optional[Dict[str, Any]] = None
-    subject: Optional[Dict[str, Any]] = None
-    conclusion: Optional[str] = None
-    effective_datetime: Optional[datetime] = None
-    issued: Optional[datetime] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    category: Optional[Dict[str, Any]] = None
-    conclusion_code: Optional[Dict[str, Any]] = None
-    presented_form: Optional[Dict[str, Any]] = None
+    status: str | None = None
+    code: dict[str, Any] | None = None
+    subject: dict[str, Any] | None = None
+    conclusion: str | None = None
+    effective_datetime: datetime | None = None
+    issued: datetime | None = None
+    performer: list[dict[str, Any]] | None = None
+    category: dict[str, Any] | None = None
+    conclusion_code: dict[str, Any] | None = None
+    presented_form: dict[str, Any] | None = None
 
 
 class DiagnosticReportResponse(DiagnosticReportBase):
     """Diagnostic report response schema"""
 
     id: UUID
-    conclusion: Optional[str] = None
-    effective_datetime: Optional[datetime] = None
-    issued: Optional[datetime] = None
-    performer: Optional[List[Dict[str, Any]]] = None
-    category: Optional[Dict[str, Any]] = None
-    conclusion_code: Optional[Dict[str, Any]] = None
-    presented_form: Optional[Dict[str, Any]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    conclusion: str | None = None
+    effective_datetime: datetime | None = None
+    issued: datetime | None = None
+    performer: list[dict[str, Any]] | None = None
+    category: dict[str, Any] | None = None
+    conclusion_code: dict[str, Any] | None = None
+    presented_form: dict[str, Any] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)

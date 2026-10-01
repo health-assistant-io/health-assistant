@@ -1,62 +1,67 @@
-import pytest
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from integrations.base import BaseHealthProvider, BaseConfigFlow
+import pytest
+from integrations.base import BaseConfigFlow, BaseHealthProvider
+
 from app.core.integration_registry import IntegrationRegistry
+
 
 @pytest.mark.asyncio
 async def test_integration_registry_loads_manifests():
     registry = IntegrationRegistry()
-    
+
     # Mock os.listdir to pretend 'dev_dummy' exists
-    with patch("os.listdir") as mock_listdir, \
-         patch("os.path.isdir") as mock_isdir, \
-         patch("os.path.exists") as mock_exists, \
-         patch("builtins.open", new_callable=MagicMock) as mock_open:
-         
+    with (
+        patch("os.listdir") as mock_listdir,
+        patch("os.path.isdir") as mock_isdir,
+        patch("os.path.exists") as mock_exists,
+        patch("builtins.open", new_callable=MagicMock) as mock_open,
+    ):
         mock_listdir.return_value = ["dev_dummy"]
         mock_isdir.return_value = True
         mock_exists.return_value = True
-        
+
         # Setup mock open context manager
         file_mock = MagicMock()
         file_mock.read.return_value = '{"domain": "dev_dummy", "name": "Dummy"}'
         mock_open.return_value.__enter__.return_value = file_mock
-        
+
         registry._load_manifests()
-        
+
         manifests = registry.get_all_manifests()
         assert len(manifests) == 1
         assert manifests[0]["domain"] == "dev_dummy"
-        
+
+
 @pytest.mark.asyncio
 async def test_integration_registry_initialize():
     registry = IntegrationRegistry()
-    
+
     # Mock db
     mock_db = MagicMock()
     mock_result = MagicMock()
-    
+
     # Create a mock SystemIntegration row
     mock_si = MagicMock()
     mock_si.domain = "dev_dummy"
     mock_si.is_enabled = True
-    
+
     mock_result.scalars().all.return_value = [mock_si]
-    
+
     async def mock_execute(*args, **kwargs):
         return mock_result
-        
+
     mock_db.execute = mock_execute
-    
-    with patch.object(registry, "_load_manifests"), \
-         patch.object(registry, "_load_integration") as mock_load_int:
-         
+
+    with (
+        patch.object(registry, "_load_manifests"),
+        patch.object(registry, "_load_integration") as mock_load_int,
+    ):
         registry._manifests = {"dev_dummy": {}}
-        
+
         await registry.initialize(mock_db)
-        
+
         # Ensure it tried to load the dev_dummy integration because it was enabled.
         # Item 5 of integrations-sdk-improvements: initialize now passes
         # the per-domain system_config (None for the mock → coerced to {}).
@@ -87,8 +92,10 @@ async def test_integration_registry_default_enabled_when_no_db_row():
     async def _capture(domain, *, system_config=None):
         loaded.append(domain)
 
-    with patch.object(registry, "_load_manifests", lambda: None), \
-         patch.object(registry, "_load_integration", _capture):
+    with (
+        patch.object(registry, "_load_manifests", lambda: None),
+        patch.object(registry, "_load_integration", _capture),
+    ):
         await registry.initialize(mock_db)
 
     assert sorted(loaded) == ["dev_dummy", "other"], (
@@ -118,12 +125,13 @@ async def test_integration_registry_skips_explicitly_disabled():
     async def _capture(domain, *, system_config=None):
         loaded.append(domain)
 
-    with patch.object(registry, "_load_manifests", lambda: None), \
-         patch.object(registry, "_load_integration", _capture):
+    with (
+        patch.object(registry, "_load_manifests", lambda: None),
+        patch.object(registry, "_load_integration", _capture),
+    ):
         await registry.initialize(mock_db)
 
     assert loaded == ["other"], "only the disabled domain must be skipped"
-
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +215,7 @@ def test_sdk_base_no_longer_imports_asyncio_or_legacy_exceptions():
 
     src = inspect.getsource(sdk_base)
     assert "import asyncio" not in src, (
-        "sdk/base.py should not import asyncio — fetch_json (the only user) "
-        "has been removed"
+        "sdk/base.py should not import asyncio — fetch_json (the only user) has been removed"
     )
     assert "IntegrationAuthError" not in src, (
         "sdk/base.py should not reference IntegrationAuthError — fetch_json "
@@ -232,6 +239,7 @@ def test_sdk_base_declares_clinical_events_opt_in_hook_with_safe_defaults():
     ``pull_clinical_events`` with safe defaults so existing providers that
     don't opt in are unaffected. Source-level guard for the contract."""
     import inspect
+
     from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     # Defaults — False / [] so the engine's ``_opt_in`` probe skips
@@ -260,6 +268,7 @@ def test_clinical_event_create_is_reexported_from_sdk():
     SDK re-exports the schema so providers can build event payloads in
     ``pull_clinical_events`` without reaching into ``app.schemas``."""
     from integrations.sdk import ClinicalEventCreate
+
     from app.schemas.clinical_event import ClinicalEventCreate as SchemaSource
 
     assert ClinicalEventCreate is SchemaSource, (
@@ -273,6 +282,7 @@ def test_sdk_base_declares_examinations_opt_in_hook_with_safe_defaults():
     providers that don't opt in are unaffected. Mirrors the clinical-events
     contract test above."""
     import inspect
+
     from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert hasattr(SDKBaseProvider, "supports_examinations")
@@ -297,6 +307,7 @@ def test_examination_create_is_reexported_from_sdk():
     SDK re-exports the schema so providers can build exam payloads in
     ``pull_examinations`` without reaching into ``app.schemas``."""
     from integrations.sdk import ExaminationCreate
+
     from app.schemas.examination import ExaminationCreate as SchemaSource
 
     assert ExaminationCreate is SchemaSource, (
@@ -322,9 +333,7 @@ def test_sdk_base_declares_catalog_proposals_opt_in_hook_with_safe_defaults():
     assert hasattr(SDKBaseProvider, "supports_catalog_proposals")
     assert hasattr(SDKBaseProvider, "pull_catalog_proposals")
 
-    supports_src = inspect.getsource(
-        SDKBaseProvider.supports_catalog_proposals
-    )
+    supports_src = inspect.getsource(SDKBaseProvider.supports_catalog_proposals)
     assert "return False" in supports_src, (
         "supports_catalog_proposals must default to False — flipping it to "
         "True would opt every existing integration into the catalog-proposal "
@@ -374,9 +383,7 @@ def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
     assert hasattr(SDKBaseProvider, "pull_hitl_proposals")
     assert hasattr(SDKBaseProvider, "handle_proposal_resolution")
 
-    supports_src = inspect.getsource(
-        SDKBaseProvider.supports_hitl_proposals
-    )
+    supports_src = inspect.getsource(SDKBaseProvider.supports_hitl_proposals)
     assert "return False" in supports_src, (
         "supports_hitl_proposals must default to False — flipping it to "
         "True would opt every existing integration into the HITL pull "
@@ -402,8 +409,7 @@ def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
     provider = _P()
     coro = provider.handle_proposal_resolution(None, uuid.uuid4(), None)
     assert hasattr(coro, "__await__"), (
-        "handle_proposal_resolution must be async so the resolver can "
-        "``await`` it unconditionally"
+        "handle_proposal_resolution must be async so the resolver can ``await`` it unconditionally"
     )
     assert asyncio.run(coro) is None, (
         "handle_proposal_resolution must default to a no-op (return None) "
@@ -413,12 +419,9 @@ def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
     # Source-level guard: the default body should explicitly return None
     # so a future revert that drops the ``return`` doesn't implicitly
     # return None (works but loses the documented contract).
-    cb_src = inspect.getsource(
-        SDKBaseProvider.handle_proposal_resolution
-    )
+    cb_src = inspect.getsource(SDKBaseProvider.handle_proposal_resolution)
     assert "return None" in cb_src, (
-        "handle_proposal_resolution must explicitly ``return None`` — "
-        "documents the no-op contract"
+        "handle_proposal_resolution must explicitly ``return None`` — documents the no-op contract"
     )
 
 
@@ -443,9 +446,7 @@ def test_proposal_outcome_is_reexported_from_sdk():
     from integrations.sdk import ProposalOutcome
     from integrations.sdk.proposals import ProposalOutcome as OutcomeSource
 
-    assert ProposalOutcome is OutcomeSource, (
-        "SDK re-export must alias the spec, not duplicate it"
-    )
+    assert ProposalOutcome is OutcomeSource, "SDK re-export must alias the spec, not duplicate it"
 
 
 # ---------------------------------------------------------------------------
@@ -487,9 +488,7 @@ async def test_load_integration_passes_system_config_to_setup():
     FakeConfigFlow.__module__ = "fake_config_flow"
 
     fake_module = SimpleNamespace(FakeProvider=FakeProvider, __name__="fake_provider")
-    fake_flow_module = SimpleNamespace(
-        FakeConfigFlow=FakeConfigFlow, __name__="fake_config_flow"
-    )
+    fake_flow_module = SimpleNamespace(FakeConfigFlow=FakeConfigFlow, __name__="fake_config_flow")
 
     with patch("importlib.import_module") as mock_import:
         mock_import.side_effect = [fake_module, fake_flow_module]

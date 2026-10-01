@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Integration sync helper.
 
 Centralizes the FHIR/telemetry split logic that lives at the boundary of:
@@ -18,21 +19,22 @@ manual endpoint now delegate here so the error contract, sync-log shape,
 and cursor management stay in lockstep.
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.converters import utcnow as _now
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
 from app.services.fhir_helpers import coerce_patient_id
-from app.core.converters import utcnow as _now
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +73,14 @@ def _opt_in(provider: Any, hook_name: str) -> bool:
     except Exception:
         logger.warning(
             "provider %s.%s raised; treating as not-supported",
-            type(provider).__name__, hook_name,
+            type(provider).__name__,
+            hook_name,
             exc_info=True,
         )
         return False
 
 
-def _obs_value(obs: Observation) -> Optional[float]:
+def _obs_value(obs: Observation) -> float | None:
     """Best-effort numeric extraction for telemetry column mapping.
 
     Returns ``None`` for any non-numeric observation, which makes the
@@ -101,9 +104,7 @@ def _obs_value(obs: Observation) -> Optional[float]:
         return None
 
 
-async def fetch_biomarker_definitions(
-    db: AsyncSession, observations: List[Observation]
-) -> dict:
+async def fetch_biomarker_definitions(db: AsyncSession, observations: list[Observation]) -> dict:
     """Bulk-load the BiomarkerDefinition rows referenced by ``observations``.
 
     Returns a dict ``{biomarker_id: BiomarkerDefinition}``.
@@ -111,20 +112,18 @@ async def fetch_biomarker_definitions(
     b_ids = list({obs.biomarker_id for obs in observations if obs.biomarker_id})
     if not b_ids:
         return {}
-    result = await db.execute(
-        select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids))
-    )
+    result = await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(b_ids)))
     return {b.id: b for b in result.scalars().all()}
 
 
 async def apply_telemetry_split(
     db: AsyncSession,
-    observations: List[Observation],
+    observations: list[Observation],
     tenant_id: UUID | str | None,
-    instance_name: Optional[str],
+    instance_name: str | None,
     provider_name: str,
-    integration_id: Optional[UUID | str] = None,
-) -> Tuple[List[TelemetryDataModel], List[Observation]]:
+    integration_id: UUID | str | None = None,
+) -> tuple[list[TelemetryDataModel], list[Observation]]:
     """Apply the FHIR/telemetry split in-memory and queue both row types on ``db``.
 
     Returns ``(telemetry_records, fhir_records)``. The caller is responsible
@@ -135,8 +134,8 @@ async def apply_telemetry_split(
 
     b_defs_map = await fetch_biomarker_definitions(db, observations)
 
-    telemetry_records: List[TelemetryDataModel] = []
-    fhir_records: List[Observation] = []
+    telemetry_records: list[TelemetryDataModel] = []
+    fhir_records: list[Observation] = []
 
     device_id = instance_name or provider_name
 
@@ -160,7 +159,8 @@ async def apply_telemetry_split(
             if value is None:
                 logger.debug(
                     "telemetry split: skipping obs %s (slug=%s) — no numeric value",
-                    getattr(obs, "id", None), slug,
+                    getattr(obs, "id", None),
+                    slug,
                 )
                 continue
 
@@ -213,12 +213,12 @@ class SyncResult:
     fhir_persisted: int = 0
     telemetry_persisted: int = 0
     dropped_invalid: int = 0
-    pushed: Optional[Dict[str, Any]] = None
+    pushed: dict[str, Any] | None = None
     status: str = "success"  # "success" | "partial" | "failed" | "skipped"
-    error: Optional[str] = None
-    error_type: Optional[str] = None  # "auth" | "rate_limit" | "data" | None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    error: str | None = None
+    error_type: str | None = None  # "auth" | "rate_limit" | "data" | None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     proposals_pulled: int = 0
     proposals_applied: int = 0
     hitl_proposals_pulled: int = 0
@@ -237,10 +237,10 @@ class SyncResult:
     # may use this to write a Redis cooldown key so the next beat skips
     # this integration until the cooldown expires. ``None`` when the
     # upstream sent no hint (caller falls back to ``sync_interval``).
-    retry_after_seconds: Optional[float] = None
+    retry_after_seconds: float | None = None
 
 
-async def _try_acquire_lock(integration_id: UUID) -> Tuple[bool, str]:
+async def _try_acquire_lock(integration_id: UUID) -> tuple[bool, str]:
     """Acquire the Redis dedup lock for one integration.
 
     Returns ``(acquired, lock_key)``. Degrades gracefully when Redis is down
@@ -291,7 +291,7 @@ def _cooldown_key(integration_id: UUID) -> str:
     return f"sync_cooldown:{integration_id}"
 
 
-def _clamp_cooldown(seconds: Optional[float]) -> Optional[int]:
+def _clamp_cooldown(seconds: float | None) -> int | None:
     """Clamp the upstream hint to a sane window. Returns ``None`` for
     empty / non-positive values (no cooldown, fall back to ``sync_interval``).
     """
@@ -306,7 +306,7 @@ def _clamp_cooldown(seconds: Optional[float]) -> Optional[int]:
     return int(max(_COOLDOWN_MIN_SECONDS, min(value, _COOLDOWN_MAX_SECONDS)))
 
 
-async def set_rate_limit_cooldown(integration_id: UUID, retry_after_seconds: Optional[float]) -> None:
+async def set_rate_limit_cooldown(integration_id: UUID, retry_after_seconds: float | None) -> None:
     """Write the rate-limit cooldown key for this integration.
 
     Degrades gracefully when Redis is unavailable (logs + returns) — the
@@ -321,7 +321,9 @@ async def set_rate_limit_cooldown(integration_id: UUID, retry_after_seconds: Opt
 
         await redis_client.set(_cooldown_key(integration_id), "1", ex=ttl)
         logger.info(
-            "Rate-limit cooldown set for %s: %ds", integration_id, ttl,
+            "Rate-limit cooldown set for %s: %ds",
+            integration_id,
+            ttl,
         )
     except Exception:
         logger.warning(
@@ -377,6 +379,8 @@ async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
     Rate-limit and skip outcomes are silent (transient / no action needed).
     """
     try:
+        from sqlalchemy import select
+
         from app.models.enums import (
             NotificationCategory,
             NotificationSeverity,
@@ -385,14 +389,11 @@ async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
             RecipientKind,
             Role,
         )
-        from app.services.notification_service import emit
-        from sqlalchemy import select
         from app.models.user_model import UserModel
+        from app.services.notification_service import emit
 
         tenant_id = integration.tenant_id
-        targets: list[dict] = [
-            {"kind": RecipientKind.USER.value, "id": str(integration.user_id)}
-        ]
+        targets: list[dict] = [{"kind": RecipientKind.USER.value, "id": str(integration.user_id)}]
 
         is_failure = result.status == "failed" and result.error_type in ("auth", "data")
         total_new = result.fhir_persisted + result.telemetry_persisted
@@ -403,10 +404,7 @@ async def _notify_sync_outcome(integration: Any, result: SyncResult) -> None:
             severity = NotificationSeverity.WARNING
             ntype = NotificationType.SYNC_FAILURE
             title = f"{integration.provider} sync failed"
-            body = (
-                result.error
-                or "The integration sync failed and may need re-authorization."
-            )
+            body = result.error or "The integration sync failed and may need re-authorization."
             async with AsyncSessionLocal() as session:
                 admin_ids = [
                     row[0]
@@ -479,6 +477,7 @@ async def run_sync(
         IntegrationAuthError,
         IntegrationRateLimitError,
     )
+
     from app.models.user_integration import IntegrationStatus, IntegrationSyncLog
 
     started = _now()
@@ -493,20 +492,16 @@ async def run_sync(
 
     async def _debug(title: str, payload: dict, level: str = "info") -> None:
         if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-            try:
-                await provider.log_debug_payload(
-                    integration, title, payload, level=level
-                )
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                await provider.log_debug_payload(integration, title, payload, level=level)
 
-    result: Optional[SyncResult] = None
+    result: SyncResult | None = None
     try:
         # ---- pull ----
         observations_data = await provider.pull_data(integration)
         pulled = len(observations_data) if observations_data else 0
 
-        observations: List[Observation] = []
+        observations: list[Observation] = []
         dropped_invalid = 0
         if observations_data:
             for obs_data in observations_data:
@@ -541,9 +536,7 @@ async def run_sync(
 
         map_result = await map_observations_to_biomarkers(db, observations)
         dropped_invalid = (
-            map_result.get("dropped_invalid", 0)
-            if isinstance(map_result, dict)
-            else 0
+            map_result.get("dropped_invalid", 0) if isinstance(map_result, dict) else 0
         )
 
         # ---- telemetry / FHIR split ----
@@ -580,10 +573,10 @@ async def run_sync(
                 events_data = events_data or []
                 events_pulled = len(events_data)
                 if events_data:
+                    from app.services.clinical_event_service import create_event
                     from app.services.integration_actor import (
                         resolve_integration_actor,
                     )
-                    from app.services.clinical_event_service import create_event
 
                     actor = await resolve_integration_actor(db, integration)
                     for ev in events_data:
@@ -598,8 +591,7 @@ async def run_sync(
                             events_written += 1
                         except Exception as ev_err:
                             logger.warning(
-                                "create_event failed for integration %s event "
-                                "%r: %s",
+                                "create_event failed for integration %s event %r: %s",
                                 integration.id,
                                 getattr(ev, "external_id", None),
                                 ev_err,
@@ -607,15 +599,18 @@ async def run_sync(
             except Exception as ev_pull_err:
                 logger.warning(
                     "pull_clinical_events failed for %s: %s",
-                    integration.provider, ev_pull_err,
+                    integration.provider,
+                    ev_pull_err,
                 )
             else:
                 if events_pulled and events_written < events_pulled:
                     logger.info(
                         "clinical-events sync: provider %s pulled %d, wrote "
                         "%d (%d failed create_event)",
-                        integration.provider, events_pulled,
-                        events_written, events_pulled - events_written,
+                        integration.provider,
+                        events_pulled,
+                        events_written,
+                        events_pulled - events_written,
                     )
 
         # ---- examinations (opt-in hook, workstream E.3) ----
@@ -636,7 +631,7 @@ async def run_sync(
         # just pulled+persisted above. Keyed by the upstream external_id
         # the provider set on ``ExaminationCreate``; value is the resulting
         # exam's UUID. Empty when the provider doesn't opt into exams.
-        exam_by_external_id: Dict[str, UUID] = {}
+        exam_by_external_id: dict[str, UUID] = {}
         supports_exams = _opt_in(provider, "supports_examinations")
         if supports_exams:
             try:
@@ -644,11 +639,11 @@ async def run_sync(
                 exams_data = exams_data or []
                 exams_pulled = len(exams_data)
                 if exams_data:
-                    from app.services.integration_actor import (
-                        resolve_integration_actor,
-                    )
                     from app.services.examination_service import (
                         create_examination,
+                    )
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
                     )
 
                     actor = await resolve_integration_actor(db, integration)
@@ -659,20 +654,15 @@ async def run_sync(
                                 actor,
                                 exam_payload,
                                 source_integration_id=integration.id,
-                                external_id=getattr(
-                                    exam_payload, "external_id", None
-                                ),
+                                external_id=getattr(exam_payload, "external_id", None),
                             )
                             exams_written += 1
                             ext_id = getattr(exam_payload, "external_id", None)
                             if ext_id and created_exam is not None:
-                                exam_by_external_id[str(ext_id)] = (
-                                    created_exam.id
-                                )
+                                exam_by_external_id[str(ext_id)] = created_exam.id
                         except Exception as exam_err:
                             logger.warning(
-                                "create_examination failed for integration "
-                                "%s exam %r: %s",
+                                "create_examination failed for integration %s exam %r: %s",
                                 integration.id,
                                 getattr(exam_payload, "external_id", None),
                                 exam_err,
@@ -680,15 +670,18 @@ async def run_sync(
             except Exception as exam_pull_err:
                 logger.warning(
                     "pull_examinations failed for %s: %s",
-                    integration.provider, exam_pull_err,
+                    integration.provider,
+                    exam_pull_err,
                 )
             else:
                 if exams_pulled and exams_written < exams_pulled:
                     logger.info(
                         "examinations sync: provider %s pulled %d, wrote %d "
                         "(%d failed create_examination)",
-                        integration.provider, exams_pulled,
-                        exams_written, exams_pulled - exams_written,
+                        integration.provider,
+                        exams_pulled,
+                        exams_written,
+                        exams_pulled - exams_written,
                     )
 
         # ---- catalog proposals (opt-in hook, workstream F) ----
@@ -708,9 +701,7 @@ async def run_sync(
         supports_proposals = _opt_in(provider, "supports_catalog_proposals")
         if supports_proposals:
             try:
-                proposals_data = await provider.pull_catalog_proposals(
-                    integration
-                )
+                proposals_data = await provider.pull_catalog_proposals(integration)
                 proposals_data = proposals_data or []
                 proposals_pulled = len(proposals_data)
                 if proposals_data:
@@ -721,9 +712,7 @@ async def run_sync(
                         resolve_integration_actor,
                     )
 
-                    actor = await resolve_integration_actor(
-                        db, integration
-                    )
+                    actor = await resolve_integration_actor(db, integration)
                     dropped_by_cap = 0
                     for idx, proposal in enumerate(proposals_data):
                         if idx >= INTEGRATION_MAX_PROPOSALS_PER_SYNC:
@@ -732,36 +721,40 @@ async def run_sync(
                                 "catalog-proposals sync: provider %s returned "
                                 "%d proposals — cap is %d; dropping the last "
                                 "%d.",
-                                integration.provider, proposals_pulled,
+                                integration.provider,
+                                proposals_pulled,
                                 INTEGRATION_MAX_PROPOSALS_PER_SYNC,
                                 dropped_by_cap,
                             )
                             break
                         try:
-                            result = await apply_proposal(
-                                db, actor, integration, proposal
-                            )
+                            result = await apply_proposal(db, actor, integration, proposal)
                             if result.created:
                                 proposals_applied += 1
                         except Exception as proposal_err:
                             logger.warning(
                                 "apply_proposal failed for integration %s "
                                 "proposal #%d (kind=%s): %s",
-                                integration.id, idx,
-                                getattr(proposal, "kind", "?"), proposal_err,
+                                integration.id,
+                                idx,
+                                getattr(proposal, "kind", "?"),
+                                proposal_err,
                             )
             except Exception as proposals_pull_err:
                 logger.warning(
                     "pull_catalog_proposals failed for %s: %s",
-                    integration.provider, proposals_pull_err,
+                    integration.provider,
+                    proposals_pull_err,
                 )
             else:
                 if proposals_pulled and proposals_applied < proposals_pulled:
                     logger.info(
                         "catalog-proposals sync: provider %s pulled %d, "
                         "applied %d new (%d already existed or failed)",
-                        integration.provider, proposals_pulled,
-                        proposals_applied, proposals_pulled - proposals_applied,
+                        integration.provider,
+                        proposals_pulled,
+                        proposals_applied,
+                        proposals_pulled - proposals_applied,
                     )
 
         # ---- HITL proposals (opt-in hook, workstream G) ----
@@ -801,20 +794,20 @@ async def run_sync(
                                 "hitl-proposals sync: provider %s returned "
                                 "%d proposals — cap is %d; dropping the "
                                 "last %d.",
-                                integration.provider, hitl_pulled,
+                                integration.provider,
+                                hitl_pulled,
                                 INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC,
                                 hitl_dropped_by_cap,
                             )
                             break
                         try:
-                            proposal_type = getattr(
-                                spec, "proposal_type", None
-                            )
+                            proposal_type = getattr(spec, "proposal_type", None)
                             if not proposal_type:
                                 logger.warning(
                                     "hitl-proposals sync: provider %s spec "
                                     "#%d missing proposal_type — skipping",
-                                    integration.provider, idx,
+                                    integration.provider,
+                                    idx,
                                 )
                                 continue
                             _, created = await _create_hitl_proposal(
@@ -824,9 +817,7 @@ async def run_sync(
                                 patient_id=getattr(spec, "patient_id", None),
                                 proposal_type=proposal_type,
                                 title=getattr(spec, "title", "(untitled)"),
-                                proposed_payload=getattr(
-                                    spec, "proposed_payload", {}
-                                ),
+                                proposed_payload=getattr(spec, "proposed_payload", {}),
                                 context=getattr(spec, "context", {}) or {},
                                 created_by=integration.user_id,
                             )
@@ -835,29 +826,31 @@ async def run_sync(
                                 # Fire the HITL notification only for newly-
                                 # inserted rows so re-syncs don't spam the
                                 # inbox. Best-effort; failures logged.
-                                await _emit_hitl_proposal_notification(
-                                    integration, spec
-                                )
+                                await _emit_hitl_proposal_notification(integration, spec)
                         except Exception as spec_err:
                             logger.warning(
                                 "create_proposal failed for integration %s "
                                 "HITL spec #%d (type=%s): %s",
-                                integration.id, idx,
+                                integration.id,
+                                idx,
                                 getattr(spec, "proposal_type", "?"),
                                 spec_err,
                             )
             except Exception as hitl_pull_err:
                 logger.warning(
                     "pull_hitl_proposals failed for %s: %s",
-                    integration.provider, hitl_pull_err,
+                    integration.provider,
+                    hitl_pull_err,
                 )
             else:
                 if hitl_pulled and hitl_inserted < hitl_pulled:
                     logger.info(
                         "hitl-proposals sync: provider %s pulled %d, "
                         "inserted %d new (%d already existed or failed)",
-                        integration.provider, hitl_pulled,
-                        hitl_inserted, hitl_pulled - hitl_inserted,
+                        integration.provider,
+                        hitl_pulled,
+                        hitl_inserted,
+                        hitl_pulled - hitl_inserted,
                     )
 
         # ---- documents (opt-in hook, workstream C) ----
@@ -886,14 +879,14 @@ async def run_sync(
                 docs_data = docs_data or []
                 docs_pulled = len(docs_data)
                 if docs_data:
+                    from app.services.concept_service import (
+                        resolve_concept_by_slug,
+                    )
                     from app.services.document_service import (
                         ingest_document_bytes,
                     )
                     from app.services.integration_actor import (
                         resolve_integration_actor,
-                    )
-                    from app.services.concept_service import (
-                        resolve_concept_by_slug,
                     )
 
                     actor = await resolve_integration_actor(db, integration)
@@ -905,32 +898,25 @@ async def run_sync(
                             dropped_by_count_cap += 1
                             continue
                         content = getattr(doc_spec, "content", b"") or b""
-                        if (
-                            bytes_this_sync + len(content)
-                            > INTEGRATION_MAX_DOC_BYTES_PER_SYNC
-                        ):
+                        if bytes_this_sync + len(content) > INTEGRATION_MAX_DOC_BYTES_PER_SYNC:
                             dropped_by_byte_cap += 1
                             logger.warning(
                                 "documents sync: provider %s doc #%d (%d "
                                 "bytes) would exceed the %d-byte per-sync "
                                 "cap — dropping",
-                                integration.provider, idx, len(content),
+                                integration.provider,
+                                idx,
+                                len(content),
                                 INTEGRATION_MAX_DOC_BYTES_PER_SYNC,
                             )
                             continue
                         try:
-                            exam_ext_id = getattr(
-                                doc_spec, "examination_external_id", None
+                            exam_ext_id = getattr(doc_spec, "examination_external_id", None)
+                            resolved_exam_id: UUID | None = (
+                                exam_by_external_id.get(str(exam_ext_id)) if exam_ext_id else None
                             )
-                            resolved_exam_id: Optional[UUID] = (
-                                exam_by_external_id.get(str(exam_ext_id))
-                                if exam_ext_id
-                                else None
-                            )
-                            category_slug = getattr(
-                                doc_spec, "category_concept_slug", None
-                            )
-                            resolved_category_id: Optional[UUID] = (
+                            category_slug = getattr(doc_spec, "category_concept_slug", None)
+                            resolved_category_id: UUID | None = (
                                 await resolve_concept_by_slug(
                                     db,
                                     str(category_slug),
@@ -940,12 +926,9 @@ async def run_sync(
                                 else None
                             )
                             await ingest_document_bytes(
-                                filename=getattr(doc_spec, "filename", None)
-                                or "unknown",
+                                filename=getattr(doc_spec, "filename", None) or "unknown",
                                 content=content,
-                                content_type=getattr(
-                                    doc_spec, "content_type", None
-                                ),
+                                content_type=getattr(doc_spec, "content_type", None),
                                 tenant_id=actor.tenant_id,
                                 patient_id=integration.patient_id,
                                 owner_id=actor.user_id,
@@ -967,17 +950,15 @@ async def run_sync(
                                 # can't fake it); external_id comes
                                 # from the DocumentPull spec.
                                 source_integration_id=integration.id,
-                                external_id=getattr(
-                                    doc_spec, "external_id", None
-                                ),
+                                external_id=getattr(doc_spec, "external_id", None),
                             )
                             docs_written += 1
                             bytes_this_sync += len(content)
                         except Exception as doc_err:
                             logger.warning(
-                                "ingest_document_bytes failed for "
-                                "integration %s doc #%d (%r): %s",
-                                integration.id, idx,
+                                "ingest_document_bytes failed for integration %s doc #%d (%r): %s",
+                                integration.id,
+                                idx,
                                 getattr(doc_spec, "filename", "?"),
                                 doc_err,
                             )
@@ -985,7 +966,8 @@ async def run_sync(
                         logger.warning(
                             "documents sync: provider %s returned %d "
                             "documents — count cap is %d; dropped %d",
-                            integration.provider, docs_pulled,
+                            integration.provider,
+                            docs_pulled,
                             INTEGRATION_MAX_DOCS_PER_SYNC,
                             dropped_by_count_cap,
                         )
@@ -994,20 +976,24 @@ async def run_sync(
                             "documents sync: provider %s dropped %d "
                             "documents that would have exceeded the "
                             "%d-byte per-sync cap",
-                            integration.provider, dropped_by_byte_cap,
+                            integration.provider,
+                            dropped_by_byte_cap,
                             INTEGRATION_MAX_DOC_BYTES_PER_SYNC,
                         )
             except Exception as docs_pull_err:
                 logger.warning(
                     "pull_documents failed for %s: %s",
-                    integration.provider, docs_pull_err,
+                    integration.provider,
+                    docs_pull_err,
                 )
             else:
                 if docs_pulled and docs_written < docs_pulled:
                     logger.info(
                         "documents sync: provider %s pulled %d, wrote %d "
                         "(%d dropped by cap or failed ingest)",
-                        integration.provider, docs_pulled, docs_written,
+                        integration.provider,
+                        docs_pulled,
+                        docs_written,
                         docs_pulled - docs_written,
                     )
 
@@ -1045,15 +1031,12 @@ async def run_sync(
                                 actor,
                                 med_payload,
                                 source_integration_id=integration.id,
-                                external_id=getattr(
-                                    med_payload, "external_id", None
-                                ),
+                                external_id=getattr(med_payload, "external_id", None),
                             )
                             meds_written += 1
                         except Exception as med_err:
                             logger.warning(
-                                "add_patient_medication failed for "
-                                "integration %s med %r: %s",
+                                "add_patient_medication failed for integration %s med %r: %s",
                                 integration.id,
                                 getattr(med_payload, "external_id", None),
                                 med_err,
@@ -1061,7 +1044,8 @@ async def run_sync(
             except Exception as meds_pull_err:
                 logger.warning(
                     "pull_medications failed for %s: %s",
-                    integration.provider, meds_pull_err,
+                    integration.provider,
+                    meds_pull_err,
                 )
 
         # ---- allergies (opt-in hook, Phase 4 Route A) ----
@@ -1077,11 +1061,11 @@ async def run_sync(
                 allergy_data = allergy_data or []
                 allergies_pulled = len(allergy_data)
                 if allergy_data:
-                    from app.services.integration_actor import (
-                        resolve_integration_actor,
-                    )
                     from app.services.allergy_service import (
                         add_patient_allergy,
+                    )
+                    from app.services.integration_actor import (
+                        resolve_integration_actor,
                     )
 
                     actor = await resolve_integration_actor(db, integration)
@@ -1092,15 +1076,12 @@ async def run_sync(
                                 actor,
                                 allergy_payload,
                                 source_integration_id=integration.id,
-                                external_id=getattr(
-                                    allergy_payload, "external_id", None
-                                ),
+                                external_id=getattr(allergy_payload, "external_id", None),
                             )
                             allergies_written += 1
                         except Exception as allergy_err:
                             logger.warning(
-                                "add_patient_allergy failed for integration "
-                                "%s allergy %r: %s",
+                                "add_patient_allergy failed for integration %s allergy %r: %s",
                                 integration.id,
                                 getattr(allergy_payload, "external_id", None),
                                 allergy_err,
@@ -1108,7 +1089,8 @@ async def run_sync(
             except Exception as allergies_pull_err:
                 logger.warning(
                     "pull_allergies failed for %s: %s",
-                    integration.provider, allergies_pull_err,
+                    integration.provider,
+                    allergies_pull_err,
                 )
 
         # ---- immunizations (opt-in hook, Phase 4 Route A) ----
@@ -1139,9 +1121,7 @@ async def run_sync(
                                 actor,
                                 immun_payload,
                                 source_integration_id=integration.id,
-                                external_id=getattr(
-                                    immun_payload, "external_id", None
-                                ),
+                                external_id=getattr(immun_payload, "external_id", None),
                             )
                             immuns_written += 1
                         except Exception as immun_err:
@@ -1155,7 +1135,8 @@ async def run_sync(
             except Exception as immuns_pull_err:
                 logger.warning(
                     "pull_immunizations failed for %s: %s",
-                    integration.provider, immuns_pull_err,
+                    integration.provider,
+                    immuns_pull_err,
                 )
 
         # ---- push ----
@@ -1163,12 +1144,10 @@ async def run_sync(
         # pattern used by the eight ``pull_*`` families). The default detects
         # a real ``push_data`` override, so ``dev_dummy`` and ``fhir_server``
         # are still called; push-only-default providers skip the no-op.
-        push_result: Optional[Dict[str, Any]] = None
+        push_result: dict[str, Any] | None = None
         try:
             if _opt_in(provider, "supports_push"):
-                push_result = await provider.push_data(
-                    integration, {"status": f"{source}_sync"}
-                )
+                push_result = await provider.push_data(integration, {"status": f"{source}_sync"})
         except Exception as push_err:
             logger.warning("Push failed for %s: %s", integration.provider, push_err)
             push_result = None
@@ -1249,12 +1228,8 @@ async def run_sync(
     except IntegrationRateLimitError as e:
         await db.rollback()
         logger.warning("Rate limit for %s: %s", integration.provider, e)
-        await _debug(
-            "Rate Limit Error", {"error": str(e), "source": source}, level="warning"
-        )
-        _write_failed_log(
-            db, integration, started, "Rate Limit Exceeded. Will retry later."
-        )
+        await _debug("Rate Limit Error", {"error": str(e), "source": source}, level="warning")
+        _write_failed_log(db, integration, started, "Rate Limit Exceeded. Will retry later.")
         await db.commit()
         # Surface the upstream's Retry-After hint (if any) so the
         # caller can avoid hammering the upstream on every beat. The
@@ -1309,14 +1284,10 @@ async def run_sync(
                     observations=observations_data or [],
                 )
             except Exception:
-                logger.exception(
-                    "post_sync_notifications raised for %s", integration.id
-                )
+                logger.exception("post_sync_notifications raised for %s", integration.id)
 
 
-def _write_failed_log(
-    db: AsyncSession, integration: Any, started: datetime, error: str
-) -> None:
+def _write_failed_log(db: AsyncSession, integration: Any, started: datetime, error: str) -> None:
     """Queue a ``failed`` IntegrationSyncLog row (caller commits)."""
     from app.models.user_integration import IntegrationSyncLog
 
@@ -1333,9 +1304,7 @@ def _write_failed_log(
     )
 
 
-async def _filter_specs_by_owner_type_prefs(
-    integration: Any, specs: list[Any]
-) -> list[Any]:
+async def _filter_specs_by_owner_type_prefs(integration: Any, specs: list[Any]) -> list[Any]:
     """Drop specs whose declared ``type_id`` the integration owner has muted.
 
     Per-integration-instance preferences live at
@@ -1358,9 +1327,7 @@ async def _filter_specs_by_owner_type_prefs(
         async with AsyncSessionLocal() as session:
             row = (
                 await session.execute(
-                    select(UserModel.settings).where(
-                        UserModel.id == integration.user_id
-                    )
+                    select(UserModel.settings).where(UserModel.id == integration.user_id)
                 )
             ).scalar_one_or_none()
         user_settings = dict(row or {})
@@ -1391,9 +1358,7 @@ async def _filter_specs_by_owner_type_prefs(
     return out
 
 
-async def _emit_hitl_proposal_notification(
-    integration: Any, spec: Any
-) -> None:
+async def _emit_hitl_proposal_notification(integration: Any, spec: Any) -> None:
     """Fire the HITL notification for one newly-inserted proposal.
 
     Mirrors the chat-side ``_notify_hitl_proposal`` shape but keyed on
@@ -1480,10 +1445,7 @@ async def _emit_provider_notifications(
 
     Failures are logged and swallowed — never propagate to the sync result.
     """
-    if (
-        provider is None
-        or not getattr(provider, "supports_notifications", lambda: False)()
-    ):
+    if provider is None or not getattr(provider, "supports_notifications", lambda: False)():
         return
 
     context = {
@@ -1534,12 +1496,8 @@ async def _emit_provider_notifications(
             category = _coerce_enum(
                 spec.category, NotificationCategory, NotificationCategory.INTEGRATION
             )
-            severity = _coerce_enum(
-                spec.severity, NotificationSeverity, NotificationSeverity.INFO
-            )
-            ntype = _coerce_enum(
-                spec.type, NotificationType, NotificationType.INTEGRATION_EVENT
-            )
+            severity = _coerce_enum(spec.severity, NotificationSeverity, NotificationSeverity.INFO)
+            ntype = _coerce_enum(spec.type, NotificationType, NotificationType.INTEGRATION_EVENT)
 
             patient_id = spec.patient_id or integration.patient_id
             targets = spec.targets_override or [
@@ -1594,9 +1552,9 @@ async def post_sync_notifications(
     status: str,
     started_at: datetime,
     completed_at: datetime,
-    error: Optional[str] = None,
-    error_type: Optional[str] = None,
-    observations: Optional[list[Any]] = None,
+    error: str | None = None,
+    error_type: str | None = None,
+    observations: list[Any] | None = None,
 ) -> None:
     """Best-effort baseline + provider-authored notification dispatch.
 
@@ -1623,13 +1581,9 @@ async def post_sync_notifications(
         logger.exception("Sync-outcome notification failed for %s", integration.id)
     if status in ("success", "partial") and (fhir_persisted + telemetry_persisted) > 0:
         try:
-            await _emit_provider_notifications(
-                provider, integration, result, observations or []
-            )
+            await _emit_provider_notifications(provider, integration, result, observations or [])
         except Exception:
-            logger.exception(
-                "Provider-authored notifications failed for %s", integration.id
-            )
+            logger.exception("Provider-authored notifications failed for %s", integration.id)
 
 
 def _coerce_enum(value: Any, enum_cls: Any, default: Any) -> Any:

@@ -20,16 +20,16 @@ REPO_ROOT = BACKEND_ROOT.parent
 
 
 def _prod_kwargs(**extra):
-    base = dict(
-        APP_ENV="production",
-        DEBUG=False,
-        HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
-        HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-        POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
-        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-        VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
-        VAPID_PRIVATE_KEY="test-vapid-private-key-do-not-use",
-    )
+    base = {
+        "APP_ENV": "production",
+        "DEBUG": False,
+        "HA_SESSION_KEY": "sess-Kq9!" + "Kq9!" * 10,
+        "HA_REFRESH_KEY": "refr-Mt7#" + "Mt7#" * 10,
+        "POSTGRES_PASSWORD": "a-strong-unique-passphrase-9f3kQ",
+        "HA_DATA_KEY": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+        "VAPID_PUBLIC_KEY": "test-vapid-public-key-do-not-use",
+        "VAPID_PRIVATE_KEY": "test-vapid-private-key-do-not-use",
+    }
     base.update(extra)
     return base
 
@@ -89,11 +89,7 @@ def test_dockerignore_exists_and_tracked():
     gitignore = (REPO_ROOT / ".gitignore").read_text()
     assert (
         ".dockerignore"
-        not in [
-            line.strip()
-            for line in gitignore.splitlines()
-            if not line.strip().startswith("#")
-        ]
+        not in [line.strip() for line in gitignore.splitlines() if not line.strip().startswith("#")]
         or ".dockerignore" not in gitignore.split()
     )
 

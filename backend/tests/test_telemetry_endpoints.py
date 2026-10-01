@@ -18,13 +18,13 @@ Long-format rewrite (migration ``t1e2l3o4n5g6``): the service queries
 column-attribute lookup. The endpoint ``metric`` parameter is now treated
 as a biomarker slug.
 """
+
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
 TENANT_B = UUID("22222222-2222-2222-2222-222222222222")
@@ -66,6 +66,7 @@ def _override_user(user):
 
 def _clear_overrides():
     from app.main import app
+
     app.dependency_overrides = {}
 
 
@@ -78,9 +79,7 @@ def test_anomaly_detector_method_is_sync():
     """AnomalyDetector.detect_biomarker_anomalies must remain synchronous."""
     from app.services.anomaly_detector import AnomalyDetector
 
-    assert not inspect.iscoroutinefunction(
-        AnomalyDetector.detect_biomarker_anomalies
-    ), (
+    assert not inspect.iscoroutinefunction(AnomalyDetector.detect_biomarker_anomalies), (
         "detect_biomarker_anomalies must NOT be async — endpoint uses it "
         "synchronously via get_telemetry_anomalies"
     )
@@ -93,9 +92,7 @@ def test_get_telemetry_anomalies_is_async_and_takes_tenant():
     sig = inspect.signature(get_telemetry_anomalies)
     assert inspect.iscoroutinefunction(get_telemetry_anomalies)
     for required in ("db", "tenant_id", "device_id", "metric"):
-        assert required in sig.parameters, (
-            f"get_telemetry_anomalies must accept {required!r}"
-        )
+        assert required in sig.parameters, f"get_telemetry_anomalies must accept {required!r}"
 
 
 @pytest.mark.asyncio
@@ -159,14 +156,10 @@ async def test_get_data_endpoint_passes_tenant_id(tenant_a_user, async_client):
         captured = {}
 
         async def fake_get(db, tenant_id, device_id, start_date, end_date, metrics=None):
-            captured.update(
-                tenant_id=tenant_id, device_id=device_id
-            )
+            captured.update(tenant_id=tenant_id, device_id=device_id)
             return []
 
-        with patch(
-            "app.api.v1.endpoints.telemetry.get_telemetry_data", new=fake_get
-        ):
+        with patch("app.api.v1.endpoints.telemetry.get_telemetry_data", new=fake_get):
             await async_client.get(
                 "/api/v1/telemetry/data",
                 params={
@@ -190,9 +183,7 @@ async def test_get_summary_endpoint_passes_tenant_id(tenant_a_user, async_client
             captured.update(tenant_id=tenant_id, device_id=device_id)
             return {"date": target_date}
 
-        with patch(
-            "app.api.v1.endpoints.telemetry.get_telemetry_summary", new=fake_summary
-        ):
+        with patch("app.api.v1.endpoints.telemetry.get_telemetry_summary", new=fake_summary):
             await async_client.get(
                 "/api/v1/telemetry/data/summary",
                 params={"date": "2026-01-01"},
@@ -242,7 +233,11 @@ class FakeAsyncSession:
         self.last_query = query
         compiled = str(query)
         # Summary aggregates use GROUP BY slug + min/max/avg/sum/count.
-        if "group by" in compiled.lower() and "slug" in compiled.lower() and "count" in compiled.lower():
+        if (
+            "group by" in compiled.lower()
+            and "slug" in compiled.lower()
+            and "count" in compiled.lower()
+        ):
             return _FakeResult(rows=self._aggregate_rows or [])
         return _FakeResult(rows=self._rows)
 
@@ -328,7 +323,7 @@ async def test_get_telemetry_data_metrics_filter_uses_slug():
     not by JSONB keys."""
     from app.services.telemetry_service import get_telemetry_data
 
-    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
     row1 = _make_telemetry_row(TENANT_A, DEVICE_X, ts, slug="heart-rate", value=70.0)
     row2 = _make_telemetry_row(TENANT_A, DEVICE_X, ts, slug="stress-level", value=5.0)
     session = FakeAsyncSession(rows=[row1, row2])
@@ -404,8 +399,8 @@ async def test_get_telemetry_anomalies_invokes_detector_correctly():
     """A6: the wrapper must call the sync detector with (historical, new)."""
     from app.services import telemetry_service as svc
 
-    ts1 = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    ts2 = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    ts1 = datetime(2026, 1, 1, tzinfo=UTC)
+    ts2 = datetime(2026, 1, 2, tzinfo=UTC)
 
     # Long-format: the anomalies query selects (timestamp, value) tuples.
     fake_rows = [(ts1, 70.0), (ts2, 195.0)]
@@ -433,7 +428,7 @@ async def test_get_telemetry_anomalies_is_tenant_scoped():
     """B3: the query for anomaly history must filter by tenant_id."""
     from app.services.telemetry_service import get_telemetry_anomalies
 
-    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
     session = FakeAsyncSession(rows=[(ts, 70.0), (ts, 72.0)])
     await get_telemetry_anomalies(
         session, tenant_id=TENANT_B, device_id=DEVICE_Y, metric="heart-rate"
@@ -450,11 +445,9 @@ async def test_get_telemetry_anomalies_query_filters_by_slug():
     rather than resolving a column name from an alias map."""
     from app.services.telemetry_service import get_telemetry_anomalies
 
-    ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ts = datetime(2026, 1, 1, tzinfo=UTC)
     session = FakeAsyncSession(rows=[(ts, 70.0), (ts, 72.0)])
-    await get_telemetry_anomalies(
-        session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="spo2"
-    )
+    await get_telemetry_anomalies(session, tenant_id=TENANT_A, device_id=DEVICE_X, metric="spo2")
     sql = str(session.last_query).lower()
     assert "slug" in sql, "Anomalies query must use the slug column directly"
 

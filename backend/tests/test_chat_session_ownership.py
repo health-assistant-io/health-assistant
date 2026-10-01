@@ -12,9 +12,8 @@ or checkpointer attach against it:
 
 from __future__ import annotations
 
-import json
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -91,25 +90,17 @@ async def chat_ownership_setup() -> AsyncIterator[dict]:
         async with AsyncSessionLocal() as db:
             await db.execute(
                 ChatMessage.__table__.delete().where(
-                    ChatMessage.__table__.c.session_id.in_(
-                        [owner_session_id, victim_session_id]
-                    )
+                    ChatMessage.__table__.c.session_id.in_([owner_session_id, victim_session_id])
                 )
             )
             await db.execute(
-                ChatSession.__table__.delete().where(
-                    ChatSession.__table__.c.tenant_id == tenant_id
-                )
+                ChatSession.__table__.delete().where(ChatSession.__table__.c.tenant_id == tenant_id)
             )
             await db.execute(
-                UserModel.__table__.delete().where(
-                    UserModel.__table__.c.tenant_id == tenant_id
-                )
+                UserModel.__table__.delete().where(UserModel.__table__.c.tenant_id == tenant_id)
             )
             await db.execute(
-                TenantModel.__table__.delete().where(
-                    TenantModel.__table__.c.id == tenant_id
-                )
+                TenantModel.__table__.delete().where(TenantModel.__table__.c.id == tenant_id)
             )
             await db.commit()
 

@@ -14,6 +14,7 @@ Uses mocked DB to keep tests fast and deterministic. The model-level tests
 (test_fhir_r4_*.py) cover the serialization + converter layers in depth;
 this file covers the HTTP wiring + status codes + headers.
 """
+
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -45,6 +46,7 @@ def fake_user():
     (``require_fhir_scopes``) exercised by every facade CRUD route.
     """
     from app.schemas.user import TokenData
+
     return TokenData(
         user_id=uuid4(),
         tenant_id=uuid4(),
@@ -58,6 +60,7 @@ def fake_user():
 @pytest.fixture
 def override_auth(app_with_facade, fake_user):
     from app.core.security import get_api_principal
+
     app_with_facade.dependency_overrides[get_api_principal] = lambda: fake_user
     yield
     app_with_facade.dependency_overrides = {}
@@ -67,9 +70,12 @@ def override_auth(app_with_facade, fake_user):
 def override_db(app_with_facade):
     """Provide a mock AsyncSession for crud handlers."""
     from app.core.database import get_db
+
     fake_db = AsyncMock()
+
     async def _yield():
         yield fake_db
+
     app_with_facade.dependency_overrides[get_db] = _yield
     yield fake_db
     app_with_facade.dependency_overrides = {}
@@ -78,6 +84,7 @@ def override_db(app_with_facade):
 # ---------------------------------------------------------------------------
 # Metadata (no auth)
 # ---------------------------------------------------------------------------
+
 
 def test_metadata(client):
     r = client.get("/api/v1/fhir/R4/metadata")
@@ -100,6 +107,7 @@ def test_metadata_cache_control(client):
 # Unknown resource type
 # ---------------------------------------------------------------------------
 
+
 def test_unknown_resource_type_returns_404(client, override_auth, override_db):
     r = client.get("/api/v1/fhir/R4/NotARealResource")
     assert r.status_code == 404
@@ -110,10 +118,12 @@ def test_unknown_resource_type_returns_404(client, override_auth, override_db):
 # Search
 # ---------------------------------------------------------------------------
 
+
 def test_search_returns_bundle_shape(client, override_auth, override_db, fake_user, monkeypatch):
     """GET /{Resource} must return a Bundle with type=searchset."""
     # Mock the crud.search to return a known Bundle.
     from app.facade import crud
+
     expected_bundle = {
         "resourceType": "Bundle",
         "type": "searchset",
@@ -142,8 +152,10 @@ def test_search_no_auth_returns_401(client):
 # Read (incl. tombstone 410)
 # ---------------------------------------------------------------------------
 
+
 def test_read_not_found(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(crud, "read", AsyncMock(return_value=None))
     r = client.get("/api/v1/fhir/R4/Patient/abc")
     assert r.status_code == 404
@@ -154,6 +166,7 @@ def test_read_not_found(client, override_auth, override_db, monkeypatch):
 
 def test_read_tombstone_returns_410(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(crud, "read", AsyncMock(return_value={"_tombstone": True, "id": "abc"}))
     r = client.get("/api/v1/fhir/R4/Patient/abc")
     assert r.status_code == 410
@@ -163,10 +176,13 @@ def test_read_tombstone_returns_410(client, override_auth, override_db, monkeypa
 
 def test_read_success(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(
         crud,
         "read",
-        AsyncMock(return_value={"resourceType": "Patient", "id": "abc", "meta": {"versionId": "1"}}),
+        AsyncMock(
+            return_value={"resourceType": "Patient", "id": "abc", "meta": {"versionId": "1"}}
+        ),
     )
     r = client.get("/api/v1/fhir/R4/Patient/abc")
     assert r.status_code == 200
@@ -179,12 +195,20 @@ def test_read_success(client, override_auth, override_db, monkeypatch):
 # Create (201 + Location)
 # ---------------------------------------------------------------------------
 
+
 def test_create_returns_201_and_location(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(
         crud,
         "create",
-        AsyncMock(return_value={"resourceType": "Patient", "id": "abc", "meta": {"versionId": "1", "lastUpdated": "2024-01-01T00:00:00Z"}}),
+        AsyncMock(
+            return_value={
+                "resourceType": "Patient",
+                "id": "abc",
+                "meta": {"versionId": "1", "lastUpdated": "2024-01-01T00:00:00Z"},
+            }
+        ),
     )
     r = client.post("/api/v1/fhir/R4/Patient", json={"resourceType": "Patient"})
     assert r.status_code == 201
@@ -196,6 +220,7 @@ def test_create_returns_201_and_location(client, override_auth, override_db, mon
 def test_create_invalid_returns_400(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
     from app.services.fhir_helpers import FhirSerializationError
+
     monkeypatch.setattr(crud, "create", AsyncMock(side_effect=FhirSerializationError("bad")))
     r = client.post("/api/v1/fhir/R4/Patient", json={"resourceType": "Patient"})
     assert r.status_code == 400
@@ -207,8 +232,10 @@ def test_create_invalid_returns_400(client, override_auth, override_db, monkeypa
 # Delete (204 + subsequent 410)
 # ---------------------------------------------------------------------------
 
+
 def test_delete_returns_204(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(crud, "delete", AsyncMock(return_value=True))
     r = client.delete("/api/v1/fhir/R4/Patient/abc")
     assert r.status_code == 204
@@ -216,6 +243,7 @@ def test_delete_returns_204(client, override_auth, override_db, monkeypatch):
 
 def test_delete_not_found_returns_404(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(crud, "delete", AsyncMock(return_value=False))
     r = client.delete("/api/v1/fhir/R4/Patient/abc")
     assert r.status_code == 404
@@ -225,12 +253,16 @@ def test_delete_not_found_returns_404(client, override_auth, override_db, monkey
 # Update (200 + body)
 # ---------------------------------------------------------------------------
 
+
 def test_update_success(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(
         crud,
         "update",
-        AsyncMock(return_value={"resourceType": "Patient", "id": "abc", "meta": {"versionId": "2"}}),
+        AsyncMock(
+            return_value={"resourceType": "Patient", "id": "abc", "meta": {"versionId": "2"}}
+        ),
     )
     r = client.put("/api/v1/fhir/R4/Patient/abc", json={"resourceType": "Patient"})
     assert r.status_code == 200
@@ -239,6 +271,7 @@ def test_update_success(client, override_auth, override_db, monkeypatch):
 
 def test_update_not_found(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
+
     monkeypatch.setattr(crud, "update", AsyncMock(return_value=None))
     r = client.put("/api/v1/fhir/R4/Patient/abc", json={"resourceType": "Patient"})
     assert r.status_code == 404
@@ -247,6 +280,7 @@ def test_update_not_found(client, override_auth, override_db, monkeypatch):
 # ---------------------------------------------------------------------------
 # Interaction gating (read-only resources reject create/update/delete)
 # ---------------------------------------------------------------------------
+
 
 def test_readonly_resource_rejects_create(client, override_auth, override_db):
     # Medication is registered as read-only.

@@ -9,6 +9,7 @@ Covers:
 - fhir_to_document_reference_orm() reverse conversion
 - Round-trip preserves key fields
 """
+
 import datetime as _dt
 from uuid import uuid4
 
@@ -20,19 +21,19 @@ from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resourc
 
 
 def _make_doc(**overrides) -> DocumentModel:
-    defaults = dict(
-        id=str(uuid4()),
-        filename="test.pdf",
-        file_path="/uploads/test.pdf",
-        owner_id=str(uuid4()),
-        tenant_id=str(uuid4()),
-        patient_id=None,
-        examination_id=None,
-        status="uploaded",
-        progress=0,
-        created_at=_dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.timezone.utc),
-        updated_at=_dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.timezone.utc),
-    )
+    defaults = {
+        "id": str(uuid4()),
+        "filename": "test.pdf",
+        "file_path": "/uploads/test.pdf",
+        "owner_id": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "patient_id": None,
+        "examination_id": None,
+        "status": "uploaded",
+        "progress": 0,
+        "created_at": _dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.UTC),
+        "updated_at": _dt.datetime(2024, 3, 15, 10, 0, tzinfo=_dt.UTC),
+    }
     defaults.update(overrides)
     return DocumentModel(**defaults)
 
@@ -40,6 +41,7 @@ def _make_doc(**overrides) -> DocumentModel:
 # ---------------------------------------------------------------------------
 # to_fhir_dict — basic projection
 # ---------------------------------------------------------------------------
+
 
 def test_doc_ref_minimal_to_fhir_dict():
     doc = _make_doc()
@@ -136,7 +138,7 @@ def test_doc_ref_context_encounter():
 
 
 def test_doc_ref_context_period_from_created_at():
-    doc = _make_doc(created_at=_dt.datetime(2024, 6, 1, 12, 30, tzinfo=_dt.timezone.utc))
+    doc = _make_doc(created_at=_dt.datetime(2024, 6, 1, 12, 30, tzinfo=_dt.UTC))
     fhir = doc.to_fhir_dict()
     assert fhir["context"]["period"]["start"].startswith("2024-06-01")
 
@@ -144,6 +146,7 @@ def test_doc_ref_context_period_from_created_at():
 # ---------------------------------------------------------------------------
 # Reverse: fhir_to_document_reference_orm
 # ---------------------------------------------------------------------------
+
 
 def _canonical_doc_ref(**overrides) -> dict:
     base = {
@@ -216,6 +219,7 @@ def test_fhir_to_doc_ref_orm_no_content_uses_defaults():
 # Round-trip
 # ---------------------------------------------------------------------------
 
+
 def test_round_trip_orm_to_fhir_to_orm():
     """F11: round-trip ORM → FHIR → ORM preserves practitioner_id (the FHIR
     `author` reference target). owner_id is an internal-only User FK and is
@@ -228,7 +232,7 @@ def test_round_trip_orm_to_fhir_to_orm():
         filename="my.pdf",
         patient_id=pid,
         owner_id=str(uuid4()),  # owner_id doesn't survive FHIR round-trip
-        practitioner_id=pid2,   # this is the FHIR-canonical Practitioner ref
+        practitioner_id=pid2,  # this is the FHIR-canonical Practitioner ref
         examination_id=eid,
         status="extracted",
     )
@@ -266,12 +270,16 @@ def test_round_trip_fhir_to_orm_to_fhir():
 
     assert fhir_out["subject"]["reference"] == fhir_in["subject"]["reference"]
     assert fhir_out["author"][0]["reference"] == fhir_in["author"][0]["reference"]
-    assert fhir_out["content"][0]["attachment"]["title"] == fhir_in["content"][0]["attachment"]["title"]
+    assert (
+        fhir_out["content"][0]["attachment"]["title"]
+        == fhir_in["content"][0]["attachment"]["title"]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
+
 
 def test_canonical_doc_ref_validates():
     fhir = _canonical_doc_ref()

@@ -1,7 +1,8 @@
+from typing import Any
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from typing import Dict, Any
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -21,8 +22,9 @@ async def _clean_anatomy_tables():
     ``ondelete=CASCADE``, so deleting structures cascades to their relations
     and event links automatically.
     """
-    from app.core.database import AsyncSessionLocal
     from sqlalchemy import delete
+
+    from app.core.database import AsyncSessionLocal
     from app.models.anatomy_model import AnatomyStructure
 
     async with AsyncSessionLocal() as db:
@@ -32,7 +34,7 @@ async def _clean_anatomy_tables():
 
 
 @pytest.fixture
-def anatomy_node_payload() -> Dict[str, Any]:
+def anatomy_node_payload() -> dict[str, Any]:
     return {
         "name": "Test Left Ventricle",
         "slug": "test-left-ventricle",
@@ -46,7 +48,7 @@ def anatomy_node_payload() -> Dict[str, Any]:
 
 @pytest_asyncio.fixture
 async def sample_anatomy_nodes(
-    async_client: AsyncClient, system_admin_headers: Dict[str, str]
+    async_client: AsyncClient, system_admin_headers: dict[str, str]
 ) -> list[str]:
     # Create two nodes for relationship tests
     node1 = {
@@ -62,15 +64,11 @@ async def sample_anatomy_nodes(
         "is_custom": True,
     }
 
-    res1 = await async_client.post(
-        "/api/v1/anatomy", json=node1, headers=system_admin_headers
-    )
+    res1 = await async_client.post("/api/v1/anatomy", json=node1, headers=system_admin_headers)
     assert res1.status_code == 200
     id1 = res1.json()["id"]
 
-    res2 = await async_client.post(
-        "/api/v1/anatomy", json=node2, headers=system_admin_headers
-    )
+    res2 = await async_client.post("/api/v1/anatomy", json=node2, headers=system_admin_headers)
     assert res2.status_code == 200
     id2 = res2.json()["id"]
 
@@ -80,8 +78,8 @@ async def sample_anatomy_nodes(
 @pytest.mark.asyncio
 async def test_create_and_get_anatomy_structure(
     async_client: AsyncClient,
-    system_admin_headers: Dict[str, str],
-    anatomy_node_payload: Dict[str, Any],
+    system_admin_headers: dict[str, str],
+    anatomy_node_payload: dict[str, Any],
 ):
     # 1. Create
     res = await async_client.post(
@@ -95,9 +93,7 @@ async def test_create_and_get_anatomy_structure(
     node_id = data["id"]
 
     # 2. Get by ID
-    res_get = await async_client.get(
-        f"/api/v1/anatomy/{node_id}", headers=system_admin_headers
-    )
+    res_get = await async_client.get(f"/api/v1/anatomy/{node_id}", headers=system_admin_headers)
     assert res_get.status_code == 200
     assert res_get.json()["id"] == node_id
 
@@ -112,7 +108,7 @@ async def test_create_and_get_anatomy_structure(
 @pytest.mark.asyncio
 async def test_anatomy_relations_and_traversal(
     async_client: AsyncClient,
-    system_admin_headers: Dict[str, str],
+    system_admin_headers: dict[str, str],
     sample_anatomy_nodes: list[str],
 ):
     source_id, target_id = sample_anatomy_nodes
@@ -155,7 +151,7 @@ async def test_anatomy_relations_and_traversal(
 @pytest.mark.asyncio
 async def test_anatomy_graph_multi_hop_depth(
     async_client: AsyncClient,
-    system_admin_headers: Dict[str, str],
+    system_admin_headers: dict[str, str],
 ):
     """Multi-hop BFS: A -> B -> C, verify depth controls how many hops are returned."""
     a = await async_client.post(
@@ -235,7 +231,7 @@ async def test_anatomy_graph_multi_hop_depth(
 
 @pytest.mark.asyncio
 async def test_anatomy_import_upsert_logic(
-    async_client: AsyncClient, system_admin_headers: Dict[str, str]
+    async_client: AsyncClient, system_admin_headers: dict[str, str]
 ):
     import_payload = {
         "nodes": [

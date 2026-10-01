@@ -1,6 +1,7 @@
+import contextlib
 import datetime
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import or_, select, update
@@ -71,9 +72,7 @@ class MedicalProcessingService:
                 color="#6b7280",  # Default gray
                 status=ConceptStatus.ACTIVE,
             )
-            category_entity.kind_tags.append(
-                ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY)
-            )
+            category_entity.kind_tags.append(ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY))
             self.db.add(category_entity)
             await self.db.flush()
 
@@ -81,7 +80,7 @@ class MedicalProcessingService:
 
     async def aggregate_examination_text(
         self, examination_id: UUID
-    ) -> Tuple[str, List[DocumentModel]]:
+    ) -> tuple[str, list[DocumentModel]]:
         """Aggregate text from all documents in an examination marked for extraction"""
         result = await self.db.execute(
             select(DocumentModel).where(
@@ -91,9 +90,7 @@ class MedicalProcessingService:
             )
         )
         docs = result.scalars().all()
-        docs_with_text = [
-            d for d in docs if d.extracted_text and len(d.extracted_text.strip()) > 0
-        ]
+        docs_with_text = [d for d in docs if d.extracted_text and len(d.extracted_text.strip()) > 0]
 
         if not docs_with_text:
             return "", []
@@ -103,9 +100,7 @@ class MedicalProcessingService:
         )
         return cumulative_text, docs_with_text
 
-    async def get_clinical_context(
-        self, examination: ExaminationModel
-    ) -> Dict[str, Any]:
+    async def get_clinical_context(self, examination: ExaminationModel) -> dict[str, Any]:
         """Get clinical context (previous findings, catalogs) for LLM extraction"""
         # 1. Reference Data (previous findings in this exam)
         reference_data = {
@@ -113,8 +108,7 @@ class MedicalProcessingService:
             "impressions": examination.impressions or "",
             "medications": [m.to_dict() for m in examination.medications],
             "biomarkers": [
-                {"name": o.code.get("text"), "value": o.raw_value}
-                for o in examination.observations
+                {"name": o.code.get("text"), "value": o.raw_value} for o in examination.observations
             ],
         }
 
@@ -145,9 +139,7 @@ class MedicalProcessingService:
             biomarker_catalog.append(entry)
 
         med_defs = await self.db.execute(select(MedicationCatalog))
-        medication_catalog = [
-            {"id": str(m.id), "name": m.name} for m in med_defs.scalars().all()
-        ]
+        medication_catalog = [{"id": str(m.id), "name": m.name} for m in med_defs.scalars().all()]
 
         return {
             "reference_data": reference_data,
@@ -156,8 +148,8 @@ class MedicalProcessingService:
         }
 
     async def extract_examination_metadata(
-        self, text: str, tenant_id: UUID, user_id: Optional[UUID] = None
-    ) -> Optional[ExaminationMetadataExtract]:
+        self, text: str, tenant_id: UUID, user_id: UUID | None = None
+    ) -> ExaminationMetadataExtract | None:
         """Extract high-level examination details from aggregated text"""
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
@@ -176,20 +168,16 @@ class MedicalProcessingService:
         )
         existing_slugs = list(cat_res.scalars().all())
 
-        nlp_extractor = await self.ai_provider_service.get_nlp_extractor(
-            tenant_id, user_id
-        )
-        return await nlp_extractor.parse_examination_metadata(
-            text, known_categories=existing_slugs
-        )
+        nlp_extractor = await self.ai_provider_service.get_nlp_extractor(tenant_id, user_id)
+        return await nlp_extractor.parse_examination_metadata(text, known_categories=existing_slugs)
 
     async def run_extraction_pipeline(
         self,
         examination_id: UUID,
         task_logger: TaskLogger,
         progress_tracker: TaskProgressTracker,
-        user_id: Optional[UUID] = None,
-    ) -> Dict[str, Any]:
+        user_id: UUID | None = None,
+    ) -> dict[str, Any]:
         """Main pipeline orchestration for cumulative extraction"""
 
         # Fetch Examination
@@ -210,20 +198,16 @@ class MedicalProcessingService:
             logger.info(f"Initialized missing date for exam {exam.id} to today.")
 
         # 1. Aggregate Text
-        cumulative_text, docs_with_text = await self.aggregate_examination_text(
-            examination_id
-        )
+        cumulative_text, docs_with_text = await self.aggregate_examination_text(examination_id)
         if not cumulative_text:
             await progress_tracker.update_examination_status("completed", 100)
             await task_logger.log_success(message="No text found for analysis")
             return {"status": "completed", "message": "No text found"}
 
         await progress_tracker.update_examination_status("clinical_analysis", 10)
-        await task_logger.log_progress(
-            "text_aggregated", 10, num_docs=len(docs_with_text)
-        )
+        await task_logger.log_progress("text_aggregated", 10, num_docs=len(docs_with_text))
 
-        # 1.5. Check if we need to auto-extract metadata (only if the exam is marked or has placeholders)
+        # 1.5. Check if we need to auto-extract metadata (only if the exam is marked or has placeholders)  # noqa: E501 -- long template/message string; reflow when touched
         if exam.auto_extract_metadata:
             await progress_tracker.update_examination_status("analyzing_metadata", 15)
             await task_logger.log_progress("analyzing_metadata", 15)
@@ -234,12 +218,10 @@ class MedicalProcessingService:
                 if metadata:
                     # Update exam with extracted metadata
                     if metadata.examination_date:
-                        try:
+                        with contextlib.suppress(ValueError):
                             exam.examination_date = datetime.datetime.strptime(
                                 metadata.examination_date, "%Y-%m-%d"
                             ).date()
-                        except ValueError:
-                            pass
 
                     if metadata.category:
                         category_entity = await self.resolve_category(
@@ -248,7 +230,9 @@ class MedicalProcessingService:
                         exam.category_concept_id = category_entity.id
                     if metadata.clinical_notes:
                         if exam.notes:
-                            exam.notes = f"{exam.notes}\n\nAI Extracted Notes:\n{metadata.clinical_notes}"
+                            exam.notes = (
+                                f"{exam.notes}\n\nAI Extracted Notes:\n{metadata.clinical_notes}"
+                            )
                         else:
                             exam.notes = metadata.clinical_notes
 
@@ -293,9 +277,7 @@ class MedicalProcessingService:
                                     exam.doctors.append(existing_doctor)
                             else:
                                 # Create new doctor with cleaned name
-                                new_doctor = DoctorModel(
-                                    name=clean_name, tenant_id=exam.tenant_id
-                                )
+                                new_doctor = DoctorModel(name=clean_name, tenant_id=exam.tenant_id)
                                 self.db.add(new_doctor)
                                 await self.db.flush()
                                 exam.doctors.append(new_doctor)
@@ -309,9 +291,7 @@ class MedicalProcessingService:
 
         # 2. Get Context & NLP Extractor
         context = await self.get_clinical_context(exam)
-        nlp_extractor = await self.ai_provider_service.get_nlp_extractor(
-            tenant_id, user_id
-        )
+        nlp_extractor = await self.ai_provider_service.get_nlp_extractor(tenant_id, user_id)
 
         await progress_tracker.update_examination_status("clinical_analysis", 25)
 
@@ -382,29 +362,17 @@ class MedicalProcessingService:
     # are internal to ``persist_results`` and are NOT exposed as delegates.
     # ------------------------------------------------------------------
 
-    async def _process_unknown_biomarkers(
-        self, unknown_bios, nlp_extractor, tenant_id, slug_map
-    ):
-        await process_unknown_biomarkers(
-            self.db, unknown_bios, nlp_extractor, tenant_id, slug_map
-        )
+    async def _process_unknown_biomarkers(self, unknown_bios, nlp_extractor, tenant_id, slug_map):
+        await process_unknown_biomarkers(self.db, unknown_bios, nlp_extractor, tenant_id, slug_map)
 
-    async def _process_unknown_medications(
-        self, unknown_meds, nlp_extractor, tenant_id, name_map
-    ):
-        await process_unknown_medications(
-            self.db, unknown_meds, nlp_extractor, tenant_id, name_map
-        )
+    async def _process_unknown_medications(self, unknown_meds, nlp_extractor, tenant_id, name_map):
+        await process_unknown_medications(self.db, unknown_meds, nlp_extractor, tenant_id, name_map)
 
-    async def _persist_results(
-        self, exam, parsed_data, docs_with_text, slug_map, med_name_map
-    ):
+    async def _persist_results(self, exam, parsed_data, docs_with_text, slug_map, med_name_map):
         """Persist LLM extraction results (Observations + Medications).
 
         Delegates to :func:`app.ai.pipeline.persistence.persist_results`, which
         wraps the delete + recreate in a SAVEPOINT (audit item C2) so a failure
         during re-extraction rolls back to the pre-delete state.
         """
-        await persist_results(
-            self.db, exam, parsed_data, docs_with_text, slug_map, med_name_map
-        )
+        await persist_results(self.db, exam, parsed_data, docs_with_text, slug_map, med_name_map)

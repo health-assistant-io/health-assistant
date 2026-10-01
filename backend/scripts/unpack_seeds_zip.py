@@ -18,7 +18,7 @@ import argparse
 import shutil
 import sys
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DATA_SEEDS = Path(__file__).parent.parent / "data" / "seeds"
@@ -72,7 +72,7 @@ def main() -> None:
 
     backup_dir = None
     if not args.no_backup:
-        backup_dir = args.out / f".backup-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        backup_dir = args.out / f".backup-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
         backup_dir.mkdir(parents=True, exist_ok=True)
         for name in SEED_FILENAMES & names:
             src = args.out / name

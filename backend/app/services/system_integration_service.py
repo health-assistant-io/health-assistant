@@ -13,10 +13,10 @@ Centralising the lookup here keeps the inverted semantic in one place — the
 registry, the user-facing endpoints, and the admin console all ask the same
 question ("is this domain explicitly disabled?") instead of re-deriving it.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Set
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +41,7 @@ async def is_domain_disabled(db: AsyncSession, domain: str) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-async def get_disabled_domains(db: AsyncSession) -> Set[str]:
+async def get_disabled_domains(db: AsyncSession) -> set[str]:
     """Return the set of domains a SYSTEM_ADMIN has explicitly disabled.
 
     Discovered domains **not** in this set are considered enabled. Use this

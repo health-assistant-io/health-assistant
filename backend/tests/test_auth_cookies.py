@@ -417,15 +417,17 @@ async def test_ws_origin_gate_rejects_unknown_origin():
     user = await create_user()
     issued = await sign_in(user)
     client = _ws_client()
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(
             "/api/v1/ws/notifications",
             headers={
                 "cookie": f"nx_access={issued.access_token}",
                 "origin": "https://evil.example",
             },
-        ):
-            pass
+        ),
+    ):
+        pass
 
 
 @pytest.mark.asyncio
@@ -460,15 +462,17 @@ async def test_ws_origin_gate_honors_configured_allowlist():
             },
         ) as ws:
             assert ws is not None
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect(
+        with (
+            pytest.raises(WebSocketDisconnect),
+            client.websocket_connect(
                 "/api/v1/ws/notifications",
                 headers={
                     "cookie": f"nx_access={issued.access_token}",
                     "origin": "https://other.example",
                 },
-            ):
-                pass
+            ),
+        ):
+            pass
     finally:
         monkey.undo()
 

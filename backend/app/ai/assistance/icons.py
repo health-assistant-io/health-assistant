@@ -1,3 +1,4 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """AI-assisted category icon suggestion + generation.
 
 Extracted from ``AIAssistanceService`` (Phase 6c). ``suggest_category_icon``
@@ -9,7 +10,7 @@ the DB, so the delegates intentionally do not pass ``self.db``.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -23,14 +24,12 @@ from app.utils.svg import sanitize_svg
 logger = logging.getLogger(__name__)
 
 
-async def suggest_category_icon(
-    llm, user_input: str, context: Dict[str, Any]
-) -> Dict[str, Any]:
+async def suggest_category_icon(llm, user_input: str, context: dict[str, Any]) -> dict[str, Any]:
     """Suggest Lucide icons based on category name/description"""
-    system_prompt = """You are a UI expert for a medical application. 
+    system_prompt = """You are a UI expert for a medical application.
         The user is creating a medical examination category (e.g., 'Hematology', 'Radiology').
         Suggest 5-8 appropriate Lucide icon names that represent this category.
-        
+
         Rules:
         - Return ONLY the Lucide icon names in PascalCase (e.g., 'Activity', 'Droplet', 'Stethoscope').
         - Ensure the icons are available in the Lucide library.
@@ -54,9 +53,9 @@ async def suggest_category_icon(
 async def generate_category_icon(
     llm,
     user_input: str,
-    reference_image: Optional[str] = None,
-    context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    reference_image: str | None = None,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Generate or refine a custom Lucide-style SVG icon"""
     instruction = context.get("instruction") if context else None
     previous_svg = context.get("previous_svg") if context else None
@@ -89,9 +88,13 @@ async def generate_category_icon(
         if instruction:
             human_prompt += f"\n\nREFINE INSTRUCTION: {instruction}"
         else:
-            human_prompt += "\n\nPlease improve the visual representation while maintaining the style."
+            human_prompt += (
+                "\n\nPlease improve the visual representation while maintaining the style."
+            )
     else:
-        human_prompt = f"Create a professional, minimalistic, and accurate medical icon for: '{user_input}'."
+        human_prompt = (
+            f"Create a professional, minimalistic, and accurate medical icon for: '{user_input}'."
+        )
         if instruction:
             human_prompt += f"\n\nUser Instructions: {instruction}"
         else:
@@ -102,16 +105,14 @@ async def generate_category_icon(
 
     messages = [SystemMessage(content=system_prompt)]
 
-    human_content: List[Dict[str, Any]] = [{"type": "text", "text": human_prompt}]
+    human_content: list[dict[str, Any]] = [{"type": "text", "text": human_prompt}]
     if reference_image:
         # Ensure it has the correct prefix
         if not reference_image.startswith("data:"):
             # Assume it's a jpeg base64 if no prefix
             reference_image = f"data:image/jpeg;base64,{reference_image}"
 
-        human_content.append(
-            {"type": "image_url", "image_url": {"url": reference_image}}
-        )
+        human_content.append({"type": "image_url", "image_url": {"url": reference_image}})
 
     messages.append(HumanMessage(content=human_content))
 

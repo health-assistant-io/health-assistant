@@ -1,10 +1,12 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Dict, Any, List
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
+from typing import Any
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from app.models.enums import (
-    ConceptRelationType,
     CodingSystem,
+    ConceptRelationType,
     HitlTaskStatus,
 )
 
@@ -15,10 +17,10 @@ class AIAssistanceRequest(BaseModel):
         description="The type of assistance requested (e.g., 'fill_biomarker_form', 'define_biomarker', 'define_medication', 'chat')",
     )
     user_input: str = Field(..., description="The natural language input from the user")
-    reference_image: Optional[str] = Field(
+    reference_image: str | None = Field(
         None, description="Optional base64 encoded image for reference (multimodal)"
     )
-    images: Optional[List[str]] = Field(
+    images: list[str] | None = Field(
         None,
         description=(
             "Optional list of image attachments (RFC 2397 data URLs, "
@@ -26,7 +28,7 @@ class AIAssistanceRequest(BaseModel):
             "and capped by the backend. Only used for the ``chat`` task type."
         ),
     )
-    context: Optional[Dict[str, Any]] = Field(
+    context: dict[str, Any] | None = Field(
         default_factory=dict,
         description="Additional context for the AI (e.g., patient_id, session_id)",
     )
@@ -35,10 +37,10 @@ class AIAssistanceRequest(BaseModel):
 class ChatMessageSchema(BaseModel):
     id: UUID
     role: str
-    content: Dict[str, Any]
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    citations: Optional[List[str]] = None
-    tasks: Optional[List[Dict[str, Any]]] = None
+    content: dict[str, Any]
+    tool_calls: list[dict[str, Any]] | None = None
+    citations: list[str] | None = None
+    tasks: list[dict[str, Any]] | None = None
     created_at: Any
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
@@ -46,8 +48,8 @@ class ChatMessageSchema(BaseModel):
 
 class ChatSessionSchema(BaseModel):
     id: UUID
-    title: Optional[str] = None
-    patient_id: Optional[UUID] = None
+    title: str | None = None
+    patient_id: UUID | None = None
     updated_at: Any
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
@@ -55,14 +57,14 @@ class ChatSessionSchema(BaseModel):
 
 class AIAssistanceResponse(BaseModel):
     task_type: str
-    suggested_data: Optional[Dict[str, Any]] = None
-    suggested_icons: Optional[List[str]] = None
-    svg_content: Optional[str] = None
-    justification: Optional[str] = None
-    message: Optional[str] = None
-    session_id: Optional[UUID] = None
+    suggested_data: dict[str, Any] | None = None
+    suggested_icons: list[str] | None = None
+    svg_content: str | None = None
+    justification: str | None = None
+    message: str | None = None
+    session_id: UUID | None = None
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class HitlResolutionRequest(BaseModel):
@@ -71,13 +73,13 @@ class HitlResolutionRequest(BaseModel):
     status: HitlTaskStatus = Field(
         ..., description="Whether the user confirmed or dismissed the proposal."
     )
-    final_payload: Optional[Dict[str, Any]] = Field(
+    final_payload: dict[str, Any] | None = Field(
         None, description="The final (possibly user-edited) payload actually committed"
     )
-    result: Optional[Dict[str, Any]] = Field(
+    result: dict[str, Any] | None = Field(
         None, description="Outcome of the commit (e.g., created resource id)"
     )
-    error: Optional[str] = Field(
+    error: str | None = Field(
         None,
         description="Error message if the commit failed (status should still be 'confirmed' attempt)",
     )
@@ -88,7 +90,7 @@ class HitlResumeRequest(BaseModel):
     one or more proposed task cards. Selectors only — outcomes are read from
     the session's tasks JSONB on the server (never trusted from the client)."""
 
-    message_id: Optional[UUID] = Field(
+    message_id: UUID | None = Field(
         None,
         description="Specific assistant message whose tasks should be summarized. "
         "If omitted, the most recent task-bearing message is used.",
@@ -99,7 +101,7 @@ class AIAssistanceToolSchema(BaseModel):
     name: str
     description: str
     source: str = "built-in"
-    schema_dict: Optional[Dict[str, Any]] = Field(None, alias="schema")
+    schema_dict: dict[str, Any] | None = Field(None, alias="schema")
 
 
 # ---------------------------------------------------------------------------
@@ -113,67 +115,49 @@ class AIAssistanceToolSchema(BaseModel):
 
 
 class ExaminationMagicFillOutput(BaseModel):
-    examination_date: Optional[str] = Field(
+    examination_date: str | None = Field(
         None, description="The date of the examination (ISO format YYYY-MM-DD)"
     )
-    notes: Optional[str] = Field(None, description="Clinical or doctor's notes")
-    patient_notes: Optional[str] = Field(
-        None, description="Patient's notes or reasons for the visit"
-    )
-    category: Optional[str] = Field(
-        None, description="The clinical category SLUG of the examination"
-    )
-    doctor_names: List[str] = Field(
-        default_factory=list, description="Names of doctors involved"
-    )
+    notes: str | None = Field(None, description="Clinical or doctor's notes")
+    patient_notes: str | None = Field(None, description="Patient's notes or reasons for the visit")
+    category: str | None = Field(None, description="The clinical category SLUG of the examination")
+    doctor_names: list[str] = Field(default_factory=list, description="Names of doctors involved")
 
 
 class BiomarkerFormOutput(BaseModel):
-    biomarker_name: Optional[str] = Field(
+    biomarker_name: str | None = Field(
         None, description="The name of the biomarker identified (e.g. Glucose, WBC)"
     )
-    value: Optional[float] = Field(
-        None, description="The numerical value of the biomarker"
-    )
-    unit: Optional[str] = Field(
-        None, description="The unit symbol (e.g., mg/dL, mmol/L)"
-    )
-    note: Optional[str] = Field(
-        None, description="A brief clinical note or observation"
-    )
+    value: float | None = Field(None, description="The numerical value of the biomarker")
+    unit: str | None = Field(None, description="The unit symbol (e.g., mg/dL, mmol/L)")
+    note: str | None = Field(None, description="A brief clinical note or observation")
 
 
 class MedicationFormOutput(BaseModel):
-    medication_name: Optional[str] = Field(
-        None, description="The name of the medication identified"
-    )
-    dosage: Optional[str] = Field(None, description="e.g., 500mg, 1 tablet")
-    frequency_label: Optional[str] = Field(
+    medication_name: str | None = Field(None, description="The name of the medication identified")
+    dosage: str | None = Field(None, description="e.g., 500mg, 1 tablet")
+    frequency_label: str | None = Field(
         None, description="Human readable frequency, e.g., 'Once Daily', 'Twice Daily'"
     )
-    reason: Optional[str] = Field(
-        None, description="The reason for taking the medication"
-    )
-    note: Optional[str] = Field(None, description="Additional instructions or notes")
+    reason: str | None = Field(None, description="The reason for taking the medication")
+    note: str | None = Field(None, description="Additional instructions or notes")
 
 
 class BiomarkerDefinitionOutput(BaseModel):
     name: str = Field(..., description="The full clinical name of the biomarker")
-    category: str = Field(
-        ..., description="Clinical category (e.g., Hematology, Metabolic)"
-    )
+    category: str = Field(..., description="Clinical category (e.g., Hematology, Metabolic)")
     unit_symbol: str = Field(..., description="Preferred unit (e.g., mg/dL, mmol/L)")
     coding_system: str = Field(
         "loinc",
         description="The medical coding system to use (loinc, snomed, or custom)",
     )
-    code: Optional[str] = Field(
+    code: str | None = Field(
         None,
         description="The specific code from the coding system (e.g., '2345-7' for LOINC glucose)",
     )
-    aliases: List[str] = Field(default_factory=list, description="Common abbreviations")
-    reference_range_min: Optional[float] = Field(None, description="Lower bound")
-    reference_range_max: Optional[float] = Field(None, description="Upper bound")
+    aliases: list[str] = Field(default_factory=list, description="Common abbreviations")
+    reference_range_min: float | None = Field(None, description="Lower bound")
+    reference_range_max: float | None = Field(None, description="Upper bound")
     is_telemetry: bool = Field(
         False,
         description="Set to true if this metric is continuously tracked via IoT/wearables (e.g., heart rate, continuous glucose, steps)",
@@ -187,13 +171,11 @@ class MedicationDefinitionOutput(BaseModel):
     indications: str = Field(..., description="What the drug is used for")
     dosage_info: str = Field(..., description="Typical dosage instructions")
     contraindications: str = Field(..., description="When the drug should not be used")
-    side_effects: List[str] = Field(
-        default_factory=list, description="List of common side effects"
-    )
+    side_effects: list[str] = Field(default_factory=list, description="List of common side effects")
 
 
 class CategoryIconSuggestionOutput(BaseModel):
-    suggested_icons: List[str] = Field(
+    suggested_icons: list[str] = Field(
         ...,
         description="List of Lucide icon names (PascalCase, e.g. 'Activity', 'Droplet')",
     )
@@ -201,7 +183,7 @@ class CategoryIconSuggestionOutput(BaseModel):
 
 class CategoryIconGenerationOutput(BaseModel):
     svg_content: str = Field(..., description="Clean, minimalist SVG code for the icon")
-    justification: Optional[str] = Field(
+    justification: str | None = Field(
         None, description="Short explanation of why this icon design was chosen"
     )
 
@@ -212,9 +194,7 @@ class CategoryIconGenerationOutput(BaseModel):
 
 
 class AnatomyImportNode(BaseModel):
-    slug: str = Field(
-        ..., description="Unique kebab-case identifier (e.g., 'left-ventricle')"
-    )
+    slug: str = Field(..., description="Unique kebab-case identifier (e.g., 'left-ventricle')")
     name: str = Field(..., description="Human readable name")
     class_concept_slug: str = Field(
         ...,
@@ -223,13 +203,11 @@ class AnatomyImportNode(BaseModel):
             "'organ-part', 'tissue', 'joint', or 'other-anatomy'"
         ),
     )
-    standard_system: Optional[CodingSystem] = Field(
+    standard_system: CodingSystem | None = Field(
         None, description="Typically LOINC, SNOMED, or CUSTOM"
     )
-    standard_code: Optional[str] = Field(
-        None, description="The official identifier code"
-    )
-    description: Optional[str] = Field(None, description="Brief description")
+    standard_code: str | None = Field(None, description="The official identifier code")
+    description: str | None = Field(None, description="Brief description")
     is_custom: bool = Field(True, description="Always true for AI-generated")
 
 
@@ -240,9 +218,7 @@ class AnatomyImportEdge(BaseModel):
 
 
 class AnatomyGraphDefinitionOutput(BaseModel):
-    nodes: List[AnatomyImportNode] = Field(
-        ..., description="List of anatomical structures"
-    )
-    edges: List[AnatomyImportEdge] = Field(
+    nodes: list[AnatomyImportNode] = Field(..., description="List of anatomical structures")
+    edges: list[AnatomyImportEdge] = Field(
         ..., description="List of relationships between those structures"
     )

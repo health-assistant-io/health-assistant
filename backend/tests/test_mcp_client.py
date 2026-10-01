@@ -14,14 +14,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# These imports don't require fastmcp and don't touch the DB.
-from integrations.sdk.secrets import (
-    SecretCipher,
-    decrypt_fields,
-    encrypt_fields,
-    mask_fields,
-)
 from integrations.mcp_client.security import (
     build_ssl_context,
     get_allowed_commands,
@@ -30,12 +22,19 @@ from integrations.mcp_client.security import (
 )
 from integrations.mcp_client.tool_adapter import (
     MAX_DESCRIPTION_LEN,
+    _extract_text_result,
     filter_and_adapt_tools,
     namespaced_name,
     sanitize_instance_slug,
-    _extract_text_result,
 )
 
+# These imports don't require fastmcp and don't touch the DB.
+from integrations.sdk.secrets import (
+    SecretCipher,
+    decrypt_fields,
+    encrypt_fields,
+    mask_fields,
+)
 
 # --------------------------------------------------------------------------- fixtures
 
@@ -78,11 +77,11 @@ class TestStdioCommandValidation:
         assert "absolute" in reason.lower() or "traversal" in reason.lower()
 
     def test_shell_metachar_rejected(self):
-        ok, reason = validate_stdio_command("npx; rm -rf /", [], None)
+        ok, _reason = validate_stdio_command("npx; rm -rf /", [], None)
         assert not ok
 
     def test_non_string_arg_rejected(self):
-        ok, reason = validate_stdio_command("npx", [123], None)
+        ok, _reason = validate_stdio_command("npx", [123], None)
         assert not ok
 
     def test_blocked_cwd_rejected(self, tmp_path):
@@ -91,7 +90,7 @@ class TestStdioCommandValidation:
         assert "restricted" in reason.lower() or "cwd" in reason.lower()
 
     def test_unknown_command_empty_rejected(self):
-        ok, reason = validate_stdio_command("", [], None)
+        ok, _reason = validate_stdio_command("", [], None)
         assert not ok
 
 
@@ -191,9 +190,7 @@ class TestSecretCipher:
         assert c.decrypt_value({"k": "v"}) == {"k": "v"}
 
     def test_missing_key_raises(self, monkeypatch):
-        with pytest.raises(
-            RuntimeError, match="HA_DATA_KEY is not configured"
-        ):
+        with pytest.raises(RuntimeError, match="HA_DATA_KEY is not configured"):
             SecretCipher(None)
 
 
@@ -237,8 +234,9 @@ class TestConfigFlowSdkHooks:
         assert cf.max_instances_per_user == 5  # MCP_MAX_SERVERS_PER_USER default
 
     def test_prepare_for_storage_encrypts_secrets(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
         import asyncio
+
+        from integrations.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         enc = asyncio.run(
@@ -390,7 +388,7 @@ class TestAdapterEndToEnd:
 
     def test_discover_and_call(self):
         pytest.importorskip("fastmcp")
-        from fastmcp import FastMCP, Client
+        from fastmcp import Client, FastMCP
         from integrations.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
@@ -424,9 +422,7 @@ class TestAdapterEndToEnd:
                 tools = await mcp_connection_manager.list_tools(integration)
                 assert {t.name for t in tools} == {"echo", "add"}
 
-                lc_tools = filter_and_adapt_tools(
-                    integration, tools, mcp_connection_manager
-                )
+                lc_tools = filter_and_adapt_tools(integration, tools, mcp_connection_manager)
                 assert {t.name for t in lc_tools} == {
                     "mcp__echoserver__echo",
                     "mcp__echoserver__add",
@@ -446,7 +442,7 @@ class TestAdapterEndToEnd:
 
     def test_disabled_tools_filtered(self):
         pytest.importorskip("fastmcp")
-        from fastmcp import FastMCP, Client
+        from fastmcp import Client, FastMCP
         from integrations.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
@@ -480,9 +476,7 @@ class TestAdapterEndToEnd:
             mcp_connection_manager._connections[integration.id] = conn
             try:
                 tools = await mcp_connection_manager.list_tools(integration)
-                lc_tools = filter_and_adapt_tools(
-                    integration, tools, mcp_connection_manager
-                )
+                lc_tools = filter_and_adapt_tools(integration, tools, mcp_connection_manager)
                 names = {t.name for t in lc_tools}
                 assert "mcp__s__keep" in names
                 assert "mcp__s__drop" not in names
@@ -527,9 +521,7 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(
-                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-            )
+            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert out == []
 
@@ -567,9 +559,7 @@ class TestAggregator:
         )
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(
-                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-            )
+            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert len(out) == 1
         # webhook was skipped (supports_tools False), mcp was picked up
@@ -601,9 +591,7 @@ class TestAggregator:
         self._patch_registry(monkeypatch, {"mcp_client": provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(
-                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-            )
+            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         # Only the good instance's tool should appear.
         assert len(out) == 1
@@ -637,9 +625,7 @@ class TestAggregator:
         self._patch_registry(monkeypatch, {"mcp_client": provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(
-                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-            )
+            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert len(out) == 1  # capped at 1
 
@@ -668,9 +654,7 @@ class TestAggregator:
         self._patch_registry(monkeypatch, {"web_search": ws_provider})
 
         out = asyncio.run(
-            integration_tool_aggregator.aggregate(
-                db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-            )
+            integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert len(out) == 1
         assert out[0].name == "web_search"
@@ -747,9 +731,7 @@ class TestConfigFlow:
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
-            asyncio.run(
-                cf.validate_input({"transport": "http", "url": "https://x.com"})
-            )
+            asyncio.run(cf.validate_input({"transport": "http", "url": "https://x.com"}))
 
 
 # --------------------------------------------------------------------------- provider
@@ -855,9 +837,7 @@ class TestProvider:
         fake_cm.health = fake_health
         cm_mod.mcp_connection_manager = fake_cm
         try:
-            out = asyncio.run(
-                provider.execute_custom_action(integration, "test_connection")
-            )
+            out = asyncio.run(provider.execute_custom_action(integration, "test_connection"))
             assert "results" in out
             assert out["results"][0]["type"] == "kv"
             assert out["results"][0]["items"]["Status"] == "Connected"
@@ -879,14 +859,10 @@ class TestProvider:
         provider = McpClientProvider()
         # Only GET /status is allowed.
         with pytest.raises(NotImplementedError):
-            asyncio.run(
-                provider.handle_api_request(MagicMock(), "tools", "POST", MagicMock())
-            )
+            asyncio.run(provider.handle_api_request(MagicMock(), "tools", "POST", MagicMock()))
         with pytest.raises(NotImplementedError):
             asyncio.run(
-                provider.handle_api_request(
-                    MagicMock(), "call/my_tool", "POST", MagicMock()
-                )
+                provider.handle_api_request(MagicMock(), "call/my_tool", "POST", MagicMock())
             )
 
 

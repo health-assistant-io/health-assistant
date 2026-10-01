@@ -1,3 +1,4 @@
+# ruff: noqa: RUF043 -- long immutable strings / legacy patterns; reflow when touched
 """Unit tests for ``integrations.sdk.net_guard`` — the SSRF defense layer.
 
 The resolver is injected so the tests never touch the network. The contract
@@ -11,19 +12,18 @@ under test:
   ``INTEGRATION_BLOCK_PRIVATE_RANGES``) and the ``allow_private`` /
   ``allowed_hosts`` args bypass the private check for trusted self-hosted setups.
 """
+
 from __future__ import annotations
 
 import ipaddress
 
 import pytest
-
 from integrations.sdk.exceptions import IntegrationDataError
 from integrations.sdk.net_guard import (
     SSRFBlockedError,
     assert_safe_url,
     is_blocked_ip,
 )
-
 
 # ---------------------------------------------------------------------------
 # is_blocked_ip
@@ -40,12 +40,12 @@ from integrations.sdk.net_guard import (
         "172.16.0.1",
         "192.168.1.1",
         "169.254.169.254",  # AWS/GCP metadata
-        "169.254.170.2",   # ECS metadata
-        "::1",             # IPv6 loopback
-        "fe80::1",         # IPv6 link-local
-        "fc00::1",         # IPv6 unique-local
-        "::",              # IPv6 unspecified
-        "ff00::1",         # IPv6 multicast
+        "169.254.170.2",  # ECS metadata
+        "::1",  # IPv6 loopback
+        "fe80::1",  # IPv6 link-local
+        "fc00::1",  # IPv6 unique-local
+        "::",  # IPv6 unspecified
+        "ff00::1",  # IPv6 multicast
         "::ffff:127.0.0.1",  # IPv4-mapped IPv6 loopback
         "::ffff:169.254.169.254",  # mapped metadata
     ],
@@ -144,9 +144,7 @@ def test_assert_safe_url_allowed_hosts_bypass(monkeypatch):
 def test_assert_safe_url_env_allowed_hosts(monkeypatch):
     monkeypatch.setenv("INTEGRATION_ALLOWED_HOSTS", "lan-fhir.local, my-box")
     resolver = lambda host: ["192.168.1.5"]  # noqa: E731
-    assert assert_safe_url("https://lan-fhir.local/fhir", resolver=resolver) == [
-        "192.168.1.5"
-    ]
+    assert assert_safe_url("https://lan-fhir.local/fhir", resolver=resolver) == ["192.168.1.5"]
 
 
 # ---------------------------------------------------------------------------

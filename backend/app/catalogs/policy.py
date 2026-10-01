@@ -27,13 +27,13 @@ holds and the comparisons below accept either form.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Union
 from uuid import UUID
 
 from app.models.enums import CatalogScope, Role
 
-RoleLike = Union[Role, str]
-ScopeLike = Union[CatalogScope, str]
+RoleLike = Union[Role, str]  # noqa: UP007 -- legacy annotation; modernize when touched
+ScopeLike = Union[CatalogScope, str]  # noqa: UP007 -- legacy annotation; modernize when touched
 
 
 class CatalogPermissionDenied(Exception):
@@ -57,7 +57,7 @@ class CatalogConflict(Exception):
         *,
         slug: str,
         existing_id: str,
-        existing_name: Optional[str],
+        existing_name: str | None,
         target_scope: str,
     ) -> None:
         self.slug = slug
@@ -65,16 +65,14 @@ class CatalogConflict(Exception):
         self.existing_name = existing_name
         self.target_scope = target_scope
         label = f"'{existing_name}'" if existing_name else f"id {existing_id}"
-        super().__init__(
-            f"a {target_scope}-scope item with slug '{slug}' already exists ({label})"
-        )
+        super().__init__(f"a {target_scope}-scope item with slug '{slug}' already exists ({label})")
 
 
 def _norm(role: RoleLike) -> str:
     return role.value if isinstance(role, Role) else str(role)
 
 
-def _scope_norm(scope: Optional[ScopeLike]) -> str:
+def _scope_norm(scope: ScopeLike | None) -> str:
     if scope is None:
         return CatalogScope.SYSTEM.value
     return scope.value if isinstance(scope, CatalogScope) else str(scope)
@@ -132,8 +130,8 @@ class CatalogAccessPolicy:
         self,
         role: RoleLike,
         obj,
-        actor_tenant_id: Optional[UUID],
-        actor_user_id: Optional[UUID],
+        actor_tenant_id: UUID | None,
+        actor_user_id: UUID | None,
     ) -> CatalogScope:
         """Validate the create + stamp scope/tenant_id/created_by on ``obj``.
 
@@ -156,10 +154,10 @@ class CatalogAccessPolicy:
     def check_modify(
         self,
         role: RoleLike,
-        item_scope: Optional[ScopeLike],
+        item_scope: ScopeLike | None,
         *,
-        item_created_by: Optional[UUID] = None,
-        actor_user_id: Optional[UUID] = None,
+        item_created_by: UUID | None = None,
+        actor_user_id: UUID | None = None,
     ) -> None:
         """Ownership-aware update/delete gate (plan §1.2)."""
         norm = _norm(role)
@@ -167,9 +165,7 @@ class CatalogAccessPolicy:
             return  # superuser bypass
         scope = _scope_norm(item_scope)
         if scope == CatalogScope.SYSTEM.value:
-            raise CatalogPermissionDenied(
-                "only SYSTEM_ADMIN may modify system-scope catalog rows"
-            )
+            raise CatalogPermissionDenied("only SYSTEM_ADMIN may modify system-scope catalog rows")
         if scope == CatalogScope.TENANT.value:
             if norm not in {_norm(r) for r in self.tenant_write_roles}:
                 raise CatalogPermissionDenied(
@@ -181,16 +177,14 @@ class CatalogAccessPolicy:
             return
         if _uuid_eq(item_created_by, actor_user_id):
             return
-        raise CatalogPermissionDenied(
-            "you can only modify your own user-scope catalog entries"
-        )
+        raise CatalogPermissionDenied("you can only modify your own user-scope catalog entries")
 
     # --- promote / demote -------------------------------------------------
 
     def check_promote(
         self,
         role: RoleLike,
-        from_scope: Optional[ScopeLike],
+        from_scope: ScopeLike | None,
         to_scope: ScopeLike,
     ) -> None:
         """Gate a scope transition (plan §1.3).
@@ -214,12 +208,8 @@ class CatalogAccessPolicy:
         }:
             if norm in tenant_roles:
                 return
-            raise CatalogPermissionDenied(
-                "this scope transition requires ADMIN or MANAGER"
-            )
-        raise CatalogPermissionDenied(
-            "this scope transition requires SYSTEM_ADMIN"
-        )
+            raise CatalogPermissionDenied("this scope transition requires ADMIN or MANAGER")
+        raise CatalogPermissionDenied("this scope transition requires SYSTEM_ADMIN")
 
 
 DEFAULT_CATALOG_POLICY = CatalogAccessPolicy()

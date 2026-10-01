@@ -8,6 +8,7 @@ twice among NULL-tenant/system rows).
 Behavioural spot-checks run against ``biomarker_definitions`` (FK-free apart
 from the optional tenant FK); the DB-existence check covers all four.
 """
+
 import uuid
 
 import pytest
@@ -28,15 +29,19 @@ _NEW_INDEXES = {
 async def test_coalesce_unique_indexes_exist():
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(
-                text(
-                    "SELECT indexname FROM pg_indexes "
-                    "WHERE indexname LIKE 'ix_%_tenant' "
-                    "AND tablename IN ('biomarker_definitions','anatomy_structures',"
-                    "'clinical_event_types','fhir_patients')"
+            (
+                await session.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE indexname LIKE 'ix_%_tenant' "
+                        "AND tablename IN ('biomarker_definitions','anatomy_structures',"
+                        "'clinical_event_types','fhir_patients')"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     missing = _NEW_INDEXES - set(rows)
     assert not missing, f"Missing COALESCE unique indexes: {missing}"
 
@@ -60,29 +65,21 @@ async def test_same_slug_allowed_across_tenants_but_not_within():
         # Two real tenants.
         for tid in (tenant_a, tenant_b):
             await session.execute(
-                text(
-                    "INSERT INTO tenants (id, name, slug) VALUES (:id, :n, :s)"
-                ),
+                text("INSERT INTO tenants (id, name, slug) VALUES (:id, :n, :s)"),
                 {"id": tid, "n": f"T-{tid.hex[:6]}", "s": f"t-{tid.hex[:8]}"},
             )
         await session.commit()
 
         # Same slug in tenant A then tenant B -> both allowed.
-        await session.execute(
-            text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a}
-        )
-        await session.execute(
-            text(_biomarker_sql()), {"slug": slug, "tenant": tenant_b}
-        )
+        await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a})
+        await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_b})
         await session.commit()
         created_slugs.append(slug)
 
         # Same slug again in tenant A -> must be rejected.
         with pytest.raises(IntegrityError) as exc_info:
             async with session.begin_nested():
-                await session.execute(
-                    text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a}
-                )
+                await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a})
         assert "ix_biomarker_definitions_slug_tenant" in str(exc_info.value)
 
         # Cleanup.
@@ -102,9 +99,7 @@ async def test_two_null_tenant_rows_with_same_slug_collide():
     slug = f"b1-null-{uuid.uuid4().hex[:8]}"
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text(
-                _biomarker_sql().replace(":tenant", "NULL")
-            ),
+            text(_biomarker_sql().replace(":tenant", "NULL")),
             {"slug": slug},
         )
         await session.commit()

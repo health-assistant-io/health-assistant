@@ -10,16 +10,16 @@ import pytest
 import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
-from app.services.concept_service import ConceptService
-from app.services.catalog_search_service import search_concepts
 from app.models.enums import (
     ConceptKind,
-    ConceptStatus,
     ConceptProvenance,
+    ConceptRelationType,
+    ConceptStatus,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    ConceptRelationType,
 )
+from app.services.catalog_search_service import search_concepts
+from app.services.concept_service import ConceptService
 
 
 @pytest_asyncio.fixture
@@ -98,12 +98,10 @@ async def tenant_with_data():
 
 @pytest.mark.asyncio
 async def test_list_concepts_by_kind(tenant_with_data):
-    tid, cardio_id, cvs_id, ecg_id, panel_id, p = tenant_with_data
+    tid, cardio_id, _cvs_id, _ecg_id, _panel_id, _p = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
-        specialties = await svc.list_concepts(
-            tid, kind=ConceptKind.SPECIALTY, limit=500
-        )
+        specialties = await svc.list_concepts(tid, kind=ConceptKind.SPECIALTY, limit=500)
         ids = {c.id for c in specialties}
         assert cardio_id in ids
 
@@ -137,7 +135,7 @@ async def test_rbac_user_cannot_create(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_rbac_non_admin_cannot_create_global(tenant_with_data):
-    tid, *_ = tenant_with_data
+    _tid, *_ = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         with pytest.raises(PermissionError):
@@ -169,7 +167,7 @@ async def test_tenant_admin_can_create_tenant_scoped(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_create_duplicate_concept_raises(tenant_with_data):
-    tid, cardio_id, _, _, _, p = tenant_with_data
+    _tid, _cardio_id, _, _, _, p = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         # Reuse the fixture's cardio slug (global) -> duplicate.
@@ -209,7 +207,9 @@ async def test_update_concept_add_and_remove_kinds(tenant_with_data):
         svc = ConceptService(session)
         # cardio starts as [specialty]; add examination_category (keep specialty).
         updated = await svc.update_concept(
-            cardio_id, tid, "SYSTEM_ADMIN",
+            cardio_id,
+            tid,
+            "SYSTEM_ADMIN",
             kinds=["specialty", "examination_category"],
         )
         await session.commit()
@@ -218,7 +218,10 @@ async def test_update_concept_add_and_remove_kinds(tenant_with_data):
 
         # Now drop specialty — only examination_category remains.
         updated = await svc.update_concept(
-            cardio_id, tid, "SYSTEM_ADMIN", kinds=["examination_category"],
+            cardio_id,
+            tid,
+            "SYSTEM_ADMIN",
+            kinds=["examination_category"],
         )
         await session.commit()
         await session.refresh(updated, ["kind_tags"])
@@ -254,7 +257,7 @@ async def test_delete_concept_with_edges_retires(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_create_and_query_edge(tenant_with_data):
-    tid, cardio_id, cvs_id, ecg_id, panel_id, p = tenant_with_data
+    tid, cardio_id, _cvs_id, _ecg_id, _panel_id, _p = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         edges = await svc.get_edges(
@@ -270,7 +273,7 @@ async def test_create_and_query_edge(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_get_neighbors(tenant_with_data):
-    tid, cardio_id, cvs_id, ecg_id, panel_id, p = tenant_with_data
+    tid, cardio_id, _cvs_id, _ecg_id, _panel_id, _p = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         neighbors = await svc.get_neighbors(cardio_id, tid)
@@ -281,7 +284,7 @@ async def test_get_neighbors(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_get_neighbors_by_relation(tenant_with_data):
-    tid, cardio_id, _, _, _, p = tenant_with_data
+    tid, cardio_id, _, _, _, _p = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         neighbors = await svc.get_neighbors(
@@ -322,7 +325,7 @@ async def test_entity_to_concept_edge(tenant_with_data):
 
 @pytest.mark.asyncio
 async def test_edge_validates_concept_exists(tenant_with_data):
-    tid, *_ = tenant_with_data
+    _tid, *_ = tenant_with_data
     async with AsyncSessionLocal() as session:
         svc = ConceptService(session)
         with pytest.raises(ValueError, match="not found"):

@@ -5,6 +5,7 @@ tenant. Without the scope, a sync in tenant B linked to tenant A's biomarker for
 the same LOINC code, and the tenant-scoped catalog/details lookup 404'd even
 though the row existed (the mobile-app HR sync case).
 """
+
 import datetime
 import uuid
 
@@ -41,9 +42,21 @@ async def two_tenants_with_hr_biomarker():
             tenant_id=tenant_a,
         )
         db.add(a_hr)
-        db.add(Patient(id=patient_b, tenant_id=tenant_b, name={"family": "B", "given": ["User"]}, gender="UNKNOWN"))
+        db.add(
+            Patient(
+                id=patient_b,
+                tenant_id=tenant_b,
+                name={"family": "B", "given": ["User"]},
+                gender="UNKNOWN",
+            )
+        )
         await db.commit()
-        return {"tenant_a": tenant_a, "tenant_b": tenant_b, "patient_b": patient_b, "a_hr_id": a_hr.id}
+        return {
+            "tenant_a": tenant_a,
+            "tenant_b": tenant_b,
+            "patient_b": patient_b,
+            "a_hr_id": a_hr.id,
+        }
 
 
 @pytest.mark.asyncio
@@ -55,7 +68,7 @@ async def test_does_not_cross_link_to_another_tenants_biomarker(two_tenants_with
         code={"coding": [{"system": "http://loinc.org", "code": LOINC}], "text": "Heart Rate"},
         subject={"reference": f"Patient/{ctx['patient_b']}"},
         value_quantity={"value": 72.0, "unit": "bpm"},
-        effective_datetime=datetime.datetime.now(datetime.timezone.utc),
+        effective_datetime=datetime.datetime.now(datetime.UTC),
         status="final",
         biomarker_id=None,
     )
@@ -87,7 +100,7 @@ async def test_auto_created_vital_defaults_to_telemetry(two_tenants_with_hr_biom
         code={"coding": [{"system": "http://loinc.org", "code": LOINC}], "text": "Heart Rate"},
         subject={"reference": f"Patient/{ctx['patient_b']}"},
         value_quantity={"value": 72.0, "unit": "bpm"},
-        effective_datetime=datetime.datetime.now(datetime.timezone.utc),
+        effective_datetime=datetime.datetime.now(datetime.UTC),
         status="final",
         biomarker_id=None,
     )

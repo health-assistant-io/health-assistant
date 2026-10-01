@@ -12,11 +12,11 @@ A2: ``/fhir/Observation/history`` called ``get_observation(patient_id, code,
 B5: FHIR service ``get_*`` functions and endpoints did not enforce tenant
     ownership; the history endpoint now forwards current_user.tenant_id.
 """
+
 import inspect
 from uuid import UUID, uuid4
 
 import pytest
-
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
 TENANT_B = UUID("22222222-2222-2222-2222-222222222222")
@@ -47,6 +47,7 @@ def _override_user(user):
 
 def _clear_overrides():
     from app.main import app
+
     app.dependency_overrides = {}
 
 
@@ -61,9 +62,7 @@ def test_list_observations_signature_accepts_all_filters():
 
     sig = inspect.signature(list_observations)
     for param in ("tenant_id", "patient_id", "code", "start_date", "end_date"):
-        assert param in sig.parameters, (
-            f"list_observations must accept {param!r}"
-        )
+        assert param in sig.parameters, f"list_observations must accept {param!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -312,9 +311,7 @@ async def test_get_observation_history_compiles_tenant_scoped_query(monkeypatch)
     # tenant_id, subject reference, and code must all appear in the SQL
     assert str(TENANT_A) in joined or str(TENANT_A).replace("-", "") in joined.replace("-", "")
     assert "8867-4" in joined
-    assert "Patient/" in joined or str(PATIENT_A1).replace("-", "") in joined.replace(
-        "-", ""
-    )
+    assert "Patient/" in joined or str(PATIENT_A1).replace("-", "") in joined.replace("-", "")
 
 
 def test_get_observation_signature_contract():

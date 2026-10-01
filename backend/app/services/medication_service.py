@@ -1,33 +1,31 @@
-from typing import List, Optional, Dict, Any
-from uuid import UUID
 import logging
+from typing import Any
+from uuid import UUID
 
+from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, delete
 
-from app.services.access import check_patient_access
+from app.ai.processors.nlp import get_nlp_extractor_from_db
+from app.ai.schemas.nlp import UnknownMedicationExtract
 from app.models.fhir.medication import Medication, MedicationCatalog
-from app.schemas.user import TokenData
-from app.services.notification_manager import NotificationManager
 from app.schemas.medication import (
     MedicationCatalogCreate,
     MedicationCatalogUpdate,
     MedicationRecordCreate,
     MedicationRecordUpdate,
 )
-
-
-from app.ai.processors.nlp import get_nlp_extractor_from_db
-from app.ai.schemas.nlp import UnknownMedicationExtract
+from app.schemas.user import TokenData
+from app.services.access import check_patient_access
 from app.services.fhir_helpers import assert_valid_fhir
+from app.services.notification_manager import NotificationManager
 
 logger = logging.getLogger(__name__)
 
 
 async def get_medication_catalog(
-    db: AsyncSession, tenant_id: UUID, search: Optional[str] = None
-) -> List[MedicationCatalog]:
+    db: AsyncSession, tenant_id: UUID, search: str | None = None
+) -> list[MedicationCatalog]:
     # Delegate to the unified catalog search service: trigram similarity on
     # name + indications/description substring fallback, tenant-scoped, with
     # similarity ranking. (Previously: name.ilike only, unranked.)
@@ -38,7 +36,7 @@ async def get_medication_catalog(
 
 async def get_catalog_medication(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> Optional[MedicationCatalog]:
+) -> MedicationCatalog | None:
     query = select(MedicationCatalog).where(
         MedicationCatalog.id == catalog_id,
         or_(
@@ -74,7 +72,7 @@ async def update_catalog_medication(
     catalog_id: UUID,
     actor,
     data: MedicationCatalogUpdate,
-) -> Optional[MedicationCatalog]:
+) -> MedicationCatalog | None:
     from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 
     query = select(MedicationCatalog).where(
@@ -152,7 +150,7 @@ async def delete_catalog_medication(
 
 async def get_patient_medications(
     db: AsyncSession, patient_id: UUID, tenant_id: UUID
-) -> List[Medication]:
+) -> list[Medication]:
     query = (
         select(Medication)
         .where(
@@ -170,8 +168,8 @@ async def add_patient_medication(
     current_user: TokenData,
     data: MedicationRecordCreate,
     *,
-    source_integration_id: Optional[UUID] = None,
-    external_id: Optional[str] = None,
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
 ) -> Medication:
     """Create a patient medication (prescription).
 
@@ -210,7 +208,9 @@ async def add_patient_medication(
             logger.info(
                 "add_patient_medication: returning existing %s (dedup hit on "
                 "source_integration_id=%s external_id=%r)",
-                existing.id, source_integration_id, effective_external_id,
+                existing.id,
+                source_integration_id,
+                effective_external_id,
             )
             return existing
 
@@ -234,9 +234,7 @@ async def add_patient_medication(
     # (STATEMENT) applies when a caller doesn't specify it; pull it out
     # of the spread to avoid passing ``intent=None`` (which would override
     # the NOT NULL column default).
-    dump = data.model_dump(
-        exclude={"frequency", "timing", "external_id", "patient_id", "intent"}
-    )
+    dump = data.model_dump(exclude={"frequency", "timing", "external_id", "patient_id", "intent"})
     intent_value = data.intent
     new_record = Medication(
         **dump,
@@ -298,7 +296,7 @@ async def _find_integration_medication(
     patient_id: UUID,
     source_integration_id: UUID,
     external_id: str,
-) -> Optional[Medication]:
+) -> Medication | None:
     """Look up an existing integration-sourced medication by dedup key.
 
     The partial unique index ``uq_fhir_medications_integration_dedup``
@@ -319,7 +317,7 @@ async def update_patient_medication(
     medication_id: UUID,
     tenant_id: UUID,
     data: MedicationRecordUpdate,
-) -> Optional[Medication]:
+) -> Medication | None:
     query = select(Medication).where(
         Medication.id == medication_id,
         Medication.tenant_id == tenant_id,
@@ -333,7 +331,7 @@ async def update_patient_medication(
     update_data = data.model_dump(exclude_unset=True)
 
     # Handle the 'code' field specifically if it's updated
-    if "code" in update_data and update_data["code"]:
+    if update_data.get("code"):
         # Ensure we don't accidentally wipe existing catalog_id if only text changed,
         # or vice versa (though current UI sends both)
         current_code = record.code or {}
@@ -342,7 +340,7 @@ async def update_patient_medication(
 
     # Handle frequency update
     timing_data = None
-    if "frequency" in update_data and update_data["frequency"]:
+    if update_data.get("frequency"):
         freq = data.frequency
         timing_data = {
             "repeat": {
@@ -379,9 +377,7 @@ async def update_patient_medication(
     return record
 
 
-async def delete_patient_medication(
-    db: AsyncSession, medication_id: UUID, tenant_id: UUID
-) -> bool:
+async def delete_patient_medication(db: AsyncSession, medication_id: UUID, tenant_id: UUID) -> bool:
     # Cleanup triggers first
     await NotificationManager.delete_triggers_by_reference(medication_id)
 
@@ -396,7 +392,7 @@ async def delete_patient_medication(
 
 async def get_medication_usage(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Get all patients using a specific medication from the catalog"""
     from app.models.fhir.patient import Patient
 
@@ -428,7 +424,7 @@ async def get_medication_usage(
 
 async def reprocess_medication(
     db: AsyncSession, catalog_id: UUID, tenant_id: UUID
-) -> Optional[MedicationCatalog]:
+) -> MedicationCatalog | None:
     """Use AI to re-analyze and enrich medication catalog entry"""
     query = select(MedicationCatalog).where(
         MedicationCatalog.id == catalog_id,

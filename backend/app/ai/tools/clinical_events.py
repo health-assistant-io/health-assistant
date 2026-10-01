@@ -1,10 +1,11 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Clinical-event (health journey) tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3).
 """
 
 import json
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
@@ -22,7 +23,7 @@ from app.models.fhir.patient import Observation
 
 
 @register_chat_tool("clinical_events")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_clinical_events(limit: int = 10) -> str:
         """Fetch a list of health journeys and clinical events for the patient (e.g., pregnancies, chronic pain cycles, surgical recoveries).
@@ -49,15 +50,11 @@ def build(ctx: ToolContext) -> List[Any]:
                     "title": event.title,
                     "type": event.type_entity.name if event.type_entity else "Unknown",
                     "status": event.status.value,
-                    "onset_date": event.onset_date.isoformat()
-                    if event.onset_date
-                    else None,
+                    "onset_date": event.onset_date.isoformat() if event.onset_date else None,
                     "resolved_date": event.resolved_date.isoformat()
                     if event.resolved_date
                     else None,
-                    "description": event.description[:200]
-                    if event.description
-                    else None,
+                    "description": event.description[:200] if event.description else None,
                 }
             )
         return json.dumps(summary)

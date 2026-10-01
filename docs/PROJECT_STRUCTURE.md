@@ -33,7 +33,7 @@ Health Assistant/
 │   ├── scripts/                   # Admin + maintenance scripts (~20: seed_demo, create_system_admin,
 │   │                              #   export_seeds, encrypt_existing_api_keys, …)
 │   ├── tests/                     # pytest suite (1800+ tests)
-│   ├── requirements.txt
+│   ├── pyproject.toml
 │   └── pyproject.toml
 │
 ├── integrations/                  # External Integrations & Connectors (Python & TS SDKs)

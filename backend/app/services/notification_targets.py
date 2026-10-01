@@ -25,19 +25,19 @@ matches the platform's "identity linking is optional" model.
 from __future__ import annotations
 
 import logging
-from typing import Iterable
+from collections.abc import Iterable
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import RecipientKind, Role
-from app.models.user_model import UserModel
-from app.models.doctor_model import DoctorModel
-from app.models.fhir.patient import Patient
-from app.models.examination_model import ExaminationModel
-from app.models.associations import examination_doctors
 from app.core.converters import to_uuid as _uuid
+from app.models.associations import examination_doctors
+from app.models.doctor_model import DoctorModel
+from app.models.enums import RecipientKind, Role
+from app.models.examination_model import ExaminationModel
+from app.models.fhir.patient import Patient
+from app.models.user_model import UserModel
 
 logger = logging.getLogger(__name__)
 

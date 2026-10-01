@@ -38,7 +38,7 @@ Design principles:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -68,9 +68,7 @@ logger = logging.getLogger(__name__)
 #     M:N / cross-domain cases the FK can't express).
 #   - Don't add combos covered by specialized M:N tables with their own
 #     metadata columns (e.g. ``EventExaminationLink`` carries ``reason``).
-LINK_SCHEMA: Dict[
-    Tuple[EdgeEndpointType, EdgeEndpointType], List[ConceptRelationType]
-] = {
+LINK_SCHEMA: dict[tuple[EdgeEndpointType, EdgeEndpointType], list[ConceptRelationType]] = {
     # --- biomarker ------------------------------------------------------------
     (EdgeEndpointType.BIOMARKER, EdgeEndpointType.CONCEPT): [
         ConceptRelationType.MEMBER_OF,  # panel membership
@@ -191,7 +189,7 @@ def validate_relation_combo(
     src_type: EdgeEndpointType,
     relation: ConceptRelationType,
     dst_type: EdgeEndpointType,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Return ``(ok, reason)``. ``reason`` is empty on success, a short
     human-readable hint on failure.
 
@@ -219,31 +217,31 @@ def validate_relation_combo(
 def relations_for(
     src_type: EdgeEndpointType,
     dst_type: EdgeEndpointType,
-) -> List[str]:
+) -> list[str]:
     """Valid relation strings for a specific endpoint pair."""
     return [r.value for r in LINK_SCHEMA.get((src_type, dst_type), [])]
 
 
-def relations_for_source(src_type: EdgeEndpointType) -> Dict[str, List[str]]:
+def relations_for_source(src_type: EdgeEndpointType) -> dict[str, list[str]]:
     """All destination types + valid relations for a given source type.
 
     Used by ``get_link_schema(src_type=...)`` and the form's ``<LinksSection>``
     to enumerate the destinations it should offer "Add link to {dstType}" for.
     """
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for (s, d), relations in LINK_SCHEMA.items():
         if s is src_type:
             out[d.value] = [r.value for r in relations]
     return out
 
 
-def serialize_full_schema() -> List[Dict[str, Any]]:
+def serialize_full_schema() -> list[dict[str, Any]]:
     """Stable JSON-serializable view of the entire matrix.
 
     Returned by ``GET /concept-edges/schema`` with no arguments; also useful
     for snapshotting in tests.
     """
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for (src, dst), relations in LINK_SCHEMA.items():
         out.append(
             {
@@ -263,7 +261,7 @@ def serialize_full_schema() -> List[Dict[str, Any]]:
 # not listed here (observation, doctor, examination, document) cannot be
 # resolved by text — they require a UUID (they're patient-instance rows, not
 # catalog entries).
-_CATALOG_TYPE_BY_ENDPOINT: Dict[EdgeEndpointType, str] = {
+_CATALOG_TYPE_BY_ENDPOINT: dict[EdgeEndpointType, str] = {
     EdgeEndpointType.BIOMARKER: "biomarker",
     EdgeEndpointType.MEDICATION: "medication",
     EdgeEndpointType.ALLERGY: "allergy",
@@ -274,7 +272,7 @@ _CATALOG_TYPE_BY_ENDPOINT: Dict[EdgeEndpointType, str] = {
 }
 
 
-def _try_parse_uuid(value: Any) -> Optional[UUID]:
+def _try_parse_uuid(value: Any) -> UUID | None:
     """Parse ``value`` as a UUID, returning None on failure. Tolerates the
     str-UUID forms commonly produced by the LLM."""
     if isinstance(value, UUID):
@@ -289,7 +287,7 @@ def _try_parse_uuid(value: Any) -> Optional[UUID]:
 
 async def _fetch_endpoint_by_id(
     db: AsyncSession, etype: EdgeEndpointType, eid: UUID
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Fetch a single endpoint by UUID using the bulk resolver registry.
     Returns None if no row exists for that id (NOT a fallback payload)."""
     # Local import keeps the module import-light (avoids pulling the entire
@@ -308,7 +306,7 @@ async def _resolve_endpoint_by_text(
     tenant_id: UUID,
     etype: EdgeEndpointType,
     text: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Resolve a non-UUID identifier (slug or name) via catalog search.
 
     Returns None for endpoint types that have no catalog (instances).
@@ -353,7 +351,7 @@ async def resolve_endpoint(
     tenant_id: UUID,
     etype: EdgeEndpointType,
     identifier: Any,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Resolve a single endpoint identifier (UUID, slug, or name).
 
     Returns the standard ``{type, id, label, icon, color, kind}`` payload,
@@ -382,7 +380,7 @@ async def check_existing_edge(
     src_id: UUID,
     dst_id: UUID,
     relation: ConceptRelationType,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Return ``{id, status}`` for an existing ``(src, dst, relation)`` edge
     (any status, tenant-scoped OR global), else None.
 
@@ -411,10 +409,10 @@ async def build_link_specs(
     db: AsyncSession,
     tenant_id: UUID,
     src_type: EdgeEndpointType,
-    raw_links: Optional[List[Dict[str, Any]]],
+    raw_links: list[dict[str, Any]] | None,
     *,
-    primary_existing_id: Optional[UUID] = None,
-) -> Dict[str, List[Dict[str, Any]]]:
+    primary_existing_id: UUID | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     """Validate + snapshot a list of proposed links.
 
     Args:
@@ -445,8 +443,8 @@ async def build_link_specs(
               "duplicate_of": null | "<edge-uuid>"
             }
     """
-    kept: List[Dict[str, Any]] = []
-    dropped: List[Dict[str, Any]] = []
+    kept: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
 
     if not raw_links:
         return {"kept": kept, "dropped": dropped}
@@ -482,22 +480,19 @@ async def build_link_specs(
             dropped.append({"raw": raw, "reason": why})
             continue
 
-        dst_payload = await resolve_endpoint(
-            db, tenant_id, dst_type, str(dst_identifier)
-        )
+        dst_payload = await resolve_endpoint(db, tenant_id, dst_type, str(dst_identifier))
         if dst_payload is None:
             dropped.append(
                 {
                     "raw": raw,
                     "reason": (
-                        f"destination {dst_type_raw}:{dst_identifier!r} "
-                        "not found or not accessible"
+                        f"destination {dst_type_raw}:{dst_identifier!r} not found or not accessible"
                     ),
                 }
             )
             continue
 
-        duplicate_of: Optional[str] = None
+        duplicate_of: str | None = None
         if primary_existing_id is not None:
             try:
                 dst_uuid = UUID(dst_payload["id"])

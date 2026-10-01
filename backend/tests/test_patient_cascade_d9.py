@@ -5,6 +5,7 @@ the schema was asymmetric — CASCADE on meds/allergies/events but SET NULL
 on exams/documents/devices/chat_sessions, leaving orphaned rows. All
 patient_id FKs must now use CASCADE.
 """
+
 from sqlalchemy import create_engine, text
 
 from app.core.config import settings
@@ -47,9 +48,7 @@ def test_all_patient_fks_use_cascade():
     examinations, fhir_devices) are the regression target.
     """
     rules = _patient_fk_cascade_rules()
-    non_cascade = {
-        t: r for t, r in rules.items() if r != "c"
-    }
+    non_cascade = {t: r for t, r in rules.items() if r != "c"}
     assert not non_cascade, (
         f"Tables with patient_id FK NOT using CASCADE: {non_cascade}. "
         "All patient-owned data must cascade-delete with the patient."
@@ -85,7 +84,7 @@ def test_model_declarations_use_cascade():
         "device.py": models_dir / "fhir" / "device.py",
         "chat_model.py": models_dir / "chat_model.py",
     }
-    for label, path in model_files.items():
+    for _label, path in model_files.items():
         src = path.read_text()
         assert 'ForeignKey("fhir_patients.id", ondelete="CASCADE")' in src, (
             f"{path.name} must declare ondelete='CASCADE' on patient_id FK"

@@ -5,6 +5,7 @@ that the existing ``upload_document`` UI wrapper now delegates to. These
 tests exercise the real-DB + real-filesystem path so the file-write +
 DB-row + OCR-dispatch contract is covered end-to-end.
 """
+
 import io
 import uuid
 from datetime import date
@@ -194,11 +195,9 @@ async def test_ingest_document_bytes_dispatches_ocr_when_requested(
                 include_in_extraction=True,
             )
             assert mock_apply.called, (
-                "ocr_document.apply_async must be called when "
-                "include_in_extraction=True"
+                "ocr_document.apply_async must be called when include_in_extraction=True"
             )
-            dispatched_args = mock_apply.call_args.kwargs.get("args") or \
-                mock_apply.call_args.args
+            dispatched_args = mock_apply.call_args.kwargs.get("args") or mock_apply.call_args.args
             assert len(dispatched_args) == 4
             # The 4-arg form: id, path, tenant, owner.
             assert dispatched_args[2] == str(tenant_id)
@@ -213,9 +212,7 @@ async def test_ingest_document_bytes_skips_ocr_when_not_requested(
     tenant_id, user_id, _patient_id = tenant_user_patient
 
     async with AsyncSessionLocal() as db:
-        with patch(
-            "app.workers.ai_tasks.ocr_document.apply_async"
-        ) as mock_apply:
+        with patch("app.workers.ai_tasks.ocr_document.apply_async") as mock_apply:
             await document_service.ingest_document_bytes(
                 filename="notes.txt",
                 content=b"just plain notes, no extraction needed",
@@ -227,8 +224,7 @@ async def test_ingest_document_bytes_skips_ocr_when_not_requested(
                 include_in_extraction=False,
             )
             assert not mock_apply.called, (
-                "ocr_document.apply_async must NOT be called when "
-                "include_in_extraction=False"
+                "ocr_document.apply_async must NOT be called when include_in_extraction=False"
             )
 
 
@@ -262,9 +258,7 @@ async def test_ingest_document_bytes_swallows_broker_down_failure(
         # Row still landed.
         assert doc.id is not None
         fetched = (
-            await db.execute(
-                select(DocumentModel).where(DocumentModel.id == doc.id)
-            )
+            await db.execute(select(DocumentModel).where(DocumentModel.id == doc.id))
         ).scalar_one()
         assert fetched.status == "uploaded"  # NOT "processing" — OCR never ran
 

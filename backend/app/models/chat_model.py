@@ -1,7 +1,9 @@
-from sqlalchemy import Column, String, ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
+from sqlalchemy import Column, ForeignKey, Index, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
-from app.models.base import Base, UUIDMixin, TenantMixin, TimestampMixin
+
+from app.models.base import Base, TenantMixin, TimestampMixin, UUIDMixin
 
 
 class ChatSession(Base, UUIDMixin, TenantMixin, TimestampMixin):
@@ -53,6 +55,4 @@ class ChatMessage(Base, UUIDMixin, TimestampMixin):
     # ``WHERE session_id = ? ORDER BY created_at`` (the relationship's
     # ``order_by``). The bare ``session_id`` index above serves point lookups;
     # this composite serves the ordered fan-out (audit B13).
-    __table_args__ = (
-        Index("ix_chat_messages_session_created_at", "session_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_chat_messages_session_created_at", "session_id", "created_at"),)

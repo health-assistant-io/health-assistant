@@ -1,29 +1,29 @@
-from typing import List
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.patient_layout import (
     PatientLayoutCreate,
-    PatientLayoutUpdate,
     PatientLayoutResponse,
+    PatientLayoutUpdate,
 )
+from app.schemas.user import TokenData
 from app.services.access import check_patient_access
 from app.services.patient_layout_service import (
-    get_patient_layouts,
-    get_active_layout,
     create_patient_layout,
-    update_patient_layout,
     delete_patient_layout,
+    get_active_layout,
+    get_patient_layouts,
+    update_patient_layout,
 )
-
-from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/patients/{patient_id}/layouts", tags=["patient-layouts"])
 
 
-@router.get("", response_model=List[PatientLayoutResponse])
+@router.get("", response_model=list[PatientLayoutResponse])
 async def list_layouts(
     patient_id: UUID,
     current_user: TokenData = Depends(get_current_user),
@@ -51,9 +51,7 @@ async def get_current_active_layout(
     return layout
 
 
-@router.post(
-    "", response_model=PatientLayoutResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("", response_model=PatientLayoutResponse, status_code=status.HTTP_201_CREATED)
 async def create_layout(
     patient_id: UUID,
     layout_data: PatientLayoutCreate,

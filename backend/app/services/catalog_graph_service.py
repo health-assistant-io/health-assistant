@@ -1,3 +1,4 @@
+# ruff: noqa: SIM108 -- long immutable strings / legacy patterns; reflow when touched
 """Cross-catalog graph traversal over the polymorphic ``concept_edges`` graph.
 
 ``concept_edges`` is the single link system between every catalog type
@@ -15,7 +16,7 @@ the unified-catalog architecture exists to answer. See
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import or_, select, text
@@ -65,10 +66,10 @@ async def traverse(
     start_type: EdgeEndpointType,
     start_id: UUID,
     *,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     max_depth: int = 3,
-    relation_whitelist: Optional[tuple[ConceptRelationType, ...]] = None,
-    endpoint_type_whitelist: Optional[tuple[EdgeEndpointType, ...]] = None,
+    relation_whitelist: tuple[ConceptRelationType, ...] | None = None,
+    endpoint_type_whitelist: tuple[EdgeEndpointType, ...] | None = None,
     include_proposed: bool = False,
     limit: int = 500,
 ) -> dict[str, Any]:
@@ -143,11 +144,7 @@ async def traverse(
     # JOIN makes a type predicate awkward to push into SQL; safe given the cap.
     if endpoint_type_whitelist:
         allowed = {t.value for t in endpoint_type_whitelist}
-        edges = [
-            e
-            for e in edges
-            if e["src"]["type"] in allowed or e["dst"]["type"] in allowed
-        ]
+        edges = [e for e in edges if e["src"]["type"] in allowed or e["dst"]["type"] in allowed]
 
     resolved = await resolve_endpoints(db, endpoint_pairs)
 
@@ -204,7 +201,7 @@ async def count_relations(
     src_type: EdgeEndpointType,
     src_ids: list[UUID],
     *,
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Batch count of outgoing approved edges per item (N+1-safe).
 
@@ -254,7 +251,7 @@ async def count_relations_both_directions(
     endpoint_type: EdgeEndpointType,
     ids: list[UUID],
     *,
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Batch count of approved edges touching each item in **either** direction.
 
@@ -294,9 +291,9 @@ async def count_relations_both_directions(
 async def whole_catalog_graph(
     db: AsyncSession,
     *,
-    tenant_id: Optional[UUID],
-    types: Optional[list[str]] = None,
-    kinds: Optional[list[str]] = None,
+    tenant_id: UUID | None,
+    types: list[str] | None = None,
+    kinds: list[str] | None = None,
     include_isolated: bool = False,
     limit_edges: int = 10000,
     limit_nodes: int = 5000,
@@ -399,13 +396,9 @@ async def whole_catalog_graph(
 
         resolved_kinds = [ConceptKind(k) for k in kinds if k]
         if resolved_kinds:
-            concept_ids = {
-                eid
-                for (etype, eid) in visible
-                if etype == EdgeEndpointType.CONCEPT
-            }
+            concept_ids = {eid for (etype, eid) in visible if etype == EdgeEndpointType.CONCEPT}
             if concept_ids:
-                valid = set(
+                valid = {
                     row[0]
                     for row in (
                         await db.execute(
@@ -415,7 +408,7 @@ async def whole_catalog_graph(
                             )
                         )
                     ).all()
-                )
+                }
                 visible = {
                     (etype, eid)
                     for (etype, eid) in visible
@@ -457,7 +450,7 @@ async def whole_catalog_graph(
 async def _load_catalog_ids(
     db: AsyncSession,
     etype: EdgeEndpointType,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     limit: int,
 ) -> list[UUID]:
     """Load all item IDs for a catalog type (tenant-scoped, not deleted)."""
@@ -560,8 +553,8 @@ async def _load_catalog_ids(
 async def whole_concept_graph(
     db: AsyncSession,
     *,
-    tenant_id: Optional[UUID],
-    kinds: Optional[list[str]] = None,
+    tenant_id: UUID | None,
+    kinds: list[str] | None = None,
     include_anatomy: bool = False,
     limit_nodes: int = 1000,
     limit_edges: int = 10000,
@@ -585,9 +578,9 @@ async def whole_concept_graph(
 
 
 __all__ = [
-    "traverse",
     "count_relations",
     "count_relations_both_directions",
-    "whole_concept_graph",
+    "traverse",
     "whole_catalog_graph",
+    "whole_concept_graph",
 ]

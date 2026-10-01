@@ -1,10 +1,11 @@
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Medication tools for the agentic chat.
 
 Extracted from ``ChatbotTools`` (Phase 3).
 """
 
 import json
-from typing import Any, List
+from typing import Any
 
 from langchain_core.tools import tool
 from sqlalchemy import and_, desc, select
@@ -14,7 +15,7 @@ from app.models.fhir.medication import Medication, MedicationCatalog
 
 
 @register_chat_tool("medications")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_current_medications() -> str:
         """Fetch the list of medications currently prescribed to the patient."""
@@ -39,9 +40,7 @@ def build(ctx: ToolContext) -> List[Any]:
                     "name": med.code.get("text"),
                     "dosage": med.dosage,
                     "frequency": med.frequency,
-                    "start_date": med.start_date.isoformat()
-                    if med.start_date
-                    else None,
+                    "start_date": med.start_date.isoformat() if med.start_date else None,
                     "reason": med.reason,
                 }
             )
@@ -72,9 +71,7 @@ def build(ctx: ToolContext) -> List[Any]:
                     "status": med.status.value if med.status else "unknown",
                     "dosage": med.dosage,
                     "frequency": med.frequency,
-                    "start_date": med.start_date.isoformat()
-                    if med.start_date
-                    else None,
+                    "start_date": med.start_date.isoformat() if med.start_date else None,
                     "end_date": med.end_date.isoformat() if med.end_date else None,
                     "reason": med.reason,
                 }

@@ -1,3 +1,4 @@
+# ruff: noqa: B008 -- long immutable strings; reflow when touched
 """FHIR R4 conformant facade router.
 
 Mounted at ``/api/v1/fhir/R4``. This router exposes a FHIR R4 REST API on top
@@ -15,14 +16,13 @@ Audit items resolved by this router (Phase 5+6):
 - C7-C16: resources registered in RESOURCE_REGISTRY are exposed
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.facade.scopes import require_fhir_scopes
 from app.facade import crud
 from app.facade.registry import RESOURCE_REGISTRY, register_all
 from app.facade.responses import (
@@ -34,10 +34,10 @@ from app.facade.responses import (
     ok_response,
     operation_outcome,
 )
+from app.facade.scopes import require_fhir_scopes
+from app.schemas.user import TokenData
 from app.services.fhir_facade_service import build_capability_statement
 from app.services.fhir_helpers import FhirSerializationError
-from app.schemas.user import TokenData
-
 
 # Trigger resource registration at import time.
 register_all()
@@ -55,11 +55,7 @@ def _facade_base_url(request: Request) -> str:
     """Compute the absolute base URL of the facade from the incoming request."""
     forwarded_proto = request.headers.get("x-forwarded-proto", "").strip()
     scheme = forwarded_proto or request.url.scheme or "https"
-    host = (
-        request.headers.get("x-forwarded-host")
-        or request.headers.get("host")
-        or "localhost"
-    )
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "localhost"
     return f"{scheme}://{host}/api/v1/fhir/R4"
 
 
@@ -83,7 +79,7 @@ def _query_params(request: Request):
 
 
 @router.get("/metadata", response_model=None)
-async def capability_statement(request: Request) -> Dict[str, Any]:
+async def capability_statement(request: Request) -> dict[str, Any]:
     """FHIR R4 CapabilityStatement (no auth — spec requirement).
 
     Cacheable for 5 minutes. Built dynamically from RESOURCE_REGISTRY.
@@ -176,9 +172,7 @@ async def read_resource(
         return not_found(resource_type, resource_id)
     if isinstance(result, dict) and result.get("_tombstone"):
         return gone(resource_type, resource_id)
-    return ok_response(
-        result, etag=f'W/"{result.get("meta", {}).get("versionId", "1")}"'
-    )
+    return ok_response(result, etag=f'W/"{result.get("meta", {}).get("versionId", "1")}"')
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +183,7 @@ async def read_resource(
 @router.post("/{resource_type}", response_model=None, status_code=201)
 async def create_resource(
     resource_type: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     request: Request,
     current_user: TokenData = Depends(require_fhir_scopes("write")),
     db: AsyncSession = Depends(get_db),
@@ -236,7 +230,7 @@ async def create_resource(
 async def update_resource(
     resource_type: str,
     resource_id: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     request: Request,
     current_user: TokenData = Depends(require_fhir_scopes("write")),
     db: AsyncSession = Depends(get_db),

@@ -1,3 +1,5 @@
+# ruff: noqa: B008,B904,E501,SIM102 -- long immutable strings; reflow when touched
+import contextlib
 import datetime
 import hashlib
 import logging
@@ -44,9 +46,7 @@ def _provider_overrides(provider: Any, hook: str) -> bool:
     fn = getattr(type(provider), hook, None)
     if fn is None:
         return False
-    return fn is not getattr(_SdkBase, hook, None) and fn is not getattr(
-        _CoreBase, hook, None
-    )
+    return fn is not getattr(_SdkBase, hook, None) and fn is not getattr(_CoreBase, hook, None)
 
 
 def _generate_integration_secret() -> str:
@@ -140,7 +140,7 @@ async def list_active_integrations(
 @router.get("/{domain}/documentation")
 async def get_integration_documentation(
     domain: str,
-    file: str = None,
+    file: str | None = None,
     current_user: TokenData = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Get the markdown documentation for an integration if it exists.
@@ -176,7 +176,7 @@ async def get_integration_documentation(
     docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
     if os.path.exists(docs_tree_path):
         try:
-            with open(docs_tree_path, "r") as f:
+            with open(docs_tree_path) as f:
                 tree = json.load(f)
 
             target_file = file
@@ -192,7 +192,7 @@ async def get_integration_documentation(
                 target_file = os.path.basename(target_file)
                 target_file_path = os.path.join(base_path, "docs", target_file)
                 if os.path.exists(target_file_path):
-                    with open(target_file_path, "r") as f:
+                    with open(target_file_path) as f:
                         markdown_content = f.read()
                 else:
                     markdown_content = (
@@ -211,7 +211,7 @@ async def get_integration_documentation(
 
     for path in doc_paths:
         if os.path.exists(path):
-            with open(path, "r") as f:
+            with open(path) as f:
                 return {"markdown": f.read()}
 
     # 3. If no file exists, return an empty string or a default message
@@ -231,9 +231,7 @@ async def get_config_flow(
     """
     # Integrations are enabled by default — only an explicit admin disable blocks this.
     if await is_domain_disabled(db, domain):
-        raise HTTPException(
-            status_code=400, detail="Integration is not enabled by system admin."
-        )
+        raise HTTPException(status_code=400, detail="Integration is not enabled by system admin.")
 
     config_flow = integration_registry.get_config_flow(domain)
     if not config_flow:
@@ -247,7 +245,7 @@ async def submit_config_flow(
     domain: str,
     patient_id: str,
     payload: dict[str, Any],
-    integration_id: str = None,
+    integration_id: str | None = None,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
@@ -256,9 +254,7 @@ async def submit_config_flow(
     """
     # Integrations are enabled by default — only an explicit admin disable blocks this.
     if await is_domain_disabled(db, domain):
-        raise HTTPException(
-            status_code=400, detail="Integration is not enabled by system admin."
-        )
+        raise HTTPException(status_code=400, detail="Integration is not enabled by system admin.")
 
     config_flow = integration_registry.get_config_flow(domain)
     if not config_flow:
@@ -319,9 +315,7 @@ async def submit_config_flow(
         existing = result.scalar_one_or_none()
 
         if not existing:
-            raise HTTPException(
-                status_code=404, detail="Integration instance not found"
-            )
+            raise HTTPException(status_code=404, detail="Integration instance not found")
 
         existing.user_config = validated_config
         existing.instance_name = instance_name
@@ -330,9 +324,7 @@ async def submit_config_flow(
         # Verify the patient belongs to the user or their tenant
         stmt_patient = (
             select(Patient)
-            .where(
-                Patient.id == patient_id, Patient.tenant_id == current_user.tenant_id
-            )
+            .where(Patient.id == patient_id, Patient.tenant_id == current_user.tenant_id)
             .limit(1)
         )
         res_patient = await db.execute(stmt_patient)
@@ -344,10 +336,7 @@ async def submit_config_flow(
         # OAuth integrations start PENDING only when THIS instance actually
         # needs the OAuth round-trip (auth_mode == "smart"). Tokenless instances
         # (auth_mode == "none", e.g. a local HAPI FHIR) go straight to ACTIVE.
-        needs_oauth = (
-            config_flow.is_oauth
-            and validated_config.get("auth_mode", "smart") == "smart"
-        )
+        needs_oauth = config_flow.is_oauth and validated_config.get("auth_mode", "smart") == "smart"
 
         # Audit 2026-08 H1/H2: every webhook- or API-capable instance is
         # provisioned with a machine secret (HMAC) — the integration UUID is
@@ -358,12 +347,8 @@ async def submit_config_flow(
         provider = integration_registry.get_provider(domain)
         generated: dict[str, str] = {}
         instance_uuid = uuid4()
-        wants_webhook = provider is not None and _provider_overrides(
-            provider, "handle_webhook"
-        )
-        wants_api = provider is not None and _provider_overrides(
-            provider, "handle_api_request"
-        )
+        wants_webhook = provider is not None and _provider_overrides(provider, "handle_webhook")
+        wants_api = provider is not None and _provider_overrides(provider, "handle_api_request")
         try:
             from integrations.sdk.secrets import SecretCipher
 
@@ -393,18 +378,14 @@ async def submit_config_flow(
             patient_id=patient.id,
             provider=domain,
             instance_name=instance_name,
-            status=IntegrationStatus.PENDING
-            if needs_oauth
-            else IntegrationStatus.ACTIVE,
+            status=IntegrationStatus.PENDING if needs_oauth else IntegrationStatus.ACTIVE,
             user_config=validated_config,
             tenant_id=current_user.tenant_id,
         )
         db.add(new_integration)
 
     await db.commit()
-    response_payload: dict[str, Any] = {
-        "message": "Integration configured successfully."
-    }
+    response_payload: dict[str, Any] = {"message": "Integration configured successfully."}
     if generated:
         # Show-once machine secrets (mirrors OAuth client-secret UX).
         response_payload.update(generated)
@@ -422,17 +403,13 @@ async def _load_enabled_oauth(domain: str, db: AsyncSession):
     """Resolve the enabled system integration + provider + config_flow for an OAuth domain."""
     # Integrations are enabled by default — only an explicit admin disable blocks this.
     if await is_domain_disabled(db, domain):
-        raise HTTPException(
-            status_code=400, detail="Integration is not enabled by system admin."
-        )
+        raise HTTPException(status_code=400, detail="Integration is not enabled by system admin.")
     provider = integration_registry.get_provider(domain)
     config_flow = integration_registry.get_config_flow(domain)
     if not provider or not config_flow:
         raise HTTPException(status_code=404, detail="Integration not loaded.")
     if not getattr(config_flow, "is_oauth", False):
-        raise HTTPException(
-            status_code=400, detail=f"{domain} is not an OAuth integration."
-        )
+        raise HTTPException(status_code=400, detail=f"{domain} is not an OAuth integration.")
     return provider, config_flow
 
 
@@ -519,9 +496,7 @@ async def oauth_callback(
         integration_uuid = UUID(integration_id)
         user_uuid = UUID(user_id)
     except ValueError:
-        raise HTTPException(
-            status_code=400, detail="Malformed identifiers in OAuth state."
-        )
+        raise HTTPException(status_code=400, detail="Malformed identifiers in OAuth state.")
 
     stmt = select(UserIntegration).where(
         UserIntegration.id == integration_uuid, UserIntegration.user_id == user_uuid
@@ -568,9 +543,7 @@ async def get_integration_details(
         integration_uuid = UUID(integration_id)
         patient_uuid = UUID(patient_id)
     except ValueError:
-        raise HTTPException(
-            status_code=400, detail="Invalid UUID format for user or patient"
-        )
+        raise HTTPException(status_code=400, detail="Invalid UUID format for user or patient")
 
     stmt = select(UserIntegration).where(
         UserIntegration.id == integration_uuid,
@@ -581,9 +554,7 @@ async def get_integration_details(
     integration = result.scalar_one_or_none()
 
     if not integration:
-        raise HTTPException(
-            status_code=404, detail="Integration not found or not active"
-        )
+        raise HTTPException(status_code=404, detail="Integration not found or not active")
 
     domain = integration.provider
 
@@ -610,8 +581,7 @@ async def get_integration_details(
             Observation.tenant_id == integration.tenant_id,
             Observation.subject["reference"].astext == f"Patient/{patient_id}",
             or_(
-                Observation.performer[0]["reference"].astext
-                == f"Integration/{integration.id}",
+                Observation.performer[0]["reference"].astext == f"Integration/{integration.id}",
                 Observation.performer[0]["display"].astext == domain,
             ),
             Observation.biomarker_id.isnot(None),
@@ -652,8 +622,7 @@ async def get_integration_details(
             Observation.tenant_id == integration.tenant_id,
             Observation.subject["reference"].astext == f"Patient/{patient_id}",
             or_(
-                Observation.performer[0]["reference"].astext
-                == f"Integration/{integration.id}",
+                Observation.performer[0]["reference"].astext == f"Integration/{integration.id}",
                 Observation.performer[0]["display"].astext == domain,
             ),
             Observation.biomarker_id.isnot(None),
@@ -672,16 +641,12 @@ async def get_integration_details(
             if obs.biomarker_id in b_defs
             else obs.code.get("text", "Unknown Metric")
         )
-        b_slug = (
-            b_defs.get(obs.biomarker_id).slug if obs.biomarker_id in b_defs else None
-        )
+        b_slug = b_defs.get(obs.biomarker_id).slug if obs.biomarker_id in b_defs else None
         unit = obs.value_quantity.get("unit", "") if obs.value_quantity else ""
         recent_data.append(
             {
                 "id": str(obs.id),
-                "date": obs.effective_datetime.isoformat()
-                if obs.effective_datetime
-                else None,
+                "date": obs.effective_datetime.isoformat() if obs.effective_datetime else None,
                 "sync_time": obs.created_at.isoformat()
                 if hasattr(obs, "created_at") and obs.created_at
                 else None,
@@ -690,9 +655,7 @@ async def get_integration_details(
                 "biomarker_id": str(obs.biomarker_id) if obs.biomarker_id else None,
                 "value": obs.raw_value,
                 "unit": unit,
-                "examination_id": str(obs.examination_id)
-                if obs.examination_id
-                else None,
+                "examination_id": str(obs.examination_id) if obs.examination_id else None,
             }
         )
 
@@ -744,9 +707,7 @@ async def get_integration_details(
                 "status": log.status,
                 "records_synced": log.records_synced,
                 "started_at": log.started_at.isoformat(),
-                "completed_at": log.completed_at.isoformat()
-                if log.completed_at
-                else None,
+                "completed_at": log.completed_at.isoformat() if log.completed_at else None,
                 "error_message": log.error_message,
             }
             for log in sync_logs
@@ -874,9 +835,7 @@ async def remove_integration(
         try:
             await provider.revoke(existing)
         except Exception:
-            logger.warning(
-                "Token revocation failed for %s — deleting anyway", integration_id
-            )
+            logger.warning("Token revocation failed for %s — deleting anyway", integration_id)
 
     await db.delete(existing)
     await db.commit()
@@ -922,14 +881,10 @@ async def execute_custom_action(
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
 
     if not hasattr(provider, "execute_custom_action"):
-        raise HTTPException(
-            status_code=400, detail="Provider does not support custom actions"
-        )
+        raise HTTPException(status_code=400, detail="Provider does not support custom actions")
 
     try:
-        response = await provider.execute_custom_action(
-            integration, action_id, **(payload or {})
-        )
+        response = await provider.execute_custom_action(integration, action_id, **(payload or {}))
         # Commit any changes to user_config (like cursors) made by the action
         from sqlalchemy.orm.attributes import flag_modified
 
@@ -987,9 +942,7 @@ async def execute_notification_action(
         )
 
     try:
-        response = await provider.handle_notification_action(
-            integration, action_id, payload or {}
-        )
+        response = await provider.handle_notification_action(integration, action_id, payload or {})
         # Persist any provider-side state changes (cursor bumps, ack flags, etc.)
         from sqlalchemy.orm.attributes import flag_modified
 
@@ -1072,9 +1025,7 @@ async def list_integration_proposals(
     from app.schemas.integration_proposal import IntegrationProposalResponse
     from app.services import integration_proposal_service as proposal_svc
 
-    integration = await _load_owned_integration(
-        integration_id, current_user=current_user, db=db
-    )
+    integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
 
     status_filter: HitlTaskStatus | None = None
     if status is not None:
@@ -1083,10 +1034,7 @@ async def list_integration_proposals(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"Unknown status {status!r}. Valid: "
-                    f"{[s.value for s in HitlTaskStatus]}"
-                ),
+                detail=(f"Unknown status {status!r}. Valid: {[s.value for s in HitlTaskStatus]}"),
             )
 
     proposals = await proposal_svc.list_proposals(
@@ -1097,8 +1045,7 @@ async def list_integration_proposals(
         offset=offset,
     )
     return [
-        IntegrationProposalResponse.model_validate(p).model_dump(mode="json")
-        for p in proposals
+        IntegrationProposalResponse.model_validate(p).model_dump(mode="json") for p in proposals
     ]
 
 
@@ -1116,9 +1063,7 @@ async def get_integration_proposal(
     from app.schemas.integration_proposal import IntegrationProposalResponse
     from app.services import integration_proposal_service as proposal_svc
 
-    integration = await _load_owned_integration(
-        integration_id, current_user=current_user, db=db
-    )
+    integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
     try:
         proposal_uuid = UUID(proposal_id)
     except ValueError:
@@ -1169,9 +1114,7 @@ async def resolve_integration_proposal(
     )
     from app.services import integration_proposal_service as proposal_svc
 
-    integration = await _load_owned_integration(
-        integration_id, current_user=current_user, db=db
-    )
+    integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
     try:
         proposal_uuid = UUID(proposal_id)
     except ValueError:
@@ -1215,9 +1158,7 @@ async def resolve_integration_proposal(
             raise HTTPException(status_code=409, detail=str(exc))
         raise HTTPException(status_code=400, detail=str(exc))
 
-    response = IntegrationProposalResponse.model_validate(result.proposal).model_dump(
-        mode="json"
-    )
+    response = IntegrationProposalResponse.model_validate(result.proposal).model_dump(mode="json")
     response["applied_entity_id"] = (
         str(result.applied_entity_id) if result.applied_entity_id else None
     )
@@ -1246,9 +1187,7 @@ async def rotate_instance_secret(
     ``webhook_secret`` (inbound webhook senders).
     """
     if field not in ("api_secret", "webhook_secret"):
-        raise HTTPException(
-            status_code=400, detail="field must be api_secret or webhook_secret"
-        )
+        raise HTTPException(status_code=400, detail="field must be api_secret or webhook_secret")
 
     try:
         integration_uuid = UUID(integration_id)
@@ -1392,11 +1331,7 @@ def _resolve_secret_field(
         return None
     flow = integration_registry.get_config_flow(domain)
     secret_fields = flow.get_secret_fields() if flow else []
-    if (
-        field_name not in secret_fields
-        and isinstance(raw, dict)
-        and "_encrypted" in raw
-    ):
+    if field_name not in secret_fields and isinstance(raw, dict) and "_encrypted" in raw:
         # Platform-provisioned machine secret (audit 2026-08 H1/H2): stored
         # as a context-bound encrypted wrapper even though the config flow
         # doesn't declare the field. Decrypt directly with the instance id
@@ -1428,9 +1363,7 @@ def _resolve_secret_field(
         return None
 
 
-def _verify_webhook_signature(
-    secret: str, raw_body: bytes, provided_signature: str
-) -> bool:
+def _verify_webhook_signature(secret: str, raw_body: bytes, provided_signature: str) -> bool:
     """Constant-time HMAC-SHA256 verification of a webhook payload.
 
     Used to authenticate inbound webhook deliveries when an integration has
@@ -1511,9 +1444,7 @@ async def integration_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
     _rl_ip=Depends(rate_limit("integration_webhook", max_requests=120, window=60)),
-    _rl_int=Depends(
-        rate_limit_integration("integration_webhook", max_requests=60, window=60)
-    ),
+    _rl_int=Depends(rate_limit_integration("integration_webhook", max_requests=60, window=60)),
 ) -> Any:
     """
     Handle incoming webhooks for a specific integration.
@@ -1547,9 +1478,7 @@ async def integration_webhook(
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
 
     if not hasattr(provider, "handle_webhook"):
-        raise HTTPException(
-            status_code=400, detail="Provider does not support webhooks"
-        )
+        raise HTTPException(status_code=400, detail="Provider does not support webhooks")
 
     # Read the raw body ONCE (capped — audit M4) so the signature check and
     # the downstream JSON parse share the exact bytes.
@@ -1590,18 +1519,14 @@ async def integration_webhook(
             f"wh:{integration.id}", provided_sig.encode("utf-8") + b"\n" + raw_body
         ):
             logger.warning("Webhook replay rejected for integration %s", integration_id)
-            raise HTTPException(
-                status_code=401, detail="Webhook signature verification failed"
-            )
+            raise HTTPException(status_code=401, detail="Webhook signature verification failed")
     if not sig_ok:
         logger.warning(
             "Webhook signature verification failed for %s (Integration: %s)",
             domain,
             integration_id,
         )
-        raise HTTPException(
-            status_code=401, detail="Webhook signature verification failed"
-        )
+        raise HTTPException(status_code=401, detail="Webhook signature verification failed")
 
     from app.models.user_integration import IntegrationSyncLog
 
@@ -1614,7 +1539,7 @@ async def integration_webhook(
         payload = {}  # Maybe it's a form or empty body, let the provider handle it
 
     try:
-        start_time = datetime.datetime.now(datetime.timezone.utc)
+        start_time = datetime.datetime.now(datetime.UTC)
         observations_data = await provider.handle_webhook(integration, payload, request)
         count = 0
         # Initialized here so the post-sync notification dispatch below has
@@ -1666,7 +1591,7 @@ async def integration_webhook(
             )
             count += len(telemetry_records) + len(fhir_records)
 
-        integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
+        integration.last_synced_at = datetime.datetime.now(datetime.UTC)
 
         # Log the sync
         sync_log = IntegrationSyncLog(
@@ -1708,20 +1633,16 @@ async def integration_webhook(
         return {"message": "Webhook processed successfully", "metrics_synced": count}
     except Exception as e:
         await db.rollback()
-        logger.error(
-            f"Webhook failed for {domain} (Integration: {integration_id}): {e}"
-        )
+        logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
 
         if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
-            try:
+            with contextlib.suppress(Exception):
                 await provider.log_debug_payload(
                     integration, "Webhook Error", {"error": str(e)}, level="error"
                 )
-            except Exception:
-                pass
 
         # Log failure
-        failure_completed = datetime.datetime.now(datetime.timezone.utc)
+        failure_completed = datetime.datetime.now(datetime.UTC)
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
@@ -1771,9 +1692,7 @@ async def integration_api_proxy(
     request: Request,
     db: AsyncSession = Depends(get_db),
     _rl_ip=Depends(rate_limit("integration_api_proxy", max_requests=120, window=60)),
-    _rl_int=Depends(
-        rate_limit_integration("integration_api_proxy", max_requests=60, window=60)
-    ),
+    _rl_int=Depends(rate_limit_integration("integration_api_proxy", max_requests=60, window=60)),
 ) -> Any:
     """
     Handle generic two-way API requests for a specific integration.
@@ -1809,16 +1728,12 @@ async def integration_api_proxy(
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
 
     if not hasattr(provider, "handle_api_request"):
-        raise HTTPException(
-            status_code=400, detail="Provider does not support API requests"
-        )
+        raise HTTPException(status_code=400, detail="Provider does not support API requests")
 
     # Body cap (audit M4) — read once; signature + JSON parse share bytes.
     raw_body = await _check_machine_body_cap(request)
     cfg = getattr(integration, "user_config", None) or {}
-    api_secret = _resolve_secret_field(
-        domain, cfg, "api_secret", context=str(integration.id)
-    )
+    api_secret = _resolve_secret_field(domain, cfg, "api_secret", context=str(integration.id))
 
     # GET /status without a signature stays the pre-pairing connectivity
     # probe (QR flow) but leaks nothing beyond liveness + server time
@@ -1831,9 +1746,7 @@ async def integration_api_proxy(
     if is_status_probe and not provided_sig:
         return {
             "status": "active",
-            "server_time": int(
-                datetime.datetime.now(datetime.timezone.utc).timestamp()
-            ),
+            "server_time": int(datetime.datetime.now(datetime.UTC).timestamp()),
         }
 
     if not api_secret:

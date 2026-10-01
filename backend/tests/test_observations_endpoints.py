@@ -1,7 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock, MagicMock
-from uuid import uuid4
 
 
 def make_token(role="USER", user_id=None, tenant_id=None):
@@ -17,7 +18,10 @@ def observation_dict():
     return {
         "id": str(uuid4()),
         "status": "final",
-        "code": {"coding": [{"system": "http://loinc.org", "code": "8867-4"}], "text": "Heart rate"},
+        "code": {
+            "coding": [{"system": "http://loinc.org", "code": "8867-4"}],
+            "text": "Heart rate",
+        },
         "subject": {"reference": f"Patient/{uuid4()}"},
         "value_quantity": {"value": 72, "unit": "bpm"},
         "effective_datetime": "2026-01-01T00:00:00Z",
@@ -30,8 +34,8 @@ def observation_dict():
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.observations.list_observations", new_callable=AsyncMock)
 async def test_list_observations_success(mock_list, async_client: AsyncClient, observation_dict):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_list.return_value = {"items": [observation_dict], "total": 1}
@@ -49,8 +53,8 @@ async def test_list_observations_success(mock_list, async_client: AsyncClient, o
 async def test_list_observations_with_patient_id_checks_access(
     mock_list, mock_access, async_client: AsyncClient
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_list.return_value = {"items": [], "total": 0}
@@ -65,8 +69,8 @@ async def test_list_observations_with_patient_id_checks_access(
 
 @pytest.mark.asyncio
 async def test_list_observations_user_role_no_patient_returns_empty(async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="USER")
 
@@ -87,8 +91,8 @@ async def test_list_observations_user_role_no_patient_returns_empty(async_client
 async def test_create_observation_success(
     mock_access, mock_create, mock_audit, async_client: AsyncClient, observation_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     created = MagicMock()
@@ -114,8 +118,8 @@ async def test_create_observation_success(
 
 @pytest.mark.asyncio
 async def test_create_observation_user_role_without_patient_400(async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="USER")
 
@@ -135,8 +139,8 @@ async def test_create_observation_user_role_without_patient_400(async_client: As
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
 async def test_get_observation_success(mock_get, async_client: AsyncClient, observation_dict):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_get.return_value = observation_dict
@@ -151,8 +155,8 @@ async def test_get_observation_success(mock_get, async_client: AsyncClient, obse
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
 async def test_get_observation_not_found(mock_get, async_client: AsyncClient):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_get.return_value = None
@@ -174,8 +178,8 @@ async def test_get_observation_not_found(mock_get, async_client: AsyncClient):
 async def test_update_observation_success(
     mock_get, mock_update, mock_audit, async_client: AsyncClient, observation_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     existing = MagicMock()
@@ -202,11 +206,9 @@ async def test_update_observation_success(
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.observations.update_observation", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
-async def test_update_observation_not_found(
-    mock_get, mock_update, async_client: AsyncClient
-):
-    from app.main import app
+async def test_update_observation_not_found(mock_get, mock_update, async_client: AsyncClient):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_get.return_value = None
@@ -231,8 +233,8 @@ async def test_update_observation_not_found(
 async def test_delete_observation_success(
     mock_get, mock_delete, mock_audit, async_client: AsyncClient, observation_dict
 ):
-    from app.main import app
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     obs = MagicMock()
@@ -255,11 +257,9 @@ async def test_delete_observation_success(
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.observations.delete_observation", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
-async def test_delete_observation_not_found(
-    mock_get, mock_delete, async_client: AsyncClient
-):
-    from app.main import app
+async def test_delete_observation_not_found(mock_get, mock_delete, async_client: AsyncClient):
     from app.core.security import get_current_user
+    from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_get.return_value = None

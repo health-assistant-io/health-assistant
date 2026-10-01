@@ -18,15 +18,16 @@ All round-trip the ``<role>_concept_id`` FK + the ``<role>_concept`` nested
 response object, so any future regression to a non-``from_attributes``-safe
 schema field fails here rather than in production.
 """
+
 import uuid
 
 import pytest
 import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
-from tests._auth_helpers import headers_for_claims
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
+from tests._auth_helpers import headers_for_claims
 
 
 @pytest_asyncio.fixture
@@ -60,9 +61,7 @@ async def admin_headers_and_patient():
     return headers, str(patient_id)
 
 
-async def _make_concept(
-    async_client, headers, kind="examination_category", name=None
-):
+async def _make_concept(async_client, headers, kind="examination_category", name=None):
     """Create a global concept via the API and return ``(id, name)``."""
     slug = f"it-{kind}-{uuid.uuid4().hex[:8]}"
     resp = await async_client.post(
@@ -126,16 +125,12 @@ async def test_create_examination_with_category_round_trips_concept(
     exam_id = body["id"]
 
     # GET detail round-trips the same shape.
-    detail = await async_client.get(
-        f"/api/v1/examinations/{exam_id}", headers=headers
-    )
+    detail = await async_client.get(f"/api/v1/examinations/{exam_id}", headers=headers)
     assert detail.status_code == 200, detail.text
     assert detail.json()["category_concept"]["id"] == concept_id
 
     # GET list (ExaminationSummaryResponse) round-trips too.
-    listing = await async_client.get(
-        "/api/v1/examinations", headers=headers
-    )
+    listing = await async_client.get("/api/v1/examinations", headers=headers)
     assert listing.status_code == 200, listing.text
     matched = [e for e in listing.json() if e["id"] == exam_id]
     assert matched, "created exam not in listing"
@@ -198,9 +193,7 @@ async def test_list_clinical_event_types_serializes_category_concept(
     assert create.json()["category_concept_id"] == cat_id
     assert isinstance(create.json().get("category_concept"), dict)
 
-    listing = await async_client.get(
-        "/api/v1/clinical-events/types", headers=headers
-    )
+    listing = await async_client.get("/api/v1/clinical-events/types", headers=headers)
     assert listing.status_code == 200, listing.text
     matched = [t for t in listing.json() if t["slug"] == type_slug]
     assert matched, "created event type not in listing"
@@ -213,9 +206,7 @@ async def test_list_clinical_event_types_serializes_category_concept(
 
 
 @pytest.mark.asyncio
-async def test_doctor_specialty_concept_round_trips(
-    async_client, admin_headers_and_patient
-):
+async def test_doctor_specialty_concept_round_trips(async_client, admin_headers_and_patient):
     """POST/GET /doctors with specialty_concept_id must surface the resolved
     ``specialty`` name string (read off the concept relationship)."""
     headers, _ = admin_headers_and_patient
@@ -247,9 +238,7 @@ async def test_doctor_specialty_concept_round_trips(
 
 
 @pytest.mark.asyncio
-async def test_biomarker_list_carries_class_concept_alias(
-    async_client, admin_headers_and_patient
-):
+async def test_biomarker_list_carries_class_concept_alias(async_client, admin_headers_and_patient):
     """GET /biomarkers must serialize the ``category`` string alias derived
     from class_concept without a serialization error. Uses the seeded global
     catalog; if empty, creates one biomarker first."""

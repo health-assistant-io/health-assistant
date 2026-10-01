@@ -12,7 +12,7 @@ empty arrays.
 from __future__ import annotations
 
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -67,19 +67,13 @@ async def chat_setup() -> AsyncIterator[dict]:
         # nukes the user + tenant we created.
         async with AsyncSessionLocal() as db:
             await db.execute(
-                ChatSession.__table__.delete().where(
-                    ChatSession.__table__.c.id == session_id
-                )
+                ChatSession.__table__.delete().where(ChatSession.__table__.c.id == session_id)
             )
             await db.execute(
-                UserModel.__table__.delete().where(
-                    UserModel.__table__.c.id == user_id
-                )
+                UserModel.__table__.delete().where(UserModel.__table__.c.id == user_id)
             )
             await db.execute(
-                TenantModel.__table__.delete().where(
-                    TenantModel.__table__.c.id == tenant_id
-                )
+                TenantModel.__table__.delete().where(TenantModel.__table__.c.id == tenant_id)
             )
             await db.commit()
 

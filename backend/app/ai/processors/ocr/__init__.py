@@ -1,22 +1,23 @@
-from typing import Optional
 from uuid import UUID
+
+from langchain_core.language_models.chat_models import BaseChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai import chat_models
 
 from .base import OCRProcessor
 from .langchain_vision import LangChainOCRProcessor
 from .tesseract import TesseractOCRProcessor
-from app.ai import chat_models
-from langchain_core.language_models.chat_models import BaseChatModel
 
 
 def get_ocr_processor(
     provider: str = "openai",
-    api_key: str = None,
-    api_base: str = None,
-    model: str = None,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
     max_tokens: int = 65536,
     temperature: float = 0.0,
-    llm: Optional[BaseChatModel] = None,
+    llm: BaseChatModel | None = None,
     **kwargs,
 ) -> OCRProcessor:
     """Factory function to get OCR processor based on configuration.
@@ -46,7 +47,7 @@ def get_ocr_processor(
 
 
 async def get_ocr_processor_from_db(
-    db: AsyncSession, task_type: str = "ocr", tenant_id: Optional[UUID] = None
+    db: AsyncSession, task_type: str = "ocr", tenant_id: UUID | None = None
 ) -> OCRProcessor:
     """Get OCR processor configured from database"""
     from app.ai.providers.service import AIProviderService
@@ -56,8 +57,8 @@ async def get_ocr_processor_from_db(
 
 
 __all__ = [
-    "OCRProcessor",
     "LangChainOCRProcessor",
+    "OCRProcessor",
     "TesseractOCRProcessor",
     "get_ocr_processor",
     "get_ocr_processor_from_db",

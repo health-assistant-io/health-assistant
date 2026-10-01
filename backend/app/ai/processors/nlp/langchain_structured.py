@@ -1,21 +1,23 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
 import json
-from typing import Dict, Any, List, Optional
 import logging
+from typing import Any
 
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.prompts import ChatPromptTemplate
 
-from .base import NLPExtractor
 from app.ai.schemas.nlp import (
     DocumentEntitiesExtract,
+    ExaminationMetadataExtract,
+    MapResponsePayload,
+    MetricMappingRequest,
     NewBiomarkerDefinitions,
     NewMedicationDefinitions,
     UnknownBiomarkerExtract,
     UnknownMedicationExtract,
-    ExaminationMetadataExtract,
-    MapResponsePayload,
-    MetricMappingRequest,
 )
+
+from .base import NLPExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +37,13 @@ class LangChainStructuredExtractor(NLPExtractor):
     def __init__(self, llm: BaseChatModel):
         self.llm = llm
 
-    async def extract_entities(self, text: str) -> Dict[str, Any]:
+    async def extract_entities(self, text: str) -> dict[str, Any]:
         """Base implementation - should not be used in the new pipeline directly without catalog"""
         return await self.parse_document_pass_1(text, [], [])
 
     async def map_external_metrics(
         self,
-        raw_metrics: List[MetricMappingRequest],
+        raw_metrics: list[MetricMappingRequest],
         existing_catalog_str: str,
         timeout: float = 45.0,
     ) -> MapResponsePayload:
@@ -60,10 +62,7 @@ CRITICAL RULES:
 4. Do not create duplicates. For example, if 'Platelet Distribution Width' is in the catalog, map 'Εύρος κατανομής PLT' to it.
 """
         metrics_str = "\n".join(
-            [
-                f"- {m.name}" + (f" (Code: {m.code})" if m.code else "")
-                for m in raw_metrics
-            ]
+            [f"- {m.name}" + (f" (Code: {m.code})" if m.code else "") for m in raw_metrics]
         )
 
         prompt = ChatPromptTemplate.from_template(system_prompt)
@@ -82,14 +81,14 @@ CRITICAL RULES:
             return result
         except Exception as e:
             logger.error(f"LangChain map_external_metrics failed: {e}")
-            raise ValueError(f"Failed to perform AI mapping: {str(e)}")
+            raise ValueError(f"Failed to perform AI mapping: {e!s}")
 
     async def parse_document_pass_1(
         self,
         text: str,
-        biomarker_catalog: List[Dict[str, Any]],
-        medication_catalog: List[Dict[str, Any]],
-        reference_data: Optional[Dict[str, Any]] = None,
+        biomarker_catalog: list[dict[str, Any]],
+        medication_catalog: list[dict[str, Any]],
+        reference_data: dict[str, Any] | None = None,
         timeout: float = 60.0,
     ) -> DocumentEntitiesExtract:
         """First pass: Extract data and map to known catalogs where possible"""
@@ -155,7 +154,7 @@ Instructions:
             raise
 
     async def parse_document_pass_2_biomarkers(
-        self, unknown_biomarkers: List[UnknownBiomarkerExtract], timeout: float = 45.0
+        self, unknown_biomarkers: list[UnknownBiomarkerExtract], timeout: float = 45.0
     ) -> NewBiomarkerDefinitions:
         """Second pass: Generate standard definitions for unknown biomarkers"""
 
@@ -219,16 +218,16 @@ IMPORTANT RULES:
             raise
 
     async def parse_document_pass_2_medications(
-        self, unknown_medications: List[UnknownMedicationExtract], timeout: float = 45.0
+        self, unknown_medications: list[UnknownMedicationExtract], timeout: float = 45.0
     ) -> NewMedicationDefinitions:
         """Second pass: Generate standard definitions for unknown medications"""
 
         system_prompt = """You are a pharmaceutical ontology expert.
 You will be provided with a list of raw medications extracted from a patient document.
 Your task is to generate a standardized catalog definition for each one.
-IMPORTANT: 
+IMPORTANT:
 1. For each definition, you must include the `raw_name_match` which is the exact `name` from the input.
-2. The `name` field must be the CLEAN, GENERIC name of the medication (e.g., 'Phenylephrine Hydrochloride' instead of 'Phenylephrine Hydrochloride 2.5% Ophthalmic Solution'). 
+2. The `name` field must be the CLEAN, GENERIC name of the medication (e.g., 'Phenylephrine Hydrochloride' instead of 'Phenylephrine Hydrochloride 2.5% Ophthalmic Solution').
 3. DO NOT include dosages, concentrations, or delivery formats (like 'Ophthalmic Solution', 'Tablets', '2.5%') in the `name` field.
 4. Include a brief description, common indications, side effects, and contraindications.
 """
@@ -255,7 +254,7 @@ IMPORTANT:
     async def parse_examination_metadata(
         self,
         text: str,
-        known_categories: Optional[List[str]] = None,
+        known_categories: list[str] | None = None,
         timeout: float = 45.0,
     ) -> ExaminationMetadataExtract:
         """Extract examination date, doctors, category, and notes from text"""

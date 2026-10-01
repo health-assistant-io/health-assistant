@@ -24,9 +24,9 @@ Revises: b1y2o3k4s5e6
 Create Date: 2026-09-25
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "h1c2o3n4t5r6"
 down_revision = "b1y2o3k4s5e6"
@@ -44,9 +44,7 @@ def upgrade() -> None:
             existing_nullable=True,
         )
         batch_op.add_column(
-            sa.Column(
-                "full_name", sa.String(length=200), nullable=False, server_default=""
-            )
+            sa.Column("full_name", sa.String(length=200), nullable=False, server_default="")
         )
         batch_op.add_column(
             sa.Column(
@@ -56,20 +54,12 @@ def upgrade() -> None:
                 server_default="0",
             )
         )
+        batch_op.add_column(sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True))
         batch_op.add_column(
-            sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True)
+            sa.Column("token_version", sa.Integer(), nullable=False, server_default="1")
         )
-        batch_op.add_column(
-            sa.Column(
-                "token_version", sa.Integer(), nullable=False, server_default="1"
-            )
-        )
-        batch_op.add_column(
-            sa.Column("oidc_issuer", sa.String(length=500), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("oidc_subject", sa.String(length=500), nullable=True)
-        )
+        batch_op.add_column(sa.Column("oidc_issuer", sa.String(length=500), nullable=True))
+        batch_op.add_column(sa.Column("oidc_subject", sa.String(length=500), nullable=True))
 
     op.create_unique_constraint(
         "uq_users_oidc_issuer_subject", "users", ["oidc_issuer", "oidc_subject"]
@@ -85,9 +75,7 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("absolute_expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "client_label", sa.String(length=200), nullable=False, server_default=""
-        ),
+        sa.Column("client_label", sa.String(length=200), nullable=False, server_default=""),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -100,9 +88,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("auth_sessions", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_auth_sessions_user_id"), ["user_id"], unique=False
-        )
+        batch_op.create_index(batch_op.f("ix_auth_sessions_user_id"), ["user_id"], unique=False)
 
     # --- instance_settings: §5 instance facts ------------------------
     op.create_table(

@@ -18,7 +18,7 @@ Adding a new endpoint type = add one resolver function + register it in
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -42,10 +42,10 @@ def _payload(
     etype: EdgeEndpointType,
     eid: Any,
     label: str,
-    icon: Optional[dict] = None,
-    color: Optional[str] = None,
-    kind: Optional[str] = None,
-) -> Dict[str, Any]:
+    icon: dict | None = None,
+    color: str | None = None,
+    kind: str | None = None,
+) -> dict[str, Any]:
     return {
         "type": etype.value,
         "id": str(eid),
@@ -56,16 +56,10 @@ def _payload(
     }
 
 
-async def _resolve_concepts(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
-    out: Dict[UUID, Dict[str, Any]] = {}
+async def _resolve_concepts(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (
-            await db.execute(
-                select(Concept).where(Concept.id.in_(ids), Concept.deleted_at.is_(None))
-            )
-        )
+        (await db.execute(select(Concept).where(Concept.id.in_(ids), Concept.deleted_at.is_(None))))
         .scalars()
         .all()
     )
@@ -81,12 +75,10 @@ async def _resolve_concepts(
     return out
 
 
-async def _resolve_anatomy(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_anatomy(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve anatomy_structures; pull display color/kind from the row's
     ``class_concept`` (the anatomy_class concept, e.g. "organ")."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
         (await db.execute(select(AnatomyStructure).where(AnatomyStructure.id.in_(ids))))
         .scalars()
@@ -94,12 +86,10 @@ async def _resolve_anatomy(
     )
     # Bulk-load any class concepts in one round-trip.
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
-    class_map: Dict[UUID, Concept] = {}
+    class_map: dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
@@ -115,26 +105,18 @@ async def _resolve_anatomy(
     return out
 
 
-async def _resolve_biomarkers(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
-    out: Dict[UUID, Dict[str, Any]] = {}
+async def _resolve_biomarkers(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (
-            await db.execute(
-                select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(ids))
-            )
-        )
+        (await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.id.in_(ids))))
         .scalars()
         .all()
     )
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
-    class_map: Dict[UUID, Concept] = {}
+    class_map: dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
@@ -149,10 +131,8 @@ async def _resolve_biomarkers(
     return out
 
 
-async def _resolve_examinations(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
-    out: Dict[UUID, Dict[str, Any]] = {}
+async def _resolve_examinations(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
         (await db.execute(select(ExaminationModel).where(ExaminationModel.id.in_(ids))))
         .scalars()
@@ -160,12 +140,10 @@ async def _resolve_examinations(
     )
     # Resolve each examination's category concept for a richer label.
     cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
-    cat_map: Dict[UUID, Concept] = {}
+    cat_map: dict[UUID, Concept] = {}
     if cat_ids:
         cat_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids)))).scalars().all()
         )
         cat_map = {c.id: c for c in cat_rows}
     for r in rows:
@@ -182,28 +160,20 @@ async def _resolve_examinations(
     return out
 
 
-async def _resolve_medications(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_medications(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve medication_catalog rows; pull display color/kind from the row's
     ``class_concept`` (the drug-class concept, e.g. an ATC class)."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (
-            await db.execute(
-                select(MedicationCatalog).where(MedicationCatalog.id.in_(ids))
-            )
-        )
+        (await db.execute(select(MedicationCatalog).where(MedicationCatalog.id.in_(ids))))
         .scalars()
         .all()
     )
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
-    class_map: Dict[UUID, Concept] = {}
+    class_map: dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
@@ -218,24 +188,18 @@ async def _resolve_medications(
     return out
 
 
-async def _resolve_allergies(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_allergies(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve allergy_catalog rows; pull display color/kind from the row's
     ``class_concept`` (the allergen-class concept)."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (await db.execute(select(AllergyCatalog).where(AllergyCatalog.id.in_(ids))))
-        .scalars()
-        .all()
+        (await db.execute(select(AllergyCatalog).where(AllergyCatalog.id.in_(ids)))).scalars().all()
     )
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
-    class_map: Dict[UUID, Concept] = {}
+    class_map: dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
@@ -251,27 +215,21 @@ async def _resolve_allergies(
 
 
 async def _resolve_clinical_event_types(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+    db: AsyncSession, ids: list[UUID]
+) -> dict[UUID, dict[str, Any]]:
     """Resolve clinical_event_types (journey blueprints); pull display
     icon/color/kind from the row's ``category_concept``."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (
-            await db.execute(
-                select(ClinicalEventType).where(ClinicalEventType.id.in_(ids))
-            )
-        )
+        (await db.execute(select(ClinicalEventType).where(ClinicalEventType.id.in_(ids))))
         .scalars()
         .all()
     )
     cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
-    cat_map: Dict[UUID, Concept] = {}
+    cat_map: dict[UUID, Concept] = {}
     if cat_ids:
         cat_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids)))).scalars().all()
         )
         cat_map = {c.id: c for c in cat_rows}
     for r in rows:
@@ -287,24 +245,18 @@ async def _resolve_clinical_event_types(
     return out
 
 
-async def _resolve_vaccines(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_vaccines(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve vaccine_catalog rows; pull display color/kind from the row's
     ``class_concept`` (the vaccine-class concept). Phase 5."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (await db.execute(select(VaccineCatalog).where(VaccineCatalog.id.in_(ids))))
-        .scalars()
-        .all()
+        (await db.execute(select(VaccineCatalog).where(VaccineCatalog.id.in_(ids)))).scalars().all()
     )
     concept_ids = {r.class_concept_id for r in rows if r.class_concept_id}
-    class_map: Dict[UUID, Concept] = {}
+    class_map: dict[UUID, Concept] = {}
     if concept_ids:
         class_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         class_map = {c.id: c for c in class_rows}
     for r in rows:
@@ -319,23 +271,15 @@ async def _resolve_vaccines(
     return out
 
 
-async def _resolve_doctors(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_doctors(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve doctors; label = doctor name, kind = specialty concept name."""
-    out: Dict[UUID, Dict[str, Any]] = {}
-    rows = (
-        (await db.execute(select(DoctorModel).where(DoctorModel.id.in_(ids))))
-        .scalars()
-        .all()
-    )
+    out: dict[UUID, dict[str, Any]] = {}
+    rows = (await db.execute(select(DoctorModel).where(DoctorModel.id.in_(ids)))).scalars().all()
     concept_ids = {r.specialty_concept_id for r in rows if r.specialty_concept_id}
-    spec_map: Dict[UUID, Concept] = {}
+    spec_map: dict[UUID, Concept] = {}
     if concept_ids:
         spec_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(concept_ids)))).scalars().all()
         )
         spec_map = {c.id: c for c in spec_rows}
     for r in rows:
@@ -351,22 +295,16 @@ async def _resolve_doctors(
     return out
 
 
-async def _resolve_observations(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_observations(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve FHIR observations. Label is the observation's code text plus
     its value (so a card can show "Glucose = 142 mg/dL" without a refetch).
     """
-    out: Dict[UUID, Dict[str, Any]] = {}
-    rows = (
-        (await db.execute(select(Observation).where(Observation.id.in_(ids))))
-        .scalars()
-        .all()
-    )
+    out: dict[UUID, dict[str, Any]] = {}
+    rows = (await db.execute(select(Observation).where(Observation.id.in_(ids)))).scalars().all()
     for r in rows:
         # code is FHIR JSONB: {"coding": [...], "text": "..."}
         code = r.code if isinstance(r.code, dict) else {}
-        label_parts: List[str] = []
+        label_parts: list[str] = []
         text = code.get("text")
         if text:
             label_parts.append(str(text))
@@ -391,23 +329,17 @@ async def _resolve_observations(
     return out
 
 
-async def _resolve_documents(
-    db: AsyncSession, ids: List[UUID]
-) -> Dict[UUID, Dict[str, Any]]:
+async def _resolve_documents(db: AsyncSession, ids: list[UUID]) -> dict[UUID, dict[str, Any]]:
     """Resolve documents; label = filename + date."""
-    out: Dict[UUID, Dict[str, Any]] = {}
+    out: dict[UUID, dict[str, Any]] = {}
     rows = (
-        (await db.execute(select(DocumentModel).where(DocumentModel.id.in_(ids))))
-        .scalars()
-        .all()
+        (await db.execute(select(DocumentModel).where(DocumentModel.id.in_(ids)))).scalars().all()
     )
     cat_ids = {r.category_concept_id for r in rows if r.category_concept_id}
-    cat_map: Dict[UUID, Concept] = {}
+    cat_map: dict[UUID, Concept] = {}
     if cat_ids:
         cat_rows = (
-            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids))))
-            .scalars()
-            .all()
+            (await db.execute(select(Concept).where(Concept.id.in_(cat_ids)))).scalars().all()
         )
         cat_map = {c.id: c for c in cat_rows}
     for r in rows:
@@ -443,36 +375,32 @@ _RESOLVERS = {
 
 async def resolve_endpoints(
     db: AsyncSession,
-    pairs: List[Tuple[EdgeEndpointType, UUID]],
-) -> Dict[UUID, Dict[str, Any]]:
+    pairs: list[tuple[EdgeEndpointType, UUID]],
+) -> dict[UUID, dict[str, Any]]:
     """Resolve a bag of polymorphic ``(type, id)`` pairs into display payloads.
 
     Returns ``{id: payload}`` keyed by the endpoint UUID. Anything that can't
     be resolved (unknown type, stale id, missing row) gets a fallback payload
     so callers never have to special-case None beyond "label-only".
     """
-    by_type: Dict[EdgeEndpointType, List[UUID]] = defaultdict(list)
+    by_type: dict[EdgeEndpointType, list[UUID]] = defaultdict(list)
     for etype, eid in pairs:
         by_type[etype].append(eid)
 
-    resolved: Dict[UUID, Dict[str, Any]] = {}
+    resolved: dict[UUID, dict[str, Any]] = {}
     for etype, ids in by_type.items():
         resolver = _RESOLVERS.get(etype)
         if resolver is None:
             # No dedicated resolver — emit fallbacks for the whole batch.
             for eid in ids:
-                resolved[eid] = _payload(
-                    etype, eid, f"{etype.value}:{str(eid)[:8]}", kind=None
-                )
+                resolved[eid] = _payload(etype, eid, f"{etype.value}:{str(eid)[:8]}", kind=None)
             continue
         resolved.update(await resolver(db, ids))
 
     # Backfill fallbacks for any ids the resolver didn't find (deleted rows).
     for etype, eid in pairs:
         if eid not in resolved:
-            resolved[eid] = _payload(
-                etype, eid, f"{etype.value}:{str(eid)[:8]}", kind=None
-            )
+            resolved[eid] = _payload(etype, eid, f"{etype.value}:{str(eid)[:8]}", kind=None)
     return resolved
 
 

@@ -1,29 +1,29 @@
-from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from app.models.doctor_model import DoctorModel
-from app.models.enums import Role
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.schemas.doctor import DoctorCreate, DoctorUpdate, DoctorResponse
-from app.services.doctor_service import (
-    get_doctor,
-    create_doctor,
-    update_doctor,
-    delete_doctor,
-)
-
+from app.models.doctor_model import DoctorModel
+from app.models.enums import Role
+from app.schemas.doctor import DoctorCreate, DoctorResponse, DoctorUpdate
 from app.schemas.user import TokenData
+from app.services.doctor_service import (
+    create_doctor,
+    delete_doctor,
+    get_doctor,
+    update_doctor,
+)
 
 router = APIRouter(prefix="/doctors", tags=["doctors"])
 
 
-@router.get("", response_model=List[DoctorResponse])
+@router.get("", response_model=list[DoctorResponse])
 async def list_doctors_endpoint(
-    tenant_id: Optional[UUID] = Query(None),
-    user_id: Optional[UUID] = Query(None),
+    tenant_id: UUID | None = Query(None),
+    user_id: UUID | None = Query(None),
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

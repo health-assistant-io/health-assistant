@@ -114,7 +114,7 @@ class CatalogProposal(BaseModel):
     Advisory fields (not required to apply; recorded in audit/meta where
     applicable):
 
-    - ``confidence``: 0.0–1.0 — the provider's confidence in the proposal.
+    - ``confidence``: 0.0-1.0 — the provider's confidence in the proposal.
     - ``rationale``: human-readable note explaining the proposal.
     """
 
@@ -139,7 +139,7 @@ class CatalogProposal(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Optional advisory confidence in the proposal (0.0–1.0). "
+            "Optional advisory confidence in the proposal (0.0-1.0). "
             "Recorded in audit/meta where applicable; not used to gate "
             "application."
         ),

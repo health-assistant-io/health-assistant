@@ -1,7 +1,8 @@
-import os
+import contextlib
+import glob
 import logging
 import logging.handlers
-import glob
+import os
 from pathlib import Path
 
 
@@ -35,10 +36,8 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
     old_timestamped_logs = glob.glob(str(log_dir / f"{log_name}_*.log"))
     old_timestamped_logs.extend(glob.glob(str(log_dir / "log_*.log")))
     for old_log in old_timestamped_logs:
-        try:
+        with contextlib.suppress(Exception):
             os.remove(old_log)
-        except Exception:
-            pass
 
     # Define format
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

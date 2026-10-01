@@ -28,10 +28,10 @@ from sqlalchemy import Column, Integer, MetaData, String, Table, func, insert, s
 
 from app.facade.search_params import SORT_COLUMNS, _patient_family_name_sort
 
-
 # ---------------------------------------------------------------------------
 # Column-name corrections (F10.1, F10.2)
 # ---------------------------------------------------------------------------
+
 
 def test_condition_onset_date_sort_targets_real_column():
     """F10.1: Condition.sort onset-date must map to the actual ORM column."""
@@ -57,6 +57,7 @@ def test_medication_request_authored_on_sort_is_not_start_date():
 # ---------------------------------------------------------------------------
 # Patient name sort — must be a callable expression, not a bare column name
 # ---------------------------------------------------------------------------
+
 
 def test_patient_name_sort_is_a_callable():
     """F10.3: Patient?_sort=name must build a SQL expression, not use the
@@ -171,9 +172,7 @@ def test_patient_name_sort_semantics_lowercase_family(fake_pg_db):
     )
 
     with engine.begin() as conn:
-        result = conn.execute(
-            select(patients.c.id).order_by(expr.asc())
-        )
+        result = conn.execute(select(patients.c.id).order_by(expr.asc()))
         ordered_ids = [row[0] for row in result]
 
     # Expected ascending order by lowercase family:

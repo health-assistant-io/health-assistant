@@ -1,4 +1,5 @@
 """Tests for audit item A2 — Redis-backed rate limiting on auth endpoints."""
+
 import types
 
 import pytest
@@ -45,9 +46,7 @@ class TestClientIP:
         the first (client-controllable) hop must not become the bucket key."""
         from unittest.mock import MagicMock
 
-        monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=0)
-        )
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=0))
         req = FakeRequest(ip="10.0.0.9", forwarded="203.0.113.5, 10.0.0.1")
         assert rl_mod._client_ip(req) == "10.0.0.9"
 
@@ -56,18 +55,14 @@ class TestClientIP:
         saw (the real client); anything left of it is spoofable."""
         from unittest.mock import MagicMock
 
-        monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1)
-        )
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1))
         req = FakeRequest(ip="10.0.0.1", forwarded="203.0.113.5, 10.0.0.1")
         assert rl_mod._client_ip(req) == "10.0.0.1"
 
     def test_falls_back_to_peer(self, monkeypatch):
         from unittest.mock import MagicMock
 
-        monkeypatch.setattr(
-            rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1)
-        )
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: MagicMock(HA_TRUSTED_PROXY_COUNT=1))
         assert rl_mod._client_ip(FakeRequest(ip="10.0.0.9")) == "10.0.0.9"
 
 
@@ -117,6 +112,7 @@ class TestAuthEndpointsWired:
 
     def test_login_register_refresh_invite_are_rate_limited(self):
         import inspect
+
         from app.api.v1.endpoints import auth
 
         for name in ("login", "register", "refresh_token", "create_invite"):
@@ -174,6 +170,7 @@ class TestIntegrationRoutesWired:
 
     def test_oauth_callback_webhook_api_proxy_are_rate_limited(self):
         import inspect
+
         from app.api.v1.endpoints import integrations as ep
 
         # oauth_callback: per-IP only (no integration_id in the URL).

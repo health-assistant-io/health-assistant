@@ -13,14 +13,14 @@ checks now live in :mod:`app.services.notification_rule_service`.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Union
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.models.enums import (
     NotificationCategory,
     NotificationSeverity,
@@ -41,9 +41,9 @@ class NotificationManager:
     """Orchestrates the trigger lifecycle (schedule → fire)."""
 
     @staticmethod
-    def calculate_next_occurrence(at_time_str: str, days: List[str] = None) -> datetime:
+    def calculate_next_occurrence(at_time_str: str, days: list[str] | None = None) -> datetime:
         """Calculates the next occurrence of a wall-clock time."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         try:
             hour, minute = map(int, at_time_str.split(":"))
             next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
@@ -59,9 +59,7 @@ class NotificationManager:
                     "sat": 5,
                     "sun": 6,
                 }
-                target_days = [
-                    day_map[d.lower()[:3]] for d in days if d.lower()[:3] in day_map
-                ]
+                target_days = [day_map[d.lower()[:3]] for d in days if d.lower()[:3] in day_map]
                 if target_days:
                     while next_run.weekday() not in target_days:
                         next_run += timedelta(days=1)
@@ -73,16 +71,16 @@ class NotificationManager:
     @classmethod
     async def create_trigger(
         cls,
-        patient_id: Union[str, UUID],
+        patient_id: str | UUID,
         notification_type: NotificationType,
         trigger_type: TriggerType,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         title: str,
-        body: Optional[str] = None,
-        tenant_id: Optional[Union[str, UUID]] = None,
-        reference_id: Optional[Union[str, UUID]] = None,
+        body: str | None = None,
+        tenant_id: str | UUID | None = None,
+        reference_id: str | UUID | None = None,
         enabled: bool = True,
-    ) -> Optional[NotificationTrigger]:
+    ) -> NotificationTrigger | None:
         """Creates a new notification trigger rule."""
         if not DATABASE_AVAILABLE:
             return None
@@ -101,9 +99,7 @@ class NotificationManager:
                 next_trigger = cls.calculate_next_occurrence(at_str, config.get("days"))
             else:
                 interval_mins = config.get("interval_minutes", 1440)
-                next_trigger = datetime.now(timezone.utc) + timedelta(
-                    minutes=interval_mins
-                )
+                next_trigger = datetime.now(UTC) + timedelta(minutes=interval_mins)
 
         new_trigger = NotificationTrigger(
             patient_id=UUID(str(patient_id)) if patient_id else None,
@@ -126,11 +122,11 @@ class NotificationManager:
 
     @staticmethod
     async def subscribe_user(
-        user_id: Union[str, UUID],
-        subscription_data: Dict[str, Any],
-        tenant_id: Union[str, UUID],
-        device_id: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | UUID,
+        subscription_data: dict[str, Any],
+        tenant_id: str | UUID,
+        device_id: str | None = None,
+        user_agent: str | None = None,
     ) -> NotificationSubscription:
         """Saves or updates a Web Push subscription (upsert by device/endpoint)."""
         if not DATABASE_AVAILABLE:
@@ -147,8 +143,7 @@ class NotificationManager:
                 query = query.where(NotificationSubscription.device_id == device_id)
             elif endpoint:
                 query = query.where(
-                    NotificationSubscription.subscription_data["endpoint"].astext
-                    == endpoint
+                    NotificationSubscription.subscription_data["endpoint"].astext == endpoint
                 )
             result = await session.execute(query)
             existing = result.scalar_one_or_none()
@@ -173,7 +168,7 @@ class NotificationManager:
             return new_sub
 
     @staticmethod
-    async def delete_triggers_by_reference(reference_id: Union[str, UUID]) -> bool:
+    async def delete_triggers_by_reference(reference_id: str | UUID) -> bool:
         """Deletes all triggers associated with a specific resource ID."""
         if not DATABASE_AVAILABLE:
             return False
@@ -190,8 +185,8 @@ class NotificationManager:
 
     @staticmethod
     async def list_triggers_for_patient(
-        patient_id: Union[str, UUID], tenant_id: Union[str, UUID]
-    ) -> List[dict]:
+        patient_id: str | UUID, tenant_id: str | UUID
+    ) -> list[dict]:
         """List all enabled/disabled triggers for a patient (tenant-scoped)."""
         if not DATABASE_AVAILABLE:
             return []
@@ -207,8 +202,8 @@ class NotificationManager:
 
     @staticmethod
     async def list_triggers_for_tenant(
-        tenant_id: Union[str, UUID],
-    ) -> List[dict]:
+        tenant_id: str | UUID,
+    ) -> list[dict]:
         """List all triggers for a tenant (used by the global Notification Center)."""
         if not DATABASE_AVAILABLE:
             return []
@@ -220,14 +215,13 @@ class NotificationManager:
             return [t.to_dict() for t in rows]
 
     @staticmethod
-    async def list_triggers_for_user(
-        tenant_id: Union[str, UUID], user_id: Union[str, UUID]
-    ) -> List[dict]:
+    async def list_triggers_for_user(tenant_id: str | UUID, user_id: str | UUID) -> list[dict]:
         """List triggers a USER may see: created by them, or targeting a
         patient linked to them (audit 2026-08 M4 — previously tenant-wide)."""
         if not DATABASE_AVAILABLE:
             return []
-        from sqlalchemy import or_, select as sa_select
+        from sqlalchemy import or_
+        from sqlalchemy import select as sa_select
 
         from app.models.fhir.patient import Patient
 
@@ -247,7 +241,7 @@ class NotificationManager:
             return [t.to_dict() for t in rows]
 
     @staticmethod
-    async def delete_trigger(trigger_id: UUID, tenant_id: Union[str, UUID]) -> dict:
+    async def delete_trigger(trigger_id: UUID, tenant_id: str | UUID) -> dict:
         """Delete a single trigger by id (tenant-scoped; cross-tenant = no-op)."""
         if not DATABASE_AVAILABLE:
             return {"status": "error", "message": "database unavailable"}
@@ -266,9 +260,7 @@ class NotificationManager:
         return {"status": "success"}
 
     @classmethod
-    async def fire_trigger_by_id(
-        cls, trigger_id: UUID, tenant_id: Union[str, UUID]
-    ) -> bool:
+    async def fire_trigger_by_id(cls, trigger_id: UUID, tenant_id: str | UUID) -> bool:
         """Load a tenant-scoped trigger and fire it immediately. False if missing."""
         if not DATABASE_AVAILABLE:
             return False
@@ -288,11 +280,11 @@ class NotificationManager:
     @classmethod
     async def sync_medication_triggers(
         cls,
-        patient_id: Union[str, UUID],
-        medication_id: Union[str, UUID],
+        patient_id: str | UUID,
+        medication_id: str | UUID,
         medication_name: str,
-        timing_data: Dict[str, Any],
-        tenant_id: Union[str, UUID],
+        timing_data: dict[str, Any],
+        tenant_id: str | UUID,
     ):
         """Synchronizes notification triggers with the latest medication timing."""
         await cls.delete_triggers_by_reference(medication_id)
@@ -349,7 +341,7 @@ class NotificationManager:
             )
 
     @classmethod
-    async def process_due_triggers(cls, session: Optional[AsyncSession] = None):
+    async def process_due_triggers(cls, session: AsyncSession | None = None):
         """Finds and processes all triggers that are due for execution.
 
         ``session`` lets the Celery periodic task inject a worker-scoped
@@ -365,7 +357,7 @@ class NotificationManager:
 
     @classmethod
     async def _run_due_triggers(cls, session: AsyncSession):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         query = select(NotificationTrigger).where(
             and_(
                 NotificationTrigger.enabled.is_(True),
@@ -400,7 +392,7 @@ class NotificationManager:
     async def fire_notification(
         cls,
         trigger: NotificationTrigger,
-        session: Optional[AsyncSession] = None,
+        session: AsyncSession | None = None,
     ) -> None:
         """Emit a SCHEDULED notification for a trigger via the unified service.
 
@@ -412,13 +404,9 @@ class NotificationManager:
 
         targets = []
         if trigger.patient_id:
-            targets.append(
-                {"kind": RecipientKind.PATIENT.value, "id": str(trigger.patient_id)}
-            )
+            targets.append({"kind": RecipientKind.PATIENT.value, "id": str(trigger.patient_id)})
         elif trigger.tenant_id:
-            targets.append(
-                {"kind": RecipientKind.TENANT.value, "id": str(trigger.tenant_id)}
-            )
+            targets.append({"kind": RecipientKind.TENANT.value, "id": str(trigger.tenant_id)})
 
         await emit(
             source=NotificationSource.SCHEDULED,
@@ -431,9 +419,7 @@ class NotificationManager:
             tenant_id=trigger.tenant_id,
             targets=targets,
             payload={
-                "reference_id": str(trigger.reference_id)
-                if trigger.reference_id
-                else None,
+                "reference_id": str(trigger.reference_id) if trigger.reference_id else None,
                 "trigger_config": trigger.config,
             },
             source_ref={"trigger_id": str(trigger.id)},

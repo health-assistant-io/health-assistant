@@ -14,7 +14,6 @@ also get the ``auth_sessions`` family row (device list + refresh rotation).
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import (
@@ -46,22 +45,20 @@ async def create_tenant(name: str = "Test Tenant") -> uuid.UUID:
     """Insert a tenant row (unique slug per call) and return its id."""
     tenant_id = uuid.uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(id=tenant_id, name=name, slug=f"test-tenant-{tenant_id}")
-        )
+        session.add(TenantModel(id=tenant_id, name=name, slug=f"test-tenant-{tenant_id}"))
         await session.commit()
     return tenant_id
 
 
 async def create_user(
     role=Role.SYSTEM_ADMIN,
-    tenant_id: Optional[uuid.UUID] = None,
-    email: Optional[str] = None,
-    password: Optional[str] = None,
+    tenant_id: uuid.UUID | None = None,
+    email: str | None = None,
+    password: str | None = None,
     is_active: bool = True,
     full_name: str = "",
     unique: bool = True,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: uuid.UUID | None = None,
 ) -> UserModel:
     """Insert a real user row (the verifier requires one) and return it.
 
@@ -78,15 +75,15 @@ async def create_user(
     elif unique:
         local, _, domain = email.partition("@")
         email = f"{local}+u{uuid.uuid4().hex[:8]}@{domain or 'test.local'}"
-    kwargs = dict(
-        email=email,
-        password_hash=get_password_hash(password) if password else None,
-        full_name=full_name,
-        role=_role(role),
-        tenant_id=str(tenant_id),
-        is_active=is_active,
-        settings={},
-    )
+    kwargs = {
+        "email": email,
+        "password_hash": get_password_hash(password) if password else None,
+        "full_name": full_name,
+        "role": _role(role),
+        "tenant_id": str(tenant_id),
+        "is_active": is_active,
+        "settings": {},
+    }
     if user_id is not None:
         kwargs["id"] = user_id
     user = UserModel(**kwargs)
@@ -97,7 +94,9 @@ async def create_user(
     return user
 
 
-async def sign_in(user: UserModel, *, auth_mode: str = AUTH_MODE_PASSWORD, client_label: str = "pytest"):
+async def sign_in(
+    user: UserModel, *, auth_mode: str = AUTH_MODE_PASSWORD, client_label: str = "pytest"
+):
     """A full sign-in against the live user row (family + tokens + Redis)."""
     return await issue_session(user, auth_mode=auth_mode, client_label=client_label)
 
@@ -118,7 +117,7 @@ async def auth_headers(
 
 async def make_user_headers(
     role=Role.SYSTEM_ADMIN,
-    tenant_id: Optional[uuid.UUID] = None,
+    tenant_id: uuid.UUID | None = None,
     **kwargs,
 ) -> tuple[UserModel, dict]:
     """(user, headers) for one fresh account — the common test shape."""

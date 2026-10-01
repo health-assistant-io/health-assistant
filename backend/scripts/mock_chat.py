@@ -30,7 +30,7 @@ if backend_dir not in sys.path:
 
 from sqlalchemy import select  # noqa: E402
 
-from app.core.database import AsyncSessionLocal, DATABASE_AVAILABLE  # noqa: E402
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal  # noqa: E402
 from app.models.fhir.patient import Patient  # noqa: E402
 from app.models.tenant_model import TenantModel  # noqa: E402
 from app.models.user_model import UserModel  # noqa: E402
@@ -49,8 +49,15 @@ RESET = "\033[0m"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Terminal chat against the demo AI provider path.")
-    parser.add_argument("--message", "-m", default=DEFAULT_MESSAGE, help=f"question to ask (default: {DEFAULT_MESSAGE!r})")
-    parser.add_argument("--tenant", default=str(DEMO_TENANT_ID), help="tenant UUID (default: demo tenant)")
+    parser.add_argument(
+        "--message",
+        "-m",
+        default=DEFAULT_MESSAGE,
+        help=f"question to ask (default: {DEFAULT_MESSAGE!r})",
+    )
+    parser.add_argument(
+        "--tenant", default=str(DEMO_TENANT_ID), help="tenant UUID (default: demo tenant)"
+    )
     parser.add_argument("--user", default=str(DEMO_USER_ID), help="user UUID (default: demo admin)")
     parser.add_argument(
         "--patient",
@@ -62,7 +69,9 @@ def parse_args() -> argparse.Namespace:
 
 
 async def resolve_context(db, tenant_id: UUID, user_id: UUID, patient_id: UUID):
-    tenant = (await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))).scalar_one_or_none()
+    tenant = (
+        await db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
+    ).scalar_one_or_none()
     if not tenant:
         print(f"❌ Tenant {tenant_id} not found — run scripts/seed_demo.py first.")
         sys.exit(2)
@@ -70,7 +79,9 @@ async def resolve_context(db, tenant_id: UUID, user_id: UUID, patient_id: UUID):
     if not user:
         print(f"❌ User {user_id} not found — run scripts/seed_demo.py first.")
         sys.exit(2)
-    patient = (await db.execute(select(Patient).where(Patient.id == patient_id))).scalar_one_or_none()
+    patient = (
+        await db.execute(select(Patient).where(Patient.id == patient_id))
+    ).scalar_one_or_none()
     if not patient:
         print(f"❌ Patient {patient_id} not found — run scripts/seed_demo.py first.")
         sys.exit(2)
@@ -85,9 +96,9 @@ async def main() -> None:
 
     tenant_id, user_id, patient_id = UUID(args.tenant), UUID(args.user), UUID(args.patient)
 
-    from app.ai.agents.chat_agent import build_chat_tools  # noqa: E402
-    from app.ai.graphs.chat_agent import chat_engine_iter  # noqa: E402
-    from app.ai.providers.service import AIProviderService  # noqa: E402
+    from app.ai.agents.chat_agent import build_chat_tools
+    from app.ai.graphs.chat_agent import chat_engine_iter
+    from app.ai.providers.service import AIProviderService
 
     async with AsyncSessionLocal() as db:
         tenant, user, patient = await resolve_context(db, tenant_id, user_id, patient_id)
@@ -98,7 +109,6 @@ async def main() -> None:
 
         tools = await build_chat_tools(db, tenant_id, str(patient_id), user_id, label="mock_chat")
         llm_with_tools = llm.bind_tools(tools) if tools else llm
-        history = [{"role": "user", "content": args.message}]
 
         if args.no_stream:
             final = []

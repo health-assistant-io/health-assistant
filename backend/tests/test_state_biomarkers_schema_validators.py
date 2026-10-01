@@ -5,6 +5,7 @@ Exercises every cross-field invariant the schema layer enforces, plus the
 valid paths (QUANTITY default + STATE happy-path). DB-level integration is
 covered by ``test_state_biomarkers_schema.py`` (model + CHECK constraints).
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -57,9 +58,7 @@ def test_state_create_happy_path():
     assert b.value_type is BiomarkerValueType.STATE
     assert len(b.allowed_states) == 2
     # The normal-set flag is preserved per-state.
-    normal_slugs = {
-        s.state_slug for s in b.allowed_states if s.is_normal
-    }
+    normal_slugs = {s.state_slug for s in b.allowed_states if s.is_normal}
     assert normal_slugs == {"negative"}
 
 
@@ -116,17 +115,13 @@ def test_state_rejects_numeric_reference_ranges():
 def test_quantity_rejects_allowed_states():
     with pytest.raises(ValidationError) as exc:
         _quantity(allowed_states=[AllowedStateSpec(state_slug="positive")])
-    assert "allowed_state" in str(exc.value).lower() or "state" in str(
-        exc.value
-    ).lower()
+    assert "allowed_state" in str(exc.value).lower() or "state" in str(exc.value).lower()
 
 
 def test_quantity_rejects_supports_multi_state():
     with pytest.raises(ValidationError) as exc:
         _quantity(supports_multi_state=True)
-    assert "multi_state" in str(exc.value).lower() or "state" in str(
-        exc.value
-    ).lower()
+    assert "multi_state" in str(exc.value).lower() or "state" in str(exc.value).lower()
 
 
 # ----------------------------------------------------------------------------

@@ -129,11 +129,7 @@ async def test_ask_user_interrupt_resume_roundtrip():
         )
 
         # Terminal-card stream: ends after the card, no done event.
-        kinds1 = [
-            k
-            for k, _ in events1
-            if k != "flow_event"
-        ]
+        kinds1 = [k for k, _ in events1 if k != "flow_event"]
         assert kinds1[-2:] == ["hitl_task", "tool_call_finished"]
         assert "done" not in kinds1
         # Paused at an interrupt on the session's thread.

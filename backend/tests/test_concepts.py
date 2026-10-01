@@ -17,18 +17,18 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.database import AsyncSessionLocal
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
     ConceptKind,
-    ConceptStatus,
     ConceptProvenance,
+    ConceptRelationType,
+    ConceptStatus,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    ConceptRelationType,
 )
 
 
@@ -39,9 +39,7 @@ async def tenant_id():
 
     tid = uuid.uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(id=tid, name="Concept Test Tenant", slug=f"concept-test-{tid}")
-        )
+        session.add(TenantModel(id=tid, name="Concept Test Tenant", slug=f"concept-test-{tid}"))
         await session.commit()
     return tid
 
@@ -144,9 +142,7 @@ async def test_parent_children_relationship(tenant_id):
     parent_slug = _slug("parent")
     child_slug = _slug("child")
     async with AsyncSessionLocal() as session:
-        parent = _make_concept(
-            parent_slug, "Parent Cat", ConceptKind.EXAMINATION_CATEGORY
-        )
+        parent = _make_concept(parent_slug, "Parent Cat", ConceptKind.EXAMINATION_CATEGORY)
         session.add(parent)
         await session.flush()
 
@@ -196,9 +192,7 @@ async def test_create_edge_concept_to_concept(tenant_id):
 async def test_create_edge_entity_to_concept(tenant_id):
     """A polymorphic entity->concept edge (biomarker MEMBER_OF panel) persists."""
     async with AsyncSessionLocal() as session:
-        panel = _make_concept(
-            _slug("panel"), "Lipid Panel", ConceptKind.BIOMARKER_PANEL
-        )
+        panel = _make_concept(_slug("panel"), "Lipid Panel", ConceptKind.BIOMARKER_PANEL)
         session.add(panel)
         await session.flush()
 

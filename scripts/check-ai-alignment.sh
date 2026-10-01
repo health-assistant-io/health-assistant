@@ -95,7 +95,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai)'
     CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import)'
     GRAPH_RE='StateGraph'
-    DEPS_FILES=("$backend/pyproject.toml" "$backend/requirements.txt" "$backend/requirements"*.txt)
+    DEPS_FILES=("$backend/pyproject.toml")
   fi
 
   is_allowed() {  # path repo-relative -> ai layer, tests, or graphs dir

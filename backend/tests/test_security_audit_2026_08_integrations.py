@@ -1,3 +1,4 @@
+# ruff: noqa: SIM117 -- long immutable strings; reflow when touched
 """Security regression tests — 2026-08 audit Batch 3 (integrations).
 
 Covers:
@@ -16,7 +17,6 @@ from fastapi import HTTPException
 
 from app.core import config as config_mod
 
-
 # ---------------------------------------------------------------------------
 # C-4 — MCP stdio lockdown
 # ---------------------------------------------------------------------------
@@ -27,14 +27,11 @@ def test_mcp_stdio_disabled_by_default():
 
 
 def test_mcp_inline_code_args_rejected():
+    from integrations.mcp_client import security as mcp_sec
     from integrations.mcp_client.security import validate_stdio_command
 
-    from integrations.mcp_client import security as mcp_sec
-
     with patch.object(mcp_sec, "get_allowed_commands", return_value=["python", "node"]):
-        ok, reason = validate_stdio_command(
-            "python", ["-c", "import os; os.system('id')"]
-        )
+        ok, reason = validate_stdio_command("python", ["-c", "import os; os.system('id')"])
     assert not ok
     assert "inline code" in reason
 
@@ -63,7 +60,7 @@ def test_mcp_http_url_blocks_private_targets():
         "http://localhost:8000/mcp",
         "https://127.0.0.1/mcp",
     ):
-        ok, reason = validate_http_url(url, allow_insecure=True)
+        ok, _reason = validate_http_url(url, allow_insecure=True)
         assert not ok, url
 
 
@@ -103,9 +100,7 @@ def _integration_row(secret=None, status_active=True):
     row = MagicMock()
     row.id = "9b2f1c11-1111-4111-8111-111111111111"
     row.provider = "webhook"
-    row.status = (
-        IntegrationStatus.ACTIVE if status_active else IntegrationStatus.PENDING
-    )
+    row.status = IntegrationStatus.ACTIVE if status_active else IntegrationStatus.PENDING
     row.user_config = {} if secret is None else {"webhook_secret": secret}
     return row
 
@@ -116,9 +111,7 @@ async def test_webhook_without_secret_rejected():
 
     request = _request_mock()
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=lambda: _integration_row())
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: _integration_row()))
     with patch.object(integ.integration_registry, "get_provider") as gp:
         gp.return_value = MagicMock()
         with pytest.raises(HTTPException) as exc:
@@ -134,9 +127,7 @@ async def test_api_proxy_without_secret_rejected():
 
     request = _request_mock(method="GET")
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=lambda: _integration_row())
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: _integration_row()))
     with patch.object(integ.integration_registry, "get_provider") as gp:
         gp.return_value = MagicMock()
         with pytest.raises(HTTPException) as exc:
@@ -156,9 +147,7 @@ async def test_unsigned_status_probe_is_minimal():
 
     request = _request_mock(method="GET")
     db = MagicMock()
-    db.execute = AsyncMock(
-        return_value=MagicMock(scalar_one_or_none=lambda: _integration_row())
-    )
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: _integration_row()))
     with patch.object(integ.integration_registry, "get_provider") as gp:
         gp.return_value = MagicMock()
         result = await integ.integration_api_proxy(
@@ -178,12 +167,10 @@ async def test_unsigned_status_probe_is_minimal():
 
 
 def _signed_headers(secret, method, path, body=b"", ts="1700000000"):
-    import hmac as _hmac
     import hashlib as _hashlib
+    import hmac as _hmac
 
-    canonical = (
-        method.encode() + b"\n" + path.encode() + b"\n" + ts.encode() + b"\n" + body
-    )
+    canonical = method.encode() + b"\n" + path.encode() + b"\n" + ts.encode() + b"\n" + body
     sig = _hmac.new(secret.encode(), canonical, _hashlib.sha256).hexdigest()
     return {"X-Api-Signature": sig, "X-Api-Timestamp": ts}, ts
 
@@ -199,9 +186,7 @@ async def test_api_proxy_rejects_missing_timestamp():
     request = _request_mock(headers=headers, method="GET")
     db = MagicMock()
     db.execute = AsyncMock(
-        return_value=MagicMock(
-            scalar_one_or_none=lambda: _integration_row(secret=secret)
-        )
+        return_value=MagicMock(scalar_one_or_none=lambda: _integration_row(secret=secret))
     )
     with patch.object(integ, "_resolve_secret_field", return_value=secret):
         with patch.object(integ.integration_registry, "get_provider") as gp:
@@ -224,17 +209,15 @@ async def test_api_proxy_signature_covers_query_string():
 
     secret = "test-secret-value-1234567890"
     # Sign WITH the query string; server must accept.
-    headers, ts = _signed_headers(secret, "GET", "observations?limit=5")
-    now = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
+    headers, _ts = _signed_headers(secret, "GET", "observations?limit=5")
+    now = str(int(datetime.datetime.now(datetime.UTC).timestamp()))
     headers["X-Api-Timestamp"] = now
     # Re-sign with fresh ts (skew).
-    import hmac as _hmac
     import hashlib as _hashlib
+    import hmac as _hmac
 
     canonical = b"GET\nobservations?limit=5\n" + now.encode() + b"\n"
-    headers["X-Api-Signature"] = _hmac.new(
-        secret.encode(), canonical, _hashlib.sha256
-    ).hexdigest()
+    headers["X-Api-Signature"] = _hmac.new(secret.encode(), canonical, _hashlib.sha256).hexdigest()
 
     request = _request_mock(headers=headers, method="GET", query="limit=5")
 
@@ -265,15 +248,13 @@ async def test_api_proxy_tampered_query_rejected():
     from app.api.v1.endpoints import integrations as integ
 
     secret = "test-secret-value-1234567890"
-    now = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
-    import hmac as _hmac
+    now = str(int(datetime.datetime.now(datetime.UTC).timestamp()))
     import hashlib as _hashlib
+    import hmac as _hmac
 
     canonical = b"GET\nobservations?limit=5\n" + now.encode() + b"\n"
     headers = {
-        "X-Api-Signature": _hmac.new(
-            secret.encode(), canonical, _hashlib.sha256
-        ).hexdigest(),
+        "X-Api-Signature": _hmac.new(secret.encode(), canonical, _hashlib.sha256).hexdigest(),
         "X-Api-Timestamp": now,
     }
 
@@ -281,9 +262,7 @@ async def test_api_proxy_tampered_query_rejected():
     request = _request_mock(headers=headers, method="GET", query="limit=999")
     db = MagicMock()
     db.execute = AsyncMock(
-        return_value=MagicMock(
-            scalar_one_or_none=lambda: _integration_row(secret=secret)
-        )
+        return_value=MagicMock(scalar_one_or_none=lambda: _integration_row(secret=secret))
     )
     with patch.object(integ, "_resolve_secret_field", return_value=secret):
         with patch.object(integ.integration_registry, "get_provider") as gp:
@@ -309,8 +288,8 @@ async def test_webhook_bare_mac_replay_blocked():
     from app.api.v1.endpoints import integrations as integ
 
     secret = "test-secret-value-1234567890"
-    import hmac as _hmac
     import hashlib as _hashlib
+    import hmac as _hmac
 
     body = b'{"heart_rate": 72}'
     sig = _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
@@ -351,9 +330,7 @@ async def test_webhook_bare_mac_replay_blocked():
             await integ.integration_webhook("webhook", str(row.id), make_request(), db)
             # Second identical delivery → 401 replay.
             with pytest.raises(HTTPException) as exc:
-                await integ.integration_webhook(
-                    "webhook", str(row.id), make_request(), db
-                )
+                await integ.integration_webhook("webhook", str(row.id), make_request(), db)
     assert exc.value.status_code == 401
 
 
@@ -436,9 +413,7 @@ async def test_rotate_secret_owner_scoped_and_returns_once():
 
     from sqlalchemy.orm.attributes import flag_modified  # noqa: F401
 
-    with patch(
-        "integrations.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()
-    ):
+    with patch("integrations.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()):
         result = await integ.rotate_instance_secret(
             str(row.id),
             patient_id="22222222-2222-4222-8222-222222222222",
@@ -508,7 +483,7 @@ async def test_rotated_secret_verifies_and_old_one_dies():
     import hashlib as _hl
     import hmac as _hm
 
-    now = str(int(_dt.datetime.now(_dt.timezone.utc).timestamp()))
+    now = str(int(_dt.datetime.now(_dt.UTC).timestamp()))
     canonical = b"POST\nsync\n" + now.encode() + b"\n" + b"{}"
     good_sig = _hm.new(new_secret.encode(), canonical, _hl.sha256).hexdigest()
     stale_sig = _hm.new(old_secret.encode(), canonical, _hl.sha256).hexdigest()

@@ -24,13 +24,15 @@ Routing by ``kind``:
 Per-proposal failures are logged and never raised — the engine wraps the
 call in a try/except per item so one bad proposal can't abort the sync.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
+from integrations.sdk.catalog import CatalogProposal
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +54,6 @@ from app.services.concept_service import (
     resolve_biomarker_class_concept,
     resolve_concept_by_slug,
 )
-from integrations.sdk.catalog import CatalogProposal
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +74,9 @@ class ApplyResult:
 
     kind: str
     created: bool
-    entity_id: Optional[UUID]
-    slug: Optional[str] = None
-    detail: Optional[str] = None
+    entity_id: UUID | None
+    slug: str | None = None
+    detail: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -181,9 +182,7 @@ async def _apply_biomarker_proposal(
             detail="biomarker with this slug already exists",
         )
 
-    preferred_unit_id = await _resolve_unit_id(
-        db, biomarker_payload["preferred_unit_symbol"]
-    )
+    preferred_unit_id = await _resolve_unit_id(db, biomarker_payload["preferred_unit_symbol"])
     class_concept_id = await resolve_biomarker_class_concept(
         db, biomarker_payload["category"], tenant_id=actor.tenant_id
     )
@@ -202,9 +201,7 @@ async def _apply_biomarker_proposal(
         preferred_unit_id=preferred_unit_id,
         meta_data={"_provenance": "integration"},
     )
-    DEFAULT_CATALOG_POLICY.assign_create_scope(
-        actor.role, new_bio, actor.tenant_id, actor.user_id
-    )
+    DEFAULT_CATALOG_POLICY.assign_create_scope(actor.role, new_bio, actor.tenant_id, actor.user_id)
     db.add(new_bio)
     try:
         await db.flush()
@@ -212,9 +209,7 @@ async def _apply_biomarker_proposal(
         # Race: another sync inserted the same slug between our SELECT and
         # INSERT. Treat as idempotent no-op (re-fetch).
         await db.rollback()
-        logger.info(
-            "biomarker proposal slug=%s raced another writer — re-fetching", slug
-        )
+        logger.info("biomarker proposal slug=%s raced another writer — re-fetching", slug)
         raced = await _find_biomarker_by_slug(db, slug)
         if raced is not None:
             return ApplyResult(
@@ -224,9 +219,7 @@ async def _apply_biomarker_proposal(
                 slug=raced.slug,
                 detail="biomarker created concurrently by another writer",
             )
-        raise ValueError(
-            f"biomarker proposal slug={slug!r} failed integrity check: {exc}"
-        ) from exc
+        raise ValueError(f"biomarker proposal slug={slug!r} failed integrity check: {exc}") from exc
 
     return ApplyResult(
         kind="biomarker",
@@ -236,18 +229,12 @@ async def _apply_biomarker_proposal(
     )
 
 
-async def _find_biomarker_by_slug(
-    db: AsyncSession, slug: str
-) -> Optional[BiomarkerDefinition]:
-    result = await db.execute(
-        select(BiomarkerDefinition).where(BiomarkerDefinition.slug == slug)
-    )
+async def _find_biomarker_by_slug(db: AsyncSession, slug: str) -> BiomarkerDefinition | None:
+    result = await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == slug))
     return result.scalar_one_or_none()
 
 
-async def _resolve_unit_id(
-    db: AsyncSession, symbol: Optional[str]
-) -> Optional[UUID]:
+async def _resolve_unit_id(db: AsyncSession, symbol: str | None) -> UUID | None:
     if not symbol:
         return None
     result = await db.execute(select(Unit).where(Unit.symbol == symbol))
@@ -278,9 +265,7 @@ async def _apply_medication_proposal(
     payload = dict(proposal.payload)
     name = payload.get("name")
     if not name or not str(name).strip():
-        raise ValueError(
-            "medication proposal payload requires a non-empty 'name'"
-        )
+        raise ValueError("medication proposal payload requires a non-empty 'name'")
 
     MedicationCatalogCreate(**payload)
 
@@ -299,9 +284,7 @@ async def _apply_medication_proposal(
     # caller. Idempotent on race via the pre-check above.
     from app.services.medication_service import create_catalog_medication
 
-    new_entry = await create_catalog_medication(
-        db, actor, MedicationCatalogCreate(**payload)
-    )
+    new_entry = await create_catalog_medication(db, actor, MedicationCatalogCreate(**payload))
     return ApplyResult(
         kind="medication",
         created=True,
@@ -311,8 +294,8 @@ async def _apply_medication_proposal(
 
 
 async def _find_medication_by_name(
-    db: AsyncSession, tenant_id: Optional[UUID], name: str
-) -> Optional[MedicationCatalog]:
+    db: AsyncSession, tenant_id: UUID | None, name: str
+) -> MedicationCatalog | None:
     """Lookup matching the same tenant-scope read path used by the catalog
     service: SYSTEM rows (``tenant_id IS NULL``) are visible to all
     tenants; TENANT rows are scoped to the actor's tenant."""
@@ -321,9 +304,7 @@ async def _find_medication_by_name(
         (
             MedicationCatalog.tenant_id.is_(None)
             if tenant_id is None
-            else (
-                MedicationCatalog.tenant_id.in_([None, tenant_id])
-            )
+            else (MedicationCatalog.tenant_id.in_([None, tenant_id]))
         ),
     )
     result = await db.execute(stmt)
@@ -356,8 +337,7 @@ async def _apply_concept_proposal(
         raise ValueError("concept proposal payload requires a non-empty 'name'")
     if not kind_value:
         raise ValueError(
-            "concept proposal payload requires a 'kind' "
-            "(a ConceptKind value, e.g. 'disease')"
+            "concept proposal payload requires a 'kind' (a ConceptKind value, e.g. 'disease')"
         )
 
     try:
@@ -365,8 +345,7 @@ async def _apply_concept_proposal(
     except ValueError as exc:
         valid = ", ".join(k.value for k in ConceptKind)
         raise ValueError(
-            f"concept proposal kind {kind_value!r} is not a valid "
-            f"ConceptKind (valid: {valid})"
+            f"concept proposal kind {kind_value!r} is not a valid ConceptKind (valid: {valid})"
         ) from exc
 
     svc = ConceptService(db)
@@ -445,26 +424,20 @@ async def _apply_edge_proposal(
     required = ("src_type", "src_id", "dst_type", "dst_id", "relation")
     missing = [k for k in required if not payload.get(k)]
     if missing:
-        raise ValueError(
-            f"edge proposal payload missing required field(s): {missing}"
-        )
+        raise ValueError(f"edge proposal payload missing required field(s): {missing}")
 
     try:
         src_type = EdgeEndpointType(str(payload["src_type"]).lower())
         dst_type = EdgeEndpointType(str(payload["dst_type"]).lower())
         relation = ConceptRelationType(str(payload["relation"]).upper())
     except ValueError as exc:
-        raise ValueError(
-            f"edge proposal endpoint/relation not a valid enum value: {exc}"
-        ) from exc
+        raise ValueError(f"edge proposal endpoint/relation not a valid enum value: {exc}") from exc
 
     try:
         src_id = UUID(str(payload["src_id"]))
         dst_id = UUID(str(payload["dst_id"]))
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"edge proposal src_id / dst_id must be valid UUIDs: {exc}"
-        ) from exc
+        raise ValueError(f"edge proposal src_id / dst_id must be valid UUIDs: {exc}") from exc
 
     svc = ConceptService(db)
     existing = await _find_edge(
@@ -531,7 +504,7 @@ async def _apply_edge_proposal(
 async def _find_edge(
     db: AsyncSession,
     *,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     src_type: EdgeEndpointType,
     src_id: UUID,
     dst_type: EdgeEndpointType,
@@ -556,10 +529,7 @@ async def _find_edge(
     if tenant_id is None:
         stmt = stmt.where(ConceptEdge.tenant_id.is_(None))
     else:
-        stmt = stmt.where(
-            (ConceptEdge.tenant_id == tenant_id)
-            | (ConceptEdge.tenant_id.is_(None))
-        )
+        stmt = stmt.where((ConceptEdge.tenant_id == tenant_id) | (ConceptEdge.tenant_id.is_(None)))
     result = await db.execute(stmt)
     return result.scalars().first()
 

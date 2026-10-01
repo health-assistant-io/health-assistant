@@ -1,17 +1,16 @@
-from typing import List, Optional
 from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.models.fhir.organization import OrganizationModel
+
 from app.models.doctor_model import DoctorModel
+from app.models.fhir.organization import OrganizationModel
 from app.schemas.organization import OrganizationCreate, OrganizationUpdate
 from app.services.fhir_helpers import assert_valid_fhir
 
 
-async def list_organizations(
-    tenant_id: UUID, db: AsyncSession
-) -> List[OrganizationModel]:
+async def list_organizations(tenant_id: UUID, db: AsyncSession) -> list[OrganizationModel]:
     result = await db.execute(
         select(OrganizationModel)
         .where(OrganizationModel.tenant_id == tenant_id)
@@ -25,7 +24,7 @@ async def get_organization(
     tenant_id: UUID,
     db: AsyncSession,
     include_details: bool = False,
-) -> Optional[OrganizationModel]:
+) -> OrganizationModel | None:
     query = select(OrganizationModel).where(
         OrganizationModel.id == organization_id,
         OrganizationModel.tenant_id == tenant_id,
@@ -70,10 +69,8 @@ async def create_organization(
 
 async def update_organization(
     organization_id: UUID, tenant_id: UUID, obj_in: OrganizationUpdate, db: AsyncSession
-) -> Optional[OrganizationModel]:
-    organization = await get_organization(
-        organization_id, tenant_id, db, include_details=True
-    )
+) -> OrganizationModel | None:
+    organization = await get_organization(organization_id, tenant_id, db, include_details=True)
     if not organization:
         return None
 
@@ -105,9 +102,7 @@ async def update_organization(
     return organization
 
 
-async def delete_organization(
-    organization_id: UUID, tenant_id: UUID, db: AsyncSession
-) -> bool:
+async def delete_organization(organization_id: UUID, tenant_id: UUID, db: AsyncSession) -> bool:
     organization = await get_organization(organization_id, tenant_id, db)
     if not organization:
         return False

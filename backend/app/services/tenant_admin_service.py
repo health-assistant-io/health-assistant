@@ -100,15 +100,13 @@ class TenantAdminService:
         try:
             return UUID(value)
         except (ValueError, AttributeError, TypeError):
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid {field}: must be a valid UUID.",
             )
 
     async def _get_tenant_or_404(self, tenant_id: UUID) -> TenantModel:
-        result = await self.db.execute(
-            select(TenantModel).where(TenantModel.id == tenant_id)
-        )
+        result = await self.db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         tenant = result.scalar_one_or_none()
         if tenant is None:
             raise HTTPException(
@@ -136,9 +134,7 @@ class TenantAdminService:
             )
         return user
 
-    async def _ensure_unique_slug(
-        self, slug: str, *, exclude_id: UUID | None = None
-    ) -> str:
+    async def _ensure_unique_slug(self, slug: str, *, exclude_id: UUID | None = None) -> str:
         """Return a slug guaranteed unique within the tenants table.
 
         On collision we append a short random suffix and try again. We
@@ -148,9 +144,7 @@ class TenantAdminService:
         candidate = slug
         for _ in range(8):
             stmt = (
-                select(func.count())
-                .select_from(TenantModel)
-                .where(TenantModel.slug == candidate)
+                select(func.count()).select_from(TenantModel).where(TenantModel.slug == candidate)
             )
             if exclude_id is not None:
                 stmt = stmt.where(TenantModel.id != exclude_id)
@@ -181,9 +175,7 @@ class TenantAdminService:
 
         if search:
             like = f"%{search.lower()}%"
-            cond = func.lower(TenantModel.name).like(like) | func.lower(
-                TenantModel.slug
-            ).like(like)
+            cond = func.lower(TenantModel.name).like(like) | func.lower(TenantModel.slug).like(like)
             query = query.where(cond)
             count_query = count_query.where(cond)
         if is_active is not None:
@@ -191,16 +183,12 @@ class TenantAdminService:
             count_query = count_query.where(TenantModel.is_active == is_active)
 
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = (
-            query.order_by(TenantModel.created_at.desc()).limit(limit).offset(offset)
-        )
+        query = query.order_by(TenantModel.created_at.desc()).limit(limit).offset(offset)
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)
 
     async def _count(self, model, tenant_id: UUID) -> int:
-        stmt = (
-            select(func.count()).select_from(model).where(model.tenant_id == tenant_id)
-        )
+        stmt = select(func.count()).select_from(model).where(model.tenant_id == tenant_id)
         return int((await self.db.execute(stmt)).scalar() or 0)
 
     async def _compute_stats(self, tenant_id: UUID) -> TenantStats:
@@ -254,9 +242,7 @@ class TenantAdminService:
     async def _load_owner(self, owner_id: UUID | None) -> UserModel | None:
         if owner_id is None:
             return None
-        result = await self.db.execute(
-            select(UserModel).where(UserModel.id == owner_id)
-        )
+        result = await self.db.execute(select(UserModel).where(UserModel.id == owner_id))
         return result.scalar_one_or_none()
 
     # ------------------------------------------------------------------
@@ -281,7 +267,7 @@ class TenantAdminService:
         except IntegrityError as exc:
             await self.db.rollback()
             logger.warning("Tenant create integrity error: %s", exc)
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A tenant with that slug already exists.",
             )
@@ -315,9 +301,7 @@ class TenantAdminService:
             tenant.settings = payload.settings
             flag_modified(tenant, "settings")
         if payload.slug is not None and payload.slug != tenant.slug:
-            candidate = await self._ensure_unique_slug(
-                slugify(payload.slug), exclude_id=tenant.id
-            )
+            candidate = await self._ensure_unique_slug(slugify(payload.slug), exclude_id=tenant.id)
             tenant.slug = candidate
 
         tenant.updated_by = actor_id
@@ -335,9 +319,7 @@ class TenantAdminService:
         )
         return tenant
 
-    async def set_active(
-        self, tenant_id: UUID, active: bool, actor_id: UUID
-    ) -> TenantModel:
+    async def set_active(self, tenant_id: UUID, active: bool, actor_id: UUID) -> TenantModel:
         tenant = await self._get_tenant_or_404(tenant_id)
         old_value = tenant.is_active
         if tenant.is_active == active:
@@ -385,9 +367,7 @@ class TenantAdminService:
     # Tenant switching (SYSTEM_ADMIN → operate inside another tenant)
     # ------------------------------------------------------------------
 
-    async def switch_into_tenant(
-        self, tenant_id: UUID, actor: Any
-    ) -> SwitchTenantResponse:
+    async def switch_into_tenant(self, tenant_id: UUID, actor: Any) -> SwitchTenantResponse:
         """Mint a scoped JWT so a SYSTEM_ADMIN can operate inside ``tenant_id``.
 
         The new token keeps ``role = SYSTEM_ADMIN`` (so the admin can still
@@ -498,9 +478,7 @@ class TenantAdminService:
         offset = max(0, offset)
         query = select(UserModel).where(UserModel.tenant_id == tenant_id)
         count_query = (
-            select(func.count())
-            .select_from(UserModel)
-            .where(UserModel.tenant_id == tenant_id)
+            select(func.count()).select_from(UserModel).where(UserModel.tenant_id == tenant_id)
         )
         if search:
             like = f"%{search.lower()}%"
@@ -542,7 +520,7 @@ class TenantAdminService:
             try:
                 new_role = Role(payload.role)
             except ValueError:
-                raise HTTPException(
+                raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid role: {payload.role}.",
                 )
@@ -641,9 +619,7 @@ class TenantAdminService:
         offset = max(0, offset)
         query = select(AuditEvent).where(AuditEvent.tenant_id == tenant_id)
         count_query = (
-            select(func.count())
-            .select_from(AuditEvent)
-            .where(AuditEvent.tenant_id == tenant_id)
+            select(func.count()).select_from(AuditEvent).where(AuditEvent.tenant_id == tenant_id)
         )
         if action:
             query = query.where(AuditEvent.action == action)
@@ -652,9 +628,7 @@ class TenantAdminService:
             query = query.where(AuditEvent.outcome == outcome)
             count_query = count_query.where(AuditEvent.outcome == outcome)
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = (
-            query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
-        )
+        query = query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)
 
@@ -691,8 +665,6 @@ class TenantAdminService:
             query = query.where(AuditEvent.user_id == user_id)
             count_query = count_query.where(AuditEvent.user_id == user_id)
         total = (await self.db.execute(count_query)).scalar() or 0
-        query = (
-            query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
-        )
+        query = query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)

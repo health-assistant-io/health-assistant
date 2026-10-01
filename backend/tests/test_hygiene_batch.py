@@ -25,11 +25,11 @@ J9: lifespan startup wrapped every critical step (catalog seeding,
      (APP_ENV != development), re-raise after logging so the app refuses
      to boot. Dev retains fail-soft behaviour.
 """
+
 import inspect
 
 import pytest
 from pydantic import ValidationError
-
 
 # ---------------------------------------------------------------------------
 # B11: VAPID keys required in production
@@ -103,14 +103,15 @@ def test_b11_vapid_keys_present_in_production_ok():
 def test_b14_check_observation_access_handles_missing_reference():
     """A subject dict without 'reference' must not raise AttributeError."""
     src = inspect.getsource(
-        __import__("app.services.access", fromlist=["check_observation_access"]).check_observation_access
+        __import__(
+            "app.services.access", fromlist=["check_observation_access"]
+        ).check_observation_access
     )
     # The fix uses .get("reference", "") (or equivalent defensive pattern)
     # so the absent-key case yields an empty string instead of None.
     # Check for any of the equivalent safe patterns.
     assert any(
-        needle in src
-        for needle in ('.get("reference", "")', ".get('reference', '')", 'or {}')
+        needle in src for needle in ('.get("reference", "")', ".get('reference', '')", "or {}")
     ), (
         "check_observation_access must defensively coerce a missing 'reference' "
         "key to an empty string, not let None propagate to .split() and 500."
@@ -168,7 +169,6 @@ def test_j9_lifespan_routes_seeding_failures_through_gate():
     src = inspect.getsource(lifespan)
     # Find the catalog-seeding except block.
     assert "Catalog seeding" in src, (
-        "Expected a labeled 'Catalog seeding' failure routed through the "
-        "abort-or-warn gate."
+        "Expected a labeled 'Catalog seeding' failure routed through the abort-or-warn gate."
     )
     assert "Integration registry initialization" in src

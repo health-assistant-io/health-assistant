@@ -132,9 +132,7 @@ async def test_rejects_empty_primary_name():
 async def test_rejects_empty_related_list():
     ctx = _ctx()
     discover = _find_tool(build(ctx), "discover_missing_related")
-    raw = await discover.ainvoke(
-        {"primary_type": "medication", "primary_name": "X", "related": []}
-    )
+    raw = await discover.ainvoke({"primary_type": "medication", "primary_name": "X", "related": []})
     out = json.loads(raw)
     assert "error" in out
 
@@ -147,9 +145,7 @@ async def test_rejects_too_many_related_items():
         {
             "primary_type": "medication",
             "primary_name": "X",
-            "related": [
-                {"type": "concept", "name": f"Y{i}"} for i in range(MAX_RELATED_ITEMS + 1)
-            ],
+            "related": [{"type": "concept", "name": f"Y{i}"} for i in range(MAX_RELATED_ITEMS + 1)],
         }
     )
     out = json.loads(raw)

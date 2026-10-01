@@ -5,6 +5,7 @@
 ``AIProviderService.get_active_assignment_for_task``; ``build_workflows`` is a
 pure function and gets its own fast unit tests here.
 """
+
 from app.ai.providers.workflows import build_workflows
 
 

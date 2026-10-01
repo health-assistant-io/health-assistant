@@ -15,9 +15,9 @@ Revises: s1t2m3o4d5e6
 Create Date: 2026-07-20
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "p4c1e2v3e4n5"
 down_revision = "s1t2m3o4d5e6"
@@ -26,9 +26,7 @@ depends_on = None
 
 # Bind-time enum so we can both create the type explicitly and reference it
 # from the column add.
-SCHEDULE_KIND = sa.Enum(
-    "state", "range", "recurring", "point", name="schedulekind"
-)
+SCHEDULE_KIND = sa.Enum("state", "range", "recurring", "point", name="schedulekind")
 
 
 def upgrade() -> None:

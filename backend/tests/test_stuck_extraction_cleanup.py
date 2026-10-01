@@ -17,11 +17,11 @@ Post-fix contract pinned here:
 3. The startup cleanup also filters by ``updated_at < threshold``
    (predicate exists, not just status).
 """
+
 import datetime as _dt
 import inspect
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # A5: cleanup threshold > celery hard time limit
@@ -103,8 +103,8 @@ async def test_a6_startup_cleanup_does_not_target_fresh_exams(monkeypatch):
     the cleanup predicate would NOT match it."""
 
     # Build the WHERE clause the way the endpoint does.
-    threshold = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(minutes=20)
-    fresh_updated_at = _dt.datetime.now(_dt.timezone.utc)  # right now
+    threshold = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=20)
+    fresh_updated_at = _dt.datetime.now(_dt.UTC)  # right now
 
     # Sanity: a fresh exam is NOT older than the threshold.
     assert fresh_updated_at > threshold, (

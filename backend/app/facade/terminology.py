@@ -19,7 +19,7 @@ Both resources share the id ``ha-diseases`` and the canonical system URL
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,6 @@ from app.models.enums import ConceptKind
 from app.services.concept_service import concepts_with_kind
 from app.services.fhir_helpers import build_fhir_resource
 
-
 # The canonical FHIR system URL for the ICD-10 coding system.
 _ICD10_SYSTEM = "http://hl7.org/fhir/sid/icd-10"
 
@@ -38,7 +37,7 @@ _ICD10_SYSTEM = "http://hl7.org/fhir/sid/icd-10"
 _DISEASE_VOCAB_ID = "ha-diseases"
 
 
-async def _load_disease_concepts(db: AsyncSession) -> List[Concept]:
+async def _load_disease_concepts(db: AsyncSession) -> list[Concept]:
     """Fetch all global, active disease concepts ordered by display name."""
     rows = (
         (
@@ -59,7 +58,7 @@ async def _load_disease_concepts(db: AsyncSession) -> List[Concept]:
     return rows
 
 
-def _build_codesystem(concepts: List[Concept]) -> Dict[str, Any]:
+def _build_codesystem(concepts: list[Concept]) -> dict[str, Any]:
     """Build a validated FHIR ``CodeSystem`` resource from disease concepts."""
     concept_entries = [
         {
@@ -85,7 +84,7 @@ def _build_codesystem(concepts: List[Concept]) -> Dict[str, Any]:
     return build_fhir_resource("CodeSystem", raw)
 
 
-def _build_valueset(concepts: List[Concept]) -> Dict[str, Any]:
+def _build_valueset(concepts: list[Concept]) -> dict[str, Any]:
     """Build a validated FHIR ``ValueSet`` resource from disease concepts."""
     concept_refs = [{"code": c.code, "display": c.name} for c in concepts if c.code]
     raw = {
@@ -107,13 +106,13 @@ def _build_valueset(concepts: List[Concept]) -> Dict[str, Any]:
 # Each entry: (resource_type, resource_id, builder). The builder takes the
 # loaded concept list and returns a validated FHIR resource dict. ``read_fn``
 # and ``search_fn`` consult this so adding a vocabulary = one entry here.
-_PUBLISHED_VOCABULARIES: List[Tuple[str, str, Any]] = [
+_PUBLISHED_VOCABULARIES: list[tuple[str, str, Any]] = [
     ("CodeSystem", _DISEASE_VOCAB_ID, _build_codesystem),
     ("ValueSet", _DISEASE_VOCAB_ID, _build_valueset),
 ]
 
 
-def _find(resource_type: str, resource_id: str) -> Optional[Any]:
+def _find(resource_type: str, resource_id: str) -> Any | None:
     for rtype, rid, builder in _PUBLISHED_VOCABULARIES:
         if rtype == resource_type and rid == resource_id:
             return builder
@@ -128,10 +127,10 @@ def _find(resource_type: str, resource_id: str) -> Optional[Any]:
 async def read_terminology(
     db: AsyncSession,
     resource_id: str,
-    current_user,  # noqa: ARG001 — auth context unused; terminology is public read
+    current_user,
     *,
     resource_type: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Read one terminology resource by id. Returns None if unknown."""
     builder = _find(resource_type, resource_id)
     if builder is None:
@@ -141,13 +140,13 @@ async def read_terminology(
 
 
 async def search_terminology(
-    db: AsyncSession,  # noqa: ARG001
-    query_params: List[Tuple[str, str]],
-    current_user,  # noqa: ARG001
+    db: AsyncSession,
+    query_params: list[tuple[str, str]],
+    current_user,
     base_url: str,
     *,
     resource_type: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a Bundle listing the published terminology resources of this type."""
     resources = [
         builder(await _load_disease_concepts(db))
@@ -172,9 +171,7 @@ async def search_terminology(
 
 def make_read_fn(resource_type: str):
     async def _fn(db: AsyncSession, resource_id: str, current_user):
-        return await read_terminology(
-            db, resource_id, current_user, resource_type=resource_type
-        )
+        return await read_terminology(db, resource_id, current_user, resource_type=resource_type)
 
     return _fn
 

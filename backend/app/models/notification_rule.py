@@ -11,23 +11,23 @@ biomarker link, no evaluator).
 """
 
 from sqlalchemy import (
-    Column,
-    String,
-    Text,
     Boolean,
+    Column,
     DateTime,
-    Integer,
+    Enum,
     Float,
     ForeignKey,
-    Enum,
     Index,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-from app.models.base import Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin
+from app.models.base import AuditMixin, Base, TenantMixin, TimestampMixin, UUIDMixin
 from app.models.enums import (
-    NotificationRuleType,
     ComparisonOperator,
+    NotificationRuleType,
     NotificationSeverity,
 )
 
@@ -58,9 +58,7 @@ class NotificationRule(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
     )
 
     # Condition
-    operator = Column(
-        Enum(ComparisonOperator, values_callable=_enum_values), nullable=True
-    )
+    operator = Column(Enum(ComparisonOperator, values_callable=_enum_values), nullable=True)
     value = Column(Float, nullable=True)
 
     # Optional scope to a single patient; null = all the owner's patients.
@@ -103,9 +101,7 @@ class NotificationRule(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
             "severity": self.severity.value,
             "enabled": self.enabled,
             "cooldown_minutes": self.cooldown_minutes,
-            "last_fired_at": self.last_fired_at.isoformat()
-            if self.last_fired_at
-            else None,
+            "last_fired_at": self.last_fired_at.isoformat() if self.last_fired_at else None,
             "targets": self.targets or [],
             "title_template": self.title_template,
             "body_template": self.body_template,

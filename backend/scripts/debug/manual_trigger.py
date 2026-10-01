@@ -1,4 +1,5 @@
 import asyncio
+
 from app.workers.ai_tasks import cumulative_extraction
 
 

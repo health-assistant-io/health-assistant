@@ -1,3 +1,4 @@
+# ruff: noqa: B008,B904,E501 -- long immutable strings; reflow when touched
 """OAuth2 client-credentials token endpoint + client management.
 
 The FHIR R4 facade (``/api/v1/fhir/R4/*``) is Health Assistant's public
@@ -21,12 +22,12 @@ See ``docs/API_LAYERS.md`` and ``docs/FHIR_R4_FACADE.md``.
 import base64
 import secrets
 from datetime import timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import token_store
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit
@@ -44,7 +45,6 @@ from app.core.security import (
     get_password_hash,
     verify_password,
 )
-from app.core import token_store
 from app.models.enums import Role
 from app.models.fhir.patient import Patient
 from app.models.oauth import OAuthClient
@@ -67,16 +67,13 @@ def _new_client_secret() -> str:
     return secrets.token_urlsafe(40)
 
 
-def _resolve_target_tenant(current_user: TokenData, requested: Optional[str]) -> str:
+def _resolve_target_tenant(current_user: TokenData, requested: str | None) -> str:
     """Return the tenant a client operation targets, enforcing RBAC.
 
     Non-SYSTEM_ADMIN callers can only operate on their own tenant.
     """
     target = requested or str(current_user.tenant_id)
-    if (
-        str(current_user.tenant_id) != target
-        and current_user.role != Role.SYSTEM_ADMIN.value
-    ):
+    if str(current_user.tenant_id) != target and current_user.role != Role.SYSTEM_ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot manage OAuth clients in a different tenant.",
@@ -108,9 +105,7 @@ async def _load_client_for_owner(
 async def _validate_bound_patient(db: AsyncSession, tenant_id: str, patient_id) -> None:
     """Ensure the bound patient exists in the tenant (patient/ scopes)."""
     result = await db.execute(
-        select(Patient.id).where(
-            Patient.id == patient_id, Patient.tenant_id == tenant_id
-        )
+        select(Patient.id).where(Patient.id == patient_id, Patient.tenant_id == tenant_id)
     )
     if result.scalar_one_or_none() is None:
         raise HTTPException(
@@ -178,9 +173,7 @@ async def token(
 
     client_id, client_secret = await _extract_client_credentials(request, data)
 
-    result = await db.execute(
-        select(OAuthClient).where(OAuthClient.client_id == client_id)
-    )
+    result = await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
     client = result.scalar_one_or_none()
     if (
         client is None
@@ -191,7 +184,8 @@ async def token(
         # Uniform error + dummy verify so unknown vs wrong-secret clients
         # are indistinguishable by message AND timing (RFC 6749 §5.2,
         # audit 2026-08 M5).
-        from app.core.security import verify_password as _verify_pw, _dummy_hash
+        from app.core.security import _dummy_hash
+        from app.core.security import verify_password as _verify_pw
 
         _verify_pw(client_secret or "", _dummy_hash())
         raise HTTPException(
@@ -226,9 +220,7 @@ async def token(
         client_id=client.client_id,
         tenant_id=str(client.tenant_id),
         scopes=granted,
-        bound_patient_id=str(client.bound_patient_id)
-        if client.bound_patient_id
-        else None,
+        bound_patient_id=str(client.bound_patient_id) if client.bound_patient_id else None,
         expires_delta=expires_delta,
     )
     return {
@@ -340,9 +332,7 @@ async def create_client(
     await db.refresh(client)
 
     base = OAuthClientResponse.from_model(client)
-    return OAuthClientCreateResponse(
-        **base.model_dump(), client_secret=plaintext_secret
-    )
+    return OAuthClientCreateResponse(**base.model_dump(), client_secret=plaintext_secret)
 
 
 @router.post("/clients/{client_row_id}/rotate-secret")
@@ -396,9 +386,7 @@ async def update_client(
             client.bound_patient_id = None
         client.scopes = scopes
     elif payload.bound_patient_id is not None and has_patient_context(client.scopes):
-        await _validate_bound_patient(
-            db, str(client.tenant_id), payload.bound_patient_id
-        )
+        await _validate_bound_patient(db, str(client.tenant_id), payload.bound_patient_id)
         client.bound_patient_id = payload.bound_patient_id
 
     await db.commit()

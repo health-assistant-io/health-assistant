@@ -1,3 +1,4 @@
+# ruff: noqa: RUF100 -- long immutable strings / legacy patterns; reflow when touched
 """Table-driven tests for the Observation value-shape validator
 (plan Step 5).
 
@@ -6,6 +7,7 @@ Decision §5's contract matrix — both pass and fail cases. Pure unit tests:
 no DB, no async — the validator takes a plain ``BiomarkerDefinition`` and
 plain value[x] kwargs.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -16,7 +18,6 @@ from app.services.observation_value_validator import (
     InvalidObservationValue,
     validate_observation_value,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures: lightweight BiomarkerDefinition doubles
@@ -35,27 +36,47 @@ def _allowed(state, is_normal=False, sort_order=0):
 
 def quantity_bio(**kw):
     """A QUANTITY BiomarkerDefinition double."""
-    base = dict(slug="glucose", value_type="quantity", supports_multi_state=False,
-                allowed_states=[])
+    base = {
+        "slug": "glucose",
+        "value_type": "quantity",
+        "supports_multi_state": False,
+        "allowed_states": [],
+    }
     base.update(kw)
     return SimpleNamespace(**base)
 
 
 def state_bio(allowed, **kw):
     """A STATE BiomarkerDefinition double with the given allowed states."""
-    base = dict(slug="sars-cov-2-pcr", value_type="state",
-                supports_multi_state=False, allowed_states=allowed)
+    base = {
+        "slug": "sars-cov-2-pcr",
+        "value_type": "state",
+        "supports_multi_state": False,
+        "allowed_states": allowed,
+    }
     base.update(kw)
     return SimpleNamespace(**base)
 
 
 # Two-state catalog: POS (abnormal) + NEG (normal)
 POS_NEG = [
-    _allowed(_state("positive", "POS", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"), is_normal=False),
-    _allowed(_state("negative", "NEG", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"), is_normal=True),
+    _allowed(
+        _state(
+            "positive", "POS", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+        ),
+        is_normal=False,
+    ),
+    _allowed(
+        _state(
+            "negative", "NEG", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+        ),
+        is_normal=True,
+    ),
 ]
-POS_NEG_PAIRS = {("POS", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"),
-                 ("NEG", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation")}
+POS_NEG_PAIRS = {
+    ("POS", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"),
+    ("NEG", "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"),
+}
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -120,7 +141,9 @@ def test_state_single_with_non_matching_code_rejected():
     with pytest.raises(InvalidObservationValue) as exc:
         validate_observation_value(
             state_bio(POS_NEG),
-            value_codeable_concept=cc("WITHIN_LIMITS", system="urn:uuid:health-assistant:custom-state"),
+            value_codeable_concept=cc(
+                "WITHIN_LIMITS", system="urn:uuid:health-assistant:custom-state"
+            ),
         )
     assert "allowed_states" in str(exc.value)
 
@@ -133,9 +156,7 @@ def test_state_single_missing_value_codeable_concept_rejected():
 
 def test_state_single_with_value_quantity_rejected():
     with pytest.raises(InvalidObservationValue) as exc:
-        validate_observation_value(
-            state_bio(POS_NEG), value_quantity={"value": 1.0}
-        )
+        validate_observation_value(state_bio(POS_NEG), value_quantity={"value": 1.0})
     assert "value_quantity" in str(exc.value)
 
 
@@ -256,7 +277,9 @@ def test_state_multi_component_with_non_matching_code_rejected():
             bio,
             component=[
                 component("org1", cc("POS")),
-                component("org2", cc("WITHIN_LIMITS", system="urn:uuid:health-assistant:custom-state")),
+                component(
+                    "org2", cc("WITHIN_LIMITS", system="urn:uuid:health-assistant:custom-state")
+                ),
             ],
         )
     assert "allowed_states" in str(exc.value)

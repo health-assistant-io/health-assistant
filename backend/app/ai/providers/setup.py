@@ -29,7 +29,7 @@ Health deltas (recorded per plan 17 Phase 3):
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from sqlalchemy import select
@@ -44,8 +44,8 @@ from app.core.encryption import decrypt_secret, encrypt_secret
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
-    AITaskAssignment,
     AIScope,
+    AITaskAssignment,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class SetupError(Exception):
 
 @dataclass
 class SetupOptions:
-    curated_ids: Optional[list[str]] = None
+    curated_ids: list[str] | None = None
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
@@ -88,9 +88,9 @@ class SetupOutcome:
     provider_id: Any
     catalog_count: int
     curated_missed: bool
-    assigned_chat_model: Optional[str] = None
-    assigned_vision_model: Optional[str] = None
-    assigned_stt_model: Optional[str] = None
+    assigned_chat_model: str | None = None
+    assigned_vision_model: str | None = None
+    assigned_stt_model: str | None = None
 
 
 @dataclass
@@ -105,12 +105,10 @@ class _PersistedModel:
 # ---------------------------------------------------------------------------
 
 
-def infer_caps(external_id: str, methods: Optional[list[str]] = None) -> list[str]:
+def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
     """Infer the §15 capability set from a model id (optional Gemini methods)."""
     name = external_id.lower()
-    if "embedding" in name or "bge" in name or (
-        methods is not None and "embedContent" in methods
-    ):
+    if "embedding" in name or "bge" in name or (methods is not None and "embedContent" in methods):
         return ["embeddings"]
     if any(hint in name for hint in ("whisper", "transcribe", "stt")):
         return ["stt"]
@@ -120,15 +118,35 @@ def infer_caps(external_id: str, methods: Optional[list[str]] = None) -> list[st
         return []
     caps = ["text"]
     vision_hints = (
-        "gemini", "gpt-4o", "gpt-4.1", "gpt-4-turbo", "gpt-5", "claude-3",
-        "claude-4", "claude-sonnet", "claude-opus", "claude-haiku", "vision",
-        "-vl", "llava", "pixtral", "gemma3",
+        "gemini",
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-4-turbo",
+        "gpt-5",
+        "claude-3",
+        "claude-4",
+        "claude-sonnet",
+        "claude-opus",
+        "claude-haiku",
+        "vision",
+        "-vl",
+        "llava",
+        "pixtral",
+        "gemma3",
     )
     if any(hint in name for hint in vision_hints):
         caps.append("vision")
     tool_hints = (
-        "gpt-4", "gpt-5", "o3", "o4", "claude", "gemini", "deepseek", "qwen",
-        "llama-3", "mistral",
+        "gpt-4",
+        "gpt-5",
+        "o3",
+        "o4",
+        "claude",
+        "gemini",
+        "deepseek",
+        "qwen",
+        "llama-3",
+        "mistral",
     )
     if any(hint in name for hint in tool_hints):
         caps.append("tools")
@@ -144,8 +162,8 @@ class RemoteModel:
 async def fetch_remote_models(
     wire_type: str,
     base_url: str,
-    api_key: Optional[str],
-    transport: Optional[httpx.AsyncBaseTransport] = None,
+    api_key: str | None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> list[RemoteModel]:
     """Fetch the vendor's model catalog for a canonical §15 wire type.
 
@@ -205,7 +223,7 @@ async def _resolve_target_row(
     scope: AIScope,
     tenant_id: Any,
     user_id: Any,
-) -> Optional[AIProviderModel]:
+) -> AIProviderModel | None:
     """Find the row to reuse at the REQUESTED scope: preset-stamped first,
     then the earliest manual row with the same type + base (§15 adoption).
     Adoption never crosses scopes."""
@@ -219,17 +237,19 @@ async def _resolve_target_row(
         else AIProviderModel.tenant_id == tenant_id
     )
     filters.append(
-        AIProviderModel.user_id.is_(None)
-        if user_id is None
-        else AIProviderModel.user_id == user_id
+        AIProviderModel.user_id.is_(None) if user_id is None else AIProviderModel.user_id == user_id
     )
     existing = (
-        await db.execute(
-            select(AIProviderModel)
-            .where(*filters)
-            .order_by(AIProviderModel.created_at, AIProviderModel.id)
+        (
+            await db.execute(
+                select(AIProviderModel)
+                .where(*filters)
+                .order_by(AIProviderModel.created_at, AIProviderModel.id)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None:
         return existing
     manual_filters = [
@@ -244,17 +264,19 @@ async def _resolve_target_row(
         else AIProviderModel.tenant_id == tenant_id
     )
     manual_filters.append(
-        AIProviderModel.user_id.is_(None)
-        if user_id is None
-        else AIProviderModel.user_id == user_id
+        AIProviderModel.user_id.is_(None) if user_id is None else AIProviderModel.user_id == user_id
     )
     return (
-        await db.execute(
-            select(AIProviderModel)
-            .where(*manual_filters)
-            .order_by(AIProviderModel.created_at, AIProviderModel.id)
+        (
+            await db.execute(
+                select(AIProviderModel)
+                .where(*manual_filters)
+                .order_by(AIProviderModel.created_at, AIProviderModel.id)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
 
 async def _upsert_persisted_models(
@@ -268,11 +290,9 @@ async def _upsert_persisted_models(
     """
     existing = {
         model.model_name: model
-        for model in (
-            await db.execute(
-                select(AIModel).where(AIModel.provider_id == provider.id)
-            )
-        ).scalars().all()
+        for model in (await db.execute(select(AIModel).where(AIModel.provider_id == provider.id)))
+        .scalars()
+        .all()
     }
     resolved: dict[str, AIModel] = {}
     for item in persist_catalog:
@@ -301,7 +321,7 @@ async def _slot_alive(
     tenant_id: Any,
     user_id: Any,
     task_type: str,
-) -> tuple[Optional[AITaskAssignment], Optional[AIModel]]:
+) -> tuple[AITaskAssignment | None, AIModel | None]:
     """The slot for a task at the given scope: its highest-priority active
     row + the assigned model if that row is live (model present and
     existing)."""
@@ -321,19 +341,21 @@ async def _slot_alive(
         else AITaskAssignment.user_id == user_id
     )
     row = (
-        await db.execute(
-            select(AITaskAssignment)
-            .where(*filters)
-            .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
+        (
+            await db.execute(
+                select(AITaskAssignment)
+                .where(*filters)
+                .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if row is None:
         return None, None
     if row.model_id is None:
         return row, None
-    model = (
-        await db.execute(select(AIModel).where(AIModel.id == row.model_id))
-    ).scalars().first()
+    model = (await db.execute(select(AIModel).where(AIModel.id == row.model_id))).scalars().first()
     if model is None:
         return row, None
     return row, model
@@ -359,12 +381,16 @@ async def _bind_slot(
         AITaskAssignment.is_active.is_(True),
     ]
     siblings = (
-        await db.execute(
-            select(AITaskAssignment)
-            .where(*filters)
-            .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
+        (
+            await db.execute(
+                select(AITaskAssignment)
+                .where(*filters)
+                .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     row = siblings[0] if siblings else None
     if row is None:
         row = AITaskAssignment(
@@ -387,7 +413,7 @@ async def _bind_slot(
     await db.flush()
 
 
-def _match_curated(model_id: str, curated: list[str]) -> Optional[str]:
+def _match_curated(model_id: str, curated: list[str]) -> str | None:
     """Exact or snapshot-suffix match (``gpt-5.6-terra`` matches
     ``gpt-5.6-terra-2026-09-11``)."""
     for curated_id in curated:
@@ -404,14 +430,14 @@ def _match_curated(model_id: str, curated: list[str]) -> Optional[str]:
 async def setup_provider_from_preset(
     db: AsyncSession,
     preset_key: str,
-    api_key: Optional[str],
+    api_key: str | None,
     *,
     scope: AIScope,
     tenant_id: Any,
     user_id: Any,
-    name: Optional[str] = None,
-    options: Optional[SetupOptions] = None,
-    transport: Optional[httpx.AsyncBaseTransport] = None,
+    name: str | None = None,
+    options: SetupOptions | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> SetupOutcome:
     """Run the §15 setup flow for one preset, at the requested scope
     (SYSTEM / TENANT / USER — the caller enforces role access)."""
@@ -422,9 +448,7 @@ async def setup_provider_from_preset(
 
     guard_api_base(preset["base_url"])
 
-    existing = await _resolve_target_row(
-        db, preset_key, preset, scope, tenant_id, user_id
-    )
+    existing = await _resolve_target_row(db, preset_key, preset, scope, tenant_id, user_id)
     key = "" if preset["local"] else (api_key or "").strip()
     if not key and existing is not None:
         key = decrypt_secret(existing.api_key) or ""
@@ -470,14 +494,13 @@ async def setup_provider_from_preset(
     curated = preset["curated_models"] if use_preset_curated else options.curated_ids
     curated = curated or []
     persist_catalog = [
-        _PersistedModel(external_id=item.external_id, caps=list(item.caps))
-        for item in catalog
+        _PersistedModel(external_id=item.external_id, caps=list(item.caps)) for item in catalog
     ]
     for item in persist_catalog:
         if not item.caps:
             item.caps = infer_caps(item.external_id)
 
-    def curated_match(item: _PersistedModel) -> Optional[str]:
+    def curated_match(item: _PersistedModel) -> str | None:
         return _match_curated(item.external_id, curated)
 
     any_curated_match = any(curated_match(item) is not None for item in persist_catalog)
@@ -495,7 +518,7 @@ async def setup_provider_from_preset(
         provider.api_key = encrypt_secret(key)
     await db.flush()
 
-    assigned: dict[str, Optional[str]] = {"chat": None, "vision": None, "stt": None}
+    assigned: dict[str, str | None] = {"chat": None, "vision": None, "stt": None}
 
     preferred = preset["preferred_model"]
     preferred_model_id = preferred["id"] if preferred else None
@@ -521,18 +544,16 @@ async def setup_provider_from_preset(
     )
     assignment_candidate_id = preferred_resolved_id or fallback_candidate_id
     if preferred_resolved_id:
-        assignment_vision_capable = bool(
-            preferred and "vision" in (preferred.get("caps") or [])
-        )
+        assignment_vision_capable = bool(preferred and "vision" in (preferred.get("caps") or []))
     elif assignment_candidate_id:
-        assignment_vision_capable = "vision" in by_wire_id[assignment_candidate_id].get_capabilities()
+        assignment_vision_capable = (
+            "vision" in by_wire_id[assignment_candidate_id].get_capabilities()
+        )
     else:
         assignment_vision_capable = False
 
-    _, chat_model = await _slot_alive(
-        db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["chat"]
-    )
-    vision_candidate_id: Optional[str] = None
+    _, chat_model = await _slot_alive(db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["chat"])
+    vision_candidate_id: str | None = None
     vision_capable_flag = False
     chat_wire_id = (
         chat_model.model_name
@@ -586,9 +607,7 @@ async def setup_provider_from_preset(
             None,
         )
     if options.bind_stt and stt_resolved_id:
-        _, stt_model = await _slot_alive(
-            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["stt"]
-        )
+        _, stt_model = await _slot_alive(db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["stt"])
         if stt_model is None:
             assigned["stt"] = stt_resolved_id
             await _bind_slot(
@@ -633,22 +652,24 @@ async def set_default_model(
         raise ValueError("model_name is required")
 
     model = (
-        await db.execute(
-            select(AIModel).where(
-                AIModel.provider_id == provider.id, AIModel.model_name == model_name
+        (
+            await db.execute(
+                select(AIModel).where(
+                    AIModel.provider_id == provider.id, AIModel.model_name == model_name
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if model is None:
         elsewhere = (
-            await db.execute(
-                select(AIModel).where(AIModel.model_name == model_name)
-            )
-        ).scalars().first()
+            (await db.execute(select(AIModel).where(AIModel.model_name == model_name)))
+            .scalars()
+            .first()
+        )
         if elsewhere is not None:
-            raise CrossProviderModelError(
-                f"model '{model_name}' belongs to another provider"
-            )
+            raise CrossProviderModelError(f"model '{model_name}' belongs to another provider")
         model = AIModel(
             provider_id=provider.id,
             name=model_name,

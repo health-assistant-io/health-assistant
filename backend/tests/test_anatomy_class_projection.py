@@ -46,9 +46,7 @@ async def _seed(suffix):
 
 
 @pytest.mark.asyncio
-async def test_anatomy_list_class_filter_and_projection(
-    async_client, system_admin_headers
-):
+async def test_anatomy_list_class_filter_and_projection(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     await _seed(suffix)
 
@@ -78,9 +76,7 @@ async def test_anatomy_list_multi_class(async_client, system_admin_headers):
 async def test_anatomy_detail_projects_class(async_client, system_admin_headers):
     suffix = uuid.uuid4().hex[:8]
     await _seed(suffix)
-    resp = await async_client.get(
-        f"/api/v1/anatomy/heart-{suffix}", headers=system_admin_headers
-    )
+    resp = await async_client.get(f"/api/v1/anatomy/heart-{suffix}", headers=system_admin_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["class_concept_slug"] == f"organ-{suffix}"

@@ -34,7 +34,7 @@ never raises.
 import functools
 import logging
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -55,7 +55,7 @@ OUTCOME_ERROR = "error"
 _DENIED_STATUSES = frozenset({401, 403, 404})
 
 
-def _coerce_uuid(value: Any) -> Optional[UUID]:
+def _coerce_uuid(value: Any) -> UUID | None:
     if value is None or isinstance(value, UUID):
         return value
     try:
@@ -66,14 +66,14 @@ def _coerce_uuid(value: Any) -> Optional[UUID]:
 
 async def log_audit_action(
     *,
-    tenant_id: Optional[UUID],
-    user_id: Optional[UUID],
+    tenant_id: UUID | None,
+    user_id: UUID | None,
     action: str,
     resource_type: str,
-    resource_id: Optional[UUID] = None,
+    resource_id: UUID | None = None,
     outcome: str = OUTCOME_OK,
-    old_value: Optional[Dict[str, Any]] = None,
-    new_value: Optional[Dict[str, Any]] = None,
+    old_value: dict[str, Any] | None = None,
+    new_value: dict[str, Any] | None = None,
 ) -> None:
     """Persist an ``AuditEvent`` row.
 
@@ -112,7 +112,7 @@ async def log_audit_action(
         )
 
 
-def _outcome_for(exc: Exception) -> tuple[str, Optional[int]]:
+def _outcome_for(exc: Exception) -> tuple[str, int | None]:
     """Map a handler exception to (outcome, http_status).
 
     Domain errors (``NotFoundError``/``AuthorizationError`` — the
@@ -129,7 +129,7 @@ def _outcome_for(exc: Exception) -> tuple[str, Optional[int]]:
     return OUTCOME_ERROR, None
 
 
-def audit_read(resource_type: str, *, id_param: Optional[str] = None):
+def audit_read(resource_type: str, *, id_param: str | None = None):
     """Decorator for sensitive clinical GET endpoints (§17 record reads).
 
     Records one ``AuditEvent`` per read: ``action = "read_<resource>"``,
@@ -158,9 +158,7 @@ def audit_read(resource_type: str, *, id_param: Optional[str] = None):
             resource_id = (
                 kwargs.get(id_param)
                 if id_param is not None
-                else next(
-                    (v for k, v in kwargs.items() if k.endswith("_id")), None
-                )
+                else next((v for k, v in kwargs.items() if k.endswith("_id")), None)
             )
             action = "read_" + re.sub(r"(?<!^)(?=[A-Z])", "_", resource_type).lower()
 

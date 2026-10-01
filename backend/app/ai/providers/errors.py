@@ -12,15 +12,14 @@ them through i18n; the raw vendor message never replaces the enum.
 
 import re
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 import httpx
 
 from .presets import guess_preset_for_key
 
 
-class ProviderErrorCode(str, Enum):
+class ProviderErrorCode(StrEnum):
     """The §15 error enum (closed vocabulary — i18n keys downstream)."""
 
     INVALID_KEY = "invalid_key"
@@ -50,10 +49,10 @@ CREDIT_PATTERN = re.compile(
 @dataclass(frozen=True)
 class ClassifiedProviderError:
     code: ProviderErrorCode
-    suspected_vendor: Optional[str] = None
+    suspected_vendor: str | None = None
 
 
-def extract_error_status(message: str) -> Optional[int]:
+def extract_error_status(message: str) -> int | None:
     """Pull ``status NNN`` out of an httpx error string (``None`` if absent)."""
     match = re.search(r"status (\d{3})", message)
     return int(match.group(1)) if match else None
@@ -63,20 +62,19 @@ def classify_provider_error(
     error: Exception,
     *,
     local_provider: bool,
-    api_key: Optional[str] = None,
-    attempted_preset: Optional[str] = None,
+    api_key: str | None = None,
+    attempted_preset: str | None = None,
 ) -> ClassifiedProviderError:
     """Classify a setup-fetch failure into the §15 enum."""
     message = str(error)
     if isinstance(error, httpx.TimeoutException):
         return ClassifiedProviderError(code=ProviderErrorCode.TIMEOUT)
     if (
-        isinstance(error, httpx.TransportError)
-        or CONNECTION_FAILURE_PATTERN.search(message)
+        isinstance(error, httpx.TransportError) or CONNECTION_FAILURE_PATTERN.search(message)
     ) and local_provider:
         return ClassifiedProviderError(code=ProviderErrorCode.LOCAL_NOT_RUNNING)
 
-    status: Optional[int] = None
+    status: int | None = None
     if isinstance(error, httpx.HTTPStatusError):
         status = error.response.status_code
     else:

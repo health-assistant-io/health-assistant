@@ -1,28 +1,29 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Optional, Dict, Any, List
-from app.core.security import get_current_user, RoleChecker, get_password_hash
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.security import RoleChecker, get_current_user, get_password_hash
+from app.models.enums import Role
+from app.models.user_model import UserModel
+from app.schemas.user import TokenData, UserCreate, UserResponse
 from app.services.audit_service import log_audit_action
 from app.services.user_service import (
+    create_user,
+    delete_user,
+    get_user_by_email,
     get_user_by_id,
     update_user,
-    delete_user,
-    create_user,
-    get_user_by_email,
 )
-from app.models.user_model import UserModel
-from app.models.enums import Role
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.core.database import get_db
-
-from app.schemas.user import TokenData, UserResponse, UserCreate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("", response_model=List[UserResponse])
+@router.get("", response_model=list[UserResponse])
 async def list_tenant_users(
-    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     """List all users in the current tenant"""
@@ -37,7 +38,7 @@ async def list_tenant_users(
     return result.scalars().all()
 
 
-def _user_snapshot(user) -> Dict[str, Any] | None:
+def _user_snapshot(user) -> dict[str, Any] | None:
     """The audit-relevant fields of a user row (§17 admin-action diffs)."""
     if user is None:
         return None
@@ -53,7 +54,7 @@ def _user_snapshot(user) -> Dict[str, Any] | None:
 @router.post("", response_model=UserResponse)
 async def create_user_endpoint(
     user_in: UserCreate,
-    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
 ):
     """Create a new user within a tenant"""
     # SYSTEM_ADMIN is bootstrap-only: a tenant ADMIN must never be able to
@@ -116,9 +117,7 @@ async def get_current_user_endpoint(
     """
     if current_user.role == Role.SYSTEM_ADMIN.value:
         lookup_tenant = (
-            current_user.original_tenant_id
-            if getattr(current_user, "switched", False)
-            else None
+            current_user.original_tenant_id if getattr(current_user, "switched", False) else None
         )
     else:
         lookup_tenant = current_user.tenant_id
@@ -131,9 +130,7 @@ async def get_current_user_endpoint(
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-async def get_user_endpoint(
-    user_id: str, current_user: TokenData = Depends(get_current_user)
-):
+async def get_user_endpoint(user_id: str, current_user: TokenData = Depends(get_current_user)):
     """Get user information"""
     # Check permissions: Either you are the user, or you are an admin/manager in the same tenant
     # or you are a SYSTEM_ADMIN.
@@ -146,9 +143,7 @@ async def get_user_endpoint(
     ]
 
     # Enforce tenant isolation for non-system admins
-    tenant_id = (
-        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
-    )
+    tenant_id = None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
 
     user = await get_user_by_id(user_id, tenant_id=tenant_id)
     if not user:
@@ -163,9 +158,9 @@ async def get_user_endpoint(
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user_endpoint(
     user_id: str,
-    email: Optional[str] = None,
-    role: Optional[str] = None,
-    settings: Optional[Dict[str, Any]] = None,
+    email: str | None = None,
+    role: str | None = None,
+    settings: dict[str, Any] | None = None,
     current_user: TokenData = Depends(get_current_user),
 ):
     """Update user information"""
@@ -179,14 +174,10 @@ async def update_user_endpoint(
     ]
 
     if not is_self and not is_admin:
-        raise HTTPException(
-            status_code=403, detail="Not authorized to update this user"
-        )
+        raise HTTPException(status_code=403, detail="Not authorized to update this user")
 
     # Enforce tenant isolation for non-system admins
-    tenant_id = (
-        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
-    )
+    tenant_id = None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
 
     # If updating role, must be a real admin (MANAGERs manage content, not
     # accounts), and SYSTEM_ADMIN grants require a SYSTEM_ADMIN caller
@@ -194,10 +185,7 @@ async def update_user_endpoint(
     if role:
         if current_user.role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
             raise HTTPException(status_code=403, detail="Only admins can change roles")
-        if (
-            role == Role.SYSTEM_ADMIN.value
-            and current_user.role != Role.SYSTEM_ADMIN.value
-        ):
+        if role == Role.SYSTEM_ADMIN.value and current_user.role != Role.SYSTEM_ADMIN.value:
             raise HTTPException(
                 status_code=403,
                 detail="SYSTEM_ADMIN can only be granted by a SYSTEM_ADMIN.",
@@ -251,15 +239,13 @@ async def update_user_endpoint(
 @router.delete("/{user_id}")
 async def delete_user_endpoint(
     user_id: str,
-    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
 ):
     """Delete user"""
     from app.core import token_store
 
     # Enforce tenant isolation for non-system admins
-    tenant_id = (
-        None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
-    )
+    tenant_id = None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id
 
     # Snapshot for the §17 audit trail before the row disappears.
     before = await get_user_by_id(user_id, tenant_id=tenant_id)

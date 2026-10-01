@@ -11,8 +11,8 @@ go through the HITL proposal flow (``propose_*`` tools in ``hitl_proposals``).
 
 from __future__ import annotations
 
+import contextlib
 import json
-from typing import Optional
 
 from langchain_core.tools import tool
 
@@ -26,7 +26,7 @@ def build(ctx: ToolContext):
     @tool
     async def search_concepts(
         search_term: str,
-        kind: Optional[str] = None,
+        kind: str | None = None,
     ) -> str:
         """Search the unified medical taxonomy (concepts) by name, slug, or alias.
 
@@ -41,21 +41,20 @@ def build(ctx: ToolContext):
         Returns JSON: [{id, name, slug, kind, description, coding_system, code,
         matched_on, snippet}].
         """
-        from app.models.enums import ConceptKind
+        from sqlalchemy import select
+
         from app.models.concept_model import Concept
+        from app.models.enums import ConceptKind
         from app.services.catalog_search_service import (
             _hybrid_search_one,
             _specs_by_type,
         )
         from app.services.concept_service import concepts_with_kind
-        from sqlalchemy import select
 
         resolved_kind = None
         if kind:
-            try:
+            with contextlib.suppress(ValueError):
                 resolved_kind = ConceptKind(kind)
-            except ValueError:
-                pass
 
         specs = _specs_by_type()
         spec = specs["concept"]
@@ -87,11 +86,7 @@ def build(ctx: ToolContext):
             return json.dumps([])
         # Bulk-fetch concept rows in rank order for the rich payload.
         rows = (
-            (
-                await ctx.db.execute(
-                    select(Concept).where(Concept.id.in_([h.row_id for h in hits]))
-                )
-            )
+            (await ctx.db.execute(select(Concept).where(Concept.id.in_([h.row_id for h in hits]))))
             .scalars()
             .all()
         )
@@ -120,7 +115,7 @@ def build(ctx: ToolContext):
     @tool
     async def get_concept_neighborhood(
         concept_id: str,
-        relation: Optional[str] = None,
+        relation: str | None = None,
     ) -> str:
         """Get the one-hop graph neighbors of a concept.
 
@@ -130,8 +125,9 @@ def build(ctx: ToolContext):
 
         Returns JSON: [{edge_relation, direction, concept_id, concept_name, concept_kind}].
         """
-        from app.services.concept_service import ConceptService
         from uuid import UUID
+
+        from app.services.concept_service import ConceptService
 
         svc = ConceptService(ctx.db)
         try:
@@ -143,10 +139,8 @@ def build(ctx: ToolContext):
 
         resolved_relation = None
         if relation:
-            try:
+            with contextlib.suppress(ValueError):
                 resolved_relation = ConceptRelationType(relation)
-            except ValueError:
-                pass
 
         neighbors = await svc.get_neighbors(
             cid,
@@ -171,7 +165,7 @@ def build(ctx: ToolContext):
     async def get_entity_concepts(
         entity_type: str,
         entity_id: str,
-        relation: Optional[str] = None,
+        relation: str | None = None,
     ) -> str:
         """Look up taxonomy concepts linked to a domain entity.
 
@@ -185,9 +179,10 @@ def build(ctx: ToolContext):
 
         Returns JSON: [{concept_id, name, slug, kind, relation}].
         """
-        from app.services.concept_service import ConceptService
-        from app.models.enums import EdgeEndpointType, ConceptRelationType
         from uuid import UUID
+
+        from app.models.enums import ConceptRelationType, EdgeEndpointType
+        from app.services.concept_service import ConceptService
 
         try:
             et = EdgeEndpointType(entity_type)
@@ -197,10 +192,8 @@ def build(ctx: ToolContext):
 
         resolved_relation = None
         if relation:
-            try:
+            with contextlib.suppress(ValueError):
                 resolved_relation = ConceptRelationType(relation)
-            except ValueError:
-                pass
 
         svc = ConceptService(ctx.db)
         concepts = await svc.get_entity_concepts(
@@ -223,8 +216,8 @@ def build(ctx: ToolContext):
 
     @tool
     async def get_link_schema(
-        src_type: Optional[str] = None,
-        dst_type: Optional[str] = None,
+        src_type: str | None = None,
+        dst_type: str | None = None,
     ) -> str:
         """Discover which link relations the knowledge-graph supports.
 

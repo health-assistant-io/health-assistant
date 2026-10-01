@@ -20,8 +20,9 @@ new catalog automatically.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 from app.catalogs.policy import CatalogAccessPolicy
 from app.catalogs.protocol import CatalogServiceProtocol, CatalogUiMeta, ConceptLink
@@ -37,9 +38,9 @@ class CatalogDescriptor:
     edge_endpoint_type: EdgeEndpointType
     rbac: CatalogAccessPolicy
     ui: CatalogUiMeta
-    concept_link: Optional[ConceptLink] = None
-    resolver: Optional[Callable[..., Any]] = None
-    fhir_projector: Optional[Callable[[Any], Any]] = None
+    concept_link: ConceptLink | None = None
+    resolver: Callable[..., Any] | None = None
+    fhir_projector: Callable[[Any], Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property

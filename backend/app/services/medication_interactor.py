@@ -1,4 +1,5 @@
-from typing import List, Dict, Any
+from typing import Any
+
 import requests
 
 
@@ -11,7 +12,7 @@ class MedicationInteractor:
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
 
-    async def check_interactions(self, medications: List[str]) -> List[Dict[str, Any]]:
+    async def check_interactions(self, medications: list[str]) -> list[dict[str, Any]]:
         """Check for interactions between medications"""
         interactions = []
 
@@ -45,12 +46,10 @@ class MedicationInteractor:
         except Exception as e:
             import logging
 
-            logging.getLogger(__name__).error(
-                f"Error getting RxCUI for {medication}: {e}"
-            )
+            logging.getLogger(__name__).error(f"Error getting RxCUI for {medication}: {e}")
             return ""
 
-    async def _check_interaction(self, code1: str, code2: str) -> Dict[str, Any]:
+    async def _check_interaction(self, code1: str, code2: str) -> dict[str, Any]:
         """Check interaction between two medications"""
         try:
             response = self.session.get(
@@ -75,7 +74,7 @@ class MedicationInteractor:
 
         return {}
 
-    async def get_medication_info(self, medication: str) -> Dict[str, Any]:
+    async def get_medication_info(self, medication: str) -> dict[str, Any]:
         """Get detailed information about a medication"""
         rxcui = await self._get_rxcui(medication)
         if not rxcui:

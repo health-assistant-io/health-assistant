@@ -1,3 +1,4 @@
+# ruff: noqa: E501,SIM102,UP007 -- long immutable strings; reflow when touched
 """The ``ask_user`` chatbot tool — LLM-initiated structured questions.
 
 Sibling to the ``propose_*`` family. Where a proposal renders a *write-action*
@@ -26,8 +27,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from datetime import UTC, datetime
+from typing import Any, Union
 from uuid import uuid4
 
 from langchain_core.tools import tool
@@ -84,9 +85,7 @@ class ChoiceOption(BaseModel):
 
     value: str = Field(..., min_length=1, max_length=80, description="Stable id")
     label: str = Field(..., min_length=1, max_length=120, description="UI label")
-    detail: Optional[str] = Field(
-        None, max_length=200, description="Optional muted subtitle"
-    )
+    detail: str | None = Field(None, max_length=200, description="Optional muted subtitle")
 
 
 class CandidateRef(BaseModel):
@@ -105,26 +104,32 @@ class CandidateRef(BaseModel):
 
     id: str = Field(..., min_length=1, max_length=80)
     name: str = Field(..., min_length=1, max_length=200)
-    slug: Optional[str] = Field(None, max_length=200)
-    type: Optional[str] = Field(None, max_length=40)
-    detail: Optional[str] = Field(None, max_length=240)
+    slug: str | None = Field(None, max_length=200)
+    type: str | None = Field(None, max_length=40)
+    detail: str | None = Field(None, max_length=240)
 
     # --- Coding / classification (catalog items) --------------------------
-    code: Optional[str] = Field(None, max_length=80, description="Code (LOINC, SNOMED, etc.)")
-    coding_system: Optional[str] = Field(None, max_length=40, description="loinc | snomed | custom | …")
-    category: Optional[str] = Field(None, max_length=120, description="Biomarker category / exam category")
-    kind: Optional[str] = Field(None, max_length=80, description="ConceptKind for concept entities")
+    code: str | None = Field(None, max_length=80, description="Code (LOINC, SNOMED, etc.)")
+    coding_system: str | None = Field(
+        None, max_length=40, description="loinc | snomed | custom | …"
+    )
+    category: str | None = Field(
+        None, max_length=120, description="Biomarker category / exam category"
+    )
+    kind: str | None = Field(None, max_length=80, description="ConceptKind for concept entities")
 
     # --- Biomarker-specific -----------------------------------------------
-    is_telemetry: Optional[bool] = Field(None, description="Biomarker: high-frequency IoT/wearable metric")
-    unit: Optional[str] = Field(None, max_length=40, description="Biomarker preferred unit symbol")
+    is_telemetry: bool | None = Field(
+        None, description="Biomarker: high-frequency IoT/wearable metric"
+    )
+    unit: str | None = Field(None, max_length=40, description="Biomarker preferred unit symbol")
 
     # --- Instance-specific (clinical_event, examination, …) ---------------
-    date: Optional[str] = Field(None, max_length=40, description="ISO date for instance rows")
-    status: Optional[str] = Field(None, max_length=40, description="active | resolved | final | …")
+    date: str | None = Field(None, max_length=40, description="ISO date for instance rows")
+    status: str | None = Field(None, max_length=40, description="active | resolved | final | …")
 
     # --- Free-form description (short) ------------------------------------
-    description: Optional[str] = Field(None, max_length=300)
+    description: str | None = Field(None, max_length=300)
 
 
 class _QuestionBase(BaseModel):
@@ -132,11 +137,9 @@ class _QuestionBase(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(
-        ..., min_length=1, max_length=40, description="Stable id, unique within batch"
-    )
+    id: str = Field(..., min_length=1, max_length=40, description="Stable id, unique within batch")
     prompt: str = Field(..., min_length=1, max_length=500, description="User-facing prompt")
-    help_text: Optional[str] = Field(None, max_length=300)
+    help_text: str | None = Field(None, max_length=300)
     required: bool = Field(False, description="Whether the user must answer")
 
     # `default` is overridden per-kind for tighter validation.
@@ -144,11 +147,11 @@ class _QuestionBase(BaseModel):
 
 class FreetextQuestion(_QuestionBase):
     kind: str = Field("freetext", description="Discriminator — must be 'freetext'")
-    placeholder: Optional[str] = Field(None, max_length=200)
+    placeholder: str | None = Field(None, max_length=200)
     multiline: bool = Field(
         True, description="Render a textarea (true) or single-line input (false)"
     )
-    default: Optional[str] = Field(None, max_length=2000)
+    default: str | None = Field(None, max_length=2000)
 
     @field_validator("kind")
     @classmethod
@@ -160,8 +163,8 @@ class FreetextQuestion(_QuestionBase):
 
 class SingleChoiceQuestion(_QuestionBase):
     kind: str = Field("single_choice")
-    options: List[ChoiceOption] = Field(..., min_length=1)
-    default: Optional[str] = Field(None, max_length=80)
+    options: list[ChoiceOption] = Field(..., min_length=1)
+    default: str | None = Field(None, max_length=80)
 
     @field_validator("kind")
     @classmethod
@@ -172,21 +175,19 @@ class SingleChoiceQuestion(_QuestionBase):
 
     @field_validator("default")
     @classmethod
-    def _default_in_options(cls, v: Optional[str], info) -> Optional[str]:
+    def _default_in_options(cls, v: str | None, info) -> str | None:
         options = info.data.get("options") or []
         if v is not None and not any(opt.value == v for opt in options):
-            raise ValueError(
-                f"default value {v!r} is not one of the provided option values"
-            )
+            raise ValueError(f"default value {v!r} is not one of the provided option values")
         return v
 
 
 class MultiChoiceQuestion(_QuestionBase):
     kind: str = Field("multi_choice")
-    options: List[ChoiceOption] = Field(..., min_length=1)
+    options: list[ChoiceOption] = Field(..., min_length=1)
     min_select: int = Field(0, ge=0)
-    max_select: Optional[int] = Field(None, ge=0)
-    default: Optional[List[str]] = Field(None)
+    max_select: int | None = Field(None, ge=0)
+    default: list[str] | None = Field(None)
 
     @field_validator("kind")
     @classmethod
@@ -197,7 +198,7 @@ class MultiChoiceQuestion(_QuestionBase):
 
     @field_validator("max_select")
     @classmethod
-    def _max_ge_min(cls, v: Optional[int], info) -> Optional[int]:
+    def _max_ge_min(cls, v: int | None, info) -> int | None:
         min_sel = info.data.get("min_select", 0) or 0
         if v is not None and v < min_sel:
             raise ValueError("max_select cannot be less than min_select")
@@ -205,27 +206,27 @@ class MultiChoiceQuestion(_QuestionBase):
 
     @field_validator("default")
     @classmethod
-    def _defaults_in_options(cls, v: Optional[List[str]], info) -> Optional[List[str]]:
+    def _defaults_in_options(cls, v: list[str] | None, info) -> list[str] | None:
         options = info.data.get("options") or []
         valid = {opt.value for opt in options}
         if v is not None:
             bad = [x for x in v if x not in valid]
             if bad:
-                raise ValueError(
-                    f"default values {bad!r} are not among the provided options"
-                )
+                raise ValueError(f"default values {bad!r} are not among the provided options")
         return v
 
 
 class CatalogRefQuestion(_QuestionBase):
     kind: str = Field("catalog_ref")
-    catalog_type: str = Field(..., description="One of: " + ", ".join(sorted(ALLOWED_CATALOG_TYPES)))
+    catalog_type: str = Field(
+        ..., description="One of: " + ", ".join(sorted(ALLOWED_CATALOG_TYPES))
+    )
     multi: bool = False
     #: Opaque server-side filter; currently supports `query` (str) and
     #: `is_telemetry` (bool, biomarker only). Unknown keys are ignored.
-    prefilter: Optional[Dict[str, Any]] = Field(None)
+    prefilter: dict[str, Any] | None = Field(None)
     #: Server-snapshot, populated by the tool. The LLM should NOT pass this.
-    candidates: Optional[List[CandidateRef]] = Field(None)
+    candidates: list[CandidateRef] | None = Field(None)
 
     @field_validator("kind")
     @classmethod
@@ -246,7 +247,7 @@ class CatalogRefQuestion(_QuestionBase):
 
     @field_validator("prefilter")
     @classmethod
-    def _check_prefilter(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _check_prefilter(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         if v is None:
             return None
         if not isinstance(v, dict):
@@ -257,8 +258,7 @@ class CatalogRefQuestion(_QuestionBase):
         unknown = set(v.keys()) - allowed
         if unknown:
             raise ValueError(
-                f"prefilter keys {sorted(unknown)!r} not recognised; "
-                f"allowed: {sorted(allowed)}"
+                f"prefilter keys {sorted(unknown)!r} not recognised; allowed: {sorted(allowed)}"
             )
         if "query" in v and isinstance(v["query"], str):
             if len(v["query"]) > MAX_PREFILTER_QUERY_LEN:
@@ -268,10 +268,12 @@ class CatalogRefQuestion(_QuestionBase):
 
 class InstanceRefQuestion(_QuestionBase):
     kind: str = Field("instance_ref")
-    entity_type: str = Field(..., description="One of: " + ", ".join(sorted(ALLOWED_INSTANCE_ENTITY_TYPES)))
+    entity_type: str = Field(
+        ..., description="One of: " + ", ".join(sorted(ALLOWED_INSTANCE_ENTITY_TYPES))
+    )
     patient_scope: bool = Field(True, description="Must be true for now (patient-scoped only)")
     multi: bool = False
-    candidates: Optional[List[CandidateRef]] = Field(None)
+    candidates: list[CandidateRef] | None = Field(None)
 
     @field_validator("kind")
     @classmethod
@@ -307,7 +309,7 @@ Question = Union[
     InstanceRefQuestion,
 ]
 
-_QUESTION_ADAPTER: TypeAdapter = TypeAdapter(List[Question])
+_QUESTION_ADAPTER: TypeAdapter = TypeAdapter(list[Question])
 
 
 # ---------------------------------------------------------------------------
@@ -320,16 +322,14 @@ class AskUserValidationError(ValueError):
     safe to return to the LLM as a tool result so it can self-correct."""
 
 
-def _validate_batch(questions_raw: Any) -> List[BaseModel]:
+def _validate_batch(questions_raw: Any) -> list[BaseModel]:
     """Validate the LLM-supplied ``questions`` argument.
 
     Returns the list of typed question models. Raises
     :class:`AskUserValidationError` with a clear, LLM-facing message.
     """
     if not isinstance(questions_raw, list):
-        raise AskUserValidationError(
-            "`questions` must be a list of question objects."
-        )
+        raise AskUserValidationError("`questions` must be a list of question objects.")
     if not questions_raw:
         raise AskUserValidationError("`questions` must contain at least one question.")
     if len(questions_raw) > MAX_QUESTIONS_PER_BATCH:
@@ -386,7 +386,7 @@ def _format_pydantic_errors(exc: Exception) -> str:
 
 async def _snapshot_catalog_candidates(
     ctx: ToolContext, question: CatalogRefQuestion
-) -> List[CandidateRef]:
+) -> list[CandidateRef]:
     """Run cross-catalog search for a ``catalog_ref`` question and snapshot
     the top-N hits as :class:`CandidateRef`. Returns ``[]`` on miss/error —
     the frontend still lets the user re-query.
@@ -425,13 +425,13 @@ async def _snapshot_catalog_candidates(
         )
         return []
 
-    out: List[CandidateRef] = []
+    out: list[CandidateRef] = []
     for hit in hits:
         out.append(_hit_to_candidate(hit, question.catalog_type))
     return out
 
 
-def _hit_to_candidate(hit: Dict[str, Any], fallback_type: str) -> CandidateRef:
+def _hit_to_candidate(hit: dict[str, Any], fallback_type: str) -> CandidateRef:
     """Build a :class:`CandidateRef` from a ``search_catalogs`` enriched hit.
 
     Captures all rich fields the adapter exposes — coding, classification,
@@ -445,7 +445,7 @@ def _hit_to_candidate(hit: Dict[str, Any], fallback_type: str) -> CandidateRef:
     # is_telemetry may arrive as a bool or as a string ("true"/"false") from
     # some adapters — normalise to bool or None.
     raw_telemetry = hit.get("is_telemetry")
-    is_telemetry: Optional[bool]
+    is_telemetry: bool | None
     if isinstance(raw_telemetry, bool):
         is_telemetry = raw_telemetry
     elif isinstance(raw_telemetry, str):
@@ -469,7 +469,7 @@ def _hit_to_candidate(hit: Dict[str, Any], fallback_type: str) -> CandidateRef:
     )
 
 
-def _truncate(s: Optional[str], cap: int) -> Optional[str]:
+def _truncate(s: str | None, cap: int) -> str | None:
     """Truncate ``s`` to AT MOST ``cap`` characters (ellipsis included when
     truncation occurs). Returns ``None`` for empty/None input."""
     if not s:
@@ -481,7 +481,7 @@ def _truncate(s: Optional[str], cap: int) -> Optional[str]:
     return s[: max(0, cap - 1)].rstrip() + "…"
 
 
-async def _snapshot_clinical_events(ctx: ToolContext) -> List[CandidateRef]:
+async def _snapshot_clinical_events(ctx: ToolContext) -> list[CandidateRef]:
     """Top open patient clinical events, newest first. Carries title, status,
     onset_date so the LLM can disambiguate without a re-fetch."""
     try:
@@ -500,7 +500,7 @@ async def _snapshot_clinical_events(ctx: ToolContext) -> List[CandidateRef]:
             .limit(MAX_CANDIDATES_PER_REF)
         )
         events = res.scalars().all()
-        out: List[CandidateRef] = []
+        out: list[CandidateRef] = []
         for e in events:
             out.append(
                 CandidateRef(
@@ -508,11 +508,7 @@ async def _snapshot_clinical_events(ctx: ToolContext) -> List[CandidateRef]:
                     name=getattr(e, "title", None) or "Untitled",
                     type="clinical_event",
                     status=getattr(e, "status", None),
-                    date=(
-                        e.onset_date.isoformat()
-                        if getattr(e, "onset_date", None)
-                        else None
-                    ),
+                    date=(e.onset_date.isoformat() if getattr(e, "onset_date", None) else None),
                 )
             )
         return out
@@ -521,7 +517,7 @@ async def _snapshot_clinical_events(ctx: ToolContext) -> List[CandidateRef]:
         return []
 
 
-async def _snapshot_examinations(ctx: ToolContext) -> List[CandidateRef]:
+async def _snapshot_examinations(ctx: ToolContext) -> list[CandidateRef]:
     """Top patient examinations, newest first. Carries date + category so the
     LLM can disambiguate without a re-fetch."""
     try:
@@ -540,11 +536,9 @@ async def _snapshot_examinations(ctx: ToolContext) -> List[CandidateRef]:
             .limit(MAX_CANDIDATES_PER_REF)
         )
         exams = res.scalars().all()
-        out: List[CandidateRef] = []
+        out: list[CandidateRef] = []
         for e in exams:
-            date_str = (
-                e.examination_date.isoformat() if e.examination_date else None
-            )
+            date_str = e.examination_date.isoformat() if e.examination_date else None
             out.append(
                 CandidateRef(
                     id=str(e.id),
@@ -574,17 +568,14 @@ async def _populate_candidates(ctx: ToolContext, question: BaseModel) -> BaseMod
         if isinstance(question, CatalogRefQuestion):
             if question.candidates is None:
                 question.candidates = await _snapshot_catalog_candidates(ctx, question)
-        elif isinstance(question, InstanceRefQuestion):
-            if question.candidates is None:
-                builder = INSTANCE_SNAPSHOT_BUILDERS.get(question.entity_type)
-                if builder is not None:
-                    question.candidates = await builder(ctx)
-                else:
-                    question.candidates = []
+        elif isinstance(question, InstanceRefQuestion) and question.candidates is None:
+            builder = INSTANCE_SNAPSHOT_BUILDERS.get(question.entity_type)
+            if builder is not None:
+                question.candidates = await builder(ctx)
+            else:
+                question.candidates = []
     except Exception:
-        logger.exception(
-            "ask_user: candidate population failed for question %r", question.id
-        )
+        logger.exception("ask_user: candidate population failed for question %r", question.id)
     return question
 
 
@@ -594,14 +585,14 @@ async def _populate_candidates(ctx: ToolContext, question: BaseModel) -> BaseMod
 
 
 @register_chat_tool("ask_user")
-def build(ctx: ToolContext) -> List[Any]:
+def build(ctx: ToolContext) -> list[Any]:
     """Build the ``ask_user`` tool, closure-bound to ``ctx``."""
 
     @tool
     async def ask_user(
-        questions: List[dict],
-        title: Optional[str] = None,
-        summary: Optional[str] = None,
+        questions: list[dict],
+        title: str | None = None,
+        summary: str | None = None,
     ) -> str:
         """Ask the user one or more structured clarifying questions.
 
@@ -671,7 +662,7 @@ def build(ctx: ToolContext) -> List[Any]:
           health journey or examination) the user wants to attach to.
 
         Args:
-            questions: List of 1–8 question objects (see shape above).
+            questions: List of 1-8 question objects (see shape above).
             title: Optional card title. Defaults to "Quick questions".
             summary: Optional one-sentence rationale shown above the questions.
 
@@ -706,7 +697,7 @@ def build(ctx: ToolContext) -> List[Any]:
             "context": {
                 "patient_id": str(ctx.patient_id) if ctx.patient_id else None,
             },
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "resolved": None,
         }
         return json.dumps({"__hitl__": True, "task": task})
@@ -719,7 +710,7 @@ def build(ctx: ToolContext) -> List[Any]:
 # ---------------------------------------------------------------------------
 
 
-def _question_to_payload(q: BaseModel) -> Dict[str, Any]:
+def _question_to_payload(q: BaseModel) -> dict[str, Any]:
     """Serialize a typed question model to the JSONB-friendly dict stored
     in ``proposed_payload.questions``. Strips ``None`` values for compactness."""
     data = q.model_dump(exclude_none=True, mode="json")
@@ -727,8 +718,7 @@ def _question_to_payload(q: BaseModel) -> Dict[str, Any]:
     # already; ensure key order is stable for test snapshots).
     if "candidates" in data and data["candidates"] is not None:
         data["candidates"] = [
-            {k: v for k, v in (c or {}).items() if v is not None}
-            for c in data["candidates"]
+            {k: v for k, v in (c or {}).items() if v is not None} for c in data["candidates"]
         ]
     return data
 
@@ -736,13 +726,13 @@ def _question_to_payload(q: BaseModel) -> Dict[str, Any]:
 __all__ = [
     "ALLOWED_CATALOG_TYPES",
     "ALLOWED_INSTANCE_ENTITY_TYPES",
-    "MAX_QUESTIONS_PER_BATCH",
-    "MAX_OPTIONS_PER_QUESTION",
-    "MAX_CANDIDATES_PER_REF",
     "FREETEXT_ANSWER_TRIM_CHARS",
+    "MAX_CANDIDATES_PER_REF",
+    "MAX_OPTIONS_PER_QUESTION",
+    "MAX_QUESTIONS_PER_BATCH",
     "AskUserValidationError",
-    "build",
-    "_validate_batch",
     "_format_pydantic_errors",
     "_question_to_payload",
+    "_validate_batch",
+    "build",
 ]

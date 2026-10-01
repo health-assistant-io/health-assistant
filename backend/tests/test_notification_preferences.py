@@ -13,6 +13,7 @@ Covers:
   PUT on unknown kind → 404.
 * ``_filter_specs_by_owner_type_prefs`` now keys by **instance id** (not domain).
 """
+
 from __future__ import annotations
 
 import uuid
@@ -24,7 +25,6 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.core.errors import NotFoundError, ValidationError
-from tests._auth_helpers import headers_for_claims
 from app.models.enums import (
     NotificationCategory,
     NotificationSeverity,
@@ -42,7 +42,6 @@ from app.services.notification_kind_registry import (
 from app.services.notification_preferences_service import (
     NotificationPreferencesService,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -279,9 +278,7 @@ async def test_emit_does_not_crash_when_registry_fails():
     async def _boom(*args, **kwargs):
         raise RuntimeError("registry down")
 
-    with patch(
-        "app.services.notification_service.resolve_kind", side_effect=_boom
-    ):
+    with patch("app.services.notification_service.resolve_kind", side_effect=_boom):
         notif = await notification_service.emit(
             source=NotificationSource.SYSTEM,
             type=NotificationType.SYSTEM_BROADCAST,
@@ -456,9 +453,7 @@ async def test_endpoint_put_preference_disables_source(async_client):
     get = await async_client.get(
         "/api/v1/notifications/preferences", headers=await _headers(user, tenant)
     )
-    rule = next(
-        p for p in get.json()["preferences"] if p["kind_id"] == "source:RULE"
-    )
+    rule = next(p for p in get.json()["preferences"] if p["kind_id"] == "source:RULE")
     assert rule["enabled"] is False
 
 
@@ -482,8 +477,9 @@ async def test_endpoint_put_unknown_kind_returns_404(async_client):
 @pytest.mark.asyncio
 async def test_filter_specs_uses_per_instance_key():
     """Muting one integration instance must not affect another of the same provider."""
-    from app.services.integration_sync_service import _filter_specs_by_owner_type_prefs
     from integrations.sdk.notifications import NotificationSpec
+
+    from app.services.integration_sync_service import _filter_specs_by_owner_type_prefs
 
     tenant = await _make_tenant()
     user = await _make_user(tenant)
@@ -496,12 +492,18 @@ async def test_filter_specs_uses_per_instance_key():
         db.add_all(
             [
                 UserIntegration(
-                    id=iid_a, tenant_id=tenant, user_id=user.id,
-                    patient_id=patient_id, provider="dev_dummy",
+                    id=iid_a,
+                    tenant_id=tenant,
+                    user_id=user.id,
+                    patient_id=patient_id,
+                    provider="dev_dummy",
                 ),
                 UserIntegration(
-                    id=iid_b, tenant_id=tenant, user_id=user.id,
-                    patient_id=patient_id, provider="dev_dummy",
+                    id=iid_b,
+                    tenant_id=tenant,
+                    user_id=user.id,
+                    patient_id=patient_id,
+                    provider="dev_dummy",
                 ),
             ]
         )
@@ -510,18 +512,14 @@ async def test_filter_specs_uses_per_instance_key():
     # Mute sensor_malfunction on instance A only.
     key_a = f"notifications.integration.{iid_a}.sensor_malfunction"
     async with AsyncSessionLocal() as db:
-        u = (
-            await db.execute(select(UserModel).where(UserModel.id == user.id))
-        ).scalar_one()
+        u = (await db.execute(select(UserModel).where(UserModel.id == user.id))).scalar_one()
         u.settings = {key_a: False}
         from sqlalchemy.orm.attributes import flag_modified
 
         flag_modified(u, "settings")
         await db.commit()
 
-    spec = NotificationSpec(
-        title="x", type_id="sensor_malfunction", body=None
-    )
+    spec = NotificationSpec(title="x", type_id="sensor_malfunction", body=None)
 
     class _FakeIntegration:
         id = iid_a

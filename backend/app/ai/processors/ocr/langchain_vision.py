@@ -1,12 +1,14 @@
+# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
+import asyncio
 import base64
 import logging
-import asyncio
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
+
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 
 from .base import OCRProcessor
-from langchain_core.messages import HumanMessage
-from langchain_core.language_models.chat_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class LangChainOCRProcessor(OCRProcessor):
         """Extract text using LangChain and Vision-capable LLM"""
         try:
             if file_path.suffix.lower() in [".txt", ".csv", ".md"]:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     return f.read()
 
             # Use utility to convert PDF/DICOM/Images to normalized JPEG bytes
@@ -47,9 +49,9 @@ class LangChainOCRProcessor(OCRProcessor):
             return await self.extract_text_from_images(images)
 
         except Exception as e:
-            raise ValueError(f"Failed to extract text: {str(e)}")
+            raise ValueError(f"Failed to extract text: {e!s}")
 
-    async def extract_text_from_images(self, images: List[bytes]) -> str:
+    async def extract_text_from_images(self, images: list[bytes]) -> str:
         """Extract text from images using LangChain and Vision (Page by Page with Context)"""
         try:
             full_text = []
@@ -96,21 +98,18 @@ class LangChainOCRProcessor(OCRProcessor):
                     if strategy["resize"]:
                         # If we need to resize, we do it here
                         try:
-                            from PIL import Image
                             import io
+
+                            from PIL import Image
 
                             img = Image.open(io.BytesIO(image_data))
                             img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
                             buf = io.BytesIO()
                             img.save(buf, format="JPEG", quality=85)
                             current_image_data = buf.getvalue()
-                            base64_image = base64.b64encode(current_image_data).decode(
-                                "utf-8"
-                            )
+                            base64_image = base64.b64encode(current_image_data).decode("utf-8")
                         except Exception as res_err:
-                            logger.warning(
-                                f"Failed to resize image for retry: {res_err}"
-                            )
+                            logger.warning(f"Failed to resize image for retry: {res_err}")
 
                     content = [
                         {"type": "text", "text": prompt},
@@ -127,16 +126,12 @@ class LangChainOCRProcessor(OCRProcessor):
                         logger.info(
                             f"OCR attempt {j + 1} for page {i + 1} (strategy: {strategy}, size: {len(current_image_data)} bytes)"
                         )
-                        response = await self.llm.ainvoke(
-                            [HumanMessage(content=content)]
-                        )
+                        response = await self.llm.ainvoke([HumanMessage(content=content)])
                         break  # Success!
                     except Exception as e:
                         last_error = e
                         err_msg = str(e).lower()
-                        logger.warning(
-                            f"OCR attempt {j + 1} failed for page {i + 1}: {e}"
-                        )
+                        logger.warning(f"OCR attempt {j + 1} failed for page {i + 1}: {e}")
 
                         # If it's a 4xx error (except 429), don't bother retrying with other strategies if it's auth/not found
                         if "401" in err_msg or "403" in err_msg or "404" in err_msg:
@@ -166,9 +161,9 @@ class LangChainOCRProcessor(OCRProcessor):
             return "\n\n".join(full_text)
         except Exception as e:
             logger.error(f"OCR method failed: {e}")
-            raise ValueError(f"OCR processing failed: {str(e)}")
+            raise ValueError(f"OCR processing failed: {e!s}")
 
-    async def extract_images(self, file_path: Path) -> List[bytes]:
+    async def extract_images(self, file_path: Path) -> list[bytes]:
         """Extract images from document using utility"""
         from .utils import convert_to_images
 
@@ -182,11 +177,9 @@ class LangChainOCRProcessor(OCRProcessor):
         """Extract text with custom prompt"""
         try:
             if file_path.suffix.lower() in [".txt", ".csv", ".md"]:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     doc_text = f.read()
-                content = [
-                    {"type": "text", "text": f"{prompt}\n\nDocument Text:\n{doc_text}"}
-                ]
+                content = [{"type": "text", "text": f"{prompt}\n\nDocument Text:\n{doc_text}"}]
             else:
                 from .utils import convert_to_images
 
@@ -197,9 +190,7 @@ class LangChainOCRProcessor(OCRProcessor):
                         with open(file_path, "rb") as f:
                             images = [f.read()]
                     else:
-                        raise ValueError(
-                            f"No images could be extracted from {file_path}"
-                        )
+                        raise ValueError(f"No images could be extracted from {file_path}")
 
                 content = [{"type": "text", "text": prompt}]
                 for image_data in images:
@@ -219,16 +210,17 @@ class LangChainOCRProcessor(OCRProcessor):
             return str(response.content)
 
         except Exception as e:
-            raise ValueError(f"Failed to extract text with prompt: {str(e)}")
+            raise ValueError(f"Failed to extract text with prompt: {e!s}")
 
     async def extract_structured_data(
         self,
         file_path: Path,
-        schema: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
         """Extract structured data from document"""
         try:
             import json
+
             from langchain_core.output_parsers import JsonOutputParser
 
             parser = JsonOutputParser()
@@ -242,11 +234,9 @@ class LangChainOCRProcessor(OCRProcessor):
             )
 
             if file_path.suffix.lower() in [".txt", ".csv", ".md"]:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     doc_text = f.read()
-                content = [
-                    {"type": "text", "text": f"{prompt}\n\nDocument Text:\n{doc_text}"}
-                ]
+                content = [{"type": "text", "text": f"{prompt}\n\nDocument Text:\n{doc_text}"}]
             else:
                 from .utils import convert_to_images
 
@@ -257,9 +247,7 @@ class LangChainOCRProcessor(OCRProcessor):
                         with open(file_path, "rb") as f:
                             images = [f.read()]
                     else:
-                        raise ValueError(
-                            f"No images could be extracted from {file_path}"
-                        )
+                        raise ValueError(f"No images could be extracted from {file_path}")
 
                 content = [{"type": "text", "text": prompt}]
                 for image_data in images:
@@ -280,7 +268,7 @@ class LangChainOCRProcessor(OCRProcessor):
             return await chain.ainvoke([message])
 
         except Exception as e:
-            raise ValueError(f"Failed to extract structured data: {str(e)}")
+            raise ValueError(f"Failed to extract structured data: {e!s}")
 
     def _get_content_type(self, file_path: Path) -> str:
         """Get content type based on file extension"""

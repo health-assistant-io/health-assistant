@@ -1,9 +1,10 @@
 import json
 
 import pytest
-from app.ai.processors.ocr.langchain_vision import LangChainOCRProcessor
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+
+from app.ai.processors.ocr.langchain_vision import LangChainOCRProcessor
 
 
 def _make_processor(content: str) -> LangChainOCRProcessor:

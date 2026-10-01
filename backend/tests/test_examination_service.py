@@ -12,6 +12,7 @@ These tests use a minimal fake session — they exercise the dedup
 decision tree (lookup-or-skip, return-or-create) without spinning up a
 real DB.
 """
+
 from uuid import uuid4
 
 import pytest
@@ -20,7 +21,6 @@ from app.core.errors import NotFoundError
 from app.schemas.examination import ExaminationCreate
 from app.schemas.user import TokenData
 from app.services import examination_service as svc
-
 
 TENANT = uuid4()
 PATIENT = uuid4()
@@ -100,15 +100,21 @@ def _stub_external_dependencies(monkeypatch):
     """Stub ``check_patient_access``, ``_validate_patient_exists``, and the
     medical-processing category resolver so the service's dedup logic can
     be exercised in isolation."""
+
     async def _noop_access(*a, **kw):
         return None
+
     monkeypatch.setattr(svc, "check_patient_access", _noop_access)
     monkeypatch.setattr(svc, "_validate_patient_exists", _noop_access)
+
     # The category resolver is only invoked when payload.category is set
     # without category_concept_id; default to raising to surface accidental
     # invocations.
     async def _fail_resolve(*a, **kw):
-        raise AssertionError("MedicalProcessingService.resolve_category should not be invoked by these tests")
+        raise AssertionError(
+            "MedicalProcessingService.resolve_category should not be invoked by these tests"
+        )
+
     monkeypatch.setattr(
         "app.ai.pipeline.service.MedicalProcessingService",
         type("M", (), {"resolve_category": _fail_resolve}),
@@ -118,8 +124,10 @@ def _stub_external_dependencies(monkeypatch):
 @pytest.fixture(autouse=True)
 def _stub_reload(monkeypatch):
     """``_reload_with_relationships`` hits the DB; stub it to echo the id."""
+
     async def _fake_reload(db, examination_id):
         return type("E", (), {"id": examination_id})()
+
     monkeypatch.setattr(svc, "_reload_with_relationships", _fake_reload)
 
 
@@ -138,7 +146,9 @@ async def test_integration_dedup_hit_returns_existing():
 
     integration_id = uuid4()
     result = await svc.create_examination(
-        db, _actor(), _payload(),
+        db,
+        _actor(),
+        _payload(),
         source_integration_id=integration_id,
         external_id="upstream-encounter-42",
     )
@@ -156,17 +166,16 @@ async def test_integration_dedup_lookup_filters_on_all_four_fields():
     integration_id = uuid4()
 
     await svc.create_examination(
-        db, _actor(), _payload(),
+        db,
+        _actor(),
+        _payload(),
         source_integration_id=integration_id,
         external_id="upstream-encounter-42",
     )
 
     # Find the SELECT that probes the integration-key (it filters on
     # source_integration_id); the patient-existence check doesn't.
-    dedup_query = next(
-        q for q in db.executes
-        if "source_integration_id" in str(q).lower()
-    )
+    dedup_query = next(q for q in db.executes if "source_integration_id" in str(q).lower())
     sql = str(dedup_query.compile(compile_kwargs={"literal_binds": True})).lower()
     assert "examinations" in sql
     assert "tenant_id" in sql
@@ -184,7 +193,9 @@ async def test_integration_dedup_miss_creates_with_provenance():
     integration_id = uuid4()
 
     await svc.create_examination(
-        db, _actor(), _payload(),
+        db,
+        _actor(),
+        _payload(),
         source_integration_id=integration_id,
         external_id="upstream-encounter-42",
     )
@@ -205,7 +216,9 @@ async def test_integration_dedup_skipped_when_source_integration_id_absent():
     UI-created rows)."""
     db = _FakeSession(rows=[])
     await svc.create_examination(
-        db, _actor(), _payload(),
+        db,
+        _actor(),
+        _payload(),
         external_id="orphan-id-no-source",
     )
     # No query should have a ``source_integration_id =`` predicate (which
@@ -256,7 +269,9 @@ async def test_auto_extract_metadata_bypasses_heuristic_dedup():
     # (filters on examination_date + notes) was issued.
     db = _FakeSession(rows=[])
     await svc.create_examination(
-        db, _actor(), _payload(auto_extract_metadata=True),
+        db,
+        _actor(),
+        _payload(auto_extract_metadata=True),
     )
 
     for q in db.executes:
@@ -280,9 +295,11 @@ async def test_missing_patient_raises_not_found_error(monkeypatch):
     """A bogus patient_id must surface as :class:`NotFoundError` (mapped to
     HTTP 404 by the global handler). Restores the original endpoint's
     inline 404 behavior — service raises domain exception instead."""
+
     # Re-enable the real _validate_patient_exists with a stub that raises.
     async def _raise(*a, **kw):
         raise NotFoundError("Patient with ID ... not found.")
+
     monkeypatch.setattr(svc, "_validate_patient_exists", _raise)
     db = _FakeSession(rows=[])
 
@@ -311,6 +328,7 @@ def test_endpoint_routes_through_service_chokepoint():
     new service function and doesn't carry its own inline dedup / category
     resolution / ORM construction. Catches a partial revert."""
     import inspect
+
     from app.api.v1.endpoints import examinations as endpoint_mod
 
     src = inspect.getsource(endpoint_mod.create_examination)
@@ -321,8 +339,7 @@ def test_endpoint_routes_through_service_chokepoint():
     # ORM construction, the heuristic-dedup SELECT, the category-resolver
     # call — must NOT reappear in the endpoint body.
     assert "ExaminationModel(" not in src, (
-        "Endpoint must not construct ExaminationModel directly — that's "
-        "the service's job"
+        "Endpoint must not construct ExaminationModel directly — that's the service's job"
     )
     assert "resolve_category" not in src, (
         "Endpoint must not resolve categories inline — service owns it now"

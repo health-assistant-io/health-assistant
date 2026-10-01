@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -103,7 +103,7 @@ async def prune_setup() -> AsyncIterator[dict]:
         await db.execute(
             ChatSession.__table__.update()
             .where(ChatSession.__table__.c.id == stale_session_id)
-            .values(updated_at=datetime.now(timezone.utc) - timedelta(days=10_000))
+            .values(updated_at=datetime.now(UTC) - timedelta(days=10_000))
         )
         await db.commit()
 
@@ -142,9 +142,7 @@ async def prune_setup() -> AsyncIterator[dict]:
                 UserModel.__table__.delete().where(UserModel.__table__.c.id == user_id)
             )
             await db.execute(
-                TenantModel.__table__.delete().where(
-                    TenantModel.__table__.c.id == tenant_id
-                )
+                TenantModel.__table__.delete().where(TenantModel.__table__.c.id == tenant_id)
             )
             await db.commit()
 

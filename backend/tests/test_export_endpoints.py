@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.main import app
-from app.core.security import get_current_user
 from app.core.database import get_db
+from app.core.security import get_current_user
+from app.main import app
 from app.models.enums import ExportScope, ExportType, JobStatus
 from app.models.export_import_job import ExportJobModel
 
@@ -18,18 +18,22 @@ def _override_user(role="USER"):
     from app.schemas.user import TokenData
 
     return TokenData(
-        user_id=TEST_USER_ID, sub=str(TEST_USER_ID),
-        tenant_id=TEST_TENANT_ID, role=role,
+        user_id=TEST_USER_ID,
+        sub=str(TEST_USER_ID),
+        tenant_id=TEST_TENANT_ID,
+        role=role,
     )
 
 
 def _setup_db(db_mock):
     async def override_get_db():
         yield db_mock
+
     return override_get_db
 
 
 # ---------- POST /export ----------
+
 
 @pytest.mark.asyncio
 async def test_create_export_patient_scope_user_requires_patient_ids(async_client: AsyncClient):
@@ -52,8 +56,11 @@ async def test_create_export_user_cannot_export_multiple_patients(async_client: 
     app.dependency_overrides[get_db] = _setup_db(db_mock)
     response = await async_client.post(
         "/api/v1/export",
-        json={"scope": "patient", "export_type": "fhir_only",
-              "patient_ids": [str(uuid.uuid4()), str(uuid.uuid4())]},
+        json={
+            "scope": "patient",
+            "export_type": "fhir_only",
+            "patient_ids": [str(uuid.uuid4()), str(uuid.uuid4())],
+        },
     )
     assert response.status_code == 403
     app.dependency_overrides = {}
@@ -66,8 +73,7 @@ async def test_create_export_group_scope_forbidden_for_user(async_client: AsyncC
     app.dependency_overrides[get_db] = _setup_db(db_mock)
     response = await async_client.post(
         "/api/v1/export",
-        json={"scope": "group", "export_type": "full_backup",
-              "patient_ids": [str(uuid.uuid4())]},
+        json={"scope": "group", "export_type": "full_backup", "patient_ids": [str(uuid.uuid4())]},
     )
     assert response.status_code == 403
     app.dependency_overrides = {}
@@ -91,9 +97,14 @@ async def test_create_export_enqueues_celery_task(async_client: AsyncClient):
     app.dependency_overrides[get_current_user] = lambda: _override_user("ADMIN")
     db_mock = AsyncMock()
     job = ExportJobModel(
-        id=uuid.uuid4(), tenant_id=TEST_TENANT_ID, user_id=TEST_USER_ID,
-        scope=ExportScope.SYSTEM, export_type=ExportType.FULL_BACKUP,
-        status=JobStatus.PENDING, progress=0, patient_ids=None,
+        id=uuid.uuid4(),
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        scope=ExportScope.SYSTEM,
+        export_type=ExportType.FULL_BACKUP,
+        status=JobStatus.PENDING,
+        progress=0,
+        patient_ids=None,
         smart_scope="system/*.cruds",
     )
     db_mock.add = MagicMock()
@@ -123,6 +134,7 @@ async def test_create_export_enqueues_celery_task(async_client: AsyncClient):
 
 # ---------- GET /export/jobs/{id} ----------
 
+
 @pytest.mark.asyncio
 async def test_get_export_job_returns_404_when_missing(async_client: AsyncClient):
     app.dependency_overrides[get_current_user] = _override_user
@@ -141,11 +153,17 @@ async def test_get_export_job_returns_status(async_client: AsyncClient):
     app.dependency_overrides[get_current_user] = _override_user
     jid = uuid.uuid4()
     job = ExportJobModel(
-        id=jid, tenant_id=TEST_TENANT_ID, user_id=TEST_USER_ID,
-        scope=ExportScope.PATIENT, export_type=ExportType.FHIR_ONLY,
-        status=JobStatus.COMPLETED, progress=100,
-        file_path="/tmp/x.fhir.json", file_size_bytes=123,
-        resource_counts={"Patient": 1}, smart_scope="patient/*.rs",
+        id=jid,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        scope=ExportScope.PATIENT,
+        export_type=ExportType.FHIR_ONLY,
+        status=JobStatus.COMPLETED,
+        progress=100,
+        file_path="/tmp/x.fhir.json",
+        file_size_bytes=123,
+        resource_counts={"Patient": 1},
+        smart_scope="patient/*.rs",
     )
     db_mock = AsyncMock()
     res = MagicMock()
@@ -163,14 +181,20 @@ async def test_get_export_job_returns_status(async_client: AsyncClient):
 
 # ---------- GET /export/jobs ----------
 
+
 @pytest.mark.asyncio
 async def test_list_export_jobs(async_client: AsyncClient):
     app.dependency_overrides[get_current_user] = _override_user
     jobs = [
         ExportJobModel(
-            id=uuid.uuid4(), tenant_id=TEST_TENANT_ID, user_id=TEST_USER_ID,
-            scope=ExportScope.SYSTEM, export_type=ExportType.FULL_BACKUP,
-            status=JobStatus.COMPLETED, progress=100, smart_scope="system/*.cruds",
+            id=uuid.uuid4(),
+            tenant_id=TEST_TENANT_ID,
+            user_id=TEST_USER_ID,
+            scope=ExportScope.SYSTEM,
+            export_type=ExportType.FULL_BACKUP,
+            status=JobStatus.COMPLETED,
+            progress=100,
+            smart_scope="system/*.cruds",
         )
     ]
     db_mock = AsyncMock()
@@ -188,14 +212,20 @@ async def test_list_export_jobs(async_client: AsyncClient):
 
 # ---------- GET /export/jobs/{id}/download ----------
 
+
 @pytest.mark.asyncio
 async def test_download_export_404_when_file_missing(async_client: AsyncClient, tmp_path):
     app.dependency_overrides[get_current_user] = _override_user
     jid = uuid.uuid4()
     job = ExportJobModel(
-        id=jid, tenant_id=TEST_TENANT_ID, user_id=TEST_USER_ID,
-        scope=ExportScope.PATIENT, export_type=ExportType.FHIR_ONLY,
-        status=JobStatus.COMPLETED, progress=100, file_path=str(tmp_path / "nope.json"),
+        id=jid,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        scope=ExportScope.PATIENT,
+        export_type=ExportType.FHIR_ONLY,
+        status=JobStatus.COMPLETED,
+        progress=100,
+        file_path=str(tmp_path / "nope.json"),
         smart_scope="patient/*.rs",
     )
     db_mock = AsyncMock()
@@ -215,9 +245,14 @@ async def test_download_export_returns_file(async_client: AsyncClient, tmp_path)
     f = tmp_path / "out.fhir.json"
     f.write_text('{"resourceType":"Bundle"}')
     job = ExportJobModel(
-        id=jid, tenant_id=TEST_TENANT_ID, user_id=TEST_USER_ID,
-        scope=ExportScope.PATIENT, export_type=ExportType.FHIR_ONLY,
-        status=JobStatus.COMPLETED, progress=100, file_path=str(f),
+        id=jid,
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        scope=ExportScope.PATIENT,
+        export_type=ExportType.FHIR_ONLY,
+        status=JobStatus.COMPLETED,
+        progress=100,
+        file_path=str(f),
         smart_scope="patient/*.rs",
     )
     db_mock = AsyncMock()

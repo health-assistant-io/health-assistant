@@ -13,6 +13,7 @@ These tests pin the helper-level contract directly. The worker
 integration is covered by the existing
 ``test_sync_active_integrations_lock.py`` + a new case here.
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -21,16 +22,15 @@ from uuid import uuid4
 import pytest
 
 from app.services.integration_sync_service import (
+    _COOLDOWN_MAX_SECONDS,
+    _COOLDOWN_MIN_SECONDS,
     SyncResult,
     _clamp_cooldown,
     _cooldown_key,
-    _COOLDOWN_MAX_SECONDS,
-    _COOLDOWN_MIN_SECONDS,
     clear_rate_limit_cooldown,
     is_rate_limited,
     set_rate_limit_cooldown,
 )
-
 
 # ---------------------------------------------------------------------------
 # _clamp_cooldown

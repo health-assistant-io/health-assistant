@@ -16,10 +16,11 @@ Post-fix contract pinned here:
    when ``soft_delete=True`` AND the model has the attribute.
 4. The migration that aligned the indexes runs cleanly both ways.
 """
+
 import importlib
+import re
 
 import pytest
-
 
 # The nine models that migration a7484842ecd4 added deleted_at to.
 SOFT_DELETE_MODELS = [
@@ -140,9 +141,12 @@ async def test_crud_delete_sets_deleted_at(module_name, class_name):
         "takes the soft-delete branch instead of hard-deleting."
     )
     # Hard-delete was NOT called.
-    db.delete.assert_not_called(), (
-        f"crud.delete must NOT call session.delete() for {class_name} "
-        "(soft-delete is the facade contract)."
+    (
+        db.delete.assert_not_called(),
+        (
+            f"crud.delete must NOT call session.delete() for {class_name} "
+            "(soft-delete is the facade contract)."
+        ),
     )
 
 
@@ -198,7 +202,7 @@ def test_initial_schema_has_deleted_at_on_nine_tables():
         "documents",
     }
     for table in expected:
-        assert "'deleted_at'" in src, (
+        assert re.search(r"['\"]deleted_at['\"]", src), (
             f"deleted_at column missing from consolidated baseline (table {table})"
         )
 

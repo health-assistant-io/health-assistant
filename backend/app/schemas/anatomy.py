@@ -1,21 +1,23 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
+from typing import Any
 from uuid import UUID
-from app.models.enums import ConceptRelationType, CodingSystem
+
+from pydantic import BaseModel, ConfigDict
+
+from app.models.enums import CodingSystem, ConceptRelationType
 
 
 class AnatomyStructureBase(BaseModel):
     name: str
     slug: str
-    class_concept_id: Optional[UUID] = None
+    class_concept_id: UUID | None = None
     # Write-friendly: the anatomy-class concept slug (e.g. ``organ``). Resolved
     # to ``class_concept_id`` by the service, so callers don't need the UUID.
-    class_concept_slug: Optional[str] = None
-    standard_system: Optional[CodingSystem] = None
-    standard_code: Optional[str] = None
-    description: Optional[str] = None
+    class_concept_slug: str | None = None
+    standard_system: CodingSystem | None = None
+    standard_code: str | None = None
+    description: str | None = None
     is_custom: bool = False
-    display: Optional[Dict[str, Any]] = None
+    display: dict[str, Any] | None = None
 
 
 class AnatomyStructureCreate(AnatomyStructureBase):
@@ -23,23 +25,23 @@ class AnatomyStructureCreate(AnatomyStructureBase):
 
 
 class AnatomyStructureUpdate(BaseModel):
-    name: Optional[str] = None
-    slug: Optional[str] = None
-    class_concept_id: Optional[UUID] = None
-    class_concept_slug: Optional[str] = None
-    standard_system: Optional[CodingSystem] = None
-    standard_code: Optional[str] = None
-    description: Optional[str] = None
-    is_custom: Optional[bool] = None
-    display: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    slug: str | None = None
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
+    standard_system: CodingSystem | None = None
+    standard_code: str | None = None
+    description: str | None = None
+    is_custom: bool | None = None
+    display: dict[str, Any] | None = None
 
 
 class AnatomyStructureResponse(AnatomyStructureBase):
     id: UUID
-    class_concept_name: Optional[str] = None
+    class_concept_name: str | None = None
     scope: str
-    tenant_id: Optional[UUID] = None
-    created_by: Optional[UUID] = None
+    tenant_id: UUID | None = None
+    created_by: UUID | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,12 +65,12 @@ class AnatomyRelationResponse(AnatomyRelationBase):
 class AnatomyGraphNode(AnatomyStructureResponse):
     """A node in the graph, optionally including its relations."""
 
-    outgoing_relations: List[AnatomyRelationResponse] = []
-    incoming_relations: List[AnatomyRelationResponse] = []
+    outgoing_relations: list[AnatomyRelationResponse] = []
+    incoming_relations: list[AnatomyRelationResponse] = []
 
 
 class AnatomyListResponse(BaseModel):
-    items: List[AnatomyStructureResponse]
+    items: list[AnatomyStructureResponse]
     total: int
 
 
@@ -80,8 +82,8 @@ class AnatomyRelatedNode(BaseModel):
 
 
 class AnatomyRelatedResponse(BaseModel):
-    outgoing: List[AnatomyRelatedNode] = []
-    incoming: List[AnatomyRelatedNode] = []
+    outgoing: list[AnatomyRelatedNode] = []
+    incoming: list[AnatomyRelatedNode] = []
 
 
 class AnatomyGraphEdge(BaseModel):
@@ -98,8 +100,8 @@ class AnatomyGraphNodeItem(AnatomyStructureResponse):
 
 class AnatomyGraphResponse(BaseModel):
     root_id: UUID
-    nodes: List[AnatomyGraphNodeItem] = []
-    edges: List[AnatomyGraphEdge] = []
+    nodes: list[AnatomyGraphNodeItem] = []
+    edges: list[AnatomyGraphEdge] = []
 
 
 # --- Anatomy figures (DB-driven body atlas, raster images) ---
@@ -111,13 +113,13 @@ class AnatomyFigureResponse(BaseModel):
     label: str
     figure_key: str
     view_key: str
-    image_path: Optional[str] = None
-    source_image_path: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
+    image_path: str | None = None
+    source_image_path: str | None = None
+    width: int | None = None
+    height: int | None = None
     sort_order: int = 0
     is_active: bool = True
-    created_at: Optional[Any] = None
-    updated_at: Optional[Any] = None
+    created_at: Any | None = None
+    updated_at: Any | None = None
 
     model_config = ConfigDict(from_attributes=True)

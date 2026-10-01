@@ -1,13 +1,13 @@
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import Optional, List, Dict, Any
-from uuid import UUID
 from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.models.enums import AIModelCapability, AIScope
 
 
-from app.models.enums import AIScope, AIModelCapability
-
-
-def _mask_api_key_for_response(value: Optional[str]) -> Optional[str]:
+def _mask_api_key_for_response(value: str | None) -> str | None:
     """Never return a plaintext api_key in any response shape.
 
     Accepts either the encrypted at-rest form or legacy plaintext and
@@ -20,44 +20,32 @@ def _mask_api_key_for_response(value: Optional[str]) -> Optional[str]:
     return mask_secret(value)
 
 
-def _compute_has_api_key(value: Optional[str]) -> bool:
+def _compute_has_api_key(value: str | None) -> bool:
     return bool(value) and value != ""
 
 
 class AIProviderCreate(BaseModel):
     """Schema for creating a new AI provider"""
 
-    name: str = Field(
-        ..., min_length=1, max_length=100, description="Display name of provider"
-    )
+    name: str = Field(..., min_length=1, max_length=100, description="Display name of provider")
     scope: AIScope = Field(default=AIScope.SYSTEM, description="Scope of the provider")
     provider_type: str = Field(
         ..., min_length=1, max_length=50, description="Type: openai, tesseract"
     )
     api_base: str = Field(..., min_length=1, max_length=500, description="API base URL")
-    api_key: Optional[str] = Field(None, max_length=500, description="API key")
+    api_key: str | None = Field(None, max_length=500, description="API key")
     is_active: bool = Field(default=True, description="Enable/disable provider")
-    settings: Optional[Dict[str, Any]] = Field(
+    settings: dict[str, Any] | None = Field(
         default_factory=dict, description="Provider-specific settings"
     )
-    is_local: bool = Field(
-        default=False, description="Whether the provider is run locally"
-    )
-    company_name: Optional[str] = Field(
-        None, max_length=200, description="Company Name"
-    )
-    company_website: Optional[str] = Field(
-        None, max_length=500, description="Company Website"
-    )
-    company_country: Optional[str] = Field(
+    is_local: bool = Field(default=False, description="Whether the provider is run locally")
+    company_name: str | None = Field(None, max_length=200, description="Company Name")
+    company_website: str | None = Field(None, max_length=500, description="Company Website")
+    company_country: str | None = Field(
         None, pattern=r"^[A-Z]{2}$", description="Company Country (ISO 3166-1 alpha-2)"
     )
-    tenant_id: Optional[UUID] = Field(
-        None, description="Tenant ID (nullable for global providers)"
-    )
-    user_id: Optional[UUID] = Field(
-        None, description="User ID (nullable for global/tenant providers)"
-    )
+    tenant_id: UUID | None = Field(None, description="Tenant ID (nullable for global providers)")
+    user_id: UUID | None = Field(None, description="User ID (nullable for global/tenant providers)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -65,16 +53,16 @@ class AIProviderCreate(BaseModel):
 class AIProviderUpdate(BaseModel):
     """Schema for updating an AI provider"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    provider_type: Optional[str] = Field(None, min_length=1, max_length=50)
-    api_base: Optional[str] = Field(None, min_length=1, max_length=500)
-    api_key: Optional[str] = Field(None, max_length=500)
-    is_active: Optional[bool] = Field(None)
-    settings: Optional[Dict[str, Any]] = Field(None)
-    is_local: Optional[bool] = Field(None)
-    company_name: Optional[str] = Field(None, max_length=200)
-    company_website: Optional[str] = Field(None, max_length=500)
-    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
+    name: str | None = Field(None, min_length=1, max_length=100)
+    provider_type: str | None = Field(None, min_length=1, max_length=50)
+    api_base: str | None = Field(None, min_length=1, max_length=500)
+    api_key: str | None = Field(None, max_length=500)
+    is_active: bool | None = Field(None)
+    settings: dict[str, Any] | None = Field(None)
+    is_local: bool | None = Field(None)
+    company_name: str | None = Field(None, max_length=200)
+    company_website: str | None = Field(None, max_length=500)
+    company_country: str | None = Field(None, pattern=r"^[A-Z]{2}$")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -93,19 +81,19 @@ class AIProviderResponse(BaseModel):
     scope: AIScope
     provider_type: str
     api_base: str
-    api_key: Optional[str] = None
+    api_key: str | None = None
     has_api_key: bool = False
     is_active: bool
-    settings: Optional[Dict[str, Any]] = None
+    settings: dict[str, Any] | None = None
     is_local: bool = False
-    company_name: Optional[str] = None
-    company_website: Optional[str] = None
-    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
-    preset_key: Optional[str] = None
-    tenant_id: Optional[UUID] = None
-    user_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    company_name: str | None = None
+    company_website: str | None = None
+    company_country: str | None = Field(None, pattern=r"^[A-Z]{2}$")
+    preset_key: str | None = None
+    tenant_id: UUID | None = None
+    user_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,8 +115,8 @@ class AIModelCreate(BaseModel):
     model_name: str = Field(
         ..., min_length=1, max_length=200, description="Actual model name for API"
     )
-    description: Optional[str] = Field(None, description="Description")
-    capabilities: List[AIModelCapability] = Field(
+    description: str | None = Field(None, description="Description")
+    capabilities: list[AIModelCapability] = Field(
         default_factory=lambda: [AIModelCapability.TEXT],
         description=(
             "Modalities this model supports (its features): 'text' (baseline, "
@@ -141,13 +129,9 @@ class AIModelCreate(BaseModel):
     )
     is_active: bool = Field(default=True, description="Enable/disable model")
     max_tokens: int = Field(default=65536, ge=1, description="Max tokens for model")
-    temperature: float = Field(
-        default=0.7, ge=0.0, le=2.0, description="Temperature setting"
-    )
-    is_local: Optional[bool] = Field(
-        None, description="Override provider's is_local setting"
-    )
-    settings: Optional[Dict[str, Any]] = Field(
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Temperature setting")
+    is_local: bool | None = Field(None, description="Override provider's is_local setting")
+    settings: dict[str, Any] | None = Field(
         default_factory=dict, description="Model-specific settings"
     )
 
@@ -157,15 +141,15 @@ class AIModelCreate(BaseModel):
 class AIModelUpdate(BaseModel):
     """Schema for updating an AI model"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    model_name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None)
-    capabilities: Optional[List[AIModelCapability]] = Field(None)
-    is_active: Optional[bool] = Field(None)
-    max_tokens: Optional[int] = Field(None, ge=1)
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
-    is_local: Optional[bool] = Field(None)
-    settings: Optional[Dict[str, Any]] = Field(None)
+    name: str | None = Field(None, min_length=1, max_length=200)
+    model_name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None)
+    capabilities: list[AIModelCapability] | None = Field(None)
+    is_active: bool | None = Field(None)
+    max_tokens: int | None = Field(None, ge=1)
+    temperature: float | None = Field(None, ge=0.0, le=2.0)
+    is_local: bool | None = Field(None)
+    settings: dict[str, Any] | None = Field(None)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -175,20 +159,18 @@ class AIModelResponse(BaseModel):
 
     id: UUID
     provider_id: UUID
-    provider_name: Optional[str] = None
+    provider_name: str | None = None
     name: str
     model_name: str
-    description: Optional[str]
-    capabilities: List[AIModelCapability] = Field(
-        default_factory=lambda: [AIModelCapability.TEXT]
-    )
+    description: str | None
+    capabilities: list[AIModelCapability] = Field(default_factory=lambda: [AIModelCapability.TEXT])
     is_active: bool
-    max_tokens: Optional[int] = 65536
-    temperature: Optional[float] = 0.7
-    is_local: Optional[bool] = None
-    settings: Optional[Dict[str, Any]]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    max_tokens: int | None = 65536
+    temperature: float | None = 0.7
+    is_local: bool | None = None
+    settings: dict[str, Any] | None
+    created_at: datetime | None
+    updated_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -199,16 +181,16 @@ class AITaskAssignmentResponse(BaseModel):
     id: UUID
     task_type: str
     scope: AIScope
-    provider_id: Optional[UUID]
-    provider_name: Optional[str] = None
-    model_id: Optional[UUID]
-    model_name: Optional[str] = None
+    provider_id: UUID | None
+    provider_name: str | None = None
+    model_id: UUID | None
+    model_name: str | None = None
     is_active: bool
     priority: int
-    tenant_id: Optional[UUID]
-    user_id: Optional[UUID]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    tenant_id: UUID | None
+    user_id: UUID | None
+    created_at: datetime | None
+    updated_at: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -223,16 +205,12 @@ class AITaskAssignmentCreate(BaseModel):
         description="Task type: ocr, nlp, medication_interaction, anomaly_detection",
     )
     scope: AIScope = Field(default=AIScope.SYSTEM, description="Scope of assignment")
-    provider_id: Optional[UUID] = Field(None, description="Provider ID")
-    model_id: Optional[UUID] = Field(None, description="Model ID")
+    provider_id: UUID | None = Field(None, description="Provider ID")
+    model_id: UUID | None = Field(None, description="Model ID")
     is_active: bool = Field(default=True, description="Enable/disable assignment")
     priority: int = Field(default=0, ge=0, description="Priority for ordering")
-    tenant_id: Optional[UUID] = Field(
-        None, description="Tenant ID (nullable for global)"
-    )
-    user_id: Optional[UUID] = Field(
-        None, description="User ID (nullable for global/tenant)"
-    )
+    tenant_id: UUID | None = Field(None, description="Tenant ID (nullable for global)")
+    user_id: UUID | None = Field(None, description="User ID (nullable for global/tenant)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -240,11 +218,11 @@ class AITaskAssignmentCreate(BaseModel):
 class AITaskAssignmentUpdate(BaseModel):
     """Schema for updating a task assignment"""
 
-    task_type: Optional[str] = Field(None, min_length=1, max_length=50)
-    provider_id: Optional[UUID] = Field(None)
-    model_id: Optional[UUID] = Field(None)
-    is_active: Optional[bool] = Field(None)
-    priority: Optional[int] = Field(None, ge=0)
+    task_type: str | None = Field(None, min_length=1, max_length=50)
+    provider_id: UUID | None = Field(None)
+    model_id: UUID | None = Field(None)
+    is_active: bool | None = Field(None)
+    priority: int | None = Field(None, ge=0)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -256,19 +234,19 @@ class AIProviderWithModelsResponse(BaseModel):
     name: str
     provider_type: str
     api_base: str
-    api_key: Optional[str] = None
+    api_key: str | None = None
     has_api_key: bool = False
     is_active: bool
-    settings: Optional[Dict[str, Any]] = None
+    settings: dict[str, Any] | None = None
     is_local: bool = False
-    company_name: Optional[str] = None
-    company_website: Optional[str] = None
-    company_country: Optional[str] = Field(None, pattern=r"^[A-Z]{2}$")
-    preset_key: Optional[str] = None
-    tenant_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    models: List[AIModelResponse]
+    company_name: str | None = None
+    company_website: str | None = None
+    company_country: str | None = Field(None, pattern=r"^[A-Z]{2}$")
+    preset_key: str | None = None
+    tenant_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    models: list[AIModelResponse]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -284,9 +262,9 @@ class TaskTypeAssignment(BaseModel):
     """Schema for task type with its assignment"""
 
     task_type: str
-    provider: Optional[AIProviderResponse]
-    model: Optional[AIModelResponse]
-    assignment_id: Optional[UUID]
+    provider: AIProviderResponse | None
+    model: AIModelResponse | None
+    assignment_id: UUID | None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -294,24 +272,24 @@ class TaskTypeAssignment(BaseModel):
 class AIConfigSummary(BaseModel):
     """Summary of AI configuration"""
 
-    providers: List[AIProviderResponse]
-    models: List[AIModelResponse]
-    task_assignments: List[AITaskAssignmentResponse]
-    default: Optional[TaskTypeAssignment]
-    ocr: Optional[TaskTypeAssignment]
-    nlp: Optional[TaskTypeAssignment]
-    medication_interaction: Optional[TaskTypeAssignment]
-    anomaly_detection: Optional[TaskTypeAssignment]
-    fill_biomarker_form: Optional[TaskTypeAssignment]
-    fill_medication_form: Optional[TaskTypeAssignment]
-    magic_fill_examination: Optional[TaskTypeAssignment]
-    define_biomarker: Optional[TaskTypeAssignment]
-    define_medication: Optional[TaskTypeAssignment]
-    suggest_category_icon: Optional[TaskTypeAssignment]
-    generate_category_icon: Optional[TaskTypeAssignment]
-    chat: Optional[TaskTypeAssignment]
-    transcription: Optional[TaskTypeAssignment]
-    workflows: Optional[Dict[str, List[TaskTypeAssignment]]] = None
+    providers: list[AIProviderResponse]
+    models: list[AIModelResponse]
+    task_assignments: list[AITaskAssignmentResponse]
+    default: TaskTypeAssignment | None
+    ocr: TaskTypeAssignment | None
+    nlp: TaskTypeAssignment | None
+    medication_interaction: TaskTypeAssignment | None
+    anomaly_detection: TaskTypeAssignment | None
+    fill_biomarker_form: TaskTypeAssignment | None
+    fill_medication_form: TaskTypeAssignment | None
+    magic_fill_examination: TaskTypeAssignment | None
+    define_biomarker: TaskTypeAssignment | None
+    define_medication: TaskTypeAssignment | None
+    suggest_category_icon: TaskTypeAssignment | None
+    generate_category_icon: TaskTypeAssignment | None
+    chat: TaskTypeAssignment | None
+    transcription: TaskTypeAssignment | None
+    workflows: dict[str, list[TaskTypeAssignment]] | None = None
     ai_agent_max_iterations: int = 20
 
     model_config = ConfigDict(from_attributes=True)
@@ -320,7 +298,7 @@ class AIConfigSummary(BaseModel):
 class AIConfigUpdate(BaseModel):
     """Schema for updating AI configuration settings"""
 
-    ai_agent_max_iterations: Optional[int] = Field(None, ge=1, le=100)
+    ai_agent_max_iterations: int | None = Field(None, ge=1, le=100)
 
 
 class ProviderSetupOptions(BaseModel):
@@ -330,7 +308,7 @@ class ProviderSetupOptions(BaseModel):
     R5): ``curated_ids / bind_chat / bind_vision / bind_stt``.
     """
 
-    curated_ids: Optional[List[str]] = None
+    curated_ids: list[str] | None = None
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
@@ -344,12 +322,12 @@ class ProviderSetupRequest(BaseModel):
     endpoint's ``check_scope_access``.
     """
 
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         None,
         max_length=500,
         description="Vendor API key (not needed for local presets)",
     )
-    name: Optional[str] = Field(None, max_length=100, description="Connection name")
+    name: str | None = Field(None, max_length=100, description="Connection name")
     scope: AIScope = Field(AIScope.USER, description="Config layer to create/adopt in")
     options: ProviderSetupOptions = Field(default_factory=ProviderSetupOptions)
 
@@ -360,9 +338,9 @@ class ProviderSetupResponse(BaseModel):
     provider: AIProviderResponse
     catalog_count: int
     curated_missed: bool
-    assigned_chat_model: Optional[str] = None
-    assigned_vision_model: Optional[str] = None
-    assigned_stt_model: Optional[str] = None
+    assigned_chat_model: str | None = None
+    assigned_vision_model: str | None = None
+    assigned_stt_model: str | None = None
 
 
 class ProviderSetDefaultRequest(BaseModel):
@@ -392,18 +370,18 @@ class ProviderPresetResponse(BaseModel):
     base_url: str
     fixed_base: bool
     local: bool
-    key_url: Optional[str] = None
-    preferred_model: Optional[Dict[str, Any]] = None
-    curated_models: Optional[List[str]] = None
-    stt_model: Optional[str] = None
-    steps: Optional[List[str]] = None
-    free_tier_note: Optional[str] = None
+    key_url: str | None = None
+    preferred_model: dict[str, Any] | None = None
+    curated_models: list[str] | None = None
+    stt_model: str | None = None
+    steps: list[str] | None = None
+    free_tier_note: str | None = None
 
 
 class ProviderPresetsResponse(BaseModel):
     """The setup tile surface: enabled presets (family order) + disabled
     registry-native presets with their recorded reasons (§15 overlay)."""
 
-    order: List[str]
-    presets: Dict[str, ProviderPresetResponse]
-    disabled: Dict[str, str]
+    order: list[str]
+    presets: dict[str, ProviderPresetResponse]
+    disabled: dict[str, str]

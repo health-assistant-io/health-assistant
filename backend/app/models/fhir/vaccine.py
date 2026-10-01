@@ -10,20 +10,20 @@ patient-instance record (a dose administered). Both project to FHIR R4:
 See ``dev/plans/unified-catalog-architecture-2026-07-08.md`` Phase 5.
 """
 
-from sqlalchemy import Column, String, Text, Enum, DateTime, ForeignKey, Index
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base import (
-    Base,
-    UUIDMixin,
-    TenantMixin,
     AuditMixin,
-    VersionedMixin,
-    TimestampMixin,
+    Base,
     SoftDeleteMixin,
+    TenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+    VersionedMixin,
 )
-from app.models.enums import ImmunizationStatus, CatalogScope
+from app.models.enums import CatalogScope, ImmunizationStatus
 from app.services.fhir_helpers import (
     _enum_value,
     build_fhir_resource,
@@ -94,15 +94,9 @@ class VaccineCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
             "dose_schedule": self.dose_schedule,
             "contraindications": self.contraindications,
             "side_effects": self.side_effects or [],
-            "class_concept_id": str(self.class_concept_id)
-            if self.class_concept_id
-            else None,
-            "class_concept_slug": self.class_concept.slug
-            if self.class_concept
-            else None,
-            "class_concept_name": self.class_concept.name
-            if self.class_concept
-            else None,
+            "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
+            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
+            "class_concept_name": self.class_concept.name if self.class_concept else None,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
@@ -112,9 +106,7 @@ class VaccineCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     def to_fhir_dict(self) -> dict:
         """Project to a FHIR R4B ``Medication`` (the vaccine product)."""
         coding = (
-            [{"system": "http://hl7.org/fhir/sid/cvx", "code": self.code}]
-            if self.code
-            else None
+            [{"system": "http://hl7.org/fhir/sid/cvx", "code": self.code}] if self.code else None
         )
         return build_fhir_resource(
             "Medication",
@@ -170,9 +162,7 @@ class PatientImmunization(
     )
     # Denormalized vaccine code/text so the record stands alone if the catalog
     # row is later removed (catalog FK is SET NULL).
-    vaccine_code = Column(
-        JSONB, nullable=False
-    )  # {"text", "coding":[...], "catalog_id"?}
+    vaccine_code = Column(JSONB, nullable=False)  # {"text", "coding":[...], "catalog_id"?}
     administered_at = Column(DateTime(timezone=True), nullable=True)
     dose_number = Column(String(20), nullable=True)  # e.g. "1", "2", "booster"
     lot_number = Column(String(100), nullable=True)
@@ -192,26 +182,18 @@ class PatientImmunization(
     )
     external_id = Column(String(255), nullable=True, index=True)
 
-    __table_args__ = (
-        Index("ix_patient_immunizations_administered_at", "administered_at"),
-    )
+    __table_args__ = (Index("ix_patient_immunizations_administered_at", "administered_at"),)
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "patient_id": str(self.patient_id),
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
-            "vaccine_catalog_id": str(self.vaccine_catalog_id)
-            if self.vaccine_catalog_id
-            else None,
-            "examination_id": str(self.examination_id)
-            if self.examination_id
-            else None,
+            "vaccine_catalog_id": str(self.vaccine_catalog_id) if self.vaccine_catalog_id else None,
+            "examination_id": str(self.examination_id) if self.examination_id else None,
             "status": _enum_value(self.status, "completed"),
             "vaccine_code": self.vaccine_code,
-            "administered_at": self.administered_at.isoformat()
-            if self.administered_at
-            else None,
+            "administered_at": self.administered_at.isoformat() if self.administered_at else None,
             "dose_number": self.dose_number,
             "lot_number": self.lot_number,
             "manufacturer": self.manufacturer,
@@ -236,17 +218,13 @@ class PatientImmunization(
             "id": str(self.id),
             "status": status,
             "vaccineCode": vaccine_code,
-            "patient": {"reference": f"Patient/{self.patient_id}"}
-            if self.patient_id
-            else None,
+            "patient": {"reference": f"Patient/{self.patient_id}"} if self.patient_id else None,
             "encounter": {"reference": f"Encounter/{self.examination_id}"}
             if self.examination_id
             else None,
             "occurrenceDateTime": fhir_isoformat(self.administered_at),
             "lotNumber": self.lot_number,
-            "manufacturer": {"display": self.manufacturer}
-            if self.manufacturer
-            else None,
+            "manufacturer": {"display": self.manufacturer} if self.manufacturer else None,
             "location": {"display": self.location} if self.location else None,
             "note": [{"text": self.note}] if self.note else None,
             "meta": build_meta(str(self.id)),

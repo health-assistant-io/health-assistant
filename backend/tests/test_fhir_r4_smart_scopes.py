@@ -5,7 +5,9 @@ narrowing for ``patient/`` scoped clients. The facade is api-only; these tests
 mint api tokens directly via ``create_api_access_token`` (the OAuth
 client-credentials flow itself is covered in ``test_oauth_client_credentials``).
 """
+
 import uuid
+from datetime import UTC
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +19,6 @@ from app.models.enums import Gender, Role
 from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-
 
 pytestmark = pytest.mark.asyncio
 
@@ -51,7 +52,7 @@ async def _setup_tenant():
 
 
 async def _make_observation(tenant_id, patient_id, *, code="GLU"):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     oid = uuid.uuid4()
     async with AsyncSessionLocal() as db:
@@ -64,7 +65,7 @@ async def _make_observation(tenant_id, patient_id, *, code="GLU"):
                 subject={"reference": f"Patient/{patient_id}"},
                 code={"coding": [{"code": code, "system": "http://loinc.org"}]},
                 value_quantity={"value": 5.5, "unit": "mmol/L"},
-                effective_datetime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                effective_datetime=datetime(2026, 1, 1, tzinfo=UTC),
             )
         )
         await db.commit()
@@ -195,9 +196,7 @@ async def test_patient_scope_blocks_cross_patient_write(client):
     pid_a = await _make_patient(tid)
     pid_b = await _make_patient(tid)
 
-    h = _api_headers(
-        tid, scopes=["patient/Observation.write"], bound_patient_id=pid_a
-    )
+    h = _api_headers(tid, scopes=["patient/Observation.write"], bound_patient_id=pid_a)
     # Attempt to write an Observation for patient B → 403/405 (PermissionError
     # from the crud layer maps to 405 'not-supported' by the facade). Either way
     # it must NOT be 201.
@@ -229,11 +228,7 @@ async def test_capability_statement_advertises_smart(client):
     r = await client.get("/api/v1/fhir/R4/metadata")
     assert r.status_code == 200
     security = r.json()["rest"][0]["security"]
-    codes = [
-        c["code"]
-        for svc in security.get("service", [])
-        for c in svc.get("coding", [])
-    ]
+    codes = [c["code"] for svc in security.get("service", []) for c in svc.get("coding", [])]
     assert "SMART-on-FHIR" in codes
     # oauth-uris extension points at the token endpoint.
     ext_urls = [e for e in security.get("extension", []) if "oauth-uris" in e.get("url", "")]

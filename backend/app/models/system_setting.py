@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import JSONB
-from app.models.base import Base, UUIDMixin, AuditMixin, TimestampMixin
+
+from app.models.base import AuditMixin, Base, TimestampMixin, UUIDMixin
 
 
 class SystemSetting(Base, UUIDMixin, AuditMixin, TimestampMixin):

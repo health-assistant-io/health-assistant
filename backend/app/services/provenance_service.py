@@ -9,8 +9,8 @@ write is NOT rolled back (spec allows this). We log a warning and continue.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,11 +23,10 @@ from app.models.fhir.provenance import (
     ProvenanceModel,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
-def _activity_concept(code: str) -> Dict[str, Any]:
+def _activity_concept(code: str) -> dict[str, Any]:
     """Build a CodeableConcept for the Provenance.activity field."""
     return {
         "coding": [
@@ -41,10 +40,10 @@ def _activity_concept(code: str) -> Dict[str, Any]:
 
 async def _agent_block(
     db: AsyncSession,
-    user_id: Optional[UUID],
-    tenant_id: Optional[UUID],
-    integration_id: Optional[UUID] = None,
-) -> tuple[List[Dict[str, Any]], bool]:
+    user_id: UUID | None,
+    tenant_id: UUID | None,
+    integration_id: UUID | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
     """Build the agent[] block for a Provenance.
 
     F12: ``Provenance.agent.who`` must reference a real FHIR resource type
@@ -65,13 +64,13 @@ async def _agent_block(
     was emitted in the display-only shape (so the caller can tag the
     Provenance with a "degraded" meta tag if desired).
     """
-    agents: List[Dict[str, Any]] = []
+    agents: list[dict[str, Any]] = []
     degraded = False
 
     if integration_id:
         device_ref = await _resolve_device_ref(db, integration_id)
         if device_ref is not None:
-            who_ref: Optional[Dict[str, str]] = {"reference": device_ref}
+            who_ref: dict[str, str] | None = {"reference": device_ref}
         else:
             who_ref = {"display": f"Integration {integration_id} (no Device row)"}
             degraded = True
@@ -134,8 +133,8 @@ async def _agent_block(
 
 
 async def _resolve_practitioner_ref(
-    db: AsyncSession, user_id: UUID, tenant_id: Optional[UUID]
-) -> Optional[str]:
+    db: AsyncSession, user_id: UUID, tenant_id: UUID | None
+) -> str | None:
     """Resolve a User id to a ``Practitioner/<id>`` reference via
     DoctorModel.user_id. Returns None if the user has no Doctor row."""
     from sqlalchemy import select
@@ -156,7 +155,7 @@ async def _resolve_practitioner_ref(
         return None
 
 
-async def _resolve_device_ref(db: AsyncSession, integration_id: UUID) -> Optional[str]:
+async def _resolve_device_ref(db: AsyncSession, integration_id: UUID) -> str | None:
     """Resolve a UserIntegration id to a ``Device/<id>`` reference via
     DeviceModel.owner_integration_id. Returns None if no Device row exists."""
     from sqlalchemy import select
@@ -165,9 +164,7 @@ async def _resolve_device_ref(db: AsyncSession, integration_id: UUID) -> Optiona
 
     try:
         result = await db.execute(
-            select(DeviceModel.id).where(
-                DeviceModel.owner_integration_id == integration_id
-            )
+            select(DeviceModel.id).where(DeviceModel.owner_integration_id == integration_id)
         )
         device_id = result.scalar_one_or_none()
         if device_id is None:
@@ -188,12 +185,12 @@ async def record_provenance(
     target_resource_type: str,
     target_id: UUID,
     activity: str,
-    tenant_id: Optional[UUID] = None,
-    user_id: Optional[UUID] = None,
-    integration_id: Optional[UUID] = None,
-    client_id: Optional[str] = None,
-    entity_inputs: Optional[List[Dict[str, Any]]] = None,
-) -> Optional[ProvenanceModel]:
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+    integration_id: UUID | None = None,
+    client_id: str | None = None,
+    entity_inputs: list[dict[str, Any]] | None = None,
+) -> ProvenanceModel | None:
     """Record a Provenance resource for a single target.
 
     Args:
@@ -236,7 +233,7 @@ async def record_provenance(
         provenance = ProvenanceModel(
             tenant_id=tenant_id,
             target=[{"reference": f"{target_resource_type}/{target_id}"}],
-            recorded=datetime.now(timezone.utc),
+            recorded=datetime.now(UTC),
             activity=_activity_concept(activity),
             agent=agents,
             entity=entity_inputs,

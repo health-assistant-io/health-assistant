@@ -6,6 +6,7 @@ while the async client + the TS client did (full-jitter backoff, 3 attempts).
 ``__init__`` (the README imported it from the top level → ``ImportError``).
 These tests pin the fixes.
 """
+
 import importlib.util
 import pathlib
 import sys
@@ -15,7 +16,9 @@ import pytest
 
 _SDK_ROOT = (
     pathlib.Path(__file__).resolve().parents[2]
-    / "integrations" / "health_assistant_bridge" / "python-sdk"
+    / "integrations"
+    / "health_assistant_bridge"
+    / "python-sdk"
 )
 _PKG_DIR = _SDK_ROOT / "health_assistant_bridge"
 
@@ -41,7 +44,8 @@ def _load_submodule(file_path: pathlib.Path, dotted_name: str):
     if full_name in sys.modules:  # cached from a prior test
         return sys.modules[full_name]
     spec = importlib.util.spec_from_file_location(
-        full_name, file_path,
+        full_name,
+        file_path,
         submodule_search_locations=None,
     )
     assert spec and spec.loader, f"{file_path} not found"
@@ -68,7 +72,8 @@ def test_sync_client_retries_transient_network_errors(monkeypatch):
     """Two network failures then success → client returns after retries."""
     client_mod = _client_module()
     client = client_mod.HealthAssistantBridgeClient(
-        "https://ha.example", "00000000-0000-0000-0000-000000000001",
+        "https://ha.example",
+        "00000000-0000-0000-0000-000000000001",
     )
 
     calls = {"n": 0}
@@ -134,7 +139,9 @@ def test_sync_client_retries_5xx_then_succeeds(monkeypatch):
 def test_sync_client_raises_after_max_retries(monkeypatch):
     client_mod = _client_module()
     client = client_mod.HealthAssistantBridgeClient(
-        "https://ha.example", "id", max_retries=2,
+        "https://ha.example",
+        "id",
+        max_retries=2,
     )
 
     def _always_fail(method, url, **kw):

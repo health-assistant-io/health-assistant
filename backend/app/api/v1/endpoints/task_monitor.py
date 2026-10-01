@@ -11,14 +11,13 @@ cannot probe for the existence of other tenants' resources.
 platform operator and bypasses the tenant filter for global monitoring.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -39,8 +38,8 @@ def _apply_tenant_filter(stmt, model, current_user: TokenData):
 
 @router.get("/documents/processing")
 async def get_processing_documents(
-    patient_id: Optional[UUID] = None,
-    status: Optional[str] = None,
+    patient_id: UUID | None = None,
+    status: str | None = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -51,9 +50,7 @@ async def get_processing_documents(
     non-sensitive metadata (filename, status, progress, age, last error);
     no file content or API keys exposed. Results are tenant-scoped.
     """
-    query = select(DocumentModel).where(
-        DocumentModel.status.in_(["processing", "uploaded"])
-    )
+    query = select(DocumentModel).where(DocumentModel.status.in_(["processing", "uploaded"]))
     query = _apply_tenant_filter(query, DocumentModel, current_user)
 
     if patient_id:
@@ -77,9 +74,7 @@ async def get_processing_documents(
             "progress": doc.progress,
             "created_at": doc.created_at.isoformat() if doc.created_at else None,
             "age_minutes": (
-                (datetime.now(timezone.utc) - doc.created_at).total_seconds() / 60
-                if doc.created_at
-                else 0
+                (datetime.now(UTC) - doc.created_at).total_seconds() / 60 if doc.created_at else 0
             ),
             "error_message": doc.error_message,
         }
@@ -89,8 +84,8 @@ async def get_processing_documents(
 
 @router.get("/examinations/processing")
 async def get_processing_examinations(
-    patient_id: Optional[UUID] = None,
-    status: Optional[str] = None,
+    patient_id: UUID | None = None,
+    status: str | None = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
@@ -104,9 +99,7 @@ async def get_processing_examinations(
         select(ExaminationModel)
         .options(selectinload(ExaminationModel.category_concept))
         .where(
-            ExaminationModel.extraction_status.in_(
-                ["processing", "aggregating", "analyzing_text"]
-            )
+            ExaminationModel.extraction_status.in_(["processing", "aggregating", "analyzing_text"])
         )
     )
     query = _apply_tenant_filter(query, ExaminationModel, current_user)
@@ -131,9 +124,7 @@ async def get_processing_examinations(
             "progress": exam.extraction_progress,
             "created_at": exam.created_at.isoformat() if exam.created_at else None,
             "age_minutes": (
-                (datetime.now(timezone.utc) - exam.created_at).total_seconds() / 60
-                if exam.created_at
-                else 0
+                (datetime.now(UTC) - exam.created_at).total_seconds() / 60 if exam.created_at else 0
             ),
             "error_message": exam.error_message,
         }
@@ -162,9 +153,7 @@ async def retry_document_ocr(
 
     # Allow retry for any non-completed status
     if doc.status == "completed":
-        raise HTTPException(
-            status_code=400, detail="Document already completed - cannot retry"
-        )
+        raise HTTPException(status_code=400, detail="Document already completed - cannot retry")
 
     # Reset status to trigger retry
     await db.execute(
@@ -232,7 +221,7 @@ async def get_task_statistics(
     doc_stmt = _apply_tenant_filter(doc_stmt, DocumentModel, current_user)
     doc_stmt = doc_stmt.group_by(DocumentModel.status)
     doc_result = await db.execute(doc_stmt)
-    doc_stats = {status: count for status, count in doc_result.all()}
+    doc_stats = dict(doc_result.all())
 
     exam_stmt = select(
         ExaminationModel.extraction_status,
@@ -241,27 +230,23 @@ async def get_task_statistics(
     exam_stmt = _apply_tenant_filter(exam_stmt, ExaminationModel, current_user)
     exam_stmt = exam_stmt.group_by(ExaminationModel.extraction_status)
     exam_result = await db.execute(exam_stmt)
-    exam_stats = {status: count for status, count in exam_result.all()}
+    exam_stats = dict(exam_result.all())
 
     # Stalled tasks (processing for > 10 minutes)
-    stalled_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    stalled_time = datetime.now(UTC) - timedelta(minutes=10)
 
     stalled_doc_stmt = select(func.count(DocumentModel.id)).where(
         DocumentModel.status == "processing",
         DocumentModel.created_at < stalled_time,
     )
-    stalled_doc_stmt = _apply_tenant_filter(
-        stalled_doc_stmt, DocumentModel, current_user
-    )
+    stalled_doc_stmt = _apply_tenant_filter(stalled_doc_stmt, DocumentModel, current_user)
     stalled_docs = (await db.execute(stalled_doc_stmt)).scalar() or 0
 
     stalled_exam_stmt = select(func.count(ExaminationModel.id)).where(
         ExaminationModel.extraction_status.in_(["processing", "aggregating"]),
         ExaminationModel.created_at < stalled_time,
     )
-    stalled_exam_stmt = _apply_tenant_filter(
-        stalled_exam_stmt, ExaminationModel, current_user
-    )
+    stalled_exam_stmt = _apply_tenant_filter(stalled_exam_stmt, ExaminationModel, current_user)
     stalled_exams = (await db.execute(stalled_exam_stmt)).scalar() or 0
 
     return {
@@ -273,5 +258,5 @@ async def get_task_statistics(
             "by_status": exam_stats,
             "stalled": stalled_exams,
         },
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }

@@ -12,8 +12,9 @@ These tests pin the contract:
    belongs to another tenant).
 3. A ``SYSTEM_ADMIN`` bypasses the tenant filter (operator visibility).
 """
+
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -41,7 +42,7 @@ def _doc(tenant_id, status="processing", doc_id=None):
     fake.filename = "report.pdf"
     fake.status = status
     fake.progress = 50
-    fake.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    fake.created_at = datetime.now(UTC) - timedelta(minutes=5)
     fake.error_message = None
     fake.file_path = "/tmp/report.pdf"
     return fake
@@ -55,7 +56,7 @@ def _exam(tenant_id, exam_id=None):
     fake.category_concept = None
     fake.extraction_status = "processing"
     fake.extraction_progress = 30
-    fake.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    fake.created_at = datetime.now(UTC) - timedelta(minutes=5)
     fake.error_message = None
     return fake
 
@@ -111,9 +112,7 @@ async def test_get_processing_documents_filters_by_tenant_for_user(monkeypatch):
 
     monkeypatch.setattr(task_monitor, "select", fake_select)
 
-    result = await task_monitor.get_processing_documents(
-        db=db, current_user=user
-    )
+    result = await task_monitor.get_processing_documents(db=db, current_user=user)
 
     # Only the in-tenant doc should be returned (the filter is applied via
     # SQLAlchemy; the DB layer here just returns whatever it returns, but
@@ -205,9 +204,7 @@ async def test_retry_document_ocr_cross_tenant_returns_404():
     db.execute = execute
 
     with pytest.raises(HTTPException) as exc:
-        await task_monitor.retry_document_ocr(
-            document_id=foreign_doc.id, db=db, current_user=user
-        )
+        await task_monitor.retry_document_ocr(document_id=foreign_doc.id, db=db, current_user=user)
     assert exc.value.status_code == 404
 
 
@@ -236,9 +233,7 @@ async def test_retry_document_ocr_same_tenant_succeeds(monkeypatch):
         MagicMock(ocr_document=fake_ocr),
     )
 
-    result = await task_monitor.retry_document_ocr(
-        document_id=own_doc.id, db=db, current_user=user
-    )
+    result = await task_monitor.retry_document_ocr(document_id=own_doc.id, db=db, current_user=user)
     assert result["document_id"] == str(own_doc.id)
     delayed.assert_called_once()
 
@@ -260,9 +255,7 @@ async def test_retry_document_ocr_completed_doc_rejected():
     db.execute = execute
 
     with pytest.raises(HTTPException) as exc:
-        await task_monitor.retry_document_ocr(
-            document_id=done_doc.id, db=db, current_user=user
-        )
+        await task_monitor.retry_document_ocr(document_id=done_doc.id, db=db, current_user=user)
     assert exc.value.status_code == 400
 
 

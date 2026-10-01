@@ -18,6 +18,7 @@ Post-fix contract pinned here:
 3. A masked ``"***"`` / empty value returns ``None`` (no secret configured).
 4. Decryption failure (key mismatch) returns ``None`` rather than raising.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -30,16 +31,12 @@ import pytest
 from app.api.v1.endpoints import integrations as integrations_endpoint
 from app.api.v1.endpoints.integrations import _resolve_secret_field
 
-
 PLAINTEXT_SECRET = "topsecret-topsecret"  # >= 16 chars (config-flow minimum)
 
 
 def _hmac_hex(secret: str, method: str, path: str, body: bytes, ts: int) -> str:
     canonical = (
-        method.upper().encode() + b"\n"
-        + path.encode() + b"\n"
-        + f"{ts}".encode() + b"\n"
-        + body
+        method.upper().encode() + b"\n" + path.encode() + b"\n" + f"{ts}".encode() + b"\n" + body
     )
     return hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()
 
@@ -70,7 +67,9 @@ def test_resolve_secret_field_decrypts_encrypted_wrapper():
     """Encrypted ``{"_encrypted": ...}`` → plaintext via the config flow."""
     cfg = {"api_secret": {"_encrypted": "fake-token", "_kid": "abcd1234"}}
     flow = _FakeFlow(["api_secret"], cfg)
-    with patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with patch.object(
+        integrations_endpoint.integration_registry, "get_config_flow", return_value=flow
+    ):
         result = _resolve_secret_field("health_assistant_bridge", cfg, "api_secret")
     assert result == PLAINTEXT_SECRET
     assert flow.decrypt_calls == 1
@@ -80,7 +79,9 @@ def test_resolve_secret_field_passthrough_for_non_secret_field():
     """A field NOT in ``get_secret_fields()`` is returned as-is (no decrypt)."""
     cfg = {"instance_name": "my-bridge", "api_secret": "plaintext-string"}
     flow = _FakeFlow([], cfg)  # no secret fields declared
-    with patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with patch.object(
+        integrations_endpoint.integration_registry, "get_config_flow", return_value=flow
+    ):
         assert _resolve_secret_field("d", cfg, "instance_name") == "my-bridge"
         assert _resolve_secret_field("d", cfg, "api_secret") == "plaintext-string"
     assert flow.decrypt_calls == 0
@@ -89,7 +90,9 @@ def test_resolve_secret_field_passthrough_for_non_secret_field():
 def test_resolve_secret_field_returns_none_for_masked_or_empty():
     """``"***"`` / empty / missing → ``None`` (treated as 'no secret')."""
     flow = _FakeFlow(["api_secret"], {})
-    with patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with patch.object(
+        integrations_endpoint.integration_registry, "get_config_flow", return_value=flow
+    ):
         assert _resolve_secret_field("d", {"api_secret": "***"}, "api_secret") is None
         assert _resolve_secret_field("d", {"api_secret": ""}, "api_secret") is None
         assert _resolve_secret_field("d", {}, "api_secret") is None
@@ -106,13 +109,17 @@ def test_resolve_secret_field_returns_none_on_decrypt_failure():
         raise ValueError("Encrypted config value could not be decrypted")
 
     flow.decrypt_for_use = _fail  # type: ignore[method-assign]
-    with patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with patch.object(
+        integrations_endpoint.integration_registry, "get_config_flow", return_value=flow
+    ):
         assert _resolve_secret_field("d", cfg, "api_secret") is None
 
 
 def test_resolve_secret_field_handles_missing_config_flow():
     """No registered config flow → treat field as non-secret (return raw str)."""
-    with patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=None):
+    with patch.object(
+        integrations_endpoint.integration_registry, "get_config_flow", return_value=None
+    ):
         assert _resolve_secret_field("d", {"api_secret": "raw"}, "api_secret") == "raw"
 
 
@@ -157,8 +164,14 @@ async def test_api_proxy_verifies_signature_against_decrypted_secret():
     provider = MagicMock()
     provider.handle_api_request = AsyncMock(return_value={"success": True})
 
-    with patch.object(integrations_endpoint.integration_registry, "get_provider", return_value=provider), \
-         patch.object(integrations_endpoint.integration_registry, "get_config_flow", return_value=flow):
+    with (
+        patch.object(
+            integrations_endpoint.integration_registry, "get_provider", return_value=provider
+        ),
+        patch.object(
+            integrations_endpoint.integration_registry, "get_config_flow", return_value=flow
+        ),
+    ):
         result = await integrations_endpoint.integration_api_proxy(
             domain="health_assistant_bridge",
             integration_id=str(integration_id),

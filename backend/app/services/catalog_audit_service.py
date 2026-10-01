@@ -12,7 +12,7 @@ the catalog row; ``user_email`` is denormalized so it survives user deletion.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import desc, select
@@ -40,9 +40,9 @@ async def record(
     item_id: UUID,
     item_name: str = "",
     operation: str,
-    from_scope: Optional[str] = None,
-    to_scope: Optional[str] = None,
-    details: Optional[dict] = None,
+    from_scope: str | None = None,
+    to_scope: str | None = None,
+    details: dict | None = None,
 ) -> None:
     """Append one audit row. Best-effort — swallows + logs exceptions."""
     try:
@@ -52,11 +52,7 @@ async def record(
             # §8 rename: ``sub`` is the user id now — the denormalized
             # email column must read the ``email`` claim (fallbacks keep
             # odd principals recording *something* human-readable).
-            user_email=(
-                getattr(actor, "email", None)
-                or getattr(actor, "sub", None)
-                or ""
-            ),
+            user_email=(getattr(actor, "email", None) or getattr(actor, "sub", None) or ""),
             catalog_type=catalog_type,
             item_id=item_id,
             item_name=item_name,
@@ -86,9 +82,9 @@ async def record_from_obj(
     catalog_type: str,
     obj: Any,
     operation: str,
-    from_scope: Optional[str] = None,
-    to_scope: Optional[str] = None,
-    details: Optional[dict] = None,
+    from_scope: str | None = None,
+    to_scope: str | None = None,
+    details: dict | None = None,
 ) -> None:
     """Convenience: derive ``item_id`` + ``item_name`` from the ORM object."""
     to = to_scope
@@ -111,7 +107,7 @@ async def record_from_obj(
 async def list_history(
     db: AsyncSession,
     *,
-    tenant_id: Optional[UUID],
+    tenant_id: UUID | None,
     catalog_type: str,
     item_id: UUID,
     limit: int = 100,
@@ -135,8 +131,7 @@ async def list_history(
         # Include rows whose actor was in this tenant OR system-level rows
         # (tenant_id NULL — system-scope operations).
         stmt = stmt.where(
-            (CatalogAuditLog.tenant_id == tenant_id)
-            | (CatalogAuditLog.tenant_id.is_(None))
+            (CatalogAuditLog.tenant_id == tenant_id) | (CatalogAuditLog.tenant_id.is_(None))
         )
     res = await db.execute(stmt)
     return list(res.scalars().all())

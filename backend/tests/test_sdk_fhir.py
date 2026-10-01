@@ -1,9 +1,9 @@
 """Unit tests for integrations.sdk.fhir (Stage 2 Pair B)."""
+
 from uuid import uuid4
 
 import httpx
 import pytest
-
 from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 from integrations.sdk.fhir import (
     fhir_conditional_update,
@@ -38,6 +38,7 @@ def _lab_obs(code="2345-7", value=95, last_updated="2026-06-01T10:31:00Z"):
 
 # ---------- fhir_observation_to_create ----------
 
+
 def test_observation_to_create_maps_fields_and_localizes_subject():
     local_patient = uuid4()
     created = fhir_observation_to_create(_lab_obs(), tenant_id=uuid4(), patient_id=local_patient)
@@ -53,23 +54,37 @@ def test_observation_to_create_maps_fields_and_localizes_subject():
 
 
 def test_observation_to_create_none_without_code():
-    assert fhir_observation_to_create(
-        {"resourceType": "Observation", "valueQuantity": {"value": 1}},
-        tenant_id=uuid4(), patient_id=uuid4(),
-    ) is None
+    assert (
+        fhir_observation_to_create(
+            {"resourceType": "Observation", "valueQuantity": {"value": 1}},
+            tenant_id=uuid4(),
+            patient_id=uuid4(),
+        )
+        is None
+    )
 
 
 def test_observation_to_create_none_without_value():
-    assert fhir_observation_to_create(
-        {"resourceType": "Observation", "code": {"text": "X"}},
-        tenant_id=uuid4(), patient_id=uuid4(),
-    ) is None
+    assert (
+        fhir_observation_to_create(
+            {"resourceType": "Observation", "code": {"text": "X"}},
+            tenant_id=uuid4(),
+            patient_id=uuid4(),
+        )
+        is None
+    )
 
 
 def test_observation_to_create_accepts_value_string():
     created = fhir_observation_to_create(
-        {"resourceType": "Observation", "status": "final", "code": {"text": "X"}, "valueString": "Positive"},
-        tenant_id=uuid4(), patient_id=uuid4(),
+        {
+            "resourceType": "Observation",
+            "status": "final",
+            "code": {"text": "X"},
+            "valueString": "Positive",
+        },
+        tenant_id=uuid4(),
+        patient_id=uuid4(),
     )
     assert created is not None
     assert created.value_string == "Positive"
@@ -81,12 +96,23 @@ def test_observation_to_create_preserves_category_list():
     # so data stays FHIR-compatible through pull -> store -> push round-trips.
     created = fhir_observation_to_create(
         {
-            "resourceType": "Observation", "status": "final",
+            "resourceType": "Observation",
+            "status": "final",
             "code": {"text": "X"},
             "valueQuantity": {"value": 1, "unit": "u"},
-            "category": [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/observation-category", "code": "laboratory"}]}],
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "laboratory",
+                        }
+                    ]
+                }
+            ],
         },
-        tenant_id=uuid4(), patient_id=uuid4(),
+        tenant_id=uuid4(),
+        patient_id=uuid4(),
     )
     assert created is not None
     assert isinstance(created.category, list)
@@ -95,9 +121,14 @@ def test_observation_to_create_preserves_category_list():
 
 def test_observation_to_create_category_none_when_absent():
     created = fhir_observation_to_create(
-        {"resourceType": "Observation", "status": "final",
-         "code": {"text": "X"}, "valueQuantity": {"value": 1, "unit": "u"}},
-        tenant_id=uuid4(), patient_id=uuid4(),
+        {
+            "resourceType": "Observation",
+            "status": "final",
+            "code": {"text": "X"},
+            "valueQuantity": {"value": 1, "unit": "u"},
+        },
+        tenant_id=uuid4(),
+        patient_id=uuid4(),
     )
     assert created is not None
     assert created.category is None
@@ -105,8 +136,12 @@ def test_observation_to_create_category_none_when_absent():
 
 # ---------- parse_operation_outcome ----------
 
+
 def test_parse_operation_outcome_diagnostics():
-    oo = {"resourceType": "OperationOutcome", "issue": [{"severity": "error", "diagnostics": "boom"}]}
+    oo = {
+        "resourceType": "OperationOutcome",
+        "issue": [{"severity": "error", "diagnostics": "boom"}],
+    }
     assert "boom" in parse_operation_outcome(oo)
 
 
@@ -117,14 +152,18 @@ def test_parse_operation_outcome_fallback():
 
 # ---------- fhir_search ----------
 
+
 @pytest.mark.asyncio
 async def test_fhir_search_returns_flat_resource_list():
     bundle = {
-        "resourceType": "Bundle", "type": "searchset",
+        "resourceType": "Bundle",
+        "type": "searchset",
         "entry": [{"resource": _lab_obs("1")}, {"resource": _lab_obs("2")}],
     }
     async with _client(lambda r: httpx.Response(200, json=bundle)) as http:
-        results = await fhir_search(http, "https://ehr/fhir", "Observation", {"patient": "REMOTE-999"})
+        results = await fhir_search(
+            http, "https://ehr/fhir", "Observation", {"patient": "REMOTE-999"}
+        )
     assert len(results) == 2
 
 
@@ -182,7 +221,10 @@ async def test_conditional_update_create_returns_201_and_resource():
 
     async with _client(handler) as http:
         status, resp = await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
             search_params={"identifier": "urn:healthassistant:observation|abc"},
             access_token="TOK",
         )
@@ -201,7 +243,10 @@ async def test_conditional_update_create_returns_201_and_resource():
 async def test_conditional_update_update_returns_200():
     async with _client(lambda r: httpx.Response(200, json={**_obs_body(), "id": "x"})) as http:
         status, resp = await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
             search_params={"identifier": "urn:x|abc"},
         )
     assert status == 200
@@ -211,11 +256,16 @@ async def test_conditional_update_update_returns_200():
 @pytest.mark.asyncio
 async def test_conditional_update_412_returns_tuple_not_raise():
     """412 precondition-failed is returned, not raised — caller treats as skip."""
-    async with _client(lambda r: httpx.Response(
-        412, json={"resourceType": "OperationOutcome", "issue": [{"severity": "warning"}]}
-    )) as http:
+    async with _client(
+        lambda r: httpx.Response(
+            412, json={"resourceType": "OperationOutcome", "issue": [{"severity": "warning"}]}
+        )
+    ) as http:
         status, resp = await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
             search_params={"identifier": "urn:x|abc"},
         )
     assert status == 412
@@ -232,8 +282,12 @@ async def test_conditional_update_tokenless_sends_no_bearer():
 
     async with _client(handler) as http:
         await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
-            search_params={"identifier": "urn:x|abc"}, access_token=None,
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
+            search_params={"identifier": "urn:x|abc"},
+            access_token=None,
         )
     assert seen["auth"] is None
 
@@ -243,7 +297,10 @@ async def test_conditional_update_401_raises_auth_error():
     async with _client(lambda r: httpx.Response(401, text="nope")) as http:
         with pytest.raises(IntegrationAuthError):
             await fhir_conditional_update(
-                http, "https://ehr/fhir", "Observation", _obs_body(),
+                http,
+                "https://ehr/fhir",
+                "Observation",
+                _obs_body(),
                 search_params={"identifier": "urn:x|abc"},
             )
 
@@ -253,7 +310,10 @@ async def test_conditional_update_400_raises_data_error():
     async with _client(lambda r: httpx.Response(400, text="bad")) as http:
         with pytest.raises(IntegrationDataError):
             await fhir_conditional_update(
-                http, "https://ehr/fhir", "Observation", _obs_body(),
+                http,
+                "https://ehr/fhir",
+                "Observation",
+                _obs_body(),
                 search_params={"identifier": "urn:x|abc"},
             )
 
@@ -269,9 +329,13 @@ async def test_conditional_update_sends_if_match_header():
 
     async with _client(handler) as http:
         await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
             search_params={"identifier": "urn:x|abc"},
-            if_match='W/"3"', if_none_match="*",
+            if_match='W/"3"',
+            if_none_match="*",
         )
     assert seen["if_match"] == 'W/"3"'
     assert seen["if_none_match"] == "*"
@@ -289,7 +353,10 @@ async def test_conditional_update_sends_if_none_exist_header():
 
     async with _client(handler) as http:
         await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", _obs_body(),
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            _obs_body(),
             search_params={"identifier": "urn:x|abc"},
             if_none_exist="identifier=urn:ha|local-uuid",
         )
@@ -336,9 +403,7 @@ async def test_fhir_create_returns_201_and_resource():
         return httpx.Response(201, json=body)
 
     async with _client(handler) as http:
-        status, payload = await fhir_create(
-            http, "https://ehr/fhir", "Observation", body
-        )
+        status, payload = await fhir_create(http, "https://ehr/fhir", "Observation", body)
     assert status == 201
     assert payload == body
 
@@ -351,9 +416,7 @@ async def test_fhir_create_401_raises_auth_error():
             401,
             json={
                 "resourceType": "OperationOutcome",
-                "issue": [
-                    {"severity": "error", "code": "login", "diagnostics": "no token"}
-                ],
+                "issue": [{"severity": "error", "code": "login", "diagnostics": "no token"}],
             },
         )
 
@@ -371,9 +434,7 @@ async def test_fhir_create_with_token_sends_bearer():
         return httpx.Response(201, json=body)
 
     async with _client(handler) as http:
-        await fhir_create(
-            http, "https://ehr/fhir", "Observation", body, access_token="tok-123"
-        )
+        await fhir_create(http, "https://ehr/fhir", "Observation", body, access_token="tok-123")
     assert seen["auth"] == "Bearer tok-123"
 
 
@@ -417,8 +478,10 @@ def test_fhir_helpers_route_through_shared_retry_request():
 async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
     """5xx must trigger retries via the shared helper (was: independently
     inlined retry loop without jitter). Squat the sleeps so the test is fast."""
+
     async def _no_sleep(_):
         return None
+
     monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
@@ -454,7 +517,10 @@ async def test_fhir_conditional_update_412_still_returns_tuple():
 
     async with _client(handler) as http:
         status, payload = await fhir_conditional_update(
-            http, "https://ehr/fhir", "Observation", body,
+            http,
+            "https://ehr/fhir",
+            "Observation",
+            body,
             search_params={"identifier": "urn:x|abc"},
         )
     assert status == 412

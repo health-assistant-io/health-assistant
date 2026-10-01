@@ -13,16 +13,17 @@ The ``type`` string keys here match the frontend ``InstanceType`` union
 (``examination | medication | observation | document | event | allergy |
 vaccine``).
 """
-from typing import Awaitable, Callable, Optional
+
+from collections.abc import Awaitable, Callable
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
 
 # A search function: (db, tenant_id, optional patient_id, query, per-type cap)
 # -> list of hit dicts (matching InstanceSearchHit). ``patient_id`` is None for
 # tenant-wide (admin) searches; the function must apply it only when not None.
 InstanceSearchFn = Callable[
-    [AsyncSession, UUID, Optional[UUID], str, int],
+    [AsyncSession, UUID, UUID | None, str, int],
     Awaitable[list[dict]],
 ]
 

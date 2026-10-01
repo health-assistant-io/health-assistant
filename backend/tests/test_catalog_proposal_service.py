@@ -6,10 +6,18 @@ real-DB integration tests — they spin up a tenant + user-shaped actor
 and exercise the full write path (slug lookup, unit resolution, class
 concept resolution, scope stamping, integrity rollback on a race).
 """
+
 import uuid
 
 import pytest
 import pytest_asyncio
+from integrations.sdk.catalog import (
+    CatalogProposal,
+    biomarker_proposal,
+    concept_proposal,
+    edge_proposal,
+    medication_proposal,
+)
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
@@ -18,13 +26,6 @@ from app.models.enums import CatalogScope
 from app.models.tenant_model import TenantModel
 from app.schemas.user import TokenData
 from app.services.catalog_proposal_service import ApplyResult, apply_proposal
-from integrations.sdk.catalog import (
-    CatalogProposal,
-    biomarker_proposal,
-    concept_proposal,
-    edge_proposal,
-    medication_proposal,
-)
 
 
 @pytest_asyncio.fixture
@@ -40,11 +41,7 @@ async def tenant_and_actor():
     user_id = uuid.uuid4()
     slug_prefix = uuid.uuid4().hex[:8]
     async with AsyncSessionLocal() as session:
-        session.add(
-            TenantModel(
-                id=tenant_id, name="Catalog P.", slug=f"cp-{tenant_id.hex[:8]}"
-            )
-        )
+        session.add(TenantModel(id=tenant_id, name="Catalog P.", slug=f"cp-{tenant_id.hex[:8]}"))
         await session.commit()
     actor = TokenData(
         user_id=user_id,
@@ -105,9 +102,7 @@ async def test_apply_biomarker_proposal_creates_definition(tenant_and_actor):
         # Re-fetch and verify all the stamping actually persisted.
         fetched = (
             await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == result.entity_id
-                )
+                select(BiomarkerDefinition).where(BiomarkerDefinition.id == result.entity_id)
             )
         ).scalar_one()
         assert fetched.slug == f"{p}-sleep-quality"
@@ -127,9 +122,7 @@ async def test_apply_biomarker_proposal_idempotent_on_slug(tenant_and_actor):
     duplicate is inserted. This is the contract the engine relies on so
     re-syncs don't spam duplicates."""
     tenant_id, actor, p = tenant_and_actor
-    proposal = biomarker_proposal(
-        name="Heart Rate Variability", slug=f"{p}-hrv"
-    )
+    proposal = biomarker_proposal(name="Heart Rate Variability", slug=f"{p}-hrv")
 
     async with AsyncSessionLocal() as db:
         integration = _FakeIntegration(tenant_id=tenant_id)
@@ -145,12 +138,14 @@ async def test_apply_biomarker_proposal_idempotent_on_slug(tenant_and_actor):
 
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.slug == first.slug
+            (
+                await db.execute(
+                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == first.slug)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert len(rows) == 1
 
 
@@ -221,9 +216,7 @@ async def test_apply_biomarker_proposal_swallows_unit_resolution_miss(
 
         fetched = (
             await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == result.entity_id
-                )
+                select(BiomarkerDefinition).where(BiomarkerDefinition.id == result.entity_id)
             )
         ).scalar_one()
     assert fetched.preferred_unit_id is None
@@ -261,9 +254,7 @@ async def test_apply_medication_proposal_creates_entry(tenant_and_actor):
 
         fetched = (
             await db.execute(
-                select(MedicationCatalog).where(
-                    MedicationCatalog.id == result.entity_id
-                )
+                select(MedicationCatalog).where(MedicationCatalog.id == result.entity_id)
             )
         ).scalar_one()
         assert fetched.name == f"{p} Melatonin"
@@ -335,9 +326,7 @@ async def test_apply_concept_proposal_creates_concept(tenant_and_actor):
         assert result.slug == f"{p}-sleep-disorder"
 
         fetched = (
-            await db.execute(
-                select(Concept).where(Concept.id == result.entity_id)
-            )
+            await db.execute(select(Concept).where(Concept.id == result.entity_id))
         ).scalar_one()
         assert fetched.name == "Sleep Disorder"
         assert fetched.tenant_id == tenant_id
@@ -350,9 +339,7 @@ async def test_apply_concept_proposal_idempotent_on_slug(tenant_and_actor):
     """Re-applying a concept proposal with the same slug returns the
     existing concept's id (no duplicate)."""
     tenant_id, actor, p = tenant_and_actor
-    proposal = concept_proposal(
-        slug=f"{p}-body-system-x", name="Body System X", kind="body_system"
-    )
+    proposal = concept_proposal(slug=f"{p}-body-system-x", name="Body System X", kind="body_system")
 
     async with AsyncSessionLocal() as db:
         integration = _FakeIntegration(tenant_id=tenant_id)
@@ -371,9 +358,7 @@ async def test_apply_concept_proposal_rejects_invalid_kind(tenant_and_actor):
     """A kind value that isn't a valid ``ConceptKind`` enum member raises
     ``ValueError`` listing the valid options."""
     tenant_id, actor, _p = tenant_and_actor
-    proposal = concept_proposal(
-        slug="whatever", name="Whatever", kind="not_a_real_kind"
-    )
+    proposal = concept_proposal(slug="whatever", name="Whatever", kind="not_a_real_kind")
 
     async with AsyncSessionLocal() as db:
         integration = _FakeIntegration(tenant_id=tenant_id)
@@ -442,9 +427,7 @@ async def test_apply_edge_proposal_creates_edge_with_integration_provenance(
         assert result.created is True
 
         fetched = (
-            await db.execute(
-                select(ConceptEdge).where(ConceptEdge.id == result.entity_id)
-            )
+            await db.execute(select(ConceptEdge).where(ConceptEdge.id == result.entity_id))
         ).scalar_one()
         assert fetched.source == ConceptProvenance.INTEGRATION
         assert fetched.status == EdgeApprovalStatus.APPROVED

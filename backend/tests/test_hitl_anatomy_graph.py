@@ -12,6 +12,7 @@ Covers the contract documented in dev/plans/anatomy-graph-hitl-2026-07-22.md:
 The generate+import step happens client-side on confirm (mirrors every other
 ``propose_*`` handler) and is exercised by the frontend handler tests.
 """
+
 import json
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -32,7 +33,9 @@ async def hitl_ctx():
 
     tenant_id = uuid4()
     async with AsyncSessionLocal() as session:
-        session.add(TenantModel(id=tenant_id, name="Anatomy HITL T.", slug=f"anat-{tenant_id.hex[:8]}"))
+        session.add(
+            TenantModel(id=tenant_id, name="Anatomy HITL T.", slug=f"anat-{tenant_id.hex[:8]}")
+        )
         await session.commit()
 
     async with AsyncSessionLocal() as session:
@@ -91,6 +94,7 @@ async def test_tool_searches_existing_anatomy_and_embeds_snapshot(hitl_ctx):
     """When the target already exists in the catalog, the tool embeds its
     2-hop neighborhood (node slugs + slug-based edges) in the payload and the
     LLM-facing note reports the counts — so generation fills gaps, not dupes."""
+    from app.core.database import AsyncSessionLocal
     from app.models.anatomy_model import AnatomyStructure
     from app.models.concept_model import ConceptEdge
     from app.models.enums import (
@@ -98,14 +102,11 @@ async def test_tool_searches_existing_anatomy_and_embeds_snapshot(hitl_ctx):
         EdgeApprovalStatus,
         EdgeEndpointType,
     )
-    from app.core.database import AsyncSessionLocal
 
     root_slug = f"test-heart-{uuid4().hex[:6]}"
     child_slug = f"test-left-ventricle-{uuid4().hex[:6]}"
     async with AsyncSessionLocal() as db:
-        root = AnatomyStructure(
-            slug=root_slug, name="Heart", scope="system", tenant_id=None
-        )
+        root = AnatomyStructure(slug=root_slug, name="Heart", scope="system", tenant_id=None)
         child = AnatomyStructure(
             slug=child_slug, name="Left Ventricle", scope="system", tenant_id=None
         )
@@ -136,8 +137,7 @@ async def test_tool_searches_existing_anatomy_and_embeds_snapshot(hitl_ctx):
     assert child_slug in existing["node_slugs"]
     # The edge is slug-resolved (not UUIDs).
     assert any(
-        e["source_slug"] == child_slug and e["target_slug"] == root_slug
-        for e in existing["edges"]
+        e["source_slug"] == child_slug and e["target_slug"] == root_slug for e in existing["edges"]
     )
     # The note tells the LLM what already exists.
     assert "already defined" in payload["note"]
@@ -153,19 +153,26 @@ async def test_tool_embeds_generated_graph_at_proposal_time(hitl_ctx):
     fake_graph = {
         "nodes": [
             {"slug": "heart", "name": "Heart", "class_concept_slug": "organ"},
-            {"slug": "left-ventricle", "name": "Left Ventricle", "class_concept_slug": "organ-part"},
+            {
+                "slug": "left-ventricle",
+                "name": "Left Ventricle",
+                "class_concept_slug": "organ-part",
+            },
         ],
         "edges": [
             {"source_slug": "left-ventricle", "target_slug": "heart", "relation_type": "PART_OF"},
         ],
     }
-    with patch(
-        "app.ai.providers.service.AIProviderService.get_llm",
-        new=AsyncMock(),
-    ) as mock_get_llm, patch(
-        "app.ai.assistance.definitions.define_anatomy_graph",
-        new=AsyncMock(),
-    ) as mock_gen:
+    with (
+        patch(
+            "app.ai.providers.service.AIProviderService.get_llm",
+            new=AsyncMock(),
+        ) as mock_get_llm,
+        patch(
+            "app.ai.assistance.definitions.define_anatomy_graph",
+            new=AsyncMock(),
+        ) as mock_gen,
+    ):
         mock_get_llm.return_value = AsyncMock()
         mock_gen.return_value = {"success": True, "suggested_data": fake_graph}
         tool = _get_tool(hitl_ctx)
@@ -236,6 +243,10 @@ def test_system_prompt_tells_llm_to_search_anatomy_before_generating():
         assert "propose_anatomy_graph_generation" in prompt
         assert "search_catalogs" in prompt
         assert "explore_catalog_relations" in prompt
-        assert 'types="anatomy"' in prompt or "types='anatomy'" in prompt.lower().replace("'", '"') or "anatomy" in prompt
+        assert (
+            'types="anatomy"' in prompt
+            or "types='anatomy'" in prompt.lower().replace("'", '"')
+            or "anatomy" in prompt
+        )
     # The chat prompt carries the full multi-step search procedure.
     assert "SEARCH BEFORE GENERATING ANATOMY" in CHAT_SYSTEM_PROMPT

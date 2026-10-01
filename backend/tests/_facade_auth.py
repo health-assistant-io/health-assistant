@@ -6,6 +6,7 @@ directly via ``create_api_access_token`` keeps these tests focused on facade
 behavior; the OAuth client-credentials flow itself is covered in
 ``test_oauth_client_credentials.py``.
 """
+
 import uuid
 
 from app.core.security import create_api_access_token

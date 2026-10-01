@@ -9,6 +9,7 @@ principal's ``bound_patient_id``.
 
 See ``docs/FHIR_R4_FACADE.md`` (Authentication & SMART scopes).
 """
+
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
@@ -28,8 +29,7 @@ def _forbidden_outcome(resource_type: str, interaction: str) -> HTTPException:
                     "severity": "error",
                     "code": "forbidden",
                     "diagnostics": (
-                        f"Client lacks a SMART scope permitting {interaction} on "
-                        f"{resource_type}."
+                        f"Client lacks a SMART scope permitting {interaction} on {resource_type}."
                     ),
                 }
             ],

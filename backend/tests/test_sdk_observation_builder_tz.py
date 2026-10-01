@@ -12,11 +12,11 @@ Root cause: ``ObservationBuilder.build()`` stripped tzinfo "for asyncpg
 compat" — asyncpg handles tz-aware datetimes natively for TIMESTAMP WITH
 TIME ZONE columns, so the strip was both unnecessary and destructive.
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-
 
 TENANT = uuid4()
 PATIENT = uuid4()
@@ -31,7 +31,7 @@ def test_observation_builder_keeps_timezone():
     """regression regression: builder must NOT strip tzinfo."""
     from integrations.sdk.observation_builder import ObservationBuilder
 
-    tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=timezone.utc)
+    tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=UTC)
     obs = (
         ObservationBuilder(TENANT, PATIENT)
         .set_biomarker("8867-4", "Heart rate")
@@ -59,10 +59,11 @@ def test_built_observation_passes_fhir_validation():
     and fhir.resources rejected it.
     """
     from integrations.sdk.observation_builder import ObservationBuilder
+
     from app.models.fhir import Observation
     from app.services.fhir_helpers import assert_valid_fhir
 
-    tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=timezone.utc)
+    tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=UTC)
     obs_create = (
         ObservationBuilder(TENANT, PATIENT)
         .set_biomarker("8867-4", "Heart rate")
@@ -86,8 +87,7 @@ def test_built_observation_passes_fhir_validation():
     eff = fhir_dict.get("effectiveDateTime")
     assert eff is not None
     assert eff.endswith("Z") or "+" in eff or eff.count("-") > 2, (
-        f"effectiveDateTime {eff!r} is missing a timezone offset — will "
-        "fail the FHIR R4 regex"
+        f"effectiveDateTime {eff!r} is missing a timezone offset — will fail the FHIR R4 regex"
     )
 
 
@@ -118,9 +118,7 @@ def test_observation_to_fhir_dict_handles_naive_datetime():
     fhir_dict = assert_valid_fhir(orm)
     eff = fhir_dict["effectiveDateTime"]
     # Must carry an offset now (the defensive helper assumed UTC)
-    assert eff.endswith("Z") or "+" in eff, (
-        f"Naive datetime was not defended: {eff!r}"
-    )
+    assert eff.endswith("Z") or "+" in eff, f"Naive datetime was not defended: {eff!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +174,7 @@ async def test_map_observations_returns_dropped_count(monkeypatch):
         status="final",
         code={"coding": [{"system": "http://loinc.org", "code": "8867-4"}]},
         subject={"reference": f"Patient/{PATIENT}"},
-        effective_datetime=datetime(2026, 6, 20, 22, 39, 56, tzinfo=timezone.utc),
+        effective_datetime=datetime(2026, 6, 20, 22, 39, 56, tzinfo=UTC),
         value_quantity={"value": 72.0},
     )
     invalid = Observation(
@@ -184,7 +182,7 @@ async def test_map_observations_returns_dropped_count(monkeypatch):
         status="final",
         code={"coding": [{"system": "http://loinc.org", "code": "8867-4"}]},
         subject={"reference": f"Patient/{PATIENT}"},
-        effective_datetime=datetime(2026, 6, 20, 22, 39, 56, tzinfo=timezone.utc),
+        effective_datetime=datetime(2026, 6, 20, 22, 39, 56, tzinfo=UTC),
         value_quantity={"value": "not-a-number"},  # genuinely invalid
     )
 
@@ -238,9 +236,7 @@ async def test_map_observations_naive_datetime_no_longer_dropped(monkeypatch):
         value_quantity={"value": 72.0},
     )
 
-    result = await svc.map_observations_to_biomarkers(
-        _FakeSession(), [naive_obs]
-    )
+    result = await svc.map_observations_to_biomarkers(_FakeSession(), [naive_obs])
     assert result["dropped_invalid"] == 0, (
         "Naive datetime was dropped — fhir_isoformat defensive layer regressed"
     )
@@ -252,12 +248,7 @@ def test_manual_sync_response_includes_dropped_field():
     from pathlib import Path
 
     src = (
-        Path(__file__).resolve().parents[1]
-        / "app"
-        / "api"
-        / "v1"
-        / "endpoints"
-        / "integrations.py"
+        Path(__file__).resolve().parents[1] / "app" / "api" / "v1" / "endpoints" / "integrations.py"
     ).read_text()
     # The response dict must include a field that exposes dropped/invalid count
     assert "dropped_invalid" in src or "invalid_dropped" in src, (
