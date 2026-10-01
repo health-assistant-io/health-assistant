@@ -90,7 +90,7 @@ def _clean_env(monkeypatch):
 def _prod_kwargs(**extra):
     base = {
         "_env_file": None,
-        "APP_ENV": "production",
+        "HA_APP_ENV": "production",
         "DEBUG": False,
         "POSTGRES_PASSWORD": "a-strong-unique-passphrase-9f3kQ",
         "VAPID_PUBLIC_KEY": "test-vapid-public-key-do-not-use",
@@ -227,7 +227,7 @@ def test_partial_signing_pin_fails_closed_in_every_env():
         with pytest.raises(ValidationError, match="partial signing-key pin"):
             Settings(
                 _env_file=None,
-                APP_ENV=env,
+                HA_APP_ENV=env,
                 DEBUG=False,
                 POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
                 HA_SESSION_KEY=SESSION_KEY,
@@ -270,13 +270,13 @@ def test_prod_data_key_required_and_must_be_fernet_material():
 
 
 def test_dev_generates_strong_distinct_keys():
-    s = Settings(_env_file=None, APP_ENV="development")
+    s = Settings(_env_file=None, HA_APP_ENV="development")
     assert len(s.HA_SESSION_KEY) >= 43  # token_urlsafe(32) ⇒ 43 chars
     assert len(s.HA_REFRESH_KEY) >= 43
     assert len({s.HA_SESSION_KEY, s.HA_REFRESH_KEY, s.HA_DATA_KEY}) == 3
     fernet_from_data_key(s.HA_DATA_KEY)  # dev data key is valid Fernet material
     # The keys are random per process, not fixed constants.
-    other = Settings(_env_file=None, APP_ENV="development")
+    other = Settings(_env_file=None, HA_APP_ENV="development")
     assert other.HA_SESSION_KEY != s.HA_SESSION_KEY
     assert other.HA_REFRESH_KEY != s.HA_REFRESH_KEY
 
@@ -290,12 +290,12 @@ def test_legacy_env_names_are_gone(monkeypatch):
     every sealed ring decryptable."""
     monkeypatch.setenv("INTEGRATION_SECRET_KEY", OLD_DATA_KEY)
     monkeypatch.setenv("INTEGRATION_SECRET_KEY_PREVIOUS", f"{NEW_DATA_KEY},{OLD_DATA_KEY}")
-    s = Settings(_env_file=None, APP_ENV="development")
+    s = Settings(_env_file=None, HA_APP_ENV="development")
     assert s.HA_DATA_KEY != OLD_DATA_KEY  # ignored: fresh ephemeral dev key
     assert s.HA_DATA_KEY_PREVIOUS == ""  # ignored entirely
     # The legacy attribute aliases are gone with the env names.
     assert not hasattr(settings, "INTEGRATION_SECRET_KEY")
-    assert not hasattr(Settings(_env_file=None, APP_ENV="development"), "INTEGRATION_SECRET_KEY")
+    assert not hasattr(Settings(_env_file=None, HA_APP_ENV="development"), "INTEGRATION_SECRET_KEY")
 
 
 # ===========================================================================

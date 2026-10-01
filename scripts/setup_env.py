@@ -205,7 +205,7 @@ def _run_quick_start(config):
     app_url = prompt("Public App URL", default="http://localhost")
     config["APP_URL"] = _normalize_app_url(app_url) or "http://localhost"
 
-    config["APP_ENV"] = "production"
+    config["HA_APP_ENV"] = "production"
     config["DEBUG"] = "false"
     config["VAPID_ADMIN_EMAIL"] = _derive_email_default(config["APP_URL"])
     config["HA_TRUSTED_PROXY_COUNT"] = "1"
@@ -233,19 +233,19 @@ def _run_full_setup(config):
     Any value already present in ``config`` (e.g. from the Quick Start
     advanced gate) is used as the prompt default, so nothing a beginner
     answered is lost. Defaults otherwise lean production (the recommended
-    standalone stack hardcodes ``APP_ENV=production`` / ``DEBUG=false``).
+    standalone stack hardcodes ``HA_APP_ENV=production`` / ``DEBUG=false``).
     """
     print("\n--- Full Configuration ---")
 
     print("\nChoose your environment type:")
     print("  1) production (Default)")
     print("  2) development")
-    current_env = str(config.get("APP_ENV", "production") or "production").lower()
+    current_env = str(config.get("HA_APP_ENV", "production") or "production").lower()
     default_env_num = "1" if current_env == "production" else "2"
     env_choice_num = prompt("Select environment", default=default_env_num, options=["1", "2"])
 
     env_choice = "production" if env_choice_num == "1" else "development"
-    config["APP_ENV"] = env_choice
+    config["HA_APP_ENV"] = env_choice
 
     # Intelligently default DEBUG based on environment (respect an existing
     # value when prefilled from the Quick Start gate).
@@ -349,7 +349,7 @@ ha_data_key = base64.urlsafe_b64encode(fernet_key_bytes).decode('utf-8')
 
 # Generate a VAPID P-256 key pair for Web Push (browser notifications).
 # Required in production — the app refuses to boot without these when
-# APP_ENV != "development" (see config.py prod-guard validator).
+# HA_APP_ENV != "development" (see config.py prod-guard validator).
 vapid_public_key, vapid_private_key = generate_vapid_keys()
 
 # Interactive Setup Choice
@@ -409,7 +409,7 @@ try:
                 stripped = line.strip()
                 if stripped.startswith((f"# {key}=", f"#{key}=")):
                     # Only uncomment a real assignment, not a prose comment
-                    # like "# APP_ENV=production + HA_DEMO_MODE=true)." — real
+                    # like "# HA_APP_ENV=production + HA_DEMO_MODE=true)." — real
                     # values are single tokens (no whitespace).
                     if " " not in stripped.split("=", 1)[1]:
                         env_file.write(f"{key}={val}\n")
@@ -435,7 +435,7 @@ try:
     print("   - FLOWER_PASSWORD")
     
     if setup_mode == "1":
-        print("✨ Production-oriented defaults applied (APP_ENV=production, DEBUG=false).")
+        print("✨ Production-oriented defaults applied (HA_APP_ENV=production, DEBUG=false).")
         print("✨ Web Push contact email (VAPID_ADMIN_EMAIL) also configured —")
         print("   no further VAPID setup needed.")
         if config.get("SETUP_TOKEN_MODE") == "env":
@@ -453,7 +453,7 @@ try:
             print("   no further VAPID setup needed.")
         print("✨ Your custom configurations have also been saved.")
         
-        if config.get("APP_ENV") == "production":
+        if config.get("HA_APP_ENV") == "production":
             print("\n⚠️  Next steps (Production):")
             print("   1. Please review the 'Production Deployment' section in docs/INSTALL.md")
             print("      (or https://health-assistant.io/docs/install#production-deployment)")

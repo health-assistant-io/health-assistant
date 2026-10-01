@@ -399,7 +399,7 @@ That's it — the bell, the WebSocket fan-out, the inbox, the admin feed, the de
 
 ## Configuration checklist (operators)
 
-1. **VAPID keys** — generate via `scripts/setup_env.py` or `npx web-push generate-vapid-keys`; set in `.env` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`). Required in production; the app refuses to boot without them when `APP_ENV != "development"`.
+1. **VAPID keys** — generate via `scripts/setup_env.py` or `npx web-push generate-vapid-keys`; set in `.env` (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_ADMIN_EMAIL`). Required in production; the app refuses to boot without them when `HA_APP_ENV != "development"`.
 2. **Celery worker + beat running** — `deliver_notification` (push) and `check_notification_triggers` (scheduled) are Celery tasks. If the worker isn't running, push deliveries queue in Redis forever and scheduled triggers never fire. Use `scripts/run-dev.sh` (honcho) in dev; separate Compose services in prod.
 3. **Redis reachable** — needed for the WebSocket fan-out AND the Celery broker. If down, the WS endpoint can't subscribe and emits can't enqueue delivery tasks.
 4. **Browser permissions** — the user must grant notification permission in their browser. The first subscription attempt prompts; subsequent attempts use the saved choice (URL bar → Permissions → Notifications → Allow).

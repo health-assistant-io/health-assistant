@@ -31,7 +31,7 @@ def _resolve_env_file() -> str | None:
     # a baked-in .env inside a container (or a stray file above the app dir)
     # would otherwise be silently loaded and could downgrade every boot
     # guard. Production must set HA_ENV_FILE explicitly or use real env vars.
-    app_env = os.getenv("APP_ENV", "development")
+    app_env = os.getenv("HA_APP_ENV", "development")
     if app_env not in ("development", "test", "testing"):
         return None
 
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
     VERSION: str = "0.8.0"
-    APP_ENV: str = "development"
+    HA_APP_ENV: str = "development"
     DEBUG: bool = False
 
     # --- Identity & auth (identity-auth §16 `HA_*` names) ----------------
@@ -65,8 +65,8 @@ class Settings(BaseSettings):
     # the credential-free `demo` principal (tokens carry auth_mode="demo").
     # Intended for public/screenshot demos behind a firewall; NEVER enable on
     # an instance that holds real data — it bypasses authentication entirely.
-    # Orthogonal to APP_ENV so it composes with the production boot-guards
-    # (the demo docker compose runs APP_ENV=production + HA_DEMO_MODE=true).
+    # Orthogonal to HA_APP_ENV so it composes with the production boot-guards
+    # (the demo docker compose runs HA_APP_ENV=production + HA_DEMO_MODE=true).
     HA_DEMO_MODE: bool = False
     # The demo credentials (single source of truth; the demo compose,
     # capture tooling and deploy workflow all read these names).
@@ -111,11 +111,11 @@ class Settings(BaseSettings):
         parsed_url = urllib.parse.urlparse(self.DATABASE_URL)
         active_password = parsed_url.password or ""
 
-        if self.APP_ENV not in ("development", "test", "testing"):
+        if self.HA_APP_ENV not in ("development", "test", "testing"):
             if active_password in weak_passwords or active_password == "secure_password_here":
                 raise ValueError(
                     "A strong database password must be provided in the DATABASE_URL "
-                    f"for APP_ENV={self.APP_ENV!r}. Refusing to boot with insecure "
+                    f"for HA_APP_ENV={self.HA_APP_ENV!r}. Refusing to boot with insecure "
                     "database credentials."
                 )
         return self
@@ -142,11 +142,11 @@ class Settings(BaseSettings):
         ``production`` + ``DEBUG=true`` misconfiguration previously booted
         fine and silently logged patient data.
         """
-        if self.DEBUG and self.APP_ENV not in ("development", "test", "testing"):
+        if self.DEBUG and self.HA_APP_ENV not in ("development", "test", "testing"):
             raise ValueError(
-                f"DEBUG=true is not allowed with APP_ENV={self.APP_ENV!r} — it "
+                f"DEBUG=true is not allowed with HA_APP_ENV={self.HA_APP_ENV!r} — it "
                 "logs SQL bound parameters (PHI) and leaks error internals. "
-                "Set DEBUG=false or APP_ENV=development."
+                "Set DEBUG=false or HA_APP_ENV=development."
             )
         return self
 
@@ -224,7 +224,7 @@ class Settings(BaseSettings):
 
         Demo mode exposes /auth/demo-login (credential-free login as the
         demo user) — an authentication bypass by design. In any non-dev
-        APP_ENV it additionally requires
+        HA_APP_ENV it additionally requires
         ``DEMO_MODE_ACCEPT_UNAUTHENTICATED=true`` so a single flipped env
         var (or a baked-in .env) cannot silently open a real instance
         (audit 2026-08 CFG-H6). This boot guard is env-level on purpose:
@@ -234,12 +234,12 @@ class Settings(BaseSettings):
         if self.HA_DEMO_MODE:
             import logging
 
-            if self.APP_ENV not in ("development", "test", "testing"):
+            if self.HA_APP_ENV not in ("development", "test", "testing"):
                 accept = os.getenv("DEMO_MODE_ACCEPT_UNAUTHENTICATED", "").strip().lower()
                 if accept not in ("1", "true", "yes"):
                     raise ValueError(
-                        "DEMO_MODE=true in APP_ENV="
-                        f"{self.APP_ENV!r} refuses to boot: demo-login is a "
+                        "DEMO_MODE=true in HA_APP_ENV="
+                        f"{self.HA_APP_ENV!r} refuses to boot: demo-login is a "
                         "credential-free authentication bypass. If this is a "
                         "throwaway public demo, set "
                         "DEMO_MODE_ACCEPT_UNAUTHENTICATED=true explicitly."
@@ -322,7 +322,7 @@ class Settings(BaseSettings):
         """Identity-auth §8 (plan 16 H4): per-purpose signing keys.
 
         - ``HA_SESSION_KEY`` / ``HA_REFRESH_KEY`` are REQUIRED on servers
-          (non-dev APP_ENV): missing, placeholder or weak (<32 chars /
+          (non-dev HA_APP_ENV): missing, placeholder or weak (<32 chars /
           trivial entropy) values refuse to boot.
         - A partial pin (exactly one of the two set) fails closed in every
           environment — session and refresh must never be minted from an
@@ -342,7 +342,7 @@ class Settings(BaseSettings):
             )
         for name, value in keys.items():
             if not value:
-                if self.APP_ENV in ("development", "test", "testing"):
+                if self.HA_APP_ENV in ("development", "test", "testing"):
                     import logging
 
                     logging.warning(
@@ -354,11 +354,11 @@ class Settings(BaseSettings):
                 else:
                     raise ValueError(
                         f"A strong {name} must be provided via environment "
-                        f"variables for APP_ENV={self.APP_ENV!r} (identity-auth "
+                        f"variables for HA_APP_ENV={self.HA_APP_ENV!r} (identity-auth "
                         "§8: signing keys are per-purpose and env-pinned on "
                         "servers). Refusing to boot without one."
                     )
-            elif self.APP_ENV not in ("development", "test", "testing") and (
+            elif self.HA_APP_ENV not in ("development", "test", "testing") and (
                 value.strip().lower() in self._PLACEHOLDER_SECRETS
                 or not self._is_acceptable_secret(value)
             ):
@@ -504,7 +504,7 @@ class Settings(BaseSettings):
         prior keys for decrypt-only rotation.
         """
         if not self.HA_DATA_KEY:
-            if self.APP_ENV in ("development", "test", "testing"):
+            if self.HA_APP_ENV in ("development", "test", "testing"):
                 import logging
 
                 from cryptography.fernet import Fernet
@@ -517,7 +517,7 @@ class Settings(BaseSettings):
             else:
                 raise ValueError(
                     f"A valid HA_DATA_KEY (Fernet key) must be provided via environment "
-                    f"variables for APP_ENV={self.APP_ENV!r}. Refusing to boot "
+                    f"variables for HA_APP_ENV={self.HA_APP_ENV!r}. Refusing to boot "
                     "without one."
                 )
         elif not self._is_valid_fernet_material(self.HA_DATA_KEY):
@@ -602,12 +602,12 @@ class Settings(BaseSettings):
         In production, refusing to boot surfaces operator misconfiguration
         early instead of letting push notifications silently fail forever.
         """
-        if self.APP_ENV in ("development", "test", "testing"):
+        if self.HA_APP_ENV in ("development", "test", "testing"):
             return self
         if not self.VAPID_PUBLIC_KEY or not self.VAPID_PRIVATE_KEY:
             raise ValueError(
                 f"VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be provided via "
-                f"environment variables for APP_ENV={self.APP_ENV!r}. Generate "
+                f"environment variables for HA_APP_ENV={self.HA_APP_ENV!r}. Generate "
                 "with `vapid --gen` or `npx web-push generate-vapid-keys`. "
                 "Refusing to boot without them."
             )

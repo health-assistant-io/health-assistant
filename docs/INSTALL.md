@@ -50,7 +50,7 @@ Docker is the fastest way to get up and running. Everything (UI, API, task monit
 
 ### What the installer configures (and what it doesn't)
 
-Quick Start writes production-oriented settings (`APP_ENV=production`, `DEBUG=false`, `TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
+Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
 
 - **AI features** — OCR, document extraction, and the chat assistant need an **AI provider key**, configured in-app (System Admin → AI) or via the `OPENAI_*` env vars. The app runs fine without one; you just don't get the AI features.
 - **Demo mode, the Flower task monitor, and anatomy expansion packs** exist but aren't needed for a first install — see [Advanced & Reference](#advanced--reference).
@@ -130,7 +130,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
 - [ ] **Two-factor authentication (TOTP MFA)** — no extra setup: it uses the `HA_DATA_KEY` above to encrypt the per-user authenticator secrets at rest (losing/rotating that key without `HA_DATA_KEY_PREVIOUS` would break existing enrollments). Users self-enroll from **Settings → Security** (any authenticator app; recovery codes are shown once). To *require* MFA for institute members: Admin → Users → row action **Require MFA** (or `PATCH /api/v1/admin/tenants/{tenant_id}/users/{user_id}/mfa` with `{"enforced": true}`) — the member then enrolls at their next sign-in. Wrong codes count toward the normal 5-strike account lockout.
 - [ ] Set `DEBUG=false`
-- [ ] Set `APP_ENV=production`
+- [ ] Set `HA_APP_ENV=production`
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
 - [ ] Set up database backups

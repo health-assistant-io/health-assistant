@@ -100,7 +100,7 @@ def _origin_allowed(websocket: WebSocket) -> bool:
         http_scheme = "https" if scheme in ("wss", "https") else "http"
         if origin.lower() == f"{http_scheme}://{host}".lower():
             return True
-    return bool(settings.APP_ENV == "development" and _DEV_LAN_ORIGIN.match(origin))
+    return bool(settings.HA_APP_ENV == "development" and _DEV_LAN_ORIGIN.match(origin))
 
 
 async def _extract_token(websocket: WebSocket) -> str | None:

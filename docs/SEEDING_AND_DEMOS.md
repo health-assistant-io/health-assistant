@@ -281,8 +281,8 @@ See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
 Demo mode turns a Health Assistant instance into a
 self-contained public demo: visitors are signed in automatically (no login
 form), the data is synthetic, and a pinned banner makes the demo state
-visible on every page. It is orthogonal to `APP_ENV` — the live demo stack
-runs `APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
+visible on every page. It is orthogonal to `HA_APP_ENV` — the live demo stack
+runs `HA_APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
 `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production gate
 requires).
 
@@ -308,7 +308,7 @@ every boot while demo mode is on.
 
 > **Never enable `HA_DEMO_MODE` on an instance that holds real health data.**
 >
-> **Fail-closed gate (audit 2026-08 CFG-H6):** with `APP_ENV` set to anything
+> **Fail-closed gate (audit 2026-08 CFG-H6):** with `HA_APP_ENV` set to anything
 > other than `development`/`test`, `HA_DEMO_MODE=true` **refuses to boot** unless
 > you also set `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` explicitly. A single
 > flipped env var can no longer silently open a real instance.

@@ -146,7 +146,7 @@ def is_local_request(request: Request) -> bool:
 
 
 def _is_dev_env() -> bool:
-    return settings.APP_ENV in _DEV_ENVS
+    return settings.HA_APP_ENV in _DEV_ENVS
 
 
 def _ensure_post_grace_token() -> None:

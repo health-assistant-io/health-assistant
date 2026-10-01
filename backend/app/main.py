@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     (e.g. no medication/allergy catalog, no integrations). The process
     supervisor (systemd, Docker restart policy) handles restarts.
     """
-    fail_soft = settings.APP_ENV == "development" or settings.DEBUG
+    fail_soft = settings.HA_APP_ENV == "development" or settings.DEBUG
 
     def _abort_or_warn(exc: Exception, what: str) -> None:
         """Log the failure; in prod, re-raise so the app refuses to boot."""
@@ -294,7 +294,7 @@ async def lifespan(app: FastAPI):
 # dev/test or when the operator explicitly sets ENABLE_API_DOCS=true — the
 # full authenticated-endpoint surface should not be advertised on an
 # internet-exposed instance.
-_docs_enabled = settings.ENABLE_API_DOCS or settings.APP_ENV in (
+_docs_enabled = settings.ENABLE_API_DOCS or settings.HA_APP_ENV in (
     "development",
     "test",
     "testing",
@@ -467,7 +467,7 @@ async def security_headers_middleware(request: Request, call_next):
 
 
 # Security: CORS configuration
-if settings.APP_ENV == "development":
+if settings.HA_APP_ENV == "development":
     # In development, allow any local network origin (LAN) via regex
     # (shared with the §10 WS Origin gate — app.core.config).
     app.add_middleware(
@@ -499,7 +499,7 @@ else:
 # OAuth flow builds redirect URIs from the request Host by fallback —
 # pinning the app to its configured host(s) blocks Host-header poisoning
 # and DCR registration attacks. Dev allows any host (LAN access).
-if settings.APP_ENV == "development":
+if settings.HA_APP_ENV == "development":
     _trusted_hosts = ["*"]
 else:
     _trusted_hosts = []

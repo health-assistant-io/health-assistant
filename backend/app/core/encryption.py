@@ -132,7 +132,7 @@ def encrypt_secret(plaintext: str | None) -> str | None:
     if fernet is None:
         from app.core.config import get_settings
 
-        env = (get_settings().APP_ENV or "").lower()
+        env = (get_settings().HA_APP_ENV or "").lower()
         if env in ("development", "dev", "test", "testing"):
             logger.warning(
                 "HA_DATA_KEY not set — storing secret in PLAINTEXT "
@@ -141,7 +141,7 @@ def encrypt_secret(plaintext: str | None) -> str | None:
             return plaintext
         raise RuntimeError(
             "Refusing to store a secret in plaintext: HA_DATA_KEY "
-            "is not configured (APP_ENV=%s)." % (env or "unset")
+            "is not configured (HA_APP_ENV=%s)." % (env or "unset")
         )
     token = fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
     return f"{ENCRYPTED_PREFIX}{token}"

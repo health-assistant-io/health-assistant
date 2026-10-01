@@ -47,7 +47,7 @@ Resolution order (per key; **no key is derived from another**):
    0600 ``auth_keys.json`` pattern does not apply — dev persistence,
    when wanted, is simply pinning the env vars.
 
-Server deployments (non-dev ``APP_ENV``) MUST pin all three keys via
+Server deployments (non-dev ``HA_APP_ENV``) MUST pin all three keys via
 env: the config boot guards refuse missing/weak/placeholder/cross-purpose
 values (identity-auth §8 "server = env with weak-secret boot guard").
 """

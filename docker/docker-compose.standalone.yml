@@ -43,7 +43,7 @@ x-logging: &default-logging
     max-file: "${LOG_MAX_FILE:-3}"
 
 x-backend-env: &backend-env
-  APP_ENV: production
+  HA_APP_ENV: production
   DEBUG: "false"
   POSTGRES_HOST: postgres
   POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
