@@ -110,7 +110,7 @@ integration sync) will silently queue and never run.
 
 ```bash
 cd backend
-source venv/bin/activate
+# (uv manages the environment)
 export PYTHONPATH=.:../   # ../ so `integrations.*` resolves
 uvicorn app.main:app --reload
 ```
@@ -126,7 +126,7 @@ npm run dev
 
 ```bash
 cd backend
-source venv/bin/activate
+# (uv manages the environment)
 export PYTHONPATH=.:../
 
 celery -A app.workers.celery_app worker --loglevel=info
@@ -180,7 +180,7 @@ Each stage returns a standard stats contract `{added, updated, skipped, errors}`
 
 To re-run a single stage against a running DB (without restarting the app):
 ```bash
-cd backend && source venv/bin/activate
+cd backend && # (uv manages the environment)
 export PYTHONPATH=.:../
 python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_concepts())"
 ```
@@ -214,7 +214,7 @@ The clinical events system is metadata-driven. To add new clinical event categor
     -   The `metadata_schema` is **validated** by the typed Pydantic model (`app/schemas/clinical_event.py:MetadataSchema`) on seed load and on API create — a malformed field raises a precise error instead of silently rendering nothing.
 2.  **Sync with Database**:
     ```bash
-    cd backend && source venv/bin/activate
+    cd backend && # (uv manages the environment)
     export PYTHONPATH=$PYTHONPATH:.
     python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_clinical_event_types())"
     ```

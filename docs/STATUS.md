@@ -12,6 +12,15 @@ What's implemented, what's in progress, and what's planned for the self-hosted, 
 
 ### ✅ Completed
 
+
+**Plan 20 Phases 5–7 (2026-10-02):** uv + pyproject packaging (freeze →
+`uv.lock`, `local-ai` extra, family tool config + mypy ratchet),
+`HA_APP_ENV` prefixed-only naming, the family convergence gate vendored
++ CI-gated (contract count pinned at 79), and Docker image fixes from
+the boot smoke (explicit COPY so `alembic/` survives, upload root
+created for the non-root user — image now boots, migrates, serves
+`/health` 200). Suites: 3265.
+
 #### Backend
 - FastAPI server with async support (Python 3.12+)
 - SQLAlchemy 2.0 ORM with PostgreSQL & Alembic migrations

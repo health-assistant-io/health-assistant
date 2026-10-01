@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **uv + pyproject packaging (plan 20 Phase 5):** `requirements*.txt` /
+  `pytest.ini` / `generate-requirements.sh` are gone — workspace
+  `pyproject.toml` + `uv.lock` (version regex from `config.py`), `dev`
+  dependency group, `local-ai` extra (scispacy excluded with the
+  documented `numpy<2` conflict), family `[tool.ruff]` + mypy ratchet +
+  pytest config. Direct dependencies derived from actual imports; the
+  images install with `uv sync --frozen`. `HA_APP_ENV` replaces the bare
+  `APP_ENV` reference (prefixed-only, family gate C2).
+
+### Fixed
+- **Docker images (plan 20 Phase 7 boot smoke):** the consolidated
+  multi-source COPY flattened `alembic/` so migrations could never run
+  in-image (explicit COPY lines now); the default upload root
+  (`/var/healthassistant/uploads`) was never created for the non-root
+  user, killing startup.
+
+
 ### Added
 - **Demo tour manifest + AI-video storyboard hooks (ui-capture template v1.2.0):** every capture run now emits `docs/images/tour.manifest.json` — a deterministic machine-readable tour inventory (ordered scenes, captions, per-scene `narration` lines, viewports, files) consumed by the Neuronection website and the future AI-generated video tours. Scene catalog gained the optional `narration` field (all 10 scenes annotated).
 - **Tour re-captured on a real demo instance (template v1.2.5):** the

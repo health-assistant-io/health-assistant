@@ -189,7 +189,7 @@ git pull
 Backend:
 
 ```bash
-cd backend && # (uv manages the environment) && pip install -r pyproject.toml
+cd backend && uv sync
 ```
 
 Frontend:

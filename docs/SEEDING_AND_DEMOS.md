@@ -102,7 +102,7 @@ To re-seed the base anatomy catalog manually (e.g., after editing the split seed
 
 ```bash
 cd backend
-source venv/bin/activate
+# (uv manages the environment)
 export PYTHONPATH=.:../
 python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_body_parts())"
 ```
@@ -235,7 +235,7 @@ download is **read-only** — the server never writes its own `data/seeds/`.
 
 **CLI (curator on the same machine as the DB)**:
 ```bash
-cd backend && source venv/bin/activate && export PYTHONPATH=.:../
+cd backend && # (uv manages the environment) && export PYTHONPATH=.:../
 python scripts/export_seeds.py --dry-run    # preview counts, no writes
 python scripts/export_seeds.py              # global taxonomy -> data/seeds
 python scripts/export_seeds.py --source TENANT_ID   # a template tenant
