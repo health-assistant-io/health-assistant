@@ -251,15 +251,17 @@ dc_check_port_warn() {
 }
 
 # ---------------------------------------------------------------------------
-# dc_exec_honcho PROCFILE [extra honcho args...] — verify honcho is importable
-# and replace the current process with `honcho start -f PROCFILE` so signals
-# (Ctrl+C) propagate to every child. Expects to run from the Procfile's dir.
+# dc_exec_honcho PROCFILE [extra honcho args...] — verify honcho is
+# resolvable and replace the current process with `honcho start -f PROCFILE`
+# so signals (Ctrl+C) propagate to every child. honcho is a root dev-group
+# dependency in the workspace .venv (plan 20 Phase 5) — resolved through
+# `uv run`, never the system PATH. Expects to run from the Procfile's dir.
 # ---------------------------------------------------------------------------
 dc_exec_honcho() {
   local procfile="$1"
   shift
-  if ! command -v honcho >/dev/null 2>&1; then
-    dc_die "honcho is not installed. Install it (e.g. 'pip install honcho') and retry."
+  if ! command -v uv >/dev/null 2>&1; then
+    dc_die "uv is not installed. Install it (https://docs.astral.sh/uv/) and retry."
   fi
-  exec honcho start -f "$procfile" "$@"
+  exec uv run honcho start -f "$procfile" "$@"
 }
