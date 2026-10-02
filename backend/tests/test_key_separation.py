@@ -52,13 +52,13 @@ from app.core.security import (
     decode_refresh_token,
     verify_access_token,
 )
-from tests import settings_factory
-from tests.settings_factory import dev_settings, prod_settings
 
 # Canonical strong keys live in tests/settings_factory (plan 23 D5) —
 # imported under the names this module has always used.
 from tests.settings_factory import PROD_REFRESH_KEY as REFRESH_KEY
 from tests.settings_factory import PROD_SESSION_KEY as SESSION_KEY
+from tests.settings_factory import dev_settings, prod_settings
+
 OLD_DATA_KEY = Fernet.generate_key().decode()
 NEW_DATA_KEY = Fernet.generate_key().decode()
 
