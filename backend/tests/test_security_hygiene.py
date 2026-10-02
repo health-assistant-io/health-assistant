@@ -147,44 +147,37 @@ def test_b13_password_default_is_empty():
 
 @pytest.mark.parametrize("weak", ["", "admin123", "password", "postgres", "secret", "changeme"])
 def test_b13_production_rejects_weak_password(weak):
-    """B13: booting with a known-weak DB password outside development fails."""
+    """B13: booting with a known-weak DB password outside development fails.
+
+    Refusal asserts the cause (D6): the message names the knob family
+    (``database password`` / ``DATABASE_URL``) and the refusal. Positive
+    pair: test_b13_production_accepts_strong_password.
+    """
     from pydantic import ValidationError
 
-    from app.core.config import Settings
+    from tests.settings_factory import prod_settings
 
     with pytest.raises(ValidationError) as exc_info:
-        Settings(
-            APP_ENV="production",
-            POSTGRES_PASSWORD=weak,
-            HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
-            HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-        )
-    assert "insecure database credentials" in str(exc_info.value)
+        prod_settings(POSTGRES_PASSWORD=weak)
+    msg = str(exc_info.value)
+    assert "insecure database credentials" in msg
+    assert "database password" in msg
+    assert "DATABASE_URL" in msg
 
 
 def test_b13_production_accepts_strong_password():
     """B13: a non-default strong password boots fine in production."""
-    from app.core.config import Settings
+    from tests.settings_factory import prod_settings
 
-    s = Settings(
-        APP_ENV="production",
-        DEBUG=False,
-        POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
-        HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
-        HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-        VAPID_PUBLIC_KEY="test-vapid-public-key-do-not-use",
-        VAPID_PRIVATE_KEY="test-vapid-private-key-do-not-use",
-    )
+    s = prod_settings()
     assert s.POSTGRES_PASSWORD == "a-strong-unique-passphrase-9f3kQ"
 
 
 def test_b13_development_allows_empty_for_local_dev():
     """B13: development/test still tolerates an unset password (local dev)."""
-    from app.core.config import Settings
+    from tests.settings_factory import dev_settings
 
-    s = Settings(APP_ENV="development", POSTGRES_PASSWORD="")
+    s = dev_settings(POSTGRES_PASSWORD="")
     assert s.POSTGRES_PASSWORD == ""
 
 
