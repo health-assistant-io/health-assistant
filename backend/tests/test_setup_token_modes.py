@@ -17,6 +17,7 @@ import pytest
 
 from app.core import setup_token
 from app.core.config import settings
+from tests import settings_factory
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,10 +51,15 @@ def _reset_token_state():
     setup_token._post_grace_token_minted = False  # type: ignore[attr-defined]
 
 
-def _set_mode(mode: str, **overrides):
-    settings.SETUP_TOKEN_MODE = mode
+def _set_mode(monkeypatch, mode: str, **overrides):
+    """Point the shared settings singleton at a mode (D8: monkeypatch for
+    auto-restoration; D5: names validated against Settings.model_fields so
+    a stale kwarg raises TypeError loudly instead of silently setattr-ing
+    a field the app no longer reads)."""
+    settings_factory.validate_field_names(SETUP_TOKEN_MODE=mode, **overrides)
+    monkeypatch.setattr(settings, "SETUP_TOKEN_MODE", mode)
     for k, v in overrides.items():
-        setattr(settings, k, v)
+        monkeypatch.setattr(settings, k, v)
 
 
 # ---------------------------------------------------------------------------
@@ -61,9 +67,9 @@ def _set_mode(mode: str, **overrides):
 # ---------------------------------------------------------------------------
 
 
-def test_current_mode_reflects_settings():
+def test_current_mode_reflects_settings(monkeypatch):
     for mode in ("log", "env", "time", "disabled"):
-        _set_mode(mode)
+        _set_mode(monkeypatch, mode)
         assert setup_token.current_mode() == mode
 
 
@@ -72,23 +78,23 @@ def test_current_mode_reflects_settings():
 # ---------------------------------------------------------------------------
 
 
-def test_log_mode_remote_requires_token():
-    _set_mode("log", APP_ENV="production")
+def test_log_mode_remote_requires_token(monkeypatch):
+    _set_mode(monkeypatch, "log", HA_APP_ENV="production")
     assert setup_token.is_setup_token_required(_remote_request()) is True
 
 
-def test_log_mode_local_never_requires_token():
-    _set_mode("log", APP_ENV="production")
+def test_log_mode_local_never_requires_token(monkeypatch):
+    _set_mode(monkeypatch, "log", HA_APP_ENV="production")
     assert setup_token.is_setup_token_required(_local_request()) is False
 
 
-def test_log_mode_dev_env_never_requires_token():
-    _set_mode("log", APP_ENV="development")
+def test_log_mode_dev_env_never_requires_token(monkeypatch):
+    _set_mode(monkeypatch, "log", HA_APP_ENV="development")
     assert setup_token.is_setup_token_required(_remote_request()) is False
 
 
-def test_log_mode_generate_then_validate_round_trip():
-    _set_mode("log", APP_ENV="production")
+def test_log_mode_generate_then_validate_round_trip(monkeypatch):
+    _set_mode(monkeypatch, "log", HA_APP_ENV="production")
     token = setup_token.generate()
     assert setup_token.validate(token) is True
     assert setup_token.validate("wrong") is False
@@ -102,29 +108,29 @@ def test_log_mode_generate_then_validate_round_trip():
 # ---------------------------------------------------------------------------
 
 
-def test_env_mode_seed_from_env_succeeds():
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="my-launcher-token")
+def test_env_mode_seed_from_env_succeeds(monkeypatch):
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="my-launcher-token")
     ok = setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     assert ok is True
     assert setup_token.get() == "my-launcher-token"
     assert setup_token.validate("my-launcher-token") is True
 
 
-def test_env_mode_empty_seed_value_returns_false():
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="   ")
+def test_env_mode_empty_seed_value_returns_false(monkeypatch):
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="   ")
     ok = setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     assert ok is False
     assert setup_token.get() is None
 
 
-def test_env_mode_remote_requires_token_after_seed():
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
+def test_env_mode_remote_requires_token_after_seed(monkeypatch):
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     assert setup_token.is_setup_token_required(_remote_request()) is True
 
 
-def test_env_mode_one_shot_clear():
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
+def test_env_mode_one_shot_clear(monkeypatch):
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     assert setup_token.validate("tk") is True
     setup_token.clear()
@@ -140,20 +146,20 @@ def test_env_mode_one_shot_clear():
 # ---------------------------------------------------------------------------
 
 
-def test_time_mode_within_window_never_requires_token():
-    _set_mode("time", APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
+def test_time_mode_within_window_never_requires_token(monkeypatch):
+    _set_mode(monkeypatch, "time", HA_APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
     setup_token.mark_boot_time()
     assert setup_token.is_setup_token_required(_remote_request()) is False
 
 
-def test_time_mode_local_never_requires_token_even_in_window():
-    _set_mode("time", APP_ENV="production")
+def test_time_mode_local_never_requires_token_even_in_window(monkeypatch):
+    _set_mode(monkeypatch, "time", HA_APP_ENV="production")
     setup_token.mark_boot_time()
     assert setup_token.is_setup_token_required(_local_request()) is False
 
 
-def test_time_mode_after_window_requires_token_and_mints_one():
-    _set_mode("time", APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
+def test_time_mode_after_window_requires_token_and_mints_one(monkeypatch):
+    _set_mode(monkeypatch, "time", HA_APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
     setup_token.mark_boot_time()
     # Backdate the boot time past the window.
     setup_token._boot_time = time.time() - (31 * 60)  # type: ignore[attr-defined]
@@ -168,8 +174,8 @@ def test_time_mode_after_window_requires_token_and_mints_one():
     assert setup_token.validate(setup_token.get()) is True
 
 
-def test_time_mode_mint_after_window_is_one_shot_per_process():
-    _set_mode("time", APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
+def test_time_mode_mint_after_window_is_one_shot_per_process(monkeypatch):
+    _set_mode(monkeypatch, "time", HA_APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
     setup_token.mark_boot_time()
     setup_token._boot_time = time.time() - (31 * 60)  # type: ignore[attr-defined]
     setup_token.is_setup_token_required(_remote_request())
@@ -181,8 +187,8 @@ def test_time_mode_mint_after_window_is_one_shot_per_process():
     assert setup_token.get() == first_token
 
 
-def test_time_mode_clear_resets_grace_mint_flag():
-    _set_mode("time", APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
+def test_time_mode_clear_resets_grace_mint_flag(monkeypatch):
+    _set_mode(monkeypatch, "time", HA_APP_ENV="production", SETUP_TOKEN_GRACE_MINUTES=30)
     setup_token.mark_boot_time()
     setup_token._boot_time = time.time() - (31 * 60)  # type: ignore[attr-defined]
     setup_token.is_setup_token_required(_remote_request())
@@ -204,14 +210,14 @@ def test_time_mode_clear_resets_grace_mint_flag():
 # ---------------------------------------------------------------------------
 
 
-def test_disabled_mode_never_requires_token():
-    _set_mode("disabled", APP_ENV="production")
+def test_disabled_mode_never_requires_token(monkeypatch):
+    _set_mode(monkeypatch, "disabled", HA_APP_ENV="production")
     assert setup_token.is_setup_token_required(_remote_request()) is False
     assert setup_token.is_setup_token_required(_local_request()) is False
 
 
-def test_disabled_mode_clear_is_a_noop_for_required_flag():
-    _set_mode("disabled", APP_ENV="production")
+def test_disabled_mode_clear_is_a_noop_for_required_flag(monkeypatch):
+    _set_mode(monkeypatch, "disabled", HA_APP_ENV="production")
     setup_token.clear()
     assert setup_token.is_setup_token_required(_remote_request()) is False
 
@@ -222,15 +228,15 @@ def test_disabled_mode_clear_is_a_noop_for_required_flag():
 
 
 @pytest.mark.asyncio
-async def test_setup_status_reports_token_mode_for_each_mode():
+async def test_setup_status_reports_token_mode_for_each_mode(monkeypatch):
     from unittest.mock import AsyncMock
 
     from app.api.v1.endpoints import auth as auth_endpoint
 
     for mode in ("log", "env", "time", "disabled"):
-        _set_mode(
+        _set_mode(monkeypatch, 
             mode,
-            APP_ENV="production",
+            HA_APP_ENV="production",
             SETUP_BOOTSTRAP_TOKEN=("tk" if mode == "env" else None),
         )
         if mode == "env":
@@ -243,7 +249,7 @@ async def test_setup_status_reports_token_mode_for_each_mode():
 
 
 @pytest.mark.asyncio
-async def test_setup_status_never_emits_the_token_even_in_env_mode():
+async def test_setup_status_never_emits_the_token_even_in_env_mode(monkeypatch):
     """Audit 2026-08 C-1: the status endpoint must NEVER return the setup
     token value — anonymous callers could bootstrap the instance with it.
     The launcher (which holds the env token) composes the URL itself."""
@@ -251,7 +257,7 @@ async def test_setup_status_never_emits_the_token_even_in_env_mode():
 
     from app.api.v1.endpoints import auth as auth_endpoint
 
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="launcher-secret")
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="launcher-secret")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
 
     req = MagicMock()
@@ -267,12 +273,12 @@ async def test_setup_status_never_emits_the_token_even_in_env_mode():
 
 
 @pytest.mark.asyncio
-async def test_setup_status_no_url_hint_in_log_mode():
+async def test_setup_status_no_url_hint_in_log_mode(monkeypatch):
     from unittest.mock import AsyncMock
 
     from app.api.v1.endpoints import auth as auth_endpoint
 
-    _set_mode("log", APP_ENV="production")
+    _set_mode(monkeypatch, "log", HA_APP_ENV="production")
     setup_token.generate()
 
     req = MagicMock()
@@ -288,13 +294,13 @@ async def test_setup_status_no_url_hint_in_log_mode():
 
 
 @pytest.mark.asyncio
-async def test_setup_status_no_url_hint_after_initialize_in_env_mode():
+async def test_setup_status_no_url_hint_after_initialize_in_env_mode(monkeypatch):
     """Once initialized, the env-mode URL hint is suppressed (the token is dead)."""
     from unittest.mock import AsyncMock
 
     from app.api.v1.endpoints import auth as auth_endpoint
 
-    _set_mode("env", APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
+    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="tk")
     setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     # Simulate a successful /auth/setup -> _is_initialized True + clear.
     setup_token.clear()
@@ -317,10 +323,11 @@ async def test_setup_status_no_url_hint_after_initialize_in_env_mode():
 
 
 def test_config_rejects_unknown_mode():
-    """Settings rejects an invalid SETUP_TOKEN_MODE."""
+    """Settings rejects an invalid SETUP_TOKEN_MODE (refusal names the knob).
+    Positive pair: test_config_accepts_valid_mode_and_grace."""
     from pydantic import ValidationError
 
-    from app.core.config import Settings
+    from tests.settings_factory import dev_settings
 
     # Settings has its own validators (DB creds, secret key, VAPID).
     # Build with bare-minimum env to satisfy the prod guards, then flip mode.
@@ -328,47 +335,61 @@ def test_config_rejects_unknown_mode():
         patch.dict(
             "os.environ",
             {
-                "APP_ENV": "development",
+                "HA_APP_ENV": "development",
                 "SETUP_TOKEN_MODE": "bogus",
             },
             clear=False,
         ),
-        pytest.raises((ValidationError, ValueError)),
+        pytest.raises((ValidationError, ValueError)) as exc_info,
     ):
-        Settings()
+        dev_settings()
+    assert "SETUP_TOKEN_MODE" in str(exc_info.value)
 
 
 def test_config_env_mode_with_empty_token_falls_back_to_log():
-    from app.core.config import Settings
+    from tests.settings_factory import dev_settings
 
     with patch.dict(
         "os.environ",
         {
-            "APP_ENV": "development",
+            "HA_APP_ENV": "development",
             "SETUP_TOKEN_MODE": "env",
             "SETUP_BOOTSTRAP_TOKEN": "",
         },
         clear=False,
     ):
-        s = Settings()
+        s = dev_settings()
         assert s.SETUP_TOKEN_MODE == "log"  # downgraded
 
 
 def test_config_rejects_grace_below_one_minute():
+    """Refusal names the knob (D6). Positive pair:
+    test_config_accepts_valid_mode_and_grace."""
     from pydantic import ValidationError
 
-    from app.core.config import Settings
+    from tests.settings_factory import dev_settings
 
     with (
         patch.dict(
             "os.environ",
             {
-                "APP_ENV": "development",
+                "HA_APP_ENV": "development",
                 "SETUP_TOKEN_MODE": "time",
                 "SETUP_TOKEN_GRACE_MINUTES": "0",
             },
             clear=False,
         ),
-        pytest.raises((ValidationError, ValueError)),
+        pytest.raises((ValidationError, ValueError)) as exc_info,
     ):
-        Settings()
+        dev_settings()
+    assert "SETUP_TOKEN_GRACE_MINUTES" in str(exc_info.value)
+
+
+def test_config_accepts_valid_mode_and_grace():
+    """Positive pair for both config refusals above: a known mode with a
+    valid grace window boots."""
+    from tests.settings_factory import dev_settings
+
+    s = dev_settings(SETUP_TOKEN_MODE="time", SETUP_TOKEN_GRACE_MINUTES=1)
+    assert s.SETUP_TOKEN_MODE == "time"
+    assert s.SETUP_TOKEN_GRACE_MINUTES == 1
