@@ -56,9 +56,9 @@ from tests import settings_factory
 from tests.settings_factory import dev_settings, prod_settings
 
 # Canonical strong keys live in tests/settings_factory (plan 23 D5) —
-# aliased to the names this module has always used.
-SESSION_KEY = settings_factory.PROD_SESSION_KEY
-REFRESH_KEY = settings_factory.PROD_REFRESH_KEY
+# imported under the names this module has always used.
+from tests.settings_factory import PROD_REFRESH_KEY as REFRESH_KEY
+from tests.settings_factory import PROD_SESSION_KEY as SESSION_KEY
 OLD_DATA_KEY = Fernet.generate_key().decode()
 NEW_DATA_KEY = Fernet.generate_key().decode()
 

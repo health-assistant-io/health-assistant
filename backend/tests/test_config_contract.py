@@ -152,9 +152,10 @@ def test_factory_rejects_renamed_kwarg_loudly():
     assert "HA_SESSSION_KEY" in msg
     assert "HA_SESSION_KEY" in msg  # near-miss suggestion
     with pytest.raises(TypeError):
-        settings_factory.dev_settings(APP_ENV="production")  # the F1 name itself
+        # the F1 name itself — must be rejected (inert-name test, T14)
+        settings_factory.dev_settings(APP_ENV="production")  # gate-allow: APP_ENV
     with pytest.raises(TypeError):
-        settings_factory.settings_stub(SESSION_KEY="x")
+        settings_factory.settings_stub(SESSION_KEY="x")  # gate-allow: SESSION_KEY
 
 
 # ---------------------------------------------------------------------------
