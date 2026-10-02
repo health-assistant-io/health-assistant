@@ -35,6 +35,8 @@ from app.core.encryption import (
     fernet_from_data_key,
 )
 from app.core.keys import data_key_family, key_for, verification_keys
+from tests import settings_factory
+from tests.settings_factory import dev_settings, prod_settings
 
 # Every test here implements identity-auth §18.12 (key separation) and the
 from app.core.security import (
@@ -53,8 +55,10 @@ from app.core.security import (
     verify_access_token,
 )
 
-SESSION_KEY = "sess-Kq9!" + "Kq9!" * 10
-REFRESH_KEY = "refr-Mt7#" + "Mt7#" * 10
+# Canonical strong keys live in tests/settings_factory (plan 23 D5) —
+# aliased to the names this module has always used.
+SESSION_KEY = settings_factory.PROD_SESSION_KEY
+REFRESH_KEY = settings_factory.PROD_REFRESH_KEY
 OLD_DATA_KEY = Fernet.generate_key().decode()
 NEW_DATA_KEY = Fernet.generate_key().decode()
 
@@ -85,26 +89,6 @@ def _clean_env(monkeypatch):
         "INTEGRATION_SECRET_KEY_PREVIOUS",
     ):
         monkeypatch.delenv(var, raising=False)
-
-
-def _prod_kwargs(**extra):
-    base = {
-        "_env_file": None,
-        "HA_APP_ENV": "production",
-        "DEBUG": False,
-        "POSTGRES_PASSWORD": "a-strong-unique-passphrase-9f3kQ",
-        "VAPID_PUBLIC_KEY": "test-vapid-public-key-do-not-use",
-        "VAPID_PRIVATE_KEY": "test-vapid-private-key-do-not-use",
-    }
-    base.update(extra)
-    return base
-
-
-FULL_PIN = {
-    "HA_SESSION_KEY": SESSION_KEY,
-    "HA_REFRESH_KEY": REFRESH_KEY,
-    "HA_DATA_KEY": NEW_DATA_KEY,
-}
 
 
 # ===========================================================================
@@ -205,78 +189,66 @@ def test_retired_secret_key_no_longer_signs():
 
 def test_prod_missing_signing_keys_refuse_to_boot():
     with pytest.raises(ValidationError, match="HA_SESSION_KEY"):
-        Settings(**_prod_kwargs())
+        prod_settings(HA_SESSION_KEY=None, HA_REFRESH_KEY=None)
 
 
 def test_prod_missing_refresh_key_refuse_to_boot():
-    kw = _prod_kwargs(HA_SESSION_KEY=SESSION_KEY)
     with pytest.raises(ValidationError, match="HA_REFRESH_KEY"):
-        Settings(**kw)
+        prod_settings(HA_REFRESH_KEY=None)
 
 
 def test_prod_weak_and_placeholder_signing_keys_refuse_to_boot():
     for bad in ("change_this_to_a_secure_random_string", "short-key", "x" * 48):
         with pytest.raises(ValidationError):
-            Settings(**_prod_kwargs(**{**FULL_PIN, "HA_SESSION_KEY": bad}))
+            prod_settings(HA_SESSION_KEY=bad)
         with pytest.raises(ValidationError):
-            Settings(**_prod_kwargs(**{**FULL_PIN, "HA_REFRESH_KEY": bad}))
+            prod_settings(HA_REFRESH_KEY=bad)
 
 
 def test_partial_signing_pin_fails_closed_in_every_env():
-    for env in ("production", "development"):
+    for make in (prod_settings, dev_settings):
         with pytest.raises(ValidationError, match="partial signing-key pin"):
-            Settings(
-                _env_file=None,
-                HA_APP_ENV=env,
-                DEBUG=False,
-                POSTGRES_PASSWORD="a-strong-unique-passphrase-9f3kQ",
-                HA_SESSION_KEY=SESSION_KEY,
-            )
+            make(HA_SESSION_KEY=SESSION_KEY, HA_REFRESH_KEY=None)
 
 
 def test_prod_shared_key_across_purposes_refuses_to_boot():
     with pytest.raises(ValidationError, match="distinct"):
-        Settings(
-            **_prod_kwargs(
-                HA_SESSION_KEY=SESSION_KEY,
-                HA_REFRESH_KEY=SESSION_KEY,
-                HA_DATA_KEY=NEW_DATA_KEY,
-            )
+        prod_settings(
+            HA_SESSION_KEY=SESSION_KEY,
+            HA_REFRESH_KEY=SESSION_KEY,
+            HA_DATA_KEY=NEW_DATA_KEY,
         )
     # A signing key reused as the Fernet DATA_KEY is cross-purpose reuse.
     with pytest.raises(ValidationError, match="distinct"):
-        Settings(
-            **_prod_kwargs(
-                HA_SESSION_KEY=NEW_DATA_KEY,
-                HA_REFRESH_KEY=REFRESH_KEY,
-                HA_DATA_KEY=NEW_DATA_KEY,
-            )
+        prod_settings(
+            HA_SESSION_KEY=NEW_DATA_KEY,
+            HA_REFRESH_KEY=REFRESH_KEY,
+            HA_DATA_KEY=NEW_DATA_KEY,
         )
 
 
 def test_prod_strong_distinct_pins_boot():
-    s = Settings(**_prod_kwargs(**FULL_PIN))
+    s = prod_settings(HA_DATA_KEY=NEW_DATA_KEY)
     assert s.HA_SESSION_KEY == SESSION_KEY
     assert s.HA_REFRESH_KEY == REFRESH_KEY
     assert s.HA_DATA_KEY == NEW_DATA_KEY
 
 
 def test_prod_data_key_required_and_must_be_fernet_material():
-    kw = _prod_kwargs(HA_SESSION_KEY=SESSION_KEY, HA_REFRESH_KEY=REFRESH_KEY)
     with pytest.raises(ValidationError, match="HA_DATA_KEY"):
-        Settings(**kw)
+        prod_settings(HA_DATA_KEY=None)
     with pytest.raises(ValidationError, match="32 bytes"):
-        Settings(**{**kw, "HA_DATA_KEY": "not-fernet-material-at-all"})
+        prod_settings(HA_DATA_KEY="not-fernet-material-at-all")
 
 
 def test_dev_generates_strong_distinct_keys():
-    s = Settings(_env_file=None, HA_APP_ENV="development")
+    s = dev_settings()
     assert len(s.HA_SESSION_KEY) >= 43  # token_urlsafe(32) ⇒ 43 chars
     assert len(s.HA_REFRESH_KEY) >= 43
     assert len({s.HA_SESSION_KEY, s.HA_REFRESH_KEY, s.HA_DATA_KEY}) == 3
     fernet_from_data_key(s.HA_DATA_KEY)  # dev data key is valid Fernet material
     # The keys are random per process, not fixed constants.
-    other = Settings(_env_file=None, HA_APP_ENV="development")
+    other = dev_settings()
     assert other.HA_SESSION_KEY != s.HA_SESSION_KEY
     assert other.HA_REFRESH_KEY != s.HA_REFRESH_KEY
 
@@ -290,12 +262,12 @@ def test_legacy_env_names_are_gone(monkeypatch):
     every sealed ring decryptable."""
     monkeypatch.setenv("INTEGRATION_SECRET_KEY", OLD_DATA_KEY)
     monkeypatch.setenv("INTEGRATION_SECRET_KEY_PREVIOUS", f"{NEW_DATA_KEY},{OLD_DATA_KEY}")
-    s = Settings(_env_file=None, HA_APP_ENV="development")
+    s = dev_settings()
     assert s.HA_DATA_KEY != OLD_DATA_KEY  # ignored: fresh ephemeral dev key
     assert s.HA_DATA_KEY_PREVIOUS == ""  # ignored entirely
     # The legacy attribute aliases are gone with the env names.
     assert not hasattr(settings, "INTEGRATION_SECRET_KEY")
-    assert not hasattr(Settings(_env_file=None, HA_APP_ENV="development"), "INTEGRATION_SECRET_KEY")
+    assert not hasattr(dev_settings(), "INTEGRATION_SECRET_KEY")
 
 
 # ===========================================================================
