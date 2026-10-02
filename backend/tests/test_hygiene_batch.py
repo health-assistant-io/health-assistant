@@ -37,61 +37,42 @@ from pydantic import ValidationError
 
 
 def test_b11_vapid_keys_required_in_production(monkeypatch):
-    """Missing VAPID keys in non-development APP_ENV must raise."""
-    from app.core.config import Settings
+    """Missing VAPID keys in non-development HA_APP_ENV must raise.
+
+    Refusal asserts the cause (D6): the message names the knobs.
+    Positive pair: test_b11_vapid_keys_present_in_production_ok.
+    """
+    from tests.settings_factory import prod_settings
 
     # Ensure the env-level defaults read as missing.
     monkeypatch.delenv("VAPID_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("VAPID_PRIVATE_KEY", raising=False)
 
     with pytest.raises(ValidationError) as exc_info:
-        Settings(
-            _env_file=None,  # ignore .env / .env.test files
-            APP_ENV="production",
-            DEBUG=False,
-            HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
-            HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-            HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-            DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
-            # VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY intentionally unset
-        )
-    msg = str(exc_info.value).lower()
-    assert "vapid" in msg
+        prod_settings(VAPID_PUBLIC_KEY=None, VAPID_PRIVATE_KEY=None)
+    msg = str(exc_info.value)
+    assert "VAPID_PUBLIC_KEY" in msg
+    assert "VAPID_PRIVATE_KEY" in msg
 
 
 def test_b11_vapid_keys_optional_in_development(monkeypatch):
     """In development, missing VAPID keys are tolerated (Web Push silently skipped)."""
-    from app.core.config import Settings
+    from tests.settings_factory import dev_settings
 
     monkeypatch.delenv("VAPID_PUBLIC_KEY", raising=False)
     monkeypatch.delenv("VAPID_PRIVATE_KEY", raising=False)
 
     # Should not raise.
-    s = Settings(
-        _env_file=None,
-        APP_ENV="development",
-        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-        DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
-    )
+    s = dev_settings(VAPID_PUBLIC_KEY=None, VAPID_PRIVATE_KEY=None)
     assert s.VAPID_PUBLIC_KEY is None
     assert s.VAPID_PRIVATE_KEY is None
 
 
 def test_b11_vapid_keys_present_in_production_ok():
     """In production with both keys set, construction succeeds."""
-    from app.core.config import Settings
+    from tests.settings_factory import prod_settings
 
-    s = Settings(
-        _env_file=None,
-        APP_ENV="production",
-        DEBUG=False,
-        HA_SESSION_KEY="sess-Kq9!" + "Kq9!" * 10,
-        HA_REFRESH_KEY="refr-Mt7#" + "Mt7#" * 10,
-        HA_DATA_KEY="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
-        DATABASE_URL="postgresql+asyncpg://x:y@localhost/z",
-        VAPID_PUBLIC_KEY="BPkx...",
-        VAPID_PRIVATE_KEY="abc123",
-    )
+    s = prod_settings(VAPID_PUBLIC_KEY="BPkx...", VAPID_PRIVATE_KEY="abc123")
     assert s.VAPID_PUBLIC_KEY == "BPkx..."
 
 
