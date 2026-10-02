@@ -6,7 +6,8 @@
 #       family (mypy ratchets are the documented per-repo exception);
 #       pytest carries the `contract` marker + testpaths
 #   C2  prefixed-only env — no unprefixed/legacy env names in code or scripts
-#   C3  migrations home — `command.upgrade` only in `app/local.py`
+#   C3  migrations home — migration entry points only in `app/local.py`
+#       (+ the declared, pragma'd restore site: reference-architecture §4)
 #   C4  no legacy shims/markers (`ca-*` schemes, `LEGACY_*` maps,
 #       CourseAssistant names, dual-emit vocabulary)
 #   C5  packaging shape — root `pyproject.toml` + `uv.lock` + backend
@@ -165,11 +166,25 @@ def forms(pattern):
                 r"|getenv\(|os\.getenv\(|setenv\()\s*[\"']%s[\"']" % n
             ),
         ]
+    if mode == "c3":
+        # migration entry surfaces: literal names matched in ANY reference
+        # form (call, import or alias) — re-exported invocations cannot
+        # hide from the gate. The sanctioned home is skipped below.
+        n = re.escape(pattern)
+        return [re.compile(r"(?:^|[^A-Za-z0-9_])%s\b" % n)]
     # c4: left-boundary marker match (entries are regexes, may be fragments)
     return [re.compile(r"(?:^|[^A-Za-z0-9_])%s" % pattern)]
 
-pragma_re = re.compile(r"#\s*gate-allow:\s*([A-Za-z0-9_*]+(?:\s*,\s*[A-Za-z0-9_*]+)*)")
+# Pragma names mirror vocabulary entries verbatim (entry-in-allowed match),
+# so the charset must cover anything a pattern file may name (dots, dashes,
+# slashes) — otherwise an entry could not be declared at all.
+pragma_re = re.compile(r"#\s*gate-allow:\s*([A-Za-z0-9_.*/-]+(?:\s*,\s*[A-Za-z0-9_.*/-]+)*)")
 comment_only_re = re.compile(r"^\s*#")
+
+# C3's sanctioned migrations home (guidelines/reference-architecture.md §4)
+# — the ONE place app code may migrate. A path, not vocabulary data: it is
+# the definition of "home", and only C3 skips it.
+MIGRATIONS_HOME = "/app/local.py"
 
 def pragma_names(line):
     m = pragma_re.search(line)
@@ -191,6 +206,8 @@ for scan in scan_dirs:
         for name in sorted(filenames):
             path = os.path.join(dirpath, name)
             if excluded(path):
+                continue
+            if mode == "c3" and path.replace(os.sep, "/").endswith(MIGRATIONS_HOME):
                 continue
             try:
                 with open(path, "rb") as fh:
@@ -232,11 +249,11 @@ c2_env_names() {  # dir -> findings
 }
 
 c3_migrations_home() {  # dir -> findings
-  local dir="$1" upgrades
-  upgrades="$(grep -rIln "command.upgrade" "$dir/backend/app" 2>/dev/null | grep -v __pycache__ | grep -v "app/local.py" | head -5)"
-  if [ -n "$upgrades" ]; then
-    echo "FAIL C3: command.upgrade outside app/local.py:"
-    echo "$upgrades" | sed 's/^/    /'
+  local dir="$1" found
+  found="$(scan_matcher "$PATTERNS_DIR/migration-sites.txt" c3 "$dir" backend/app | head -8)"
+  if [ -n "$found" ]; then
+    echo "FAIL C3: migration entry points outside app/local.py:"
+    echo "$found" | sed 's/^/    /'
     REPO_FAIL=1
     return 1
   fi

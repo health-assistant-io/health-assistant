@@ -1,0 +1,9 @@
+# Migration entry surfaces (C3) — patterns are data (plan 23 D2).
+# Any reference to these outside the sanctioned home (app/local.py) is a
+# finding: call, import or alias — so re-exported invocations cannot hide
+# from the gate. The ONE declared runtime exception is the restore flow
+# (guidelines/reference-architecture.md §4 — restore is a declared ops
+# action that migrates, audit F12): its call site carries a
+# `# gate-allow: run_migrations` pragma naming the entry below.
+command.upgrade
+run_migrations
