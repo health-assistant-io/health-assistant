@@ -15,15 +15,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.core import config as config_mod
-
 # ---------------------------------------------------------------------------
 # C-4 — MCP stdio lockdown
 # ---------------------------------------------------------------------------
 
 
 def test_mcp_stdio_disabled_by_default():
-    assert config_mod.Settings().MCP_STDIO_ALLOWED_COMMANDS == ""
+    from tests.settings_factory import dev_settings
+
+    assert dev_settings().MCP_STDIO_ALLOWED_COMMANDS == ""
 
 
 def test_mcp_inline_code_args_rejected():
