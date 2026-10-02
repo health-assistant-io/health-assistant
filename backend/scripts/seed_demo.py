@@ -38,7 +38,7 @@ written**:
 Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
 
     # The demo stack's database (docker-compose.demo.yml runs this):
-    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\
+    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
         python scripts/seed_demo.py
 
     # First run against a fresh, migrated, still-empty *_demo database:

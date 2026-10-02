@@ -86,7 +86,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
       - POSTGRES_USER=neuronection_health_owner
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
       - REDIS_URL=redis://redis:6379
       # Key family (identity-auth §8, plan 16 H4): unset in dev ⇒ the app
       # generates per-process ephemeral keys (logins die on restart — pin
@@ -122,7 +122,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
       - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
@@ -145,7 +145,7 @@ services:
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_ADMIN_EMAIL=${VAPID_ADMIN_EMAIL:-admin@healthassistant.local}
       - APP_URL=${APP_URL:-http://localhost:3000}
-      - UPLOAD_DIR=/app/uploads
+      - UPLOAD_DIR=/app/uploads  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
       - AI_AGENT_MAX_ITERATIONS=${AI_AGENT_MAX_ITERATIONS:-20}
       - MCP_STDIO_ALLOWED_COMMANDS=${MCP_STDIO_ALLOWED_COMMANDS:-npx,uvx,python,python3,node}
       - MCP_MAX_SERVERS_PER_USER=${MCP_MAX_SERVERS_PER_USER:-5}
@@ -217,7 +217,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
       - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_API_BASE=${OPENAI_API_BASE:-}
@@ -228,7 +228,7 @@ services:
       - HA_DATA_KEY=${HA_DATA_KEY:-}
       - HA_DATA_KEY_PREVIOUS=${HA_DATA_KEY_PREVIOUS:-}
       - OCR_PROVIDER=${OCR_PROVIDER:-openai}
-      - UPLOAD_DIR=/app/uploads
+      - UPLOAD_DIR=/app/uploads  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
       - AI_AGENT_MAX_ITERATIONS=${AI_AGENT_MAX_ITERATIONS:-20}
       - MCP_STDIO_ALLOWED_COMMANDS=${MCP_STDIO_ALLOWED_COMMANDS:-npx,uvx,python,python3,node}
       - MCP_MAX_SERVERS_PER_USER=${MCP_MAX_SERVERS_PER_USER:-5}
@@ -274,7 +274,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-neuronection_health}
       - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      - DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
       - PYTHONPATH=/app/backend:/app
     depends_on:
       redis:

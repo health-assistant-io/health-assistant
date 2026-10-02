@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
     # neuronection_health_demo / neuronection_health_test[_gwN] via env.
     POSTGRES_DB: str = "neuronection_health"
-    DATABASE_URL: str | None = None
+    DATABASE_URL: str | None = None  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
 
     @model_validator(mode="after")
     def assemble_db_connection(self) -> "Settings":
@@ -572,7 +572,7 @@ class Settings(BaseSettings):
     MCP_ALLOW_INSECURE_HTTP: bool = False
 
     # File Storage
-    UPLOAD_DIR: str = "/var/healthassistant/uploads"
+    UPLOAD_DIR: str = "/var/healthassistant/uploads"  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
     MAX_UPLOAD_SIZE: int = 50  # MB
 
     # Email

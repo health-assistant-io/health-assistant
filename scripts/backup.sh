@@ -6,7 +6,7 @@
 #   <output-dir>/health-assistant-YYYYMMDD-HHMMSS.tar.gz
 #     manifest.json   — what this archive contains
 #     database.dump   — pg_dump custom format (neuronection_health)
-#     uploads.tar.gz  — the `uploads` volume (UPLOAD_DIR=/app/uploads)
+#     uploads.tar.gz  — the `uploads` volume (UPLOAD_DIR=/app/uploads)  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

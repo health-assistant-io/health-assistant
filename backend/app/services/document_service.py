@@ -43,7 +43,7 @@ def get_upload_dir():
     return fallback
 
 
-UPLOAD_DIR = get_upload_dir()
+UPLOAD_DIR = get_upload_dir()  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
 
 # Allowed upload extensions (audit A3). Deliberately EXCLUDES types that can
 # carry active content executable in the browser at the app origin — svg,
