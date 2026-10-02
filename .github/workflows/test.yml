@@ -46,6 +46,16 @@ jobs:
           cd backend
           uv sync --frozen
 
+      - name: Lint & Type Check (ruff + mypy)
+        # Same working directory/import root as the pytest steps below; the
+        # lint gate needs no DB service. mypy is the documented ratchet over
+        # app/core ([tool.mypy] files) — family pattern (study/auth-kit CI).
+        run: |
+          cd backend
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
+          uv run ruff check .
+          uv run mypy
+
       - name: Run Pytest Suite
         env:
           # Configure via parts (not DATABASE_URL) so config.py assembles the
