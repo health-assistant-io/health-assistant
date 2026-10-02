@@ -36,5 +36,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Gate self-test (plan 23 D4)
+        run: bash scripts/check-family-convergence.selftest.sh
       - name: Run family-convergence gate
         run: bash scripts/check-family-convergence.sh --self
