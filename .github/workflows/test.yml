@@ -41,6 +41,14 @@ jobs:
           cache: 'pip'
           cache-dependency-path: uv.lock
 
+      # The backend moved to uv in plan 20 (abebd80) but the runner never
+      # got the binary — `uv sync`/`uv run` died with exit 127. Family
+      # pattern (career/study ci.yml): astral-sh/setup-uv.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Backend Dependencies
         run: |
           cd backend
@@ -71,7 +79,7 @@ jobs:
           # Mirror production Docker PYTHONPATH (/app/backend:/app) so the
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
-          pytest
+          uv run pytest
       - name: Contract drift gate (identity-auth §18)
         env:
           POSTGRES_USER: neuronection_health_owner
