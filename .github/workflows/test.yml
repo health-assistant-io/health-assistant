@@ -91,7 +91,7 @@ jobs:
         run: |
           cd backend
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
-          pytest -m contract
+          uv run pytest -m contract
 
   test-frontend:
     name: Run Frontend Lint & Build Test
