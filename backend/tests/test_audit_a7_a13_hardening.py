@@ -17,6 +17,7 @@ from app.utils.prompt_guard import (
     check_user_input_safety,
     should_block_high_risk,
 )
+from tests.settings_factory import settings_stub
 
 
 # --------------------------------------------------------------------------- A7
@@ -136,15 +137,16 @@ class TestEncryptFailClosed:
         from app.core import encryption
 
         monkeypatch.setattr(encryption, "_fernet_singleton", lambda: None)
-        # Force APP_ENV to production-like.
+        # Force HA_APP_ENV to production via a validated stub (plan 23 D5).
         import app.core.config as cfg
 
-        class _S:
-            APP_ENV = "production"
-
-        monkeypatch.setattr(cfg, "get_settings", lambda: _S())
-        with pytest.raises(RuntimeError):
+        monkeypatch.setattr(cfg, "get_settings", lambda: settings_stub(HA_APP_ENV="production"))
+        with pytest.raises(RuntimeError) as exc_info:
             encryption.encrypt_secret("super-secret-key")
+        # D6: the refusal names the knobs involved.
+        msg = str(exc_info.value)
+        assert "HA_DATA_KEY" in msg
+        assert "HA_APP_ENV" in msg
 
     def test_plaintext_fallback_in_dev(self, monkeypatch):
         from app.core import encryption
@@ -152,10 +154,7 @@ class TestEncryptFailClosed:
         monkeypatch.setattr(encryption, "_fernet_singleton", lambda: None)
         import app.core.config as cfg
 
-        class _S:
-            APP_ENV = "development"
-
-        monkeypatch.setattr(cfg, "get_settings", lambda: _S())
+        monkeypatch.setattr(cfg, "get_settings", lambda: settings_stub(HA_APP_ENV="development"))
         out = encryption.encrypt_secret("super-secret-key")
         assert out == "super-secret-key"  # dev fallback
 
