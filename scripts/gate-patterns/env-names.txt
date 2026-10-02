@@ -1,0 +1,33 @@
+# env-names.txt — C2 vocabulary (plan 23 D2: patterns are data, not code).
+#
+# One unprefixed env name per line; blank lines and `#` comments are ignored.
+# These bare names may never be read or written anywhere in a repo's
+# backend/, scripts/ or docker/ — the family uses the product-prefixed forms
+# (SA_ / CAREER_ / HA_). The boundary-anchored matcher never matches inside
+# a prefixed name.
+#
+# The family-convergence gate builds its C2 regexes from this file at runtime
+# (the gate script contains no env-name literals). The self-test's
+# marker-completeness loop (T2) plants one string per entry and asserts the
+# gate trips, so "declared ⇒ detected" stays continuously true.
+
+DATABASE_URL
+APP_ENV
+DATA_DIR
+UPLOAD_DIR
+SPA_DIST
+API_HOST
+API_PORT
+CORS_ORIGINS
+IDENTITY_MODE
+AUTH_MODE
+DEMO_MODE
+REGISTRATION_ENABLED
+COOKIE_SECURE
+TRUSTED_PROXY_COUNT
+RATE_LIMIT_ENABLED
+AUTH_RATE_LIMIT
+AUTH_EMAIL_RATE_LIMIT
+SESSION_KEY
+REFRESH_KEY
+DATA_KEY

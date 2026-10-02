@@ -1,0 +1,25 @@
+# legacy-markers.txt — C4 vocabulary (plan 23 D2: patterns are data, not code).
+#
+# One grep -E pattern per line; blank lines and `#` comments are ignored.
+# An optional self-test witness may follow `::` — the string the
+# marker-completeness loop (T2) plants to prove "declared ⇒ detected".
+# When omitted the witness defaults to the pattern itself (literal patterns).
+#
+# The family-convergence gate builds its C4 regex from this file at runtime;
+# the gate script itself contains no marker literals, so it can never match
+# its own patterns (the plan-20 F2 self-match defect).
+
+# ca-* legacy scheme vocabulary (pre-plan-20 content addressing)
+ca-drawing
+ca-image
+ca-material
+ca-course
+caq/v
+ca-backup/v
+ca-skills/v
+x-ca-
+
+# legacy kind maps / dual-emit helpers
+LEGACY_[A-Z_]+_MAP :: LEGACY_KIND_MAP
+card_kind_from_legacy
+legacy_kind_from_card
