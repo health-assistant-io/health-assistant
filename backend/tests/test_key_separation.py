@@ -35,8 +35,6 @@ from app.core.encryption import (
     fernet_from_data_key,
 )
 from app.core.keys import data_key_family, key_for, verification_keys
-from tests import settings_factory
-from tests.settings_factory import dev_settings, prod_settings
 
 # Every test here implements identity-auth §18.12 (key separation) and the
 from app.core.security import (
@@ -54,6 +52,8 @@ from app.core.security import (
     decode_refresh_token,
     verify_access_token,
 )
+from tests import settings_factory
+from tests.settings_factory import dev_settings, prod_settings
 
 # Canonical strong keys live in tests/settings_factory (plan 23 D5) —
 # aliased to the names this module has always used.

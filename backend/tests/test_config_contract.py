@@ -140,7 +140,7 @@ def test_factory_base_names_match_this_table():
         "VAPID_PRIVATE_KEY",
     }
     assert base_names == set(FACTORY_KWARGS)
-    assert settings_factory._KNOWN_KWARGS >= set(FACTORY_KWARGS)
+    assert set(FACTORY_KWARGS) <= settings_factory._KNOWN_KWARGS
 
 
 def test_factory_rejects_renamed_kwarg_loudly():
@@ -167,10 +167,7 @@ def test_suite_env_writes_are_read_by_the_app():
     for name in sorted(set(writes) | set(PATCH_DICT_ENV_NAMES)):
         if name in UNREAD_BY_DESIGN:
             continue
-        if name in READ_ELSEWHERE:
-            readers = READ_ELSEWHERE[name]
-        else:
-            readers = ("app/core/config.py",)
+        readers = READ_ELSEWHERE.get(name, ("app/core/config.py",))
         for reader in readers:
             src = (BACKEND_DIR / reader).read_text()
             assert name in src, (

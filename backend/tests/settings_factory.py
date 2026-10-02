@@ -58,8 +58,7 @@ def validate_field_names(**overrides: Any) -> None:
         parts.append(f"  {name!r} is not a Settings field — did you mean: {hint}")
     raise TypeError(
         "settings_factory: unknown kwarg name(s) — a field was renamed or "
-        "misspelled; Settings(extra='ignore') would silently drop these:\n"
-        + "\n".join(parts)
+        "misspelled; Settings(extra='ignore') would silently drop these:\n" + "\n".join(parts)
     )
 
 

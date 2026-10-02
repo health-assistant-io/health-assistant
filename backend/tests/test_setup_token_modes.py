@@ -109,7 +109,9 @@ def test_log_mode_generate_then_validate_round_trip(monkeypatch):
 
 
 def test_env_mode_seed_from_env_succeeds(monkeypatch):
-    _set_mode(monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="my-launcher-token")
+    _set_mode(
+        monkeypatch, "env", HA_APP_ENV="production", SETUP_BOOTSTRAP_TOKEN="my-launcher-token"
+    )
     ok = setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN)
     assert ok is True
     assert setup_token.get() == "my-launcher-token"
@@ -234,7 +236,8 @@ async def test_setup_status_reports_token_mode_for_each_mode(monkeypatch):
     from app.api.v1.endpoints import auth as auth_endpoint
 
     for mode in ("log", "env", "time", "disabled"):
-        _set_mode(monkeypatch, 
+        _set_mode(
+            monkeypatch,
             mode,
             HA_APP_ENV="production",
             SETUP_BOOTSTRAP_TOKEN=("tk" if mode == "env" else None),
