@@ -334,6 +334,44 @@ async def test_webhook_bare_mac_replay_blocked():
     assert exc.value.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_webhook_accepts_x_signature_header():
+    from app.api.v1.endpoints import integrations as integ
+
+    secret = "test-secret-value-1234567890"
+    import hashlib as _hashlib
+    import hmac as _hmac
+
+    body = b'{"source": "health_connect"}'
+    sig = "sha256=" + _hmac.new(secret.encode(), body, _hashlib.sha256).hexdigest()
+
+    redis_mock = MagicMock()
+    redis_mock.set = AsyncMock(return_value=True)
+
+    row = _integration_row(secret=secret)
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=lambda: row))
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    db.flush = AsyncMock()
+    db.add = MagicMock()
+    db.refresh = AsyncMock()
+    provider = MagicMock()
+    provider.handle_webhook = AsyncMock(return_value=[])
+
+    with (
+        patch.object(integ, "_resolve_secret_field", return_value=secret),
+        patch("app.api.v1.endpoints.integrations.redis_client", redis_mock),
+        patch.object(integ, "_check_machine_body_cap", AsyncMock(return_value=body)),
+    ):
+        with patch.object(integ.integration_registry, "get_provider") as gp:
+            gp.return_value = provider
+            await integ.integration_webhook(
+                "webhook", str(row.id), _request_mock(headers={"X-Signature": sig}), db
+            )
+    provider.handle_webhook.assert_awaited()
+
+
 # ---------------------------------------------------------------------------
 # H1/H2 — auto-provisioned secrets at instance creation
 # ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ By installing that app on your Android phone, you can securely sync all data fro
 3. Click "Get Webhook URL" under Actions.
 4. Open the Life Dashboard Android app.
 5. In the Health Connect Webhook section, paste: `https://<YOUR_TUNNEL_URL>/api/v1/integrations/webhook/webhook/YOUR-UUID`
+6. Paste the integration's webhook secret into the app's HMAC signing secret field. The app signs every request with it in the `X-Signature` header; without a matching secret, Health Assistant rejects the data with 401.
 
 ### 2. Basic Payload
 Use this for custom Python scripts, Tasker, or Macrodroid. It expects a very simple flat JSON structure.

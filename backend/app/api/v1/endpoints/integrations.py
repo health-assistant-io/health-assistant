@@ -1374,6 +1374,7 @@ def _verify_webhook_signature(secret: str, raw_body: bytes, provided_signature: 
       - ``X-Webhook-Signature``: ``<hex digest>``
       - ``X-Webhook-Signature-256``: ``<hex digest>``
       - ``X-Hub-Signature-256`` (GitHub): ``sha256=<hex digest>``
+      - ``X-Signature`` (Life Dashboard Companion): ``sha256=<hex digest>``
 
     Returns True iff the computed HMAC matches the provided signature.
 
@@ -1500,6 +1501,7 @@ async def integration_webhook(
         request.headers.get("X-Webhook-Signature")
         or request.headers.get("X-Webhook-Signature-256")
         or request.headers.get("X-Hub-Signature-256")
+        or request.headers.get("X-Signature")
     )
     provided_ts = request.headers.get("X-Webhook-Timestamp")
 
