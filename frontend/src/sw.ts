@@ -6,10 +6,21 @@ declare const self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
 
-// Offline navigation fallback: serve the precached SPA shell for every
-// navigation (dev is excluded — the dev server owns routing/HMR).
+// Offline navigation fallback: serve the precached SPA shell for in-app
+// navigations (dev is excluded — the dev server owns routing/HMR). API and
+// websocket paths are denylisted: they must always reach the network. The
+// documents explorer embeds /api/v1/documents/{id}/download in an <iframe>
+// (AuthenticatedPdf / PdfViewer) — an iframe load IS a navigation request,
+// and answering it with the cached index.html (whose cached headers carry
+// the gateway's CSP frame-ancestors 'none') broke the preview with a
+// cspBlocked neterror + an SW "unexpected error" (first seen on the
+// 2026-10 live demo).
 if (import.meta.env.PROD) {
-  registerRoute(new NavigationRoute(createHandlerBoundToURL('/index.html')));
+  registerRoute(
+    new NavigationRoute(createHandlerBoundToURL('/index.html'), {
+      denylist: [/^\/api\//, /^\/ws/],
+    })
+  );
 }
 
 self.addEventListener('push', (event) => {
