@@ -188,7 +188,7 @@ The installer asks one question (the public app URL — press Enter on this mach
 Prefer explicit steps? The manual equivalent:
 
 ```bash
-python3 scripts/setup_env.py          # Quick Start is the default — generates SECRET_KEY, Fernet key, POSTGRES_PASSWORD, VAPID pair
+python3 scripts/setup_env.py          # Quick Start is the default — generates the §8 key family (HA_SESSION_KEY/HA_REFRESH_KEY/HA_DATA_KEY), POSTGRES_PASSWORD, REDIS_PASSWORD, FLOWER_PASSWORD, VAPID pair
 ```
 
 ```bash
