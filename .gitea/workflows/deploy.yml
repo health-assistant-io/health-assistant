@@ -303,7 +303,6 @@ jobs:
             STACK_NAME=${{ env.STACK_NAME }}
             
             # Application
-            APP_ENV=production
             DEBUG=false
             # Per-purpose key family (identity-auth §8, plan 16 H4). The
             # single all-purpose SECRET_KEY is retired from all signing.
