@@ -369,6 +369,33 @@ jobs:
             
             # 2. Stop old containers and start new ones
             echo "Restarting application stack..."
+            # Pre-flight (2026-10-07 outage class): PostgreSQL data dirs are
+            # incompatible across major versions. If the existing postgres
+            # volume was initialized by a different major than the compose
+            # image pins, a new container crash-loops ("database files are
+            # incompatible with server") — abort BEFORE `down` so a stale
+            # volume can never stop a running stack and leave a crash-loop
+            # in its place. Migration path: docker/README.md → "Upgrading
+            # from pg14" (dump with the OLD major's image → fresh volume →
+            # restore). Covers both the STACK_NAME volume and a legacy
+            # basename-project volume not yet adopted by the block below.
+            STACK_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
+            STACK_PROJECT="${STACK_PROJECT:-health-assistant}"
+            TSIMG="$(grep -E '^[[:space:]]*image:[[:space:]]*timescale/timescaledb' docker-compose.prod.yml | head -n1 | awk '{print $2}')"
+            PG_MAJOR_IMG="${TSIMG##*-pg}"
+            for PG_VOL in "${STACK_PROJECT}_postgres_data" "$(basename "$PWD")_postgres_data"; do
+                docker volume inspect "$PG_VOL" >/dev/null 2>&1 || continue
+                PG_VERSION_VOL="$(docker run --rm --entrypoint sh \
+                    -v "${PG_VOL}:/pgdata:ro" "$TSIMG" \
+                    -c 'cat /pgdata/PG_VERSION' 2>/dev/null || true)"
+                if [ -n "$PG_VERSION_VOL" ] && [ "$PG_VERSION_VOL" != "$PG_MAJOR_IMG" ]; then
+                    echo "CRITICAL: postgres volume ${PG_VOL} is PG v${PG_VERSION_VOL}, but the stack image is ${TSIMG} (v${PG_MAJOR_IMG})."
+                    echo "Major versions cannot open each other's data directories — the new postgres would crash-loop, not migrate."
+                    echo "Refusing to touch the running stack. Migrate first (dump with a v${PG_VERSION_VOL} image, recreate the volume,"
+                    echo "restore) — see docker/README.md 'Upgrading from pg14'. The stack was left untouched."
+                    exit 1
+                fi
+            done
             # One-time migration: before docker-compose.prod.yml pinned the
             # top-level `name:` (= STACK_NAME), the compose project was the
             # deploy-dir basename (health_assistant / health_assistant_test).
@@ -429,6 +456,12 @@ jobs:
             done
             if [ -z "$CONNECTED" ]; then
                 echo "Cannot connect to postgres to rename legacy database names — aborting deploy."
+                # The retry loop swallows stderr by design; without this the
+                # abort reason (e.g. a crash-looping postgres) never reaches
+                # the job log.
+                echo "── postgres container state + last logs ──"
+                docker compose -f docker-compose.prod.yml ps postgres || true
+                docker compose -f docker-compose.prod.yml logs postgres --tail 30 || true
                 exit 1
             fi
             PSQLC="docker compose -f docker-compose.prod.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
