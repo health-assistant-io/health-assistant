@@ -62,6 +62,15 @@ jobs:
           cache: 'pip'
           cache-dependency-path: uv.lock
 
+      # The backend moved to uv in plan 20 (abebd80) but the runner image
+      # ships no uv binary — `uv sync` died with `uv: command not found`
+      # (exit 127) since run #167. Gitea twin of the GitHub-side plan 23 F1
+      # fix (dbc5b02); family pattern (career/study ci.yml): setup-uv.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
       - name: Start database services on the job network
         run: |
           set -euo pipefail
@@ -126,7 +135,7 @@ jobs:
           # Mirror production Docker PYTHONPATH (/app/backend:/app) so the
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
-          pytest
+          uv run pytest
 
       - name: Stop database services
         if: always()
