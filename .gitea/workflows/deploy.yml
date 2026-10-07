@@ -275,7 +275,7 @@ jobs:
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.VM_PORT || '22' }}
-          source: "docker/docker-compose.prod.yml,docker/init-db.sql"
+          source: "docker/docker-compose.prod.yml,docker/init-db.sql,docker/init-roles.sh"
           target: ${{ env.DEPLOY_PATH }}
           strip_components: 1
 
