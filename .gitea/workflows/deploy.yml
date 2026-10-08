@@ -236,7 +236,7 @@ jobs:
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.VM_PORT || '22' }}
-          source: "docker/docker-compose.prod.yml,docker/init-db.sql,docker/init-roles.sh"
+          source: "docker/docker-compose.standalone.yml,docker/init-db.sql,docker/init-roles.sh,docker/nginx.conf"
           target: ${{ env.DEPLOY_PATH }}
           strip_components: 1
 
@@ -303,6 +303,9 @@ jobs:
             BACKEND_PORT=${{ env.BACKEND_PORT }}
             FRONTEND_PORT=${{ env.FRONTEND_PORT }}
             FLOWER_PORT=${{ env.FLOWER_PORT }}
+            # Standalone flavor: the bundled gateway's published port (the
+            # single origin users browse — /api and /ws are routed by it).
+            HTTP_PORT=${{ secrets.HTTP_PORT || '80' }}
             FLOWER_USER=${{ secrets.FLOWER_USER || 'admin' }}
             FLOWER_PASSWORD=${{ secrets.FLOWER_PASSWORD }}
             
@@ -333,7 +336,7 @@ jobs:
             # 1. Pull new images explicitly BEFORE bringing down active containers
             # This prevents downtime if network or authentication fails during pull!
             echo "Pulling new Docker images..."
-            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.standalone.yml pull
             
             # 2. Stop old containers and start new ones
             echo "Restarting application stack..."
@@ -349,7 +352,7 @@ jobs:
             # basename-project volume not yet adopted by the block below.
             STACK_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
             STACK_PROJECT="${STACK_PROJECT:-health-assistant}"
-            TSIMG="$(grep -E '^[[:space:]]*image:[[:space:]]*timescale/timescaledb' docker-compose.prod.yml | head -n1 | awk '{print $2}')"
+            TSIMG="$(grep -E '^[[:space:]]*image:[[:space:]]*timescale/timescaledb' docker-compose.standalone.yml | head -n1 | awk '{print $2}')"
             PG_MAJOR_IMG="${TSIMG##*-pg}"
             for PG_VOL in "${STACK_PROJECT}_postgres_data" "$(basename "$PWD")_postgres_data"; do
                 docker volume inspect "$PG_VOL" >/dev/null 2>&1 || continue
@@ -364,7 +367,7 @@ jobs:
                     exit 1
                 fi
             done
-            # One-time migration: before docker-compose.prod.yml pinned the
+            # One-time migration: before docker-compose.standalone.yml pinned the
             # top-level `name:` (= STACK_NAME), the compose project was the
             # deploy-dir basename (health_assistant / health_assistant_test).
             # Stop that legacy project first and copy its volumes under the
@@ -378,7 +381,7 @@ jobs:
             NEW_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
             NEW_PROJECT="${NEW_PROJECT:-health-assistant}"
             if [ "$LEGACY_PROJECT" != "$NEW_PROJECT" ]; then
-                docker compose -p "$LEGACY_PROJECT" -f docker-compose.prod.yml down --remove-orphans
+                docker compose -p "$LEGACY_PROJECT" -f docker-compose.standalone.yml down --remove-orphans
                 for VOL in postgres_data redis_data uploads; do
                     docker volume inspect "${LEGACY_PROJECT}_${VOL}" >/dev/null 2>&1 || continue
                     docker volume inspect "${NEW_PROJECT}_${VOL}" >/dev/null 2>&1 && continue
@@ -403,18 +406,18 @@ jobs:
                     echo "Adopted legacy volume ${LEGACY_PROJECT}_${VOL} -> ${NEW_PROJECT}_${VOL}"
                 done
             fi
-            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker compose -f docker-compose.standalone.yml down --remove-orphans
             # One-time ADR-0022 DB/role rename (neuro_* → neuronection_*):
             # existing volumes ignore POSTGRES_DB after first boot, so start
             # postgres and rename inside it before the stack boots on the new
             # names. PostgreSQL refuses to rename the session's own user, so
             # the owner role is renamed through a throwaway superuser. No-op
             # when the legacy names don't exist (fresh installs).
-            docker compose -f docker-compose.prod.yml up -d postgres
+            docker compose -f docker-compose.standalone.yml up -d postgres
             CONNECTED=""
             for i in $(seq 1 30); do
                 for ROLE in neuronection_health_owner neuro_health_owner admin; do
-                    if docker compose -f docker-compose.prod.yml exec -T postgres \
+                    if docker compose -f docker-compose.standalone.yml exec -T postgres \
                             psql -U "$ROLE" -d postgres -tAc "select 1" >/dev/null 2>&1; then
                         CONNECTED="$ROLE"
                         break 2
@@ -428,11 +431,11 @@ jobs:
                 # abort reason (e.g. a crash-looping postgres) never reaches
                 # the job log.
                 echo "── postgres container state + last logs ──"
-                docker compose -f docker-compose.prod.yml ps postgres || true
-                docker compose -f docker-compose.prod.yml logs postgres --tail 30 || true
+                docker compose -f docker-compose.standalone.yml ps postgres || true
+                docker compose -f docker-compose.standalone.yml logs postgres --tail 30 || true
                 exit 1
             fi
-            PSQLC="docker compose -f docker-compose.prod.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
+            PSQLC="docker compose -f docker-compose.standalone.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
             for OLD_DB in neuro_health health_assistant; do
                 if [ "$($PSQLC -tAc "select 1 from pg_database where datname='$OLD_DB'")" = "1" ]; then
                     if [ "$($PSQLC -tAc "select 1 from pg_database where datname='neuronection_health'")" = "1" ]; then
@@ -455,31 +458,31 @@ jobs:
                 fi
                 $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;"
                 $PSQLC -c "CREATE ROLE ha_db_migrator LOGIN SUPERUSER;"
-                docker compose -f docker-compose.prod.yml exec -T postgres \
+                docker compose -f docker-compose.standalone.yml exec -T postgres \
                     psql -U ha_db_migrator -d postgres -v ON_ERROR_STOP=1 \
                     -c "ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;"
-                docker compose -f docker-compose.prod.yml exec -T postgres \
+                docker compose -f docker-compose.standalone.yml exec -T postgres \
                     psql -U neuronection_health_owner -d postgres -v ON_ERROR_STOP=1 \
                     -c "DROP ROLE ha_db_migrator;"
                 echo "Renamed role neuro_health_owner -> neuronection_health_owner"
             fi
             $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null 2>&1 || true
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.standalone.yml up -d
             
             # 3. Wait and verify that containers successfully started
             echo "Verifying application startup..."
             sleep 5
-            CONTAINER_EXITS=$(docker compose -f docker-compose.prod.yml ps --format json | grep -i "exited" || true)
+            CONTAINER_EXITS=$(docker compose -f docker-compose.standalone.yml ps --format json | grep -i "exited" || true)
             if [ -n "$CONTAINER_EXITS" ]; then
                 echo "CRITICAL ERROR: One or more containers failed to start and exited immediately!"
-                docker compose -f docker-compose.prod.yml ps
-                docker compose -f docker-compose.prod.yml logs
+                docker compose -f docker-compose.standalone.yml ps
+                docker compose -f docker-compose.standalone.yml logs
                 exit 1
             fi
             
             # 4. Run Database Migrations
             echo "Running database migrations..."
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+            docker compose -f docker-compose.standalone.yml exec -T backend alembic upgrade head
             
             # 5. Clean up old docker images to preserve disk space
             echo "Pruning old unused Docker images..."
