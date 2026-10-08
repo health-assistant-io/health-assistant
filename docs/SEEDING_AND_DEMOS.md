@@ -19,6 +19,7 @@ Every application startup runs a single ordered, idempotent seed pipeline agains
 | 9 | `concept_edges` (incl. concept→anatomy + anatomy→anatomy) | concepts + diseases + body_parts + vaccines |
 | 10 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
 | 11 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
+| 12 | `biomarker_states` (STATE biomarker picklists) | default_catalog |
 
 **Conventions:**
 - **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; the latter is now **deleted** — anatomy hierarchy edges live in `concept_edges.json` with `src_type=anatomy, dst_type=anatomy`. `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
@@ -209,7 +210,7 @@ generation tools, or the ontology-catalog import — and then **snapshot that
 instance's data back into the shipped seed format**. `SeedExportService`
 (`backend/app/services/seed_export_service.py`) is the strict inverse of
 `SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
-envelope each `seed_*` stage consumes, covering **all ten seed files** —
+envelope each `seed_*` stage consumes, covering **all seed files** —
 concepts, diseases, medications, vaccines, clinical event types, allergies,
 concept edges, anatomy structures, the default catalog, and biomarker panels.
 
@@ -229,7 +230,7 @@ between seed items are by slug (`parent_slug`, `src_slug`/`dst_slug`,
 
 **UI download (SYSTEM_ADMIN)** — the **Catalogs workspace** toolbar
 (`/catalogs`) has an **Export seeds** button that calls
-`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the eight files. The
+`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the seed files. The
 download is **read-only** — the server never writes its own `data/seeds/`.
 
 **CLI (curator on the same machine as the DB)**:

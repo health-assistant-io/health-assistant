@@ -5,7 +5,9 @@ records platform in sync with the health data already on your phone. It reads
 from Android **Health Connect** (heart rate, steps, weight, SpO₂, sleep),
 pushes the readings through the **Health Assistant Bridge** integration, and
 routes them to the right place — high-frequency vitals land in the telemetry
-store; point-in-time measurements become FHIR observations. Open source,
+store; point-in-time measurements become FHIR observations. It is also a
+**full two-way client**: medications, allergies, vaccines, clinical events,
+doctors, and documents can be read and managed from the phone. Open source,
 privacy-first, no third-party cloud: your data moves between your phone and
 your server, never anywhere else.
 
@@ -19,7 +21,7 @@ your server, never anywhere else.
 ## How it connects
 
 The app treats **one Bridge integration instance as its single connection
-identity**: one base URL, one instance UUID, one **mandatory HMAC secret** (auto-provisioned at instance creation, shown once — audit 2026-08), bound to
+identity**: one base URL, one instance UUID, one **mandatory HMAC secret** (auto-provisioned at instance creation, shown once), bound to
 **one patient** on the server. The app never holds the user's login token.
 Onboard by scanning a QR code, pasting a connection code, or entering the
 details manually; the app probes `GET /status`, stores the credential in
@@ -100,6 +102,22 @@ this shape from the biomarker definition, so a client never branches on source.
 
 ---
 
+## Two-way health records
+
+The same Bridge connection is a full record client for the bound patient — all paths HMAC-signed through the API proxy:
+
+- **Examinations** — list, create, update, delete (plus occurrences), so a visit recorded on the phone lands in the same examination timeline the web app shows.
+- **Treatments** — medications, allergies, and vaccines: full CRUD against the same catalog-backed endpoints the web UI uses.
+- **Clinical events & doctors** — read clinical events and manage doctor records.
+- **Documents** — list, upload, fetch text/preview, and delete; uploads flow into the same OCR/extraction pipeline as web uploads.
+- **Changes feed** — `GET /changes` returns what changed since a cursor, so an offline-first client can incrementally refresh without re-pulling everything.
+- **Notifications** — the Kotlin SDK also wraps the notification inbox, preferences, triggers, and Web Push device registration.
+
+The wire contract (request/response shapes for every path above) lives in
+[`integrations/health_assistant_bridge/docs/`](../integrations/health_assistant_bridge/docs/).
+
+---
+
 ## Control & observability
 
 Two native Compose screens give you full control over what syncs and how it's
@@ -120,7 +138,7 @@ doing:
 ## Privacy & security
 
 - **Single credential, patient-scoped.** The app holds `base_url` +
-  `integration_id` + optional `api_secret` — never the user's login token. The
+  `integration_id` + the **mandatory** `api_secret` — never the user's login token. The
   Bridge instance is bound to one patient, and every backend read path filters
   by `integration.patient_id`.
 - **At rest.** Credentials are stored in `EncryptedSharedPreferences`
@@ -133,7 +151,7 @@ doing:
 
 ## Requirements & device notes
 
-- **Android 8+ (API 28).** Health Connect is requested at runtime, per data
+- **Android 9+ (API 28).** Health Connect is requested at runtime, per data
   type, with least privilege.
 - **Health Connect must be installed** (it's built into Android 14+; on earlier
   versions the app offers the Play Store install flow).

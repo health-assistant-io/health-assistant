@@ -54,7 +54,7 @@
 - [Documentation](#documentation)
 - [Tech stack](#tech-stack)
 - [Scope & limitations](#scope--limitations)
-- [Status & roadmap](#status--roadmap)
+- [Highlights](#highlights)
 - [Contributing](#contributing)
 - [Support the project](#support-the-project)
 - [Security](#security)
@@ -173,38 +173,15 @@ The fastest path from a fresh clone to a running instance — one command:
 
 ```bash
 git clone https://github.com/health-assistant-io/health-assistant.git
-```
-
-```bash
 cd health-assistant
-```
-
-```bash
 ./scripts/install.sh    # asks the app URL, generates secure keys, starts the standalone stack
 ```
 
 The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, starts the stack, and prints your URLs plus a one-click first-run setup link.
 
-Prefer explicit steps? The manual equivalent:
-
-```bash
-python3 scripts/setup_env.py          # Quick Start is the default — generates the §8 key family (HA_SESSION_KEY/HA_REFRESH_KEY/HA_DATA_KEY), POSTGRES_PASSWORD, REDIS_PASSWORD, FLOWER_PASSWORD, VAPID pair
-```
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
-```
-
 Create your initial admin by opening **http://localhost** — a fresh install auto-redirects to a setup wizard where you pick the email, password, and organization name. There are no default credentials; you choose them.
 
-For headless/automation deploys, use the CLI instead:
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
-  python scripts/create_system_admin.py --email admin@example.com --password 'securepassword' --tenant "My Organization"
-```
-
-The standalone compose file ships a built-in Nginx on port 80. If you already run a reverse proxy (Traefik/Nginx/Caddy), use `docker/docker-compose.prod.yml` instead. Full details in the [Installation Guide](docs/INSTALL.md).
+Already running a reverse proxy, want the manual steps, or a headless/automation deploy? See the [Installation Guide](docs/INSTALL.md) — deployment flavors, security checklist, troubleshooting, and updates.
 
 ### Development
 
@@ -223,44 +200,20 @@ Frontend: http://localhost:3000 · API docs: http://localhost:8000/docs · Flowe
 
 ## Architecture at a glance
 
-```mermaid
-flowchart LR
-    subgraph Clients
-        FE[React PWA<br/>Vite + Zustand]
-        RN[Mobile / custom clients<br/>via Bridge SDKs]
-    end
-    subgraph Server["FastAPI server"]
-        API[REST + WebSocket<br/>+ FHIR R4 facade]
-        W[Celery worker + beat<br/>OCR · extraction · sync · reminders]
-    end
-    subgraph Datastore
-        PG[(PostgreSQL + TimescaleDB<br/>records + telemetry)]
-        RQ[(Redis<br/>queue + pub/sub)]
-    end
-    LLM[Your LLM<br/>OpenAI-compatible]
-    INT[Integrations<br/>FHIR server · Webhook · MCP]
-
-    FE --> API
-    RN --> API
-    INT --> API
-    API <--> PG
-    API <--> RQ <--> W
-    W <--> PG
-    W --> LLM
-```
-
 The frontend talks to **domain endpoints** optimized for the UI. External systems (a hospital's FHIR server, a webhook sender) talk to the **FHIR R4 facade**. Both surfaces sit on the same FHIR-enhanced relational tables — there is no dual-write.
 
 Background work (document OCR/extraction, integration sync, reminders, alert checks) runs in a separate Celery process coordinated through Redis; the FastAPI process does not run background jobs itself.
 
-Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Deep dive — system diagram, data model, and subsystem breakdown: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
 
 **Getting started**
-- [Visual Tour](docs/SCREENSHOTS.md) — every page, reproducible screenshots
+- [Visual Tour](docs/SCREENSHOTS.md) — a guided tour with reproducible screenshots
 - [Installation Guide](docs/INSTALL.md) — Docker, manual setup, prod security checklist, nginx, troubleshooting
-- [Architecture Overview](docs/ARCHITECTURE.md) — tech stack, DB schema, biomarker engine, AI pipeline
+- [Getting Started Guide](docs/GETTING_STARTED_GUIDE.md) — your first hour with the app
+- [Setup Wizard](docs/SETUP_WIZARD.md) — the in-app guided onboarding checklist
+- [Architecture Overview](docs/ARCHITECTURE.md) — system diagram, DB schema, biomarker engine, AI pipeline
 
 **Everyday use & core systems**
 - [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, identity ↔ record linking
@@ -292,7 +245,7 @@ Interactive API docs are also available at `/docs` on a running backend.
 | State | Zustand 4 (slices, some persisted) |
 | Database | PostgreSQL + TimescaleDB (required) |
 | Cache / Queue | Redis + Celery (JSON serializer, UTC, per-task event loops) |
-| Migrations | Alembic (sync `psycopg2` engine; 51+ migrations) |
+| Migrations | Alembic (sync `psycopg2` engine) |
 | AI / NLP | LangChain unified factory, OpenAI-compatible (`langchain_openai.ChatOpenAI`), spaCy fallback |
 | Container | Docker + Docker Compose |
 | PWA | vite-plugin-pwa (injectManifest), Web Push (VAPID), Dexie offline cache |
@@ -300,29 +253,29 @@ Interactive API docs are also available at `/docs` on a running backend.
 
 ## Scope & limitations
 
-Health Assistant is **Beta** (`0.3.x`). The points below are honest boundaries — not every limitation is a bug.
+Health Assistant is **Beta** (`0.8.x`). The points below are honest boundaries — not every limitation is a bug.
 
 - **Pre-1.0 APIs.** REST endpoints, DB schemas, and FHIR projections may change before `1.0`. Pin a version for production deployments.
 - **Self-hosted only.** There is no managed/cloud hosted offering. You run it on Linux via Docker. No native Windows or macOS desktop installers.
 - **TimescaleDB is mandatory.** A plain Postgres will crash on the telemetry hypertable migration. Use the bundled compose image or install the extension.
 - **Celery is a separate process.** The FastAPI process does not run background jobs. If you run `uvicorn` standalone, document extraction, reminders, and integration sync will queue silently in Redis. The provided compose files and `run-dev.sh` start them together.
 - **AI features need an external LLM.** OCR, document extraction, and the chat assistant call an OpenAI-compatible endpoint you provide (OpenAI, vLLM, Ollama, etc.). The rest of the app works without one.
-- **Wearable data is one-directional so far.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted, but there is no first-party phone app yet — data arrives via the webhook, bridge SDK, or a FHIR server integration. A headless mobile companion is on the roadmap.
+- **Mobile data arrives via integrations.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted via the webhook, the bridge SDK, or a FHIR server integration; a first-party phone app is on the roadmap.
 - **Notification channels.** In-app (WebSocket) and Web Push (VAPID) are fully implemented. Email and SMS are stubbed.
-- **FHIR coverage.** 19 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
+- **FHIR coverage.** 20 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
 - **Test coverage.** The backend has 1800+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
 ## Highlights
 
-A few current highlights:
+**Shipped recently** — unified catalog registry with ownership-based access, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade, human-in-the-loop proposals with auto-resume, a unified notifications system, and an Android bridge SDK for two-way mobile sync.
 
-- **Mobile companion** — headless app bridging Android Health Connect / iOS HealthKit directly to your instance.
-- **Biomarker insights** — deeper trend analytics, organ/symptom correlations, contextual "why does this matter?" explanations.
+**On the roadmap**
+
+- **First-party mobile app** — the bridge SDK already powers two-way sync; a dedicated app is next.
+- **Deeper biomarker insights** — organ/symptom correlations, contextual "why does this matter?" explanations.
 - **Advanced FHIR R4 conformance** — `_format=xml`, transaction/batch Bundle processing, `POST /_search` (for clinic interop).
 - **End-to-end test suite** — Playwright or Cypress covering the document → extraction → biomarker pipeline.
-
-Already shipped recently: unified catalog registry with ownership-based access, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade Stage 3, human-in-the-loop proposals with auto-resume, and a unified notifications system.
 
 ## Contributing
 

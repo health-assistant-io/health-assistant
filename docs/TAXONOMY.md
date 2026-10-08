@@ -125,21 +125,7 @@ unique per tenant, so the `kind` argument is optional (a safety filter).
 
 ## API endpoints (`backend/app/api/v1/endpoints/concepts.py`)
 
-All under `/api/v1`, standard JWT auth, tenancy-scoped.
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/concepts?kind=&parent_id=&include_retired=&limit=&offset=` | List (filter by kind tag, parent, status) |
-| `GET` | `/concepts/search?q=&kind=&limit=` | Hybrid search (trigram + FTS + RRF) over name/slug/description/aliases |
-| `POST` | `/concepts` | Create — body accepts `kinds: [...]` (or legacy single `kind`) |
-| `GET` | `/concepts/{id}` | Fetch one |
-| `PUT` | `/concepts/{id}` | Update — `kinds` replaces the full tag set (≥1 required) |
-| `DELETE` | `/concepts/{id}` | Soft-delete (or retire if referenced) |
-| `POST` | `/concepts/{id}/restore` | Reverse a retire/soft-delete (status → active, clears `deleted_at`) |
-| `GET` | `/concepts/{id}/neighbors?relation=&include_proposed=` | One-hop graph traversal |
-| `GET` | `/concept-edges?src_type=&src_id=&...` | List edges |
-| `POST` | `/concept-edges` | Create a typed edge |
-| `DELETE` | `/concept-edges/{id}` | Hard-delete an edge |
+All under `/api/v1`, standard JWT auth, tenancy-scoped. The full endpoint table — listing, hybrid search (`/concepts/search`), create/update with multi-`kinds`, soft-delete/restore, one-hop `neighbors` traversal, and `concept-edges` CRUD — lives in the [REST API reference](API.md#concepts--concept-edges-unified-taxonomy--knowledge-graph).
 
 The response shape carries `kinds: List[str]` and `primary_kind: str | null`
 (not a single `kind`). The create endpoint accepts either `kinds: [...]`
@@ -192,54 +178,6 @@ unified **Catalogs workspace** (`CatalogWorkspace`) at `/catalogs?type=concept`:
   `ONTOLOGY_CATALOG.md`): a biomarker's legacy `category` string is
   translated to a concept via `biomarker_category_to_concept_slug`.
 
-## Migrations
-
-The taxonomy schema is part of the single consolidated baseline
-(``alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py``), which supersedes
-the historical incremental chain. The net schema it establishes:
-
-- ``concepts`` + ``concept_edges`` + the concept enums.
-- The old scattered category tables consolidated into ``concepts``; entity
-  tables carry ``class_concept_id`` / ``specialty_concept_id`` /
-  ``category_concept_id`` FKs.
-- The multi-kind model: ``kind`` lives on the ``concept_kind_tags`` join table
-  with a ``primary_kind`` on ``concepts``; the slug unique index is
-  per-tenant ``(slug, COALESCE(tenant_id, <sentinel>))``.
-- Every classification FK standardized into ``concepts.id`` on the
-  ``<role>_concept_id`` naming convention
-  (``examinations.category_concept_id``, ``clinical_event_types.category_concept_id``,
-  ``documents.category_concept_id``, ``anatomy_structures`` /
-  ``biomarker_definitions.class_concept_id``, ``doctors.specialty_concept_id``,
-  ``concepts.parent_id``).
-- ``anatomy_relations`` unified into ``concept_edges``
-  (``src_type='anatomy'``, ``dst_type='anatomy'``); the ``anatomy_relations``
-  table is gone, and the 6 anatomy relation types (``BRANCH_OF``,
-  ``DRAINS_INTO``, ``ARTICULATES_WITH``, ``INNERVATED_BY``, ``SUPPLIED_BY``,
-  ``CONTINUOUS_WITH``) are part of ``ConceptRelationType``.
-
-## Naming convention
-
-Every domain-specific FK into `concepts.id` is named `<role>_concept_id` and
-has a matching `<role>_concept` relationship declared with **explicit**
-`foreign_keys=[...]` (so SQLAlchemy resolution never relies on single-FK
-guesswork). The only sanctioned exceptions are the owned-child join row
-`concept_kind_tags.concept_id` and the self-reference `concepts.parent_id`.
-
-| Table | Column |
-|-------|--------|
-| `examinations` | `category_concept_id` |
-| `clinical_event_types` | `category_concept_id` |
-| `documents` | `category_concept_id` |
-| `biomarker_definitions` | `class_concept_id` |
-| `anatomy_structures` | `class_concept_id` |
-| `medication_catalog` | `class_concept_id` |
-| `allergy_catalog` | `class_concept_id` |
-| `vaccine_catalog` | `class_concept_id` |
-| `doctors` | `specialty_concept_id` |
-
-This is pinned by `tests/test_concept_fk_naming_convention.py` (regex check +
-explicit-`foreign_keys` resolution check + live-DB drift diff).
-
 ## Cross-Domain Edges & Traversal
 
 `concept_edges` is the **single** cross-domain link system — not just
@@ -279,17 +217,5 @@ with all endpoints resolved to display payloads. This powers the headline
 cross-catalog query: "which organ does this biomarker affect? → what diseases
 affect that organ? → what treats them?"
 
-### Retired legacy link tables
+Legacy link tables (`biomarker_relationships`, `anatomy_relations`) were folded into `concept_edges` — schema details in the [Development Guide](DEVELOPMENT.md#taxonomy-internals-schema--naming).
 
-The `biomarker_relationships` (biomarker↔biomarker) and
-`biomarker_event_correlations` (biomarker↔clinical_event_type) tables were
-dropped during the Phase 3 consolidation (now part of the consolidated
-baseline `alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`; the
-original incremental chain — `60659cdf3e36` created `biomarker_relationships`,
-`9574b2b207f7` created/dropped `biomarker_event_correlations` — is archived).
-Their semantics now live in
-`concept_edges`: biomarker↔biomarker → `CORRELATES_WITH`; biomarker↔event-type
-→ `MONITORS` (with `correlation_type`/`description` on the edge's `properties`
-JSONB). The CRUD endpoints (`POST/GET/DELETE /clinical-events/types/{id}/
-biomarkers`) and the `ClinicalEventEngine` recommended-biomarker insight were
-rewritten to query `concept_edges`.

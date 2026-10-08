@@ -1,19 +1,48 @@
 # Health Assistant — Technical Architecture
 
-Health Assistant is a self-hosted, open-source platform for centralizing health and medical data. This document covers the technical architecture: the FastAPI backend, the PostgreSQL + TimescaleDB data model, the HL7 FHIR R4 storage layer with the biomarker engine, the AI/OCR processing pipeline, and the React frontend.
+Health Assistant is a self-hosted, open-source platform for centralizing health and medical data. This document covers the technical architecture: the FastAPI backend, the PostgreSQL + TimescaleDB data model, the HL7 FHIR R4 storage layer with the biomarker engine, the AI/OCR processing pipeline, and the React frontend. The technology-stack table lives in the [README](../README.md#tech-stack).
 
-## Core Technologies
+## System diagram
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | FastAPI (Python 3.12+) |
-| Frontend | React 18+ (TypeScript) |
-| Database | PostgreSQL + TimescaleDB |
-| Cache/Queue | Redis + Celery |
-| ORM | SQLAlchemy 2.0 |
-| Migrations | Alembic |
-| AI / NLP | Unified LangChain Factory |
-| Containerization | Docker + Docker Compose |
+```mermaid
+flowchart LR
+    subgraph Clients
+        FE[React PWA<br/>Vite + Zustand]
+        RN[Mobile / custom clients<br/>via Bridge SDKs]
+    end
+    subgraph Server["FastAPI server"]
+        API[REST + WebSocket<br/>+ FHIR R4 facade]
+        W[Celery worker + beat<br/>OCR · extraction · sync · reminders]
+    end
+    subgraph Datastore
+        PG[(PostgreSQL + TimescaleDB<br/>records + telemetry)]
+        RQ[(Redis<br/>queue + pub/sub)]
+    end
+    LLM[Your LLM<br/>OpenAI-compatible]
+    INT[Integrations<br/>FHIR server · Webhook · MCP]
+
+    FE --> API
+    RN --> API
+    INT --> API
+    API <--> PG
+    API <--> RQ <--> W
+    W <--> PG
+    W --> LLM
+```
+
+The frontend talks to **domain endpoints** optimized for the UI; external systems (a hospital's FHIR server, a webhook sender) talk to the **FHIR R4 facade**. Both surfaces sit on the same FHIR-enhanced relational tables — there is no dual-write.
+
+## Repository layout
+
+```
+core/
+├── backend/       # FastAPI app (app/), alembic migrations, tests/, scripts/
+├── integrations/  # SOURCE OF TRUTH for integrations + the SDK + the bridge (Kotlin SDK inside)
+├── frontend/      # React 18 + Vite + TS + Tailwind + Zustand
+├── docs/          # this documentation (docs-tree.json = website nav)
+├── docker/        # compose flavors + init scripts
+└── scripts/       # run-dev.sh, install.sh, backup.sh, version_manager.py, …
+```
 
 ## Database Schema
 
@@ -118,7 +147,7 @@ Low-level primitives (`_clean`, `_as_list`, `build_meta`, `_normalize_timing`, `
 
 Telemetry (`TelemetryDataModel`) is intentionally excluded from FHIR exports by design (see `TELEMETRY_AND_AGGREGATION.md`).
 
-### FHIR Server Integration (Stage 2)
+### FHIR Server Integration
 
 Beyond export/import (file-based), Health Assistant can connect to a **live external FHIR server** as an integration under the SDK — the reference provider is `integrations/fhir_server/`. It pulls a patient's `Observation`s into the Biomarker Engine:
 
@@ -126,9 +155,9 @@ Beyond export/import (file-based), Health Assistant can connect to a **live exte
 - **Pull** (`provider.pull_data`): bounded FHIR search `Observation?_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated[&patient][&category]` → each FHIR Observation is mapped to an `ObservationCreate` on the **local** patient (`sdk/fhir.fhir_observation_to_create`) → the existing biomarker-mapping waterfall resolves `biomarker_id` and routes telemetry.
 - The SDK auth/HTTP/FHIR helpers (`integrations/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the Stage 3 facade (see below).
 
-### FHIR R4 Facade (Stage 3)
+### FHIR R4 Facade
 
-Health Assistant now also **acts as** a conformant FHIR R4 REST server at `/api/v1/fhir/R4/*` — this is the **interop surface** for external systems (FHIR servers, HL7 importers, export/import jobs, SMART-on-FHIR clients). The frontend does **not** use the facade; it speaks the domain endpoints (`/patients/*`, `/observations/*`, `/examinations/*`, etc.) which return ORM-shape dicts optimized for the UI.
+Health Assistant also **acts as** a conformant FHIR R4 REST server at `/api/v1/fhir/R4/*` — this is the **interop surface** for external systems (FHIR servers, HL7 importers, export/import jobs, SMART-on-FHIR clients). The frontend does **not** use the facade; it speaks the domain endpoints (`/patients/*`, `/observations/*`, `/examinations/*`, etc.) which return ORM-shape dicts optimized for the UI.
 
 - **`GET /fhir/R4/metadata`** returns a dynamic CapabilityStatement built from `RESOURCE_REGISTRY` (no auth per FHIR spec; Cache-Control 5 min). Advertises every registered resource + supported interactions + search params.
 - **`GET /fhir/R4/{Resource}`** returns a FHIR Bundle (`type=searchset`) with `total`, `link[]` pagination (self/first/last/previous/next), and `entry[]` of `{fullUrl, resource}`. Honors standard search params (`_id`, `_lastUpdated`, `_count` capped at 250, `_sort`, `_format`) plus per-resource params (`patient`, `code`, `date`, `status`, `category`, …). Tenant-scoped by default; soft-deleted rows excluded.
@@ -164,7 +193,7 @@ A custom hook serves as the single source of truth for all biomarker rendering:
 - **Interpretation Logic**: Standardizes the display of abnormal flags (High/Low) and reference ranges.
 
 ### State Management (Zustand)
-Slices live in `frontend/src/store/slices/` — 14 of them:
+Slices live in `frontend/src/store/slices/` — 10 of them:
 - **authSlice**: Session and identity management.
 - **userSlice**: Profile + preferences for the logged-in user.
 - **patientSlice**: Contextual data for the currently active patient.
@@ -173,9 +202,7 @@ Slices live in `frontend/src/store/slices/` — 14 of them:
 - **uiSlice**: Global modal and notification management.
 - **aiConfigSlice**: AI provider/model assignments (admin UI mirror).
 - **chartSlice**: Shared chart state (zoom, active series).
-- **documentSlice**: Document upload + preview state.
 - **settingsSlice**: App/user settings mirror.
-- **notificationSlice** + **patientStorage**: notification inbox + patient-context persistence helpers (the remainder are small domain-specific slices).
 
 
 ### Draggable Dashboard
@@ -189,3 +216,5 @@ Fully containerized environment via `docker-compose`:
 - **Celery Worker**: Dedicated AI/OCR processing node.
 - **FastAPI**: Main API service.
 - **React**: Served via Vite in development / Nginx in production.
+
+Deployment flavors (standalone with bundled gateway vs. bring-your-own-proxy), TLS, and the security checklist: [INSTALL.md](INSTALL.md).

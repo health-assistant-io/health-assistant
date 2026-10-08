@@ -6,6 +6,12 @@ This guide walks you through creating an integration, utilizing SDK tools, and h
 
 For an overview of the system architecture, see the [Integrations Framework](INTEGRATIONS_FRAMEWORK.md) document.
 
+## Contents
+
+1. [Directory Structure](#1-directory-structure) · 2. [Handling Data (Pull vs. Push)](#2-handling-data-pull-vs-push) · 3. [Advanced SDK Features](#3-advanced-sdk-features) · 4. [Building FHIR Observations](#4-building-fhir-observations) · 5. [Enable your Integration](#5-enable-your-integration)
+
+**§3 feature catalog:** [3.1 HTTP client & retries](#31-http-client--auto-retries) · [3.2 Cursor/state](#32-cursor--state-management-delta-syncs) · [3.3 Managed exceptions](#33-managed-exceptions--ui-feedback) · [3.4 Payload debugging](#34-payload-debugging) · [3.5 Custom actions](#35-custom-actions-services) · [3.6 Tool exposure](#36-tool-exposure-for-the-chat-assistant) · [3.7 Secret encryption](#37-secret-encryption-at-rest) · [3.8 OAuth / SMART](#38-oauth--smart-on-fhir-cloud-integrations) · [3.9 Notifications](#39-notifications-event-driven-rich-actionable) · [3.10 Clinical events & exams](#310-clinical-events--examinations-opt-in-write-hooks) · [3.11 Catalog proposals](#311-catalog-proposals-opt-in-catalog-contributions) · [3.12 HITL proposals](#312-hitl-proposals-human-in-the-loop-catalog-review) · [3.13 Document pull](#313-document-pull-opt-in-document-ingestion) · [3.14 Treatments pull](#314-medications-allergies--immunizations-opt-in-treatment-resource-pull) · [3.15 Webhook signature helpers](#315-webhook-signature-verification-reusable-helpers)
+
 ---
 
 ## 1. Directory Structure
@@ -1082,7 +1088,7 @@ The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `in
 
 ---
 
-### 3.15 Medications, Allergies & Immunizations (Opt-in Treatment-Resource Pull)
+### 3.14 Medications, Allergies & Immunizations (Opt-in Treatment-Resource Pull)
 
 Mirrors §3.10–3.13 for the patient-instance treatment resources. A provider that can pull `MedicationStatement` / `MedicationRequest`, `AllergyIntolerance`, or `Immunization` from an upstream system overrides the matching `supports_*` / `pull_*` pair. The engine resolves a service-context actor once and writes each record through the canonical write service (`medication_service.add_patient_medication`, `allergy_service.add_patient_allergy`, `vaccine_service.add_patient_immunization`), which were refactored to the `TokenData` + dedup-kwargs shape shared with the events / exams / docs hooks.
 
@@ -1121,7 +1127,7 @@ For each pulled record the engine resolves a `TokenData` actor via `resolve_inte
 
 ---
 
-### 3.16 Webhook Signature Verification (Reusable Helpers)
+### 3.15 Webhook Signature Verification (Reusable Helpers)
 
 The platform provisions two machine routes per integration instance — a webhook
 receiver and a wildcard two-way API proxy. **HMAC secrets are mandatory**

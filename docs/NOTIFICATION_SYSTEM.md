@@ -81,7 +81,7 @@ spec = (
 
 Action button contract: `{id, label, type: link|post, url|endpoint, method, style: primary|danger|ghost|default}`. The frontend `NotificationDetailModal` renders both `payload.actions[]` and `payload.display_blocks[]` (kv/list/table/json/text/code).
 
-#### Digest collapsing (`digest_key`)
+### Digest collapsing (`digest_key`)
 
 Set `digest_key` on any spec that may fire repeatedly inside a TTL window — most commonly a threshold alert that fires on every sync. The platform collapses repeated emissions with the same key into a single Notification row instead of flooding the inbox. Recommended format: `"{domain}:{type_id}:{scope}"` (e.g. `"dev_dummy:elevated_heart_rate:patient/{uuid}"`).
 
@@ -342,60 +342,6 @@ At the service layer, inbox + admin helpers take `tenant_id` as a parameter and 
 | `failed` | Attempt failed (e.g. `no active push subscription`, `all push attempts failed`, malformed payload). |
 
 Recipient inbox state is independent: `unread` → `read` (user clicked it) or `dismissed` (user dismissed it).
-
-## How to add a new notification source
-
-The unified model means **you don't add new "types of notifications" — you add new sources that call `emit`**. Steps:
-
-### 1. Pick or add the source enum value
-
-```python
-# backend/app/models/enums.py
-class NotificationSource(str, enum.Enum):
-    SYSTEM = "SYSTEM"
-    INTEGRATION = "INTEGRATION"
-    AGENT = "AGENT"
-    RULE = "RULE"
-    CLINICAL = "CLINICAL"
-    SCHEDULED = "SCHEDULED"
-    # add yours, e.g. BILLING = "BILLING"
-```
-
-(If you also need a new `NotificationType` or `NotificationCategory`, add them the same way. Migration required.)
-
-### 2. Call `emit` from your service
-
-```python
-from app.services.notification_service import emit
-from app.models.enums import (
-    NotificationSource, NotificationType, NotificationCategory,
-    NotificationSeverity, RecipientKind,
-)
-
-await emit(
-    source=NotificationSource.BILLING,
-    type=NotificationType.SYSTEM_BROADCAST,   # or a new NotificationType
-    category=NotificationCategory.SYSTEM,     # or a new NotificationCategory
-    severity=NotificationSeverity.WARNING,
-    title="Invoice overdue",
-    body="Your subscription invoice is 7 days overdue.",
-    tenant_id=tenant_uuid,
-    targets=[{"kind": RecipientKind.USER.value, "id": str(user_id)}],
-    payload={"invoice_id": str(invoice_id)},
-    sender_user_id=system_user_id,
-)
-```
-
-### 3. (Frontend) Add a category icon
-
-`frontend/src/components/layout/NotificationBell.tsx` has a `CategoryIcon` switch. If you added a new category, add a case:
-
-```tsx
-case 'billing':
-  return <CreditCard className="w-4 h-4 text-yellow-500" />;
-```
-
-That's it — the bell, the WebSocket fan-out, the inbox, the admin feed, the delivery log, and the per-recipient detail modal all light up automatically because they're driven by the unified tables.
 
 ## Configuration checklist (operators)
 

@@ -673,7 +673,7 @@ class ExportService:
             sidecars["telemetry.json"] = [t.to_dict() for t in telemetry]
             counts["telemetry"] = len(telemetry)
         elif scope == ExportScope.PATIENT:
-            notes.append("Telemetry excluded for patient scope (no patient_id on telemetry rows).")
+            notes.append("Telemetry excluded for patient scope (telemetry rows are tenant-scoped).")
 
         if integrations is not None:
             sidecars["integrations.json"] = [

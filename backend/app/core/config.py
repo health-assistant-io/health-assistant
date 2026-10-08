@@ -593,6 +593,11 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str | None = None
     VAPID_ADMIN_EMAIL: str = "admin@healthassistant.local"
 
+    # Default TTL window for notification digest collapsing (emit with the
+    # same digest_key inside this window reuses one row). Clamped to
+    # [60s, 7d] at read time by notification_service.
+    NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS: int = 21600
+
     @model_validator(mode="after")
     def _validate_vapid_keys(self) -> "Settings":
         """VAPID keys are required in production for Web Push delivery.

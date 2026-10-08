@@ -18,13 +18,13 @@ can evolve without breaking the others.
 ```
                        ┌──────────────────────────────────────────────┐
    Web frontend ──────▶│  Layer 1 — Internal domain REST API          │
-   Mobile companion ──▶│  /api/v1/*  (ORM-shape, 298 handlers)         │
+   Mobile companion ──▶│  /api/v1/*  (ORM-shape, 330+ handlers)       │
    (session JWT only)  │  token_kind=session ONLY                      │
                        │  tenant + patient scoped, role-based          │
                        └──────────────────────────────────────────────┘
                        ┌──────────────────────────────────────────────┐
    3rd-party systems ─▶│  Layer 2 — FHIR R4 facade (PUBLIC)            │
-   EHR / HL7 / labs ──▶│  /api/v1/fhir/R4/*  (canonical FHIR, 19 res)  │
+   EHR / HL7 / labs ──▶│  /api/v1/fhir/R4/*  (canonical FHIR, 20 res)  │
    (OAuth2 + SMART)    │  token_kind=api, aud=health-assistant-api     │
                        │  SMART scope-enforced per interaction         │
                        └──────────────────────────────────────────────┘
@@ -113,35 +113,18 @@ are the only kind accepted on the domain REST API.
 ### Layer 2 — OAuth2 client-credentials + SMART-on-FHIR scopes
 
 External systems authenticate with the OAuth2 **client credentials** grant
-(RFC 6749 §4.4), the standard machine-to-machine flow:
+(RFC 6749 §4.4), the standard machine-to-machine flow: an admin registers an
+OAuth2 client bound to one tenant with a set of SMART scopes, the external
+system exchanges `client_id`/`client_secret` for a short-lived JWT at
+`POST /oauth/token`, and sends it as `Authorization: Bearer <token>` against
+`/api/v1/fhir/R4/*`. Every facade interaction is scope-checked against the
+token's SMART scopes (`<context>/<resource>.<permission>`), and the
+CapabilityStatement plus `/.well-known/smart-configuration` advertise what's
+supported.
 
-1. An administrator registers an OAuth2 client for the external system
-   (`POST /oauth/clients`) and receives a `client_id` + `client_secret`. The
-   client is bound to one tenant and granted a set of SMART scopes.
-2. The external system calls `POST /oauth/token` with its credentials and
-   receives a short-lived access token (JWT).
-3. The token is sent as `Authorization: Bearer <token>` against
-   `/api/v1/fhir/R4/*`. The token carries `aud=health-assistant-api`,
-   `iss`, the granted `scope`, `client_id`, and `tenant_id`.
-
-**SMART scope syntax:** `<context>/<resource>.<permission>`
-
-- `context` — `system` (tenant-level backend service), `user` (on behalf of a
-  user — future), or `patient` (restricted to one bound patient).
-- `resource` — any registered FHIR resource type, or `*` for all.
-- `permission` — `read`, `write`, or `*`.
-
-Examples:
-- `system/Observation.read` — read biomarker readings at the tenant level.
-- `system/*.read` — read-only across all resources the client may see.
-- `patient/Observation.write` — write observations for the bound patient only.
-
-Every facade interaction is scope-checked: a read/search needs a `.read`
-scope, a create/update/delete needs a `.write` scope. A token with the wrong
-scope gets a `403` FHIR `OperationOutcome`. The
-`GET /fhir/R4/metadata` CapabilityStatement and
-`GET /.well-known/smart-configuration` advertise the supported scopes and
-grant types. See [FHIR_R4_FACADE.md](FHIR_R4_FACADE.md) for the full surface.
+The **full walkthrough** — client registration, SMART scope syntax and
+examples, token claims, and the scope-enforcement matrix — lives in
+[FHIR_R4_FACADE.md](FHIR_R4_FACADE.md).
 
 > The user-facing OAuth2 authorize flow (`grant_type=authorization_code`,
 > PKCE, `launch` context) is on the roadmap; today the facade serves backend

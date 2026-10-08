@@ -301,3 +301,19 @@ def test_notification_to_payload_does_not_leak_digest_key():
     spec = NotificationSpec(title="x", digest_key="some:key")
     payload = spec.to_payload()
     assert "digest_key" not in payload
+
+
+def test_digest_ttl_reads_settings_default():
+    """The documented operator knob ``NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS``
+    exists on Settings and drives the fallback TTL (clamped to [60s, 7d])."""
+    from app.core.config import Settings
+    from app.services.notification_service import (
+        _DIGEST_TTL_CEILING_SECONDS,
+        _DIGEST_TTL_FLOOR_SECONDS,
+        _resolve_digest_ttl,
+    )
+
+    assert Settings.model_fields["NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS"].default == 21600
+    assert _resolve_digest_ttl(None) == 21600
+    assert _resolve_digest_ttl(10) == _DIGEST_TTL_FLOOR_SECONDS
+    assert _resolve_digest_ttl(10_000_000) == _DIGEST_TTL_CEILING_SECONDS

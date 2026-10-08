@@ -95,6 +95,14 @@ That's it. AI features are now live. If you skip this, the rest of this
 guide still works; you'll just enter lab data manually instead of having
 it extracted from a photo.
 
+### Entering data by hand (no AI needed)
+
+The AI is optional — every kind of record can be created manually:
+
+- **A single biomarker value** — open the patient → **Biomarkers** tab → pick (or search) the biomarker → **Add value**. Enter value + date; interpretation against the reference range is automatic.
+- **A lab panel worth of results** — **Examinations → Upload** works without OCR too: attach the PDF/image *and* fill the results manually in the same form, or skip the file entirely and record just the values (date, provider, biomarker rows).
+- **Clinical events, medications, allergies, vaccines** — each has a plain create form on its page; no AI involvement at any point.
+
 > **The AI never writes your record.** Every AI-proposed action — adding
 > a medication, defining a biomarker, starting a journey — opens a
 > review card. You edit and approve; only then does the write happen,
@@ -291,8 +299,8 @@ review, edit, and approve.
 
 ## 12. Where to go next
 
-- [Installation Guide](./INSTALL.md) — deploy or move to production.
-- [Architecture Overview](./ARCHITECTURE.md) — tech stack, data model,
+- [Setup Wizard](./SETUP_WIZARD.md) — the guided onboarding checklist that tracks first-time configuration per role (and stays reopenable).
+- [Architecture Overview](./ARCHITECTURE.md) — system diagram, data model,
   biomarker engine, AI pipeline.
 - [AI System & Configuration](./AI_SYSTEM.md) — providers, models, the
   agentic chat tools, per-tenant model config.
@@ -300,4 +308,6 @@ review, edit, and approve.
   labs, webhooks, FHIR server sync, MCP.
 - [REST API Reference](./API.md) and [FHIR R4 Facade](./FHIR_R4_FACADE.md)
   — for building on top of Health Assistant.
-- [Visual Tour](./SCREENSHOTS.md) — screenshots of every page.
+- [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) — populate a scratch instance with realistic demo data in minutes.
+- [Task Debugging Guide](./TASK_DEBUGGING_GUIDE.md) — what to do when an upload or extraction is stuck or failed.
+- [Visual Tour](./SCREENSHOTS.md) — a guided screenshot tour.

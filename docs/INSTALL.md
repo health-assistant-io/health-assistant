@@ -50,7 +50,7 @@ Docker is the fastest way to get up and running. Everything (UI, API, task monit
 
 ### What the installer configures (and what it doesn't)
 
-Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
+Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `HA_TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
 
 - **AI features** — OCR, document extraction, and the chat assistant need an **AI provider key**, configured in-app (System Admin → AI) or via the `OPENAI_*` env vars. The app runs fine without one; you just don't get the AI features.
 - **Demo mode, the Flower task monitor, and anatomy expansion packs** exist but aren't needed for a first install — see [Advanced & Reference](#advanced--reference).
@@ -102,7 +102,7 @@ Three `.env` variables redirect the images without editing the compose file:
 **Pin a release** — recommended for production, so an upstream `latest` push can't change your running version. Add to `.env`:
 
 ```bash
-IMAGE_TAG=0.3.2   # example — use a tag published to your registry (see CHANGELOG.md)
+IMAGE_TAG=0.8.0   # example — use a tag published to your registry (see CHANGELOG.md)
 ```
 
 **Run from source** — no registry, offline, or a modified build. Build and tag the images locally first; `docker compose up` then reuses them:
@@ -120,7 +120,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 > [SECURITY.md](../SECURITY.md); this checklist is the operator-side
 > minimum.
 
-- [ ] **Set the §8 key family** *(handled by `setup_env.py` if used)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
+- [ ] **Set the per-purpose key family** *(handled by `setup_env.py` if used)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
   - `HA_SESSION_KEY` (signs session JWTs + api/invite/download kinds): `python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))"`
   - `HA_REFRESH_KEY` (signs refresh JWTs only): same command, a **different** value — boot refuses shared/partial/weak pins
   - `HA_DATA_KEY` (Fernet at-rest key; never signs): `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` — pre-H4 deployments rename their `INTEGRATION_SECRET_KEY` value here (same value, every sealed ring keeps decrypting); put a retired key in `HA_DATA_KEY_PREVIOUS` when rotating
@@ -133,12 +133,12 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Set `HA_APP_ENV=production`
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
-- [ ] Set up database backups
+- [ ] Set up database backups — built in: `scripts/backup.sh` / `scripts/restore.sh`, plus the in-app [Export & Import](./EXPORT_IMPORT.md) (FHIR Bundle + ZIP with SHA256 manifest)
 - [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`)
 - [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS)
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation); unsigned requests are rejected
-- [ ] Set `TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
+- [ ] Set `HA_TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
 - [ ] Set `REDIS_PASSWORD` — the docker stacks require it and Redis runs with `requirepass`
 - [ ] API docs (`/docs`) are disabled in production by default; set `ENABLE_API_DOCS=true` only if you understand the exposure
 
@@ -235,7 +235,7 @@ Common causes: an existing `.env` with stale or placeholder secrets, or a port c
 ### Backend Import Errors
 
 ```bash
-cd backend && # (uv manages the environment) && python -c "from app.main import app"
+cd backend && python -c "from app.main import app"
 ```
 
 ### Database Connection Error
@@ -337,7 +337,8 @@ Nodes are upserted by `slug` (existing nodes update, nothing is deleted); edges 
 ## See also
 
 - [Getting Started Guide](./GETTING_STARTED_GUIDE.md) — first-hour walkthrough after install (add a person, upload a lab, configure AI, connect a wearable)
-- [Architecture Overview](./ARCHITECTURE.md) — tech stack, data model, biomarker engine, AI pipeline
+- [Architecture Overview](./ARCHITECTURE.md) — system diagram, data model, biomarker engine, AI pipeline
+- [Export & Import (Backup)](./EXPORT_IMPORT.md) — built-in FHIR/ZIP backup and restore
 - [Development Guide](./DEVELOPMENT.md) — local dev setup with hot-reload
 - [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) — how catalogs, taxonomy, and anatomy reconcile on boot
 - [Tenancy & User Management](./TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, invite tokens

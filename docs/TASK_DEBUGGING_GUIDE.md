@@ -296,3 +296,49 @@ LIMIT 50;
 - [AI_SYSTEM.md](AI_SYSTEM.md) — the AI provider factory + OCR/NLP pipeline
 - [DEVELOPMENT.md](DEVELOPMENT.md) — running the full dev stack (API + worker + beat)
 - [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) — deterministic demo data
+
+---
+
+## Appendix: the logging components (internals)
+
+What produces the signals the guide above reads.
+
+### TaskLogger (`backend/app/workers/task_logger.py`)
+
+A structured logger for Celery tasks, designed security-first: no API keys or credentials in logs, structured JSON for parsing, error categorization for monitoring, and tenant isolation in the log context.
+
+- Auto-redacts sensitive keys (`api_key`, `token`, `secret`, …) and truncates long strings (>100 chars).
+- Emits `start` / `progress` / `success` / `error` events.
+- Categorizes errors: `configuration`, `file`, `api`, `validation`, `system`.
+
+**TaskProgressTracker** mirrors status into the database in real time (document + examination status, error messages on failure). **TaskTimeoutMonitor** detects stalled tasks (default 5 minutes, `max_duration_seconds=300`), prevents infinite loops, and returns the remaining seconds before timeout.
+
+### Structured log line shape
+
+```json
+{
+  "timestamp": "2026-03-17T10:30:00Z",
+  "level": "ERROR",
+  "task_name": "ocr_document",
+  "task_id": "uuid",
+  "tenant_id": "uuid",
+  "message": "Error in file_check",
+  "data": {
+    "error_type": "file",
+    "error_class": "FileNotFoundError",
+    "error_message": "File not found..."
+  },
+  "duration_seconds": 2.5
+}
+```
+
+### Monitoring metrics & alert thresholds
+
+Health indicators: processing count (should be low), stalled count (should be 0), age distribution (most < 5 minutes), error rate (< 5%).
+
+| Alert | Threshold |
+|---|---|
+| Stalled tasks | > 0 → investigate |
+| Processing age | > 10 min → retry |
+| Error rate | > 10% → check config |
+| Timeout rate | > 5% → optimize |

@@ -30,8 +30,8 @@
       {
         "id": "setup-wizard",
         "file": "SETUP_WIZARD.md",
-        "title": "Setup Wizard (Guided Onboarding)",
-        "description": "How Health Assistant's guided setup wizard works — role checklists, per-patient wizards, the persistent popup drawer, guided AI config sub-steps, how to add steps, and how to reopen/reconfigure later. Backend-derived completion; no onboarding-state table."
+        "title": "Guided Onboarding (Setup Wizard)",
+        "description": "How Health Assistant's guided onboarding works — role checklists, per-patient wizards, the persistent popup drawer, guided AI config sub-steps, and how to reopen/reconfigure later. Backend-derived completion; no onboarding-state table."
       },
       {
         "id": "architecture",
@@ -45,12 +45,6 @@
     "category": "Core Systems",
     "icon": "Server",
     "items": [
-      {
-        "id": "project-structure",
-        "file": "PROJECT_STRUCTURE.md",
-        "title": "Repository Structure",
-        "description": "Codebase layout of Health Assistant, the self-hosted, open-source health records platform: FastAPI backend, React/Vite frontend, Integrations SDK, and documentation."
-      },
       {
         "id": "tenancy-and-user-management",
         "file": "TENANCY_AND_USER_MANAGEMENT.md",
@@ -133,7 +127,7 @@
         "id": "fhir-r4-facade",
         "file": "FHIR_R4_FACADE.md",
         "title": "FHIR R4 Facade",
-        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 19 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
+        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 20 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
       },
       {
         "id": "integrations-framework",

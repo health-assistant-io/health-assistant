@@ -126,7 +126,7 @@ All under `/api/v1`, JWT-auth required.
 - **Upsert by id with cross-tenant remapping**: for each FHIR resource, if the imported `id` already exists **in the same tenant** → update in place; if it exists in a **different tenant** → generate a new UUID, record the remap, **and surface a warning** in the ImportJob result (e.g. `"Patient/<id> already exists in tenant <other>; created new with id <new>"`) so collisions are visible. All reference-bearing fields (`subject`/`patient`/`performer`/`partOf`/`context`/`encounter`/`author`/`device`/`specimen`/`sender`/`recipient`) are rewritten through the remap dict; bare `urn:uuid:` references are routed to the correct resource type via a `FIELD_HINT_TO_TYPE` map + bundle look-ahead (ambiguous hints like `sender`/`recipient` are resolved by finding the referenced resource's type in the bundle).
 - **Provenance per entry**: every created/updated/deleted entry records a `Provenance` resource (best-effort — never aborts the import) with the `CREATE`/`UPDATE`/`DELETE` activity code, the importing user as the agent, and an `ImportJob/<id>` reference in `entity_inputs` so bulk-import Provenance is distinguishable from facade-write Provenance.
 - **`BundleRestoreResult`**: `ImportService.restore_fhir_bundle` returns a dataclass with `created`/`updated`/`deleted`/`skipped`/`errors`/`warnings`/`id_remap` fields (attribute access). *Breaking change* (was a 5-tuple prior to v0.3.0).
-- **Telemetry**: the `telemetry_data` hypertable has no `patient_id` column, so for **patient** scope telemetry is **excluded** (a note is written to the manifest). For `group`/`system` scope, all tenant telemetry is included. On restore, telemetry rows are re-inserted with the destination tenant id.
+- **Telemetry**: for **patient** scope, telemetry is **excluded** (telemetry rows are tenant-scoped; a note is written to the manifest). For `group`/`system` scope, all tenant telemetry is included. On restore, telemetry rows are re-inserted with the destination tenant id.
 - **Documents**: raw files are archived under `documents/<doc_id>.<ext>`; on restore they're written back to `UPLOAD_DIR/<tenant_id>/<new-uuid>.<ext>` and `DocumentModel.file_path` is rebased. OCR `extracted_text`/`entities` are preserved (no re-OCR needed).
 - **Integrations**: `user_integrations.user_config` is exported **with Fernet-encrypted secrets intact** (the `{"_encrypted": ...}` tokens) plus plaintext OAuth `access_token`/`refresh_token`. **Restoring on a deployment with a different `HA_DATA_KEY` will leave secrets undecryptable** — the rows import, but the integration will fail to authenticate. A warning is added if `HA_DATA_KEY` is unset on the target. Never use the `mask_fields` helper in the export path.
 - **AI config** (`ai_config.json`): exported only when `scope=system` and `include_ai_config=true`. **Restore is not supported in v1** (export-only) — a warning is recorded. `api_key` values are exported as-is (they're already plaintext in the DB).
@@ -139,7 +139,7 @@ All under `/api/v1`, JWT-auth required.
 
 Export/import are **async Celery tasks** (long jobs don't block the request):
 1. `POST /export` (or `/import/backup`) creates an `ExportJobModel`/`ImportJobModel` row (`PENDING`) and calls `export_backup.delay(job_id)` / `import_backup.delay(job_id, archive_path, user_id)`.
-2. The task binds a fresh session to the **worker-scoped shared engine** via `get_async_session()` (audit A7 — engine is a singleton with `NullPool`, never disposed per task), runs `ExportService.run_export` / `ImportService.run_import`, and updates the job row (`PROCESSING` → `COMPLETED`/`PARTIAL`/`FAILED`).
+2. The task binds a fresh session to the **worker-scoped shared engine** via `get_async_session()` (the engine is a singleton with `NullPool`, never disposed per task), runs `ExportService.run_export` / `ImportService.run_import`, and updates the job row (`PROCESSING` → `COMPLETED`/`PARTIAL`/`FAILED`).
 3. The import task deletes the temp upload file in `finally`.
 4. Poll `GET /export/jobs/{id}` (or `/import/jobs/{id}`) for progress; download via `GET /export/jobs/{id}/download`.
 
@@ -149,29 +149,10 @@ Generated files are written to `UPLOAD_DIR/exports/<tenant_id>/`. There is no au
 
 ## 8. Adding it to a new deployment
 
-`fhir.resources` is in `backend/pyproject.toml`. The migration `2f60048dd5ec_add_export_import_jobs_tables` creates the `export_jobs` and `import_jobs` tables. Run `alembic upgrade head` after pulling.
+`fhir.resources` is in `backend/pyproject.toml`. The `export_jobs` and `import_jobs` tables are created by the consolidated Alembic baseline (`8ddb7ef7ca4d`). Run `alembic upgrade head` after pulling.
 
 ---
 
 ## 9. Frontend UI
 
-A dedicated page is available at **`/settings/export-import`** (admin-only — `ADMIN` and `SYSTEM_ADMIN` roles). It's wired into the Sidebar under **Settings → Export & Import**.
-
-**Files**: `frontend/src/pages/Settings/ExportImport.tsx`, `frontend/src/services/backupService.ts` (named async fns wrapping the REST endpoints), `frontend/src/services/backupService.test.ts` (vitest), `frontend/src/types/backup.ts` (TS mirrors of the backend Pydantic schemas). Route registered in `frontend/src/App.tsx` (wrapped in the `(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN')` block). Sidebar entry in `frontend/src/components/layout/Sidebar.tsx` with `roles: ['ADMIN', 'SYSTEM_ADMIN']`. i18n keys under the `backup` namespace in `frontend/src/locales/{en,el}/common.json`.
-
-### Page layout
-- **Tabbed interface** (inline-tab pattern from `AIConfig`): **Export** and **Import**.
-- **Export tab**: scope `<select>` (`patient`/`group`/`system` — options disabled if the user lacks the role), format `<select>` (`fhir_only`/`full_backup`/`catalog_only` with inline descriptions), patient multi-select (radio for `patient` scope, checkboxes for `group`; `USER` role sees their linked patient as a read-only note), option toggles for `include_documents`/`include_telemetry`/`include_integrations`/`include_ai_config` (shown only for `full_backup`, AI config only for `SYSTEM_ADMIN` + `system` scope), and a **Start export** button that enqueues the Celery task.
-- **Import tab**: a dashed-border dropzone accepting `.zip`/`.json`, an info panel explaining the format/tenant/secret-key caveats, and a confirmation modal (`useUIStore.showConfirmation` with `confirmVariant: 'danger'`) before the restore is actually fired — protecting against accidental overwrites.
-- **Job tables**: both tabs show a job history table (created, scope/type, status badge with inline progress bar, size, resource counts, download button). The import table additionally shows `manifest_verified` / `fhir_validated` ticks and error/warning counts.
-- **Polling**: when a job is created, the page starts a 3s `setInterval` poller (the existing project pattern from `ExaminationDetail.tsx`) keyed on the job id, updates the row in place, stops when status reaches `COMPLETED`/`FAILED`/`PARTIAL`, fires a `react-toastify` toast, and self-clears after a 5-minute stall timeout. Intervals are tracked in a `useRef` map and cleaned up on unmount.
-- **Toasts**: `toast.success` / `toast.error(err.response?.data?.detail || ...)` per the project convention.
-- **Download**: uses the `triggerDocumentDownload` blob pattern from `documentService.ts` — `api.get(..., { responseType: 'blob' })` → `window.URL.createObjectURL` → synthetic `<a>` click.
-
-### Verification
-- `npx tsc --noEmit` — passes.
-- `npm run lint` — 0 errors / 0 warnings in the new files.
-- `npm run build` — passes (tsc + vite build + SW).
-- `npx vitest run` — 22 tests pass (6 new in `backupService.test.ts` + 16 existing).
-
-No frontend store was added — the page is stateless and tracks everything in local `useState`, matching the admin-page convention (`CatalogManagement`, `TenantManagement`).
+Admins reach the feature at **Settings → Export & Import** (`/settings/export-import`, `ADMIN`+). Two tabs — Export (scope, includes, trigger) and Import (upload, dry-run, history) — with a confirmation modal before any mutating run. Job progress polls live from the jobs tables; no page reload needed.

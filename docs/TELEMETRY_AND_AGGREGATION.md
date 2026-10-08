@@ -1,6 +1,6 @@
 # Telemetry & TimescaleDB Architecture
 
-This document tracks the design decisions and architecture for handling high-frequency health data (IoT devices, wearables, continuous monitors) in Health Assistant.
+How Health Assistant handles high-frequency health data (IoT devices, wearables, continuous monitors): a long-format hypertable, continuous aggregates for downsampling, and how the read APIs surface it.
 
 ## The Problem
 Standard clinical data maps beautifully to the HL7 FHIR `Observation` model. A blood test taken once every 3 months is easily stored in the `fhir_observations` PostgreSQL table.
@@ -140,7 +140,11 @@ ingest.
 
 ## Future Considerations (Roadmap)
 - **FHIR Interoperability Boundary:** The split architecture inherently moves high-frequency telemetry data outside of strict FHIR compliance. Currently, when exporting patient records to FHIR, telemetry data is excluded. Future versions will need to dynamically downsample and map TimescaleDB data back into FHIR `Observation` bundles during export.
-- **Continuous-aggregate-based anomaly detection:** `get_telemetry_anomalies` still runs the detector in Python over raw rows; SQL-side downsampling via the CAggs is a separate improvement.
+- **Continuous-aggregate-based anomaly detection:** `GET /telemetry/anomalies` currently runs the detector in Python over raw rows; SQL-side downsampling via the CAggs is a separate improvement.
+
+## Read APIs
+
+Besides the write path (`POST /telemetry/data`), the same router serves reads used by the dashboard and AI tools: `GET /telemetry/data` (filtered history), `GET /telemetry/data/summary` (per-metric aggregates), and `GET /telemetry/anomalies` (outlier detection). See the API reference for parameters.
 
 ## Unified Clinical View (UI & AI Integration)
 Despite the data being physically split across two different database engines, both the frontend and the AI Chatbot provide a unified longitudinal view.

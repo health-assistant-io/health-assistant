@@ -2,6 +2,8 @@
 
 Health Assistant has a modular, in-app **guided setup** system that walks every user through initial configuration — and stays available for later reconfiguration. It is **backend-derived** (completion is computed from live data, not stored in a state table) and **always reopenable** (no first-run-only gate).
 
+> **Not to be confused with the first-run setup wizard:** right after installing, a fresh instance redirects to a one-time **admin-creation wizard** (`/setup?token=…`) where you claim the instance and pick the first admin's email/password. That flow is part of [INSTALL.md](INSTALL.md) (first-run). *This* document is about the **guided onboarding checklist** the admin (and every user) sees afterwards at `/setup/wizard`.
+
 ## How it works — the 30-second mental model
 
 1. The backend computes a **checklist** of steps via `GET /api/v1/setup/checklist`. Each step has a `completed` bit derived from the actual database state (e.g. "does a patient exist?", "does an AI provider exist?").
@@ -166,76 +168,6 @@ Inside the wizard, every step — completed or not — shows a **"Manage"** butt
 
 ---
 
-## Adding a new step (developer guide)
-
-### Backend — one evaluator + one registry entry
-
-Steps are pluggable evaluators in `backend/app/services/setup_checklist_service.py`:
-
-```python
-async def my_evaluator(db, user: TokenData, scope: dict) -> StepResult:
-    completed = ...  # boolean derived from live data
-    return _step(
-        "my_namespace.my_step",     # stable id
-        "setup.steps.my_namespace.my_step",  # i18n key
-        "redirect",                 # redirect | inline_form | external_config | derived
-        completed=completed,
-        optional=False,
-        payload_hint={"route": "/my-page"},
-    )
-```
-
-Add it to the right registry tuple:
-- `ROLE_CHECKLISTS[Role.ADMIN]` for role steps.
-- `ENTITY_CHECKLISTS["patient"]` for patient-entity steps.
-
-The endpoint, schema, and frontend pick it up automatically — the wizard is data-driven.
-
-### Guided sub-steps (like AI config)
-
-For a step that should guide through multiple sub-pages (like AI's provider → model → tasks):
-
-```python
-return _step(
-    "my.complex_config",
-    "setup.steps.my.complex_config",
-    "external_config",
-    completed=all_done,
-    optional=True,
-    payload_hint={"sub_steps": [
-        {"id": "part_a", "done": part_a_done, "route": "/my-page?tab=a"},
-        {"id": "part_b", "done": part_b_done, "route": "/my-page?tab=b"},
-    ]},
-)
-```
-
-The frontend's `GuidedExternalStep` renderer automatically picks up the `sub_steps` and renders the guided checklist — no frontend code needed.
-
-### Frontend — i18n + description
-
-Add the step's title + description to both `frontend/src/locales/en/common.json` and `el/common.json`:
-
-```json
-"setup": {
-  "steps": {
-    "my_namespace": {
-      "my_step": "Step Title"
-    }
-  },
-  "step_desc": {
-    "my_namespace.my_step": "Explanation shown in the wizard's accordion card."
-  }
-}
-```
-
-For `redirect` / `external_config` / `derived` steps, no frontend component is needed — the existing renderers handle them. For `inline_form` steps, register a section component in `components/setup/sections/registry.ts`.
-
-### RBAC
-
-Patient-entity checklist steps run after `check_patient_access` (`USER` → own patient only; `ADMIN`/`MANAGER`/`SYSTEM_ADMIN` → tenant-scoped). No new auth surface.
-
----
-
 ## Patient extensions (FHIR R4 demographics)
 
 The patient wizard covers US Core demographics via a FHIR R4 `extensions` JSONB column on `fhir_patients`:
@@ -248,49 +180,3 @@ The patient wizard covers US Core demographics via a FHIR R4 `extensions` JSONB 
 | Insurance provider | HA custom | `extensions['insurance_provider']` |
 
 The registry lives in `backend/app/services/fhir_extensions.py`. `Patient.to_fhir_dict()` projects the local map onto a canonical FHIR `extension[]` array. The client renders the extension inputs from `GET /setup/extension-catalog` (data-driven CDC OMB code lists).
-
----
-
-## File map
-
-### Backend
-| File | Responsibility |
-|---|---|
-| `backend/app/services/setup_checklist_service.py` | The two evaluator registries (`ROLE_CHECKLISTS`, `ENTITY_CHECKLISTS`) + the `SetupChecklistService` + extension-catalog builder. Adding a step = one evaluator + one registry entry. |
-| `backend/app/schemas/setup_checklist.py` | `StepResult`, `SetupChecklistResponse`, `ExtensionCatalogItem/Response`. |
-| `backend/app/api/v1/endpoints/setup_checklist.py` | `GET /setup/checklist` + `GET /setup/extension-catalog`. |
-| `backend/app/services/fhir_extensions.py` | The 4-extension registry + FHIR canonical conversion. |
-| `backend/data/seeds/omb_race_ethnicity.json` | CDC OMB race/ethnicity/language picklist seed. |
-| `backend/tests/test_setup_checklist_service.py` | 24 tests: step shapes, completion flips, route correctness, sub_steps payload, extension catalog. |
-
-### Frontend
-| File | Responsibility |
-|---|---|
-| `pages/Setup/RoleSetupWizard.tsx` | The full-page role wizard (`/setup/wizard`). Two-pane `SetupLayout` + `StepRenderer`. |
-| `pages/Patients/PatientSetupWizard.tsx` | The per-patient wizard (`/patients/:id/setup`). |
-| `components/setup/SetupWizardDrawer.tsx` | The persistent popup drawer — accordion cards, minimize-to-badge, click-outside-collapse, floating reopen badge. |
-| `components/setup/SetupLayout.tsx` | Two-pane shell (stepper + active step panel). Shared by role + patient wizards. |
-| `components/setup/SetupProgressRing.tsx` | SVG circular progress ring. |
-| `components/setup/SetupChecklistCard.tsx` | Completion card on `PatientDetail`. |
-| `components/setup/Stepper.tsx` | Vertical step list (full-page wizard left pane). |
-| `components/setup/steps/StepRenderer.tsx` | Kind dispatcher → RedirectStep / GuidedExternalStep / DerivedStep / InlineFormStep. |
-| `components/setup/steps/RedirectStep.tsx` | Simple redirect step (Open/Manage CTA). |
-| `components/setup/steps/GuidedExternalStep.tsx` | Multi-sub-step guided redirect (AI config). |
-| `components/setup/steps/DerivedStep.tsx` | Read-only status step. |
-| `components/setup/sections/` | Inline-form sections (Demographics, Contacts, Extensions) + registry. |
-| `components/setup/SubWizardShell.tsx` | Shared inline multi-step container (for future sub-wizards). |
-| `store/slices/uiSlice.ts` | `setupDrawerOpen`, `setupDrawerCollapsed`, `setupWizardActive` state. |
-| `services/setupService.ts` | `getSetupChecklist()` + `getExtensionCatalog()`. |
-| `types/setup.ts` | `SetupStep`, `SetupChecklist`, `StepPayloadHint`, `GuidedSubStep`, `ExtensionCatalog`. |
-
----
-
-## Iteration status
-
-| Iter | Scope | Status |
-|---|---|---|
-| 1 | Backend: patient `extensions` JSONB + `fhir_extensions.py` registry + `SetupChecklistService` + `GET /setup/checklist` endpoint + tests. | shipped |
-| 2 | Frontend: `/patients/:id/setup` wizard route + completion card on `PatientDetail` + inline-form sections (demographics, contacts, extensions) + `GET /setup/extension-catalog` + CDC OMB seed. | shipped |
-| 3 | Role wizard (`/setup/wizard`) + persistent popup drawer (accordion cards, minimize-to-badge, floating reopen) + guided AI sub-step redirect + "Resume Setup" entrypoint in user menu + `NoPatientState` fix. | shipped |
-| 4 | Doctor + Organization advanced wizards + checklist evaluators; fix the `org_type` never-set bug on the existing create form. | planned |
-| 5 | Optional `dismissed_steps` persistence in `users.settings`; typed `UserPreferencesResponse` schema. | planned |

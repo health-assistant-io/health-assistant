@@ -88,15 +88,10 @@ docker compose --env-file .env -f docker/docker-compose.dev.yml up --build
 *(Note: This approach isolates your environment completely, but hot-reloading may be slightly slower depending on your operating system's file-sharing performance with Docker).*
 
 ### Environment Configuration
-- **Backend**: Requires `OPENAI_API_KEY` for OCR/NLP functionality.
+- **Backend**: AI features need a provider — `OPENAI_API_KEY` is the quickest path, but any OpenAI-compatible endpoint works and providers can be configured per tenant at runtime (see [AI_SYSTEM.md](AI_SYSTEM.md)). Everything else runs without one.
 - **Frontend**: Configured via `VITE_API_URL`.
 
-## Recent Changes & Optimizations
-- **Decoupled Telemetry Aggregation:** Separated temporal scoping from aggregation resolution (TimescaleDB gapfilling), complete with real-time CLI migration scripts located in `backend/scripts/`.
-- **In-App Viewers**: Replaced external downloads with full-screen Image, PDF, and Text viewers.
-- **Smart Interpretation**: Added automated status detection (High/Low/Normal) for all biomarkers based on clinical reference ranges.
-- **Enhanced Timeline**: Implemented clinical-interval filtering (Last 30 Days, Custom Range, etc.) in the Examinations list.
-- **Safe Deletion**: Implemented cascaded deletion that cleans up physical files and extracted health data when an examination is removed.
+Requirements: **Python 3.12+** (uv manages the backend environment — `uv sync --frozen`, `uv run …`) and **Node 24+** for the frontend.
 
 ### Manual Start
 
@@ -190,7 +185,7 @@ python -c "import asyncio; from app.core.database import AsyncSessionLocal; from
 canonical taxonomy/anatomy/catalog in a running instance (UI + AI), then
 snapshot it into `data/seeds/`. `SeedExportService`
 (`backend/app/services/seed_export_service.py`) emits the slug-keyed format
-for all nine seed files; output is deterministic so `git diff` is clean.
+for all seed files; output is deterministic so `git diff` is clean.
 ```bash
 python scripts/export_seeds.py --dry-run           # preview counts
 python scripts/export_seeds.py                     # global -> data/seeds (backed up)
@@ -360,3 +355,63 @@ python3 scripts/version_manager.py release --git --push
 ## Code Style
 - **Backend**: PEP 8, Type hints, Google-style docstrings.
 - **Frontend**: Functional components, TypeScript for all props/state, Tailwind for layout.
+
+## Contributor recipes
+
+Recipes for the most common extension points. Each lives here so the user-facing docs stay operator-focused.
+
+### Extending the setup wizard
+
+Steps are pluggable evaluators in `backend/app/services/setup_checklist_service.py`:
+
+```python
+async def my_evaluator(db, user: TokenData, scope: dict) -> StepResult:
+    completed = ...  # boolean derived from live data
+    return _step(
+        "my_namespace.my_step",     # stable id
+        "setup.steps.my_namespace.my_step",  # i18n key
+        "redirect",                 # redirect | inline_form | external_config | derived
+        completed=completed,
+        optional=False,
+        payload_hint={"route": "/my-page"},
+    )
+```
+
+Add it to the right registry tuple — `ROLE_CHECKLISTS[Role.ADMIN]` for role steps, `ENTITY_CHECKLISTS["patient"]` for patient-entity steps. The endpoint, schema, and frontend pick it up automatically (the wizard is data-driven). Guided multi-page steps use `"external_config"` with a `payload_hint={"sub_steps": [{"id", "done", "route"}, …]}` — the frontend's `GuidedExternalStep` renders the checklist with no frontend code. Add the step's title/description to both `frontend/src/locales/{en,el}/common.json` under `setup.steps` / `setup.step_desc`; `inline_form` steps also register a section component in `components/setup/sections/registry.ts`. Patient-entity steps run after `check_patient_access` (`USER` → own patient only).
+
+Key files: `setup_checklist_service.py` (evaluator registries + extension-catalog builder), `schemas/setup_checklist.py`, `api/v1/endpoints/setup_checklist.py`, `services/fhir_extensions.py`, `data/seeds/omb_race_ethnicity.json`; frontend: `pages/Setup/RoleSetupWizard.tsx`, `pages/Patients/PatientSetupWizard.tsx`, `components/setup/**` (drawer, layout, stepper, step renderers, inline sections + registry), `services/setupService.ts`, `types/setup.ts`.
+
+### Adding a new notification source
+
+The unified model means **you don't add new "types of notifications" — you add new sources that call `emit`**:
+
+1. Pick or add a `NotificationSource` enum value in `backend/app/models/enums.py` (new `NotificationType`/`NotificationCategory` values work the same way; migration required).
+2. Call `emit` from your service:
+
+```python
+from app.services.notification_service import emit
+from app.models.enums import (
+    NotificationSource, NotificationType, NotificationCategory,
+    NotificationSeverity, RecipientKind,
+)
+
+await emit(
+    source=NotificationSource.BILLING,
+    type=NotificationType.SYSTEM_BROADCAST,
+    category=NotificationCategory.SYSTEM,
+    severity=NotificationSeverity.WARNING,
+    title="Invoice overdue",
+    body="Your subscription invoice is 7 days overdue.",
+    tenant_id=tenant_uuid,
+    targets=[{"kind": RecipientKind.USER.value, "id": str(user_id)}],
+    payload={"invoice_id": str(invoice_id)},
+)
+```
+
+3. (Frontend) add a category icon case in `frontend/src/components/layout/NotificationBell.tsx` if you added a category.
+
+The bell, WebSocket fan-out, inbox, admin feed, delivery log, and detail modals all light up automatically — they're driven by the unified tables. See [NOTIFICATION_SYSTEM.md](NOTIFICATION_SYSTEM.md) for the operator view.
+
+### Taxonomy internals (schema + naming)
+
+The taxonomy schema is part of the consolidated Alembic baseline (`alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`). Legacy link tables (`biomarker_relationships`, `biomarker_event_correlations`, `anatomy_relations`) were folded into `concept_edges` — biomarker↔biomarker → `CORRELATES_WITH`, biomarker↔event-type → `MONITORS` (with `correlation_type`/`description` on the edge's `properties` JSONB); the clinical-event binding endpoints and the recommended-biomarker insight query `concept_edges`. Concept FK naming is pinned by `backend/tests/test_concept_fk_naming_convention.py`.

@@ -35,13 +35,20 @@ BANNED_PATTERNS: tuple[str, ...] = (
     r"ai-features",
     r"family-uniform|family-wide|family dev repo|family convergence",
     r"family-standard|family chat slot|family vocabulary|family min-10",
-    r"`(?:backend|frontend|ai-pipeline|clinical-data|integrations|mobile|documentation|versioning|seeding|hitl-task-cards)` §",
+    r"`(?:backend|frontend|ai-pipeline|clinical-data|integrations|mobile|documentation"
+    r"|versioning|seeding|hitl-task-codes?|hitl-task-cards)` §",
     r"home\.arpa|/home/ilias",
 )
 
-MOVED_OUT_DOCS = ("RELEASE_PROCESS.md", "DEVELOPMENT_PLAN.md", "STATUS.md")
+MOVED_OUT_DOCS = (
+    "RELEASE_PROCESS.md",
+    "DEVELOPMENT_PLAN.md",
+    "STATUS.md",
+    "PROJECT_STRUCTURE.md",
+    "TASK_DEBUGGING.md",
+)
 
-REPO_ONLY_DOCS = {"TASK_DEBUGGING.md", "UI_CAPTURE_PIPELINE.md"}
+REPO_ONLY_DOCS = {"UI_CAPTURE_PIPELINE.md"}
 
 
 def _public_surfaces() -> list[Path]:
