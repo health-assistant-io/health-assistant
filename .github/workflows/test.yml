@@ -45,7 +45,7 @@ jobs:
       # got the binary — `uv sync`/`uv run` died with exit 127. Family
       # pattern (career/study ci.yml): astral-sh/setup-uv.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
 

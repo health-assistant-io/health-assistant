@@ -27,7 +27,7 @@ jobs:
       # exit 127. Same fix as test.yml (dbc5b02); family pattern
       # (career/study ci.yml): astral-sh/setup-uv.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
       - name: Install pip-audit
