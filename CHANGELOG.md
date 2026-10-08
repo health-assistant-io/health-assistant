@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **frontend(deps): assistant-ui 0.49.0 → 0.50.1 (2026-10-08):** bumped the
+  family UI library to its latest release. `InstanceModeControl` (+ subpath
+  export) is now available in the library but not yet adopted here; includes
+  a combobox accessibility fix and a direct `katex: ^0.19.0` dependency
+  aligning with this frontend's existing `katex ^0.19.0` override.
 - **Docs overhaul — accuracy, deduplication, structure (2026-10-08):** full
   audit of the public docs against the codebase. Factual fixes: wrong env var
   (`TRUSTED_PROXY_COUNT` → `HA_TRUSTED_PROXY_COUNT`), stale FHIR resource
