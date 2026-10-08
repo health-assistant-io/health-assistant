@@ -284,7 +284,7 @@ jobs:
             # Reverse-proxy chain depth for rate-limit identity (audit 2026-08
             # AUTH-H1). This stack fronts the backend with a host proxy on
             # 127.0.0.1, so exactly 1 trusted hop.
-            TRUSTED_PROXY_COUNT=${{ secrets.TRUSTED_PROXY_COUNT || '1' }}
+            HA_TRUSTED_PROXY_COUNT=${{ secrets.HA_TRUSTED_PROXY_COUNT || '1' }}
             
             # PostgreSQL Secrets
             POSTGRES_DB=${{ secrets.POSTGRES_DB || 'neuronection_health' }}
