@@ -66,8 +66,13 @@ jobs:
       # ships no uv binary — `uv sync` died with `uv: command not found`
       # (exit 127) since run #167. Gitea twin of the GitHub-side plan 23 F1
       # fix (dbc5b02); family pattern (career/study ci.yml): setup-uv.
+      # v7 (node24-declared) verified safe on the runner 2026-10-08: the
+      # pulled docker.gitea.com/runner-images:ubuntu-latest
+      # (sha256:0e62e56b…) ships node 24.19.0 as the PATH default, and
+      # act_runner v0.6.1 executes every JS action with plain PATH `node`
+      # regardless of the declared major — v5 was already running on v24.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
 
