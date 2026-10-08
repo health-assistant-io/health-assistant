@@ -265,16 +265,22 @@ jobs:
             
             # Application
             DEBUG=false
-            # Single source of truth: the APP_URL secret is the public origin
-            # users type in the browser. FRONTEND_URL is the same origin (the
-            # standalone gateway serves app + API on one port), and the
-            # gateway's HTTP_PORT is derived from the URL's port part below —
-            # one knob, so the compose publish and the app's own URL can
-            # never drift apart. Production validates the Host header against
-            # these (audit 2026-08 CFG-L1); they also drive CORS and the
-            # OAuth issuer.
+            # Single source of truth: the APP_URL secret is the canonical
+            # public origin users type in the browser. FRONTEND_URL and
+            # HTTP_PORT are OPTIONAL overrides for the fronted-by-another-
+            # proxy topology (TLS proxy on :443 -> gateway on :8090):
+            #   - FRONTEND_URL unset -> same origin as APP_URL (single-origin
+            #     gateway, the common case). Set it to a SECOND public origin
+            #     (e.g. the direct http address) to add that host to the
+            #     TrustedHost allowlist and CORS list.
+            #   - HTTP_PORT is derived from APP_URL's port part below; set the
+            #     secret only when a front proxy publishes the canonical port
+            #     and the gateway itself publishes a different one.
+            # Production validates the Host header against these (audit
+            # 2026-08 CFG-L1); they also drive CORS and the OAuth issuer.
+            # With a front proxy hop, also set HA_TRUSTED_PROXY_COUNT=2.
             APP_URL=${{ secrets.APP_URL || 'http://localhost' }}
-            FRONTEND_URL=${{ secrets.APP_URL || 'http://localhost' }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL || secrets.APP_URL || 'http://localhost' }}
             # Per-purpose key family (identity-auth §8, plan 16 H4). The
             # single all-purpose SECRET_KEY is retired from all signing.
             HA_SESSION_KEY=${{ secrets.HA_SESSION_KEY }}
@@ -336,8 +342,10 @@ jobs:
             VAPID_ADMIN_EMAIL=${{ secrets.VAPID_ADMIN_EMAIL || 'admin@healthassistant.local' }}
             EOF
             
-            # Derive the gateway's published port from the public origin
-            # (APP_URL): explicit port wins, else 443 for https / 80 for http.
+            # Gateway published port: the optional HTTP_PORT secret wins
+            # (front-proxy topology, where the canonical port lives on the
+            # proxy), else derived from APP_URL's port part (80/443 by
+            # scheme).
             PUBLIC_ORIGIN="${{ secrets.APP_URL || 'http://localhost' }}"
             HTTP_PORT_DERIVED="$(printf '%s' "$PUBLIC_ORIGIN" | sed -nE 's|.*:([0-9]+)/?$|\1|p')"
             if [ -z "$HTTP_PORT_DERIVED" ]; then
@@ -345,6 +353,9 @@ jobs:
                     https://*) HTTP_PORT_DERIVED="443" ;;
                     *)         HTTP_PORT_DERIVED="80"  ;;
                 esac
+            fi
+            if [ -n "${{ secrets.HTTP_PORT }}" ]; then
+                HTTP_PORT_DERIVED="${{ secrets.HTTP_PORT }}"
             fi
             sed -i "s|^HTTP_PORT=.*$|HTTP_PORT=${HTTP_PORT_DERIVED}|" .env
 
