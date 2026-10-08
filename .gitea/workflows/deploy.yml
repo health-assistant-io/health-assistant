@@ -265,6 +265,13 @@ jobs:
             
             # Application
             DEBUG=false
+            # Canonical URLs (audit 2026-08 CFG-L1): production validates the
+            # Host header against APP_URL/FRONTEND_URL — without them every
+            # /api call from anything but localhost 400s (TrustedHost). Also
+            # the CORS allowlist and the OAuth issuer. Set the APP_URL secret
+            # to what users type in the browser.
+            APP_URL=${{ secrets.APP_URL || 'http://localhost:8000' }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL || 'http://localhost:3000' }}
             # Per-purpose key family (identity-auth §8, plan 16 H4). The
             # single all-purpose SECRET_KEY is retired from all signing.
             HA_SESSION_KEY=${{ secrets.HA_SESSION_KEY }}
