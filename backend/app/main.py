@@ -448,8 +448,6 @@ app.add_middleware(CsrfMiddleware)
 
 
 # Security: baseline response headers (audit A7). Applied to every response.
-# HSTS only makes sense over HTTPS and is most effective when set by the
-# reverse proxy; we still emit it so direct-HTTPS deployments are protected.
 # CSP is intentionally permissive for an API+SPA (the frontend is a separate
 # origin); tighten APP_CSP_CONTENT via env if you serve the SPA from here.
 @app.middleware("http")
@@ -462,7 +460,17 @@ async def security_headers_middleware(request: Request, call_next):
     # setdefault so an explicit per-route value wins. See documents.py.
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # HSTS only when the browser's connection actually arrived over TLS.
+    # Emitting it on a plain-HTTP response is at best noise and, behind a
+    # proxy that also serves the host on an https listener without a
+    # browser-trusted certificate, pins every visitor to that broken https
+    # for a year (the 2026-10 http-only LAN deployment class). Behind a
+    # proxy the real client scheme arrives via X-Forwarded-Proto (set by
+    # nginx.conf) — take the first (client-side) hop only.
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    client_proto = forwarded_proto.split(",")[0].strip() or request.url.scheme
+    if client_proto == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
