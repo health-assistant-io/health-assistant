@@ -265,13 +265,16 @@ jobs:
             
             # Application
             DEBUG=false
-            # Canonical URLs (audit 2026-08 CFG-L1): production validates the
-            # Host header against APP_URL/FRONTEND_URL — without them every
-            # /api call from anything but localhost 400s (TrustedHost). Also
-            # the CORS allowlist and the OAuth issuer. Set the APP_URL secret
-            # to what users type in the browser.
-            APP_URL=${{ secrets.APP_URL || 'http://localhost:8000' }}
-            FRONTEND_URL=${{ secrets.FRONTEND_URL || 'http://localhost:3000' }}
+            # Single source of truth: the APP_URL secret is the public origin
+            # users type in the browser. FRONTEND_URL is the same origin (the
+            # standalone gateway serves app + API on one port), and the
+            # gateway's HTTP_PORT is derived from the URL's port part below —
+            # one knob, so the compose publish and the app's own URL can
+            # never drift apart. Production validates the Host header against
+            # these (audit 2026-08 CFG-L1); they also drive CORS and the
+            # OAuth issuer.
+            APP_URL=${{ secrets.APP_URL || 'http://localhost' }}
+            FRONTEND_URL=${{ secrets.APP_URL || 'http://localhost' }}
             # Per-purpose key family (identity-auth §8, plan 16 H4). The
             # single all-purpose SECRET_KEY is retired from all signing.
             HA_SESSION_KEY=${{ secrets.HA_SESSION_KEY }}
@@ -303,9 +306,9 @@ jobs:
             BACKEND_PORT=${{ env.BACKEND_PORT }}
             FRONTEND_PORT=${{ env.FRONTEND_PORT }}
             FLOWER_PORT=${{ env.FLOWER_PORT }}
-            # Standalone flavor: the bundled gateway's published port (the
-            # single origin users browse — /api and /ws are routed by it).
-            HTTP_PORT=${{ secrets.HTTP_PORT || '80' }}
+            # Gateway published port — filled in from APP_URL right after the
+            # heredoc (derived, not a separate secret).
+            HTTP_PORT=
             FLOWER_USER=${{ secrets.FLOWER_USER || 'admin' }}
             FLOWER_PASSWORD=${{ secrets.FLOWER_PASSWORD }}
             
@@ -333,6 +336,18 @@ jobs:
             VAPID_ADMIN_EMAIL=${{ secrets.VAPID_ADMIN_EMAIL || 'admin@healthassistant.local' }}
             EOF
             
+            # Derive the gateway's published port from the public origin
+            # (APP_URL): explicit port wins, else 443 for https / 80 for http.
+            PUBLIC_ORIGIN="${{ secrets.APP_URL || 'http://localhost' }}"
+            HTTP_PORT_DERIVED="$(printf '%s' "$PUBLIC_ORIGIN" | sed -nE 's|.*:([0-9]+)/?$|\1|p')"
+            if [ -z "$HTTP_PORT_DERIVED" ]; then
+                case "$PUBLIC_ORIGIN" in
+                    https://*) HTTP_PORT_DERIVED="443" ;;
+                    *)         HTTP_PORT_DERIVED="80"  ;;
+                esac
+            fi
+            sed -i "s|^HTTP_PORT=.*$|HTTP_PORT=${HTTP_PORT_DERIVED}|" .env
+
             # 1. Pull new images explicitly BEFORE bringing down active containers
             # This prevents downtime if network or authentication fails during pull!
             echo "Pulling new Docker images..."
