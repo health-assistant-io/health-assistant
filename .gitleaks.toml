@@ -10,6 +10,13 @@ useDefault = true
 
 [allowlist]
 description = "Test fixtures, docs placeholders, settings label keys"
+# The regexes below are written against the finding LINE (e.g.
+# `key="appearance.precision_below_10"`); gitleaks ≥8.19 defaults
+# regexTarget to the captured *secret*, which never contains the `key="`
+# prefix — so these suppressions silently never fired (found 2026-10-08:
+# full-history scan with the direct binary reported the 8 settings-key
+# findings the regexes were written for). Match the lines, as authored.
+regexTarget = "line"
 paths = [
   '''backend/tests/.*''',
   '''docs/.*''',
@@ -23,4 +30,10 @@ regexes = [
   '''key="(settings|appearance)\.''',
   # 123e4567-e89b-12d3-a456-426614174001 — RFC 4122 documented example UUID
   '''123e4567-e89b-12d3-a456-426614174001''',
+  # integrations/mcp_client/connection_manager.py transport kwargs —
+  # `auth=auth, verify=ssl_ctx` trips generic-api-key on the code text.
+  # Exact literal (a Python kwarg list, not a value); anything real
+  # containing it would not be a secret. Family style: secret-targeted
+  # exact values (career e70b392, auth-kit S7).
+  '''auth=auth, verify=ssl_ctx''',
 ]
