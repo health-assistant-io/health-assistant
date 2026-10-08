@@ -304,7 +304,7 @@ def test_write_fhir_only_file_writes_bundle_and_manifest(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FHIR_ONLY, {})
     path, size, manifest = svc.write_fhir_only_file(bundle, tid, jid, manifest)
@@ -321,7 +321,7 @@ def test_write_catalog_file_writes_catalog(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     catalog = {
         "units": [{"symbol": "mg/dL", "name": "mg/dL"}],
         "biomarkers": [{"slug": "glucose", "name": "Glucose"}],
@@ -342,7 +342,7 @@ def test_write_full_backup_zip_creates_bagit_structure(tmp_path, monkeypatch):
     jid = uuid.uuid4()
     pid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     doc = _make_doc(uuid.uuid4(), tid, pid, tmp_path)
     sidecars = {
@@ -376,7 +376,7 @@ def test_manifest_sha256_matches_file_in_zip(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     sidecars = {"x.json": [{"a": 1}]}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FULL_BACKUP, {})
@@ -401,7 +401,7 @@ async def test_run_export_fhir_only_completes(monkeypatch, tmp_path):
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -461,7 +461,7 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -528,7 +528,7 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
 async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -586,7 +586,7 @@ async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
 async def test_run_export_fail_job_on_exception(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr("app.services.document_service.UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.services.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,

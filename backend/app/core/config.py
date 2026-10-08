@@ -58,6 +58,10 @@ def _resolve_env_file() -> str | None:
 RENAMED_ENV_HINTS: dict[str, str] = {
     "APP_ENV": "HA_APP_ENV",
     "SECRET_KEY": "HA_SESSION_KEY / HA_REFRESH_KEY / HA_DATA_KEY (identity-auth §8)",
+    # Audit item e (plan 20 D2 prefixed-only): the last unprefixed infra
+    # names the config owned; prefixed-only, no compat aliases.
+    "DATABASE_URL": "HA_DATABASE_URL",
+    "UPLOAD_DIR": "HA_UPLOAD_DIR",
 }
 
 # HA_-namespace names owned by launcher/tooling, not Settings — read via
@@ -157,12 +161,14 @@ class Settings(BaseSettings):
     # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
     # neuronection_health_demo / neuronection_health_test[_gwN] via env.
     POSTGRES_DB: str = "neuronection_health"
-    DATABASE_URL: str | None = None  # gate-allow: DATABASE_URL (live health name)
+    # Full URL override — wins over the POSTGRES_* parts above (audit item
+    # e: renamed DATABASE_URL -> HA_DATABASE_URL, plan 20 D2 prefixed-only).
+    HA_DATABASE_URL: str | None = None
 
     @model_validator(mode="after")
     def assemble_db_connection(self) -> "Settings":
-        if not self.DATABASE_URL:
-            self.DATABASE_URL = (
+        if not self.HA_DATABASE_URL:
+            self.HA_DATABASE_URL = (
                 f"postgresql+asyncpg://{self.POSTGRES_USER}:"
                 f"{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:"
                 f"{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -177,17 +183,17 @@ class Settings(BaseSettings):
         """
         weak_passwords = {"", "admin123", "password", "postgres", "secret", "changeme"}
 
-        # We know DATABASE_URL is constructed by the time this runs.
+        # We know HA_DATABASE_URL is constructed by the time this runs.
         # Extract the actual password being used.
         import urllib.parse
 
-        parsed_url = urllib.parse.urlparse(self.DATABASE_URL)
+        parsed_url = urllib.parse.urlparse(self.HA_DATABASE_URL)
         active_password = parsed_url.password or ""
 
         if self.HA_APP_ENV not in ("development", "test", "testing"):
             if active_password in weak_passwords or active_password == "secure_password_here":
                 raise ValueError(
-                    "A strong database password must be provided in the DATABASE_URL "
+                    "A strong database password must be provided in the HA_DATABASE_URL "
                     f"for HA_APP_ENV={self.HA_APP_ENV!r}. Refusing to boot with insecure "
                     "database credentials."
                 )
@@ -644,8 +650,8 @@ class Settings(BaseSettings):
     MCP_PER_INSTANCE_CONCURRENCY: int = 4
     MCP_ALLOW_INSECURE_HTTP: bool = False
 
-    # File Storage
-    UPLOAD_DIR: str = "/var/healthassistant/uploads"  # gate-allow: UPLOAD_DIR (live health name)
+    # File Storage (audit item e: UPLOAD_DIR -> HA_UPLOAD_DIR, prefixed-only)
+    HA_UPLOAD_DIR: str = "/var/healthassistant/uploads"
     MAX_UPLOAD_SIZE: int = 50  # MB
 
     # Email

@@ -52,7 +52,7 @@ x-backend-env: &backend-env
   # `migrate` service uses the owner role. Both roles share POSTGRES_PASSWORD.
   POSTGRES_USER: neuronection_health_app
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-  DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
+  HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
   REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
@@ -76,7 +76,7 @@ x-backend-env: &backend-env
   VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
   VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-admin@healthassistant.local}
   APP_URL: ${APP_URL:-}
-  UPLOAD_DIR: /app/uploads  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
+  HA_UPLOAD_DIR: /app/uploads
   AI_AGENT_MAX_ITERATIONS: ${AI_AGENT_MAX_ITERATIONS:-20}
   MCP_STDIO_ALLOWED_COMMANDS: ${MCP_STDIO_ALLOWED_COMMANDS:-npx,uvx,python,python3,node}
   MCP_MAX_SERVERS_PER_USER: ${MCP_MAX_SERVERS_PER_USER:-5}
@@ -176,7 +176,7 @@ services:
     environment:
       <<: *backend-env
       POSTGRES_USER: neuronection_health_owner
-      DATABASE_URL: postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
+      HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
     depends_on:
       postgres:
         condition: service_healthy
@@ -290,7 +290,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       POSTGRES_USER: neuronection_health_app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
+      HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       redis:

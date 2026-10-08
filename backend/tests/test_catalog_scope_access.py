@@ -380,7 +380,7 @@ async def test_scope_column_exists_on_all_catalog_tables():
     from app.core.config import get_settings
 
     needed = {d.model.__tablename__ for d in CatalogRegistry.all()}
-    url = get_settings().DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    url = get_settings().HA_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
     conn = await asyncpg.connect(url)
     try:
         for table in needed:

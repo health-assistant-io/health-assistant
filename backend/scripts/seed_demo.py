@@ -38,7 +38,7 @@ written**:
 Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
 
     # The demo stack's database (docker-compose.demo.yml runs this):
-    DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\  # gate-allow: DATABASE_URL (live health env name — plan 23 D3 triage)
+    HA_DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\
         python scripts/seed_demo.py
 
     # First run against a fresh, migrated, still-empty *_demo database:
@@ -537,7 +537,7 @@ async def seed_clinical_data(session, tenant_id: UUID, patient_id: UUID, user_id
 
         from app.core.config import settings
 
-        tenant_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+        tenant_dir = Path(settings.HA_UPLOAD_DIR) / str(tenant_id)
         tenant_dir.mkdir(parents=True, exist_ok=True)
 
         project_root = Path(backend_dir).parent
@@ -978,12 +978,12 @@ async def seed(
     Raises :class:`Refusal` (exit 2 from the CLI; abort/warn via the boot
     path's ``_abort_or_warn``) when the target is not a provable demo.
     """
-    url = database_url or settings.DATABASE_URL
+    url = database_url or settings.HA_DATABASE_URL
     ensure_demo_target(url)
 
     factory = session_factory or AsyncSessionLocal
     if factory is None:
-        print("❌ Database is not available. Check DATABASE_URL in backend/.env")
+        print("❌ Database is not available. Check HA_DATABASE_URL in backend/.env")
         sys.exit(EXIT_ERROR)
 
     async with factory() as session:
@@ -1123,7 +1123,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--database-url",
         default=None,
         help=(
-            "Target database URL (else DATABASE_URL / POSTGRES_* env). "
+            "Target database URL (else HA_DATABASE_URL / POSTGRES_* env). "
             "Must be PostgreSQL named *_demo (deployment.md: "
             "neuronection_health_demo)."
         ),
@@ -1147,11 +1147,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    url = args.database_url or settings.DATABASE_URL
+    url = args.database_url or settings.HA_DATABASE_URL
 
     factory = None
     try:
-        if args.database_url and args.database_url != settings.DATABASE_URL:
+        if args.database_url and args.database_url != settings.HA_DATABASE_URL:
             # §13 target guard first: a non-PostgreSQL/non-*_demo URL must
             # REFUSE (exit 2), not crash on async-engine construction below.
             ensure_demo_target(url)

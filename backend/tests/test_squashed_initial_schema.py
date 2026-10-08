@@ -143,7 +143,7 @@ def test_every_model_table_is_created_by_the_baseline(table):
 
 def test_concept_tables_exist():
     """The unified concept tables exist after migration."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -159,7 +159,7 @@ def test_concept_tables_exist():
 
 def test_old_category_tables_dropped():
     """The legacy scattered category tables must not exist."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -183,7 +183,7 @@ def test_old_category_tables_dropped():
 
 def test_extensions_installed():
     """pgcrypto, pg_trgm, and timescaledb must be installed."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -203,7 +203,7 @@ def test_pg_enum_types_carry_every_python_enum_value():
     via ``sa.Enum(...)`` during table creation)."""
     from app.models import enums
 
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

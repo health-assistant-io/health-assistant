@@ -75,7 +75,7 @@ async def test_ingest_document_bytes_writes_file_and_db_row(
     tenant_user_patient,
 ):
     """The canonical happy path: bytes go to disk under
-    ``UPLOAD_DIR/<tenant_id>/``, a DocumentModel row lands in the DB with
+    ``HA_UPLOAD_DIR/<tenant_id>/``, a DocumentModel row lands in the DB with
     the right metadata, and the function returns the refreshed row."""
     tenant_id, user_id, _patient_id = tenant_user_patient
     content = b"%PDF-1.4\nfake pdf body\n%%EOF\n"
@@ -105,7 +105,7 @@ async def test_ingest_document_bytes_writes_file_and_db_row(
         assert doc.progress == 0
         assert doc.include_in_extraction is False
 
-        # The on-disk file lives under UPLOAD_DIR/<tenant_id>/<uuid>.pdf
+        # The on-disk file lives under HA_UPLOAD_DIR/<tenant_id>/<uuid>.pdf
         file_path = Path(doc.file_path)
         assert file_path.exists()
         assert file_path.read_bytes() == content

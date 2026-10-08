@@ -91,7 +91,7 @@ async def resolve_context(db, tenant_id: UUID, user_id: UUID, patient_id: UUID):
 async def main() -> None:
     args = parse_args()
     if not DATABASE_AVAILABLE:
-        print("❌ Database is not available. Check DATABASE_URL in backend/.env")
+        print("❌ Database is not available. Check HA_DATABASE_URL in backend/.env")
         sys.exit(1)
 
     tenant_id, user_id, patient_id = UUID(args.tenant), UUID(args.user), UUID(args.patient)

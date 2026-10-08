@@ -127,7 +127,7 @@ All under `/api/v1`, JWT-auth required.
 - **Provenance per entry**: every created/updated/deleted entry records a `Provenance` resource (best-effort — never aborts the import) with the `CREATE`/`UPDATE`/`DELETE` activity code, the importing user as the agent, and an `ImportJob/<id>` reference in `entity_inputs` so bulk-import Provenance is distinguishable from facade-write Provenance.
 - **`BundleRestoreResult`**: `ImportService.restore_fhir_bundle` returns a dataclass with `created`/`updated`/`deleted`/`skipped`/`errors`/`warnings`/`id_remap` fields (attribute access). *Breaking change* (was a 5-tuple prior to v0.3.0).
 - **Telemetry**: for **patient** scope, telemetry is **excluded** (telemetry rows are tenant-scoped; a note is written to the manifest). For `group`/`system` scope, all tenant telemetry is included. On restore, telemetry rows are re-inserted with the destination tenant id.
-- **Documents**: raw files are archived under `documents/<doc_id>.<ext>`; on restore they're written back to `UPLOAD_DIR/<tenant_id>/<new-uuid>.<ext>` and `DocumentModel.file_path` is rebased. OCR `extracted_text`/`entities` are preserved (no re-OCR needed).
+- **Documents**: raw files are archived under `documents/<doc_id>.<ext>`; on restore they're written back to `HA_UPLOAD_DIR/<tenant_id>/<new-uuid>.<ext>` and `DocumentModel.file_path` is rebased. OCR `extracted_text`/`entities` are preserved (no re-OCR needed).
 - **Integrations**: `user_integrations.user_config` is exported **with Fernet-encrypted secrets intact** (the `{"_encrypted": ...}` tokens) plus plaintext OAuth `access_token`/`refresh_token`. **Restoring on a deployment with a different `HA_DATA_KEY` will leave secrets undecryptable** — the rows import, but the integration will fail to authenticate. A warning is added if `HA_DATA_KEY` is unset on the target. Never use the `mask_fields` helper in the export path.
 - **AI config** (`ai_config.json`): exported only when `scope=system` and `include_ai_config=true`. **Restore is not supported in v1** (export-only) — a warning is recorded. `api_key` values are exported as-is (they're already plaintext in the DB).
 - **Clinical event types / categories**: upserted by `slug` (only inserted if missing; existing definitions are not overwritten).
@@ -143,7 +143,7 @@ Export/import are **async Celery tasks** (long jobs don't block the request):
 3. The import task deletes the temp upload file in `finally`.
 4. Poll `GET /export/jobs/{id}` (or `/import/jobs/{id}`) for progress; download via `GET /export/jobs/{id}/download`.
 
-Generated files are written to `UPLOAD_DIR/exports/<tenant_id>/`. There is no automatic retention/cleanup yet (admin should prune old exports).
+Generated files are written to `HA_UPLOAD_DIR/exports/<tenant_id>/`. There is no automatic retention/cleanup yet (admin should prune old exports).
 
 ---
 

@@ -181,7 +181,7 @@ What to look for:
 | Log signal | Meaning | Fix |
 |---|---|---|
 | `ocr_start` stage with no completion log | Upstream provider hang or 5xx | Check provider status page; verify API key |
-| `FileNotFoundError` (any stage) | Source file moved/deleted/permissions | Verify `UPLOAD_DIR`; restore file; retry |
+| `FileNotFoundError` (any stage) | Source file moved/deleted/permissions | Verify `HA_UPLOAD_DIR`; restore file; retry |
 | `pydicom` error / DICOM processing failure | pydicom couldn't read the `.dcm` | File corrupt; re-upload |
 | Upstream `401 Unauthorized` | AI provider API key invalid | Rotate key in `/ai-config/providers/{id}` |
 | Upstream `429 Too Many Requests` | Provider rate limit | Reduce concurrency or upgrade plan |
@@ -265,7 +265,7 @@ LIMIT 50;
 |---|---|---|
 | Many rows stuck at `0%`, no error logged | Celery worker not running | Step 2 |
 | `config_check` error in logs | AI provider inactive or assignment missing | Step 3 |
-| `FileNotFoundError` in logs | Source file missing from `UPLOAD_DIR` | Restore file or delete the document row |
+| `FileNotFoundError` in logs | Source file missing from `HA_UPLOAD_DIR` | Restore file or delete the document row |
 | `upstream 401 Unauthorized` | AI provider API key invalid | Rotate key in `/ai-config/providers/{id}` |
 | `upstream 429 Too Many Requests` | Provider rate limit | Reduce concurrency or upgrade plan |
 | DICOM `pydicom` error | File not valid DICOM | Re-upload; convert to images first |
@@ -283,8 +283,8 @@ LIMIT 50;
   for >5 min, or when the per-status queue depth is non-monotonic.
 - **AI config snapshots**: snapshot the active OCR + NLP assignments
   (`/ai-config/summary`) before each deploy so a regression is quick to spot.
-- **`UPLOAD_DIR` on persistent volume**: a common cause of `FileNotFoundError`
-  after a redeploy is `UPLOAD_DIR` not surviving the container lifecycle.
+- **`HA_UPLOAD_DIR` on persistent volume**: a common cause of `FileNotFoundError`
+  after a redeploy is `HA_UPLOAD_DIR` not surviving the container lifecycle.
 - **Keep Celery + beat on the same image version** as the API — schema/serializer
   drift between API and worker produces silent task failures.
 

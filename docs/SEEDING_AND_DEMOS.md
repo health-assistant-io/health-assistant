@@ -187,7 +187,7 @@ To extend the base anatomy catalog that ships with the application:
 
 The Anatomy Explorer renders a 2D human body and overlays organ markers so users can locate structures visually. The atlas is **fully DB-driven, image-based, and admin-manageable**:
 
-- **`anatomy_figures` table** — each row is one view of one figure (e.g. `man-front`, `woman-back`) backed by a **WebP image** stored on disk under `UPLOAD_DIR/anatomy_figures/`. No SVG markup or viewBox — the stored image IS the view. The four defaults ship as bundled WebP seeds (rasterized from the Wikimedia surface diagrams at 3×, CC BY-SA 3.0 — see `NOTICE`) and are copied to `UPLOAD_DIR` at startup.
+- **`anatomy_figures` table** — each row is one view of one figure (e.g. `man-front`, `woman-back`) backed by a **WebP image** stored on disk under `HA_UPLOAD_DIR/anatomy_figures/`. No SVG markup or viewBox — the stored image IS the view. The four defaults ship as bundled WebP seeds (rasterized from the Wikimedia surface diagrams at 3×, CC BY-SA 3.0 — see `NOTICE`) and are copied to `HA_UPLOAD_DIR` at startup.
 - **Per-figure markers** — every structure may carry `display.map.markers[<figure-slug>] = { nx, ny, nr }`, where `nx`/`ny`/`nr` are fractions of the image's pixel dimensions (0–1). The marker overlay SVG uses the image's `width × height` as its viewBox, so it aligns with the `<img>` by construction at any render size.
 - **Frontend store** — `useAnatomyAtlas` (Zustand, `frontend/src/components/anatomy/atlas.ts`) fetches the figure list once and lazily fetches each image as an authenticated blob → object URL.
 

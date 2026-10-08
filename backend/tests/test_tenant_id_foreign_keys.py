@@ -28,7 +28,7 @@ TABLES_WITHOUT_FK = {
 
 def _get_tenant_tables():
     """Return {table_name: has_fk} for every table with a tenant_id column."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -81,7 +81,7 @@ def test_telemetry_data_has_no_fk():
 def test_tenant_fk_uses_on_delete_cascade():
     """Every tenant_id FK must use ON DELETE CASCADE so tenant deletion
     purges all owned rows instead of raising a constraint violation."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

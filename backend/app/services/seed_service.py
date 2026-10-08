@@ -316,7 +316,7 @@ class SeedService:
         """
         Seed the four default body figures (man/woman x front/back) from WebP
         files under data/seeds/anatomy_figures/. Each file is copied into
-        UPLOAD_DIR/anatomy_figures/ and the DB row records its path + pixel
+        HA_UPLOAD_DIR/anatomy_figures/ and the DB row records its path + pixel
         dimensions. Wikimedia surface diagrams, CC BY-SA 3.0 (see NOTICE).
 
         Idempotent: inserts missing rows and refreshes the image file when the
@@ -361,7 +361,7 @@ class SeedService:
                     with PILImage.open(io.BytesIO(data)) as img:
                         w, h = img.size
                     rel_path = f"{FIGURES_DIR}/{fname}"
-                    dest = Path(str(settings.UPLOAD_DIR)) / rel_path
+                    dest = Path(str(settings.HA_UPLOAD_DIR)) / rel_path
                     need_write = (not dest.exists()) or (dest.read_bytes() != data)
                     if need_write:
                         dest.parent.mkdir(parents=True, exist_ok=True)

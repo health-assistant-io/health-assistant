@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   knobs) are exempt.
 
 ### Changed
+- **`DATABASE_URL` → `HA_DATABASE_URL`, `UPLOAD_DIR` → `HA_UPLOAD_DIR`
+  (audit item e, plan 20 D2 prefixed-only doctrine):** the last two
+  unprefixed env names Health's config owns are renamed, prefixed-only —
+  no compat aliases, so a stale `DATABASE_URL`/`UPLOAD_DIR` in a `.env` or
+  compose file is now ignored (and flagged at boot by the env-name
+  telemetry above). Blast radius updated in the same commit: docker compose
+  files (dev/standalone/prod), `.env.example`, docs, scripts, and the
+  plan-23 D3 `# gate-allow:` pragmas are removed — the C2 family gate now
+  enforces the prefixed names. `POSTGRES_*`/`REDIS_*` infra container
+  names are unchanged by design.
 - **frontend(deps): assistant-ui 0.49.0 → 0.50.1 (2026-10-08):** bumped the
   family UI library to its latest release. `InstanceModeControl` (+ subpath
   export) is now available in the library but not yet adopted here; includes

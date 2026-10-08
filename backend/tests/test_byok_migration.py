@@ -24,7 +24,7 @@ def _alembic_cfg() -> Config:
 def _connect():
     from app.core.config import settings
 
-    engine = sa.create_engine(settings.DATABASE_URL.replace("+asyncpg", "+psycopg2"))
+    engine = sa.create_engine(settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2"))
     return engine
 
 

@@ -246,7 +246,7 @@ async def test_emit_dedup_is_best_effort_no_unique_constraint():
 
     from app.core.config import settings
 
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

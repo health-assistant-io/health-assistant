@@ -40,9 +40,9 @@ class DatabaseUnavailableError(DatabaseError):
 
 # Create engine with error handling
 try:
-    assert settings.DATABASE_URL, "HA_DATABASE_URL must be configured"
+    assert settings.HA_DATABASE_URL, "HA_DATABASE_URL must be configured"
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        settings.HA_DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
         max_overflow=10,
         pool_pre_ping=True,

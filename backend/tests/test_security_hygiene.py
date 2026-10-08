@@ -150,7 +150,7 @@ def test_b13_production_rejects_weak_password(weak):
     """B13: booting with a known-weak DB password outside development fails.
 
     Refusal asserts the cause (D6): the message names the knob family
-    (``database password`` / ``DATABASE_URL``) and the refusal. Positive
+    (``database password`` / ``HA_DATABASE_URL``) and the refusal. Positive
     pair: test_b13_production_accepts_strong_password.
     """
     from pydantic import ValidationError
@@ -162,7 +162,7 @@ def test_b13_production_rejects_weak_password(weak):
     msg = str(exc_info.value)
     assert "insecure database credentials" in msg
     assert "database password" in msg
-    assert "DATABASE_URL" in msg
+    assert "HA_DATABASE_URL" in msg
 
 
 def test_b13_production_accepts_strong_password():

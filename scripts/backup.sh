@@ -6,7 +6,7 @@
 #   <output-dir>/health-assistant-YYYYMMDD-HHMMSS.tar.gz
 #     manifest.json   — what this archive contains
 #     database.dump   — pg_dump custom format (neuronection_health)
-#     uploads.tar.gz  — the `uploads` volume (UPLOAD_DIR=/app/uploads)  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
+#     uploads.tar.gz  — the `uploads` volume (HA_UPLOAD_DIR=/app/uploads)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,7 +56,7 @@ docker run --rm -v "${PROJECT}_uploads":/data:ro -v "$WORK":/out alpine \
 cat > "$WORK/manifest.json" <<EOF
 {
   "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "contents": ["database.dump (pg_dump custom format)", "uploads.tar.gz (UPLOAD_DIR volume)"],
+  "contents": ["database.dump (pg_dump custom format)", "uploads.tar.gz (HA_UPLOAD_DIR volume)"],
   "postgres_db": "$DB_NAME",
   "postgres_owner": "$DB_OWNER",
   "app_version": "see /health"

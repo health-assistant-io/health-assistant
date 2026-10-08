@@ -64,7 +64,7 @@ def get_async_engine() -> AsyncEngine:
         with _worker_engine_lock:
             if _worker_engine is None:
                 _worker_engine = create_async_engine(
-                    settings.DATABASE_URL,
+                    settings.HA_DATABASE_URL,
                     poolclass=NullPool,
                 )
                 logger.debug("Created worker-scoped AsyncEngine (NullPool)")

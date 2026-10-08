@@ -8,7 +8,7 @@
 #   neuronection_health_app   — runtime role: CONNECT + DML only, never DDL.
 #
 # Both roles share one password (POSTGRES_PASSWORD) so the env surface stays
-# at POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD (+ DATABASE_URL); the
+# at POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD (+ HA_DATABASE_URL); the
 # split is privilege-based, not credential-based. Consequence: the app
 # containers hold the owner password (the one-shot `migrate` service must,
 # to run alembic), while the runtime role can never alter the schema.

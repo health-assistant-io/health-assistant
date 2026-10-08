@@ -135,7 +135,7 @@ if [[ "$NO_BOOTSTRAP" = false ]]; then
     dc_warn "  If the DB has no users, visit http://localhost:$FRONTEND_PORT to run the"
     dc_warn "  first-run setup wizard. To test it from a clean slate, reset the"
     dc_warn "  existing admin first, e.g.:"
-    dc_warn "    psql \"\$DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'"
+    dc_warn "    psql \"\$HA_DATABASE_URL\" -c 'TRUNCATE users, tenants RESTART IDENTITY CASCADE;'"
   else
     dc_step "setting up admin user"
     python3 scripts/create_system_admin.py --email admin@healthassistant.local --password devadmin12345 2>&1 | grep -E "(Health Assistant|Creating|Database|Admin|Credentials|Email|Password|IMPORTANT|Error|already exists)" || true

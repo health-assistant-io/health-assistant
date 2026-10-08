@@ -240,7 +240,7 @@ cd backend && python -c "from app.main import app"
 
 ### Database Connection Error
 
-- Check `DATABASE_URL` in `.env`.
+- Check `HA_DATABASE_URL` (or the `POSTGRES_*` parts) in `.env`.
 - Ensure PostgreSQL is running: `docker compose --env-file .env -f docker/docker-compose.standalone.yml ps`.
 - Remember PostgreSQL needs the **TimescaleDB extension** — a plain Postgres will crash on the telemetry hypertable migration. The compose files ship a compatible image.
 

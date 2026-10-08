@@ -1052,7 +1052,7 @@ For each spec the engine:
 1. **Cap check** — rejects if adding the document would exceed `INTEGRATION_MAX_DOCS_PER_SYNC = 20` (item count) or `INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 MiB` (running byte total) for this sync. Dropped items log a warning.
 2. **Examination link** — if `examination_external_id` is set, resolves it via a `{external_id: exam_id}` map built during the examinations step (§3.10) — i.e. against the exam that was just pulled in the same sync. Misses are non-fatal (document created unlinked).
 3. **Category link** — if `category_concept_slug` is set, resolves it via `resolve_concept_by_slug`. Misses are non-fatal.
-4. **Writes** via `document_service.ingest_document_bytes` — the **same canonical ingestion path the UI upload endpoint uses**. Writes the file under `UPLOAD_DIR/<tenant_id>/`, creates the `DocumentModel` row with `owner_id` = the integration's owning user, fires the OCR task best-effort when `include_in_extraction=True`. Forwards `source_integration_id=integration.id` + `external_id=spec.external_id` so the service can dedup (see below).
+4. **Writes** via `document_service.ingest_document_bytes` — the **same canonical ingestion path the UI upload endpoint uses**. Writes the file under `HA_UPLOAD_DIR/<tenant_id>/`, creates the `DocumentModel` row with `owner_id` = the integration's owning user, fires the OCR task best-effort when `include_in_extraction=True`. Forwards `source_integration_id=integration.id` + `external_id=spec.external_id` so the service can dedup (see below).
 
 Per-document failures are logged and don't abort the sync.
 
@@ -1078,13 +1078,13 @@ async def pull_documents(self, integration):
 
 #### Storage + size considerations
 
-- **Local disk only** — the storage path is `UPLOAD_DIR` (env-configurable, defaults to `/var/healthassistant/uploads`). Self-hosted deployments can mount a persistent volume. S3 / object-store abstraction is on the roadmap.
+- **Local disk only** — the storage path is `HA_UPLOAD_DIR` (env-configurable, defaults to `/var/healthassistant/uploads`). Self-hosted deployments can mount a persistent volume. S3 / object-store abstraction is on the roadmap.
 - **Memory pressure** — a provider returning 100 MB of PDFs in one batch holds them all in memory. The 50 MiB per-sync byte cap mitigates the worst case; providers with very large documents should chunk across syncs.
 - **Extension allowlist** — only medical-document types are accepted: PDF (`.pdf`), PNG/JPG/BMP/WebP/TIFF/GIF, DICOM (`.dcm`), plain text (`.txt`, `.md`). Others raise `HTTPException(400)` at the extension gate.
 
 #### Relationship to the UI upload path
 
-The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `ingest_document_bytes` function this hook uses. Both write to the same `UPLOAD_DIR`, both stamp the same `DocumentModel` columns, both dispatch the same OCR task. A document pulled by an integration is indistinguishable in the UI from one uploaded by the user — the `owner_id` is the integration's owning user, same as if they'd uploaded it themselves. Integration provenance is preserved on the row (`source_integration_id` + `external_id`) and surfaced in the FHIR projection via `meta.tag[]` (system `urn:health-assistant:document-provenance`).
+The UI's `POST /api/v1/documents` endpoint is a thin wrapper around the same `ingest_document_bytes` function this hook uses. Both write to the same `HA_UPLOAD_DIR`, both stamp the same `DocumentModel` columns, both dispatch the same OCR task. A document pulled by an integration is indistinguishable in the UI from one uploaded by the user — the `owner_id` is the integration's owning user, same as if they'd uploaded it themselves. Integration provenance is preserved on the row (`source_integration_id` + `external_id`) and surfaced in the FHIR projection via `meta.tag[]` (system `urn:health-assistant:document-provenance`).
 
 ---
 

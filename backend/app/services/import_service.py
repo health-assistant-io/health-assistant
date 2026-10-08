@@ -2608,7 +2608,7 @@ class ImportService:
             ALLOWED_UPLOAD_EXTENSIONS,
         )
         from app.services.document_service import (
-            UPLOAD_DIR as RESOLVED_UPLOAD_DIR,
+            HA_UPLOAD_DIR as RESOLVED_UPLOAD_DIR,
         )
 
         tenant_dir = Path(str(RESOLVED_UPLOAD_DIR)) / str(tenant_id)

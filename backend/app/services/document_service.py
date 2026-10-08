@@ -21,7 +21,7 @@ from app.utils.image_utils import edit_image
 def get_upload_dir():
     # Try configured path
     paths_to_try = [
-        Path(settings.UPLOAD_DIR),
+        Path(settings.HA_UPLOAD_DIR),
         Path(os.getcwd()) / "uploads",
         Path("/tmp/health_assistant/uploads"),
     ]
@@ -43,7 +43,7 @@ def get_upload_dir():
     return fallback
 
 
-UPLOAD_DIR = get_upload_dir()  # gate-allow: UPLOAD_DIR (live health env name — plan 23 D3 triage)
+HA_UPLOAD_DIR = get_upload_dir()
 
 # Allowed upload extensions (audit A3). Deliberately EXCLUDES types that can
 # carry active content executable in the browser at the app origin — svg,
@@ -271,7 +271,7 @@ async def ingest_document_bytes(
     file_extension = _validate_upload_extension(filename)
     safe_filename = f"{doc_id}{file_extension}"
 
-    tenant_dir = UPLOAD_DIR / str(tenant_id)
+    tenant_dir = HA_UPLOAD_DIR / str(tenant_id)
     tenant_dir.mkdir(parents=True, exist_ok=True)
     file_path = tenant_dir / safe_filename
 
@@ -673,7 +673,7 @@ async def edit_document_service(
 
     new_doc_id = uuid4()
     safe_filename = f"{new_doc_id}{file_extension}"
-    tenant_dir = UPLOAD_DIR / str(original.tenant_id)
+    tenant_dir = HA_UPLOAD_DIR / str(original.tenant_id)
     tenant_dir.mkdir(parents=True, exist_ok=True)
     new_file_path = tenant_dir / safe_filename
 

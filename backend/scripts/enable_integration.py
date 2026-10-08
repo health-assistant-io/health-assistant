@@ -35,7 +35,7 @@ from app.models.system_integration import SystemIntegration  # noqa: E402
 
 async def toggle(domain: str, enable: bool) -> None:
     if not DATABASE_AVAILABLE:
-        print("Database is not available — check DATABASE_URL.")
+        print("Database is not available — check HA_DATABASE_URL.")
         return
 
     async with AsyncSessionLocal() as db:
