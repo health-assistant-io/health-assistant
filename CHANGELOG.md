@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Boot-time warning on unknown/renamed env names (audit follow-up a):**
+  `Settings` construction now emits warning-only telemetry when an env var
+  matches a retired name (`APP_ENV` → `HA_APP_ENV`, `SECRET_KEY` → the
+  `HA_SESSION_KEY`/`HA_REFRESH_KEY`/`HA_DATA_KEY` family) or when an
+  `HA_*` name that is not a Settings field is set — the typo'd
+  `APP_ENV=production` that used to boot silently in development now says
+  so at boot, naming the correct replacement. Never refuses to boot (the
+  refusal gates stay boot guards); names only, values are never logged.
+  Tooling-owned `HA_*` names (`HA_ENV_FILE`, logging/backup/ui-capture
+  knobs) are exempt.
+
 ### Changed
 - **frontend(deps): assistant-ui 0.49.0 → 0.50.1 (2026-10-08):** bumped the
   family UI library to its latest release. `InstanceModeControl` (+ subpath

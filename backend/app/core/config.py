@@ -44,6 +44,38 @@ def _resolve_env_file() -> str | None:
     return None
 
 
+# --- Env-name typo telemetry (audit follow-up a) ---------------------------
+# ``Settings(extra="ignore")`` silently drops unknown env vars, so an
+# operator's typo'd ``APP_ENV=production`` boots in development with zero
+# signal — the exact class that made the ``HA_APP_ENV`` rename's tests
+# vacuous (plan 20 F1). The ``_warn_unknown_env_names`` validator below is
+# the loud counterpart: warning-only telemetry, never a refusal (the
+# family's refusal gates are the boot guards; this is typo signal).
+#
+# Highest-value hint: names that WERE read once. A stale ``APP_ENV`` /
+# ``SECRET_KEY`` in a .env or compose environment keeps "working" silently
+# after a rename, so each retired name maps to its replacement.
+RENAMED_ENV_HINTS: dict[str, str] = {
+    "APP_ENV": "HA_APP_ENV",
+    "SECRET_KEY": "HA_SESSION_KEY / HA_REFRESH_KEY / HA_DATA_KEY (identity-auth §8)",
+}
+
+# HA_-namespace names owned by launcher/tooling, not Settings — read via
+# os.getenv outside the model (logging_setup, run-dev.sh, backup/restore,
+# ui-capture seeding). Deliberately exempt from the unknown-name warning.
+TOOLING_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "HA_ENV_FILE",  # launcher: explicit .env path (_resolve_env_file)
+        "HA_LOG_NAME",  # logging_setup: per-process log file name
+        "HA_LOG_TO_CONSOLE",  # logging_setup: console handler on/off
+        "HA_COMPOSE_FILE",  # backup.sh / restore.sh: compose file override
+        "HA_COMPOSE_PROJECT",  # backup.sh / restore.sh: compose project override
+        "HA_DEMO_DATABASE_URL",  # ui-capture/seed_demo.sh: demo DB override
+        "HA_DEMO_INIT",  # ui-capture/seed_demo.sh: --init-demo flag
+    }
+)
+
+
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
@@ -72,6 +104,47 @@ class Settings(BaseSettings):
     # capture tooling and deploy workflow all read these names).
     HA_DEMO_EMAIL: str = "demo@healthassistant.local"
     HA_DEMO_PASSWORD: str = "Demo1234!"
+
+    @model_validator(mode="after")
+    def _warn_unknown_env_names(self) -> "Settings":
+        """Boot-time typo telemetry for env names (warning-only, never refuses).
+
+        Two loud-but-harmless hints at construction:
+
+        1. a KNOWN-RENAMED name is set (``RENAMED_ENV_HINTS``) -> point at
+           its replacement — a stale ``APP_ENV=production`` would otherwise
+           boot in development with zero signal;
+        2. an ``HA_*`` name that matches no Settings field (and no tooling
+           name in ``TOOLING_ENV_NAMES``) is set -> likely typo; the value
+           is silently ignored by ``extra="ignore"``.
+
+        Scans ``os.environ`` — the surface every real launcher materializes
+        (docker-compose interpolation, systemd units, CI, run-dev.sh's
+        exported .env, pytest env_files). Names only, never values (secrets
+        must not land in logs). Deliberately positioned FIRST among the
+        validators so the hint prints even when a later boot guard refuses.
+        """
+        import logging
+
+        known = Settings.model_fields.keys() | TOOLING_ENV_NAMES
+        for name in sorted(os.environ):
+            replacement = RENAMED_ENV_HINTS.get(name)
+            if replacement:
+                logging.warning(
+                    "Renamed env var %s is set but no longer read — use %s "
+                    "instead. The old value is silently ignored "
+                    "(Settings extra='ignore').",
+                    name,
+                    replacement,
+                )
+            elif name.startswith("HA_") and name not in known:
+                logging.warning(
+                    "Unknown env var %s is set but Settings has no such field "
+                    "— possible typo; the value is silently ignored "
+                    "(Settings extra='ignore').",
+                    name,
+                )
+        return self
 
     # Database
     POSTGRES_USER: str = "admin"
