@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `APP_ENV` reference (prefixed-only, family gate C2).
 
 ### Fixed
+- **Docker images shipped without `backend/data` (wizard demographics empty):**
+  the runtime COPY allowlist omitted `backend/data`, so production containers
+  had no seed JSONs — `GET /setup/extension-catalog` returned empty options
+  (startup wizard's race / ethnicity / preferred-language dropdowns rendered
+  blank; the OMB picklist is read from disk at request time) and every
+  `seed_all()` startup stage warned "seed file not found" while seeding
+  nothing. Both backend images now COPY `backend/data`; on the next deploy
+  the idempotent seed stages populate the clinical catalogs. Guarded by
+  `tests/test_docker_packaging.py`.
 - **Docker images (plan 20 Phase 7 boot smoke):** the consolidated
   multi-source COPY flattened `alembic/` so migrations could never run
   in-image (explicit COPY lines now); the default upload root

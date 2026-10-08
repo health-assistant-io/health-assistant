@@ -36,6 +36,10 @@ COPY backend/app /app/backend/app
 COPY backend/alembic /app/backend/alembic
 COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/scripts /app/backend/scripts
+# Seed JSONs + catalogs read at runtime (startup seed_all, the OMB picklist
+# behind GET /setup/extension-catalog, demo mode's sample PDF) — omitting
+# this dir shipped images whose wizard dropdowns and seed stages ran empty.
+COPY backend/data /app/backend/data
 COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
