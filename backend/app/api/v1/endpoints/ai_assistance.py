@@ -7,16 +7,15 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
-    Query,
     UploadFile,
     status,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.agents.chat_agent import FLOW_EVENT_PREFIX
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
+from app.ai.flow_events import flow_failed_event
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
@@ -112,6 +111,19 @@ def _classify_stream_error(exc: Exception) -> tuple[str, str]:
     return ("generic", "")
 
 
+def _stream_error_frame(exc: Exception) -> str:
+    """Build the terminal SSE ``flow_failed`` frame for a streaming exception.
+
+    Carries the §5 payload: the classified ``code`` (the stable error_type
+    the frontend localizes), ``message`` (non-empty only for soft guard
+    violations), and ``retryable`` (true for the transient provider
+    classes)."""
+    error_type, user_message = _classify_stream_error(exc)
+    retryable = error_type in ("connection", "timeout", "rate_limit")
+    frame = flow_failed_event(retryable, code=error_type, message=user_message)
+    return f"data: {json.dumps(frame)}\n\n"
+
+
 async def _validate_owned_session(context: dict, current_user: TokenData, db: AsyncSession) -> None:
     """Audit 2026-09-11 S-1: a client-supplied session_id must belong to the
     caller before chat dispatch (defense-in-depth alongside the service-level
@@ -192,12 +204,12 @@ async def assist_user_stream(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
-    flow_events: bool = Query(
-        True,
-        description="Emit additive family flow events alongside the legacy sentinels.",
-    ),
 ):
-    """Stream AI-driven assistance for chat tasks"""
+    """Stream AI-driven assistance for chat tasks.
+
+    SSE frames carry the family chat vocabulary (ai-features §5) plus
+    health's payload events (``citation`` / ``task`` / ``interrupt`` /
+    ``session``) — one JSON object per frame with the name in ``event``."""
     if request.task_type != "chat":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -210,7 +222,7 @@ async def assist_user_stream(
 
     async def event_generator():
         try:
-            async for chunk in await service.assist(
+            async for frame in await service.assist(
                 task_type=request.task_type,
                 user_input=request.user_input,
                 reference_image=request.reference_image,
@@ -219,14 +231,8 @@ async def assist_user_stream(
                 user_id=current_user.user_id,
                 stream=True,
                 images=request.images,
-                flow_events=flow_events,
             ):
-                if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
-                    yield f"data: {frame}\n\n"
-                    continue
-                payload = json.dumps({"content": chunk})
-                yield f"data: {payload}\n\n"
+                yield frame
         except ValueError as e:
             # Includes ImageValidationError (subclass of ValueError) from
             # attachment validation — surfaces as a localized, user-facing
@@ -234,16 +240,12 @@ async def assist_user_stream(
             import logging
 
             logging.getLogger(__name__).warning(f"Chat stream rejected: {e}")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield _stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield _stream_error_frame(e)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -454,15 +456,14 @@ async def resume_hitl_session(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _rl: None = Depends(rate_limit_user("ai_resume", max_requests=30, window=300)),
-    flow_events: bool = Query(True),
 ):
     """Trigger an agent continuation turn after the user has resolved one or
     more HITL task cards in the session.
 
-    Returns an SSE stream (same shape as `/stream`). The agent receives a
-    structured `[HITL RESOLUTION FEEDBACK]` user message built from the target
-    message's resolved tasks (read from `tasks` JSONB on the server — never
-    trusted from the request body).
+    Returns an SSE stream (same family vocabulary as `/stream`). The agent
+    receives a structured `[HITL RESOLUTION FEEDBACK]` user message built
+    from the target message's resolved tasks (read from `tasks` JSONB on
+    the server — never trusted from the request body).
 
     Guards:
       * Session ownership verified (user_id + tenant_id).
@@ -477,34 +478,24 @@ async def resume_hitl_session(
             # calling it returns the generator directly — do NOT await it.
             # Awaiting would raise: "object async_generator can't be used in
             # 'await' expression".
-            async for chunk in service.resume_after_hitl(
+            async for frame in service.resume_after_hitl(
                 session_id=session_id,
                 tenant_id=current_user.tenant_id,
                 user_id=current_user.user_id,
                 message_id=body.message_id,
-                flow_events=flow_events,
             ):
-                if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
-                    yield f"data: {frame}\n\n"
-                    continue
-                payload = json.dumps({"content": chunk})
-                yield f"data: {payload}\n\n"
+                yield frame
         except ValueError as e:
             # Client-facing guard violations (ownership, no tasks, pending).
             import logging
 
             logging.getLogger(__name__).warning(f"HITL resume rejected: {e}")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield _stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield _stream_error_frame(e)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

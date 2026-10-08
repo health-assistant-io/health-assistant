@@ -18,7 +18,6 @@ import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
-from app.ai.agents.chat_agent import stream_loop_as_sse
 from app.ai.graphs.chat_agent import (
     build_chat_graph,
     chat_engine_iter,
@@ -236,9 +235,13 @@ async def test_ask_user_resume_survives_store_reopen():
         )
         assert resumed is not None
         events = [event async for event in resumed]
-        legacy = [e for e in events if e[0] != "flow_event"]
-        assert legacy[-1] == ("done", False)
-        assert "Dose noted." in [d for k, d in events if k == "content"]
+        # The resume stream passes graph events through verbatim (no
+        # flow_started/flow_finished bracket — parity with the pre-V3 wire;
+        # the turn is a continuation of the paused run, and `interrupt`
+        # already marked the pause on the first stream).
+        assert events[-1]["event"] == "node_finished"
+        assert next(e for e in events if e["event"] == "done")["reached_max"] is False
+        assert "Dose noted." in [e["text"] for e in events if e["event"] == "delta"]
         assert ask_tool.ainvoke.await_count == 1
         # Crash-resume dedup: the final save re-attached the proactive
         # message (via find_message_by_proposal) instead of duplicating it.
@@ -251,16 +254,12 @@ async def test_ask_user_resume_survives_store_reopen():
 
 
 # ---------------------------------------------------------------------------
-# Phase 6.2 dual-emit: family flow events alongside the legacy sentinels
+# Family vocabulary emission (plan 24 V3 — native, no legacy sentinels)
 # ---------------------------------------------------------------------------
 
 
-def _legacy(events):
-    return [(k, d) for k, d in events if k != "flow_event"]
-
-
-def _flow(events):
-    return [d for k, d in events if k == "flow_event"]
+def _names(events):
+    return [e["event"] for e in events]
 
 
 class ToolThenAnswerLLM:
@@ -296,10 +295,9 @@ async def test_flow_event_order_clean_tool_turn():
             session_id=None,
         )
     )
-    flow = _flow(events)
-    assert flow[0] == {"event": "flow_started", "flow": "chat"}
-    assert flow[-1] == {"event": "flow_finished"}
-    nodes = [(f["event"], f["node"]) for f in flow if "node" in f]
+    assert events[0] == {"event": "flow_started", "flow": "chat"}
+    assert events[-1] == {"event": "flow_finished"}
+    nodes = [(e["event"], e["node"]) for e in events if "node" in e]
     assert nodes == [
         ("node_started", "agent_step"),
         ("node_finished", "agent_step"),
@@ -310,8 +308,11 @@ async def test_flow_event_order_clean_tool_turn():
         ("node_started", "finalize"),
         ("node_finished", "finalize"),
     ]
-    # Legacy vocabulary intact alongside.
-    assert _legacy(events)[-1] == ("done", False)
+    # Tool lifecycle + citation ride alongside the node events: the streamed
+    # name announce and the exec both carry status running; the result done.
+    tool_events = [e for e in events if e["event"] == "tool_call"]
+    assert [t["status"] for t in tool_events] == ["running", "running", "done"]
+    assert {"event": "citation", "source": "get_patient_summary"} in events
 
 
 @pytest.mark.asyncio
@@ -348,9 +349,11 @@ async def test_flow_interrupt_on_ask_user_pause():
             session_id=None,
         )
     )
-    flow = _flow(events)
-    assert {"event": "interrupt"} in flow
-    assert {"event": "flow_finished"} not in flow
+    assert {"event": "interrupt"} in events
+    assert {"event": "flow_finished"} not in events
+    # The card itself is the ``task`` payload event (health vocabulary).
+    task = next(e for e in events if e["event"] == "task")
+    assert task["task"]["proposal_id"] == "p"
 
 
 @pytest.mark.asyncio
@@ -387,18 +390,22 @@ async def test_flow_failed_bubbles_with_event():
     # that the exception propagates (flow_failed is asserted via sse gate).
 
 
-def test_sse_flow_events_gate():
-    async def _run(flow_events):
-        async def _gen():
-            yield ("flow_event", {"event": "flow_started"})
-            yield ("content", "hi")
-
-        return [c async for c in stream_loop_as_sse(_gen(), flow_events=flow_events)]
-
+def test_sse_mapper_emits_family_and_drops_internal_done():
+    """The SSE mapper passes every vocabulary event through verbatim and
+    drops the engine-internal ``done`` signal — no gate, no sentinels."""
     import asyncio
 
-    gated = asyncio.run(_run(True))
-    dropped = asyncio.run(_run(False))
-    assert gated[0].startswith('[FLOW_EVENT] {"event": "flow_started"}')
-    assert gated[1] == "hi"
-    assert "[FLOW_EVENT]" not in "".join(dropped)
+    from app.ai.agents.chat_agent import stream_events_as_sse
+
+    async def _run():
+        async def _gen():
+            yield {"event": "flow_started", "flow": "chat"}
+            yield {"event": "delta", "text": "hi"}
+            yield {"event": "done", "reached_max": False}
+
+        return [c async for c in stream_events_as_sse(_gen())]
+
+    frames = asyncio.run(_run())
+    assert frames[0] == 'data: {"event": "flow_started", "flow": "chat"}\n\n'
+    assert frames[1] == 'data: {"event": "delta", "text": "hi"}\n\n'
+    assert len(frames) == 2

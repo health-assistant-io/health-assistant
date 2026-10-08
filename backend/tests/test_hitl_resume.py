@@ -238,8 +238,8 @@ def _override_user():
 
 @pytest.mark.asyncio
 async def test_resume_endpoint_streams_content(async_client):
-    """When the service yields sentinel chunks, the endpoint wraps each as
-    `data: {"content": ...}` SSE frames.
+    """The service yields family-vocabulary SSE frames; the endpoint passes
+    them through verbatim.
 
     NOTE: `resume_after_hitl` is an async generator function (uses `yield`),
     so calling it returns the async generator directly — the endpoint must
@@ -249,8 +249,12 @@ async def test_resume_endpoint_streams_content(async_client):
     """
 
     async def _fake_resume(*args, **kwargs):
-        for chunk in ["Hello ", "[TOOL_CALL_START] get_system_time", "world"]:
-            yield chunk
+        yield 'data: {"event": "delta", "text": "Hello "}\n\n'
+        yield (
+            'data: {"event": "tool_call", "id": "get_system_time", '
+            '"name": "get_system_time", "status": "running"}\n\n'
+        )
+        yield 'data: {"event": "delta", "text": "world"}\n\n'
 
     with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
@@ -266,9 +270,10 @@ async def test_resume_endpoint_streams_content(async_client):
         )
         assert resp.status_code == 200
         body = resp.text
-        assert 'data: {"content": "Hello "}' in body
-        assert 'data: {"content": "world"' in body
-        assert "[TOOL_CALL_START]" in body
+        assert 'data: {"event": "delta", "text": "Hello "}' in body
+        assert 'data: {"event": "delta", "text": "world"}' in body
+        assert '"tool_call"' in body
+        assert '"event"' in body
 
 
 @pytest.mark.asyncio
@@ -278,8 +283,8 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
     should stream normally; the summary handles pending items."""
 
     async def _fake_resume(*args, **kwargs):
-        yield "Acknowledged your partial review."
-        yield ""
+        yield 'data: {"event": "delta", "text": "Acknowledged your partial review."}\n\n'
+        yield 'data: {"event": "flow_finished"}\n\n'
 
     with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
@@ -293,8 +298,8 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
         )
         assert resp.status_code == 200
         assert "Acknowledged your partial review" in resp.text
-        # No error frame should be emitted.
-        assert '"error"' not in resp.text
+        # No failure frame should be emitted.
+        assert "flow_failed" not in resp.text
 
 
 @pytest.mark.asyncio

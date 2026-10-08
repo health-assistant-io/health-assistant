@@ -4,21 +4,16 @@ The reasoning loop itself was replaced by the LangGraph engine
 (:mod:`app.ai.graphs.chat_agent`) in Phases 3.2-3.6 and deleted in Phase 8;
 what remains here is the shared, engine-agnostic surface:
 
-The loop is an async generator yielding typed ``(kind, data)`` event tuples,
-parameterised by ``streaming`` (``astream`` vs ``ainvoke``). It owns the
-provider-quirk content dedup, tool execution, HITL-proposal detection, and the
-proactive + final saves — so all three callers share identical semantics.
-
-  * Streaming callers (chat + resume) pipe the loop through
-    :func:`stream_loop_as_sse` to emit the SSE sentinel vocabulary the frontend
-    consumes.
-  * The non-streaming caller (``_general_chat``) collects ``("content", …)``
-    events into the response dict.
+  * Streaming callers (chat + resume) pipe the engine's event dicts through
+    :func:`stream_events_as_sse` to emit the family chat vocabulary
+    (ai-features §5) plus health's payload events.
+  * The non-streaming caller (``_general_chat``) collects ``delta`` events
+    into the response dict.
 
 Public surface:
-  * :func:`build_chat_tools`     — built-in + integration tool assembly.
-  * :func:`reconstruct_history`  — rebuild the in-memory message list.
-  * :func:`stream_loop_as_sse`   — event -> SSE-sentinel mapper.
+  * :func:`build_chat_tools`      — built-in + integration tool assembly.
+  * :func:`reconstruct_history`   — rebuild the in-memory message list.
+  * :func:`stream_events_as_sse`  — event dicts -> SSE frames.
 """
 
 import json
@@ -134,41 +129,19 @@ async def reconstruct_history(
 
 
 # ---------------------------------------------------------------------------
-# The reasoning loop (replaces 3 duplicates)
+# SSE mapping (family vocabulary, plan 24 V3)
 # ---------------------------------------------------------------------------
 
 
-FLOW_EVENT_PREFIX = "[FLOW_EVENT] "
+async def stream_events_as_sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
+    """Map the chat engine's event dicts to SSE frames.
 
-
-async def stream_loop_as_sse(
-    loop: AsyncIterator[tuple[str, Any]],
-    *,
-    flow_events: bool = False,
-) -> AsyncIterator[str]:
-    """Map chat-engine events to the SSE sentinel vocabulary the
-    frontend parser consumes (``[TOOL_CALL_*]`` / ``[CITATION]`` /
-    ``[HITL_TASK]``). ``("content", delta)`` is yielded verbatim; ``("done",)``
-    emits nothing. Used by the streaming chat + resume paths."""
-    async for kind, data in loop:
-        if kind == "flow_event":
-            # Phase 6.2 dual-emit: family events ride as gated additive
-            # frames; dropped unless the caller opted in.
-            if flow_events:
-                yield f"{FLOW_EVENT_PREFIX}{json.dumps(data)}"
+    Every wire frame is one JSON object with the event name in ``event``
+    (:class:`app.ai.flow_events.FlowEvent`); the engine-internal ``done``
+    completion signal emits nothing. Used by the streaming chat + resume
+    paths.
+    """
+    async for event in events:
+        if event.get("event") == "done":
             continue
-        if kind == "content":
-            yield data
-        elif kind == "tool_call_start":
-            yield f"[TOOL_CALL_START] {data}"
-        elif kind == "tool_call_exec":
-            yield f"[TOOL_CALL_EXEC] {data}"
-        elif kind == "tool_call_result":
-            yield f"[TOOL_CALL_RESULT] {json.dumps(data)}"
-        elif kind == "citation":
-            yield f"[CITATION] {data}"
-        elif kind == "hitl_task":
-            yield f"[HITL_TASK] {json.dumps(data)}"
-        elif kind == "tool_call_finished":
-            yield "[TOOL_CALL_FINISHED]"
-        # "done" -> no SSE emission
+        yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"

@@ -1,11 +1,13 @@
 """LangGraph mirror of the agentic-chat reasoning loop (Phases 3.2 + 3.3).
 
 ``run_chat_graph`` is the single chat reasoning engine — a StateGraph whose
-custom stream re-emits the loop's legacy ``(kind, data)`` sentinel tuples
-additively alongside the family flow events.
-Both engines yield the same ``(kind, data)`` tuples, so
-:func:`app.ai.agents.chat_agent.stream_loop_as_sse` and the non-streaming
-consumer work unchanged — the SSE sentinel contract is frozen.
+custom stream emits the family chat vocabulary (ai-features §5) plus
+health's payload events (``citation`` / ``task`` / ``interrupt`` /
+``session``, plan 24 §2) natively. The engine yields one event dict per
+stream item, ``{"event": <name>, ...fields}``; the internal ``"done"``
+completion signal (``{"event": "done", "reached_max": bool}``) is the one
+non-vocabulary item — it never reaches the SSE wire (the non-streaming
+consumer reads the iteration cap from it).
 
 Decision point (create_agent vs custom): custom StateGraph. The loop
 intercepts HITL proposals at tool-result level (trimmed feedback substituted
@@ -23,13 +25,14 @@ Graph shape::
                                                     (others cap)-> finalize
 
 Phase 3.3 HITL ruling: ``ask_user`` PAUSES the turn at the question card —
-``tool_exec`` emits the card + persists proactively (committed by the
-superstep checkpoint), then hands to the side-effect-free ``await_user`` node
-whose ``interrupt()`` is its first statement, so NOTHING re-executes on
-resume. ``/resume`` delivers the resolution summary as ``Command(resume=...)``
-— it becomes the ask_user ``ToolMessage`` and the model continues the same
-conversation. ``propose_*`` keeps continue-after-propose (card events +
-HitlTask rows + idempotent /resolve, unchanged).
+``tool_exec`` emits the card (``task`` payload event) + persists
+proactively (committed by the superstep checkpoint), then hands to the
+side-effect-free ``await_user`` node whose ``interrupt()`` is its first
+statement, so NOTHING re-executes on resume. ``/resume`` delivers the
+resolution summary as ``Command(resume=...)`` — it becomes the ask_user
+``ToolMessage`` and the model continues the same conversation.
+``propose_*`` keeps continue-after-propose (card events + HitlTask rows +
+idempotent /resolve, unchanged).
 
 Fault tolerance (ratified): graph-default retry covers ``agent_step`` (LLM
 calls are read-only; state commits only on node success). ``tool_exec`` is
@@ -47,6 +50,7 @@ resume caller (:func:`resume_interrupted_chat_graph`).
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 from typing import (
@@ -66,9 +70,29 @@ from app.ai.agents.hitl import (
     _hitl_proposal_note,
     _parse_hitl_proposal,
 )
+from app.ai.flow_events import (
+    citation_event,
+    delta_event,
+    flow_failed_event,
+    flow_finished_event,
+    flow_started_event,
+    interrupt_event,
+    node_finished_event,
+    node_started_event,
+    task_event,
+    tool_call_event,
+)
 from app.ai.graphs.checkpointer import get_runtime_saver
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_EXC_NAMES = {
+    "APITimeoutError",
+    "APIConnectionError",
+    "RateLimitError",
+    "ConnectionError",
+    "TimeoutError",
+}
 
 
 def _stream_writer():
@@ -79,6 +103,15 @@ def _stream_writer():
         return get_stream_writer()
     except RuntimeError:
         return lambda _event: None
+
+
+def _stringify_args(args: Any) -> str:
+    """§5 ``tool_call.args`` is a serialized-safe string, never a raw dict."""
+    if args is None:
+        return ""
+    if isinstance(args, str):
+        return args
+    return json.dumps(args, ensure_ascii=False, default=str)
 
 
 class ChatGraphState(TypedDict):
@@ -109,8 +142,8 @@ def _chat_graph_nodes():
         writer = _stream_writer()
         runtime = config["configurable"]["runtime"]
 
-        def emit(kind: str, data: Any) -> None:
-            writer({"kind": kind, "data": data})
+        def emit(event: dict[str, Any]) -> None:
+            writer(event)
 
         llm_with_tools = runtime["llm_with_tools"]
         history = list(state["history"])
@@ -129,7 +162,7 @@ def _chat_graph_nodes():
                     for tc_chunk in chunk.tool_call_chunks:
                         tc_name = tc_chunk.get("name")
                         if tc_name and tc_name not in tool_name_yielded:
-                            emit("tool_call_start", tc_name)
+                            emit(tool_call_event(id=tc_name, name=tc_name, status="running"))
                             tool_name_yielded.add(tc_name)
 
                 if chunk.content:
@@ -159,7 +192,7 @@ def _chat_graph_nodes():
                         actual_yield = delta
 
                     if actual_yield:
-                        emit("content", actual_yield)
+                        emit(delta_event(actual_yield))
                         content_yielded_iter += actual_yield
                         total_content += actual_yield
 
@@ -179,7 +212,7 @@ def _chat_graph_nodes():
                 else:
                     delta = response.content
                 if delta:
-                    emit("content", delta)
+                    emit(delta_event(delta))
                     total_content += delta
             tool_calls = response.tool_calls
             content_for_history = response.content
@@ -199,8 +232,8 @@ def _chat_graph_nodes():
         writer = _stream_writer()
         runtime = config["configurable"]["runtime"]
 
-        def emit(kind: str, data: Any) -> None:
-            writer({"kind": kind, "data": data})
+        def emit(event: dict[str, Any]) -> None:
+            writer(event)
 
         history = list(state["history"])
         tools = runtime["tools"]
@@ -248,7 +281,14 @@ def _chat_graph_nodes():
             tool_name = tool_call["name"]
             selected_tool = next((t for t in tools if t.name == tool_name), None)
             if selected_tool:
-                emit("tool_call_exec", tool_name)
+                args_str = _stringify_args(tool_call["args"])
+                emit(
+                    tool_call_event(
+                        id=tool_call.get("id") or tool_name,
+                        name=tool_name,
+                        status="running",
+                    )
+                )
                 observation = await selected_tool.ainvoke(tool_call["args"])
 
                 hitl_task = _parse_hitl_proposal(observation)
@@ -268,14 +308,15 @@ def _chat_graph_nodes():
                     note = _hitl_proposal_note(observation)
                     feedback = _hitl_llm_feedback(hitl_task, note)
                     emit(
-                        "tool_call_result",
-                        {
-                            "name": tool_name,
-                            "args": tool_call["args"],
-                            "result": feedback,
-                        },
+                        tool_call_event(
+                            id=tool_call.get("id") or tool_name,
+                            name=tool_name,
+                            status="done",
+                            args=args_str,
+                            result=feedback,
+                        )
                     )
-                    emit("hitl_task", hitl_task)
+                    emit(task_event(hitl_task))
                     all_tool_calls.append(
                         {
                             "id": tool_call.get("id"),
@@ -294,14 +335,17 @@ def _chat_graph_nodes():
                     note = _hitl_proposal_note(observation)
                     feedback = _hitl_llm_feedback(hitl_task, note)
                     # Trimmed tool result so the chip resolves to "finished".
-                    trimmed = {
-                        "name": tool_name,
-                        "args": tool_call["args"],
-                        "result": feedback,
-                    }
-                    emit("tool_call_result", trimmed)
-                    # Dedicated sentinel drives the interactive task card.
-                    emit("hitl_task", hitl_task)
+                    emit(
+                        tool_call_event(
+                            id=tool_call.get("id") or tool_name,
+                            name=tool_name,
+                            status="done",
+                            args=args_str,
+                            result=feedback,
+                        )
+                    )
+                    # Dedicated payload event drives the interactive task card.
+                    emit(task_event(hitl_task))
                     all_tool_calls.append(
                         {
                             "id": tool_call.get("id"),
@@ -315,13 +359,16 @@ def _chat_graph_nodes():
                     await save_proactive()
                 else:
                     result_str = str(observation)
-                    payload = {
-                        "name": tool_name,
-                        "args": tool_call["args"],
-                        "result": result_str,
-                    }
-                    emit("tool_call_result", payload)
-                    emit("citation", selected_tool.name)
+                    emit(
+                        tool_call_event(
+                            id=tool_call.get("id") or tool_name,
+                            name=tool_name,
+                            status="done",
+                            args=args_str,
+                            result=result_str,
+                        )
+                    )
+                    emit(citation_event(selected_tool.name))
 
                     all_tool_calls.append(
                         {
@@ -346,7 +393,6 @@ def _chat_graph_nodes():
                         tool_call_id=tool_call["id"],
                     )
                 )
-        emit("tool_call_finished", None)
 
         runtime["proactive_message"] = proactive_message
         return {
@@ -403,9 +449,6 @@ def _chat_graph_nodes():
         writer = _stream_writer()
         runtime = config["configurable"]["runtime"]
 
-        def emit(kind: str, data: Any) -> None:
-            writer({"kind": kind, "data": data})
-
         # Clean break = agent_step produced no tool calls (iteration > 0).
         # A zero/exhausted cap (route_start) never ran the LLM — iteration 0
         # — which the loop engine reports as reached_max=True.
@@ -454,7 +497,7 @@ def _chat_graph_nodes():
                     citations=state["all_citations"],
                     tasks=state["all_tasks"] or None,
                 )
-        emit("done", not clean_break)
+        writer({"event": "done", "reached_max": not clean_break})
         return {}
 
     return (
@@ -484,54 +527,22 @@ def build_chat_graph(checkpointer: Any | None = None):
     ) = _chat_graph_nodes()
 
     def _flow_events(name: str, fn):
-        """Emit family-vocabulary node events (additive, Phase 6.2) around a
-        node body; the legacy sentinel events are untouched."""
+        """Emit family ``node_started`` / ``node_finished`` events around a
+        node body."""
 
         async def wrapped(state: ChatGraphState, config) -> dict[str, Any]:
             writer = _stream_writer()
-            writer(
-                {
-                    "kind": "flow_event",
-                    "data": {"event": "node_started", "node": name},
-                }
-            )
+            writer(node_started_event(name))
             try:
                 result = await fn(state, config)
             except GraphInterrupt:
                 # A pause is not a failure: the node re-runs on resume.
-                writer(
-                    {
-                        "kind": "flow_event",
-                        "data": {
-                            "event": "node_finished",
-                            "node": name,
-                            "outcome": "interrupted",
-                        },
-                    }
-                )
+                writer(node_finished_event(name, "interrupted"))
                 raise
             except Exception:
-                writer(
-                    {
-                        "kind": "flow_event",
-                        "data": {
-                            "event": "node_finished",
-                            "node": name,
-                            "outcome": "failed",
-                        },
-                    }
-                )
+                writer(node_finished_event(name, "failed"))
                 raise
-            writer(
-                {
-                    "kind": "flow_event",
-                    "data": {
-                        "event": "node_finished",
-                        "node": name,
-                        "outcome": "ok",
-                    },
-                }
-            )
+            writer(node_finished_event(name, "ok"))
             return result
 
         wrapped.__name__ = name
@@ -605,10 +616,10 @@ async def run_chat_graph(
     checkpointer: Any | None = None,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
-) -> AsyncIterator[tuple[str, Any]]:
-    """Consumes the graph's custom stream and re-emits the legacy
-    ``(kind, data)`` sentinel tuples (parity contract with the pre-3.2 loop).
-    """
+) -> AsyncIterator[dict[str, Any]]:
+    """Run one chat turn, yielding the family + health payload event dicts
+    (:class:`app.ai.flow_events.FlowEvent`; plus the engine-internal
+    ``done`` completion signal, which the SSE mapper drops)."""
     graph = build_chat_graph(checkpointer=checkpointer)
     runtime: dict[str, Any] = {
         "llm_with_tools": llm_with_tools,
@@ -621,10 +632,8 @@ async def run_chat_graph(
     }
     config = _make_config(session_id, checkpointer, runtime)
 
-    async def gen() -> AsyncIterator[tuple[str, Any]]:
-        # Phase 6.2 dual-emit: family vocabulary alongside the legacy
-        # sentinel events (additive; stream_loop_as_sse gates the frames).
-        yield ("flow_event", {"event": "flow_started", "flow": "chat"})
+    async def gen() -> AsyncIterator[dict[str, Any]]:
+        yield flow_started_event()
         done_seen = False
         try:
             async for mode, payload in graph.astream(
@@ -637,28 +646,19 @@ async def run_chat_graph(
                 config=config,
                 stream_mode=["custom"],
             ):
-                if mode == "custom" and isinstance(payload, dict) and "kind" in payload:
-                    if payload["kind"] == "done":
+                if mode == "custom" and isinstance(payload, dict) and "event" in payload:
+                    if payload["event"] == "done":
                         done_seen = True
-                    yield (payload["kind"], payload["data"])
+                    yield payload
             if not done_seen:
                 # The run paused at an ask_user interrupt (no finalize).
-                yield ("flow_event", {"event": "interrupt"})
+                yield interrupt_event()
             else:
-                yield ("flow_event", {"event": "flow_finished"})
+                yield flow_finished_event()
         except Exception as exc:
             names = {cls.__name__ for cls in type(exc).__mro__}
-            retryable = bool(
-                names
-                & {
-                    "APITimeoutError",
-                    "APIConnectionError",
-                    "RateLimitError",
-                    "ConnectionError",
-                    "TimeoutError",
-                }
-            )
-            yield ("flow_event", {"event": "flow_failed", "retryable": retryable})
+            retryable = bool(names & _RETRYABLE_EXC_NAMES)
+            yield flow_failed_event(retryable)
             raise
 
     async for event in gen():
@@ -680,11 +680,11 @@ def chat_engine_iter(
     checkpointer: Any | None = None,
 ):
     """Run a chat turn on the LangGraph engine (the only engine since the
-    Phase 8 decommission). Returns an async iterator of the legacy
-    ``(kind, data)`` sentinel tuples; callers stay engine-agnostic. The
-    lifespan-held checkpointer (thread_id = session id) is attached for
-    sessioned runs — ask_user interrupts need the durable thread;
-    ``user_id``/``tenant_id`` enable the crash-resume dedup.
+    Phase 8 decommission). Returns an async iterator of family + health
+    payload event dicts; callers stay engine-agnostic. The lifespan-held
+    checkpointer (thread_id = session id) is attached for sessioned runs —
+    ask_user interrupts need the durable thread; ``user_id``/``tenant_id``
+    enable the crash-resume dedup.
     """
     if checkpointer is None and session_id is not None:
         checkpointer = get_runtime_saver()
@@ -727,15 +727,15 @@ async def resume_interrupted_chat_graph(
     log_label: str = "AI Assistance (resume)",
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
-) -> AsyncIterator[tuple[str, Any]] | None:
+) -> AsyncIterator[dict[str, Any]] | None:
     """Resume a run paused at an ask_user interrupt.
 
-    Returns the familiar ``(kind, data)`` event iterator, or ``None`` when
-    there is no pending interrupt (caller falls back to the loop engine's
-    fresh-continuation turn). The summary the loop engine would have fed as
-    the driving input arrives as the interrupt's return value — the
-    ask_user ToolMessage — and the model continues the same conversation.
-    The runtime handles are supplied fresh (they are never checkpointed).
+    Returns the event-dict iterator, or ``None`` when there is no pending
+    interrupt (caller falls back to a fresh-continuation turn). The summary
+    the loop engine would have fed as the driving input arrives as the
+    interrupt's return value — the ask_user ToolMessage — and the model
+    continues the same conversation. The runtime handles are supplied fresh
+    (they are never checkpointed).
     """
     saver = get_runtime_saver()
     if saver is None or not await has_pending_interrupt(session_id):
@@ -752,11 +752,11 @@ async def resume_interrupted_chat_graph(
     }
     config = _make_config(session_id, saver, runtime)
 
-    async def gen() -> AsyncIterator[tuple[str, Any]]:
+    async def gen() -> AsyncIterator[dict[str, Any]]:
         async for mode, payload in graph.astream(
             Command(resume=resume_value), config=config, stream_mode=["custom"]
         ):
-            if mode == "custom" and isinstance(payload, dict) and "kind" in payload:
-                yield (payload["kind"], payload["data"])
+            if mode == "custom" and isinstance(payload, dict) and "event" in payload:
+                yield payload
 
     return gen()

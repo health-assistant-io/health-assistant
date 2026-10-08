@@ -42,7 +42,7 @@ export interface PendingChatAttachment {
 
 /**
  * A human-in-the-loop task card proposed by the assistant.
- * Mirrors the backend `[HITL_TASK]` payload contract.
+ * Mirrors the backend `task` payload-event contract (plan 24 V3).
  */
 export interface TaskInfo {
   schema_version: number;

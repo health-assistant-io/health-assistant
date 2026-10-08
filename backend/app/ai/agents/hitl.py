@@ -391,7 +391,6 @@ async def resume_after_hitl(
     tenant_id: UUID,
     user_id: UUID,
     message_id: UUID | None = None,
-    flow_events: bool = False,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
     task cards. Reads the resolved tasks from the target message's ``tasks``
@@ -402,7 +401,7 @@ async def resume_after_hitl(
       * Session must belong to (user_id, tenant_id).
       * Target message must exist and have tasks (graceful fallback otherwise).
 
-    Yields the same SSE sentinel vocabulary as the streaming chat path.
+    Yields the same SSE frames (family vocabulary) as the streaming chat path.
     """
     # Lazy import to avoid the chat_agent <-> hitl top-level cycle.
     from sqlalchemy import select
@@ -410,7 +409,7 @@ async def resume_after_hitl(
     from app.ai.agents.chat_agent import (
         build_chat_tools,
         reconstruct_history,
-        stream_loop_as_sse,
+        stream_events_as_sse,
     )
     from app.ai.agents.prompts import build_resume_system_prompt
     from app.ai.graphs.chat_agent import (
@@ -510,8 +509,8 @@ async def resume_after_hitl(
             f"HITL resume: resuming checkpointed graph run for session "
             f"{session_id} (ask_user interrupt)."
         )
-        async for chunk in stream_loop_as_sse(resumed, flow_events=flow_events):
-            yield chunk
+        async for frame in stream_events_as_sse(resumed):
+            yield frame
         return
 
     loop = chat_engine_iter(
@@ -526,5 +525,5 @@ async def resume_after_hitl(
         user_id=user_id,
         tenant_id=tenant_id,
     )
-    async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
-        yield chunk
+    async for frame in stream_events_as_sse(loop):
+        yield frame

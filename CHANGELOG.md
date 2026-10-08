@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Chat stream speaks one shared event vocabulary (breaking):** the
+  `/ai-assistance/stream` and `/ai-assistance/sessions/{id}/resume` SSE
+  streams now emit the shared chat-event contract plus health's payload
+  events as one JSON object per frame
+  (`data: {"event": <name>, ...}`). Core events: `flow_started`,
+  `node_started`/`node_finished`, `delta` (text), `tool_call` (§5 shape:
+  `id`/`name`/`status` running|done/`args` string/`result`),
+  `flow_finished`, `flow_failed` (`code`/`message`/`retryable` — the former
+  `{"error", "error_type"}` envelope is now this frame). Health payload
+  events: `citation` (tool name in `source`), `task` (the HITL card,
+  payload identical to the persisted `tasks` JSONB), `interrupt` (the
+  resumable ask_user pause), `session` (freshly auto-created session id).
+  Deleted outright, no compatibility: the `[TOOL_CALL_*]`/`[CITATION]`/
+  `[HITL_TASK]`/`[SESSION_ID]`-in-content sentinel protocol, the
+  `stream_loop_as_sse` re-emitter, and the `?flow_events=true` gate on both
+  endpoints (family emission is always-on). Closed event set in
+  `app/ai/flow_events.py`, pinned by a vocabulary-wall test; the frontend
+  parser (`aiAssistanceService.ts`) consumes the frames directly
+  (component-facing message shapes unchanged). `@neuronection/assistant-ui`
+  stays at `^0.50.1` (health has no server-broadcast stop, so the 0.51.0
+  `flow_interrupted` event is deliberately not adopted).
+
 ### Added
 - **Boot-time warning on unknown/renamed env names (audit follow-up a):**
   `Settings` construction now emits warning-only telemetry when an env var

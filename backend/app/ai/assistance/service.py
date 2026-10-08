@@ -10,6 +10,7 @@ The HITL helpers and the service class are re-exported here for backward
 compatibility with callers and tests.
 """
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -21,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.agents.chat_agent import (
     build_chat_tools,
     reconstruct_history,
-    stream_loop_as_sse,
+    stream_events_as_sse,
 )
 from app.ai.agents.hitl import (
     _append_assistant_turn_to_history,
@@ -53,6 +54,7 @@ from app.ai.assistance.form_fillers import (
     magic_fill_examination,
 )
 from app.ai.assistance.icons import generate_category_icon, suggest_category_icon
+from app.ai.flow_events import session_event
 from app.ai.graphs.chat_agent import chat_engine_iter
 from app.ai.providers.service import AIProviderService
 from app.core.config import settings
@@ -124,7 +126,6 @@ class AIAssistanceService:
         user_id: UUID | None = None,
         stream: bool = False,
         images: list[str] | None = None,
-        flow_events: bool = False,
     ):
         """Main entry point for AI assistance.
 
@@ -175,7 +176,6 @@ class AIAssistanceService:
                     tenant_id,
                     user_id,
                     validated_images,
-                    flow_events=flow_events,
                 )
             return await self._general_chat(
                 llm, user_input, context, tenant_id, user_id, validated_images
@@ -204,9 +204,9 @@ class AIAssistanceService:
         tenant_id: UUID,
         user_id: UUID,
         images: list[str] | None = None,
-        flow_events: bool = False,
     ):
-        """Stream a chat response (SSE). Body lives in the LangGraph engine."""
+        """Stream a chat response (SSE, family vocabulary). Body lives in the
+        LangGraph engine."""
         patient_id = context.get("patient_id")
         examination_id = context.get("examination_id")
         session_id_str = context.get("session_id")
@@ -229,7 +229,7 @@ class AIAssistanceService:
                 user_id=user_id, tenant_id=tenant_id, patient_id=p_id, title=title
             )
             session_id = session.id
-            yield f"[SESSION_ID] {session_id}"
+            yield f"data: {json.dumps(session_event(str(session_id)))}\n\n"
 
         # Save user message. Persist image attachments inside the content
         # JSONB so a reloaded session reconstructs them in the UI AND so the
@@ -278,8 +278,8 @@ class AIAssistanceService:
             user_id=user_id,
             tenant_id=tenant_id,
         )
-        async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
-            yield chunk
+        async for frame in stream_events_as_sse(loop):
+            yield frame
 
     async def resume_after_hitl(
         self,
@@ -287,12 +287,11 @@ class AIAssistanceService:
         tenant_id: UUID,
         user_id: UUID,
         message_id: UUID | None = None,
-        flow_events: bool = False,
     ):
         """Stream a HITL continuation turn. Delegates to
         :func:`app.ai.agents.hitl.resume_after_hitl`."""
         max_iterations = await self._get_max_iterations(tenant_id)
-        async for chunk in _resume_after_hitl(
+        async for frame in _resume_after_hitl(
             self.db,
             self.chat_session_service,
             self.ai_provider_service,
@@ -301,9 +300,8 @@ class AIAssistanceService:
             tenant_id,
             user_id,
             message_id,
-            flow_events=flow_events,
         ):
-            yield chunk
+            yield frame
 
     async def _general_chat(
         self,
@@ -373,7 +371,7 @@ class AIAssistanceService:
         max_iterations = await self._get_max_iterations(tenant_id)
         full_message = ""
         reached_max = False
-        async for kind, data in chat_engine_iter(
+        async for event in chat_engine_iter(
             llm_with_tools,
             tools,
             history,
@@ -385,10 +383,10 @@ class AIAssistanceService:
             user_id=user_id,
             tenant_id=tenant_id,
         ):
-            if kind == "content":
-                full_message += data
-            elif kind == "done":
-                reached_max = data
+            if event["event"] == "delta":
+                full_message += event["text"]
+            elif event["event"] == "done":
+                reached_max = event["reached_max"]
 
         if reached_max:
             return {

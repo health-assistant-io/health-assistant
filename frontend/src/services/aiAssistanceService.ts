@@ -109,7 +109,7 @@ export const resumeHitlSession = async (
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume?flow_events=true`, {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/sessions/${sessionId}/resume`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -119,106 +119,23 @@ export const resumeHitlSession = async (
       body: JSON.stringify(params && params.messageId ? { message_id: params.messageId } : {})
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    if (!reader) throw new Error('No reader available');
-
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.trim().startsWith('data: ')) {
-          const content = line.trim().replace('data: ', '');
-          try {
-              const data = JSON.parse(content);
-            if (data.flow_event) {
-              // Phase 6.2 dual-emit: family flow events (additive, gated by
-              // ?flow_events=true) — consumed by the FlowStatusCard renderer.
-              onMessage({ flowEvent: data.flow_event });
-              continue;
-            }
-            if (data.error || data.error_type) {
-              // Server-side error. The backend classifies LLM/provider errors
-              // into a stable ``error_type`` code (connection/auth/rate_limit/
-              // timeout/generic) and leaves ``error`` empty so no raw SDK text
-              // leaks. For soft guard violations ``error_type`` is "guard" and
-              // ``error`` carries the user-facing message.
-              //
-              // We MUST call onComplete() before returning: the chat UI resets
-              // its loading state only in the onComplete/onError callbacks, and
-              // a bare return here (the old behaviour) left it stuck spinning
-              // forever after a connection error.
-              onMessage({ error: data.error, errorType: data.error_type });
-              onComplete();
-              return;
-            }
-            const rawContent = data.content;
-            if (rawContent) {
-              if (rawContent.startsWith('[SESSION_ID]')) {
-                onMessage({ sessionId: rawContent.replace('[SESSION_ID] ', '').trim() });
-              } else if (rawContent.startsWith('[TOOL_CALL_START]')) {
-                onMessage({ toolCall: { name: rawContent.replace('[TOOL_CALL_START] ', '').trim(), status: 'starting' } });
-              } else if (rawContent.startsWith('[TOOL_CALL_EXEC]')) {
-                onMessage({ toolCall: { name: rawContent.replace('[TOOL_CALL_EXEC] ', '').trim(), status: 'executing' } });
-              } else if (rawContent.startsWith('[TOOL_CALL_RESULT]')) {
-                const payload = rawContent.replace('[TOOL_CALL_RESULT] ', '').trim();
-                try {
-                  const payloadData = JSON.parse(payload);
-                  onMessage({
-                    toolCall: {
-                      name: payloadData.name,
-                      status: 'finished',
-                      args: typeof payloadData.args === 'string' ? payloadData.args : JSON.stringify(payloadData.args),
-                      result: payloadData.result
-                    }
-                  });
-                } catch {
-                  const parts = payload.split('|');
-                  onMessage({ toolCall: { name: parts[0], status: 'finished', args: parts[1], result: parts.slice(2).join('|') } });
-                }
-              } else if (rawContent === '[TOOL_CALL_FINISHED]') {
-                onMessage({ toolCall: { name: '', status: 'finished' } });
-              } else if (rawContent.startsWith('[CITATION]')) {
-                onMessage({ citation: rawContent.replace('[CITATION] ', '') });
-              } else if (rawContent.startsWith('[HITL_TASK]')) {
-                const payloadStr = rawContent.replace('[HITL_TASK] ', '').trim();
-                try {
-                  const task = JSON.parse(payloadStr) as TaskInfo;
-                  if (task && task.proposal_id && task.task_type) {
-                    onMessage({ task });
-                  } else {
-                    console.warn('Malformed HITL_TASK payload (missing proposal_id/task_type)', task);
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse [HITL_TASK] payload', e);
-                }
-              } else {
-                onMessage({ content: rawContent });
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to parse SSE chunk', e);
-          }
-        }
-      }
-    }
-    onComplete();
+    await consumeAIStreamResponse(response, onMessage, onComplete, onError);
   } catch (error) {
     onError(error);
   }
 };
 
-/** Family flow vocabulary (Phase 6.2 dual-emit, additive + gated). */
+/**
+ * Family chat vocabulary (ai-features §5) + health's payload events
+ * (plan 24 V3): every SSE frame is one JSON object with the event name in
+ * `event`. Family core: `flow_started` / `node_started` / `node_finished` /
+ * `delta` / `tool_call` / `flow_finished` / `flow_failed`. Health payload
+ * events: `citation` (a data-source tool name), `task` (an interactive HITL
+ * card, payload identical to the persisted tasks JSONB), `interrupt` (the
+ * resumable ask_user pause — NOT the terminal family `flow_interrupted`,
+ * which health does not emit), and `session` (a freshly auto-created chat
+ * session id). Unknown events are ignored (additive family growth is safe).
+ */
 export interface AIFlowEvent {
   event: 'flow_started' | 'node_started' | 'node_finished' | 'interrupt' | 'flow_finished' | 'flow_failed';
   flow?: string;
@@ -242,6 +159,138 @@ export interface AIStreamMessage {
   errorType?: string;
 }
 
+/**
+ * Parse one family-frame SSE stream. `onComplete` fires exactly once — on
+ * clean stream end OR after a terminal `flow_failed` frame (the chat UI
+ * resets its loading state only in the onComplete/onError callbacks; a bare
+ * return would leave it spinning forever after a connection error).
+ */
+async function consumeAIStreamResponse(
+  response: Response,
+  onMessage: (msg: AIStreamMessage) => void,
+  onComplete: () => void,
+  onError: (error: any) => void
+): Promise<void> {
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  if (!reader) throw new Error('No reader available');
+
+  try {
+    let buffer = '';
+    let terminal = false;
+    while (!terminal) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      // Keep the last partial line in the buffer
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          const content = line.trim().replace('data: ', '');
+          try {
+            const data = JSON.parse(content);
+            if (handleAIStreamEvent(data, onMessage, onComplete)) {
+              // Terminal classified failure — stop consuming (the chat UI
+              // resets its loading state in the onComplete callback).
+              terminal = true;
+              break;
+            }
+          } catch (e) {
+            console.warn('Failed to parse SSE chunk', e);
+          }
+        }
+      }
+    }
+    if (terminal) {
+      // Terminal classified failure — close the connection; onComplete was
+      // already called by the frame handler (exactly once).
+      reader.cancel().catch(() => { /* stream already closed */ });
+      return;
+    }
+    onComplete();
+  } catch (error) {
+    onError(error);
+  }
+}
+
+/**
+ * Map one parsed family frame onto the component-facing AIStreamMessage
+ * shapes. Returns true when the frame was terminal (a classified
+ * `flow_failed`) and the caller should stop consuming.
+ */
+function handleAIStreamEvent(
+  data: any,
+  onMessage: (msg: AIStreamMessage) => void,
+  onComplete: () => void
+): boolean {
+  switch (data.event) {
+    case 'session':
+      onMessage({ sessionId: data.session_id });
+      return false;
+    case 'delta':
+      if (data.text) {
+        onMessage({ content: data.text });
+      }
+      return false;
+    case 'tool_call': {
+      // §5 statuses (running | done) onto the component's tool-chip states.
+      if (data.name) {
+        onMessage({
+          toolCall: {
+            name: data.name,
+            status: data.status === 'done' ? 'finished' : 'executing',
+            args: typeof data.args === 'string' ? data.args : data.args ? JSON.stringify(data.args) : undefined,
+            result: data.result
+          }
+        });
+      }
+      return false;
+    }
+    case 'citation':
+      onMessage({ citation: data.source });
+      return false;
+    case 'task': {
+      const task = data.task as TaskInfo;
+      if (task && task.proposal_id && task.task_type) {
+        onMessage({ task });
+      } else {
+        console.warn('Malformed task payload (missing proposal_id/task_type)', task);
+      }
+      return false;
+    }
+    case 'flow_started':
+    case 'node_started':
+    case 'node_finished':
+    case 'interrupt':
+    case 'flow_finished':
+      onMessage({ flowEvent: data });
+      return false;
+    case 'flow_failed':
+      onMessage({ flowEvent: data });
+      if (data.code) {
+        // Terminal classified failure (the endpoint's error frame): the
+        // backend maps LLM/provider errors to a stable ``code``
+        // (connection/auth/rate_limit/timeout/model_config/generic) and
+        // leaves ``message`` empty so no raw SDK text leaks; soft guard
+        // violations carry code "guard" + the user-facing message.
+        onMessage({ error: data.message, errorType: data.code });
+        onComplete();
+        return true;
+      }
+      return false;
+    default:
+      // Unknown events are ignored — additive family vocabulary stays safe.
+      return false;
+  }
+}
+
 export const streamAIAssistance = async (
   request: AIAssistanceRequest,
   onMessage: (msg: AIStreamMessage) => void,
@@ -251,7 +300,7 @@ export const streamAIAssistance = async (
   const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
   try {
-    const response = await fetch(`${API_BASE_URL}/ai-assistance/stream?flow_events=true`, {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/stream`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -261,111 +310,7 @@ export const streamAIAssistance = async (
       body: JSON.stringify(request)
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-
-    if (!reader) throw new Error('No reader available');
-
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      
-      // Keep the last partial line in the buffer
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.trim().startsWith('data: ')) {
-          const content = line.trim().replace('data: ', '');
-          try {
-              const data = JSON.parse(content);
-            if (data.flow_event) {
-              // Phase 6.2 dual-emit: family flow events (additive, gated by
-              // ?flow_events=true) — consumed by the FlowStatusCard renderer.
-              onMessage({ flowEvent: data.flow_event });
-              continue;
-            }
-            if (data.error || data.error_type) {
-              // Server-side error. The backend classifies LLM/provider errors
-              // into a stable ``error_type`` code (connection/auth/rate_limit/
-              // timeout/generic) and leaves ``error`` empty so no raw SDK text
-              // leaks. For soft guard violations ``error_type`` is "guard" and
-              // ``error`` carries the user-facing message.
-              //
-              // We MUST call onComplete() before returning: the chat UI resets
-              // its loading state only in the onComplete/onError callbacks, and
-              // a bare return here (the old behaviour) left it stuck spinning
-              // forever after a connection error.
-              onMessage({ error: data.error, errorType: data.error_type });
-              onComplete();
-              return;
-            }
-            
-            const rawContent = data.content;
-            if (rawContent) {
-              if (rawContent.startsWith('[SESSION_ID]')) {
-                onMessage({ sessionId: rawContent.replace('[SESSION_ID] ', '').trim() });
-              } else if (rawContent.startsWith('[TOOL_CALL_START]')) {
-                const name = rawContent.replace('[TOOL_CALL_START] ', '').trim();
-                onMessage({ toolCall: { name, status: 'starting' } });
-              } else if (rawContent.startsWith('[TOOL_CALL_EXEC]')) {
-                const name = rawContent.replace('[TOOL_CALL_EXEC] ', '').trim();
-                onMessage({ toolCall: { name, status: 'executing' } });
-              } else if (rawContent.startsWith('[TOOL_CALL_RESULT]')) {
-                const payload = rawContent.replace('[TOOL_CALL_RESULT] ', '').trim();
-                try {
-                  // New format: JSON string
-                  const payloadData = JSON.parse(payload);
-                  onMessage({ 
-                    toolCall: { 
-                      name: payloadData.name, 
-                      status: 'finished', 
-                      args: typeof payloadData.args === 'string' ? payloadData.args : JSON.stringify(payloadData.args), 
-                      result: payloadData.result 
-                    } 
-                  });
-                } catch (e) {
-                  // Fallback to old pipe-separated format
-                  const parts = payload.split('|');
-                  const name = parts[0];
-                  const args = parts[1];
-                  const result = parts.slice(2).join('|');
-                  onMessage({ toolCall: { name, status: 'finished', args, result } });
-                }
-              } else if (rawContent === '[TOOL_CALL_FINISHED]') {
-                onMessage({ toolCall: { name: '', status: 'finished' } });
-              } else if (rawContent.startsWith('[CITATION]')) {
-                onMessage({ citation: rawContent.replace('[CITATION] ', '') });
-              } else if (rawContent.startsWith('[HITL_TASK]')) {
-                const payloadStr = rawContent.replace('[HITL_TASK] ', '').trim();
-                try {
-                  const task = JSON.parse(payloadStr) as TaskInfo;
-                  if (task && task.proposal_id && task.task_type) {
-                    onMessage({ task });
-                  } else {
-                    console.warn('Malformed HITL_TASK payload (missing proposal_id/task_type)', task);
-                  }
-                } catch (e) {
-                  console.warn('Failed to parse [HITL_TASK] payload', e);
-                }
-              } else {
-                onMessage({ content: rawContent });
-              }
-            }
-          } catch (e) {
-            console.warn("Failed to parse SSE chunk", e);
-          }
-        }
-      }
-    }
-    onComplete();
+    await consumeAIStreamResponse(response, onMessage, onComplete, onError);
   } catch (error) {
     onError(error);
   }

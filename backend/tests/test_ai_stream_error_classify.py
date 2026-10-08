@@ -5,6 +5,8 @@ Guarantees that provider/LLM exceptions are mapped to stable, non-leaky codes
 and that soft ValueError guard messages are forwarded verbatim.
 """
 
+import json
+
 from openai import (
     APIConnectionError,
     APITimeoutError,
@@ -89,3 +91,42 @@ class TestClassifyStreamError:
         )
         assert msg == ""
         assert etype == "generic"
+
+
+class TestStreamErrorFrame:
+    """The terminal SSE frame is a family ``flow_failed`` event (plan 24 V3):
+    the classified code rides in ``code`` (the stable error_type the frontend
+    localizes), the user-facing text only for guards, plus ``retryable``."""
+
+    def test_guard_frame_carries_message(self):
+        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+
+        frame = _stream_error_frame(ValueError("Session not found or access denied."))
+        assert frame.startswith('data: {"event": "flow_failed"')
+        payload = json.loads(frame.removeprefix("data: ").strip())
+        assert payload == {
+            "event": "flow_failed",
+            "retryable": False,
+            "code": "guard",
+            "message": "Session not found or access denied.",
+        }
+
+    def test_provider_frame_is_code_only_and_retryable(self):
+        from openai import APIConnectionError
+
+        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+
+        exc = APIConnectionError(request=None)
+        payload = json.loads(_stream_error_frame(exc).removeprefix("data: ").strip())
+        assert payload["code"] == "connection"
+        assert payload["message"] == ""
+        assert payload["retryable"] is True
+
+    def test_generic_frame_is_not_retryable_and_leaks_nothing(self):
+        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+
+        frame = _stream_error_frame(RuntimeError("connect to https://api.openai.com failed"))
+        payload = json.loads(frame.removeprefix("data: ").strip())
+        assert payload["code"] == "generic"
+        assert payload["message"] == ""
+        assert payload["retryable"] is False
