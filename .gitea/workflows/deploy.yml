@@ -173,13 +173,48 @@ jobs:
           npm run lint
           npm run build
 
-  build-and-push:
-    name: Build & Push Docker Images
-    needs: [test-backend, test-frontend]
+  # Gitea 28.1.0 (server upgraded 2026-10-08) rejects the `secrets` context
+  # in job-level `if:` at workflow-parse time ("Unrecognized named-value:
+  # 'secrets'") — GitHub's context-availability table never allowed it
+  # there either. The registry/deploy enable-decisions therefore move into
+  # this tiny gate job: step `env:` may read secrets everywhere, and the
+  # downstream jobs test the published booleans via `needs`, which IS
+  # allowed in job-level `if`.
+  deploy-config:
+    name: Deployment Config Gate
     runs-on: ubuntu-latest
     container:
       image: gitea/runner-images:ubuntu-latest
-    if: ${{ secrets.REGISTRY_HOST != '' && secrets.REGISTRY_TOKEN != '' }}
+    outputs:
+      registry: ${{ steps.check.outputs.registry }}
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Check which secrets are configured
+        id: check
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "$REGISTRY_HOST" ] && [ -n "$REGISTRY_TOKEN" ]; then
+            echo "registry=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "registry=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$VM_HOST" ] && [ -n "$SSH_PRIVATE_KEY" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: [test-backend, test-frontend, deploy-config]
+    runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
+    if: needs.deploy-config.outputs.registry == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -210,11 +245,11 @@ jobs:
 
   deploy:
     name: Deploy to Target Server
-    needs: build-and-push
+    needs: [build-and-push, deploy-config]
     runs-on: ubuntu-latest
     container:
       image: gitea/runner-images:ubuntu-latest
-    if: ${{ secrets.VM_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
+    if: needs.deploy-config.outputs.deploy == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
