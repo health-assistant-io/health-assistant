@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `APP_ENV` reference (prefixed-only, family gate C2).
 
 ### Fixed
+- **Explicit `proxy_http_version 1.1` for WebSocket upgrades in both nginx
+  flavors:** the `/api/` gateway blocks had the Upgrade/Connection headers
+  but relied on nginx's implicit HTTP/1.1-on-upgrade behavior (the `/flower/`
+  blocks already set it). Current nginx speaks 1.1 upstream automatically —
+  verified end-to-end with a live WS handshake through a byte-identical
+  block — but the implicit path is version-dependent; the flag is now
+  explicit per nginx's documented WS recipe, so older pinned images keep
+  `/api/v1/ws/*` (notifications, task monitor) working.
 - **`NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS` is now a real setting:** the
   operator checklist documented this knob but the Settings field never
   existed, so setting it silently did nothing (the service fell back to the
