@@ -12,6 +12,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Docs overhaul — accuracy, deduplication, structure (2026-10-08):** full
+  audit of the public docs against the codebase. Factual fixes: wrong env var
+  (`TRUSTED_PROXY_COUNT` → `HA_TRUSTED_PROXY_COUNT`), stale FHIR resource
+  count (19 → 20, Substance listed), handler/module counts, seed-stage table
+  (12 stages), Zustand slice list, version examples, broken anchors and
+  no-op shell commands, mobile "optional" API-secret contradiction, Android
+  API level. Deduplication: SMART/OAuth explainer now canonical in
+  FHIR_R4_FACADE (API/API_LAYERS link to it), README slimmed (quickstart →
+  INSTALL, architecture diagram → ARCHITECTURE, docs-link wall → funnel
+  links), TAXONOMY endpoint table → API reference. Structure:
+  `PROJECT_STRUCTURE.md` retired (repo layout absorbed into ARCHITECTURE —
+  the hand-maintained tree had drifted on every count);
+  `TASK_DEBUGGING.md` moved to the local workspace with its unique internals
+  (TaskLogger/redaction/log schema/monitoring thresholds) absorbed into the
+  public Task Debugging Guide; SETUP_WIZARD's developer sections, the
+  notification-source recipe, and taxonomy schema internals consolidated
+  into DEVELOPMENT.md § Contributor recipes; `CI_CD_SETUP.md` rewritten
+  (GitHub workflows first, the standalone deploy pipeline as it actually
+  runs, complete secrets table); `MOBILE_SYNC.md` now covers the full
+  two-way bridge surface (treatments/documents/events/notifications/changes
+  feed); INTEGRATIONS_SDK gained a TOC and a fixed §3.13→§3.15 numbering
+  gap; ONTOLOGY_CATALOG/TAXONOMY/CLINICAL_EVENTS de-phased and de-overlapped.
+  Gaps filled: manual (no-AI) data entry in the Getting Started Guide,
+  backup/export reachable from the install checklist, telemetry read APIs
+  documented, setup-wizard vs first-run-wizard disambiguation, SDK
+  renumber. `docs-tree.json`: "Repository Structure" page retired, setup
+  wizard retitled "Guided Onboarding (Setup Wizard)".
 - **Docs publication policy (2026-10-08):** the public tree now carries product
   + developer documentation only; plans, decisions, project-tracking state,
   and internal-workspace references are local-only. `DEVELOPMENT_PLAN.md`,
@@ -43,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `APP_ENV` reference (prefixed-only, family gate C2).
 
 ### Fixed
+- **`NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS` is now a real setting:** the
+  operator checklist documented this knob but the Settings field never
+  existed, so setting it silently did nothing (the service fell back to the
+  6-hour default). Field added to config with the documented default and
+  clamping behavior covered by tests. The export manifest note for
+  patient-scope telemetry also no longer claims telemetry lacks a
+  `patient_id` column (it has one; the exclusion is because rows are
+  tenant-scoped).
 - **Docker images shipped without `backend/data` (wizard demographics empty):**
   the runtime COPY allowlist omitted `backend/data`, so production containers
   had no seed JSONs — `GET /setup/extension-catalog` returned empty options
@@ -380,6 +415,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nx:unauthenticated` → `resetKey`; sign-in (password, MFA, demo, setup) bumps the gate and re-boots.
   Backend, bridge, MFA endpoints, demo seeders and setup API untouched. Gates: lint 0 errors · tsc clean ·
   673 tests (88 files, +5 gate tests) · build green.
+
+### Security
+- **Frontend dependency audit brought to zero moderate+ findings:** `dompurify`
+  3.4.15 → 3.4.16 (production sanitizer — GHSA-p98j-92pf-mc4p /
+  GHSA-6688-9rhm-gjv2, DOM-XSS via the `IN_PLACE` sanitize hooks; this app's
+  `sanitizeHtml`/`sanitizeSvg` use standard mode, patched regardless), plus
+  dev-chain DoS bumps `brace-expansion` (1.1.21 / 2.1.7), `source-map-js`
+  1.2.2, `fast-uri` 3.1.8, and a scoped `overrides` pin of
+  `postcss-selector-parser` ^7.1.6 under `@tailwindcss/typography`
+  (GHSA-rj75-hqrm-r3gf — upstream 0.5.20 still declares 6.0.10; build +
+  lint verified green with 7.1.6). Known-remaining low: the `katex` chain
+  behind `@neuronection/assistant-ui` (GHSA-238p-pmpm-9mq7) — needs an
+  assistant-ui release, tracked in the audit.
 
 ## [v0.8.0] - 2026-09-20
 
