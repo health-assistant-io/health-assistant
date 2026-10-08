@@ -425,11 +425,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.2.2, `fast-uri` 3.1.8, and a scoped `overrides` pin of
   `postcss-selector-parser` ^7.1.6 under `@tailwindcss/typography`
   (GHSA-rj75-hqrm-r3gf — upstream 0.5.20 still declares 6.0.10; build +
-  lint verified green with 7.1.6). A `katex` ^0.18.11 override closes the
+  lint verified green with 7.1.6). A `katex` ^0.19.0 override closes the
   low-severity math-rendering chain behind `@neuronection/assistant-ui`
   (GHSA-238p-pmpm-9mq7 — rehype-katex/mermaid/micromark-extension-math
   all still declare ^0.16, so no upstream release fixes consumers; the
-  override dedupes the whole tree to 0.18.11). Frontend audit now reports
+  override dedupes the whole tree to 0.19.0 — the fixed line; 0.18.11 is
+  a deprecated accidental breaking release). Frontend audit now reports
   **zero** vulnerabilities; build + 673 tests + lint green.
 
 ## [v0.8.0] - 2026-09-20
