@@ -6,13 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 > **Workflow:** every user-facing change adds a line under `## [Unreleased]` at
-> commit time (see [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)). At release
-> time, `## [Unreleased]` is renamed to `## [vX.Y.Z] - YYYY-MM-DD` and a fresh
-> `## [Unreleased]` is opened above it.
+> commit time. At release time, `## [Unreleased]` is renamed to
+> `## [vX.Y.Z] - YYYY-MM-DD` and a fresh `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
 
 ### Changed
+- **`docs/RELEASE_PROCESS.md` moved out of the public repo:** the release
+  manual (version_manager flows, RC promotion, remote cadence, push policy)
+  is internal process documentation — it now lives in the family dev repo
+  (`projects/health-assistant/`, local-only). `version_manager.toml`
+  `[release] docs` no longer stages it; README/docs cross-links updated.
+  Public contributors: the changelog rule and push policy remain summarized
+  in `docs/DEVELOPMENT.md` § "Project Versioning".
 - **uv + pyproject packaging (plan 20 Phase 5):** `requirements*.txt` /
   `pytest.ini` / `generate-requirements.sh` are gone — workspace
   `pyproject.toml` + `uv.lock` (version regex from `config.py`), `dev`

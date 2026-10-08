@@ -269,9 +269,8 @@ We utilize a centralized semantic versioning manager script located in
 APIs, frontend packages, and installation docs.
 
 > **Changelog rule:** every user-visible change adds **one bullet** under
-> `## [Unreleased]` in `CHANGELOG.md` at commit time (see
-> [RELEASE_PROCESS.md](RELEASE_PROCESS.md)). Do this proactively — do not wait
-> to be asked.
+> `## [Unreleased]` in `CHANGELOG.md` at commit time. Do this proactively — do
+> not wait to be asked.
 
 > **Push policy:** the version manager defaults to **local-only**. Use `--git`
 > to stage + commit + tag locally, and **stop there**. Do **not** add `--push`
@@ -279,9 +278,9 @@ APIs, frontend packages, and installation docs.
 > **every** configured remote and triggers CI/CD — Docker image builds + GitHub
 > Release automation). When in doubt, ask before pushing.
 
-For the full release workflow (commit-time changelog rule, RC/final flow,
-catch-up procedure, GitHub Release automation), see
-[RELEASE_PROCESS.md](RELEASE_PROCESS.md).
+The full release workflow (RC/final flow, catch-up procedure, GitHub Release
+automation, remote cadence) is maintained **locally** in the family dev repo:
+`dev/projects/health-assistant/RELEASE_PROCESS.md`.
 
 ### Versioning Commands:
 - **Show Current Version**:
@@ -303,7 +302,7 @@ catch-up procedure, GitHub Release automation), see
 
 ### Git flags (local-first by default):
 - `--git` or `-g` (**default stop point**): stages updated files (version files
-  + `CHANGELOG.md` + `docs/RELEASE_PROCESS.md`), commits them with
+  + `CHANGELOG.md`), commits them with
   `chore(release): bump version to X.Y.Z`, and creates an annotated git tag
   `vX.Y.Z` — **locally only**. No push.
 - `--push` or `-p` (**opt-in — only when you explicitly want to publish**):

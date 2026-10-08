@@ -112,9 +112,10 @@ Health Assistant/
 │   ├── NOTIFICATION_SYSTEM.md  ONTOLOGY_CATALOG.md  PROJECT_STRUCTURE.md  SCREENSHOTS.md
 │   ├── SEEDING_AND_DEMOS.md  STATUS.md  TAXONOMY.md  TELEMETRY_AND_AGGREGATION.md
 │   ├── TENANCY_AND_USER_MANAGEMENT.md
-│   ├── (internal — not in docs-tree.json: RELEASE_PROCESS, TASK_DEBUGGING,
+│   ├── (internal — not in docs-tree.json: TASK_DEBUGGING,
 │   │        TASK_DEBUGGING_GUIDE, TASK_PROGRESS_INDICATOR, UI_CAPTURE_PIPELINE,
-│   │        AI_PROVIDER_TESTS)
+│   │        AI_PROVIDER_TESTS; RELEASE_PROCESS moved to the family dev repo
+│   │        projects/health-assistant/ 2026-10-08)
 │   └── images/                    # Screenshots used by SCREENSHOTS.md
 │
 ├── dev/                           # Private working notes (gitignored: marketing copy, audits,

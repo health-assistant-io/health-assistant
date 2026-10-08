@@ -28,5 +28,5 @@ template = '\g<1>{version}\g<4>'
 dash_escape = true
 
 [release]
-docs = ["CHANGELOG.md", "docs/RELEASE_PROCESS.md"]
+docs = ["CHANGELOG.md"]
 tag_prefix = "v"
