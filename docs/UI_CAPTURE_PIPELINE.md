@@ -33,7 +33,7 @@ To capture all scenes and rebuild the `SCREENSHOTS.md` gallery, ensure your stac
 ```
 
 By default, this will:
-1. Seed the database (`backend/scripts/seed_demo.py`) with rich, deterministic clinical data. **§13 guard rails (plan 16 H7):** the seeder only seeds a PostgreSQL database named `*_demo` whose `instance_settings.demo_mode` is true — point the capture stack at a scratch demo target (e.g. `POSTGRES_DB=health_capture_demo` + `HA_DEMO_MODE=true` on first boot) or reuse the demo compose; a plain dev database is refused, exit code 2.
+1. Seed the database (`backend/scripts/seed_demo.py`) with rich, deterministic clinical data. **Demo guard rails:** the seeder only seeds a PostgreSQL database named `*_demo` whose `instance_settings.demo_mode` is true — point the capture stack at a scratch demo target (e.g. `POSTGRES_DB=health_capture_demo` + `HA_DEMO_MODE=true` on first boot) or reuse the demo compose; a plain dev database is refused, exit code 2.
 2. Install Playwright chromium (if missing).
 3. Authenticate against the frontend.
 4. Capture `desktop` screenshots for all defined scenes into `docs/images/`.
@@ -57,7 +57,7 @@ By default, this will:
 
 ## 2. Adding or Editing a Scene
 
-The "scenes" (pages to photograph) are defined declaratively in `scripts/ui-capture/scenes.mjs` (repo-owned). The capture runner itself (`scripts/ui-capture/capture.mjs` + `gallery.mjs`) is a family-standard vendored script — all project-specific behavior (URLs, credentials, viewport, GIF order, seeding) lives in `scripts/ui-capture/ui-capture.config.json`; **edit the config and scenes, not the vendored scripts**.
+The "scenes" (pages to photograph) are defined declaratively in `scripts/ui-capture/scenes.mjs` (repo-owned). The capture runner itself (`scripts/ui-capture/capture.mjs` + `gallery.mjs`) is a vendored standard script — all project-specific behavior (URLs, credentials, viewport, GIF order, seeding) lives in `scripts/ui-capture/ui-capture.config.json`; **edit the config and scenes, not the vendored scripts**.
 
 To add a new screenshot to the gallery, simply add an object to the `scenes` array in that file.
 

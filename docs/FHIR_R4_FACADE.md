@@ -393,6 +393,4 @@ backend/tests/                              # 131 new tests across 6 files
 ## References
 
 - **Architecture**: `docs/ARCHITECTURE.md` "FHIR R4 Facade (Stage 3)".
-- **Status**: `docs/STATUS.md` (FHIR R4 facade bullet under Backend completed).
-- **Skills**: `clinical-data` §1, `backend` §10.
 - **FHIR R4 spec**: <https://hl7.org/fhir/R4/>

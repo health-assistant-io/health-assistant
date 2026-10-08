@@ -1,6 +1,6 @@
 # Health Assistant — Technical Architecture
 
-Health Assistant is a self-hosted, open-source platform for centralizing health and medical data. This document covers the technical architecture: the FastAPI backend, the PostgreSQL + TimescaleDB data model, the HL7 FHIR R4 storage layer with the biomarker engine, the AI/OCR processing pipeline, and the React frontend. See [STATUS.md](STATUS.md) for implementation progress.
+Health Assistant is a self-hosted, open-source platform for centralizing health and medical data. This document covers the technical architecture: the FastAPI backend, the PostgreSQL + TimescaleDB data model, the HL7 FHIR R4 storage layer with the biomarker engine, the AI/OCR processing pipeline, and the React frontend.
 
 ## Core Technologies
 

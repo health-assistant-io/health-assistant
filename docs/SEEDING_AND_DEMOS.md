@@ -223,8 +223,7 @@ unchanged DB is a git no-op — the point is to review diffs, not blind-replace.
 between seed items are by slug (`parent_slug`, `src_slug`/`dst_slug`,
 `panel_slug`, `class_concept_slug`). Where an entity has a real external code,
 `coding_system` + `code` are emitted alongside as **identity evidence**
-(FHIR-aligned, useful for interop/dedup audits) but are *not* the join key —
-see the design discussion in `dev/plans/seed-export-service-2026-07-07.md`.
+(FHIR-aligned, useful for interop/dedup audits) but are *not* the join key.
 
 ### 7.2 Three delivery surfaces (same service underneath)
 
@@ -286,7 +285,7 @@ runs `HA_APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
 `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production gate
 requires).
 
-`demo_mode` is an **instance fact** (identity-auth §4/§13): `HA_DEMO_MODE`
+`demo_mode` is an **instance fact**: `HA_DEMO_MODE`
 is consumed **only when initializing an empty database** and then lives in
 `instance_settings.demo_mode`. Post-init env flips are ignored with a loud
 warning — the DB value stays authoritative — and unknown/missing values
@@ -347,9 +346,9 @@ off, so the route is inert on normal instances (a probe is audited as a
 denied `auth.demo_login` event). The tokens carry the contract claim
 `auth_mode: "demo"`.
 
-**Every verifier rejects `demo` tokens while `demo_mode=false`**
-(identity-auth §13/§18.11): HTTP dependencies, the WebSocket handshake,
-the presigned-preview Bearer path, and — as of plan 16 H7 — the refresh
+**Every verifier rejects `demo` tokens while `demo_mode=false`**:
+HTTP dependencies, the WebSocket handshake,
+the presigned-preview Bearer path, and the refresh
 path, which re-checks the live instance fact on **every rotation**. A
 demo sign-in minted on a demo instance dies with the instance's
 `demo_mode`; no env flip can extend it. Symmetrically, the demo principal

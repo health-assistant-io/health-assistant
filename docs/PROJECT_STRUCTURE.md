@@ -107,20 +107,16 @@ Health Assistant/
 ├── docs/                          # Technical Documentation (see docs-tree.json for public nav)
 │   ├── docs-tree.json             # Single source of truth for public docs nav + SEO metadata
 │   ├── ARCHITECTURE.md  AI_SYSTEM.md  API.md  CI_CD_SETUP.md  CLINICAL_EVENTS.md
-│   ├── DEVELOPMENT.md  DEVELOPMENT_PLAN.md  EXPORT_IMPORT.md  FHIR_R4_FACADE.md
+│   ├── DEVELOPMENT.md  EXPORT_IMPORT.md  FHIR_R4_FACADE.md
 │   ├── INSTALL.md  INTEGRATIONS_FRAMEWORK.md  INTEGRATIONS_SDK.md
 │   ├── NOTIFICATION_SYSTEM.md  ONTOLOGY_CATALOG.md  PROJECT_STRUCTURE.md  SCREENSHOTS.md
-│   ├── SEEDING_AND_DEMOS.md  STATUS.md  TAXONOMY.md  TELEMETRY_AND_AGGREGATION.md
+│   ├── SEEDING_AND_DEMOS.md  TAXONOMY.md  TELEMETRY_AND_AGGREGATION.md
 │   ├── TENANCY_AND_USER_MANAGEMENT.md
-│   ├── (internal — not in docs-tree.json: TASK_DEBUGGING,
-│   │        TASK_DEBUGGING_GUIDE, TASK_PROGRESS_INDICATOR, UI_CAPTURE_PIPELINE,
-│   │        AI_PROVIDER_TESTS; RELEASE_PROCESS moved to the family dev repo
-│   │        projects/health-assistant/ 2026-10-08)
+│   ├── (repo-only, not in docs-tree.json: TASK_DEBUGGING, UI_CAPTURE_PIPELINE;
+│   │        RELEASE_PROCESS + DEVELOPMENT_PLAN + STATUS moved out of the
+│   │        repository 2026-10-08 — maintained in the local development
+│   │        workspace)
 │   └── images/                    # Screenshots used by SCREENSHOTS.md
-│
-├── dev/                           # Private working notes (gitignored: marketing copy, audits,
-│                                  #   plans; tracked: design RFCs, notes)
-│   └── audits/                    # Doc/code audits (AUDIT-DOCS-2026-07-20.md, etc.)
 │
 ├── scripts/                       # Root-level utility scripts (~11 files)
 │   ├── run-dev.sh                 #   Dev startup — bootstrap + `honcho start -f Procfile.dev`
@@ -184,7 +180,7 @@ Health Assistant/
 | `hooks/` | Reusable state logic (useBiomarkers, useNotificationStream, useBiomarkerDetailData, …) | Complete |
 | `locales/` | Multilingual support JSON dictionaries (en, el) | Complete |
 
-The former `frontend/tests-e2e/` UI-capture pipeline now lives in `scripts/ui-capture/` (family-standard runner; repo-owned config + scenes).
+The former `frontend/tests-e2e/` UI-capture pipeline now lives in `scripts/ui-capture/` (standard runner; repo-owned config + scenes).
 
 ## File Count & Scale
 

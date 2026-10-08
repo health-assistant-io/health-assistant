@@ -1,6 +1,6 @@
 # Health Assistant — Development Guide
 
-This guide covers local development for Health Assistant — a self-hosted, open-source health records platform built on FastAPI, React, and PostgreSQL/TimescaleDB. See [STATUS.md](STATUS.md) for what's implemented and [ARCHITECTURE.md](ARCHITECTURE.md) for the system design.
+This guide covers local development for Health Assistant — a self-hosted, open-source health records platform built on FastAPI, React, and PostgreSQL/TimescaleDB. See [ARCHITECTURE.md](ARCHITECTURE.md) for the system design.
 
 ## Development Setup
 
@@ -41,8 +41,8 @@ This guide covers local development for Health Assistant — a self-hosted, open
 
    **Dev admin credentials:** the script provisions
    `admin@healthassistant.local` / `devadmin12345` (SYSTEM_ADMIN) so you
-   can skip login — the password satisfies the family min-10 policy
-   (identity-auth §7; the old `admin123` no longer validates).
+   can skip login — the password satisfies the minimum-length-10 policy
+   (the old `admin123` no longer validates).
    The dev DB connects as `POSTGRES_USER=neuronection_health_owner` (H6 role
    rename) — if an older checkout's `.env` still says `admin`, update it.
 
@@ -279,8 +279,7 @@ APIs, frontend packages, and installation docs.
 > Release automation). When in doubt, ask before pushing.
 
 The full release workflow (RC/final flow, catch-up procedure, GitHub Release
-automation, remote cadence) is maintained **locally** in the family dev repo:
-`dev/projects/health-assistant/RELEASE_PROCESS.md`.
+automation, remote cadence) is maintained **locally**, outside this repository.
 
 ### Versioning Commands:
 - **Show Current Version**:

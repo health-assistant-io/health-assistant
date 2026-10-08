@@ -184,23 +184,5 @@
         "description": "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
       }
     ]
-  },
-  {
-    "category": "Project Status",
-    "icon": "ListTodo",
-    "items": [
-      {
-        "id": "status",
-        "file": "STATUS.md",
-        "title": "Status & Beta Roadmap",
-        "description": "Current implementation status of Health Assistant, the self-hosted, open-source health records platform. What's done, what's in progress, and what's planned."
-      },
-      {
-        "id": "development-plan",
-        "file": "DEVELOPMENT_PLAN.md",
-        "title": "Development Roadmap",
-        "description": "Roadmap for Health Assistant, the self-hosted, open-source health records platform: biomarker clinical insights, mobile companion app, advanced FHIR R4 conformance, and end-to-end testing."
-      }
-    ]
   }
 ]

@@ -12,10 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Docs publication policy (2026-10-08):** the public tree now carries product
+  + developer documentation only; plans, decisions, project-tracking state,
+  and internal-workspace references are local-only. `DEVELOPMENT_PLAN.md`,
+  `STATUS.md`, and the public roadmap retired from the website (STATUS moved
+  to the local development workspace; README gained a marketing "Highlights"
+  section instead). `AGENTS.md` was rewritten as a public contributor guide
+  (maintainer instructions — skill routing, family library rules, toolchain —
+  live in the local agents file). Internal plan/audit/spec citations scrubbed
+  from STATUS, AI_SYSTEM, DEVELOPMENT, CI_CD_SETUP, UI_CAPTURE_PIPELINE,
+  PROJECT_STRUCTURE, README, API, INSTALL, SEEDING_AND_DEMOS, SETUP_WIZARD,
+  STATE_BIOMARKERS, ARCHITECTURE, FHIR_R4_FACADE. New gate
+  `backend/tests/test_docs_publication_policy.py` bans internal-workspace
+  references from public surfaces (docs/, README, AGENTS, and the unreleased
+  CHANGELOG slice) and pins docs-tree structure.
 - **`docs/RELEASE_PROCESS.md` moved out of the public repo:** the release
   manual (version_manager flows, RC promotion, remote cadence, push policy)
-  is internal process documentation — it now lives in the family dev repo
-  (`projects/health-assistant/`, local-only). `version_manager.toml`
+  is internal process documentation — it now lives in the local development
+  workspace (not published). `version_manager.toml`
   `[release] docs` no longer stages it; README/docs cross-links updated.
   Public contributors: the changelog rule and push policy remain summarized
   in `docs/DEVELOPMENT.md` § "Project Versioning".

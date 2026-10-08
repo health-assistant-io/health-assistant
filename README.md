@@ -281,9 +281,6 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - [Development Guide](docs/DEVELOPMENT.md) · [CI/CD Deployment](docs/CI_CD_SETUP.md)
 - [Seeding & Demos](docs/SEEDING_AND_DEMOS.md) · [Task Debugging Guide](docs/TASK_DEBUGGING_GUIDE.md)
 
-**Project status**
-- [Current Status](docs/STATUS.md) · [Development Roadmap](docs/DEVELOPMENT_PLAN.md)
-
 Interactive API docs are also available at `/docs` on a running backend.
 
 ## Tech stack
@@ -316,9 +313,9 @@ Health Assistant is **Beta** (`0.3.x`). The points below are honest boundaries �
 - **Test coverage.** The backend has 1800+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
-## Status & roadmap
+## Highlights
 
-A few headline items from [STATUS.md](docs/STATUS.md) and [DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md):
+A few current highlights:
 
 - **Mobile companion** — headless app bridging Android Health Connect / iOS HealthKit directly to your instance.
 - **Biomarker insights** — deeper trend analytics, organ/symptom correlations, contextual "why does this matter?" explanations.

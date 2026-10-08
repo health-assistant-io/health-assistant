@@ -50,7 +50,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 ### JWT
 
-**Browser clients (SPA) — cookie mode (identity-auth §10):** the web client
+**Browser clients (SPA) — cookie mode:** the web client
 authenticates with HttpOnly cookies set by the auth endpoints; **tokens are
 never stored in `localStorage`/`sessionStorage`** for browser clients.
 
@@ -98,7 +98,7 @@ land in proxy logs). WS handshakes additionally verify the browser `Origin`
 against the configured allow-list (`HA_WS_ALLOWED_ORIGINS`, default
 same-origin + the CORS list) and reject anything else with `1008`.
 
-**Signing keys (identity-auth §8, plan 16 H4):** JWTs are signed with
+**Signing keys (per-purpose key separation):** JWTs are signed with
 per-purpose keys — `HA_SESSION_KEY` signs session-family tokens
 (session/api/invite/download) and `HA_REFRESH_KEY` signs refresh tokens
 only; verification is family-locked, so a token signed by the "wrong"
@@ -152,7 +152,7 @@ can't mint fresh buckets.
 | `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the §10 cookies. CSRF-gated for cookie sessions (double submit). |
 | `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user. |
 
-#### TOTP MFA (plan 16 H5)
+#### TOTP MFA
 
 Optional per-account two-factor authentication (RFC 6238 TOTP — SHA1, 6 digits,
 30 s step, ±1 step drift; any authenticator app works via the standard
@@ -547,7 +547,7 @@ All routes `SYSTEM_ADMIN`-only. Audit-logged.
 | `POST` | `/admin/tenants/exit-switch` | — | `SwitchTenantResponse` | Restore the original `SYSTEM_ADMIN` session after a switch. |
 | `GET` | `/admin/tenants/{tenant_id}/users` | query: `search?`, `limit=50`, `offset=0` | `TenantUserListResponse` | Paginated user list for a tenant. |
 | `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}` | `UpdateTenantUser` | `TenantUserResponse` | Update a tenant user (role / active toggle). |
-| `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA (plan 16 H5). `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
+| `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA. `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
 | `POST` | `/admin/tenants/{tenant_id}/invite` | `CreateInvitePayload` | `InviteResponse` | Mint a tenant-scoped invite token (audit-logged as `tenant.invite`). |
 | `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer (§17). |
 | `GET` | `/admin/audit` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | **Cross-tenant** audit stream (`SYSTEM_ADMIN`-only; omit `tenant_id` for every tenant + system-level rows). |

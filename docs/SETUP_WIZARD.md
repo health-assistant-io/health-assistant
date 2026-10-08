@@ -294,5 +294,3 @@ The registry lives in `backend/app/services/fhir_extensions.py`. `Patient.to_fhi
 | 3 | Role wizard (`/setup/wizard`) + persistent popup drawer (accordion cards, minimize-to-badge, floating reopen) + guided AI sub-step redirect + "Resume Setup" entrypoint in user menu + `NoPatientState` fix. | shipped |
 | 4 | Doctor + Organization advanced wizards + checklist evaluators; fix the `org_type` never-set bug on the existing create form. | planned |
 | 5 | Optional `dismissed_steps` persistence in `users.settings`; typed `UserPreferencesResponse` schema. | planned |
-
-See `dev/audits/setup-wizard-design.md` for the full design rationale and decisions record.

@@ -256,11 +256,11 @@ cp .env.example .env
 
 You **must** generate your own `HA_SESSION_KEY` and `HA_REFRESH_KEY` (independent random values, ≥32 chars), `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, `REDIS_PASSWORD`, and `HA_DATA_KEY` (a base64url-encoded 32-byte Fernet key), plus the VAPID pair for production, and paste them into the `.env` file. `setup_env.py`'s Keys Only mode (`python3 scripts/setup_env.py --mode=3`) generates just the keys and leaves everything else at the template defaults.
 
-> **Key separation note (identity-auth §8):** `HA_SESSION_KEY` signs session-family JWTs, `HA_REFRESH_KEY` signs refresh JWTs only, and `HA_DATA_KEY` is the Fernet key for secrets at rest — no key is derived from another and no value may serve two purposes (the boot guard refuses). Verification is family-locked, so a token signed by the "wrong" key fails — rotating the session key invalidates only session tokens, and the data key never affects login. `HA_DATA_KEY_PREVIOUS` (comma-separated) holds prior Fernet keys accepted for decryption only, so rotating the at-rest key never orphans stored ciphertext: new writes seal under the primary, old values keep decrypting until re-sealed.
+> **Key separation note:** `HA_SESSION_KEY` signs session-family JWTs, `HA_REFRESH_KEY` signs refresh JWTs only, and `HA_DATA_KEY` is the Fernet key for secrets at rest — no key is derived from another and no value may serve two purposes (the boot guard refuses). Verification is family-locked, so a token signed by the "wrong" key fails — rotating the session key invalidates only session tokens, and the data key never affects login. `HA_DATA_KEY_PREVIOUS` (comma-separated) holds prior Fernet keys accepted for decryption only, so rotating the at-rest key never orphans stored ciphertext: new writes seal under the primary, old values keep decrypting until re-sealed.
 
 ### Setup-token modes
 
-The first-run wizard's token protects a fresh instance from being claimed by a stranger before you do. Four modes exist (see `dev/audits/setup-token-modes.md`):
+The first-run wizard's token protects a fresh instance from being claimed by a stranger before you do. Four modes exist:
 
 | Mode | Behaviour | Recommended deploy |
 |---|---|---|
