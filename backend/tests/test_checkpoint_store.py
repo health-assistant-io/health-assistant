@@ -56,6 +56,29 @@ async def test_open_is_idempotent(store):
 
 
 @pytest.mark.asyncio
+async def test_open_skips_setup_when_tables_exist(store):
+    """ADR-0022 two-role split: the runtime role (DML-only) must not DDL.
+
+    Once the migrate service (owner role) has created the checkpoint
+    tables, open() verifies them instead of running setup() — pinned by
+    making setup() explode if called (the store fixture's open() has
+    already created the tables as the test/owner role).
+    """
+    from unittest import mock
+
+    import app.ai.graphs.checkpointer as cp
+
+    probe = CheckpointStore(drain_timeout=2.0)
+    with mock.patch.object(
+        cp.AsyncPostgresSaver,
+        "setup",
+        side_effect=AssertionError("setup() must not run when the tables exist"),
+    ):
+        await probe.open()  # must succeed without any DDL attempt
+    await probe.close()
+
+
+@pytest.mark.asyncio
 async def test_close_without_open_is_noop():
     store = CheckpointStore()
     await store.close()

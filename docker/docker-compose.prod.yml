@@ -188,7 +188,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["alembic", "upgrade", "head"]
+    # Alembic first, then the langgraph checkpoint tables: CheckpointStore's
+    # boot-time setup() DDL belongs to the owner (the runtime app role is
+    # DML-only and PG15+ denies CREATE on public) — scripts/
+    # setup_checkpoints.py runs the same idempotent setup as the owner,
+    # once per deploy. App-role DML on the created tables is covered by
+    # init-roles.sh's ALTER DEFAULT PRIVILEGES.
+    command: ["sh", "-c", "alembic upgrade head && python scripts/setup_checkpoints.py"]
     logging: *default-logging
     networks:
       - health-assistant-network
