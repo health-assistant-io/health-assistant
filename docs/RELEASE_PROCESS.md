@@ -37,6 +37,18 @@ assembled retroactively by diffing branches.
 > |------|---------|
 > | Cut a release locally (default) | `version_manager.py bump <type> --git` |
 > | Publish to remotes + trigger CI (opt-in) | `version_manager.py release --git --push` |
+>
+> **Remote cadence** (decided 2026-10-08): `origin` (Gitea) is the working
+> remote — every merge to `main` pushes there and triggers the deploy
+> pipeline. `github` (the public mirror) receives `main` **only at release
+> boundaries**, together with the release tag (`release --git --push`
+> already covers both remotes). Between releases, don't push `main` to
+> `github` — commits batch up so each public publish is a tidy
+> release-sized set. Never rewrite or squash published history, and never
+> keep divergent histories per remote (no "detailed private / squashed
+> public" mirror): release tags, the `.github/workflows/` CI builds, and
+> Dependabot PRs all reference published SHAs. Compact publishes come from
+> *deferring* the push, not from rebasing.
 
 ## Changelog format
 
