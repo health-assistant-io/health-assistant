@@ -93,7 +93,7 @@ def citation_event(source: str) -> dict[str, Any]:
 
 def task_event(task: dict[str, Any]) -> dict[str, Any]:
     """Health payload event: an interactive HITL task card (payload shape
-    identical to the former ``[HITL_TASK]`` sentinel JSON)."""
+    identical to the former bracketed HITL_TASK sentinel JSON)."""
     return {"event": FlowEvent.TASK, "task": task}
 
 
@@ -125,5 +125,5 @@ def flow_failed_event(
 
 def session_event(session_id: str) -> dict[str, Any]:
     """Health payload event: the session id for a freshly auto-created chat
-    session (replaces the former ``[SESSION_ID]`` content marker)."""
+    session (replaces the former bracketed SESSION_ID content marker)."""
     return {"event": FlowEvent.SESSION, "session_id": session_id}

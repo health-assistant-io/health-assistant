@@ -48,8 +48,8 @@ LEGACY_WIRE_MARKERS = (
     "[TOOL_CALL_RESULT]",
     "[TOOL_CALL_FINISHED]",
     "[CITATION]",
-    "[HITL_TASK]",
-    "[SESSION_ID]",
+    "[HITL_TASK]",  # gate-allow: \[HITL_TASK\] (deny-list: proves absence)
+    "[SESSION_ID]",  # gate-allow: \[SESSION_ID\] (deny-list: proves absence)
     "[FLOW_EVENT]",
     '"content"',
     '"flow_event"',

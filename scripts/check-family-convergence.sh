@@ -177,8 +177,9 @@ def forms(pattern):
 
 # Pragma names mirror vocabulary entries verbatim (entry-in-allowed match),
 # so the charset must cover anything a pattern file may name (dots, dashes,
-# slashes) — otherwise an entry could not be declared at all.
-pragma_re = re.compile(r"#\s*gate-allow:\s*([A-Za-z0-9_.*/-]+(?:\s*,\s*[A-Za-z0-9_.*/-]+)*)")
+# slashes, and — since emission-shape markers — escaped brackets and
+# backslashes) — otherwise an entry could not be declared at all.
+pragma_re = re.compile(r"#\s*gate-allow:\s*([A-Za-z0-9_.*/\[\]\\-]+(?:\s*,\s*[A-Za-z0-9_.*/\[\]\\-]+)*)")
 comment_only_re = re.compile(r"^\s*#")
 
 # C3's sanctioned migrations home (guidelines/reference-architecture.md §4)

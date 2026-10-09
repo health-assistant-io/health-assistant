@@ -7,7 +7,7 @@ structured information from the user (free-text, single/multi-choice, or a
 catalog/instance reference) before proceeding.
 
 Reuses the existing HITL machinery unchanged: the ``__hitl__`` tool-result
-marker, the ``[HITL_TASK]`` SSE sentinel, the ``tasks`` JSONB column on
+marker, the former bracketed HITL_TASK SSE sentinel, the ``tasks`` JSONB column on
 ``ChatMessage``, the ``/resolve`` endpoint, and the ``/resume`` continuation
 turn. There is no DB migration, no new endpoint, no new sentinel.
 

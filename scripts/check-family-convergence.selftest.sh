@@ -69,6 +69,12 @@ PLANTED_MARKERS=(
   "ca-drawing" "ca-image" "ca-material" "ca-course" "caq/v" "ca-backup/v"
   "ca-skills/v" "x-ca-" "LEGACY_KIND_MAP" "card_kind_from_legacy"
   "legacy_kind_from_card"
+  'type": "stream_start"' 'type": "stream_delta"'
+  'type": "assistant_message"' 'type": "stream_interrupted"'
+  'type": "turn_error"' 'emit("interview_state"'
+  "event: interview_state" "case 'stream_start'" "case 'stream_delta'"
+  "case 'turn_error'" "[HITL_TASK]" "[SESSION_ID]" "to_family_events"
+  "stream_loop_as_sse" "FLOW_EVENT_PREFIX" "flow_events=true"
 )
 PLANTED_ENV=(
   "DATABASE_URL" "APP_ENV" "DATA_DIR" "UPLOAD_DIR" "SPA_DIST" "API_HOST"
