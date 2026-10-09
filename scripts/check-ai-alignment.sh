@@ -77,7 +77,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     SCAN_ARGS=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
       --exclude-dir='node_modules' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
-    SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@google/genai['\"])"
+    SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@typesafe-ai/sdk['\"]|from ['\"]@google/genai['\"])"
     CLASS_RE="(from ['\"]@langchain/(openai|anthropic|google-genai|google)['\"]|require\(['\"]@langchain/(openai|anthropic|google-genai|google)['\"]\)|from ['\"]@langchain/langgraph|from ['\"]@langchain/mcp-adapters['\"]|from ['\"]langchain(/agents)?['\"])";
     DEPS_FILES=("$dir/package.json")
   else
