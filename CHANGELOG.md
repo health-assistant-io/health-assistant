@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Chat turns no longer crash on block-list model content:** providers and
+  OpenAI-compatible gateways that stream Anthropic-style content blocks
+  (`[{"type": "text", "text": …}, …]`) crashed the graph engine's
+  `agent_step` with `TypeError: can only concatenate str (not "list") to
+  str`, killing the turn mid-stream. Both the streaming and non-streaming
+  paths now normalize message content to its visible text: text blocks
+  stream through as deltas, while `thinking`/`tool_use`/`image` blocks
+  contribute nothing (they are not part of the visible answer and never
+  reach the persisted `content.text`).
+
 ### Added
 - **Session rename:** `PATCH /api/v1/ai-assistance/sessions/{id}` (title,
   tenant-scoped, family B3 contract) so the library `ChatSessionList` rename

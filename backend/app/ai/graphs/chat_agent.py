@@ -116,6 +116,32 @@ def _stringify_args(args: Any) -> str:
     return json.dumps(args, ensure_ascii=False, default=str)
 
 
+def _visible_text(content: Any) -> str:
+    """Visible text of one message/chunk ``content``.
+
+    Normalizes the two LangChain content shapes: plain ``str`` and the
+    block-list form (``[{"type": "text", "text": ...}, ...]``) emitted by
+    Anthropic-style providers and OpenAI-compatible gateways. Non-text
+    blocks (``thinking``/``redacted_thinking``/``tool_use``/``image``)
+    contribute nothing — they are not part of the visible answer and must
+    never reach the persisted ``content.text``. Anything else is dropped
+    rather than stringified (model output is untrusted input).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
+
 class ChatGraphState(TypedDict):
     # Serializable per-run configuration (checkpointed: streaming/caps must
     # survive an interrupt resume).
@@ -167,17 +193,18 @@ def _chat_graph_nodes():
                             emit(tool_call_event(id=tc_name, name=tc_name, status="running"))
                             tool_name_yielded.add(tc_name)
 
-                if chunk.content:
+                chunk_text = _visible_text(chunk.content)
+                if chunk_text:
                     # Some providers re-emit accumulated content rather than
                     # true deltas — reconcile against what we've received.
                     if (
                         content_received
-                        and chunk.content.startswith(content_received)
-                        and len(chunk.content) > len(content_received)
+                        and chunk_text.startswith(content_received)
+                        and len(chunk_text) > len(content_received)
                     ):
-                        content_received = chunk.content
+                        content_received = chunk_text
                     else:
-                        content_received += chunk.content
+                        content_received += chunk_text
 
                     if not total_content:
                         delta = content_received
@@ -204,20 +231,21 @@ def _chat_graph_nodes():
             content_for_history = content_received
         else:
             response = await llm_with_tools.ainvoke(history)
-            if response.content:
+            response_text = _visible_text(response.content)
+            if response_text:
                 if not total_content:
-                    delta = response.content
-                elif response.content.startswith(total_content):
-                    delta = response.content[len(total_content) :]
-                elif total_content.startswith(response.content):
+                    delta = response_text
+                elif response_text.startswith(total_content):
+                    delta = response_text[len(total_content) :]
+                elif total_content.startswith(response_text):
                     delta = ""
                 else:
-                    delta = response.content
+                    delta = response_text
                 if delta:
                     emit(delta_event(delta))
                     total_content += delta
             tool_calls = response.tool_calls
-            content_for_history = response.content
+            content_for_history = response_text
 
         updates: dict[str, Any] = {
             "iteration": state["iteration"] + 1,
