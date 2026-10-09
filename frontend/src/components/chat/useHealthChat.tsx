@@ -120,9 +120,7 @@ export function useHealthChat(options: UseHealthChatOptions) {
   const localizeError = useCallback(
     (msg: { error?: string; errorType?: string }) => resolveStreamErrorMessage(t, msg),
     [t],
-  );
-
-  const getContext = options.getContext;
+  );  const getContext = options.getContext;
   const contextRef = useRef(getContext);
   contextRef.current = getContext;
 
@@ -192,6 +190,9 @@ export function useHealthChat(options: UseHealthChatOptions) {
     }
   }, []);
 
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+
   const loadSession = useCallback(
     async (sessionId: string) => {
       if (!sessionId) return;
@@ -204,7 +205,7 @@ export function useHealthChat(options: UseHealthChatOptions) {
         setIsHistoryOpen(false);
         resumedRowIds.current.clear();
         if (isFullScreenRef.current && initialSessionIdRef.current !== sessionId) {
-          navigate(`/ai-assistant/${sessionId}`);
+          navigateRef.current(`/ai-assistant/${sessionId}`);
         }
       } catch (err) {
         console.error('Failed to load session', err);
@@ -212,20 +213,30 @@ export function useHealthChat(options: UseHealthChatOptions) {
         busyRef.current = false;
       }
     },
-    [navigate],
+    // Stable identity on purpose: `navigate` changes identity on every
+    // location change, and a churning `loadSession` re-fires the session
+    // effects right after a New Chat navigation — reloading the session
+    // the user just left (regression, 2026-10-10).
+    [],
   );
 
   const startNewChat = useCallback(() => {
     setRows([]);
     currentSessionIdRef.current = null;
     setCurrentSessionId(null);
+    // Null the shared pointer SYNCHRONOUSLY with the click: leaving it to
+    // the sync-back effect keeps a one-commit window where the store still
+    // names the abandoned session and the store-sync effect reloads it
+    // (startNewChat regression, 2026-10-10). Other mounted surfaces reset
+    // through the same store write.
+    setCurrentAiSessionId(null);
     setIsHistoryOpen(false);
     resumedRowIds.current.clear();
     setLiveExtras(EMPTY_EXTRAS);
     if (isFullScreenRef.current) {
-      navigate('/ai-assistant');
+      navigateRef.current('/ai-assistant');
     }
-  }, [navigate]);
+  }, [setCurrentAiSessionId]);
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
@@ -396,22 +407,24 @@ export function useHealthChat(options: UseHealthChatOptions) {
     }
   }, [currentAiSessionId, loadSession]);
 
-  // Priority 1: session id from the URL; Priority 2: the store pointer
-  // shared with the drawer; base-URL visit on the page → fresh chat.
+  // Priority 1: session id from the URL; base-URL visit on the page →
+  // fresh chat. The store-pointer sync (drawer ↔ page) is the store-sync
+  // effect's job — deliberately NOT a dep here: a New Chat navigation is a
+  // router transition that lands AFTER the local reset commits, and a
+  // store-driven re-run in that window would reload the session the user
+  // just left (startNewChat regression, 2026-10-10).
   useEffect(() => {
     if (initialSessionId) {
       if (initialSessionId !== currentSessionIdRef.current) {
         void loadSession(initialSessionId);
       }
-    } else if (!isFullScreen && currentAiSessionId && currentAiSessionId !== currentSessionIdRef.current) {
-      void loadSession(currentAiSessionId);
     } else if (currentSessionIdRef.current && isFullScreen && !initialSessionId) {
       setRows([]);
       currentSessionIdRef.current = null;
       setCurrentSessionId(null);
       setIsHistoryOpen(false);
     }
-  }, [initialSessionId, isFullScreen, currentAiSessionId, loadSession]);
+  }, [initialSessionId, isFullScreen, loadSession, setCurrentSessionId, setIsHistoryOpen, setRows]);
 
   const viewMessages = rows.map<ChatMessageView>((row) => ({
     id: row.id,

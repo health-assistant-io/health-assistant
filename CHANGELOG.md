@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **New Chat reliably starts a fresh chat:** clicking New Chat (toolbar,
+  drawer header, or the session-list action) could momentarily resurrect the
+  conversation it just left — the reset navigates via a router transition
+  that lands after the local state commit, and a churning session-load
+  callback plus the still-set store pointer reloaded the abandoned session
+  in that window. The reset now clears the shared session pointer
+  atomically with the click, and the session loader keeps a stable identity
+  so navigation no longer re-fires the session effects.
 - **Chat turns no longer crash on block-list model content:** providers and
   OpenAI-compatible gateways that stream Anthropic-style content blocks
   (`[{"type": "text", "text": …}, …]`) crashed the graph engine's
