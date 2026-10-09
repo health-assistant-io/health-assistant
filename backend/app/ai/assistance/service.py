@@ -54,7 +54,7 @@ from app.ai.assistance.form_fillers import (
     magic_fill_examination,
 )
 from app.ai.assistance.icons import generate_category_icon, suggest_category_icon
-from app.ai.flow_events import session_event
+from app.ai.flow_events_payload import session_event
 from app.ai.graphs.chat_agent import chat_engine_iter
 from app.ai.providers.service import AIProviderService
 from app.core.config import settings

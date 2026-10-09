@@ -71,16 +71,18 @@ from app.ai.agents.hitl import (
     _parse_hitl_proposal,
 )
 from app.ai.flow_events import (
-    citation_event,
     delta_event,
     flow_failed_event,
     flow_finished_event,
     flow_started_event,
-    interrupt_event,
     node_finished_event,
     node_started_event,
-    task_event,
     tool_call_event,
+)
+from app.ai.flow_events_payload import (
+    citation_event,
+    interrupt_event,
+    task_event,
 )
 from app.ai.graphs.checkpointer import get_runtime_saver
 
@@ -618,7 +620,7 @@ async def run_chat_graph(
     tenant_id: UUID | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one chat turn, yielding the family + health payload event dicts
-    (:class:`app.ai.flow_events.FlowEvent`; plus the engine-internal
+    (:class:`app.ai.flow_events_payload.FlowEvent`; plus the engine-internal
     ``done`` completion signal, which the SSE mapper drops)."""
     graph = build_chat_graph(checkpointer=checkpointer)
     runtime: dict[str, Any] = {

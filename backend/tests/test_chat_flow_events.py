@@ -15,7 +15,7 @@ import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
 from app.ai.agents.chat_agent import stream_events_as_sse
-from app.ai.flow_events import FlowEvent
+from app.ai.flow_events_payload import FlowEvent
 from app.ai.graphs.chat_agent import chat_engine_iter
 
 FAMILY_CORE = {
@@ -83,17 +83,19 @@ def make_tool(name, observation):
 def test_builders_carry_event_names():
     """Every builder's dict names itself with its enum member."""
     from app.ai.flow_events import (
-        citation_event,
         delta_event,
         flow_failed_event,
         flow_finished_event,
         flow_started_event,
-        interrupt_event,
         node_finished_event,
         node_started_event,
+        tool_call_event,
+    )
+    from app.ai.flow_events_payload import (
+        citation_event,
+        interrupt_event,
         session_event,
         task_event,
-        tool_call_event,
     )
 
     builders = [

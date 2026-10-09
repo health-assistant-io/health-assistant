@@ -137,7 +137,7 @@ async def stream_events_as_sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIt
     """Map the chat engine's event dicts to SSE frames.
 
     Every wire frame is one JSON object with the event name in ``event``
-    (:class:`app.ai.flow_events.FlowEvent`); the engine-internal ``done``
+    (:class:`app.ai.flow_events_payload.FlowEvent`); the engine-internal ``done``
     completion signal emits nothing. Used by the streaming chat + resume
     paths.
     """
