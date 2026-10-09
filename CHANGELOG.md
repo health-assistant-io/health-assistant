@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Welcome message renders where the first message row sits (top-left)**
+  again: the transcript centers empty-state content by family design, which
+  suited career's chip-style empty states but pulled health's welcome
+  bubble to mid-screen; the slot content now stretches and pins to the
+  conversation start.
 - **New Chat reliably starts a fresh chat:** clicking New Chat (toolbar,
   drawer header, or the session-list action) could momentarily resurrect the
   conversation it just left — the reset navigates via a router transition

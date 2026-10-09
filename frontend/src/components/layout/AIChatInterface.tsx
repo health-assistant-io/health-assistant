@@ -399,7 +399,11 @@ const AIChatInterfaceInner: React.FC<Props> = ({
     ) : undefined;
 
   const emptyState = (
-    <div className="flex justify-start py-2">
+    // The transcript centers empty-state content (the family pattern for
+    // chip-style empties); health's welcome message is a conversation
+    // bubble, so stretch the slot and pin it where the first message row
+    // sits — top-left, matching the pre-library layout.
+    <div className="flex h-full w-full items-start justify-start">
       <ChatMessage
         role="assistant"
         compact={!isFullScreen}
