@@ -1113,7 +1113,12 @@
       "ledger": "Evidence Ledger",
       "full_screen": "Full Screen Chat",
       "minimize": "Minimize to Drawer",
-      "resize": "Drag to resize"
+      "resize": "Drag to resize",
+      "send": "Send message",
+      "stop": "Stop generating",
+      "copy": "Copy message",
+      "close": "Close chat",
+      "agent_capabilities": "View Agent Capabilities"
     },
     "hitl": {
       "proposal_label": "Proposal",
@@ -1227,7 +1232,11 @@
       "think": "Thinking",
       "tools": "Using tools",
       "await": "Waiting for your answer",
-      "finalize": "Wrapping up"
+      "finalize": "Wrapping up",
+      "elapsed": "elapsed",
+      "tools_running": "Running",
+      "tools_done": "Done",
+      "tools_failed": "Failed"
     },
     "insights": {
       "title": "Health Analysis",
@@ -1281,7 +1290,10 @@
       "stop_label": "Stop",
       "cancel": "Cancel recording",
       "unsupported": "Voice input not supported",
-      "permission_denied": "Microphone access denied."
+      "permission_denied": "Microphone access denied.",
+      "dismiss": "Dismiss",
+      "unassigned": "No transcription model is configured for your account.",
+      "failed": "Transcription failed: {{detail}}"
     },
     "history": {
       "title": "Session History"
@@ -1290,7 +1302,27 @@
       "title": "Source Evidence"
     },
     "inspector": {
-      "title": "Data Source Inspector"
+      "title": "Data Source Inspector",
+      "args": "Arguments",
+      "result": "Result"
+    },
+    "transcript": {
+      "aria": "Conversation",
+      "scroll_down": "Scroll to latest"
+    },
+    "sessions": {
+      "rename": "Rename",
+      "delete": "Delete",
+      "export": "Export as Markdown",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "earlier": "Earlier",
+      "empty": "No consultations yet",
+      "rename_title": "Rename consultation",
+      "delete_title": "Delete consultation?",
+      "delete_body": "This permanently deletes the consultation and its messages. This cannot be undone.",
+      "delete_confirm": "Delete",
+      "name_aria": "Consultation title"
     }
   },
   "alerts_page": {

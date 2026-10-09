@@ -1,8 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AIChatInterface, type AIChatHandlers } from '../../components/layout/AIChatInterface';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
+import { SessionList } from '../../components/chat/SessionList';
+import { HealthChatProvider } from '../../components/chat/useHealthChat';
 import { Sparkles, MessageSquare, BarChart2, History, Plus, Database, Minimize2, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -14,9 +17,9 @@ const AIChatPage: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'chat' | 'insights' | 'actions'>('chat');
   const interfaceRef = useRef<AIChatHandlers>(null);
-  
-  const lastNonAiPath = useUIStore(state => state.lastNonAiPath);
-  const setAIDrawerOpen = useUIStore(state => state.setAIDrawerOpen);
+
+  const lastNonAiPath = useUIStore((state) => state.lastNonAiPath);
+  const setAIDrawerOpen = useUIStore((state) => state.setAIDrawerOpen);
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-dark-bg animate-in fade-in duration-300 overflow-hidden min-h-0">
@@ -39,10 +42,10 @@ const AIChatPage: React.FC = () => {
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'chat' | 'insights' | 'actions')}
                 className={`flex items-center gap-2 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === tab.id 
-                    ? 'bg-indigo-600 text-white shadow-lg' 
+                  activeTab === tab.id
+                    ? 'bg-indigo-600 text-white shadow-lg'
                     : 'text-gray-500 hover:text-gray-700 dark:text-dark-muted dark:hover:text-dark-text'
                 }`}
               >
@@ -55,35 +58,35 @@ const AIChatPage: React.FC = () => {
         actions={
           <div className="flex items-center space-x-1 pl-4">
             <ActiveTaskBadge taskType="chat" className="mr-3" />
-            <button 
+            <button
               onClick={() => interfaceRef.current?.toggleHistory()}
-              className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
+              className="lg:hidden p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
               title={t('ai_chat.tooltips.history')}
             >
               <History className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={() => interfaceRef.current?.startNewChat()}
               className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
               title={t('ai_chat.tooltips.new_chat')}
             >
               <Plus className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={() => interfaceRef.current?.toggleToolsModal()}
               className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
-              title="View Agent Capabilities"
+              title={t('ai_chat.tooltips.agent_capabilities')}
             >
               <Wrench className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={() => interfaceRef.current?.toggleLedger()}
               className="p-2.5 text-gray-500 hover:text-indigo-600 dark:text-dark-muted dark:hover:text-dark-text rounded-xl hover:bg-indigo-50 dark:hover:bg-dark-surface transition-all"
               title={t('ai_chat.tooltips.ledger')}
             >
               <Database className="w-5 h-5" />
             </button>
-            <button 
+            <button
               onClick={() => {
                 setAIDrawerOpen(true);
                 navigate(lastNonAiPath || '/');
@@ -96,15 +99,26 @@ const AIChatPage: React.FC = () => {
           </div>
         }
       />
-      <div className="flex-1 relative flex flex-col min-h-0">
-        <AIChatInterface 
-          isFullScreen={true} 
-          initialSessionId={sessionId} 
-          hideHeader={true} 
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          interfaceRef={interfaceRef}
-        />
+      <div className="flex-1 flex min-h-0">
+        <HealthChatProvider
+          isFullScreen={true}
+          initialSessionId={sessionId}
+          getContext={() => ({ current_tab: activeTab })}
+        >
+          <aside className="hidden lg:flex w-72 shrink-0 flex-col border-r border-gray-100 dark:border-dark-border p-2 min-h-0">
+            <SessionList />
+          </aside>
+          <div className="flex-1 relative flex flex-col min-h-0 min-w-0">
+            <AIChatInterface
+              isFullScreen={true}
+              initialSessionId={sessionId}
+              hideHeader={true}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              interfaceRef={interfaceRef}
+            />
+          </div>
+        </HealthChatProvider>
       </div>
     </div>
   );

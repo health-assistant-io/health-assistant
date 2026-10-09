@@ -71,6 +71,11 @@ export const deleteChatSession = async (sessionId: string): Promise<void> => {
   await api.delete(`/ai-assistance/sessions/${sessionId}`);
 };
 
+export const renameChatSession = async (sessionId: string, title: string): Promise<ChatSession> => {
+  const response = await api.patch<ChatSession>(`/ai-assistance/sessions/${sessionId}`, { title });
+  return response.data;
+};
+
 export interface HitlResolution {
   status: 'confirmed' | 'dismissed';
   final_payload?: Record<string, any>;

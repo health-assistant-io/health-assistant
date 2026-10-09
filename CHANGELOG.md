@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tenant-scoped, family B3 contract) so the library `ChatSessionList` rename
   action works — foreign user/tenant sessions answer a hidden 404, and the
   title round-trips through the session list.
+- The `/ai-assistant` page gains an always-visible session sidebar on desktop
+  (fuzzy search, date groups, rename/delete/export as Markdown) and a mobile
+  history overlay behind the existing History button; frontend chat module
+  shims `components/ui/chat.ts` + `ui/dictation.ts` (import-path +
+  exit-hatch re-exports, career parity); the `@neuronection/assistant-ui`
+  pin moves to `^0.51.0` (terminal `flow_interrupted` in the chat-core event
+  types).
 
 ### Changed
 - **Chat UI now composes the family library core (plan 13 H1):** the local
