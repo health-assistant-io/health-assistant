@@ -122,3 +122,6 @@ secrets.json
 
 # assistant-ui dev-link state (never commit)
 .assistant-ui-dev-link.json
+
+# OpenChamber session artifacts (screenshots, captures)
+.openchamber/
