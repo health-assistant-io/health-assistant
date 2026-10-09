@@ -22,6 +22,7 @@ from app.ai.schemas.assistance import (
     AIAssistanceToolSchema,
     ChatMessageSchema,
     ChatSessionSchema,
+    ChatSessionTitleUpdate,
     HitlResolutionRequest,
     HitlResumeRequest,
 )
@@ -288,6 +289,23 @@ async def delete_session(
     service = ChatSessionService(db)
     await service.delete_session(session_id, current_user.user_id)
     return {"success": True}
+
+
+@router.patch("/sessions/{session_id}", response_model=ChatSessionSchema)
+async def rename_session(
+    session_id: UUID,
+    data: ChatSessionTitleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Rename a chat session (family B3 contract: tenant-scoped title PATCH)."""
+    service = ChatSessionService(db)
+    session = await service.rename_session(
+        session_id, current_user.user_id, current_user.tenant_id, data.title
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    return session
 
 
 @router.get("/tools", response_model=list[AIAssistanceToolSchema])

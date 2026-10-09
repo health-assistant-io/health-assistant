@@ -55,6 +55,12 @@ class ChatSessionSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
+class ChatSessionTitleUpdate(BaseModel):
+    """Body of ``PATCH /ai-assistance/sessions/{id}`` (family B3 contract)."""
+
+    title: str = Field(min_length=1, max_length=200)
+
+
 class AIAssistanceResponse(BaseModel):
     task_type: str
     suggested_data: dict[str, Any] | None = None

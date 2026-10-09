@@ -11,7 +11,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Session rename:** `PATCH /api/v1/ai-assistance/sessions/{id}` (title,
+  tenant-scoped, family B3 contract) so the library `ChatSessionList` rename
+  action works — foreign user/tenant sessions answer a hidden 404, and the
+  title round-trips through the session list.
+
 ### Changed
+- **Chat UI now composes the family library core (plan 13 H1):** the local
+  1,364-line `AIChatInterface` tree decomposed onto
+  `@neuronection/assistant-ui` pieces — `ChatPanel` (page/sidebar variants),
+  `ChatTranscript` + `ChatMessage` + `MarkdownSurface` (GFM tables, safe
+  `urlTransform` — http(s)/mailto/internal only, never `javascript:`),
+  `ChatComposer` (IME-safe, drag-drop/paste via `onAttachFiles`, library
+  dictation `useDictation`/`DictationButton`/`DictationStrip` wired to the
+  existing `/ai-assistance/transcribe` path), `ChatToolCard` for tool chips,
+  `ChatTurnStatus` (row) as the live tail (FlowStatusCard retires from chat —
+  it stays on non-chat surfaces), and the drawer is now the library
+  `ChatDrawer` (focus trap, Escape, keyboard resize) keeping the historical
+  `ai-drawer-width` storage key. HITL proposal cards, the evidence ledger,
+  the data inspector and the citations pipeline (`citation://` links,
+  `CitationButton`) stay app components rendered through library slots —
+  propose/approve/edit/reject/resume flows and the partial-continue button
+  behave exactly as before, now pinned by tests. The SSE wiring maps the
+  family event vocabulary onto the library's `useChatStream` through a
+  ~120-line transport adapter (`components/chat/chatTransport.ts`), including
+  the resumable HITL `interrupt` pause and classified error localization.
+  Deleted same-commit: `ChatHistoryOverlay`, `ChatVoiceButton`,
+  `RecordingBanner`, `useVoiceRecorder`, and the drawer's hand-rolled resize
+  internals.
 - **At-rest cipher is now the shared auth-kit implementation:** the
   Fernet machinery behind every encrypted-at-rest value (AI provider
   keys, MFA authenticator secrets, integration `user_config` secrets,

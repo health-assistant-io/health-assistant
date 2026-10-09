@@ -330,6 +330,26 @@ class ChatSessionService:
         )
         await self.db.commit()
 
+    async def rename_session(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+        title: str,
+    ) -> ChatSession | None:
+        """Rename a chat session owned by the caller (tenant-scoped).
+
+        Returns ``None`` when the session does not exist or belongs to
+        another user/tenant — the endpoint maps that to a 404.
+        """
+        session = await self.get_owned_session(session_id, user_id, tenant_id)
+        if session is None:
+            return None
+        session.title = title
+        await self.db.commit()
+        await self.db.refresh(session)
+        return session
+
     async def delete_session(self, session_id: UUID, user_id: UUID):
         await self.db.execute(
             delete(ChatSession).where(
