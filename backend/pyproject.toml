@@ -8,6 +8,10 @@ dependencies = [
     "asyncpg>=0.31",
     "bcrypt>=5.0",
     "celery>=5.6",
+    # Shared at-rest cipher (nx_auth.atrest) + identity kit — resolved via
+    # the root [tool.uv.sources] git-SHA pin; bare name here so the future
+    # published `neuronection-auth-kit==X.Y.Z` is a one-line swap.
+    "neuronection-auth-kit",
     "cryptography>=50",
     "email-validator>=2.3",
     "fastapi>=0.141",

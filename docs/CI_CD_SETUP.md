@@ -31,7 +31,7 @@ flowchart TD
     C --> D[deploy]
 ```
 
-1. **`test-backend`** — starts Postgres (TimescaleDB) and Redis via `docker run` on the job's own network (the runner's `services:` DNS aliases are unreliable, so siblings are started explicitly with `--network-alias`), installs dependencies with **uv** (`uv sync --frozen`), and runs the pytest suite.
+1. **`test-backend`** — starts Postgres (TimescaleDB) and Redis via `docker run` on the job's own network (the runner's `services:` DNS aliases are unreliable, so siblings are started explicitly with `--network-alias`), installs dependencies with **uv** (`uv sync --frozen`), and runs the pytest suite. The locked workspace includes the shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit) as a git-SHA-pinned dependency, so install steps (CI and Docker image builds) need network access to `github.com`.
 2. **`test-frontend`** — `npm ci`, lint, and a production build check.
 3. **`build-and-push`** — builds both images with the host's Docker daemon and pushes them to the Gitea container registry (floating tag `latest`/`test` + the commit SHA).
 4. **`deploy`** — SSHes to the target server, writes `.env` from repo secrets, copies `docker-compose.standalone.yml` + DB init scripts, runs a PG-major pre-flight on the existing data volume, brings the stack up, and runs `alembic upgrade head`.

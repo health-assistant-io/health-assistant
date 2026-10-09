@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **At-rest cipher is now the shared auth-kit implementation:** the
+  Fernet machinery behind every encrypted-at-rest value (AI provider
+  keys, MFA authenticator secrets, integration `user_config` secrets,
+  machine-generated webhook/API secrets) moved from this repo's local
+  copies (`app/core/encryption.py`, `integrations/sdk/secrets.py`) to the
+  shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit)
+  module `nx_auth.atrest`, consumed as a git-SHA-pinned workspace
+  dependency (`v0.3.2`). **Zero storage impact**: ciphertext format,
+  `_kid` key fingerprints, rotation ring, and context binding are
+  byte-identical (verified against a demo-database snapshot before/after —
+  same ciphertext, same `_kid`, same plaintext), so no data migration is
+  needed and reverting is a plain `git revert`. All env names and public
+  APIs are unchanged: `HA_DATA_KEY[_PREVIOUS]` still configure the ring,
+  `sdk.SecretCipher` / `encrypt_fields` / `decrypt_fields` / `mask_fields`
+  keep their exact shapes for integration authors, and
+  `app.core.encryption` keeps its helper surface (`encrypt_secret`,
+  `decrypt_secret`, `mask_secret`, …) as a thin adapter. Docker image
+  builds now fetch the pinned kit from `github.com` during
+  `uv sync --frozen`.
 - **Chat stream speaks one shared event vocabulary (breaking):** the
   `/ai-assistance/stream` and `/ai-assistance/sessions/{id}/resume` SSE
   streams now emit the shared chat-event contract plus health's payload

@@ -11,7 +11,16 @@ Encryption is opt-in per field. Encrypted values are stored as
 ``{"_encrypted": "<fernet-token>", "_kid": "<short-key-tag>"}`` so they are
 easy to identify, mask on read, and re-encrypt after a key rotation.
 
-Key rotation (Phase 1.2 of the SDK hardening plan):
+The cipher itself is shared family code: this module re-exports
+``nx_auth.atrest.SecretCipher`` (rotation ring, ``_kid`` fingerprints,
+context binding — see the kit's ``docs/atrest.md`` for the threat model and
+the rotation runbook). Health's :class:`SecretCipher` subclass only keeps
+the platform-specific construction story: keys come from the app
+``Settings`` (``HA_DATA_KEY`` primary, ``HA_DATA_KEY_PREVIOUS``
+comma-separated decrypt-only ring) via :meth:`SecretCipher.from_settings`,
+and the missing-key error names the ``HA_DATA_KEY`` knob.
+
+Key rotation:
 
 * The primary key is ``settings.HA_DATA_KEY`` (always used to *encrypt*).
 * ``settings.HA_DATA_KEY_PREVIOUS`` (comma-separated) holds prior
@@ -28,168 +37,62 @@ raises ``RuntimeError`` — the platform endpoint turns this into a 400 so the
 user is told to configure the key before saving secrets. Integrations with
 no secret fields are unaffected (the cipher is never constructed).
 """
+
 from __future__ import annotations
 
-import json
-import logging
-from typing import Any, Dict, List, Optional, Union
+from collections.abc import Sequence
+from typing import Any
 
-from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from nx_auth.atrest import KEY_ID_MARKER, SECRET_MARKER
+from nx_auth.atrest import SecretCipher as _AtRestSecretCipher
 
-logger = logging.getLogger(__name__)
-
-SECRET_MARKER = "_encrypted"
-KEY_ID_MARKER = "_kid"
-
-# Length to which a key is truncated for the ``_kid`` tag. Short enough to be
-# a cheap fingerprint, long enough to distinguish keys in practice.
-_KEY_TAG_LEN = 8
-
-
-def _key_tag(key: Union[str, bytes]) -> str:
-    """A short, stable fingerprint of a Fernet key (not security-sensitive)."""
-    if isinstance(key, str):
-        key = key.encode("utf-8")
-    # Fernet keys are base64url; take the first chars as the tag.
-    import hashlib
-
-    return hashlib.sha256(key).hexdigest()[:_KEY_TAG_LEN]
+__all__ = [
+    "KEY_ID_MARKER",
+    "SECRET_MARKER",
+    "SecretCipher",
+    "decrypt_fields",
+    "encrypt_fields",
+    "mask_fields",
+]
 
 
-def _normalize_fernet_key(key: str) -> bytes:
-    """Canonical padded Fernet encoding of a DATA_KEY family entry.
+class SecretCipher(_AtRestSecretCipher):
+    """SDK surface over the shared family at-rest cipher (``nx_auth.atrest``).
 
-    The family (H4) accepts both the padded ``Fernet.generate_key()``
-    form and the auth-kit's unpadded token form — the same 32 key bytes
-    either way. Normalizing here keeps the ring usable with either
-    spelling without changing any ciphertext: a Fernet token depends
-    only on the key bytes, and the padded form round-trips to itself.
-    """
-    import base64
-
-    padded = key + "=" * (-len(key) % 4)
-    raw = base64.urlsafe_b64decode(padded.encode("ascii"))
-    if len(raw) != 32:
-        raise ValueError(
-            "DATA_KEY family entry must be 32-byte urlsafe-base64 key "
-            "material (a Fernet key)"
-        )
-    return base64.urlsafe_b64encode(raw)
-
-
-class SecretCipher:
-    """Fernet wrapper for encrypting tagged fields inside ``user_config``.
-
-    Uses :class:`~cryptography.fernet.MultiFernet` so a rotation is non-
-    disruptive: the first key in the list is the primary (used to encrypt),
-    the rest are accepted for decryption only. Construct via
-    :meth:`from_settings` to pick up both the primary and any
-    ``HA_DATA_KEY_PREVIOUS`` keys.
+    All cipher machinery — MultiFernet rotation ring, canonical key
+    normalization (``_kid`` stability), the context envelope — is inherited
+    verbatim from the kit. This subclass adds only the platform plumbing:
+    :meth:`from_settings` resolves the key family from the app ``Settings``
+    instead of raw env vars, and the missing-key error names ``HA_DATA_KEY``.
     """
 
-    def __init__(self, key: Union[str, bytes, None], *, previous: Optional[List[Union[str, bytes]]] = None) -> None:
-        keys: List[Union[str, bytes]] = []
+    def __init__(
+        self,
+        key: str | bytes | None,
+        *,
+        previous: Sequence[str | bytes] | None = None,
+    ) -> None:
         if not key:
             raise RuntimeError(
                 "HA_DATA_KEY is not configured. Set it (a Fernet "
                 "key, base64 32 bytes) to use integrations that store secrets."
             )
-        keys.append(key)
-        for prev in previous or []:
-            if prev and prev not in keys:
-                keys.append(prev)
-        # Canonical padded spelling per entry: identical to the input for
-        # the standard ``Fernet.generate_key()`` form (the historical ring
-        # spelling), so ``_kid`` tags stay stable across H4.
-        canonical = [
-            _normalize_fernet_key(k).decode("ascii") if isinstance(k, str) else k
-            for k in keys
-        ]
-        self._multi = MultiFernet([Fernet(k) for k in canonical])
-        self._primary = Fernet(canonical[0])
-        self._primary_tag = _key_tag(canonical[0])
+        super().__init__(key, previous=previous)
 
     @classmethod
-    def from_settings(cls) -> "SecretCipher":
+    def from_settings(cls) -> SecretCipher:
         from app.core.config import get_settings
 
         settings = get_settings()
-        previous = [k.strip() for k in (settings.HA_DATA_KEY_PREVIOUS or "").split(",") if k.strip()]
+        previous = [
+            k.strip() for k in (settings.HA_DATA_KEY_PREVIOUS or "").split(",") if k.strip()
+        ]
         return cls(settings.HA_DATA_KEY, previous=previous)
 
-    def encrypt_value(self, value: Any, *, context: Optional[str] = None) -> Dict[str, str]:
-        """Encrypt a single value -> ``{"_encrypted": "<token>", "_kid": "<tag>"}``.
 
-        ``context`` (e.g. the owning ``integration_id``) is folded into the
-        plaintext envelope so the resulting ciphertext can't be replayed into
-        a different row — :meth:`decrypt_value` rejects a mismatch. Pass the
-        same context on decrypt.
-        """
-        if value is None:
-            return {}
-        if isinstance(value, (dict, list)):
-            payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-        else:
-            payload = str(value)
-        token = self._primary.encrypt(self._envelope(payload, context)).decode("utf-8")
-        return {SECRET_MARKER: token, KEY_ID_MARKER: self._primary_tag}
-
-    def decrypt_value(self, wrapped: Any, *, context: Optional[str] = None) -> Any:
-        """Inverse of :meth:`encrypt_value`.
-
-        Returns the input unchanged if it isn't an encrypted wrapper so that
-        plain-text legacy configs keep working. Raises :class:`ValueError`
-        if the value can't be decrypted (key mismatch / rotated) or if the
-        context doesn't match the one used at encrypt time.
-        """
-        if not isinstance(wrapped, dict) or SECRET_MARKER not in wrapped:
-            return wrapped
-        token = wrapped[SECRET_MARKER].encode("utf-8")
-        try:
-            plaintext = self._multi.decrypt(token).decode("utf-8")
-        except InvalidToken as e:
-            raise ValueError(
-                "Encrypted config value could not be decrypted "
-                "(key missing/rotated? set HA_DATA_KEY_PREVIOUS)."
-            ) from e
-        value_str, stored_context = self._split_envelope(plaintext)
-        if stored_context is not None and context is not None and stored_context != context:
-            raise ValueError(
-                "Encrypted config value was encrypted for a different "
-                "context (integration/row mismatch)."
-            )
-        try:
-            return json.loads(value_str)
-        except (ValueError, json.JSONDecodeError):
-            return value_str
-
-    # --- envelope helpers -------------------------------------------------
-
-    @staticmethod
-    def _envelope(payload: str, context: Optional[str]) -> bytes:
-        """Pack ``payload`` with an optional AAD-like context tag.
-
-        Format: ``ctx:<context>\n<payload>`` when context is given, else the
-        raw payload. Fernet has no native AAD, so we bind the context into
-        the plaintext (verified on decrypt). A value encrypted *without* a
-        context decrypts to its raw payload regardless of the decrypt-time
-        context, preserving backwards compatibility with pre-rotation values.
-        """
-        if context:
-            return f"ctx:{context}\n{payload}".encode("utf-8")
-        return payload.encode("utf-8")
-
-    @staticmethod
-    def _split_envelope(plaintext: str) -> "tuple[str, Optional[str]]":
-        if plaintext.startswith("ctx:"):
-            newline = plaintext.find("\n")
-            if newline != -1:
-                ctx = plaintext[4:newline]
-                return plaintext[newline + 1 :], ctx
-        return plaintext, None
-
-
-def encrypt_fields(config: Dict[str, Any], fields: List[str], *, context: Optional[str] = None) -> Dict[str, Any]:
+def encrypt_fields(
+    config: dict[str, Any], fields: list[str], *, context: str | None = None
+) -> dict[str, Any]:
     """Return a copy of ``config`` with the given ``fields`` encrypted.
 
     Fields that are missing, ``None``, ``""``, ``{}`` or ``[]`` are left as-is
@@ -211,7 +114,9 @@ def encrypt_fields(config: Dict[str, Any], fields: List[str], *, context: Option
     return out
 
 
-def decrypt_fields(config: Dict[str, Any], fields: List[str], *, context: Optional[str] = None) -> Dict[str, Any]:
+def decrypt_fields(
+    config: dict[str, Any], fields: list[str], *, context: str | None = None
+) -> dict[str, Any]:
     """Return a copy of ``config`` with the given ``fields`` decrypted."""
     if not config or not fields:
         return dict(config or {})
@@ -223,7 +128,7 @@ def decrypt_fields(config: Dict[str, Any], fields: List[str], *, context: Option
     return out
 
 
-def mask_fields(config: Dict[str, Any], fields: List[str]) -> Dict[str, Any]:
+def mask_fields(config: dict[str, Any], fields: list[str]) -> dict[str, Any]:
     """Return a config copy with the given ``fields`` replaced by ``"***"``.
 
     Used when serving config back to the UI so secrets never leave the server

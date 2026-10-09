@@ -5,3 +5,13 @@ members = ["backend"]
 dev = [
     "honcho>=2.0.0",
 ]
+
+[tool.uv.sources]
+# Shared family auth kit — git-SHA pin (bridge while the PyPI org is
+# pending): github, not PyPI (the bare name is squat-able there and the
+# package does not exist there yet). The `rev` is the v0.3.2 release
+# commit — the same release the other assistants verified. Dev loop for
+# kit work: `uv pip install -e ../auth-kit` after `uv sync` (a sync
+# reverts to the pinned copy). When the kit publishes to PyPI: drop this
+# entry and pin `==X.Y.Z` + hashes instead.
+neuronection-auth-kit = { git = "https://github.com/neuronection/auth-kit", rev = "b133787c0cc49c11c0956d102bbee36a6836097c" }

@@ -367,6 +367,8 @@ Integrations with secret config fields (API keys, tokens, env vars) declare them
 - **On read:** `get_integration_details` calls `config_flow.prepare_for_read()` → masks secret fields as `"***"`.
 - **On use:** the provider calls `config_flow.decrypt_for_use()` or `decrypt_fields()` to get plaintext.
 
+The cipher itself is not SDK-local code: `integrations.sdk.secrets` re-exports `SecretCipher` from the shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit) package (`nx_auth.atrest`) — the same audited at-rest implementation used across the Neuronection assistants, pinned by git SHA in the workspace `pyproject.toml`. The ciphertext format (`{"_encrypted": ..., "_kid": ...}` wrappers, rotation ring, context binding) is unchanged; the SDK's public surface (`SecretCipher`, `encrypt_fields`, `decrypt_fields`, `mask_fields`) keeps its exact shape.
+
 No per-domain code in the endpoint. Set `HA_DATA_KEY` in `.env` (Fernet key, base64 32 bytes):
 
 ```bash
@@ -383,7 +385,7 @@ inside `user_config`, and returns the plaintexts **once** in the config-flow
 response (`{..., webhook_secret, api_secret, secret_notice}`). Senders/clients
 must sign with them; unsigned machine traffic is rejected.
 
-**Key rotation** (non-disruptive): set `HA_DATA_KEY` to the new key and `HA_DATA_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB.
+**Key rotation** (non-disruptive): set `HA_DATA_KEY` to the new key and `HA_DATA_KEY_PREVIOUS` to the old key (comma-separated for multiple). New values are encrypted with the new key; existing ciphertext decrypts with either. Each encrypted value carries a short `_kid` fingerprint so a rotation migration can find rows that still need re-encryption. An optional `context` arg (typically the `integration_id`) binds a ciphertext to its row so it can't be cut-and-pasted elsewhere in multi-tenant JSONB. The full runbook — including the data-loss gate (**only drop a key from `HA_DATA_KEY_PREVIOUS` after a `_kid` census shows zero remaining values sealed under it**; dropping early permanently breaks those rows) — lives in the kit's `docs/atrest.md`.
 
 **SSRF defense**: every outbound SDK HTTP call (`http_request`, `fhir_search`, `fhir_create`, `fhir_conditional_update`, OAuth discovery/token calls) passes through `integrations.sdk.net_guard.assert_safe_url` — which rejects cloud-metadata (`169.254.169.254`), loopback, link-local, private, and reserved addresses before the request leaves the process. Default is deny-private; set `INTEGRATION_ALLOWED_HOSTS` or `INTEGRATION_BLOCK_PRIVATE_RANGES=false` for a trusted self-hosted target on the LAN.
 

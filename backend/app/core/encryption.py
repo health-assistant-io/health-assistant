@@ -1,12 +1,17 @@
 """Platform secret encryption at rest (Fernet) — the DATA_KEY family.
 
-Single source of truth for encrypting secrets that live inside the app's
+The cipher is shared family code: the string helpers (``enc::`` prefix,
+``***`` mask marker, tolerant legacy reads) and the Fernet machinery come
+from ``nx_auth.atrest`` (see the kit's ``docs/atrest.md`` for the threat
+model and the rotation runbook). This module is the thin health adapter:
+it resolves the key family from the app ``Settings`` via
+:func:`app.core.keys.data_key_family` and keeps health's storage contract —
+single source of truth for encrypting secrets that live inside the app's
 own tables (e.g. ``AIProviderModel.api_key``). Integrations continue to
 use ``integrations.sdk.secrets`` which wraps the same key family inside
 ``user_config`` JSONB blobs.
 
-Identity-auth §8 (plan 16 H4): the cipher key is the per-purpose
-``HA_DATA_KEY`` — it encrypts at
+The at-rest key is the per-purpose ``HA_DATA_KEY`` — it encrypts at
 rest and **never signs anything**, and no key is derived from any other
 value. Rotation ring (preserved from the pre-H4 integration key):
 ``HA_DATA_KEY`` is the primary and the only key that *encrypts*;
@@ -26,18 +31,15 @@ import base64
 import logging
 from functools import lru_cache
 
-from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from cryptography.fernet import Fernet
+from nx_auth import atrest
+from nx_auth.atrest import SecretCipher
 
 logger = logging.getLogger(__name__)
 
-
-# Storage prefix so we can detect encrypted values vs legacy plaintext.
-ENCRYPTED_PREFIX = "enc::"
-
-# Marker the client/UI sends back when it wants to preserve the existing
-# key (e.g. the user edited a different field and didn't retype the key).
-# Anything matching this pattern is treated as "no change" by update paths.
-MASK_MARKER = "***"
+# Re-exported from the shared module — same values the storage layers match on.
+ENCRYPTED_PREFIX = atrest.ENCRYPTED_PREFIX
+MASK_MARKER = atrest.MASK_MARKER
 
 DATA_KEY_HINT = (
     "HA_DATA_KEY must be 32-byte "
@@ -51,7 +53,7 @@ class DataKeyError(RuntimeError):
 
 
 def fernet_from_data_key(data_key: str) -> Fernet:
-    """Fernet view of a DATA_KEY family entry (identity-auth §8).
+    """Fernet view of a DATA_KEY family entry.
 
     The DATA_KEY *is* the Fernet key. Both the standard padded form
     (``Fernet.generate_key()``, 44 chars) and the auth-kit's unpadded
@@ -73,42 +75,45 @@ def fernet_from_data_key(data_key: str) -> Fernet:
     return Fernet(base64.urlsafe_b64encode(raw))
 
 
-def _resolve_fernet() -> MultiFernet | None:
+def _resolve_cipher() -> SecretCipher | None:
     """Build the rotation-ring cipher from the configured key family.
 
     Primary first (encrypts), then the ``HA_DATA_KEY_PREVIOUS`` priors
     (decrypt-only). Returns None if the primary key is unset or invalid —
     callers must handle that case (either by raising or by falling back
-    to plaintext storage with a loud warning).
+    to plaintext storage with a loud warning). An invalid *previous* entry
+    only narrows the decrypt ring (warning logged).
     """
     from app.core.keys import data_key_family
 
     family = data_key_family()
     if not family:
         return None
-    fernets: list[Fernet] = []
-    for index, key in enumerate(family):
-        try:
-            fernets.append(fernet_from_data_key(key))
-        except DataKeyError as e:
-            if index == 0:
-                logger.error("HA_DATA_KEY is set but invalid: %s", e)
-                return None
-            # A bad *previous* entry only narrows the decrypt ring.
-            logger.warning("ignoring invalid HA_DATA_KEY_PREVIOUS entry: %s", e)
-    if not fernets:  # pragma: no cover — primary handled above
+    try:
+        fernet_from_data_key(family[0])
+    except DataKeyError as e:
+        logger.error("HA_DATA_KEY is set but invalid: %s", e)
         return None
-    return MultiFernet(fernets)
+    previous: list[str] = []
+    for key in family[1:]:
+        try:
+            fernet_from_data_key(key)
+        except DataKeyError as e:
+            logger.warning("ignoring invalid HA_DATA_KEY_PREVIOUS entry: %s", e)
+            continue
+        previous.append(key)
+    return SecretCipher(family[0], previous=previous)
 
 
 @lru_cache(maxsize=1)
-def _fernet_singleton() -> MultiFernet | None:
-    return _resolve_fernet()
+def _fernet_singleton() -> SecretCipher | None:
+    # Historical name (tests patch it by name); holds the ring cipher.
+    return _resolve_cipher()
 
 
 def is_encrypted(value: str | None) -> bool:
     """True if the stored value is in the encrypted ``enc::<token>`` form."""
-    return value is not None and value.startswith(ENCRYPTED_PREFIX)
+    return atrest.is_encrypted(value)
 
 
 def encrypt_secret(plaintext: str | None) -> str | None:
@@ -128,8 +133,8 @@ def encrypt_secret(plaintext: str | None) -> str | None:
         return ""
     if is_encrypted(plaintext):
         return plaintext
-    fernet = _fernet_singleton()
-    if fernet is None:
+    cipher = _fernet_singleton()
+    if cipher is None:
         from app.core.config import get_settings
 
         env = (get_settings().HA_APP_ENV or "").lower()
@@ -143,8 +148,7 @@ def encrypt_secret(plaintext: str | None) -> str | None:
             "Refusing to store a secret in plaintext: HA_DATA_KEY "
             "is not configured (HA_APP_ENV=%s)." % (env or "unset")
         )
-    token = fernet.encrypt(plaintext.encode("utf-8")).decode("utf-8")
-    return f"{ENCRYPTED_PREFIX}{token}"
+    return atrest.encrypt_secret(plaintext, cipher)
 
 
 def decrypt_secret(stored: str | None) -> str | None:
@@ -158,19 +162,14 @@ def decrypt_secret(stored: str | None) -> str | None:
     (wrong key, corrupted token) — callers should surface this as a config
     error rather than silently masking.
     """
-    if stored is None:
-        return None
-    if stored == "":
-        return ""
-    if not is_encrypted(stored):
+    if stored is None or stored == "" or not is_encrypted(stored):
         return stored
-    token = stored[len(ENCRYPTED_PREFIX) :].encode("utf-8")
-    fernet = _fernet_singleton()
-    if fernet is None:
+    cipher = _fernet_singleton()
+    if cipher is None:
         raise ValueError("Secret is encrypted but HA_DATA_KEY is not configured")
     try:
-        return fernet.decrypt(token).decode("utf-8")
-    except InvalidToken as e:
+        return cipher.decrypt_raw(stored[len(ENCRYPTED_PREFIX) :])
+    except ValueError as e:
         raise ValueError("Encrypted secret could not be decrypted") from e
 
 
@@ -203,5 +202,5 @@ def looks_masked(value: str | None) -> bool:
 
 
 def reset_cache() -> None:
-    """Test hook: clear the cached Fernet so a settings change takes effect."""
+    """Test hook: clear the cached cipher so a settings change takes effect."""
     _fernet_singleton.cache_clear()

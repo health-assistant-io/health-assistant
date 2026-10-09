@@ -11,7 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-RUN apt-get update && apt-get install -y --no-install-recommends gcc \
+# Build stage: compilers + git live here only (git is needed by
+# `uv sync --frozen` to fetch the git-SHA-pinned family auth-kit
+# dependency).
+RUN apt-get update && apt-get install -y --no-install-recommends gcc git \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
 # Workspace manifests first (cache-friendly); uv installs into /app/.venv.
