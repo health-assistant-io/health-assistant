@@ -779,6 +779,7 @@ const ChatComposerBar: React.FC<{ textareaRef: React.Ref<HTMLTextAreaElement> }>
       value={chat.draft}
       onValueChange={chat.setDraft}
       onSubmit={() => void chat.submit()}
+      canSubmit={chat.draft.trim() !== '' || chat.pendingAttachments.some((a) => a.status === 'ready')}
       sending={chat.sending}
       placeholder={t('ai_chat.input.placeholder')}
       ariaLabel={t('ai_chat.input.placeholder')}
