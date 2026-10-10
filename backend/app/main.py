@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from nx_auth.headers import HeaderPolicy, SecurityHeadersMiddleware
 from starlette.requests import ClientDisconnect
 
 from app.api.v1 import api_router
@@ -447,31 +448,17 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CsrfMiddleware)
 
 
-# Security: baseline response headers (audit A7). Applied to every response.
-# CSP is intentionally permissive for an API+SPA (the frontend is a separate
-# origin); tighten APP_CSP_CONTENT via env if you serve the SPA from here.
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    # X-Frame-Options: DENY is the safe baseline. Routes that legitimately
-    # need to be embedded in a same-origin <iframe> (e.g. the inline document
-    # download used for PDF preview) may set the header themselves; use
-    # setdefault so an explicit per-route value wins. See documents.py.
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # HSTS only when the browser's connection actually arrived over TLS.
-    # Emitting it on a plain-HTTP response is at best noise and, behind a
-    # proxy that also serves the host on an https listener without a
-    # browser-trusted certificate, pins every visitor to that broken https
-    # for a year (the 2026-10 http-only LAN deployment class). Behind a
-    # proxy the real client scheme arrives via X-Forwarded-Proto (set by
-    # nginx.conf) — take the first (client-side) hop only.
-    forwarded_proto = request.headers.get("x-forwarded-proto", "")
-    client_proto = forwarded_proto.split(",")[0].strip() or request.url.scheme
-    if client_proto == "https":
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
+# Security: baseline response headers (audit A7) — the kit's middleware
+# with health's policy (plan 21): no CSP here (the frontend is a separate
+# origin; the website's CSP is single-sourced in nginx/website config),
+# X-Frame-Options overridable per route (the inline document download
+# relaxes to SAMEORIGIN for the PDF preview iframe), and HSTS only when
+# the client's connection actually arrived over TLS. Applied to every
+# response; the nginx layer (ADR-0005) stays untouched.
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    policy=HeaderPolicy(web_csp=None, frame_overridable=True, hsts_behind_proxy=True),
+)
 
 
 # Security: CORS configuration

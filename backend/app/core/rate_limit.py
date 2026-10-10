@@ -1,21 +1,26 @@
-"""Redis-backed rate limiting (audit A2, identity-auth §7/§16).
+"""Rate limiting (audit A2, identity-auth §7/§16) — kit-backed (plan 21).
 
-Fixed-window counters in Redis so the limit holds across all uvicorn/celery
-workers sharing the broker. Used to protect authentication endpoints against
-brute-force / credential-stuffing / enumeration.
+Fixed-window counters so the limit holds across all uvicorn/celery
+workers sharing the broker. Used to protect authentication endpoints
+against brute-force / credential-stuffing / enumeration.
 
 Design notes:
-- Degrades open: if Redis is unreachable, the request proceeds (rate limiting
-  is defence-in-depth, not an availability gate — mirroring the
-  ``DATABASE_AVAILABLE`` philosophy). A closed failure mode would let a Redis
-  outage lock every user out.
+- The counter backend is the auth-kit's (`nx_auth.ratelimit` — plan 21's
+  one family limiter): a `RedisCounter` over this app's `redis_client`
+  keeps the exact ``rl:*`` key shape and the **degrade-open** rule (if
+  Redis is unreachable, the request proceeds — rate limiting is
+  defence-in-depth, not an availability gate; a closed failure mode
+  would let a Redis outage lock every user out).
+- The public dependency names (``rate_limit``, ``rate_limit_user``,
+  ``rate_limit_integration``, ``check_account_limit``) stay as thin
+  wrappers over the kit's ``RateLimitPolicy.hit`` so the 8+ call sites
+  and their static wiring tests change minimally (plan 21 Phase 4
+  ruling: wrappers, no call-site migration).
 - Keyed by client IP (+ optional identifier) with a per-account (email)
   companion bucket on login/register (§7). Proxy trust is EXPLICIT
   (audit 2026-08 AUTH-H1): ``HA_TRUSTED_PROXY_COUNT`` declares how many
-  rightmost ``X-Forwarded-For`` hops the ingress stack appends; only that
-  suffix is honored. With no configured proxies the header is ignored and
-  the socket peer is used — a spoofable header can no longer mint fresh
-  rate-limit buckets per request.
+  rightmost ``X-Forwarded-For`` hops the ingress stack appends — resolved
+  through the kit's one ``client_ip`` (D3).
 - §16 per-bucket ceilings: ``HA_RATELIMIT_AUTH`` / ``HA_RATELIMIT_AUTH_EMAIL``
   / ``HA_RATELIMIT_AI`` / ``HA_RATELIMIT_MCP`` / ``HA_RATELIMIT_DEFAULT``
   (career reference, requests per minute). When set, a ceiling overrides the
@@ -29,6 +34,7 @@ import logging
 import time
 
 from fastapi import Depends, HTTPException, Request, status
+from nx_auth.ratelimit import RateLimitPolicy, RedisCounter, client_ip
 
 from app.core.config import get_settings
 from app.core.redis import redis_client
@@ -36,7 +42,23 @@ from app.core.security import get_current_user
 
 logger = logging.getLogger(__name__)
 
-BUCKETS = ("AUTH", "AUTH_EMAIL", "AI", "MCP", "DEFAULT")
+# The frozen five-bucket family set lives in the kit
+# (`nx_auth.ratelimit.BUCKETS`) — product copies are drift-gated.
+
+
+class _LazyRedisCounter:
+    """Bridge to the kit's RedisCounter, reading this module's
+    ``redis_client`` binding per call (tests swap it with a fake)."""
+
+    async def incr(self, key: str, window: int) -> int:
+        return await RedisCounter(redis_client).incr(key, window)
+
+
+#: The family limiter policy (plan 21): ceilings stay product-side (the
+#: ``HA_RATELIMIT_*`` §16 semantics — None ⇒ route default), the counter
+#: is Redis so windows hold across processes, and ``hit`` enforces the
+#: degrade-open rule on any backend failure.
+_LIMITER = RateLimitPolicy(ceiling=lambda bucket: None, counter=_LazyRedisCounter())
 
 
 def _ceiling(bucket: str, fallback: int) -> int:
@@ -54,35 +76,28 @@ def _ceiling(bucket: str, fallback: int) -> int:
 
 def _client_ip(request: Request) -> str:
     settings = get_settings()
-    trusted = settings.HA_TRUSTED_PROXY_COUNT
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded and trusted > 0:
-        # The ingress appends the real client then (optionally) further
-        # proxies. The RIGHTMOST ``trusted`` entries are ours; anything to
-        # the left of that is client-supplied and spoofable.
-        hops = [h.strip() for h in forwarded.split(",") if h.strip()]
-        if len(hops) > trusted:
-            return hops[-trusted]
-        return hops[0] if hops else "unknown"
-    return request.client.host if request.client else "unknown"
+    return client_ip(
+        request.client.host if request.client else None,
+        request.headers.get("x-forwarded-for"),
+        settings.HA_TRUSTED_PROXY_COUNT,
+    )
 
 
 async def _consume(key: str, max_requests: int, window: int, detail: str) -> None:
-    """One fixed-window counter tick; raises 429 (with Retry-After) over budget."""
+    """One fixed-window counter tick; raises 429 (with Retry-After) over budget.
+
+    The kit's ``hit`` owns the counter mechanics (INCR+EXPIRE, keys
+    verbatim — the ``rl:*`` shape predates plan 21 and survives it) and
+    the degrade-open rule (backend failure ⇒ allow + log).
+    """
     if max_requests <= 0:
         return  # bucket disabled
-    try:
-        count = await redis_client.incr(key)
-        if count == 1:
-            await redis_client.expire(key, window)
-    except Exception as e:  # Redis unreachable — degrade open.
-        logger.warning("Rate-limit backend unavailable, allowing request: %s", e)
-        return
-    if count > max_requests:
+    retry_after = await _LIMITER.hit(key, limit=max_requests, window=window)
+    if retry_after is not None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=detail,
-            headers={"Retry-After": str(window)},
+            headers={"Retry-After": str(retry_after)},
         )
 
 

@@ -218,3 +218,26 @@ Fully containerized environment via `docker-compose`:
 - **React**: Served via Vite in development / Nginx in production.
 
 Deployment flavors (standalone with bundled gateway vs. bring-your-own-proxy), TLS, and the security checklist: [INSTALL.md](INSTALL.md).
+
+## HTTP security surface (rate limiting + headers)
+
+- **Rate limiting** is the auth-kit's family limiter (`nx_auth.ratelimit`)
+  behind `app/core/rate_limit.py`: Redis fixed-window counters
+  shared by every uvicorn/Celery worker (keys keep the `rl:*` shape), the
+  frozen five-bucket set (`AUTH`, `AUTH_EMAIL`, `AI`, `MCP`, `DEFAULT`),
+  and the family **degrade-open** rule — a Redis outage logs and lets
+  requests through; the limiter is never the outage. Per-bucket ceilings
+  (`HA_RATELIMIT_{ENABLED,AUTH,AUTH_EMAIL,AI,MCP,DEFAULT}`, requests per
+  minute; `0` disables a bucket; unset keeps the route default) and
+  per-IP identity (`HA_TRUSTED_PROXY_COUNT` rightmost
+  `X-Forwarded-For` hops) are unchanged. Dependency names
+  (`rate_limit`, `rate_limit_user`, `rate_limit_integration`,
+  `check_account_limit`) are thin wrappers over the kit's policy.
+- **Security headers** come from the kit's `SecurityHeadersMiddleware`
+  with health's policy: `nosniff`, `X-Frame-Options: DENY`
+  (per-route overrides win — the inline PDF preview relaxes to
+  `SAMEORIGIN`), `Referrer-Policy`, and HSTS only when the client's
+  connection actually arrived over TLS. No CSP is emitted at the app
+  layer (the frontend is a separate origin; the website's CSP is
+  single-sourced in its serving config) — nginx remains the
+  outer layer for connection limits, TLS and HSTS at the edge.

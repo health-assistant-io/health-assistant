@@ -15,6 +15,8 @@ import pytest
 from app.core import rate_limit as rl_mod
 from tests.test_audit_a2_rate_limit import FakeRedis, FakeRequest
 
+pytestmark = pytest.mark.contract  # §18.19/R8 — per-user keyed limiter (plan 21)
+
 
 @pytest.fixture
 def fake_redis(monkeypatch):

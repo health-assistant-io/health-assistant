@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security (plan 21)
+- **Rate limiting + security headers move onto the auth-kit counter
+  (v0.4.0, re-pinned `eb3499103ce91cb52e3282c72129f72ed419f3bb`) —
+  module import only.** `app/core/rate_limit.py` keeps every dependency
+  name (`rate_limit`, `rate_limit_user`, `rate_limit_integration`,
+  `check_account_limit`) and the §16 `HA_RATELIMIT_*` semantics as thin
+  wrappers over the kit's `RateLimitPolicy.hit`; the Redis fixed-window
+  counter (verbatim `rl:*` keys), cross-process windows and the
+  **degrade-open** rule are unchanged — pinned by the existing A2/S-4
+  tests. The inline security-headers middleware in `app/main.py` is now
+  the kit's `SecurityHeadersMiddleware` with health's policy (no CSP at
+  the app layer, per-route `X-Frame-Options` overrides preserved,
+  TLS-gated HSTS); the nginx layer is untouched. New §16 ceiling tests +
+  contract marks (§18.19/20/22) on the R/H matrix rows.
+
 ### Added
 - **Chat branching (plan 13 H2, family contract):** chat messages form a
   branch tree per session — `parent_id` + per-node `active_child_id` on

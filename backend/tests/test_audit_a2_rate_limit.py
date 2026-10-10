@@ -3,6 +3,7 @@
 import types
 
 import pytest
+from fastapi import HTTPException
 
 from app.core import rate_limit as rl_mod
 
@@ -40,6 +41,56 @@ def fake_redis(monkeypatch):
     return fake
 
 
+@pytest.mark.contract  # §18.22 — HA_RATELIMIT_* ceilings override/disable (§16, plan 21)
+class TestSixteenCeilings:
+    """§16 knob behavior over the kit counter (plan 21): the
+    ``HA_RATELIMIT_*`` ceilings override route defaults, ``0`` disables
+    the bucket, and ``HA_RATELIMIT_ENABLED=false`` stops everything."""
+
+    def _settings(self, **knobs):
+        from tests.settings_factory import settings_stub
+
+        base = {"HA_RATELIMIT_ENABLED": True, "HA_TRUSTED_PROXY_COUNT": 0}
+        base.update(knobs)
+        return settings_stub(**base)
+
+    @pytest.mark.asyncio
+    async def test_ceiling_overrides_route_default(self, fake_redis, monkeypatch):
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: self._settings(HA_RATELIMIT_AUTH=2))
+        dep = rl_mod.rate_limit("login", max_requests=50, window=60, bucket="auth")
+        for _ in range(2):
+            await dep(FakeRequest())  # the §16 ceiling wins, not the 50
+        with pytest.raises(HTTPException) as exc:
+            await dep(FakeRequest())
+        assert exc.value.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_zero_ceiling_disables_bucket(self, fake_redis, monkeypatch):
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: self._settings(HA_RATELIMIT_AUTH=0))
+        dep = rl_mod.rate_limit("login", max_requests=1, window=60, bucket="auth")
+        for _ in range(25):
+            await dep(FakeRequest())  # never refused
+
+    @pytest.mark.asyncio
+    async def test_enabled_false_disables_all_buckets(self, fake_redis, monkeypatch):
+        monkeypatch.setattr(
+            rl_mod, "get_settings", lambda: self._settings(HA_RATELIMIT_ENABLED=False)
+        )
+        dep = rl_mod.rate_limit("login", max_requests=1, window=60, bucket="auth")
+        for _ in range(25):
+            await dep(FakeRequest())
+
+    @pytest.mark.asyncio
+    async def test_unset_ceiling_keeps_route_default(self, fake_redis, monkeypatch):
+        monkeypatch.setattr(rl_mod, "get_settings", lambda: self._settings())
+        dep = rl_mod.rate_limit("login", max_requests=2, window=60, bucket="auth")
+        for _ in range(2):
+            await dep(FakeRequest())
+        with pytest.raises(HTTPException):
+            await dep(FakeRequest())
+
+
+@pytest.mark.contract  # §18.19 — R2/R3 spoofed XFF ignored / rightmost hop (plan 21)
 class TestClientIP:
     def test_xff_ignored_without_trusted_proxies(self, monkeypatch):
         """Audit 2026-08 AUTH-H1: X-Forwarded-For is untrusted by default —
@@ -66,6 +117,7 @@ class TestClientIP:
         assert rl_mod._client_ip(FakeRequest(ip="10.0.0.9")) == "10.0.0.9"
 
 
+@pytest.mark.contract  # §18.19 — R1 burst 429+Retry-After, R4 degrade open, R5/R6 buckets
 class TestRateLimitLogic:
     @pytest.mark.asyncio
     async def test_allows_under_limit(self, fake_redis):
@@ -121,6 +173,7 @@ class TestAuthEndpointsWired:
             assert "rate_limit" in src, f"{name} must depend on rate_limit"
 
 
+@pytest.mark.contract  # §18.19/R8 — keyed per-integration windows hold
 class TestIntegrationRateLimit:
     """Per-integration limiter (``rate_limit_integration``) — keyed on the
     ``integration_id`` path param, used by the webhook + API-proxy routes."""

@@ -21,6 +21,7 @@ from tests.settings_factory import settings_stub
 
 
 # --------------------------------------------------------------------------- A7
+@pytest.mark.contract  # §18.20 — H1 baseline headers, TLS-gated HSTS (plan 21)
 class TestSecurityHeaders:
     @pytest.mark.asyncio
     async def test_response_carries_security_headers(self, async_client):
@@ -38,14 +39,10 @@ class TestSecurityHeaders:
     async def test_hsts_only_over_tls(self, async_client):
         # Behind the TLS-terminating proxy the client scheme arrives via
         # X-Forwarded-Proto — that response may carry HSTS...
-        r = await async_client.get(
-            "/api/v1/biomarkers/", headers={"x-forwarded-proto": "https"}
-        )
+        r = await async_client.get("/api/v1/biomarkers/", headers={"x-forwarded-proto": "https"})
         assert "max-age" in r.headers.get("strict-transport-security", "")
         # ...and a proxy that received plain http must not trigger it.
-        r2 = await async_client.get(
-            "/api/v1/biomarkers/", headers={"x-forwarded-proto": "http"}
-        )
+        r2 = await async_client.get("/api/v1/biomarkers/", headers={"x-forwarded-proto": "http"})
         assert "strict-transport-security" not in r2.headers
 
     @pytest.mark.asyncio
