@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Bridge examination enrichment (mobile next-gen exam pages):** `GET /examinations`
+  list items now carry the card fields — `category`, `lab_name`, `diagnoses`,
+  `extraction_progress`, `observation_count`/`medication_count`/`document_count`,
+  `created_at`/`updated_at` — and `GET /examinations/{id}` returns the full
+  detail projection: `extraction_progress`, `error_message`, per-section counts,
+  timestamps, `observations[]` (value/unit, flattened `reference_range {low,
+  high}`, `interpretation`, `relative_score`, biomarker linkage), `doctors[]`,
+  `medications[]`, and `clinical_events[]` (the health journeys the visit
+  belongs to, eagerly loaded). Wire docs updated in
+  `integrations/health_assistant_bridge/docs/api-reference.md`; patient
+  isolation unchanged (cross-patient still `ValueError`).
+
 ### Security (plan 21)
 - **Rate limiting + security headers move onto the auth-kit counter
   (v0.4.0, re-pinned `eb3499103ce91cb52e3282c72129f72ed419f3bb`) —

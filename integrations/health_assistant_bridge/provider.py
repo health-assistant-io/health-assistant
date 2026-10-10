@@ -807,27 +807,57 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 .order_by(ExaminationModel.examination_date.desc())
                 .limit(limit)
             )
-            items = [
-                {
-                    "id": str(e.id),
-                    "examination_date": e.examination_date.isoformat()
-                    if e.examination_date
-                    else None,
-                    "notes": e.notes,
-                    "patient_notes": e.patient_notes,
-                    "extraction_status": e.extraction_status,
-                }
-                for e in res.scalars().all()
-            ]
+            items = [self._examination_summary(e) for e in res.scalars().all()]
         return self._read_envelope(items)
+
+    @staticmethod
+    def _examination_summary(e: Any) -> dict[str, Any]:
+        """The list-projection item for `GET /examinations`: the legacy thin
+        shape plus the card fields the mobile app renders (category, lab,
+        diagnoses, progress, per-section counts). The selectin relationships
+        on the model are already eager-loaded, so this adds no queries."""
+        return {
+            "id": str(e.id),
+            "examination_date": e.examination_date.isoformat()
+            if e.examination_date
+            else None,
+            "notes": e.notes,
+            "patient_notes": e.patient_notes,
+            "extraction_status": e.extraction_status,
+            "extraction_progress": e.extraction_progress,
+            "diagnoses": e.diagnoses if isinstance(e.diagnoses, list) else [],
+            "category": e.category,
+            "lab_name": e.organization.name if e.organization else None,
+            "observation_count": len(e.observations) if e.observations else 0,
+            "medication_count": len(e.medications) if e.medications else 0,
+            "document_count": len(e.documents) if e.documents else 0,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+        }
 
     async def _read_examination_detail(
         self, integration: UserIntegration, exam_id: str
     ) -> dict[str, Any]:
+        from sqlalchemy.orm import selectinload
+
         from app.core.database import AsyncSessionLocal
+        from app.models.clinical_event import EventExaminationLink
+        from app.models.examination_model import ExaminationModel
 
         async with AsyncSessionLocal() as db:
-            e = await self._bound_examination(db, integration, exam_id)
+            e = await self._bound_examination(
+                db,
+                integration,
+                exam_id,
+                options=(
+                    # The event links are a plain backref (lazy "select") —
+                    # eager-load them so the journeys section is reachable
+                    # in the async context without a lazy-load blowup.
+                    selectinload(ExaminationModel.event_links).selectinload(
+                        EventExaminationLink.event
+                    ),
+                ),
+            )
             return {
                 "id": str(e.id),
                 "examination_date": e.examination_date.isoformat()
@@ -836,17 +866,68 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "notes": e.notes,
                 "patient_notes": e.patient_notes,
                 "extraction_status": e.extraction_status,
-                "diagnoses": e.diagnoses,
+                "extraction_progress": e.extraction_progress,
+                "error_message": getattr(e, "error_message", None),
+                "diagnoses": e.diagnoses if isinstance(e.diagnoses, list) else [],
                 "impressions": e.impressions,
                 "category": e.category,
                 "lab_name": e.organization.name if e.organization else None,
                 "external_id": e.external_id,
+                "observation_count": len(e.observations) if e.observations else 0,
+                "medication_count": len(e.medications) if e.medications else 0,
+                "document_count": len(e.documents) if e.documents else 0,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+                "observations": [
+                    self._exam_observation(o) for o in (e.observations or [])
+                ],
+                "doctors": [self._doctor_to_dict(d) for d in (e.doctors or [])],
+                "medications": [
+                    self._medication_to_dict(m) for m in (e.medications or [])
+                ],
+                "clinical_events": e._serialize_clinical_events(),
             }
 
-    async def _bound_examination(self, db, integration: UserIntegration, exam_id: str):
+    @staticmethod
+    def _exam_observation(o: Any) -> dict[str, Any]:
+        """Project one exam-linked FHIR observation for the detail payload:
+        the value/unit/reference-range/interpretation block the mobile app
+        renders in its lab-results section (keeps the wire lean — the full
+        `to_dict()` carries education Markdown the app fetches from
+        `GET /biomarkers` instead)."""
+        d = o.to_dict()
+        return {
+            "id": d.get("id"),
+            "effective_datetime": d.get("effective_datetime"),
+            "code": d.get("code"),
+            "raw_value": d.get("raw_value"),
+            "normalized_value": d.get("normalized_value"),
+            "normalized_unit": d.get("normalized_unit"),
+            "value_string": d.get("value_string"),
+            "reference_range": _flatten_reference_range(d.get("reference_range")),
+            "interpretation": d.get("interpretation"),
+            "relative_score": d.get("relative_score"),
+            "biomarker_id": d.get("biomarker_id"),
+            "biomarker_slug": d.get("biomarker_slug"),
+            "biomarker_value_type": d.get("biomarker_value_type"),
+            "biomarker_reference_range_min": d.get("biomarker_reference_range_min"),
+            "biomarker_reference_range_max": d.get("biomarker_reference_range_max"),
+            "document_id": d.get("document_id"),
+        }
+
+    async def _bound_examination(
+        self,
+        db,
+        integration: UserIntegration,
+        exam_id: str,
+        *,
+        options: tuple = (),
+    ):
         """Load an examination scoped to the bound patient; raises ValueError if
         the id is malformed or belongs to a different patient. The linchpin of
-        patient isolation for the `/examinations/{id}/*` paths (plan §4)."""
+        patient isolation for the `/examinations/{id}/*` paths (plan §4).
+        `options` adds eager loads (the journeys selectinload on the detail
+        read) on top of the model's built-in selectin relationships."""
         from uuid import UUID
 
         from sqlalchemy import select
@@ -859,11 +940,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         except ValueError:
             raise ValueError(f"Invalid examination id: {exam_id}")
         res = await db.execute(
-            select(ExaminationModel).where(
+            select(ExaminationModel)
+            .where(
                 ExaminationModel.id == eid,
                 ExaminationModel.tenant_id == integration.tenant_id,
                 ExaminationModel.patient_id == patient_id,
             )
+            .options(*options)
         )
         e = res.scalars().one_or_none()
         if e is None:
