@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Self-test suite for the family-convergence gate (plan 23 D4 / T1–T6, T13–T16).
+# Self-test suite for the family-convergence gate (plan 23 D4 / T1–T6,
+# T13–T16; plan 21 C7 security-surface cases).
 #
 # Fixtures are materialized at runtime into mktemp -d from heredoc builders —
 # no committed fixture trees, so vendoring four copies stays cheap and
@@ -86,6 +87,11 @@ PLANTED_ENV=(
 PLANTED_MIGRATIONS=(
   "command.upgrade" "run_migrations"
 )
+PLANTED_SECURITY=(
+  "class SlidingWindowRateLimiter" "class RateLimitMiddleware"
+  "class SecurityHeadersMiddleware"
+  'BUCKETS = ("AUTH", "AUTH_EMAIL", "AI", "MCP", "DEFAULT")'
+)
 
 # ---------------------------------------------------------------------------
 # fixture builders (heredoc materialization into mktemp -d)
@@ -101,8 +107,9 @@ gate_artifacts() {
   cp "$PATTERNS_DIR/"*.txt "$1/scripts/gate-patterns/"
 }
 
-# fixture_conformant DIR -- a tree that passes C1–C6 (incl. T3 prefixed-env
-# negatives and T1/T6).
+# fixture_conformant DIR -- a tree that passes C1–C7 (incl. T3 prefixed-env
+# negatives and T1/T6; C7 holds because no limiter/headers class or bucket
+# constant is declared product-side).
 fixture_conformant() {
   local d="$1"
   mkdir -p "$d/backend/app" "$d/backend/tests" "$d/frontend/src" \
@@ -306,23 +313,53 @@ for name in "${PLANTED_MIGRATIONS[@]}"; do
   expect "T2 C3 trips for planted migration surface '$name'" 1 "FAIL C3"
 done
 
+# T2e: security-surface completeness — one planted copy per vocabulary
+# entry trips C7 (a product-local class or bucket-constant copy).
+for marker in "${PLANTED_SECURITY[@]}"; do
+  d="$WORK/t2-c7"; rm -rf "$d"; fixture_conformant "$d"
+  if [ "$marker" = "class SlidingWindowRateLimiter" ]; then
+    printf 'class SlidingWindowRateLimiter:\n    pass\n' > "$d/backend/app/planted.py"
+  elif [ "$marker" = "class RateLimitMiddleware" ]; then
+    printf 'class RateLimitMiddleware:\n    pass\n' > "$d/backend/app/planted.py"
+  elif [ "$marker" = "class SecurityHeadersMiddleware" ]; then
+    printf 'class SecurityHeadersMiddleware:\n    pass\n' > "$d/backend/app/planted.py"
+  else
+    printf 'PLANTED = %s\n' "$marker" > "$d/backend/app/planted.py"
+  fi
+  run_self "$d"
+  expect "T2 C7 trips for planted security copy '$marker'" 1 "FAIL C7"
+done
+
+# T17/plan-21: a product-local headers middleware anywhere under backend
+# (app or tests) is a named C7 finding.
+d="$WORK/t17-headers-copy"; fixture_conformant "$d"
+cat > "$d/backend/tests/test_headers_copy.py" <<'EOF2'
+class SecurityHeadersMiddleware:  # a stale local copy smuggled into tests
+    pass
+EOF2
+run_self "$d"
+expect "T17 product-local headers copy in tests -> FAIL C7" 1 "FAIL C7"
+
 # T2c: correspondence — the pinned planted lists must stay 1:1 with the
 # vocabulary files (this is the case that fails when a vocabulary line is
 # deleted — the completeness loop must have teeth).
 vocab_markers="$(vocab_file "$PATTERNS_DIR/legacy-markers.txt" | cut -f2 | sort)"
 vocab_env="$(vocab_file "$PATTERNS_DIR/env-names.txt" | cut -f2 | sort)"
 vocab_migrations="$(vocab_file "$PATTERNS_DIR/migration-sites.txt" | cut -f2 | sort)"
+vocab_security="$(vocab_file "$PATTERNS_DIR/security-surface.txt" | cut -f2 | sort)"
 pinned_markers="$(printf '%s\n' "${PLANTED_MARKERS[@]}" | sort)"
 pinned_env="$(printf '%s\n' "${PLANTED_ENV[@]}" | sort)"
 pinned_migrations="$(printf '%s\n' "${PLANTED_MIGRATIONS[@]}" | sort)"
+pinned_security="$(printf '%s\n' "${PLANTED_SECURITY[@]}" | sort)"
 if [ "$vocab_markers" = "$pinned_markers" ] && [ "$vocab_env" = "$pinned_env" ] \
-  && [ "$vocab_migrations" = "$pinned_migrations" ]; then
+  && [ "$vocab_migrations" = "$pinned_migrations" ] && [ "$vocab_security" = "$pinned_security" ]; then
   ok_case "T2 vocabulary <-> planted-list correspondence (1:1)"
 else
   fail_case "T2 vocabulary <-> planted-list correspondence (1:1)" \
     "markers vocab: $vocab_markers / pinned: $pinned_markers
 env vocab: $vocab_env / pinned: $pinned_env
-migrations vocab: $vocab_migrations / pinned: $pinned_migrations"
+migrations vocab: $vocab_migrations / pinned: $pinned_migrations
+security vocab: $vocab_security / pinned: $pinned_security"
 fi
 
 # T4: unprefixed read/write forms trip C2 and name file:line.
@@ -429,7 +466,7 @@ expect "T5/C6 missing contract gate in CI -> FAIL C6" 1 "FAIL C6"
 # patterns are data, so the gate can never match its own patterns.
 gate_text="$(cat "$GATE")"
 missing_lit=""
-for marker in "${PLANTED_MARKERS[@]}" "${PLANTED_ENV[@]}" "${PLANTED_MIGRATIONS[@]}"; do
+for marker in "${PLANTED_MARKERS[@]}" "${PLANTED_ENV[@]}" "${PLANTED_MIGRATIONS[@]}" "${PLANTED_SECURITY[@]}"; do
   if grep -qF -- "$marker" <<<"$gate_text"; then
     missing_lit="$missing_lit $marker"
   fi

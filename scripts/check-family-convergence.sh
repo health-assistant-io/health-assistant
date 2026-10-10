@@ -13,6 +13,9 @@
 #   C5  packaging shape — root `pyproject.toml` + `uv.lock` + backend
 #       `pyproject.toml`; no `requirements*.txt`
 #   C6  contract gates — `pytest -m contract` wired in each repo's CI
+#   C7  security surface (plan 21) — no product-local limiter/header
+#       middleware class copies; the frozen five-bucket set exists only
+#       in the kit (`nx_auth.ratelimit` / `nx_auth.headers`)
 #
 # The marker/env vocabularies are DATA, not code (plan 23 D2): they live in
 # scripts/gate-patterns/*.txt and this script builds its matchers from those
@@ -296,6 +299,18 @@ c6_contract_gate() {  # dir -> findings
   return 0
 }
 
+c7_security_surface() {  # dir -> findings (plan 21: kit-only HTTP security)
+  local dir="$1" found
+  found="$(scan_matcher "$PATTERNS_DIR/security-surface.txt" c4 "$dir" backend/app backend/tests | head -8)"
+  if [ -n "$found" ]; then
+    echo "FAIL C7: product-local limiter/headers copies or bucket constants:"
+    echo "$found" | sed 's/^/    /'
+    REPO_FAIL=1
+    return 1
+  fi
+  return 0
+}
+
 check_repo() {  # repo_dir pyproject_rel -> sets REPO_FAIL=1 on findings
   local dir="$1" pyproject_rel="$2"
   REPO_FAIL=0
@@ -312,6 +327,7 @@ check_repo() {  # repo_dir pyproject_rel -> sets REPO_FAIL=1 on findings
   c4_legacy_markers "$dir"
   c5_packaging_shape "$dir"
   c6_contract_gate "$dir"
+  c7_security_surface "$dir"
 }
 
 # ---------------------------------------------------------------------------

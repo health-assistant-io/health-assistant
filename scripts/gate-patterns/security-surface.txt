@@ -1,0 +1,11 @@
+# Plan 21 drift vocabulary — product-local HTTP-security-surface copies.
+# One limiter + one headers middleware family-wide: the implementations
+# live in auth-kit (nx_auth.ratelimit / nx_auth.headers). A product that
+# re-declares the class shapes, or re-declares the frozen five-bucket
+# tuple, is a drift copy (kit-only constants). Entries are regexes
+# (left-boundary matched, C4 form); `::` separates pattern from the
+# witness the self-test plants.
+class\s+SlidingWindowRateLimiter::class SlidingWindowRateLimiter
+class\s+RateLimitMiddleware::class RateLimitMiddleware
+class\s+SecurityHeadersMiddleware::class SecurityHeadersMiddleware
+\("AUTH",\s*"AUTH_EMAIL",\s*"AI",\s*"MCP",\s*"DEFAULT"\)::BUCKETS = ("AUTH", "AUTH_EMAIL", "AI", "MCP", "DEFAULT")
