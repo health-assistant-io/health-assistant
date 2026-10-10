@@ -5,6 +5,7 @@ export {
   walkActivePath,
   activePathSet,
   variantInfo,
+  buildBranchTree,
 } from '@neuronection/assistant-ui/chat-core';
 export type {
   ChatRole,
@@ -23,6 +24,8 @@ export type {
   ChatStreamTransport,
   UseChatStreamOptions,
   UseChatStreamResult,
+  BranchTree,
+  BranchNode,
 } from '@neuronection/assistant-ui/chat-core';
 
 export {
@@ -38,7 +41,7 @@ export type {
   MermaidDiagramProps,
 } from '@neuronection/assistant-ui/chat-markdown';
 
-export { ChatMessage } from '@neuronection/assistant-ui/chat-message';
+export { ChatMessage, MessageVariantSwitcher, ChatMessageEditor } from '@neuronection/assistant-ui/chat-message';
 export type {
   ChatMessageProps,
   ChatMessageActions,
@@ -81,3 +84,14 @@ export type { ChatPanelProps, ChatPanelVariant } from '@neuronection/assistant-u
 
 export { ChatDrawer } from '@neuronection/assistant-ui/chat-drawer';
 export type { ChatDrawerProps } from '@neuronection/assistant-ui/chat-drawer';
+
+export { ChatBranchTree } from '@neuronection/assistant-ui/chat-branch-tree';
+export type {
+  ChatBranchTreeProps,
+  ChatBranchTreeLabels,
+  ChatBranchTreeIcons,
+  ChatBranchTreeNode,
+} from '@neuronection/assistant-ui/chat-branch-tree';
+
+export { PopoverButton } from '@neuronection/assistant-ui/popover-button';
+export type { PopoverButtonProps } from '@neuronection/assistant-ui/popover-button';

@@ -42,6 +42,12 @@ class ChatMessageSchema(BaseModel):
     citations: list[str] | None = None
     tasks: list[dict[str, Any]] | None = None
     created_at: Any
+    # Branch decoration (family contract, plan 11 §6): tree edge + variant
+    # position among siblings. Attached in-memory by the service walk.
+    parent_id: UUID | None = None
+    variant_index: int | None = None
+    variant_count: int | None = None
+    sibling_ids: list[UUID] | None = None
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -59,6 +65,41 @@ class ChatSessionTitleUpdate(BaseModel):
     """Body of ``PATCH /ai-assistance/sessions/{id}`` (family B3 contract)."""
 
     title: str = Field(min_length=1, max_length=200)
+
+
+class ChatMessageEditRequest(BaseModel):
+    """Body of ``POST /ai-assistance/messages/{id}/edit`` (family branching
+    contract): the edited text re-sends as a new sibling variant. ``context``
+    mirrors ``/stream``'s context (patient/examination bindings for tools)."""
+
+    content: str = Field(min_length=1, max_length=32_000)
+    context: dict[str, Any] | None = None
+
+
+class ChatBranchContext(BaseModel):
+    """Optional body of ``POST /ai-assistance/messages/{id}/regenerate``:
+    tool context for the re-rolled turn (mirrors ``/stream``)."""
+
+    context: dict[str, Any] | None = None
+
+
+class ChatBranchNodeSchema(BaseModel):
+    """One node of the read-only branch-tree projection."""
+
+    id: UUID
+    role: str
+    excerpt: str = ""
+    parent_id: UUID | None = None
+    children: list[UUID] = Field(default_factory=list)
+    active_child_id: UUID | None = None
+
+
+class ChatTreeSchema(BaseModel):
+    """Body of ``GET /ai-assistance/sessions/{id}/tree``: the read-only
+    ``{active_root_id, nodes[]}`` projection (family contract)."""
+
+    active_root_id: UUID | None = None
+    nodes: list[ChatBranchNodeSchema] = Field(default_factory=list)
 
 
 class AIAssistanceResponse(BaseModel):

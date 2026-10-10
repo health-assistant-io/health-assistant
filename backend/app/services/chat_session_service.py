@@ -5,6 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.chat_model import ChatMessage, ChatSession
+from app.services.chat_branching import (
+    activate_path_to,
+    decorate,
+    tree_projection,
+    walk_active_path,
+)
 
 
 def _has_tasks_filter():
@@ -97,9 +103,43 @@ class ChatSessionService:
                 )
             )
         )
-        if not session_result.scalars().first():
+        session = session_result.scalars().first()
+        if not session:
             return []
 
+        result = await self.db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at)
+        )
+        return list(result.scalars().all())
+
+    async def get_active_path_messages(
+        self, session_id: UUID, user_id: UUID, tenant_id: UUID
+    ) -> list[ChatMessage]:
+        """The visible (active-path) messages of an owned session, in
+        conversation order — the family branching contract's walk. Empty
+        list when the session does not exist or is not the caller's."""
+        session = await self.get_owned_session(session_id, user_id, tenant_id)
+        if session is None:
+            return []
+        all_messages = await self._all_messages(session_id)
+        return walk_active_path(all_messages, session.active_root_id)
+
+    async def get_active_path_decorated(
+        self, session_id: UUID, user_id: UUID, tenant_id: UUID
+    ) -> list[ChatMessage]:
+        """Active-path messages with in-memory variant decoration
+        (``variant_index`` / ``variant_count`` / ``sibling_ids``)."""
+        session = await self.get_owned_session(session_id, user_id, tenant_id)
+        if session is None:
+            return []
+        all_messages = await self._all_messages(session_id)
+        visible = walk_active_path(all_messages, session.active_root_id)
+        decorate(visible, all_messages)
+        return visible
+
+    async def _all_messages(self, session_id: UUID) -> list[ChatMessage]:
         result = await self.db.execute(
             select(ChatMessage)
             .where(ChatMessage.session_id == session_id)
@@ -134,6 +174,7 @@ class ChatSessionService:
         citations: list | None = None,
         tasks: list | None = None,
         owner_user_id: UUID | None = None,
+        parent_id: UUID | None = None,
     ) -> ChatMessage:
         """Persist one message.
 
@@ -142,6 +183,11 @@ class ChatSessionService:
         ``LookupError`` instead of writing into another member's session.
         Callers that already verified ownership (e.g. the graph loop saving
         assistant turns after the dispatch-level check) may omit it.
+
+        Branch placement (plan 13 H2): the message joins the session's tree
+        under ``parent_id`` when given (the parent's ``active_child_id``
+        flips to the new row — branch-local), else under the active-path
+        tip (the session's ``active_root_id`` when the tree is empty).
         """
         session_result = await self.db.execute(
             select(ChatSession).where(ChatSession.id == session_id)
@@ -150,6 +196,21 @@ class ChatSessionService:
         if session is None or (owner_user_id is not None and session.user_id != owner_user_id):
             raise LookupError("Chat session not found.")
 
+        parent: ChatMessage | None = None
+        if parent_id is not None:
+            parent_result = await self.db.execute(
+                select(ChatMessage).where(
+                    and_(ChatMessage.id == parent_id, ChatMessage.session_id == session_id)
+                )
+            )
+            parent = parent_result.scalars().first()
+            if parent is None:
+                raise LookupError("Parent message not found.")
+        else:
+            all_messages = await self._all_messages(session_id)
+            path = walk_active_path(all_messages, session.active_root_id)
+            parent = path[-1] if path else None
+
         message = ChatMessage(
             session_id=session_id,
             role=role,
@@ -157,8 +218,16 @@ class ChatSessionService:
             tool_calls=tool_calls,
             citations=citations,
             tasks=tasks,
+            parent_id=parent.id if parent is not None else None,
         )
         self.db.add(message)
+        # Flush first: the pointer flip needs the new row's DB-generated id
+        # (assigning pre-flush writes NULL — the career 0014 lesson).
+        await self.db.flush()
+        if parent is not None:
+            parent.active_child_id = message.id
+        else:
+            session.active_root_id = message.id
         session.updated_at = func.now()
         await self.db.commit()
         await self.db.refresh(message)
@@ -183,6 +252,129 @@ class ChatSessionService:
             )
         )
         return result.scalars().first()
+
+    async def edit_message(
+        self,
+        message_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+        content: dict,
+    ) -> tuple[ChatSession, ChatMessage]:
+        """Branch a user message (family contract): a new sibling under the
+        same parent carrying the edited content, the parent's
+        ``active_child_id`` flipped to it (or the session's
+        ``active_root_id`` for root-level variants). The old subtree stays
+        as a switchable variant. Returns (session, edited message)."""
+        message = await self.get_message(message_id, user_id, tenant_id)
+        if message is None:
+            raise LookupError("Message not found or access denied.")
+        if message.role != "user":
+            raise ValueError("Only user messages can be edited.")
+
+        session = await self.get_owned_session(message.session_id, user_id, tenant_id)
+        assert session is not None
+
+        edited = ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=content,
+            parent_id=message.parent_id,
+        )
+        # Edited resend: images the caller re-sent replace; an absent image
+        # key inherits the original message's attachments (the edit changed
+        # the text — career's edit ruling).
+        original_images = (
+            message.content.get("images")
+            if isinstance(message.content, dict) and message.content.get("images")
+            else None
+        )
+        if original_images and "images" not in edited.content:
+            edited.content = {**edited.content, "images": original_images}
+        self.db.add(edited)
+        await self.db.flush()
+
+        if message.parent_id is not None:
+            parent = await self.db.get(ChatMessage, message.parent_id)
+            if parent is not None:
+                parent.active_child_id = edited.id
+        else:
+            session.active_root_id = edited.id
+        session.updated_at = func.now()
+        await self.db.commit()
+        await self.db.refresh(edited)
+        return session, edited
+
+    async def prepare_regenerate(
+        self,
+        message_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+    ) -> tuple[ChatSession, ChatMessage]:
+        """Prepare a re-roll under the target USER message: activate the
+        path to it when it is off-path. The new assistant sibling is
+        persisted by the turn itself (parented explicitly under the
+        target). Returns (session, target user message)."""
+        message = await self.get_message(message_id, user_id, tenant_id)
+        if message is None:
+            raise LookupError("Message not found or access denied.")
+        if message.role != "user":
+            raise ValueError("Regenerate targets a user message.")
+
+        session = await self.get_owned_session(message.session_id, user_id, tenant_id)
+        assert session is not None
+
+        all_messages = await self._all_messages(session.id)
+        by_id = {m.id: m for m in all_messages}
+        path_ids = {m.id for m in walk_active_path(all_messages, session.active_root_id)}
+        if message.id not in path_ids:
+            activate_path_to(by_id, session, message)
+            await self.db.commit()
+        return session, message
+
+    async def select_message(
+        self,
+        message_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+    ) -> list[ChatMessage]:
+        """Flip exactly ONE pointer — the parent's active child (or the
+        session's active root for root-level variants) — level-flip
+        semantics, no ancestor-chain activation. Returns the re-walked,
+        decorated visible path."""
+        message = await self.get_message(message_id, user_id, tenant_id)
+        if message is None:
+            raise LookupError("Message not found or access denied.")
+
+        session = await self.get_owned_session(message.session_id, user_id, tenant_id)
+        assert session is not None
+
+        all_messages = await self._all_messages(session.id)
+        by_id = {m.id: m for m in all_messages}
+        if message.parent_id is not None and message.parent_id in by_id:
+            by_id[message.parent_id].active_child_id = message.id
+        else:
+            session.active_root_id = message.id
+        session.updated_at = func.now()
+        await self.db.commit()
+
+        refreshed = await self._all_messages(session.id)
+        visible = walk_active_path(refreshed, session.active_root_id)
+        decorate(visible, refreshed)
+        return visible
+
+    async def tree(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+    ) -> dict | None:
+        """Read-only branch-tree projection for the graph rail. ``None``
+        when the session is not the caller's."""
+        session = await self.get_owned_session(session_id, user_id, tenant_id)
+        if session is None:
+            return None
+        all_messages = await self._all_messages(session_id)
+        return tree_projection(all_messages, session.active_root_id)
 
     async def find_message_by_proposal(
         self,

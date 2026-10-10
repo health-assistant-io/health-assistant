@@ -82,6 +82,7 @@ async def reconstruct_history(
     tenant_id: UUID | None,
     system_prompt: str,
     driving_input: str | list[dict[str, Any]],
+    stop_before_id: UUID | None = None,
 ) -> list[Any]:
     """Build the in-memory LLM message list for a chat turn.
 
@@ -93,6 +94,12 @@ async def reconstruct_history(
     :func:`_append_assistant_turn_to_history` so every ``tool_call_id`` is
     followed by a ``ToolMessage`` (OpenAI contract).
 
+    Plan 13 H2 branching: the replay walks the ACTIVE PATH (pointer walk),
+    not raw ``created_at`` order — hidden variants never reach the model.
+    ``stop_before_id`` (regenerate turns) truncates the walk at the target
+    user message: the re-roll re-enters as the driving input and its old
+    subtree is dropped.
+
     NOTE (behaviour fix in Phase 2): the former ``_general_chat`` reconstructed
     past assistant turns WITHOUT following ToolMessages — a latent OpenAI
     ``400 tool_call_ids did not have response messages`` on non-streaming turns
@@ -100,12 +107,17 @@ async def reconstruct_history(
     """
     current_history: list[Any] = [SystemMessage(content=system_prompt)]
     if session_id:
-        past_messages = await chat_session_service.get_session_messages(
+        past_messages = await chat_session_service.get_active_path_messages(
             session_id, user_id, tenant_id
         )
-        # Exclude the message we just saved (which is the driving input) to
-        # avoid duplication; replay the prior 10 turns.
-        for msg in past_messages[:-1][-10:]:
+        if stop_before_id is not None:
+            stop_ids = [i for i, m in enumerate(past_messages) if m.id == stop_before_id]
+            past_messages = past_messages[: stop_ids[0]] if stop_ids else past_messages[:-1]
+        else:
+            # Exclude the message we just saved (which is the driving input)
+            # to avoid duplication; replay the prior 10 turns.
+            past_messages = past_messages[:-1][-10:]
+        for msg in past_messages:
             if msg.role == "user":
                 # Reconstruct multimodal content when the persisted message
                 # carries image attachments (vision input) so the model keeps

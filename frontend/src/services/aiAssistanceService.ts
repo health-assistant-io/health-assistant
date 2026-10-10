@@ -48,6 +48,26 @@ export interface ChatMessage {
   citations?: string[];
   tasks?: TaskInfo[];
   created_at: string;
+  /** Branch decoration (family contract, plan 13 H2). */
+  parent_id?: string | null;
+  variant_index?: number;
+  variant_count?: number;
+  sibling_ids?: string[];
+}
+
+/** One node of the read-only branch-tree projection (plan 13 H2). */
+export interface ChatBranchNode {
+  id: string;
+  role: 'user' | 'assistant';
+  excerpt: string;
+  parent_id: string | null;
+  children: string[];
+  active_child_id: string | null;
+}
+
+export interface ChatTree {
+  active_root_id: string | null;
+  nodes: ChatBranchNode[];
 }
 
 export const getAIAssistance = async (request: AIAssistanceRequest): Promise<AIAssistanceResponse> => {
@@ -131,6 +151,86 @@ export const resumeHitlSession = async (
 };
 
 /**
+ * Edit-and-resend as a branch (family contract, plan 13 H2): the edited
+ * text re-sends as a new sibling variant of the target user message and a
+ * fresh reply streams (same SSE contract as /stream). `context` mirrors
+ * /stream's (patient/examination bindings for tools).
+ */
+export const editChatMessageStream = async (
+  messageId: string,
+  content: string,
+  context: Record<string, unknown>,
+  onMessage: (msg: AIStreamMessage) => void,
+  onComplete: () => void,
+  onError: (error: any) => void
+) => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ai-assistance/messages/${messageId}/edit`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...sessionFetchHeaders(),
+      },
+      body: JSON.stringify({ content, context }),
+    });
+
+    await consumeAIStreamResponse(response, onMessage, onComplete, onError);
+  } catch (error) {
+    onError(error);
+  }
+};
+
+/**
+ * Regenerate as a branch (family contract, plan 13 H2): stream a fresh
+ * assistant sibling under the target user message — earlier replies stay
+ * switchable variants, never overwritten.
+ */
+export const regenerateChatMessageStream = async (
+  messageId: string,
+  context: Record<string, unknown>,
+  onMessage: (msg: AIStreamMessage) => void,
+  onComplete: () => void,
+  onError: (error: any) => void
+) => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/ai-assistance/messages/${messageId}/regenerate`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...sessionFetchHeaders(),
+        },
+        body: JSON.stringify({ context }),
+      }
+    );
+
+    await consumeAIStreamResponse(response, onMessage, onComplete, onError);
+  } catch (error) {
+    onError(error);
+  }
+};
+
+/** Flip one branch pointer (level-flip semantics); returns the re-walked
+ * visible path with variant decoration (plan 13 H2). */
+export const selectChatMessage = async (messageId: string): Promise<ChatMessage[]> => {
+  const response = await api.post<ChatMessage[]>(`/ai-assistance/messages/${messageId}/select`);
+  return response.data;
+};
+
+/** Read-only branch-tree projection for the tree rail (plan 13 H2). */
+export const getChatTree = async (sessionId: string): Promise<ChatTree> => {
+  const response = await api.get<ChatTree>(`/ai-assistance/sessions/${sessionId}/tree`);
+  return response.data;
+};
+
+/**
  * Family chat vocabulary (ai-features §5) + health's payload events
  * (plan 24 V3): every SSE frame is one JSON object with the event name in
  * `event`. Family core: `flow_started` / `node_started` / `node_finished` /
@@ -177,7 +277,19 @@ async function consumeAIStreamResponse(
   onError: (error: any) => void
 ): Promise<void> {
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    // Pre-stream rejections (e.g. the per-session turn lock's 409) carry a
+    // user-facing `detail` — surface it through the guard channel so the
+    // error tile shows the server's message, not a bare HTTP code.
+    let detail = `Stream failed (HTTP ${response.status})`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.detail) detail = errBody.detail;
+    } catch {
+      /* ignore parse error */
+    }
+    onMessage({ error: detail, errorType: 'guard' });
+    onComplete();
+    return;
   }
 
   const reader = response.body?.getReader();

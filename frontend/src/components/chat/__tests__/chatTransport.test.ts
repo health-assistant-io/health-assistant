@@ -8,10 +8,16 @@ import type { AIStreamMessage } from '../../../services/aiAssistanceService';
 
 const mockStream = vi.hoisted(() => vi.fn());
 const mockResume = vi.hoisted(() => vi.fn());
+const mockEdit = vi.hoisted(() => vi.fn());
+const mockRegenerate = vi.hoisted(() => vi.fn());
+const mockSelect = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../services/aiAssistanceService', () => ({
   streamAIAssistance: mockStream,
   resumeHitlSession: mockResume,
+  editChatMessageStream: mockEdit,
+  regenerateChatMessageStream: mockRegenerate,
+  selectChatMessage: mockSelect,
 }));
 
 type Captured = {
@@ -153,7 +159,7 @@ describe('createChatTransport', () => {
         event: 'flow_failed',
         code: 'connection',
         message: 'localized error',
-        retryable: false,
+        retryable: true,
       },
     ]);
     // flow_failed already terminalized — no synthetic flow_finished after it
@@ -188,7 +194,7 @@ describe('createChatTransport', () => {
         event: 'flow_failed',
         code: 'connection',
         message: 'connection',
-        retryable: false,
+        retryable: true,
       },
     ]);
   });
@@ -239,5 +245,57 @@ describe('createChatTransport', () => {
     captured.onComplete();
     const events = collect(transport);
     expect(events).toEqual([]);
+  });
+
+  it('routes the next send to the edit-branch endpoint with the staged text (plan 13 H2)', async () => {
+    const transport = createChatTransport(makeDeps());
+    transport.beginEdit('msg-9');
+    await transport.send({ text: '‍' });
+
+    expect(mockEdit).toHaveBeenCalledWith(
+      'msg-9',
+      'hello',
+      expect.objectContaining({ patient_id: 'p1' }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  it('routes the next send to the regenerate endpoint with no pending text (plan 13 H2)', async () => {
+    const transport = createChatTransport(makeDeps());
+    transport.beginRegenerate('msg-3');
+    await transport.send({ text: '‍' });
+
+    expect(mockRegenerate).toHaveBeenCalledWith(
+      'msg-3',
+      expect.objectContaining({ patient_id: 'p1' }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(mockStream).not.toHaveBeenCalled();
+  });
+
+  it('exposes the branch select endpoint through the transport', async () => {
+    mockSelect.mockResolvedValueOnce([]);
+    const transport = createChatTransport(makeDeps());
+
+    await transport.select('msg-1');
+
+    expect(mockSelect).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('marks transient provider errors retryable and guards not', () => {
+    const transport = createChatTransport(makeDeps());
+    const events = collect(transport);
+    const captured = capture();
+    void transport.send({ text: 'x' }).then(() => {
+      captured.onMessage({ error: '', errorType: 'connection' });
+      expect(events[events.length - 1]).toMatchObject({ event: 'flow_failed', retryable: true });
+      captured.onMessage({ error: 'blocked', errorType: 'guard' });
+      expect(events[events.length - 1]).toMatchObject({ event: 'flow_failed', retryable: false });
+    });
   });
 });

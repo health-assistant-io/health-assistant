@@ -298,6 +298,7 @@ def _chat_graph_nodes():
                     tool_calls=list(all_tool_calls),
                     citations=list(all_citations),
                     tasks=list(all_tasks),
+                    parent_id=runtime.get("turn_parent_id"),
                 )
                 logger.info(
                     f"HITL task proactively saved to message "
@@ -526,6 +527,7 @@ def _chat_graph_nodes():
                     tool_calls=state["all_tool_calls"],
                     citations=state["all_citations"],
                     tasks=state["all_tasks"] or None,
+                    parent_id=runtime.get("turn_parent_id"),
                 )
         writer({"event": "done", "reached_max": not clean_break})
         return {}
@@ -624,12 +626,17 @@ def _make_config(
     session_id: UUID | None,
     checkpointer: Any | None,
     runtime: dict[str, Any],
+    thread_id: str | None = None,
 ) -> dict[str, Any] | None:
     if checkpointer is not None and session_id is None:
         raise ValueError("A checkpointer requires a session_id (thread_id).")
     configurable: dict[str, Any] = {"runtime": runtime}
     if session_id is not None:
-        configurable["thread_id"] = str(session_id)
+        # Plan 13 H2 (plan 11 §6 health ruling): the bare session id is the
+        # legacy LINEAR thread; branched turns key a per-branch thread
+        # ``{session_id}:{branch_tip_id}`` so a paused ask_user on one
+        # branch is never clobbered by another branch's runs.
+        configurable["thread_id"] = thread_id or str(session_id)
     return {"configurable": configurable}
 
 
@@ -646,10 +653,17 @@ async def run_chat_graph(
     checkpointer: Any | None = None,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
+    thread_id: str | None = None,
+    turn_parent_id: UUID | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Run one chat turn, yielding the family + health payload event dicts
     (:class:`app.ai.flow_events_payload.FlowEvent`; plus the engine-internal
-    ``done`` completion signal, which the SSE mapper drops)."""
+    ``done`` completion signal, which the SSE mapper drops).
+
+    ``thread_id`` selects the checkpoint thread (plan 13 H2 branching: the
+    per-branch key; defaults to the legacy bare session id). ``turn_parent_id``
+    pins where this turn's assistant rows hang in the branch tree (regenerate
+    turns re-roll under an existing user message)."""
     graph = build_chat_graph(checkpointer=checkpointer)
     runtime: dict[str, Any] = {
         "llm_with_tools": llm_with_tools,
@@ -659,8 +673,9 @@ async def run_chat_graph(
         "proactive_message": None,
         "user_id": user_id,
         "tenant_id": tenant_id,
+        "turn_parent_id": turn_parent_id,
     }
-    config = _make_config(session_id, checkpointer, runtime)
+    config = _make_config(session_id, checkpointer, runtime, thread_id=thread_id)
 
     async def gen() -> AsyncIterator[dict[str, Any]]:
         yield flow_started_event()
@@ -708,14 +723,17 @@ def chat_engine_iter(
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
     checkpointer: Any | None = None,
+    thread_id: str | None = None,
+    turn_parent_id: UUID | None = None,
 ):
     """Run a chat turn on the LangGraph engine (the only engine since the
     Phase 8 decommission). Returns an async iterator of family + health
     payload event dicts; callers stay engine-agnostic. The lifespan-held
-    checkpointer (thread_id = session id) is attached for sessioned runs —
-    ask_user interrupts need the durable thread; ``user_id``/``tenant_id``
-    enable the crash-resume dedup.
-    """
+    checkpointer is attached for sessioned runs — ask_user interrupts need
+    the durable thread; ``user_id``/``tenant_id`` enable the crash-resume
+    dedup. ``thread_id`` (plan 13 H2) keys the per-branch checkpoint thread
+    when the turn runs on a branched conversation; ``turn_parent_id`` pins
+    the branch-tree parent for this turn's assistant rows."""
     if checkpointer is None and session_id is not None:
         checkpointer = get_runtime_saver()
     return run_chat_graph(
@@ -730,18 +748,20 @@ def chat_engine_iter(
         checkpointer=checkpointer,
         user_id=user_id,
         tenant_id=tenant_id,
+        thread_id=thread_id,
+        turn_parent_id=turn_parent_id,
     )
 
 
-async def has_pending_interrupt(session_id: UUID) -> bool:
-    """True when the session's checkpointed graph run is paused at an
-    ask_user interrupt (the /resume continuation should Command(resume=...)
-    instead of starting a fresh turn)."""
+async def has_pending_interrupt(thread_id: str) -> bool:
+    """True when the checkpointed graph run on ``thread_id`` is paused at
+    an ask_user interrupt (the /resume continuation should
+    Command(resume=...) instead of starting a fresh turn)."""
     saver = get_runtime_saver()
     if saver is None:
         return False
     graph = build_chat_graph(checkpointer=saver)
-    snapshot = await graph.aget_state({"configurable": {"thread_id": str(session_id)}})
+    snapshot = await graph.aget_state({"configurable": {"thread_id": str(thread_id)}})
     if snapshot is None or not snapshot.tasks:
         return False
     return any(task.interrupts for task in snapshot.tasks)
@@ -757,18 +777,21 @@ async def resume_interrupted_chat_graph(
     log_label: str = "AI Assistance (resume)",
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
+    thread_id: str | None = None,
+    turn_parent_id: UUID | None = None,
 ) -> AsyncIterator[dict[str, Any]] | None:
     """Resume a run paused at an ask_user interrupt.
 
     Returns the event-dict iterator, or ``None`` when there is no pending
-    interrupt (caller falls back to a fresh-continuation turn). The summary
-    the loop engine would have fed as the driving input arrives as the
-    interrupt's return value — the ask_user ToolMessage — and the model
-    continues the same conversation. The runtime handles are supplied fresh
-    (they are never checkpointed).
-    """
+    interrupt on ``thread_id`` (caller falls back to a fresh-continuation
+    turn). The summary the loop engine would have fed as the driving input
+    arrives as the interrupt's return value — the ask_user ToolMessage —
+    and the model continues the same conversation. The runtime handles are
+    supplied fresh (they are never checkpointed). ``turn_parent_id`` pins
+    where the continuation's assistant rows hang in the branch tree."""
     saver = get_runtime_saver()
-    if saver is None or not await has_pending_interrupt(session_id):
+    effective_thread = thread_id or str(session_id)
+    if saver is None or not await has_pending_interrupt(effective_thread):
         return None
     graph = build_chat_graph(checkpointer=saver)
     runtime: dict[str, Any] = {
@@ -779,8 +802,9 @@ async def resume_interrupted_chat_graph(
         "proactive_message": None,
         "user_id": user_id,
         "tenant_id": tenant_id,
+        "turn_parent_id": turn_parent_id,
     }
-    config = _make_config(session_id, saver, runtime)
+    config = _make_config(session_id, saver, runtime, thread_id=effective_thread)
 
     async def gen() -> AsyncIterator[dict[str, Any]]:
         async for mode, payload in graph.astream(

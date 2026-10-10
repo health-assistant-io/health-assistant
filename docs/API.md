@@ -995,9 +995,13 @@ telemetry split + OHLC aggregation are documented in
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `POST` | `/ai-assistance/assist` | any | `AIAssistanceRequest` | `AIAssistanceResponse` | Non-streaming assistance (form filling, icons, SVG, chat). |
-| `POST` | `/ai-assistance/stream` | any | `AIAssistanceRequest` | SSE `text/event-stream` | Streaming chat. Rejects `task_type != "chat"` with 400. Stable SSE error codes: `connection`, `auth`, `rate_limit`, `timeout`, `generic`, `guard`. |
+| `POST` | `/ai-assistance/stream` | any | `AIAssistanceRequest` | SSE `text/event-stream` | Streaming chat. Rejects `task_type != "chat"` with 400. Stable SSE error codes: `connection`, `auth`, `rate_limit`, `timeout`, `generic`, `guard`. Per-session single-flight: a second concurrent turn on the same session is rejected with 409 before the stream starts. |
 | `GET` | `/ai-assistance/sessions` | any | query: `patient_id?` | `List[ChatSessionSchema]` | Tenant-scoped. |
-| `GET` | `/ai-assistance/sessions/{session_id}/messages` | any (ownership verified in service) | — | `List[ChatMessageSchema]` |  |
+| `GET` | `/ai-assistance/sessions/{session_id}/messages` | any (ownership verified in service) | — | `List[ChatMessageSchema]` | The active-path walk, variant-decorated (`parent_id` / `variant_index` / `variant_count` / `sibling_ids`). |
+| `POST` | `/ai-assistance/messages/{message_id}/edit` | any | `{content: str, context?}` | SSE `text/event-stream` | Edit-and-resend as a branch: new user sibling under the same parent, pointer flip, fresh turn; old subtree kept as a variant. 400 on non-user targets, 404 foreign. |
+| `POST` | `/ai-assistance/messages/{message_id}/regenerate` | any | `{context?}` (optional body) | SSE `text/event-stream` | New assistant sibling under the target user message — earlier replies stay switchable variants. 400 on non-user targets. |
+| `POST` | `/ai-assistance/messages/{message_id}/select` | any | — | `List[ChatMessageSchema]` | Level-flip exactly one branch pointer; returns the re-walked decorated path. |
+| `GET` | `/ai-assistance/sessions/{session_id}/tree` | any | — | `ChatTreeSchema` | Read-only `{active_root_id, nodes[]}` branch-tree projection. |
 | `DELETE` | `/ai-assistance/sessions/{session_id}` | any (ownership verified in service) | — | `{success: true}` |  |
 | `GET` | `/ai-assistance/tools` | any | query: `patient_id` *, `examination_id?` | `List[AIAssistanceToolSchema]` | Built-in tools + integration-aggregated tools (failures logged, not raised). |
 | `POST` | `/ai-assistance/sessions/{session_id}/tasks/{proposal_id}/resolve` | any | `HitlResolutionRequest` (CONFIRMED/DISMISSED) | `{success, task}` | HITL resolution. Idempotent: 409 if already resolved. Does NOT perform the underlying write (frontend commits via canonical REST). |

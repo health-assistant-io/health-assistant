@@ -60,6 +60,10 @@ from app.ai.providers.service import AIProviderService
 from app.core.config import settings
 from app.models.system_setting import SystemSetting
 from app.models.tenant_model import TenantModel
+from app.services.chat_branching import (
+    branch_thread_key,
+    regenerate_thread_key,
+)
 from app.services.chat_session_service import ChatSessionService
 from app.utils.prompt_guard import check_user_input_safety
 
@@ -126,6 +130,7 @@ class AIAssistanceService:
         user_id: UUID | None = None,
         stream: bool = False,
         images: list[str] | None = None,
+        branch: dict[str, Any] | None = None,
     ):
         """Main entry point for AI assistance.
 
@@ -176,6 +181,7 @@ class AIAssistanceService:
                     tenant_id,
                     user_id,
                     validated_images,
+                    branch=branch,
                 )
             return await self._general_chat(
                 llm, user_input, context, tenant_id, user_id, validated_images
@@ -204,38 +210,77 @@ class AIAssistanceService:
         tenant_id: UUID,
         user_id: UUID,
         images: list[str] | None = None,
+        branch: dict[str, Any] | None = None,
     ):
         """Stream a chat response (SSE, family vocabulary). Body lives in the
-        LangGraph engine."""
+        LangGraph engine.
+
+        ``branch`` routes the turn onto a branch (plan 13 H2):
+        ``{"kind": "edit", "message_id": ...}`` re-sends edited text as a new
+        user sibling, ``{"kind": "regenerate", "message_id": ...}`` re-rolls
+        the reply under an existing user message. ``None`` is a plain send.
+
+        Thread selection (plan 11 §6 health ruling): every turn computes its
+        branch thread key BEFORE running; a fresh turn never submits input
+        onto a thread paused at an ask_user interrupt — LangGraph would
+        apply the input as a state update and re-pause the stale task,
+        swallowing the turn. Instead the abandoned pause is superseded: the
+        thread is deleted and the turn runs clean (the still-visible card
+        degrades to the fresh-continuation resume path).
+        """
         patient_id = context.get("patient_id")
         examination_id = context.get("examination_id")
-        session_id_str = context.get("session_id")
-        session_id = UUID(session_id_str) if session_id_str else None
+        chat_svc = self.chat_session_service
+        turn_parent_id: UUID | None = None
+        stop_before_id: UUID | None = None
+        anchor = None
 
-        # Audit 2026-09-11 S-1: a client-supplied session_id must belong to
-        # the caller before any write or checkpointer attach against it.
-        if session_id:
-            owned = await self.chat_session_service.get_owned_session(
-                session_id, user_id, tenant_id
-            )
-            if owned is None:
-                raise ValueError("Chat session not found.")
-
-        # Auto-create session if not provided.
-        if not session_id and user_id and tenant_id:
-            title = await self._generate_session_title(llm, user_input)
-            p_id = UUID(patient_id) if patient_id else None
-            session = await self.chat_session_service.create_session(
-                user_id=user_id, tenant_id=tenant_id, patient_id=p_id, title=title
+        if branch is not None and branch.get("kind") == "edit":
+            session, anchor = await chat_svc.edit_message(
+                UUID(str(branch["message_id"])),
+                user_id,
+                tenant_id,
+                self._edited_content(branch, user_input),
             )
             session_id = session.id
-            yield f"data: {json.dumps(session_event(str(session_id)))}\n\n"
+            images = (anchor.content or {}).get("images") or None
+        elif branch is not None and branch.get("kind") == "regenerate":
+            session, anchor = await chat_svc.prepare_regenerate(
+                UUID(str(branch["message_id"])), user_id, tenant_id
+            )
+            session_id = session.id
+            turn_parent_id = anchor.id
+            stop_before_id = anchor.id
+            target_content = anchor.content if isinstance(anchor.content, dict) else {}
+            user_input = target_content.get("text", "")
+            images = target_content.get("images") or None
+        else:
+            session_id_str = context.get("session_id")
+            session_id = UUID(session_id_str) if session_id_str else None
 
-        # Save user message. Persist image attachments inside the content
-        # JSONB so a reloaded session reconstructs them in the UI AND so the
-        # reasoning loop can re-feed them as vision context on the next turn.
-        if session_id:
-            await self.chat_session_service.save_message(
+            # Audit 2026-09-11 S-1: a client-supplied session_id must belong to
+            # the caller before any write or checkpointer attach against it.
+            if session_id:
+                owned = await chat_svc.get_owned_session(session_id, user_id, tenant_id)
+                if owned is None:
+                    raise ValueError("Chat session not found.")
+
+            # Auto-create session if not provided.
+            if not session_id and user_id and tenant_id:
+                title = await self._generate_session_title(llm, user_input)
+                p_id = UUID(patient_id) if patient_id else None
+                session = await chat_svc.create_session(
+                    user_id=user_id, tenant_id=tenant_id, patient_id=p_id, title=title
+                )
+                session_id = session.id
+                yield f"data: {json.dumps(session_event(str(session_id)))}\n\n"
+
+        # Save user message (plain sends only — edit/regenerate manage their
+        # own rows). Persist image attachments inside the content JSONB so a
+        # reloaded session reconstructs them in the UI AND so the reasoning
+        # loop can re-feed them as vision context on the next turn.
+        if branch is None and session_id:
+            anchor = await chat_svc.save_message(
                 session_id=session_id,
                 role="user",
                 content={
@@ -244,6 +289,19 @@ class AIAssistanceService:
                 },
                 owner_user_id=user_id,
             )
+
+        # Branch thread key (plan 11 §6): the legacy bare session id on the
+        # un-branched spine, ``{session_id}:{branch_tip_id}`` otherwise.
+        thread_key_value: str | None = None
+        if session_id:
+            all_messages = await chat_svc.get_session_messages(session_id, user_id, tenant_id)
+            if branch is not None and branch.get("kind") == "regenerate":
+                thread_key_value = regenerate_thread_key(session_id, all_messages, anchor)
+            elif anchor is not None:
+                thread_key_value = branch_thread_key(session_id, all_messages, anchor)
+            else:
+                thread_key_value = str(session_id)
+            await self._supersede_abandoned_pause(thread_key_value)
 
         tools = await build_chat_tools(
             self.db,
@@ -257,12 +315,13 @@ class AIAssistanceService:
 
         system_prompt = build_chat_system_prompt(context)
         history = await reconstruct_history(
-            self.chat_session_service,
+            chat_svc,
             session_id,
             user_id,
             tenant_id,
             system_prompt,
             build_multimodal_content(user_input, images),
+            stop_before_id=stop_before_id,
         )
 
         max_iterations = await self._get_max_iterations(tenant_id)
@@ -272,14 +331,43 @@ class AIAssistanceService:
             history,
             max_iterations,
             streaming=True,
-            chat_session_service=self.chat_session_service,
+            chat_session_service=chat_svc,
             session_id=session_id,
             log_label="AI Assistance",
             user_id=user_id,
             tenant_id=tenant_id,
+            thread_id=thread_key_value,
+            turn_parent_id=turn_parent_id,
         )
         async for frame in stream_events_as_sse(loop):
             yield frame
+
+    @staticmethod
+    def _edited_content(branch: dict[str, Any], user_input: str) -> dict[str, Any]:
+        """Content JSONB for an edited message: the edited text; images ride
+        along when the caller re-sent them."""
+        images = branch.get("images")
+        return {"text": user_input, **({"images": images} if images else {})}
+
+    async def _supersede_abandoned_pause(self, thread_key_value: str) -> None:
+        """Delete a paused ask_user interrupt on the thread a fresh turn is
+        about to run on (the turn supersedes the abandoned pause — the card
+        stays answerable through the fresh-continuation resume fallback)."""
+        from app.ai.graphs.chat_agent import has_pending_interrupt
+        from app.ai.graphs.checkpointer import get_runtime_saver
+
+        saver = get_runtime_saver()
+        if saver is None:
+            return
+        try:
+            if await has_pending_interrupt(thread_key_value):
+                await saver.adelete_thread(thread_key_value)
+                logger.info(
+                    "Branch turn supersedes abandoned ask_user pause on thread %s",
+                    thread_key_value,
+                )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Pause supersede check failed (continuing): %s", exc)
 
     async def resume_after_hitl(
         self,

@@ -381,10 +381,13 @@ async def prune_checkpoint_threads():
 
     The checkpoint tables (langgraph-checkpoint-postgres 3.x) carry no
     timestamp columns, so thread age is derived from the owning chat session
-    (``thread_id`` == chat session id, Phase 3.3 contract): threads whose
-    session was last updated before ``AI_CHECKPOINT_RETENTION_DAYS`` ago, plus
-    orphan threads whose session row no longer exists, are deleted
-    (``checkpoint_blobs`` / ``checkpoint_writes`` first, then ``checkpoints``).
+    (Phase 3.3 contract; plan 13 H2 extended it to branch threads): a
+    thread is owned by the session whose id is its ``thread_id`` — the
+    legacy bare form — or the ``{session_id}:{branch_tip_id}`` form branched
+    turns use. Threads whose session was last updated before
+    ``AI_CHECKPOINT_RETENTION_DAYS`` ago, plus orphan threads whose owning
+    session row no longer exists, are deleted (``checkpoint_blobs`` /
+    ``checkpoint_writes`` first, then ``checkpoints``).
 
     On a fresh install the tables do not exist until the backend's first boot
     runs ``setup()`` — that case is a logged no-op, so the beat can run before
@@ -420,8 +423,8 @@ async def prune_checkpoint_threads():
                 .scalars()
                 .all()
             )
-            stale_ids = [str(s) for s in stale]
-
+            # Branch threads hang off the same session: the bare id (legacy
+            # linear threads) and every "{session_id}:{branch_tip_id}" form.
             orphans = (
                 (
                     await db.execute(
@@ -429,7 +432,8 @@ async def prune_checkpoint_threads():
                             "SELECT DISTINCT c.thread_id FROM checkpoints c "
                             "WHERE NOT EXISTS ("
                             "SELECT 1 FROM chat_sessions s "
-                            "WHERE s.id::text = c.thread_id)"
+                            "WHERE s.id::text = c.thread_id "
+                            "OR left(c.thread_id, length(s.id::text) + 1) = s.id::text || ':')"
                         )
                     )
                 )
@@ -437,27 +441,32 @@ async def prune_checkpoint_threads():
                 .all()
             )
 
-            thread_ids = sorted(set(stale_ids) | set(orphans))
+            exact_ids = sorted({str(s) for s in stale} | set(orphans))
+            prefix_patterns = [f"{s}:%" for s in stale]
+            thread_count = len(exact_ids) + len(prefix_patterns)
             deleted = 0
-            for i in range(0, len(thread_ids), 500):
-                chunk = thread_ids[i : i + 500]
+            for i in range(0, max(len(exact_ids), 1), 500):
+                chunk = exact_ids[i : i + 500]
+                if not chunk:
+                    break
                 for table in ("checkpoint_blobs", "checkpoint_writes", "checkpoints"):
                     res = await db.execute(
-                        text(f"DELETE FROM {table} WHERE thread_id IN :ids").bindparams(
-                            bindparam("ids", expanding=True)
-                        ),
-                        {"ids": chunk},
+                        text(
+                            f"DELETE FROM {table} WHERE thread_id IN :ids "
+                            "OR thread_id LIKE ANY(:patterns)"
+                        ).bindparams(bindparam("ids", expanding=True)),
+                        {"ids": chunk, "patterns": prefix_patterns},
                     )
                     deleted += res.rowcount
 
             await db.commit()
-            if deleted or thread_ids:
+            if deleted or thread_count:
                 logger.info(
                     "Pruned %d checkpoint rows across %d thread(s) (retention=%dd)",
                     deleted,
-                    len(thread_ids),
+                    thread_count,
                     settings.AI_CHECKPOINT_RETENTION_DAYS,
                 )
-            return {"threads": len(thread_ids), "rows_deleted": deleted}
+            return {"threads": thread_count, "rows_deleted": deleted}
     finally:
         await db.close()

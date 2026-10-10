@@ -1118,7 +1118,10 @@
       "stop": "Stop generating",
       "copy": "Copy message",
       "close": "Close chat",
-      "agent_capabilities": "View Agent Capabilities"
+      "agent_capabilities": "View Agent Capabilities",
+      "edit": "Edit message",
+      "regenerate": "Regenerate reply",
+      "retry": "Retry"
     },
     "hitl": {
       "proposal_label": "Proposal",
@@ -1323,6 +1326,13 @@
       "delete_body": "This permanently deletes the consultation and its messages. This cannot be undone.",
       "delete_confirm": "Delete",
       "name_aria": "Consultation title"
+    },
+    "branches": {
+      "label": "Conversation branches",
+      "you": "You",
+      "assistant": "Assistant",
+      "forked": "{{count}} branches",
+      "loading": "Loading branches…"
     }
   },
   "alerts_page": {

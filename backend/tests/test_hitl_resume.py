@@ -472,6 +472,10 @@ async def test_get_session_messages_hides_hitl_feedback(async_client):
         m.citations = None
         m.tasks = None
         m.created_at = "2026-01-01T00:00:00Z"
+        m.parent_id = None
+        m.variant_index = 1
+        m.variant_count = 1
+        m.sibling_ids = [m.id]
         return m
 
     visible = [_msg("user question"), _msg("assistant answer")]
@@ -483,7 +487,7 @@ async def test_get_session_messages_hides_hitl_feedback(async_client):
 
     with patch.object(ep, "ChatSessionService") as mock_cls:
         inst = mock_cls.return_value
-        inst.get_session_messages = AsyncMock(return_value=[visible[0], internal, visible[1]])
+        inst.get_active_path_decorated = AsyncMock(return_value=[visible[0], internal, visible[1]])
 
         session_id = uuid4()
         resp = await async_client.get(f"/api/v1/ai-assistance/sessions/{session_id}/messages")

@@ -11,11 +11,14 @@ import {
   Maximize2,
   Minimize2,
   Wrench,
+  GitBranch,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import {
+  buildBranchTree,
+  ChatBranchTree,
   ChatComposer,
   ChatMessage,
   ChatPanel,
@@ -23,9 +26,12 @@ import {
   ChatTranscript,
   ChatTurnStatus,
   MarkdownSurface,
+  PopoverButton,
+  type BranchTree,
   type ChatMessageView,
   type MarkdownComponents,
 } from '../ui/chat';
+import { getChatTree, type ChatTree } from '../../services/aiAssistanceService';
 import { DictationButton, DictationStrip, useDictation } from '../ui/dictation';
 import {
   HealthChatContext,
@@ -88,6 +94,64 @@ function toolStatus(status: ToolCallInfo['status']): 'running' | 'done' {
   return status === 'finished' ? 'done' : 'running';
 }
 
+/** The conversation tree rail (plan 13 H2): library ChatBranchTree in a
+ * PopoverButton; a node click flips one branch pointer and adopts the
+ * re-walked path. */
+function BranchTreeButton({ isFullScreen }: { isFullScreen: boolean }) {
+  const chat = useHealthChatContext();
+  const { t } = useTranslation();
+  const [tree, setTree] = useState<ChatTree | null>(null);
+  if (chat.currentSessionId === null) {
+    return null;
+  }
+  const load = () => {
+    void getChatTree(chat.currentSessionId!).then(setTree);
+  };
+  const branchTree: BranchTree | null = tree
+    ? buildBranchTree({
+        activeRootId: tree.active_root_id,
+        nodes: tree.nodes.map((node) => ({
+          id: node.id,
+          role: node.role === 'user' ? 'user' : 'assistant',
+          excerpt: node.excerpt,
+          parentId: node.parent_id,
+          activeChildId: node.active_child_id,
+        })),
+      })
+    : null;
+  return (
+    <PopoverButton
+      label={t('ai_chat.branches.label')}
+      trigger={<GitBranch className="w-4 h-4 md:w-5 md:h-5" aria-hidden />}
+      onOpenChange={(open) => {
+        if (open) {
+          load();
+        }
+      }}
+    >
+      {branchTree ? (
+        <ChatBranchTree
+          tree={branchTree}
+          onSelect={(id) => {
+            void chat.selectVariant(id).then(load);
+          }}
+          className="w-80"
+          labels={{
+            tree: t('ai_chat.branches.label'),
+            user: t('ai_chat.branches.you'),
+            assistant: t('ai_chat.branches.assistant'),
+            forked: (count: number) => t('ai_chat.branches.forked', { count }),
+          }}
+        />
+      ) : (
+        <p className={`px-3 py-2 text-xs ${isFullScreen ? 'text-gray-400 dark:text-dark-muted' : 'text-slate-400'}`}>
+          {t('ai_chat.branches.loading')}
+        </p>
+      )}
+    </PopoverButton>
+  );
+}
+
 function uniqueToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
   return Array.from(new Map(toolCalls.map((tc) => [tc.name, tc])).values());
 }
@@ -133,6 +197,8 @@ const AIChatInterfaceInner: React.FC<Props> = ({
   const [isLedgerOpen, setIsLedgerOpen] = useState(false);
   const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
 
   const activeTab = externalTab || internalTab;
   const setActiveTab = (tab: 'chat' | 'insights' | 'actions') => {
@@ -298,7 +364,7 @@ const AIChatInterfaceInner: React.FC<Props> = ({
                 <div className="mt-3 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => void chat.triggerResume(row.id)}
+                    onClick={() => void chat.triggerResume(row)}
                     disabled={chat.sending}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -325,6 +391,10 @@ const AIChatInterfaceInner: React.FC<Props> = ({
 
   const renderMessage = (view: ChatMessageView) => {
     const row = view.meta?.row as ChatRow;
+    const parentRow =
+      row.role === 'assistant' && row.parentId
+        ? chat.rows.find((r) => r.id === row.parentId)
+        : undefined;
     return (
       <ChatMessage
         key={view.id}
@@ -342,12 +412,43 @@ const AIChatInterfaceInner: React.FC<Props> = ({
             <ChatMessageImages images={row.images} variant="user" />
           ) : undefined
         }
+        editing={
+          editingId === row.id
+            ? {
+                value: editDraft,
+                onValueChange: setEditDraft,
+                onSubmit: () => {
+                  void chat.submitEdit(row.id, editDraft);
+                  setEditingId(null);
+                },
+                onCancel: () => setEditingId(null),
+                submitDisabled: chat.sending || editDraft.trim().length === 0,
+              }
+            : false
+        }
         actions={{
           onCopy: () => {
             void navigator.clipboard?.writeText(row.content).catch(() => undefined);
           },
+          onEdit:
+            row.role === 'user' && !chat.sending && !row.id.startsWith('local-')
+              ? () => {
+                  setEditingId(row.id);
+                  setEditDraft(row.content);
+                }
+              : undefined,
+          onRegenerate:
+            row.role === 'assistant' && parentRow && !chat.sending && !row.id.startsWith('local-')
+              ? () => void chat.regenerate(parentRow.id)
+              : undefined,
         }}
-        labels={{ copy: t('ai_chat.tooltips.copy') }}
+        variants={view.variants}
+        onSelectVariant={(id) => void chat.selectVariant(id)}
+        labels={{
+          copy: t('ai_chat.tooltips.copy'),
+          edit: t('ai_chat.tooltips.edit'),
+          regenerate: t('ai_chat.tooltips.regenerate'),
+        }}
       >
         {row.role === 'assistant' ? (
           <>
@@ -373,6 +474,14 @@ const AIChatInterfaceInner: React.FC<Props> = ({
               : 'streaming'
         }
         error={stream.error ?? undefined}
+        actions={
+          stream.status === 'error'
+            ? {
+                onRetry: () => void chat.retry(),
+              }
+            : undefined
+        }
+        labels={{ retry: t('ai_chat.tooltips.retry') }}
         content={
           <>
             {renderToolCards(liveToolInfos)}
@@ -502,6 +611,12 @@ const AIChatInterfaceInner: React.FC<Props> = ({
               >
                 <Wrench className="w-4 h-4 md:w-5 md:h-5" />
               </button>
+
+              {activeTab === 'chat' && (
+                <div className={`p-1.5 md:p-2 ${isFullScreen ? 'text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:text-dark-muted dark:hover:text-dark-text dark:hover:bg-dark-bg' : 'text-white/70 hover:text-white hover:bg-white/10'} rounded-lg md:rounded-xl transition-all [&_button]:flex`} title={t('ai_chat.branches.label')}>
+                  <BranchTreeButton isFullScreen={isFullScreen} />
+                </div>
+              )}
 
               <button
                 onClick={() => setIsLedgerOpen((prev) => !prev)}

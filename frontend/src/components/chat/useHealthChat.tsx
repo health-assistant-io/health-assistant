@@ -41,6 +41,11 @@ export interface ChatRow {
   tasks?: TaskInfo[];
   /** Loaded from server history — suppresses HITL auto-resume. */
   fromHistory?: boolean;
+  /** Branch decoration (family contract, plan 13 H2). */
+  parentId?: string | null;
+  variantIndex?: number;
+  variantCount?: number;
+  siblingIds?: string[];
 }
 
 /**
@@ -67,6 +72,10 @@ function toRow(m: Awaited<ReturnType<typeof getChatSessionMessages>>[number]): C
     citations: m.citations,
     tasks: m.tasks,
     fromHistory: true,
+    parentId: m.parent_id,
+    variantIndex: m.variant_index,
+    variantCount: m.variant_count,
+    siblingIds: m.sibling_ids,
   };
 }
 
@@ -104,6 +113,11 @@ export function useHealthChat(options: UseHealthChatOptions) {
   const resumedRowIds = useRef<Set<string>>(new Set());
   const committedTurnRef = useRef<number | null>(null);
   const pendingSendRef = useRef<{ text: string; images: string[] } | null>(null);
+  /** The intent of the in-flight turn (plan 13 H2): branched turns commit by
+   * refetching the re-walked server rows instead of the local append. */
+  const turnIntentRef = useRef<'send' | 'edit' | 'regenerate' | 'resume'>('send');
+  const rowsRef = useRef<ChatRow[]>([]);
+  rowsRef.current = rows;
   const { addFiles } = useChatAttachments((m: string) => toast.warning(m));
 
   const currentPatient = usePatientStore((state) => state.currentPatient);
@@ -259,21 +273,47 @@ export function useHealthChat(options: UseHealthChatOptions) {
     return updated;
   }, []);
 
+  /** Resolve the SERVER message id for a row's HITL cluster. Live rows use
+   * optimistic ``local-`` ids — the server row is found by its proposal_id
+   * (proposal ids are unique within a session), keeping the resume
+   * branch-correct (a card on branch A resumes branch A — plan 13 H2). */
+  const resolveServerRowId = useCallback(async (row: ChatRow): Promise<string | null> => {
+    if (!row.id.startsWith('local-')) return row.id;
+    const sessionId = currentSessionIdRef.current;
+    const proposalId = row.tasks?.find((t) => t.proposal_id)?.proposal_id;
+    if (!sessionId || !proposalId) return null;
+    try {
+      const server = await getChatSessionMessages(sessionId);
+      const hit = server.find((m) =>
+        (m.tasks ?? []).some((t) => t.proposal_id === proposalId),
+      );
+      return hit?.id ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   /** Trigger the HITL continuation turn after a message's cards resolved. */
   const triggerResume = useCallback(
-    async (rowId: string) => {
+    async (row: ChatRow) => {
       const sessionId = currentSessionIdRef.current;
       if (!sessionId) return;
-      if (resumedRowIds.current.has(rowId)) return;
-      resumedRowIds.current.add(rowId);
+      if (resumedRowIds.current.has(row.id)) return;
+      resumedRowIds.current.add(row.id);
+      // Branch guard: the card's row must still be on the visible path —
+      // a terminal card on branch A never resumes while branch B is
+      // selected (plan 13 H2 gate: HITL stays linear-agnostic).
+      if (!rowsRef.current.some((r) => r.id === row.id)) return;
       // Race guard: don't fire a resume while another stream is running.
       if (sendingRef.current || busyRef.current) return;
+      const messageId = await resolveServerRowId(row);
       busyRef.current = true;
+      turnIntentRef.current = 'resume';
       setLiveExtras(EMPTY_EXTRAS);
-      transportRef.current?.beginResume();
+      transportRef.current?.beginResume(messageId ?? undefined);
       await streamSend(SEND_SENTINEL);
     },
-    [streamSend],
+    [resolveServerRowId, streamSend],
   );
 
   /** Resolve one HITL task card and auto-resume when the cluster is done. */
@@ -294,7 +334,7 @@ export function useHealthChat(options: UseHealthChatOptions) {
       const allTerminal =
         nextTasks.length > 0 && nextTasks.every((x) => TERMINAL_HITL_STATUSES.has(x.status));
       if (allTerminal && !row.fromHistory && !resumedRowIds.current.has(row.id)) {
-        void triggerResume(row.id);
+        void triggerResume(row);
       }
     },
     [triggerResume],
@@ -312,6 +352,7 @@ export function useHealthChat(options: UseHealthChatOptions) {
       if (!overrideContent) setDraft('');
       setPendingAttachments([]);
       pendingSendRef.current = { text: messageContent, images };
+      turnIntentRef.current = 'send';
       busyRef.current = true;
       setLiveExtras(EMPTY_EXTRAS);
       setRows((prev) => [
@@ -327,6 +368,59 @@ export function useHealthChat(options: UseHealthChatOptions) {
     },
     [draft, pendingAttachments, streamSend],
   );
+
+  /** Edit-and-resend as a branch (plan 13 H2): the edited text re-sends as
+   * a sibling variant; the done-turn refetch swaps the visible path onto
+   * the new branch. */
+  const submitEdit = useCallback(
+    async (messageId: string, content: string) => {
+      if (content.trim() === '' || sendingRef.current || busyRef.current) return;
+      pendingSendRef.current = { text: content, images: [] };
+      turnIntentRef.current = 'edit';
+      busyRef.current = true;
+      setLiveExtras(EMPTY_EXTRAS);
+      transportRef.current?.beginEdit(messageId);
+      await streamSend(content);
+    },
+    [streamSend],
+  );
+
+  /** Regenerate as a branch (plan 13 H2): a fresh assistant sibling under
+   * the target user message — earlier replies stay switchable variants. */
+  const regenerate = useCallback(
+    async (messageId: string) => {
+      if (sendingRef.current || busyRef.current) return;
+      turnIntentRef.current = 'regenerate';
+      busyRef.current = true;
+      setLiveExtras(EMPTY_EXTRAS);
+      transportRef.current?.beginRegenerate(messageId);
+      await streamSend(SEND_SENTINEL);
+    },
+    [streamSend],
+  );
+
+  /** The error-tile retry (H2): re-roll the last user message — branch,
+   * never overwrite. */
+  const retry = useCallback(async () => {
+    if (sendingRef.current || busyRef.current) return;
+    const lastUser = [...rowsRef.current].reverse().find((r) => r.role === 'user');
+    if (!lastUser || lastUser.id.startsWith('local-')) return;
+    await regenerate(lastUser.id);
+  }, [regenerate]);
+
+  /** Flip one branch pointer and adopt the re-walked path (plan 13 H2). */
+  const selectVariant = useCallback(async (messageId: string) => {
+    if (sendingRef.current || busyRef.current) return;
+    try {
+      const messages = await transportRef.current?.select(messageId);
+      if (messages) {
+        resumedRowIds.current.clear();
+        setRows(messages.map(toRow));
+      }
+    } catch (err) {
+      console.error('Failed to select variant', err);
+    }
+  }, []);
 
   const handleFilesAdded = useCallback(
     async (files: FileList | File[]) => {
@@ -353,6 +447,13 @@ export function useHealthChat(options: UseHealthChatOptions) {
   // (career's contract — no fake assistant message). `interrupted` is the
   // resumable HITL pause and stays live until the synthetic flow_finished
   // at stream close flips it to done.
+  //
+  // Plan 13 H2: EDIT/REGENERATE turns commit by refetching the re-walked
+  // server rows (variant decoration needs real ids) — the trailing rows of
+  // the new branch are un-marked from history so the HITL auto-resume
+  // contract survives branching. The turn's citations/tasks attach to the
+  // trailing assistant row. Error turns refetch too (retry-as-branch needs
+  // the persisted user-message id) while keeping the error tile.
   const status = stream.status;
   useEffect(() => {
     if (status !== 'done' && status !== 'error') return;
@@ -364,24 +465,66 @@ export function useHealthChat(options: UseHealthChatOptions) {
     if (stream.startedAt !== null) {
       committedTurnRef.current = stream.startedAt;
     }
-    if (status !== 'error') {
-      const assistantRow: ChatRow = {
-        id: `local-a-${Date.now()}`,
-        role: 'assistant',
-        content: stream.text ?? '',
-        toolCalls: stream.toolCalls.map((call) => ({
-          name: call.name,
-          args: call.args,
-          result: call.result,
-          status: call.status === 'done' ? 'finished' : 'executing',
-        })),
-        citations: liveExtras.citations,
-        tasks: liveExtras.tasks,
-      };
-      setRows((prev) => [...prev, assistantRow]);
-      setLiveExtras(EMPTY_EXTRAS);
-      streamReset();
+    const intent = turnIntentRef.current;
+    turnIntentRef.current = 'send';
+
+    const refetchBranchedRows = async () => {
+      const sessionId = currentSessionIdRef.current;
+      if (!sessionId) return;
+      try {
+        const data = await getChatSessionMessages(sessionId);
+        const rows = data.map(toRow);
+        // Un-mark the trailing rows of THIS turn (from the last user row
+        // on) so auto-resume still fires for cards it emitted — the H1
+        // contract, preserved through branched turns.
+        const lastUserIdx = rows.map((r) => r.role).lastIndexOf('user');
+        for (let i = Math.max(lastUserIdx, 0); i < rows.length; i++) {
+          rows[i] = { ...rows[i], fromHistory: false };
+        }
+        const trailingAssistant = rows[rows.length - 1];
+        if (trailingAssistant && trailingAssistant.role === 'assistant') {
+          trailingAssistant.citations = liveExtras.citations;
+          trailingAssistant.tasks = liveExtras.tasks;
+        }
+        setRows(rows);
+      } catch (err) {
+        console.error('Failed to refetch branched session', err);
+      }
+    };
+
+    if (status === 'error') {
+      if (intent !== 'resume') {
+        void refetchBranchedRows();
+      }
+      busyRef.current = false;
+      return;
     }
+
+    if (intent === 'edit' || intent === 'regenerate') {
+      void refetchBranchedRows().then(() => {
+        setLiveExtras(EMPTY_EXTRAS);
+        streamReset();
+      });
+      busyRef.current = false;
+      return;
+    }
+
+    const assistantRow: ChatRow = {
+      id: `local-a-${Date.now()}`,
+      role: 'assistant',
+      content: stream.text ?? '',
+      toolCalls: stream.toolCalls.map((call) => ({
+        name: call.name,
+        args: call.args,
+        result: call.result,
+        status: call.status === 'done' ? 'finished' : 'executing',
+      })),
+      citations: liveExtras.citations,
+      tasks: liveExtras.tasks,
+    };
+    setRows((prev) => [...prev, assistantRow]);
+    setLiveExtras(EMPTY_EXTRAS);
+    streamReset();
     busyRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, streamReset]);
@@ -432,6 +575,15 @@ export function useHealthChat(options: UseHealthChatOptions) {
     content: row.content,
     status: 'done',
     meta: { row },
+    parentId: row.parentId ?? null,
+    variants:
+      row.variantCount && row.variantCount > 1
+        ? {
+            index: row.variantIndex ?? 1,
+            count: row.variantCount,
+            siblingIds: row.siblingIds ?? [row.id],
+          }
+        : undefined,
   }));
 
   return {
@@ -450,6 +602,10 @@ export function useHealthChat(options: UseHealthChatOptions) {
     triggerResume,
     resumedRowIds,
     submit,
+    submitEdit,
+    regenerate,
+    retry,
+    selectVariant,
     sessions,
     currentSessionId,
     isHistoryOpen,

@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -20,9 +21,13 @@ from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
     AIAssistanceToolSchema,
+    ChatBranchContext,
+    ChatBranchNodeSchema,
+    ChatMessageEditRequest,
     ChatMessageSchema,
     ChatSessionSchema,
     ChatSessionTitleUpdate,
+    ChatTreeSchema,
     HitlResolutionRequest,
     HitlResumeRequest,
 )
@@ -36,6 +41,27 @@ from app.services.chat_session_service import ChatSessionService, is_internal_me
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
+
+#: Per-session single-flight turn lock (plan 13 H2, study FIFO reference →
+#: career's rejection shape): one streaming turn per session at a time — the
+#: lock is per-SESSION, not per-branch, so two branches of one session never
+#: stream concurrently (branch pointer writes and checkpoint threads would
+#: otherwise interleave). Acquired before the StreamingResponse is built and
+#: released when the stream generator closes; a concurrent turn is rejected
+#: with 409 before any row is written.
+_ACTIVE_TURNS: set[uuid.UUID] = set()
+
+_TURN_LOCK_MESSAGE = "A reply is already streaming for this chat session."
+
+
+def _acquire_turn(session_id: uuid.UUID) -> None:
+    if session_id in _ACTIVE_TURNS:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_TURN_LOCK_MESSAGE)
+    _ACTIVE_TURNS.add(session_id)
+
+
+def _release_turn(session_id: uuid.UUID) -> None:
+    _ACTIVE_TURNS.discard(session_id)
 
 
 # Audio MIME types accepted for STT — Opus/WebM (Chrome default) + the common
@@ -221,6 +247,11 @@ async def assist_user_stream(
     await _validate_owned_session(request.context, current_user, db)
     service = AIAssistanceService(db)
 
+    context_session = (request.context or {}).get("session_id")
+    lock_session_id = UUID(context_session) if context_session else None
+    if lock_session_id is not None:
+        _acquire_turn(lock_session_id)
+
     async def event_generator():
         try:
             async for frame in await service.assist(
@@ -247,6 +278,9 @@ async def assist_user_stream(
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
             yield _stream_error_frame(e)
+        finally:
+            if lock_session_id is not None:
+                _release_turn(lock_session_id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -268,9 +302,11 @@ async def get_session_messages(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get all messages for a specific chat session"""
+    """The visible (active-path) messages of a session — the branch-tree
+    pointer walk (plan 13 H2) — decorated with variant info
+    (``parent_id`` / ``variant_index`` / ``variant_count`` / ``sibling_ids``)."""
     service = ChatSessionService(db)
-    messages = await service.get_session_messages(
+    messages = await service.get_active_path_decorated(
         session_id, current_user.user_id, current_user.tenant_id
     )
     # Hide LLM-internal artifacts (e.g. the [HITL RESOLUTION FEEDBACK] user
@@ -306,6 +342,145 @@ async def rename_session(
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
     return session
+
+
+async def _branch_turn_stream(
+    message_id: UUID,
+    current_user: TokenData,
+    db: AsyncSession,
+    branch: dict,
+    user_input: str,
+    context: dict | None = None,
+):
+    """Shared SSE turn stream for the branching endpoints (edit /
+    regenerate): read-only pre-validation (tenant-scoped ownership + role,
+    404/400 before the stream starts), the per-session turn lock, then the
+    same family vocabulary as ``/stream``. The branch mutation itself runs
+    inside the stream (service-validated again) while the lock is held."""
+    chat_service = ChatSessionService(db)
+    message = await chat_service.get_message(
+        message_id, current_user.user_id, current_user.tenant_id
+    )
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if branch.get("kind") == "edit" and message.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Only user messages can be edited"
+        )
+    if branch.get("kind") == "regenerate" and message.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Regenerate targets a user message",
+        )
+    session = await chat_service.get_owned_session(
+        message.session_id, current_user.user_id, current_user.tenant_id
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+
+    _acquire_turn(session.id)
+    service = AIAssistanceService(db)
+
+    async def event_generator():
+        try:
+            async for frame in await service.assist(
+                task_type="chat",
+                user_input=user_input,
+                context=context or {},
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.user_id,
+                stream=True,
+                branch=branch | {"message_id": str(message_id)},
+            ):
+                yield frame
+        except ValueError as e:
+            import logging
+
+            logging.getLogger(__name__).warning(f"Branch turn rejected: {e}")
+            yield _stream_error_frame(e)
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).exception("Branch turn streaming failed")
+            yield _stream_error_frame(e)
+        finally:
+            _release_turn(session.id)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/messages/{message_id}/edit")
+async def edit_message(
+    message_id: UUID,
+    data: ChatMessageEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
+):
+    """Edit-and-resend (family branching contract): branch the user message
+    as a new sibling under the same parent, flip the parent's active-child
+    pointer, and stream a fresh reply for the edited prompt. The old subtree
+    stays as a switchable variant."""
+    return await _branch_turn_stream(
+        message_id, current_user, db, {"kind": "edit"}, data.content, data.context
+    )
+
+
+@router.post("/messages/{message_id}/regenerate")
+async def regenerate_message(
+    message_id: UUID,
+    data: ChatBranchContext | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
+):
+    """Regenerate (family branching contract): stream a fresh assistant
+    sibling under the target user message; earlier replies stay switchable
+    variants — never overwritten."""
+    return await _branch_turn_stream(
+        message_id,
+        current_user,
+        db,
+        {"kind": "regenerate"},
+        "",
+        data.context if data is not None else None,
+    )
+
+
+@router.post("/messages/{message_id}/select", response_model=list[ChatMessageSchema])
+async def select_message(
+    message_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+) -> list[ChatMessageSchema]:
+    """Flip exactly one branch pointer (level-flip semantics — no
+    ancestor-chain activation) and return the re-walked visible path."""
+    service = ChatSessionService(db)
+    try:
+        rows = await service.select_message(
+            message_id, current_user.user_id, current_user.tenant_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [m for m in rows if not is_internal_message(m.content)]
+
+
+@router.get("/sessions/{session_id}/tree", response_model=ChatTreeSchema)
+async def get_session_tree(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+) -> ChatTreeSchema:
+    """Read-only branch-tree projection ``{active_root_id, nodes[]}`` for
+    the tree rail (family branching contract)."""
+    service = ChatSessionService(db)
+    projection = await service.tree(session_id, current_user.user_id, current_user.tenant_id)
+    if projection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    return ChatTreeSchema(
+        active_root_id=projection["active_root_id"],
+        nodes=[ChatBranchNodeSchema(**node) for node in projection["nodes"]],
+    )
 
 
 @router.get("/tools", response_model=list[AIAssistanceToolSchema])

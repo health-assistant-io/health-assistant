@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Chat branching (plan 13 H2, family contract):** chat messages form a
+  branch tree per session — `parent_id` + per-node `active_child_id` on
+  messages, `active_root_id` on sessions (service-enforced pointers); the
+  visible conversation is the active-path walk, and legacy rows were
+  back-chained into identical linear trees by the migration. New endpoints:
+  `POST /ai-assistance/messages/{id}/edit` (edit-and-resend as a sibling
+  variant — the old subtree stays switchable), `…/regenerate` (a fresh
+  assistant sibling under the target user message — never overwrite),
+  `…/select` (level-flip one pointer, returns the re-walked path), and
+  `GET /ai-assistance/sessions/{id}/tree`; message lists carry `parent_id`,
+  `variant_index`, `variant_count`, `sibling_ids`. The chat UI wires the
+  library branching pieces: inline message editor, `‹ n/N ›` variant
+  switcher, regenerate on assistant rows, the error-tile retry as a branch,
+  and the `ChatBranchTree` rail behind the header's branch button.
+- **Per-session single-flight turn lock:** one streaming turn per chat
+  session at a time — two branches of one session never stream concurrently;
+  a concurrent turn on any branch is rejected with 409 before any row is
+  written.
+
+### Changed
+- **LangGraph threads are branch-scoped (health ruling, plan 11 §6):** a
+  turn runs on the bare session id while the conversation is un-branched
+  (legacy threads and pre-existing `ask_user` pauses keep working) and on
+  `{session_id}:{branch_tip_id}` once branched — a paused `ask_user` on one
+  branch survives turns streamed on any other, and `/resume` derives the
+  paused run's thread from the card-bearing message. A fresh turn on a
+  branch whose thread holds an abandoned pause supersedes it (the turn runs
+  clean; the visible card degrades to the fresh-continuation resume path).
+- **Checkpoint pruning covers branch threads:** the daily prune derives
+  thread ownership for both the bare and the `{session}:{tip}` forms — live
+  sessions' branch threads survive, stale sessions' and true orphans go.
+
 ### Fixed
 - **Welcome message renders where the first message row sits (top-left)**
   again: the transcript centers empty-state content by family design, which

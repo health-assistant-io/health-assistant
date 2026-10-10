@@ -1,10 +1,23 @@
 import {
+  editChatMessageStream,
+  regenerateChatMessageStream,
   resumeHitlSession,
+  selectChatMessage,
   streamAIAssistance,
   type AIStreamMessage,
+  type ChatMessage,
 } from '../../services/aiAssistanceService';
 import type { TaskInfo, ToolCallInfo } from '../../types/ai';
 import type { ChatStreamEvent, ChatStreamTransport } from '../ui/chat';
+
+/** Error classes worth a retry-as-branch button on the error tile (the
+ * transient provider classes the backend classifies; guards and config
+ * errors are not retryable — retrying would fail the same way). */
+const RETRYABLE_ERROR_TYPES = new Set(['connection', 'timeout', 'rate_limit']);
+
+export function isRetryableErrorType(errorType: string | undefined): boolean {
+  return errorType !== undefined && RETRYABLE_ERROR_TYPES.has(errorType);
+}
 
 export function toolChipTitle(name: string): string {
   return name
@@ -32,15 +45,29 @@ export interface HealthChatTransportDeps {
 
 export interface HealthChatTransport extends ChatStreamTransport {
   /** Route the next `send` to the HITL resume endpoint (no user text). */
-  beginResume: () => void;
+  beginResume: (messageId?: string) => void;
+  /** Route the next `send` to the edit-branch endpoint (plan 13 H2). */
+  beginEdit: (messageId: string) => void;
+  /** Route the next `send` to the regenerate endpoint (plan 13 H2). */
+  beginRegenerate: (messageId: string) => void;
+  /** Flip one branch pointer; returns the re-walked decorated rows. */
+  select: (messageId: string) => Promise<ChatMessage[]>;
 }
+
+type Intent =
+  | { kind: 'send' }
+  | { kind: 'resume'; messageId?: string }
+  | { kind: 'edit'; messageId: string }
+  | { kind: 'regenerate'; messageId: string };
 
 /**
  * App-side adapter (family plan 13 H1): maps health's SSE stream — already
  * speaking the family vocabulary natively (plan 24) — onto the library's
  * `ChatStreamEvent` shapes for `useChatStream`. Health's payload events
  * (`session`, `citation`, `task`) bypass the mapping into provider
- * callbacks; a mutable intent routes `send` to the HITL resume endpoint.
+ * callbacks; a mutable intent routes `send` to the HITL resume endpoint or
+ * the branching endpoints (edit / regenerate, plan 13 H2), and `select`
+ * exposes the family branch-pointer flip directly.
  *
  * The stream callbacks resolve when the SSE connection closes, which is not
  * itself an event — a synthetic `flow_finished` terminalizes the turn then
@@ -48,7 +75,7 @@ export interface HealthChatTransport extends ChatStreamTransport {
  */
 export function createChatTransport(deps: HealthChatTransportDeps): HealthChatTransport {
   let onEvent: ((event: ChatStreamEvent) => void) | null = null;
-  let intent: { kind: 'send' } | { kind: 'resume' } = { kind: 'send' };
+  let intent: Intent = { kind: 'send' };
   let sawTerminalFrame = false;
 
   const emit = (event: ChatStreamEvent) => {
@@ -120,7 +147,7 @@ export function createChatTransport(deps: HealthChatTransportDeps): HealthChatTr
         event: 'flow_failed',
         code: msg.errorType ?? 'generic',
         message: deps.localizeError(msg),
-        retryable: false,
+        retryable: isRetryableErrorType(msg.errorType),
       });
     }
   };
@@ -137,7 +164,7 @@ export function createChatTransport(deps: HealthChatTransportDeps): HealthChatTr
         event: 'flow_failed',
         code: 'connection',
         message: deps.localizeError({ errorType: 'connection' }),
-        retryable: false,
+        retryable: true,
       });
     }
   };
@@ -158,7 +185,36 @@ export function createChatTransport(deps: HealthChatTransportDeps): HealthChatTr
         if (sessionId === null) {
           throw new Error('No active chat session');
         }
-        await resumeHitlSession(sessionId, {}, handleMessage, onComplete, onError);
+        await resumeHitlSession(
+          sessionId,
+          current.messageId ? { messageId: current.messageId } : {},
+          handleMessage,
+          onComplete,
+          onError,
+        );
+        return;
+      }
+      if (current.kind === 'edit') {
+        const pending = deps.getPendingSend();
+        deps.clearPendingSend();
+        await editChatMessageStream(
+          current.messageId,
+          pending?.text ?? '',
+          deps.getContext(),
+          handleMessage,
+          onComplete,
+          onError,
+        );
+        return;
+      }
+      if (current.kind === 'regenerate') {
+        await regenerateChatMessageStream(
+          current.messageId,
+          deps.getContext(),
+          handleMessage,
+          onComplete,
+          onError,
+        );
         return;
       }
       const pending = deps.getPendingSend();
@@ -175,8 +231,15 @@ export function createChatTransport(deps: HealthChatTransportDeps): HealthChatTr
         onError,
       );
     },
-    beginResume: () => {
-      intent = { kind: 'resume' };
+    beginResume: (messageId?: string) => {
+      intent = { kind: 'resume', messageId };
     },
+    beginEdit: (messageId) => {
+      intent = { kind: 'edit', messageId };
+    },
+    beginRegenerate: (messageId) => {
+      intent = { kind: 'regenerate', messageId };
+    },
+    select: (messageId) => selectChatMessage(messageId),
   };
 }

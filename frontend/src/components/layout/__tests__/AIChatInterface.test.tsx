@@ -7,6 +7,10 @@ const mockStreamAIAssistance = vi.hoisted(() => vi.fn());
 const mockResumeHitlSession = vi.hoisted(() => vi.fn());
 const mockGetChatSessionMessages = vi.hoisted(() => vi.fn());
 const mockListChatSessions = vi.hoisted(() => vi.fn());
+const mockEditChatMessageStream = vi.hoisted(() => vi.fn());
+const mockRegenerateChatMessageStream = vi.hoisted(() => vi.fn());
+const mockSelectChatMessage = vi.hoisted(() => vi.fn());
+const mockGetChatTree = vi.hoisted(() => vi.fn());
 
 vi.mock('../../../services/aiAssistanceService', async (importOriginal) => {
   const actual = await importOriginal<
@@ -19,6 +23,10 @@ vi.mock('../../../services/aiAssistanceService', async (importOriginal) => {
     getChatSessionMessages: mockGetChatSessionMessages,
     listChatSessions: mockListChatSessions,
     transcribeAudio: vi.fn(),
+    editChatMessageStream: mockEditChatMessageStream,
+    regenerateChatMessageStream: mockRegenerateChatMessageStream,
+    selectChatMessage: mockSelectChatMessage,
+    getChatTree: mockGetChatTree,
   };
 });
 
@@ -145,6 +153,14 @@ const STRINGS: Record<string, string> = {
   'ai_chat.insights.title': 'Insights',
   'ai_chat.insights.select_patient': 'Select a patient',
   'ai_chat.actions.title': 'Actions',
+  'ai_chat.tooltips.edit': 'Edit message',
+  'ai_chat.tooltips.regenerate': 'Regenerate reply',
+  'ai_chat.tooltips.retry': 'Retry',
+  'ai_chat.branches.label': 'Conversation branches',
+  'ai_chat.branches.you': 'You',
+  'ai_chat.branches.assistant': 'Assistant',
+  'ai_chat.branches.forked': '{{count}} branches',
+  'ai_chat.branches.loading': 'Loading branches…',
 };
 
 vi.mock('react-i18next', () => ({
@@ -462,6 +478,222 @@ describe('AIChatInterface on the library core', () => {
 
     await waitFor(() => {
       expect(mockResumeHitlSession).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+describe('AIChatInterface branching (plan 13 H2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    uiState.currentAiSessionId = 's1';
+    uiState.pendingAIMessage = null;
+    mockListChatSessions.mockResolvedValue([
+      { id: 's1', title: 'Session One', updated_at: '2026-01-02T00:00:00Z' },
+    ]);
+    mockGetChatTree.mockResolvedValue({ active_root_id: 'm0', nodes: [] });
+  });
+
+  it('renders the variant switcher on decorated rows and adopts the re-walked path on select', async () => {
+    mockGetChatSessionMessages.mockResolvedValue([
+      {
+        id: 'm0',
+        role: 'user',
+        content: { text: 'original question' },
+        created_at: '2026-01-01T00:00:00Z',
+        parent_id: null,
+        variant_index: 1,
+        variant_count: 2,
+        sibling_ids: ['m0', 'm0b'],
+      },
+      {
+        id: 'm1',
+        role: 'assistant',
+        content: { text: 'the answer' },
+        created_at: '2026-01-01T00:00:01Z',
+        parent_id: 'm0',
+      },
+    ]);
+    mockSelectChatMessage.mockResolvedValue([
+      {
+        id: 'm0b',
+        role: 'user',
+        content: { text: 'edited question' },
+        created_at: '2026-01-01T00:00:02Z',
+        parent_id: null,
+        variant_index: 2,
+        variant_count: 2,
+        sibling_ids: ['m0', 'm0b'],
+      },
+    ]);
+
+    renderInterface();
+
+    expect(await screen.findByText('original question')).toBeInTheDocument();
+    const switcher = screen.getByRole('group');
+    expect(switcher).toHaveTextContent('1/2');
+
+    await userEvent.setup().click(switcher.querySelectorAll('button')[1]!);
+
+    await waitFor(() => {
+      expect(mockSelectChatMessage).toHaveBeenCalledWith('m0b');
+    });
+    expect(await screen.findByText('edited question')).toBeInTheDocument();
+  });
+
+  it('edit-and-resend routes through the edit endpoint and commits by refetching the re-walked rows', async () => {
+    mockGetChatSessionMessages
+      .mockResolvedValueOnce([
+        {
+          id: 'm0',
+          role: 'user',
+          content: { text: 'original question' },
+          created_at: '2026-01-01T00:00:00Z',
+          parent_id: null,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'm0b',
+          role: 'user',
+          content: { text: 'better question' },
+          created_at: '2026-01-01T00:00:02Z',
+          parent_id: null,
+          variant_index: 2,
+          variant_count: 2,
+          sibling_ids: ['m0', 'm0b'],
+        },
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: { text: 'fresh answer' },
+          created_at: '2026-01-01T00:00:03Z',
+          parent_id: 'm0b',
+        },
+      ]);
+    const captured = {} as StreamCallbacks;
+    mockEditChatMessageStream.mockImplementationOnce(
+      async (
+        _id: unknown,
+        _content: unknown,
+        _context: unknown,
+        onMessage: StreamCallbacks['onMessage'],
+        onComplete: StreamCallbacks['onComplete'],
+      ) => {
+        captured.onMessage = onMessage;
+        captured.onComplete = onComplete;
+      },
+    );
+
+    renderInterface();
+    await screen.findByText('original question');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Edit message'));
+
+    const editor = screen.getByRole('textbox', { name: /edit/i });
+    await user.clear(editor);
+    await user.type(editor, 'better question');
+    await user.keyboard('{Control>}{Enter}{/Control}');
+
+    await waitFor(() => {
+      expect(mockEditChatMessageStream).toHaveBeenCalledWith(
+        'm0',
+        'better question',
+        expect.objectContaining({ patient_id: 'patient-1' }),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+      );
+    });
+
+    await act(async () => {
+      captured.onMessage({ content: 'fresh answer' });
+      captured.onComplete();
+    });
+
+    expect(await screen.findByText('fresh answer')).toBeInTheDocument();
+    expect(mockGetChatSessionMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it('regenerate on an assistant row routes to the regenerate endpoint with the parent user id', async () => {
+    mockGetChatSessionMessages.mockResolvedValue([
+      {
+        id: 'm0',
+        role: 'user',
+        content: { text: 'question' },
+        created_at: '2026-01-01T00:00:00Z',
+        parent_id: null,
+      },
+      {
+        id: 'm1',
+        role: 'assistant',
+        content: { text: 'first answer' },
+        created_at: '2026-01-01T00:00:01Z',
+        parent_id: 'm0',
+      },
+    ]);
+    mockRegenerateChatMessageStream.mockImplementationOnce(
+      async (
+        _id: unknown,
+        _context: unknown,
+        _onMessage: unknown,
+        _onComplete: unknown,
+        _onError: unknown,
+      ) => {},
+    );
+
+    renderInterface();
+    await screen.findByText('first answer');
+
+    await userEvent.setup().click(screen.getByLabelText('Regenerate reply'));
+
+    await waitFor(() => {
+      expect(mockRegenerateChatMessageStream).toHaveBeenCalledWith(
+        'm0',
+        expect.objectContaining({ patient_id: 'patient-1' }),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+      );
+    });
+  });
+
+  it('the error tile retry re-rolls the last persisted user message (branch, never overwrite)', async () => {
+    mockGetChatSessionMessages.mockResolvedValue([
+      {
+        id: 'm0',
+        role: 'user',
+        content: { text: 'persisted question' },
+        created_at: '2026-01-01T00:00:00Z',
+        parent_id: null,
+      },
+    ]);
+    const captured = captureStream();
+    renderInterface();
+
+    const user = userEvent.setup();
+    const input = await screen.findByLabelText('Ask anything');
+    await user.type(input, 'follow-up');
+    await user.keyboard('{Enter}');
+
+    await act(async () => {
+      captured.onMessage({ error: '', errorType: 'connection' });
+      captured.onComplete();
+    });
+
+    await screen.findByRole('alert');
+    // The error turn refetched the persisted rows — retry re-rolls the last
+    // SERVER user message, not the optimistic local row.
+    await user.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(mockRegenerateChatMessageStream).toHaveBeenCalledWith(
+        'm0',
+        expect.anything(),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+      );
     });
   });
 });
