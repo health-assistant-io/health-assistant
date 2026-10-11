@@ -35,9 +35,12 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit_user
 from app.core.security import get_current_user
-from app.models.enums import HitlTaskStatus
+from app.models.enums import HitlTaskStatus  # noqa: F401 -- re-exported for schema consumers
 from app.schemas.user import TokenData
 from app.services.chat_session_service import ChatSessionService, is_internal_message
+from app.services.hitl_resolver import HitlResolutionConflict
+from app.services.hitl_resolver import HitlResolutionError
+from app.services.hitl_resolver import resolve_chat_task
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
@@ -555,89 +558,37 @@ async def resolve_hitl_task(
     the outcome into the task JSONB (for audit + agent awareness); it does not
     perform the write itself. Idempotent: a second resolve on the same proposal
     returns 409.
+
+    The logic lives in ``app.services.hitl_resolver`` (shared with the
+    health-assistant bridge, R7 Phase 1); this endpoint maps its typed
+    errors to HTTP.
     """
-    # Pydantic coerces `status` to HitlTaskStatus already; this is a defense-
-    # in-depth check in case the schema is bypassed (it accepts only the two
-    # resolution transitions, not PROPOSED/FAILED which are server-set).
-    if resolution.status not in (HitlTaskStatus.CONFIRMED, HitlTaskStatus.DISMISSED):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="status must be 'confirmed' or 'dismissed'",
-        )
-
     chat_service = ChatSessionService(db)
-    message = await chat_service.find_message_by_proposal(
-        session_id, proposal_id, current_user.user_id, current_user.tenant_id
-    )
-    if not message:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task proposal not found or access denied.",
+    try:
+        task = await resolve_chat_task(
+            chat_service,
+            session_id=session_id,
+            proposal_id=proposal_id,
+            status=resolution.status,
+            final_payload=resolution.final_payload,
+            result=resolution.result,
+            error=resolution.error,
+            user_id=current_user.user_id,
+            tenant_id=current_user.tenant_id,
         )
-
-    tasks = list(message.tasks or [])
-    task_idx = next(
-        (
-            i
-            for i, t in enumerate(tasks)
-            if isinstance(t, dict) and t.get("proposal_id") == proposal_id
-        ),
-        None,
-    )
-    if task_idx is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task proposal not found."
-        )
-
-    task = tasks[task_idx]
-    prior_status = task.get("status")
-    if prior_status not in (None, HitlTaskStatus.PROPOSED):
+    except HitlResolutionConflict as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Task already {prior_status}.",
+            detail=str(e),
+        ) from e
+    except HitlResolutionError as e:
+        message = str(e)
+        status_code = (
+            status.HTTP_400_BAD_REQUEST
+            if message.startswith("status must be")
+            else status.HTTP_404_NOT_FOUND
         )
-
-    now = datetime.now(UTC).isoformat()
-    task["status"] = resolution.status
-    task["resolved"] = {
-        "confirmed_by": str(current_user.user_id),
-        "final_payload": resolution.final_payload,
-        "result": resolution.result,
-        "error": resolution.error,
-        "at": now,
-    }
-    tasks[task_idx] = task
-    await chat_service.update_message_tasks(message, tasks)
-
-    # Agent awareness: append a concise assistant note so the next chat turn
-    # knows the proposed action was carried out (or dismissed) by the user.
-    #
-    # ``ask_user`` tasks are read-only (no REST write happens) and the user's
-    # answers are surfaced in full on the immediately-following resume turn
-    # via the [HITL RESOLUTION FEEDBACK] message. Repeating them here would
-    # be redundant AND would say "saved" (misleading — nothing was saved),
-    # so the audit note for ask_user explicitly says "answered" instead.
-    task_type = task.get("task_type")
-    if resolution.status == HitlTaskStatus.CONFIRMED:
-        payload = task.get("proposed_payload") or {}
-        label = payload.get("title") or task.get("title") or task.get("task_type")
-        if task_type == "ask_user":
-            note_text = f"✓ The user answered: {label}."
-        else:
-            note_text = f"✓ Confirmed and saved: {label}."
-        await chat_service.save_message(
-            session_id=session_id,
-            role="assistant",
-            content={"text": note_text},
-        )
-    elif resolution.status == HitlTaskStatus.DISMISSED:
-        await chat_service.save_message(
-            session_id=session_id,
-            role="assistant",
-            content={
-                "text": "The proposed draft was dismissed. Let me know how you'd like to proceed."
-            },
-        )
+        raise HTTPException(status_code=status_code, detail=message) from e
 
     return {"success": True, "task": task}
 

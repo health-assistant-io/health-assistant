@@ -379,6 +379,25 @@ detail shape is rich — decode as needed), `getDoctors()`. All return
 | `GET /examinations/{id}/status` | Exam-level extraction state plus the per-document status array. |
 | `GET /examinations/{id}/logs` | TaskLog entries for the exam + its documents (INFO/WARN/ERROR, stages, data payloads). |
 
+### AI assistant (R7 Phase 1 — non-streaming)
+
+Native chat over the integration identity. The actor is the integration's
+owner (same audit identity as every bridge write); **every path pins the
+patient context to the bound patient** — sessions of other patients are
+invisible, and a client-supplied `session_id` that isn't owned by the
+integration's user AND bound to its patient returns HTTP 400.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /ai/sessions` | The owner's chat sessions for the bound patient, newest first: `{data: [{id, title, patient_id, updated_at}]}`. |
+| `GET /ai/sessions/{id}/messages` | The session's messages: `{data: [{id, role, content, tasks, citations, created_at}]}`. `content` is `{"text": …}`; `tasks` carries HITL proposal cards (`proposal_id`, `task_type`, `title`, `status`, `proposed_payload`). |
+| `POST /ai/chat` | One non-streaming chat turn. Body `{message, session_id?}` → `{message, session_id, success}`. Creates a session on the first turn (title auto-generated); `message` is capped at 8000 chars. The same prompt-injection guard as the PWA chat applies. |
+| `DELETE /ai/sessions/{id}` | Delete a chat session (scoped). |
+| `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 400 (`Task already …`). |
+
+Streaming (SSE), branching (edit/regenerate), and confirm-with-commit card
+kinds are Phase 2 — the dispatch currently returns JSON only.
+
 **Kotlin SDK:** use `BridgeClient.requestText(method, path)` (or `request` for
 the raw `HttpResponse`) for these — they return either a JSON dict (DELETE,
 POST extract, GET status) or a JSON array (GET logs) that the app decodes

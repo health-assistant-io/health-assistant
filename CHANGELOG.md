@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge AI assistant paths (R7 Phase 1, non-streaming):** the mobile app
+  can chat natively through the integration identity — `GET /ai/sessions`,
+  `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),
+  `POST /ai/chat` (one non-streaming turn; creates/treads sessions, patient
+  context pinned server-side to the bound patient, 8000-char cap,
+  prompt-injection guard as in the PWA), `DELETE /ai/sessions/{id}`, and
+  `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve`. The resolve logic
+  moved into the shared `app/services/hitl_resolver.py` (typed
+  not-found/conflict errors) and the `/ai-assistance` endpoint now delegates
+  to it — behavior identical (404/409/400 mappings kept). Streaming (SSE),
+  branching, and confirm-with-commit cards are Phase 2.
 - **Bridge examination SDK models (kotlin-sdk):** `ExaminationSummary` now
   carries the enriched card fields (progress, per-section counts, timestamps)
   and a new typed `ExaminationDetail` (+ `ExaminationObservation`,

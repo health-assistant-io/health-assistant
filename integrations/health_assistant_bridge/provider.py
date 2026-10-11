@@ -380,6 +380,35 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             )
         elif path == "documents" and method == "GET":
             return await self._list_documents_all(integration, request)
+        elif path == "ai/sessions" and method == "GET":
+            return await self._ai_list_sessions(integration)
+        elif path == "ai/chat" and method == "POST":
+            return await self._ai_chat(integration, request)
+        elif path.startswith("ai/sessions/") and method == "GET":
+            parts = path.split("/")
+            if len(parts) == 4 and parts[3] == "messages":
+                return await self._ai_session_messages(integration, parts[2])
+            raise NotImplementedError(
+                f"GET /{path} is not supported by the bridge API."
+            )
+        elif path.startswith("ai/sessions/") and method == "DELETE":
+            parts = path.split("/")
+            if len(parts) == 3:
+                return await self._ai_delete_session(integration, parts[2])
+            raise NotImplementedError(
+                f"DELETE /{path} is not supported by the bridge API."
+            )
+        elif path.startswith("ai/sessions/") and method == "POST":
+            parts = path.split("/")
+            if (
+                len(parts) == 6
+                and parts[3] == "tasks"
+                and parts[5] == "resolve"
+            ):
+                return await self._ai_resolve_task(integration, parts[2], parts[4], request)
+            raise NotImplementedError(
+                f"POST /{path} is not supported by the bridge API."
+            )
         elif path.startswith("documents/") and method == "DELETE":
             parts = path.split("/")
             if len(parts) == 2:
@@ -1576,6 +1605,195 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     # --- Phase 4: mutations + extraction status --------------------------
 
     # --- Phase 5: unified /changes delta + mutations --------------------
+
+    # ------------------------------------------------------------------
+    # AI assistant bridging (R7 Phase 1 — non-streaming). The actor is the
+    # integration's owner (resolve_integration_actor); every path pins the
+    # patient context to the bound patient so the chat can never leak
+    # another patient's data through the integration identity.
+    # ------------------------------------------------------------------
+
+    async def _ai_actor_and_patient(
+        self, db, integration: UserIntegration
+    ) -> tuple[Any, str]:
+        from app.services.integration_actor import resolve_integration_actor
+
+        actor = await resolve_integration_actor(db, integration)
+        return actor, str(self._bound_patient_id(integration))
+
+    async def _ai_owned_session(
+        self,
+        db,
+        integration: UserIntegration,
+        session_id: str,
+    ):
+        """Load a chat session owned by the integration's user AND bound to
+        the integration's patient (ValueError otherwise — the same isolation
+        envelope as every other bridge path)."""
+        from uuid import UUID as _UUID
+
+        from app.services.chat_session_service import ChatSessionService
+
+        try:
+            sid = _UUID(session_id)
+        except ValueError:
+            raise ValueError(f"Invalid session id: {session_id}")
+        actor, patient_id = await self._ai_actor_and_patient(db, integration)
+        svc = ChatSessionService(db)
+        session = await svc.get_owned_session(sid, actor.user_id, integration.tenant_id)
+        if session is None or str(session.patient_id) != patient_id:
+            raise ValueError("Chat session not found for this patient.")
+        return svc, actor, session
+
+    async def _ai_list_sessions(self, integration: UserIntegration) -> dict[str, Any]:
+        from uuid import UUID
+
+        from app.core.database import AsyncSessionLocal
+        from app.services.chat_session_service import ChatSessionService
+
+        async with AsyncSessionLocal() as db:
+            actor, patient_id = await self._ai_actor_and_patient(db, integration)
+            svc = ChatSessionService(db)
+            sessions = await svc.list_sessions(
+                actor.user_id, integration.tenant_id, patient_id=UUID(patient_id)
+            )
+            return {
+                "data": [
+                    {
+                        "id": str(s.id),
+                        "title": s.title,
+                        "patient_id": str(s.patient_id) if s.patient_id else None,
+                        "updated_at": s.updated_at.isoformat()
+                        if s.updated_at
+                        else None,
+                    }
+                    for s in sessions
+                ]
+            }
+
+    async def _ai_session_messages(
+        self, integration: UserIntegration, session_id: str
+    ) -> dict[str, Any]:
+        from uuid import UUID
+
+        from app.core.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
+            messages = await svc.get_session_messages(
+                UUID(session_id), actor.user_id, integration.tenant_id
+            )
+            return {"data": [self._ai_message_dict(m) for m in messages]}
+
+    @staticmethod
+    def _ai_message_dict(m: Any) -> dict[str, Any]:
+        return {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "tasks": m.tasks or [],
+            "citations": m.citations or [],
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+
+    async def _ai_chat(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
+        """`POST /ai/chat` — one non-streaming chat turn (task_type=chat).
+        Body: `{message, session_id?}`. The patient context is pinned to the
+        bound patient server-side; a client-supplied session_id must already
+        belong to it."""
+        import json as _json
+
+        from app.ai.assistance.service import AIAssistanceService
+        from app.core.database import AsyncSessionLocal
+
+        payload = await request.json()
+        message = (payload.get("message") or "").strip()
+        if not message:
+            raise ValueError("message is required")
+        if len(message) > 8000:
+            raise ValueError("message is too long (8000 char cap)")
+        session_id = payload.get("session_id")
+
+        context: dict[str, Any] = {}
+        async with AsyncSessionLocal() as db:
+            if session_id:
+                await self._ai_owned_session(db, integration, str(session_id))
+                context["session_id"] = str(session_id)
+            actor, patient_id = await self._ai_actor_and_patient(db, integration)
+            context["patient_id"] = patient_id
+
+            service = AIAssistanceService(db)
+            result = await service.assist(
+                task_type="chat",
+                user_input=message,
+                context=context,
+                tenant_id=integration.tenant_id,
+                user_id=actor.user_id,
+                stream=False,
+            )
+            await db.commit()
+        return {
+            "message": result.get("message"),
+            "session_id": (
+                str(result["session_id"]) if result.get("session_id") else None
+            ),
+            "success": bool(result.get("success", True)),
+        }
+
+    async def _ai_delete_session(
+        self, integration: UserIntegration, session_id: str
+    ) -> dict[str, Any]:
+        from uuid import UUID
+
+        from app.core.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
+            await svc.delete_session(UUID(session_id), actor.user_id)
+        return {"success": True}
+
+    async def _ai_resolve_task(
+        self,
+        integration: UserIntegration,
+        session_id: str,
+        proposal_id: str,
+        request: Any,
+    ) -> dict[str, Any]:
+        """`POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` — record the
+        human resolution of a HITL card (mirrors the PWA endpoint's contract:
+        the client commits any write via REST FIRST; this only records the
+        outcome + leaves the agent-awareness note). Body:
+        `{status: "confirmed"|"dismissed", result?, error?}`."""
+        from app.core.database import AsyncSessionLocal
+        from app.services.hitl_resolver import HitlResolutionConflict
+        from app.services.hitl_resolver import resolve_chat_task
+
+        payload = await request.json()
+        status = (payload.get("status") or "").lower()
+        if status not in ("confirmed", "dismissed"):
+            raise ValueError("status must be 'confirmed' or 'dismissed'")
+        async with AsyncSessionLocal() as db:
+            svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
+            try:
+                task = await resolve_chat_task(
+                    svc,
+                    session_id=UUID(session_id),
+                    proposal_id=proposal_id,
+                    status=status,
+                    final_payload=payload.get("final_payload"),
+                    result=payload.get("result"),
+                    error=payload.get("error"),
+                    user_id=actor.user_id,
+                    tenant_id=integration.tenant_id,
+                )
+            except HitlResolutionConflict as e:
+                # The bridge's error envelope is a 400 + message; the 409
+                # nuance stays a PWA-endpoint concern.
+                raise ValueError(str(e)) from e
+            await db.commit()
+        return {"success": True, "task": task}
 
     async def _changes_since(
         self, integration: UserIntegration, request: Any
