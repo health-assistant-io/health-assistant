@@ -25,6 +25,13 @@ data class BridgeStatus(
      *  loopback (`localhost:PORT`) — the caller rewrites it to the connection's
      *  reachable host. Null on older servers that don't advertise it. */
     @SerialName("frontend_base_url") val frontendBaseUrl: String? = null,
+    /** The server's own version (backend `settings.VERSION`). Null on older
+     *  servers — display-only; capability gating uses [bridgeFeatures]. */
+    @SerialName("server_version") val serverVersion: String? = null,
+    /** The bridge feature flags the app gates on (`exam_enrichment`,
+     *  `ai_assistant`, `ai_streaming`, …). Empty on older servers = every
+     *  gated feature falls back to its legacy path. */
+    @SerialName("bridge_features") val bridgeFeatures: List<String> = emptyList(),
 )
 
 @Serializable

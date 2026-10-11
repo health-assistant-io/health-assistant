@@ -273,6 +273,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             # deep links. Returned here (over the ktor connection the app
             # already uses) so the app doesn't need a second network stack to
             # discover it. Same resolution as GET /api/v1/config/public.
+            from app.core.config import settings
             from app.core.database import AsyncSessionLocal
             from app.core.public_config import resolve_public_config
 
@@ -291,6 +292,16 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "cursor": self.get_sync_cursor(integration, "last_timestamp"),
                 "latest_sdks": sdks,
                 "frontend_base_url": public_urls["frontend_base_url"],
+                # Compatibility surface (2026-10-11): the server's own version
+                # + the closed feature-flag list the mobile app gates on.
+                # Flags (not semver math) drive gating — an older server
+                # simply omits `bridge_features` and the app degrades.
+                "server_version": settings.VERSION,
+                "bridge_features": [
+                    "exam_enrichment",  # enriched exam list/detail (2026-10-10)
+                    "ai_assistant",  # /ai/* chat paths (R7 P1)
+                    "ai_streaming",  # POST /ai/chat/stream SSE (R7 P2)
+                ],
             }
 
         elif path == "map" and method == "POST":

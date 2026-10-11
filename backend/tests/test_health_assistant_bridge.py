@@ -46,6 +46,12 @@ async def test_handle_api_request_status(provider, integration_mock):
     # read it over its existing ktor connection (no second network stack).
     assert "frontend_base_url" in result
     assert result["frontend_base_url"]
+    # Compatibility surface: the server's version + the feature flags the
+    # mobile app gates on (an older server omits them; the app degrades).
+    assert result["server_version"]
+    assert "ai_assistant" in result["bridge_features"]
+    assert "ai_streaming" in result["bridge_features"]
+    assert "exam_enrichment" in result["bridge_features"]
 
 
 @pytest.mark.asyncio
