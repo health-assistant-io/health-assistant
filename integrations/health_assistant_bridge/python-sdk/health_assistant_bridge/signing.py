@@ -10,9 +10,10 @@ where ``timestamp`` is an integer epoch-second string folded into the MAC
 signature is sent as ``X-Api-Signature`` (hex) + ``X-Api-Timestamp``.
 
 When the bridge instance has an ``api_secret`` configured, the client MUST
-sign ``/map`` and ``/sync`` requests or the server rejects them with HTTP
-400. ``/status`` is never signed. When no ``api_secret`` is set, the bridge
-runs UUID-as-secret only (no signing needed).
+sign its requests — ``/map``, ``/sync``, every read path, and ``GET /status``
+when it wants the full discovery payload — or the server rejects them with
+HTTP 401. An unsigned ``GET /status`` is the one exception: the platform
+answers it with the minimal ``{status, server_time}`` liveness probe.
 """
 from __future__ import annotations
 

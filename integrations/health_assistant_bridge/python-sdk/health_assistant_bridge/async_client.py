@@ -34,13 +34,15 @@ class AsyncHealthAssistantBridgeClient:
 
     Uses a pooled ``httpx.AsyncClient`` (reused across calls) with a default
     30s timeout and simple full-jitter retry on transient errors. Pass an
-    ``api_secret`` to sign ``/map`` and ``/sync`` requests when the bridge
-    instance is configured for HMAC.
+    ``api_secret`` to HMAC-sign requests — ``/map``, ``/sync``, and the
+    full ``/status`` discovery tier.
 
     Args:
         base_url: Backend base URL (no trailing slash).
         integration_id: The bridge instance UUID (part of the API URL).
-        api_secret: Optional HMAC secret. When set, /map and /sync are signed.
+        api_secret: Optional HMAC secret. When set, requests are signed
+            (including ``GET /status``, which then returns the full
+            discovery payload instead of the minimal unsigned probe).
         timeout: Per-request ``httpx.Timeout`` (default 30s).
         max_retries: Max attempts on network/5xx (default 3).
     """
@@ -75,8 +77,18 @@ class AsyncHealthAssistantBridgeClient:
         return f"{self.base_url}/api/v1/integrations/health_assistant_bridge/api/{self.integration_id}"
 
     async def get_status(self) -> BridgeStatus:
-        """Check the connection status and retrieve the current sync cursor."""
-        response = await self._request("GET", f"{self.api_url}/status")
+        """Check the connection status and retrieve the current sync cursor.
+
+        Two-tier like the wire contract: signed when an ``api_secret`` is
+        set (the server then returns the full discovery payload — cursor,
+        SDK versions, server version, feature flags); unsigned it is the
+        minimal ``{status, server_time}`` liveness probe.
+        """
+        response = await self._request(
+            "GET",
+            f"{self.api_url}/status",
+            headers=self._signed_headers("GET", "/status", b""),
+        )
         data = response.json()
         status_obj = BridgeStatus(**data)
 

@@ -28,8 +28,11 @@ details manually; the app probes `GET /status`, stores the credential in
 encrypted storage (Keystore-backed), and enters the app.
 
 Everything — metric push *and* reads — flows through the Bridge's two-way API
-proxy. Every mutating/reading path is HMAC-signed (`METHOD\n<path>\n<timestamp>
-\n<raw_body>`); `GET /status` is the sole unsigned probe.
+proxy. Every path is HMAC-signed (`METHOD\n<path>\n<timestamp>\n<raw_body>`)
+once the credential is stored — including `GET /status`, whose signed tier
+returns the full discovery payload (cursor, SDK versions, server version,
+feature flags). The sole unsigned call is the pre-pairing `GET /status`
+probe, answered with a minimal `{status, server_time}` liveness payload.
 
 ---
 
