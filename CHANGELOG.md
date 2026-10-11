@@ -55,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   belongs to, eagerly loaded). Wire docs updated in
   `integrations/health_assistant_bridge/docs/api-reference.md`; patient
   isolation unchanged (cross-patient still `ValueError`).
+- **Bridge `/status` compatibility surface — server version + feature
+  flags:** the signed `GET /status` payload also carries `server_version`
+  and the closed `bridge_features` flag list (`exam_enrichment`,
+  `ai_assistant`, `ai_streaming`) so clients gate on flags instead of
+  version math — an older server simply omits them and the client
+  degrades. The vocabulary table (and the same-commit update rule) lives
+  in `integrations/health_assistant_bridge/docs/api-reference.md`.
 
 ### Changed
 - **Bridge route dispatch is a declarative route table (internal).** The
@@ -75,6 +82,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newest-first queue (Postgres DESC defaults to NULLS FIRST). The
   `GET /examinations/{id}` detail payload is now built by spreading the list
   projection (one source for the card fields).
+
+### Fixed
+- **All three bridge SDKs now sign `GET /status`** (Kotlin `getStatus`,
+  Python sync + async `get_status`, TypeScript `getStatus`) when an API
+  secret is configured, so paired clients finally receive the full
+  discovery payload — cursor, `latest_sdks`, `frontend_base_url`,
+  `server_version`, `bridge_features` — instead of the minimal
+  `{status, server_time}` probe shape (the unsigned tier stays as the
+  pre-pairing liveness probe; two-tier contract pinned by proxy tests).
+  The `BridgeStatus` models gained `server_time` (+ the new discovery
+  fields in the Python/TS SDKs), and the TS SDK gained a `node:test`
+  harness (`npm test`) covering signed/unsigned status and both payload
+  decodes.
 
 ### Security (plan 21)
 - **Rate limiting + security headers move onto the auth-kit counter

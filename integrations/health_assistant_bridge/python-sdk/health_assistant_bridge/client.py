@@ -37,9 +37,10 @@ class HealthAssistantBridgeClient:
     Args:
         base_url: Backend base URL (no trailing slash), e.g. ``https://ha.example``.
         integration_id: The bridge instance UUID (part of the API URL).
-        api_secret: Optional HMAC secret. When set, ``/map`` and ``/sync``
-            requests are signed (``X-Api-Signature`` + ``X-Api-Timestamp``).
-            Leave unset for UUID-only mode (trusted/LAN self-hosted).
+        api_secret: Optional HMAC secret. When set, requests are signed
+            (``X-Api-Signature`` + ``X-Api-Timestamp``), including
+            ``GET /status`` — which then returns the full discovery
+            payload instead of the minimal unsigned probe.
         timeout: Per-request timeout in seconds (default 30).
         max_retries: Max attempts on network/5xx errors (default 3, full-jitter
             backoff). Set to ``1`` to disable retry.
@@ -65,9 +66,17 @@ class HealthAssistantBridgeClient:
         return f"{self.base_url}/api/v1/integrations/health_assistant_bridge/api/{self.integration_id}"
 
     def get_status(self, **kwargs) -> BridgeStatus:
-        """Check the connection status and retrieve the current sync cursor."""
+        """Check the connection status and retrieve the current sync cursor.
+
+        Two-tier like the wire contract: signed when an ``api_secret`` is
+        set (the server then returns the full discovery payload — cursor,
+        SDK versions, server version, feature flags); unsigned it is the
+        minimal ``{status, server_time}`` liveness probe.
+        """
         response = self._request(
-            "GET", f"{self.api_url}/status", **kwargs
+            "GET", f"{self.api_url}/status",
+            headers=self._signed_headers("GET", "/status", b""),
+            **kwargs,
         )
         data = response.json()
         status_obj = BridgeStatus(**data)

@@ -14,7 +14,9 @@ import javax.crypto.spec.SecretKeySpec
  * ("/sync"). `rawBody` is the exact bytes sent. The resulting hex HMAC-SHA256
  * is sent as `X-Api-Signature`; `X-Api-Timestamp` is the epoch-second string.
  *
- * `GET /status` is NEVER signed (connectivity + SDK-discovery probe).
+ * `GET /status` is two-tier: unsigned it is answered with a minimal
+ * liveness payload; a client holding a secret signs it like every other
+ * path and receives the full discovery payload.
  */
 object Signing {
 

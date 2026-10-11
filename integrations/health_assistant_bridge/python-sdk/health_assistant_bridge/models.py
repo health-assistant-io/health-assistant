@@ -3,10 +3,14 @@ from pydantic import BaseModel, Field
 
 class BridgeStatus(BaseModel):
     status: str
-    integration_id: str
+    server_time: Optional[int] = None
+    integration_id: Optional[str] = None
     last_synced_at: Optional[str] = None
     cursor: Optional[str] = None
     latest_sdks: Optional[Dict[str, str]] = None
+    frontend_base_url: Optional[str] = None
+    server_version: Optional[str] = None
+    bridge_features: List[str] = Field(default_factory=list)
 
 class MetricMappingRequest(BaseModel):
     name: str
