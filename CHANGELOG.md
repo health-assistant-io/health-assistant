@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   isolation unchanged (cross-patient still `ValueError`).
 
 ### Changed
+- **Chat turn lock is now Redis-backed** (`app/ai/assistance/turns.py`):
+  one streaming turn per chat session interlocks correctly across all
+  workers/replicas (the previous in-process set was silently per-worker),
+  every lock is TTL-bounded (900 s — a crashed or never-iterated stream
+  can no longer wedge a session until restart), release is an atomic
+  compare-and-delete so a superseded turn can never unlock a newer one,
+  and a Redis outage degrades open (turns are allowed; a lost interlock,
+  never a chat outage — the family rate-limiter precedent). Behavior from
+  the clients is unchanged: 409 on the PWA, `ValueError` on the bridge.
 - **Bridge examination reads honor soft delete + stable ordering.** Exam list
   and detail now exclude soft-deleted examinations and soft-deleted children
   (observations/medications/documents), so the card counts always match what

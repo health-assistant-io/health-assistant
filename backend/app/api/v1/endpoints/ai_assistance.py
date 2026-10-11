@@ -163,9 +163,10 @@ async def assist_user_stream(
 
     context_session = (request.context or {}).get("session_id")
     lock_session_id = UUID(context_session) if context_session else None
+    lock_token = None
     if lock_session_id is not None:
         try:
-            acquire_turn(lock_session_id)
+            lock_token = await acquire_turn(lock_session_id)
         except TurnConflictError as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -200,7 +201,7 @@ async def assist_user_stream(
             yield stream_error_frame(e)
         finally:
             if lock_session_id is not None:
-                release_turn(lock_session_id)
+                await release_turn(lock_session_id, lock_token)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -299,7 +300,7 @@ async def _branch_turn_stream(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
 
     try:
-        acquire_turn(session.id)
+        lock_token = await acquire_turn(session.id)
     except TurnConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -330,7 +331,7 @@ async def _branch_turn_stream(
             logging.getLogger(__name__).exception("Branch turn streaming failed")
             yield stream_error_frame(e)
         finally:
-            release_turn(session.id)
+            await release_turn(session.id, lock_token)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
