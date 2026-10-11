@@ -387,6 +387,14 @@ patient context to the bound patient** — sessions of other patients are
 invisible, and a client-supplied `session_id` that isn't owned by the
 integration's user AND bound to its patient returns HTTP 400.
 
+**Rate limit:** all `/ai/*` paths share a per-integration budget of **30
+requests / 5 minutes** (mirroring the web client's per-user AI budget).
+Beyond it the proxy answers **HTTP 429** with a **`Retry-After`** header
+(seconds until the fixed window rolls over). Server operators can override
+the ceiling — or disable the bucket entirely (`0`) — through the
+`HA_RATELIMIT_AI` setting, which governs the web and bridge AI budgets
+together. Non-AI bridge paths are not affected by this bucket.
+
 | Endpoint | Purpose |
 |---|---|
 | `GET /ai/sessions` | The owner's chat sessions for the bound patient, newest first: `{data: [{id, title, patient_id, updated_at}]}`. |

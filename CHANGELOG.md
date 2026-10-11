@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge AI rate-limit bucket (R7 WS2):** `/ai/*` proxy paths now share
+  the web client's AI budget — 30 requests / 5 minutes per integration
+  (HTTP 429 + `Retry-After`), enforced after HMAC verification and before
+  dispatch. The existing `HA_RATELIMIT_AI` setting governs both surfaces
+  together (override the ceiling or `0` to disable); non-AI bridge paths
+  are unaffected.
 - **Bridge AI assistant paths (R7 Phase 1+2):** the mobile app
   can chat natively through the integration identity — `GET /ai/sessions`,
   `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),
