@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   isolation unchanged (cross-patient still `ValueError`).
 
 ### Changed
+- **Bridge route dispatch is a declarative route table (internal).** The
+  54-branch if/elif chain in `handle_api_request`
+  (`integrations/health_assistant_bridge/provider.py`) is replaced by a
+  module-level `_ROUTES` list of `(METHOD, literal-or-regex pattern,
+  handler)` entries grouped by the existing phase sections — same handlers,
+  same wire responses, no behavior change. The served surface is frozen by
+  `backend/tests/test_bridge_route_inventory.py` (63 routes incl. every
+  parameterized path): adding or removing a route without updating the
+  inventory fails CI. User-invisible refactor.
 - **Bridge examination reads honor soft delete + stable ordering.** Exam list
   and detail now exclude soft-deleted examinations and soft-deleted children
   (observations/medications/documents), so the card counts always match what

@@ -1,5 +1,6 @@
 import datetime
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -225,6 +226,217 @@ class MapRequestPayload(BaseModel):
     unmapped_metrics: list[MetricMappingRequest]
 
 
+# Route table served by ``handle_api_request``: entries are
+# ``(METHOD, pattern, handler-name)`` where pattern is a literal path
+# (``"ai/sessions"``) or an anchored regex whose named groups are passed to
+# the handler as keyword arguments. Routed handlers share the uniform
+# signature ``(integration, request, **named-groups)``.
+_ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
+    ("GET", "status", "_api_status"),
+    ("POST", "map", "_api_map"),
+    ("POST", "sync", "_api_sync"),
+    # --- Phase 4: read/management paths (patient-scoped to the bound instance) ---
+    ("GET", "observations/latest", "_read_observations_latest"),
+    ("GET", "observations", "_read_observations"),
+    ("GET", "biomarkers", "_read_biomarkers"),
+    ("GET", "examinations", "_read_examinations"),
+    ("POST", "examinations", "_create_examination"),
+    (
+        "POST",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)/documents$"),
+        "_upload_document",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)$"),
+        "_delete_examination",
+    ),
+    (
+        "GET",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)$"),
+        "_read_examination_detail",
+    ),
+    (
+        "GET",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)/documents$"),
+        "_list_documents",
+    ),
+    (
+        "GET",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)/status$"),
+        "_examination_extraction_status",
+    ),
+    (
+        "GET",
+        re.compile(r"^examinations/(?P<exam_id>[^/]+)/logs$"),
+        "_extraction_logs",
+    ),
+    ("GET", "documents", "_list_documents_all"),
+    ("GET", "ai/sessions", "_ai_list_sessions"),
+    ("POST", "ai/chat", "_ai_chat"),
+    ("POST", "ai/chat/stream", "_ai_chat_stream"),
+    (
+        "GET",
+        re.compile(r"^ai/sessions/(?P<session_id>[^/]+)/messages$"),
+        "_ai_session_messages",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^ai/sessions/(?P<session_id>[^/]+)$"),
+        "_ai_delete_session",
+    ),
+    (
+        "POST",
+        re.compile(
+            r"^ai/sessions/(?P<session_id>[^/]+)/tasks/(?P<proposal_id>[^/]+)/resolve$"
+        ),
+        "_ai_resolve_task",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)$"),
+        "_delete_document",
+    ),
+    (
+        "POST",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)/extract$"),
+        "_trigger_document_extraction",
+    ),
+    (
+        "GET",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)$"),
+        "_read_document_detail",
+    ),
+    (
+        "GET",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)/content$"),
+        "_send_document_content",
+    ),
+    (
+        "GET",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)/preview$"),
+        "_send_document_preview",
+    ),
+    (
+        "GET",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)/text$"),
+        "_read_document_text",
+    ),
+    (
+        "GET",
+        re.compile(r"^documents/(?P<doc_id>[^/]+)/extract/status$"),
+        "_document_extraction_status",
+    ),
+    # --- Phase 3: clinical-record read paths (patient-scoped) ---
+    ("GET", "medications", "_read_medications"),
+    ("GET", "allergies", "_read_allergies"),
+    ("GET", "vaccines", "_read_vaccines"),
+    ("GET", "clinical-events", "_read_clinical_events"),
+    (
+        "GET",
+        re.compile(r"^clinical-events/(?P<event_id>[^/]+)$"),
+        "_read_clinical_event_detail",
+    ),
+    ("GET", "doctors", "_read_doctors"),
+    ("GET", "changes", "_changes_since"),
+    # --- Phase 6: clinical-record mutations (patient-scoped to the bound instance) ---
+    ("POST", "medications", "_create_medication"),
+    (
+        "PUT",
+        re.compile(r"^medications/(?P<medication_id>[^/]+)$"),
+        "_update_medication",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^medications/(?P<medication_id>[^/]+)$"),
+        "_delete_medication",
+    ),
+    ("POST", "allergies", "_create_allergy"),
+    (
+        "PUT",
+        re.compile(r"^allergies/(?P<allergy_id>[^/]+)$"),
+        "_update_allergy",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^allergies/(?P<allergy_id>[^/]+)$"),
+        "_delete_allergy",
+    ),
+    ("POST", "vaccines", "_create_vaccine"),
+    (
+        "PUT",
+        re.compile(r"^vaccines/(?P<vaccine_id>[^/]+)$"),
+        "_update_vaccine",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^vaccines/(?P<vaccine_id>[^/]+)$"),
+        "_delete_vaccine",
+    ),
+    ("POST", "clinical-events", "_create_clinical_event"),
+    (
+        "PUT",
+        re.compile(r"^clinical-events/(?P<event_id>[^/]+)$"),
+        "_update_clinical_event",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^clinical-events/(?P<event_id>[^/]+)$"),
+        "_delete_clinical_event",
+    ),
+    (
+        "POST",
+        re.compile(r"^clinical-events/(?P<event_id>[^/]+)/occurrences$"),
+        "_add_clinical_event_occurrence",
+    ),
+    ("POST", "doctors", "_create_doctor"),
+    (
+        "PUT",
+        re.compile(r"^doctors/(?P<doctor_id>[^/]+)$"),
+        "_update_doctor",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^doctors/(?P<doctor_id>[^/]+)$"),
+        "_delete_doctor",
+    ),
+    # --- Phase 7: notification inbox + preferences (owner-scoped, NOT patient-scoped) ---
+    # The bridge integration is bound to one patient, but notifications are
+    # addressed to the *owner* (the user who onboarded the integration).
+    # The inbox + preferences therefore key on ``integration.user_id`` +
+    # ``integration.tenant_id``, never on ``_bound_patient_id``.
+    ("GET", "notifications/inbox", "_notification_inbox"),
+    ("GET", "notifications/unread-count", "_notification_unread_count"),
+    ("POST", "notifications/read-all", "_notification_read_all"),
+    ("GET", "notifications/preferences", "_notification_preferences"),
+    (
+        "PUT",
+        re.compile(r"^notifications/preferences/(?P<kind_id>[^/]+)$"),
+        "_notification_set_preference",
+    ),
+    ("GET", "notifications/triggers", "_notification_list_triggers"),
+    ("POST", "notifications/triggers", "_notification_create_trigger"),
+    (
+        "DELETE",
+        re.compile(r"^notifications/triggers/(?P<trigger_id>[^/]+)$"),
+        "_notification_delete_trigger",
+    ),
+    (
+        "PATCH",
+        re.compile(r"^notifications/(?P<recipient_id>[^/]+)/(?P<action>read|dismiss)$"),
+        "_notification_mark",
+    ),
+    # --- Phase 8: native push device registration (owner-scoped) ---
+    ("POST", "notifications/register-device", "_register_push_device"),
+    (
+        "DELETE",
+        re.compile(r"^notifications/register-device/(?P<device_id>[^/]+)$"),
+        "_unregister_push_device",
+    ),
+    ("GET", "devices", "_list_push_devices"),
+]
+
+
 class HealthAssistantBridgeProvider(BaseHealthProvider):
     domain = "health_assistant_bridge"
 
@@ -234,399 +446,161 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         """Handle two-way API requests from headless clients.
 
         Auth is enforced entirely by the platform endpoint
-        (``integration_api_proxy``): when an ``api_secret`` is configured the
+        (``integration_api_proxy``): an ``api_secret`` is required and the
         route verifies ``X-Api-Signature`` (HMAC-SHA256,
-        ``METHOD\\n<path>\\n[<timestamp>\\n]<raw_body>``) on **every** path
-        before dispatch reaches this handler. The provider therefore never
-        re-verifies — the endpoint is the single auth chokepoint, and a
-        request arriving here is already authenticated (either by a valid
-        signature when a secret is set, or by UUID-knowledge in legacy mode).
-        """
+        ``METHOD\\n<path>\\n[<timestamp>\\n]<raw_body>``) plus a mandatory
+        ``X-Api-Timestamp`` on **every** path before dispatch reaches this
+        handler, failing closed when no secret is configured — only the
+        unsigned minimal ``GET /status`` liveness probe is answered without
+        a signature. The provider therefore never re-verifies — the
+        endpoint is the single auth chokepoint, and a request arriving here
+        is already authenticated by a valid HMAC signature.
 
-        # Log the request details for debugging
+        Dispatch is table-driven via the module-level ``_ROUTES`` list: the
+        first entry whose method matches and whose literal path equals the
+        request path (or whose anchored regex matches it) is called with
+        ``integration``, ``request`` and the regex's named groups as
+        keyword arguments. Unmatched requests raise
+        ``NotImplementedError``.
+        """
         await self.log_debug_payload(
             integration,
             f"API Request: {method} /{path}",
             {"path": path, "method": method},
         )
 
-        if path == "status" and method == "GET":
-            # Load the manifest to get the latest SDK versions
-            import asyncio
-            import json
-            import os
+        for route_method, pattern, handler_name in _ROUTES:
+            if route_method != method:
+                continue
+            if isinstance(pattern, str):
+                if path == pattern:
+                    return await getattr(self, handler_name)(
+                        integration, request=request
+                    )
+                continue
+            match = pattern.match(path)
+            if match is not None:
+                return await getattr(self, handler_name)(
+                    integration, request=request, **match.groupdict()
+                )
 
-            manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+        raise NotImplementedError(
+            f"Path '{path}' with method '{method}' is not supported by the bridge API."
+        )
 
-            def _read_manifest() -> dict:
-                with open(manifest_path, "r") as f:
-                    return json.load(f)
+    async def _api_status(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
+        """``GET /status``: server version, feature flags, latest SDK versions.
 
-            sdks = {}
-            if os.path.exists(manifest_path):
-                try:
-                    sdks = (await asyncio.to_thread(_read_manifest)).get("sdks", {})
-                except (OSError, ValueError) as e:
-                    logger.error("Failed to read manifest for sdks: %s", e)
+        ``request`` is part of the uniform route-handler signature but is
+        unused — status reads only the manifest and the public config.
+        """
+        # Load the manifest to get the latest SDK versions
+        import asyncio
+        import json
+        import os
 
-            # The frontend/PWA origin for the mobile app's "Open in browser"
-            # deep links. Returned here (over the ktor connection the app
-            # already uses) so the app doesn't need a second network stack to
-            # discover it. Same resolution as GET /api/v1/config/public.
-            from app.core.config import settings
-            from app.core.database import AsyncSessionLocal
-            from app.core.public_config import resolve_public_config
+        manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
 
+        def _read_manifest() -> dict:
+            with open(manifest_path, "r") as f:
+                return json.load(f)
+
+        sdks = {}
+        if os.path.exists(manifest_path):
             try:
-                async with AsyncSessionLocal() as db:
-                    public_urls = await resolve_public_config(db)
-            except Exception:
-                public_urls = await resolve_public_config(None)
+                sdks = (await asyncio.to_thread(_read_manifest)).get("sdks", {})
+            except (OSError, ValueError) as e:
+                logger.error("Failed to read manifest for sdks: %s", e)
+
+        # The frontend/PWA origin for the mobile app's "Open in browser"
+        # deep links. Returned here (over the ktor connection the app
+        # already uses) so the app doesn't need a second network stack to
+        # discover it. Same resolution as GET /api/v1/config/public.
+        from app.core.config import settings
+        from app.core.database import AsyncSessionLocal
+        from app.core.public_config import resolve_public_config
+
+        try:
+            async with AsyncSessionLocal() as db:
+                public_urls = await resolve_public_config(db)
+        except Exception:
+            public_urls = await resolve_public_config(None)
+
+        return {
+            "status": "active",
+            "integration_id": str(integration.id),
+            "last_synced_at": integration.last_synced_at.isoformat()
+            if integration.last_synced_at
+            else None,
+            "cursor": self.get_sync_cursor(integration, "last_timestamp"),
+            "latest_sdks": sdks,
+            "frontend_base_url": public_urls["frontend_base_url"],
+            # Compatibility surface (2026-10-11): the server's own version
+            # + the closed feature-flag list the mobile app gates on.
+            # Flags (not semver math) drive gating — an older server
+            # simply omits `bridge_features` and the app degrades.
+            "server_version": settings.VERSION,
+            "bridge_features": [
+                "exam_enrichment",  # enriched exam list/detail (2026-10-10)
+                "ai_assistant",  # /ai/* chat paths (R7 P1)
+                "ai_streaming",  # POST /ai/chat/stream SSE (R7 P2)
+            ],
+        }
+
+    async def _api_map(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
+        """``POST /map``: map raw metric names onto catalog entries via LLM."""
+        # The client asks the backend to map raw names to existing catalog entries via LLM
+        try:
+            payload_data = await request.json()
+            map_request = MapRequestPayload(**payload_data)
+        except (TypeError, ValueError, RuntimeError) as e:
+            raise ValueError(f"Invalid payload format: {e}")
+
+        return await self._handle_map_request(integration, map_request)
+
+    async def _api_sync(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
+        """``POST /sync``: push client records into the platform."""
+        # The client pushes data here
+        try:
+            payload_data = await request.json()
+            sync_payload = SyncPayload(**payload_data)
+        except (TypeError, ValueError, RuntimeError) as e:
+            raise ValueError(f"Invalid Sync payload format: {e}")
+
+        await self.log_debug_payload(
+            integration,
+            f"Sync Payload ({sync_payload.source_system})",
+            payload_data,
+        )
+
+        # Use universal parsing logic
+        builder = self.create_observation_builder(integration)
+
+        try:
+            inserted_count = await self._process_and_save_sync_data(
+                integration, sync_payload, builder
+            )
+
+            # Update the cursor if provided by the client
+            if sync_payload.cursor:
+                self.set_sync_cursor(
+                    integration, "last_timestamp", sync_payload.cursor
+                )
 
             return {
-                "status": "active",
-                "integration_id": str(integration.id),
-                "last_synced_at": integration.last_synced_at.isoformat()
-                if integration.last_synced_at
-                else None,
-                "cursor": self.get_sync_cursor(integration, "last_timestamp"),
-                "latest_sdks": sdks,
-                "frontend_base_url": public_urls["frontend_base_url"],
-                # Compatibility surface (2026-10-11): the server's own version
-                # + the closed feature-flag list the mobile app gates on.
-                # Flags (not semver math) drive gating — an older server
-                # simply omits `bridge_features` and the app degrades.
-                "server_version": settings.VERSION,
-                "bridge_features": [
-                    "exam_enrichment",  # enriched exam list/detail (2026-10-10)
-                    "ai_assistant",  # /ai/* chat paths (R7 P1)
-                    "ai_streaming",  # POST /ai/chat/stream SSE (R7 P2)
-                ],
+                "success": True,
+                "metrics_synced": inserted_count,
+                "message": "Data synchronized successfully",
             }
-
-        elif path == "map" and method == "POST":
-            # The client asks the backend to map raw names to existing catalog entries via LLM
-            try:
-                payload_data = await request.json()
-                map_request = MapRequestPayload(**payload_data)
-            except (TypeError, ValueError, RuntimeError) as e:
-                raise ValueError(f"Invalid payload format: {e}")
-
-            return await self._handle_map_request(integration, map_request)
-
-        elif path == "sync" and method == "POST":
-            # The client pushes data here
-            try:
-                payload_data = await request.json()
-                sync_payload = SyncPayload(**payload_data)
-            except (TypeError, ValueError, RuntimeError) as e:
-                raise ValueError(f"Invalid Sync payload format: {e}")
-
-            await self.log_debug_payload(
-                integration,
-                f"Sync Payload ({sync_payload.source_system})",
-                payload_data,
-            )
-
-            # Use universal parsing logic
-            builder = self.create_observation_builder(integration)
-
-            try:
-                inserted_count = await self._process_and_save_sync_data(
-                    integration, sync_payload, builder
-                )
-
-                # Update the cursor if provided by the client
-                if sync_payload.cursor:
-                    self.set_sync_cursor(
-                        integration, "last_timestamp", sync_payload.cursor
-                    )
-
-                return {
-                    "success": True,
-                    "metrics_synced": inserted_count,
-                    "message": "Data synchronized successfully",
-                }
-            except Exception as e:
-                logger.exception("[%s] Sync failed", self.domain)
-                return {"success": False, "error": str(e)}
-
-        # --- Phase 4: read/management paths (patient-scoped to the bound instance) ---
-        elif path == "observations/latest" and method == "GET":
-            return await self._read_observations_latest(integration, request)
-        elif path == "observations" and method == "GET":
-            return await self._read_observations(integration, request)
-        elif path == "biomarkers" and method == "GET":
-            return await self._read_biomarkers(integration, request)
-        elif path == "examinations" and method == "GET":
-            return await self._read_examinations(integration, request)
-        elif path == "examinations" and method == "POST":
-            return await self._create_examination(integration, request)
-        elif path.startswith("examinations/") and method == "POST":
-            parts = path.split("/")
-            if len(parts) == 3 and parts[2] == "documents":
-                return await self._upload_document(integration, parts[1], request)
-            raise NotImplementedError(
-                f"POST /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("examinations/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_examination(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("examinations/") and method == "GET":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._read_examination_detail(integration, parts[1])
-            if len(parts) == 3 and parts[2] == "documents":
-                return await self._list_documents(integration, parts[1], request)
-            if len(parts) == 3 and parts[2] == "status":
-                return await self._examination_extraction_status(integration, parts[1])
-            if len(parts) == 3 and parts[2] == "logs":
-                return await self._extraction_logs(integration, parts[1])
-            raise NotImplementedError(
-                f"GET /{path} is not supported by the bridge API."
-            )
-        elif path == "documents" and method == "GET":
-            return await self._list_documents_all(integration, request)
-        elif path == "ai/sessions" and method == "GET":
-            return await self._ai_list_sessions(integration)
-        elif path == "ai/chat" and method == "POST":
-            return await self._ai_chat(integration, request)
-        elif path == "ai/chat/stream" and method == "POST":
-            return await self._ai_chat_stream(integration, request)
-        elif path.startswith("ai/sessions/") and method == "GET":
-            parts = path.split("/")
-            if len(parts) == 4 and parts[3] == "messages":
-                return await self._ai_session_messages(integration, parts[2])
-            raise NotImplementedError(
-                f"GET /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("ai/sessions/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 3:
-                return await self._ai_delete_session(integration, parts[2])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("ai/sessions/") and method == "POST":
-            parts = path.split("/")
-            if (
-                len(parts) == 6
-                and parts[3] == "tasks"
-                and parts[5] == "resolve"
-            ):
-                return await self._ai_resolve_task(integration, parts[2], parts[4], request)
-            raise NotImplementedError(
-                f"POST /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("documents/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_document(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("documents/") and method == "POST":
-            parts = path.split("/")
-            if len(parts) == 3 and parts[2] == "extract":
-                return await self._trigger_document_extraction(integration, parts[1])
-            raise NotImplementedError(
-                f"POST /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("documents/") and method == "GET":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._read_document_detail(integration, parts[1])
-            if len(parts) == 3 and parts[2] == "content":
-                return await self._send_document_content(integration, parts[1])
-            if len(parts) == 3 and parts[2] == "preview":
-                return await self._send_document_preview(integration, parts[1], request)
-            if len(parts) == 3 and parts[2] == "text":
-                return await self._read_document_text(integration, parts[1])
-            if len(parts) == 4 and parts[2] == "extract" and parts[3] == "status":
-                return await self._document_extraction_status(integration, parts[1])
-            raise NotImplementedError(
-                f"GET /{path} is not supported by the bridge API."
-            )
-        # --- Phase 3: clinical-record read paths (patient-scoped) ---
-        elif path == "medications" and method == "GET":
-            return await self._read_medications(integration, request)
-        elif path == "allergies" and method == "GET":
-            return await self._read_allergies(integration, request)
-        elif path == "vaccines" and method == "GET":
-            return await self._read_vaccines(integration, request)
-        elif path == "clinical-events" and method == "GET":
-            return await self._read_clinical_events(integration, request)
-        elif path.startswith("clinical-events/") and method == "GET":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._read_clinical_event_detail(integration, parts[1])
-            raise NotImplementedError(
-                f"GET /{path} is not supported by the bridge API."
-            )
-        elif path == "doctors" and method == "GET":
-            return await self._read_doctors(integration, request)
-        elif path == "changes" and method == "GET":
-            return await self._changes_since(integration, request)
-        # --- Phase 6: clinical-record mutations (patient-scoped to the bound instance) ---
-        elif path == "medications" and method == "POST":
-            return await self._create_medication(integration, request)
-        elif path.startswith("medications/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._update_medication(integration, parts[1], request)
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("medications/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_medication(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path == "allergies" and method == "POST":
-            return await self._create_allergy(integration, request)
-        elif path.startswith("allergies/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._update_allergy(integration, parts[1], request)
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("allergies/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_allergy(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path == "vaccines" and method == "POST":
-            return await self._create_vaccine(integration, request)
-        elif path.startswith("vaccines/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._update_vaccine(integration, parts[1], request)
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("vaccines/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_vaccine(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path == "clinical-events" and method == "POST":
-            return await self._create_clinical_event(integration, request)
-        elif path.startswith("clinical-events/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._update_clinical_event(integration, parts[1], request)
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("clinical-events/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_clinical_event(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("clinical-events/") and method == "POST":
-            parts = path.split("/")
-            if len(parts) == 3 and parts[2] == "occurrences":
-                return await self._add_clinical_event_occurrence(
-                    integration, parts[1], request
-                )
-            raise NotImplementedError(
-                f"POST /{path} is not supported by the bridge API."
-            )
-        elif path == "doctors" and method == "POST":
-            return await self._create_doctor(integration, request)
-        elif path.startswith("doctors/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._update_doctor(integration, parts[1], request)
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("doctors/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 2:
-                return await self._delete_doctor(integration, parts[1])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        # --- Phase 7: notification inbox + preferences (owner-scoped, NOT patient-scoped) ---
-        # The bridge integration is bound to one patient, but notifications are
-        # addressed to the *owner* (the user who onboarded the integration).
-        # The inbox + preferences therefore key on ``integration.user_id`` +
-        # ``integration.tenant_id``, never on ``_bound_patient_id``.
-        elif path == "notifications/inbox" and method == "GET":
-            return await self._notification_inbox(integration, request)
-        elif path == "notifications/unread-count" and method == "GET":
-            return await self._notification_unread_count(integration)
-        elif path == "notifications/read-all" and method == "POST":
-            return await self._notification_read_all(integration)
-        elif path == "notifications/preferences" and method == "GET":
-            return await self._notification_preferences(integration)
-        elif path.startswith("notifications/preferences/") and method == "PUT":
-            parts = path.split("/")
-            if len(parts) == 3:
-                return await self._notification_set_preference(
-                    integration, parts[2], request
-                )
-            raise NotImplementedError(
-                f"PUT /{path} is not supported by the bridge API."
-            )
-        elif path == "notifications/triggers" and method == "GET":
-            return await self._notification_list_triggers(integration, request)
-        elif path == "notifications/triggers" and method == "POST":
-            return await self._notification_create_trigger(integration, request)
-        elif path.startswith("notifications/triggers/") and method == "DELETE":
-            parts = path.split("/")
-            if len(parts) == 3:
-                return await self._notification_delete_trigger(
-                    integration, parts[2]
-                )
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path.startswith("notifications/") and method == "PATCH":
-            parts = path.split("/")
-            if len(parts) == 3 and parts[2] == "read":
-                return await self._notification_mark(
-                    integration, parts[1], "read"
-                )
-            if len(parts) == 3 and parts[2] == "dismiss":
-                return await self._notification_mark(
-                    integration, parts[1], "dismiss"
-                )
-            raise NotImplementedError(
-                f"PATCH /{path} is not supported by the bridge API."
-            )
-        # --- Phase 8: native push device registration (owner-scoped) ---
-        elif path == "notifications/register-device" and method == "POST":
-            return await self._register_push_device(integration, request)
-        elif (
-            path.startswith("notifications/register-device/") and method == "DELETE"
-        ):
-            parts = path.split("/")
-            if len(parts) == 3:
-                return await self._unregister_push_device(integration, parts[2])
-            raise NotImplementedError(
-                f"DELETE /{path} is not supported by the bridge API."
-            )
-        elif path == "devices" and method == "GET":
-            return await self._list_push_devices(integration)
-        else:
-            raise NotImplementedError(
-                f"Path '{path}' with method '{method}' is not supported by the bridge API."
-            )
+        except Exception as e:
+            logger.exception("[%s] Sync failed", self.domain)
+            return {"success": False, "error": str(e)}
 
     def _bound_patient_id(self, integration: UserIntegration):
         """The one patient this instance can act on. Every read/create MUST
@@ -890,7 +864,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         }
 
     async def _read_examination_detail(
-        self, integration: UserIntegration, exam_id: str
+        self, integration: UserIntegration, exam_id: str, request: Any
     ) -> dict[str, Any]:
         from sqlalchemy.orm import selectinload
 
@@ -1113,7 +1087,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._read_envelope(items)
 
     async def _read_document_detail(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
 
@@ -1122,7 +1096,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             return self._document_summary(d)
 
     async def _read_document_text(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> dict[str, Any]:
         """The OCR-extracted Markdown text of a document (mobile rich content).
         Returns ``{id, extracted_text, status, truncated}``; the text is capped
@@ -1141,7 +1115,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
 
     async def _send_document_content(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> Any:
         """Binary content of a document's stored file. Returns a
         ``fastapi.responses.Response`` with the bytes pre-loaded (rather than a
@@ -1454,7 +1428,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._read_envelope(items)
 
     async def _read_clinical_event_detail(
-        self, integration: UserIntegration, event_id: str
+        self, integration: UserIntegration, event_id: str, request: Any
     ) -> dict[str, Any]:
         """`GET /clinical-events/{id}` — full nested detail via the model's
         ``to_dict()`` (type_details, examinations, observations, anatomy_links).
@@ -1658,7 +1632,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             raise ValueError("Chat session not found for this patient.")
         return svc, actor, session
 
-    async def _ai_list_sessions(self, integration: UserIntegration) -> dict[str, Any]:
+    async def _ai_list_sessions(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
         from uuid import UUID
 
         from app.core.database import AsyncSessionLocal
@@ -1685,7 +1661,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
 
     async def _ai_session_messages(
-        self, integration: UserIntegration, session_id: str
+        self, integration: UserIntegration, session_id: str, request: Any
     ) -> dict[str, Any]:
         from uuid import UUID
 
@@ -1834,7 +1810,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
     async def _ai_delete_session(
-        self, integration: UserIntegration, session_id: str
+        self, integration: UserIntegration, session_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
 
@@ -2170,7 +2146,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         }
 
     async def _delete_examination(
-        self, integration: UserIntegration, exam_id: str
+        self, integration: UserIntegration, exam_id: str, request: Any
     ) -> dict[str, Any]:
         """`DELETE /examinations/{id}` — hard delete (matches the PWA endpoint).
         Removes all linked documents (file unlink + row delete), defensively
@@ -2222,7 +2198,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         }
 
     async def _delete_document(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> dict[str, Any]:
         """`DELETE /documents/{id}` — hard delete (file unlink + row delete +
         raw-SQL observation cleanup). Patient-scoped via `_bound_document` so a
@@ -2238,7 +2214,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return {"id": doc_id, "deleted": True, "message": "Document deleted."}
 
     async def _trigger_document_extraction(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> dict[str, Any]:
         """`POST /documents/{id}/extract` — dispatch the OCR/NLP pipeline.
         Patient-scoped via `_bound_document`. Returns the bridge-equivalent of
@@ -2253,7 +2229,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return {"job_id": job_id, "message": "Extraction started."}
 
     async def _document_extraction_status(
-        self, integration: UserIntegration, doc_id: str
+        self, integration: UserIntegration, doc_id: str, request: Any
     ) -> dict[str, Any]:
         """`GET /documents/{id}/extract/status` — the live OCR row state."""
         from app.core.database import AsyncSessionLocal
@@ -2268,7 +2244,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
 
     async def _examination_extraction_status(
-        self, integration: UserIntegration, exam_id: str
+        self, integration: UserIntegration, exam_id: str, request: Any
     ) -> dict[str, Any]:
         """`GET /examinations/{id}/status` — the exam-level extraction state
         plus the per-document status array (mirrors the PWA endpoint)."""
@@ -2307,7 +2283,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
 
     async def _extraction_logs(
-        self, integration: UserIntegration, exam_id: str
+        self, integration: UserIntegration, exam_id: str, request: Any
     ) -> list[dict[str, Any]]:
         """`GET /examinations/{id}/logs` — the TaskLog rows for the exam and
         its documents. Patient-scoped via `_bound_examination`; the tenant
@@ -3157,7 +3133,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._medication_to_dict(updated)
 
     async def _delete_medication(
-        self, integration: UserIntegration, medication_id: str
+        self, integration: UserIntegration, medication_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.medication_service import delete_patient_medication
@@ -3216,7 +3192,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._allergy_to_dict(updated)
 
     async def _delete_allergy(
-        self, integration: UserIntegration, allergy_id: str
+        self, integration: UserIntegration, allergy_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.allergy_service import delete_patient_allergy
@@ -3275,7 +3251,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._vaccine_to_dict(updated)
 
     async def _delete_vaccine(
-        self, integration: UserIntegration, vaccine_id: str
+        self, integration: UserIntegration, vaccine_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.vaccine_service import delete_patient_immunization
@@ -3335,7 +3311,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return result
 
     async def _delete_clinical_event(
-        self, integration: UserIntegration, event_id: str
+        self, integration: UserIntegration, event_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.clinical_event_service import soft_delete_event
@@ -3433,7 +3409,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return self._doctor_to_dict(updated)
 
     async def _delete_doctor(
-        self, integration: UserIntegration, doctor_id: str
+        self, integration: UserIntegration, doctor_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.doctor_service import delete_doctor
@@ -3497,7 +3473,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         ) | {"total": total}
 
     async def _notification_unread_count(
-        self, integration: UserIntegration
+        self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.notification_service import get_unread_count
@@ -3509,7 +3485,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return {"unread_count": count}
 
     async def _notification_read_all(
-        self, integration: UserIntegration
+        self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.notification_service import mark_all_read
@@ -3523,6 +3499,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         integration: UserIntegration,
         recipient_id: str,
         action: str,
+        request: Any,
     ) -> dict[str, Any]:
         """`PATCH /notifications/{recipient_id}/read|dismiss`."""
         from app.core.database import AsyncSessionLocal
@@ -3552,7 +3529,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return {"status": "success"}
 
     async def _notification_preferences(
-        self, integration: UserIntegration
+        self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.notification_preferences_service import (
@@ -3668,7 +3645,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         }
 
     async def _notification_delete_trigger(
-        self, integration: UserIntegration, trigger_id: str
+        self, integration: UserIntegration, trigger_id: str, request: Any
     ) -> dict[str, Any]:
         from uuid import UUID
 
@@ -3738,7 +3715,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return target.to_dict()
 
     async def _unregister_push_device(
-        self, integration: UserIntegration, device_id: str
+        self, integration: UserIntegration, device_id: str, request: Any
     ) -> dict[str, Any]:
         """`DELETE /notifications/register-device/{device_id}` — soft-deactivate
         a device (sign-out / lost-device). Hard-delete is not exposed; the row
@@ -3763,7 +3740,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         }
 
     async def _list_push_devices(
-        self, integration: UserIntegration
+        self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         """`GET /devices` — the 'Where am I signed in' list. Endpoint URLs
         are masked (the dispatch task reads the raw column; the bridge never
