@@ -301,18 +301,72 @@ class BridgeClientTest {
     }
 
     @Test
-    fun `getExamination decodes a single detail object`() = runBlocking {
+    fun `getExaminations decodes enriched card fields`() = runBlocking {
         val secret = "test-secret-16chars!"
-        val payload = """{"id":"e1","examination_date":"2026-08-08","notes":"Annual checkup","patient_notes":null,"extraction_status":"completed","diagnoses":["Hypertension"],"impressions":null,"category":"lab","lab_name":"Acme Labs","external_id":"ext-1"}"""
+        val payload = envelopeJson(
+            """[{"id":"e1","examination_date":"2026-10-02","notes":"Lipid panel","patient_notes":null,"extraction_status":"completed","extraction_progress":100,"diagnoses":["E78.5"],"category":"Biochemical Tests","lab_name":"Acme Labs","observation_count":2,"medication_count":1,"document_count":0,"created_at":"2026-10-02T09:00:00+00:00","updated_at":"2026-10-02T09:30:00+00:00"}]"""
+        )
+        val c = bridge(secret) { respond(payload) }
+        val env = c.getExaminations()
+        assertEquals(1, env.data.size)
+        val e = env.data[0]
+        assertEquals("e1", e.id)
+        assertEquals(100, e.extractionProgress)
+        assertEquals("Biochemical Tests", e.category)
+        assertEquals("Acme Labs", e.labName)
+        assertEquals(2, e.observationCount)
+        assertEquals(1, e.medicationCount)
+        assertEquals(0, e.documentCount)
+        assertNotNull(e.createdAt)
+        c.close()
+    }
+
+    @Test
+    fun `getExamination decodes the enriched detail with sections`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val payload = """
+            {"id":"e1","examination_date":"2026-08-08","notes":"Annual checkup","patient_notes":null,
+             "extraction_status":"completed","extraction_progress":100,"diagnoses":["Hypertension"],
+             "category":"lab","lab_name":"Acme Labs","observation_count":1,"medication_count":1,
+             "document_count":0,"created_at":"2026-08-08T09:00:00+00:00","updated_at":"2026-08-08T10:00:00+00:00",
+             "impressions":null,"error_message":null,"external_id":"ext-1",
+             "observations":[{"id":"o1","effective_datetime":"2026-08-08T09:10:00Z",
+                 "code":{"coding":[{"system":"http://loinc.org","code":"13457-7"}],"text":"LDL Cholesterol"},
+                 "raw_value":3.9,"normalized_value":3.9,"normalized_unit":"mmol/L","value_string":null,
+                 "reference_range":{"low":0.0,"high":3.0},"interpretation":"HIGH","relative_score":1.0,
+                 "biomarker_id":"b1","biomarker_slug":"ldl","biomarker_value_type":"numeric",
+                 "biomarker_reference_range_min":0.0,"biomarker_reference_range_max":3.0,"document_id":null}],
+             "doctors":[{"id":"d1","name":"Dr. Maria Papadopoulou","specialty_concept_id":null,
+                 "specialty":"Cardiology","license_number":null,"email":null,"phone":null,
+                 "telecom":null,"address":null,"office_number":null,"office_details":null}],
+             "medications":[{"id":"m1","status":"active","intent":"proposal",
+                 "code":{"text":"Atorvastatin 20 mg"},"start_date":null,"end_date":null,
+                 "dosage":"1 tablet","frequency":null,"reason":null,"note":null,
+                 "examination_id":"e1","created_at":null,"updated_at":null}],
+             "clinical_events":[{"id":"ce1","title":"Hyperlipidemia follow-up","status":"ACTIVE","reason":"Annual lipid panel"}]}
+        """.trimIndent()
         val c = bridge(secret) { respond(payload) }
         val e = c.getExamination("e1")
         assertEquals("e1", e.id)
         assertEquals("Annual checkup", e.notes)
         assertEquals("completed", e.extractionStatus)
+        assertEquals(100, e.extractionProgress)
         assertEquals(listOf("Hypertension"), e.diagnoses)
         assertEquals("lab", e.category)
         assertEquals("Acme Labs", e.labName)
         assertEquals("ext-1", e.externalId)
+        assertEquals(1, e.observationCount)
+        val obs = e.observations!!.single()
+        assertEquals("LDL Cholesterol", obs.code?.text)
+        assertEquals(3.9, obs.rawValue)
+        assertEquals(3.0, obs.referenceRange?.high)
+        assertEquals("HIGH", obs.interpretation)
+        assertEquals("ldl", obs.biomarkerSlug)
+        assertEquals("Dr. Maria Papadopoulou", e.doctors!!.single().name)
+        assertEquals("1 tablet", e.medications!!.single().dosage)
+        val journey = e.clinicalEvents!!.single()
+        assertEquals("Hyperlipidemia follow-up", journey.title)
+        assertEquals("Annual lipid panel", journey.reason)
         c.close()
     }
 

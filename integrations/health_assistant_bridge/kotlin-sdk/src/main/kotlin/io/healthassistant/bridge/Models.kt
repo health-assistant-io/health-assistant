@@ -188,8 +188,11 @@ data class Quantity(
     val code: String? = null,
 )
 
-/** An examination row from `GET /examinations` (list) or `GET /examinations/{id}`
- *  (detail — the detail response also carries `diagnoses` + `impressions`). */
+/** An examination card from `GET /examinations` (list). Enriched 2026-10:
+ *  carries everything the exam card renders — category, lab, diagnoses,
+ *  extraction progress, per-section counts, timestamps. Exams the user
+ *  soft-deleted never appear; exams created offline before a date is known
+ *  (`examinationDate == null`) sort last. */
 @Serializable
 data class ExaminationSummary(
     val id: String,
@@ -197,11 +200,78 @@ data class ExaminationSummary(
     val notes: String? = null,
     @SerialName("patient_notes") val patientNotes: String? = null,
     @SerialName("extraction_status") val extractionStatus: String? = null,
+    @SerialName("extraction_progress") val extractionProgress: Int? = null,
     val diagnoses: List<String>? = null,
-    val impressions: String? = null,
     val category: String? = null,
     @SerialName("lab_name") val labName: String? = null,
+    @SerialName("observation_count") val observationCount: Int? = null,
+    @SerialName("medication_count") val medicationCount: Int? = null,
+    @SerialName("document_count") val documentCount: Int? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)
+
+/** One exam-linked observation from `GET /examinations/{id}` — the
+ *  lab-results-table projection (the education Markdown lives on
+ *  `GET /biomarkers`, keyed by [biomarkerId]/[biomarkerSlug]). */
+@Serializable
+data class ExaminationObservation(
+    val id: String? = null,
+    @SerialName("effective_datetime") val effectiveDatetime: String? = null,
+    val code: CodeableConcept? = null,
+    @SerialName("raw_value") val rawValue: Double? = null,
+    @SerialName("normalized_value") val normalizedValue: Double? = null,
+    @SerialName("normalized_unit") val normalizedUnit: String? = null,
+    @SerialName("value_string") val valueString: String? = null,
+    /** Flat `{low, high}` — the server also flattens FHIR-imported rows. */
+    @SerialName("reference_range") val referenceRange: ReferenceRange? = null,
+    val interpretation: String? = null,
+    @SerialName("relative_score") val relativeScore: Double? = null,
+    @SerialName("biomarker_id") val biomarkerId: String? = null,
+    @SerialName("biomarker_slug") val biomarkerSlug: String? = null,
+    @SerialName("biomarker_value_type") val biomarkerValueType: String? = null,
+    @SerialName("biomarker_reference_range_min") val biomarkerReferenceRangeMin: Double? = null,
+    @SerialName("biomarker_reference_range_max") val biomarkerReferenceRangeMax: Double? = null,
+    @SerialName("document_id") val documentId: String? = null,
+)
+
+/** One health journey a visit belongs to (from the exam detail's
+ *  `clinical_events[]`). */
+@Serializable
+data class ExaminationClinicalEvent(
+    val id: String? = null,
+    val title: String? = null,
+    val status: String? = null,
+    val reason: String? = null,
+)
+
+/** The full detail of one examination from `GET /examinations/{id}`: the
+ *  [ExaminationSummary] card fields plus the results/doctors/medications/
+ *  journeys sections. The sections and the counts agree — both exclude
+ *  soft-deleted rows. */
+@Serializable
+data class ExaminationDetail(
+    val id: String,
+    @SerialName("examination_date") val examinationDate: String? = null,
+    val notes: String? = null,
+    @SerialName("patient_notes") val patientNotes: String? = null,
+    @SerialName("extraction_status") val extractionStatus: String? = null,
+    @SerialName("extraction_progress") val extractionProgress: Int? = null,
+    val diagnoses: List<String>? = null,
+    val category: String? = null,
+    @SerialName("lab_name") val labName: String? = null,
+    @SerialName("observation_count") val observationCount: Int? = null,
+    @SerialName("medication_count") val medicationCount: Int? = null,
+    @SerialName("document_count") val documentCount: Int? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+    val impressions: String? = null,
+    @SerialName("error_message") val errorMessage: String? = null,
     @SerialName("external_id") val externalId: String? = null,
+    val observations: List<ExaminationObservation>? = null,
+    val doctors: List<Doctor>? = null,
+    val medications: List<Medication>? = null,
+    @SerialName("clinical_events") val clinicalEvents: List<ExaminationClinicalEvent>? = null,
 )
 
 /** `GET /documents/{id}/text` — the OCR-extracted Markdown of a document,

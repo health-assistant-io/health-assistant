@@ -155,13 +155,15 @@ class BridgeClient(
     suspend fun getBiomarkers(limit: Int? = null): ReadEnvelope<BiomarkerSummary> =
         readEnvelope("/biomarkers" + (limit?.let { "?limit=$it" } ?: ""), BiomarkerSummary.serializer())
 
-    /** `GET /examinations?limit=` — the patient's exams (newest first). */
+    /** `GET /examinations?limit=` — the patient's exam cards (newest first;
+     *  dateless exams last). */
     suspend fun getExaminations(limit: Int? = null): ReadEnvelope<ExaminationSummary> =
         readEnvelope("/examinations" + (limit?.let { "?limit=$it" } ?: ""), ExaminationSummary.serializer())
 
-    /** `GET /examinations/{id}` — one exam's detail (notes, diagnoses, impressions). */
-    suspend fun getExamination(id: String): ExaminationSummary =
-        readDetail("/examinations/$id", ExaminationSummary.serializer())
+    /** `GET /examinations/{id}` — one exam's full detail: the card fields plus
+     *  the observations/doctors/medications/clinical-events sections. */
+    suspend fun getExamination(id: String): ExaminationDetail =
+        readDetail("/examinations/$id", ExaminationDetail.serializer())
 
     /** `GET /examinations/{id}/documents` — documents attached to an exam. */
     suspend fun listDocumentsForExam(examId: String): ReadEnvelope<DocumentSummary> =

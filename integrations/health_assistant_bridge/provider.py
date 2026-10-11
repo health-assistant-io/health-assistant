@@ -69,6 +69,16 @@ def _relative_score(
     return max(0.0, min(1.0, score))
 
 
+def _active_rows(rows: Any) -> list[Any]:
+    """The non-soft-deleted members of a loaded relationship collection.
+
+    The section endpoints (`/documents`, `/medications`, …) all filter
+    ``deleted_at IS NULL`` — the exam counts and detail sections use the
+    same envelope so the card counts always match what the sections list.
+    """
+    return [r for r in (rows or []) if r.deleted_at is None]
+
+
 def _observation_point_from_telemetry(
     row: dict[str, Any], b_def: Any, patient_id: UUID
 ) -> dict[str, Any]:
@@ -803,8 +813,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 .where(
                     ExaminationModel.tenant_id == integration.tenant_id,
                     ExaminationModel.patient_id == patient_id,
+                    ExaminationModel.deleted_at.is_(None),
                 )
-                .order_by(ExaminationModel.examination_date.desc())
+                # nullslast: offline-created exams may have no date yet — they
+                # must not jump the newest-first queue (Postgres DESC defaults
+                # to NULLS FIRST).
+                .order_by(ExaminationModel.examination_date.desc().nullslast())
                 .limit(limit)
             )
             items = [self._examination_summary(e) for e in res.scalars().all()]
@@ -818,9 +832,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         on the model are already eager-loaded, so this adds no queries."""
         return {
             "id": str(e.id),
-            "examination_date": e.examination_date.isoformat()
-            if e.examination_date
-            else None,
+            "examination_date": e.examination_date.isoformat() if e.examination_date else None,
             "notes": e.notes,
             "patient_notes": e.patient_notes,
             "extraction_status": e.extraction_status,
@@ -828,9 +840,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "diagnoses": e.diagnoses if isinstance(e.diagnoses, list) else [],
             "category": e.category,
             "lab_name": e.organization.name if e.organization else None,
-            "observation_count": len(e.observations) if e.observations else 0,
-            "medication_count": len(e.medications) if e.medications else 0,
-            "document_count": len(e.documents) if e.documents else 0,
+            "observation_count": len(_active_rows(e.observations)),
+            "medication_count": len(_active_rows(e.medications)),
+            "document_count": len(_active_rows(e.documents)),
             "created_at": e.created_at.isoformat() if e.created_at else None,
             "updated_at": e.updated_at.isoformat() if e.updated_at else None,
         }
@@ -859,32 +871,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 ),
             )
             return {
-                "id": str(e.id),
-                "examination_date": e.examination_date.isoformat()
-                if e.examination_date
-                else None,
-                "notes": e.notes,
-                "patient_notes": e.patient_notes,
-                "extraction_status": e.extraction_status,
-                "extraction_progress": e.extraction_progress,
-                "error_message": getattr(e, "error_message", None),
-                "diagnoses": e.diagnoses if isinstance(e.diagnoses, list) else [],
+                **self._examination_summary(e),
                 "impressions": e.impressions,
-                "category": e.category,
-                "lab_name": e.organization.name if e.organization else None,
+                "error_message": e.error_message,
                 "external_id": e.external_id,
-                "observation_count": len(e.observations) if e.observations else 0,
-                "medication_count": len(e.medications) if e.medications else 0,
-                "document_count": len(e.documents) if e.documents else 0,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-                "updated_at": e.updated_at.isoformat() if e.updated_at else None,
-                "observations": [
-                    self._exam_observation(o) for o in (e.observations or [])
-                ],
+                "observations": [self._exam_observation(o) for o in _active_rows(e.observations)],
                 "doctors": [self._doctor_to_dict(d) for d in (e.doctors or [])],
-                "medications": [
-                    self._medication_to_dict(m) for m in (e.medications or [])
-                ],
+                "medications": [self._medication_to_dict(m) for m in _active_rows(e.medications)],
                 "clinical_events": e._serialize_clinical_events(),
             }
 
@@ -924,10 +917,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         options: tuple = (),
     ):
         """Load an examination scoped to the bound patient; raises ValueError if
-        the id is malformed or belongs to a different patient. The linchpin of
-        patient isolation for the `/examinations/{id}/*` paths (plan §4).
-        `options` adds eager loads (the journeys selectinload on the detail
-        read) on top of the model's built-in selectin relationships."""
+        the id is malformed, belongs to a different patient, or is soft-deleted.
+        The linchpin of patient isolation for the `/examinations/{id}/*` paths
+        (plan §4). `options` adds eager loads (the journeys selectinload on the
+        detail read) on top of the model's built-in selectin relationships."""
         from uuid import UUID
 
         from sqlalchemy import select
@@ -945,6 +938,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 ExaminationModel.id == eid,
                 ExaminationModel.tenant_id == integration.tenant_id,
                 ExaminationModel.patient_id == patient_id,
+                ExaminationModel.deleted_at.is_(None),
             )
             .options(*options)
         )

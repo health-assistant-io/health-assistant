@@ -15,18 +15,14 @@ from integrations.health_assistant_bridge.provider import HealthAssistantBridgeP
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.models.clinical_event import ClinicalEvent
-from app.models.clinical_event import ClinicalEventStatus
-from app.models.clinical_event import EventExaminationLink
+from app.models.clinical_event import ClinicalEvent, ClinicalEventStatus, EventExaminationLink
 from app.models.concept_model import Concept
 from app.models.doctor_model import DoctorModel
+from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
-from app.models.fhir.medication import Medication
-from app.models.fhir.medication import MedicationIntent
-from app.models.fhir.medication import MedicationStatus
+from app.models.fhir.medication import Medication, MedicationIntent, MedicationStatus
 from app.models.fhir.organization import OrganizationModel
-from app.models.fhir.patient import Observation
-from app.models.fhir.patient import Patient
+from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
@@ -118,7 +114,19 @@ async def exam_ctx():
             patient_id=patient_b,
             examination_date=datetime.date(2026, 10, 2),
         )
-        db.add_all([exam_a, exam_b])
+        exam_dateless = ExaminationModel(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient_a,
+        )
+        exam_deleted = ExaminationModel(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient_a,
+            examination_date=datetime.date(2026, 9, 1),
+            deleted_at=datetime.datetime.now(datetime.UTC),
+        )
+        db.add_all([exam_a, exam_b, exam_dateless, exam_deleted])
         await db.flush()
 
         obs = Observation(
@@ -132,13 +140,45 @@ async def exam_ctx():
                 "text": "LDL Cholesterol",
             },
             subject={"reference": f"Patient/{patient_a}"},
-            effective_datetime=datetime.datetime(
-                2026, 10, 2, 8, 30, tzinfo=datetime.timezone.utc
-            ),
+            effective_datetime=datetime.datetime(2026, 10, 2, 8, 30, tzinfo=datetime.UTC),
             raw_value=3.9,
             normalized_value=3.9,
             reference_range={"low": 0.0, "high": 3.0},
             interpretation="HIGH",
+        )
+        # FHIR-imported rows store the list shape — the detail read must
+        # flatten it to {low, high} like the flat bridge-written rows.
+        obs_fhir_range = Observation(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient_a,
+            examination_id=exam_a.id,
+            status="final",
+            code={
+                "coding": [{"system": "http://loinc.org", "code": "2093-3"}],
+                "text": "Cholesterol Total",
+            },
+            subject={"reference": f"Patient/{patient_a}"},
+            effective_datetime=datetime.datetime(2026, 10, 2, 8, 35, tzinfo=datetime.UTC),
+            raw_value=5.2,
+            normalized_value=5.2,
+            reference_range=[
+                {"low": {"value": 0.0, "unit": "mmol/L"}, "high": {"value": 5.0, "unit": "mmol/L"}}
+            ],
+        )
+        obs_deleted = Observation(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient_a,
+            examination_id=exam_a.id,
+            status="final",
+            code={
+                "coding": [{"system": "http://loinc.org", "code": "13457-7"}],
+                "text": "LDL (retracted)",
+            },
+            subject={"reference": f"Patient/{patient_a}"},
+            raw_value=9.9,
+            deleted_at=datetime.datetime.now(datetime.UTC),
         )
         doctor = DoctorModel(
             id=uuid.uuid4(),
@@ -155,7 +195,17 @@ async def exam_ctx():
             code={"text": "Atorvastatin 20 mg"},
             dosage="1 tablet",
         )
-        db.add_all([obs, doctor, medication])
+        doc_deleted = DocumentModel(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient_a,
+            examination_id=exam_a.id,
+            owner_id=user_id,
+            filename="retracted.pdf",
+            file_path=f"uploads/{tenant_id.hex}/retracted.pdf",
+            deleted_at=datetime.datetime.now(datetime.UTC),
+        )
+        db.add_all([obs, obs_fhir_range, obs_deleted, doctor, medication, doc_deleted])
         await db.flush()
         # Link the doctor via the association row directly — appending to the
         # relationship would lazy-load the collection (MissingGreenlet).
@@ -193,6 +243,8 @@ async def exam_ctx():
             "integration_id": integration_id,
             "exam_a": exam_a.id,
             "exam_b": exam_b.id,
+            "exam_dateless": exam_dateless.id,
+            "exam_deleted": exam_deleted.id,
         }
 
 
@@ -223,17 +275,41 @@ async def test_exam_list_items_carry_card_fields(exam_ctx):
         request=_get_request(),
     )
 
+    ids = [e["id"] for e in result["data"]]
+    assert str(ctx["exam_deleted"]) not in ids
+    assert str(ctx["exam_b"]) not in ids
     item = next((e for e in result["data"] if e["id"] == str(ctx["exam_a"])), None)
     assert item is not None
     assert item["category"] == "Biochemical Tests"
     assert item["lab_name"] == "City General Laboratory"
     assert item["diagnoses"] == ["E78.5 Hyperlipidemia"]
     assert item["extraction_progress"] == 100
-    assert item["observation_count"] == 1
+    assert item["observation_count"] == 2
     assert item["medication_count"] == 1
     assert item["document_count"] == 0
     assert item["created_at"]
     assert item["updated_at"]
+
+
+@pytest.mark.asyncio
+async def test_exam_list_orders_dateless_exams_last(exam_ctx):
+    """Offline-created exams have no date yet — Postgres DESC defaults to
+    NULLS FIRST, so without nullslast they would jump the newest-first queue."""
+    ctx = exam_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    result = await provider.handle_api_request(
+        integration=integration,
+        path="examinations",
+        method="GET",
+        request=_get_request(),
+    )
+
+    ids = [e["id"] for e in result["data"]]
+    assert ids[0] == str(ctx["exam_a"])
+    assert ids[-1] == str(ctx["exam_dateless"])
+    assert result["data"][-1]["examination_date"] is None
 
 
 @pytest.mark.asyncio
@@ -253,14 +329,20 @@ async def test_exam_detail_carries_results_doctors_medications_journeys(exam_ctx
     assert result["category"] == "Biochemical Tests"
     assert result["lab_name"] == "City General Laboratory"
     assert result["extraction_progress"] == 100
-    assert result["observation_count"] == 1
+    assert result["observation_count"] == 2
+    assert result["document_count"] == 0
 
-    obs = result["observations"][0]
+    obs = next(o for o in result["observations"] if o["code"]["text"] == "LDL Cholesterol")
     assert obs["raw_value"] == 3.9
     assert obs["reference_range"] == {"low": 0.0, "high": 3.0}
     assert obs["interpretation"] == "HIGH"
     assert obs["code"]["text"] == "LDL Cholesterol"
     assert obs["effective_datetime"] is not None
+
+    # FHIR-imported rows store the list shape — the detail read flattens it.
+    fhir_obs = next(o for o in result["observations"] if o["code"]["text"] == "Cholesterol Total")
+    assert fhir_obs["reference_range"] == {"low": 0.0, "high": 5.0}
+    assert all(o["code"]["text"] != "LDL (retracted)" for o in result["observations"])
 
     assert result["doctors"][0]["name"] == "Dr. Maria Papadopoulou"
     assert result["medications"][0]["code"]["text"] == "Atorvastatin 20 mg"
@@ -283,6 +365,31 @@ async def test_enriched_detail_is_patient_scoped(exam_ctx):
         await provider.handle_api_request(
             integration=integration,
             path=f"examinations/{ctx['exam_b']}",
+            method="GET",
+            request=_get_request(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_soft_deleted_exam_is_hidden_from_list_and_detail(exam_ctx):
+    """A soft-deleted exam is invisible to the bridge reads, exactly like a
+    foreign-patient one — `_bound_examination` is the single chokepoint."""
+    ctx = exam_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    listed = await provider.handle_api_request(
+        integration=integration,
+        path="examinations",
+        method="GET",
+        request=_get_request(),
+    )
+    assert str(ctx["exam_deleted"]) not in [e["id"] for e in listed["data"]]
+
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"examinations/{ctx['exam_deleted']}",
             method="GET",
             request=_get_request(),
         )
