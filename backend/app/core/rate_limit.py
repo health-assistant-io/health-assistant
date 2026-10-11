@@ -184,6 +184,31 @@ def rate_limit_integration(
     return _integration_limiter_dep(prefix, max_requests, window, bucket)
 
 
+async def enforce_integration_rate_limit(
+    prefix: str,
+    integration_id: str,
+    *,
+    max_requests: int = 60,
+    window: int = 60,
+    bucket: str = "default",
+    detail: str = "Too many requests for this integration. Please try again later.",
+) -> None:
+    """Imperative per-integration bucket — companion to
+    :func:`rate_limit_integration` for handlers that only know the
+    integration row after resolving auth (e.g. the bridge API proxy's AI
+    budget, enforced between signature verification and dispatch).
+
+    Same key shape as the dependency form, so both share one budget per
+    prefix. Redis-backed, degrade-open, 429 + ``Retry-After`` — all
+    inherited from :func:`_consume`.
+    """
+    limit = _ceiling(bucket, max_requests)
+    window_bucket = int(time.time()) // window
+    await _consume(
+        f"rl:{prefix}:integration:{integration_id}:{window_bucket}", limit, window, detail
+    )
+
+
 def rate_limit_user(prefix: str, max_requests: int, window: int = 60, bucket: str = "ai"):
     """Per-user rate limit for authenticated routes (audit 2026-09-11 S-4).
 

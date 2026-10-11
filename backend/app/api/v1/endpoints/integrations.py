@@ -16,7 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.integration_registry import integration_registry
-from app.core.rate_limit import rate_limit, rate_limit_integration
+from app.core.rate_limit import (
+    enforce_integration_rate_limit,
+    rate_limit,
+    rate_limit_integration,
+)
 from app.core.redis import redis_client
 from app.core.security import get_current_user
 from app.models.enums import IntegrationStatus
@@ -1776,6 +1780,15 @@ async def integration_api_proxy(
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-Api-Signature.",
+        )
+
+    if path.startswith("ai/"):
+        await enforce_integration_rate_limit(
+            "integration_api_proxy_ai",
+            str(integration.id),
+            max_requests=30,
+            window=300,
+            bucket="ai",
         )
 
     try:
