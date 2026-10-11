@@ -6,6 +6,7 @@ import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -503,6 +504,65 @@ class BridgeClientTest {
         val d = env.data[0]
         assertEquals("Dr. House", d.name)
         assertEquals("Cardiology", d.specialty)
+        c.close()
+    }
+
+    @Test
+    fun `requestLines streams SSE data lines`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val sse = "data: {\"event\":\"session\",\"session_id\":\"s1\"}\n\n" +
+            "data: {\"event\":\"delta\",\"text\":\"Hel\"}\n\n" +
+            "data: {\"event\":\"delta\",\"text\":\"lo\"}\n\n" +
+            ": keep-alive comment\n\n" +
+            "data: {\"event\":\"flow_finished\"}\n\n"
+        val engine = MockEngine { respond(sse, HttpStatusCode.OK, headersOf("Content-Type", "text/event-stream")) }
+        val c =
+            BridgeClient(
+                baseUrl = "https://example.test",
+                integrationId = "00000000-0000-0000-0000-000000000000",
+                apiSecret = secret,
+                client = HttpClient(engine),
+                streamClient = HttpClient(engine),
+            )
+        val lines = c.requestLines("POST", "/ai/chat/stream", "{}".encodeToByteArray()).toList()
+        assertEquals(
+            listOf(
+                "data: {\"event\":\"session\",\"session_id\":\"s1\"}",
+                "",
+                "data: {\"event\":\"delta\",\"text\":\"Hel\"}",
+                "",
+                "data: {\"event\":\"delta\",\"text\":\"lo\"}",
+                "",
+                ": keep-alive comment",
+                "",
+                "data: {\"event\":\"flow_finished\"}",
+                "",
+            ),
+            lines,
+        )
+        assertEquals(1, engine.requestHistory.size)
+        assertEquals(
+            "/api/v1/integrations/health_assistant_bridge/api/00000000-0000-0000-0000-000000000000/ai/chat/stream",
+            engine.requestHistory[0].url.encodedPath,
+        )
+        c.close()
+    }
+
+    @Test
+    fun `requestLines throws BridgeException on non-2xx`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val engine = MockEngine { respond("{\"detail\":\"nope\"}", HttpStatusCode.BadRequest) }
+        val c =
+            BridgeClient(
+                baseUrl = "https://example.test",
+                integrationId = "00000000-0000-0000-0000-000000000000",
+                apiSecret = secret,
+                client = HttpClient(engine),
+                streamClient = HttpClient(engine),
+            )
+        val ex = runCatching { c.requestLines("POST", "/ai/chat/stream").toList() }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        assertEquals(400, (ex as BridgeException).statusCode)
         c.close()
     }
 }

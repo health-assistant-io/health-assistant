@@ -16,6 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
+from app.ai.assistance.turns import TURN_LOCK_MESSAGE
+from app.ai.assistance.turns import TurnConflictError
+from app.ai.assistance.turns import acquire_turn
+from app.ai.assistance.turns import release_turn
+from app.ai.assistance.turns import stream_error_frame
 from app.ai.flow_events import flow_failed_event
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
@@ -45,28 +50,6 @@ from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
 
-#: Per-session single-flight turn lock (plan 13 H2, study FIFO reference →
-#: career's rejection shape): one streaming turn per session at a time — the
-#: lock is per-SESSION, not per-branch, so two branches of one session never
-#: stream concurrently (branch pointer writes and checkpoint threads would
-#: otherwise interleave). Acquired before the StreamingResponse is built and
-#: released when the stream generator closes; a concurrent turn is rejected
-#: with 409 before any row is written.
-_ACTIVE_TURNS: set[uuid.UUID] = set()
-
-_TURN_LOCK_MESSAGE = "A reply is already streaming for this chat session."
-
-
-def _acquire_turn(session_id: uuid.UUID) -> None:
-    if session_id in _ACTIVE_TURNS:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_TURN_LOCK_MESSAGE)
-    _ACTIVE_TURNS.add(session_id)
-
-
-def _release_turn(session_id: uuid.UUID) -> None:
-    _ACTIVE_TURNS.discard(session_id)
-
-
 # Audio MIME types accepted for STT — Opus/WebM (Chrome default) + the common
 # fallbacks. WAV/PCM is allowed (some browsers lack Opus) but discouraged by the
 # client, which always requests Opus when available.
@@ -80,78 +63,6 @@ _ALLOWED_AUDIO_MIME = {
     "audio/x-wav",
     "audio/flac",
 }
-
-
-# ---------------------------------------------------------------------------
-# Streaming error classification
-# ---------------------------------------------------------------------------
-# The chat stream endpoints catch exceptions and forward them to the client as
-# an SSE ``{"error": ..., "error_type": ...}`` payload. We never forward raw
-# provider SDK strings (e.g. OpenAI's "Connection error.") because they leak
-# the upstream vendor and aren't localized. Instead we classify the exception
-# into a short, stable code that the frontend maps to a translated message.
-# ValueError is the channel for *intentional* client-facing guard violations
-# (ownership/no-tasks/pending-task checks); its message is already user-facing
-# and is forwarded verbatim with error_type="guard".
-
-_STREAM_ERROR_TYPES = (
-    "connection",
-    "auth",
-    "rate_limit",
-    "timeout",
-    "generic",
-    "guard",
-)
-
-# Provider-SDK exception classes (openai v1) mapped to stable error codes.
-# Matched by class NAME via the MRO instead of isinstance so this endpoint —
-# like every non-factory module (ADR-0008) — never imports a provider SDK.
-# Order matters: APITimeoutError subclasses APIConnectionError.
-# ``model_config`` (provider HTTP 400) means the request/model shape was
-# rejected — almost always a model/task mismatch (e.g. a reasoning model
-# that cannot run chat tools). The frontend maps it to actionable guidance
-# (check the AI Configuration task assignment).
-_PROVIDER_ERROR_NAMES: tuple[tuple[str, str], ...] = (
-    ("APITimeoutError", "timeout"),
-    ("APIConnectionError", "connection"),
-    ("AuthenticationError", "auth"),
-    ("RateLimitError", "rate_limit"),
-    ("BadRequestError", "model_config"),
-)
-
-
-def _classify_stream_error(exc: Exception) -> tuple[str, str]:
-    """Return ``(error_type, user_message)`` for a streaming exception.
-
-    The ``error_type`` is a stable lowercase code the frontend localizes.
-    ``user_message`` is non-empty only for soft guard messages (ValueError);
-    for provider errors it is empty so the frontend MUST localize from the
-    code (no raw SDK text leaves the server).
-    """
-    if isinstance(exc, ValueError):
-        # Intentional guard violation — message is already user-facing.
-        return ("guard", str(exc))
-
-    # Map known LLM/provider errors to non-leaky codes by walking the MRO —
-    # LangChain passes the provider SDK's exception classes through verbatim.
-    names = {cls.__name__ for cls in type(exc).__mro__}
-    for name, code in _PROVIDER_ERROR_NAMES:
-        if name in names:
-            return (code, "")
-    return ("generic", "")
-
-
-def _stream_error_frame(exc: Exception) -> str:
-    """Build the terminal SSE ``flow_failed`` frame for a streaming exception.
-
-    Carries the §5 payload: the classified ``code`` (the stable error_type
-    the frontend localizes), ``message`` (non-empty only for soft guard
-    violations), and ``retryable`` (true for the transient provider
-    classes)."""
-    error_type, user_message = _classify_stream_error(exc)
-    retryable = error_type in ("connection", "timeout", "rate_limit")
-    frame = flow_failed_event(retryable, code=error_type, message=user_message)
-    return f"data: {json.dumps(frame)}\n\n"
 
 
 async def _validate_owned_session(context: dict, current_user: TokenData, db: AsyncSession) -> None:
@@ -253,7 +164,13 @@ async def assist_user_stream(
     context_session = (request.context or {}).get("session_id")
     lock_session_id = UUID(context_session) if context_session else None
     if lock_session_id is not None:
-        _acquire_turn(lock_session_id)
+        try:
+            acquire_turn(lock_session_id)
+        except TurnConflictError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=TURN_LOCK_MESSAGE,
+            ) from e
 
     async def event_generator():
         try:
@@ -275,15 +192,15 @@ async def assist_user_stream(
             import logging
 
             logging.getLogger(__name__).warning(f"Chat stream rejected: {e}")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
         finally:
             if lock_session_id is not None:
-                _release_turn(lock_session_id)
+                release_turn(lock_session_id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -381,7 +298,13 @@ async def _branch_turn_stream(
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
 
-    _acquire_turn(session.id)
+    try:
+        acquire_turn(session.id)
+    except TurnConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=TURN_LOCK_MESSAGE,
+        ) from e
     service = AIAssistanceService(db)
 
     async def event_generator():
@@ -400,14 +323,14 @@ async def _branch_turn_stream(
             import logging
 
             logging.getLogger(__name__).warning(f"Branch turn rejected: {e}")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("Branch turn streaming failed")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
         finally:
-            _release_turn(session.id)
+            release_turn(session.id)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -634,12 +557,12 @@ async def resume_hitl_session(
             import logging
 
             logging.getLogger(__name__).warning(f"HITL resume rejected: {e}")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
-            yield _stream_error_frame(e)
+            yield stream_error_frame(e)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

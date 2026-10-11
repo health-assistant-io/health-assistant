@@ -1782,6 +1782,13 @@ async def integration_api_proxy(
         response_data = await provider.handle_api_request(
             integration=integration, path=path, method=request.method, request=request
         )
+        # Streaming (SSE) provider responses pass through untouched — the
+        # provider owns its DB-session lifetime inside the generator (the
+        # request-scoped session must not be touched by the stream body).
+        from fastapi.responses import StreamingResponse as _StreamingResponse
+
+        if isinstance(response_data, _StreamingResponse):
+            return response_data
         # Commit any configuration changes the provider made (e.g., sync cursor update)
         from sqlalchemy.orm.attributes import flag_modified
 

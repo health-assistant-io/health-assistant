@@ -3,17 +3,24 @@ package io.healthassistant.bridge
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.utils.io.readUTF8Line
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.io.IOException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -37,6 +44,7 @@ class BridgeClient(
     val integrationId: String,
     val apiSecret: String? = null,
     client: HttpClient? = null,
+    streamClient: HttpClient? = null,
 ) : AutoCloseable {
 
     val apiBase: String =
@@ -97,6 +105,46 @@ class BridgeClient(
         val bytes = resp.bodyAsBytes()
         if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, bytes.decodeToString())
         return bytes
+    }
+
+    /**
+     * Line-by-line reading of a signed streaming response body (SSE `data:`
+     * lines). Ktor stays inside the SDK — callers consume a cold [Flow] of
+     * raw lines and parse the SSE framing themselves. Non-2xx →
+     * [BridgeException] before the first emission.
+     *
+     * Uses a dedicated engine WITHOUT the 30 s request timeout — a chat
+     * stream legitimately idles between deltas (connect timeout still
+     * applies; engine-level socket timeouts cover a dead peer).
+     */
+    fun requestLines(method: String, path: String, body: ByteArray? = null): Flow<String> =
+        flow {
+            val resp = send(method, path, body ?: ByteArray(0), client = streamHttp)
+            if (resp.status.value !in 200..299) {
+                throw BridgeException(resp.status.value, resp.bodyAsText())
+            }
+            val channel = resp.bodyAsChannel()
+            while (!channel.isClosedForRead) {
+                val line = channel.readUTF8Line() ?: break
+                emit(line)
+            }
+        }.flowOn(Dispatchers.IO)
+
+    /** The streaming twin of [http]: no whole-request timeout, so long SSE
+     *  bodies aren't cut at 30 s (see [requestLines]). Lazily built (or the
+     *  injected [streamClient], e.g. a MockEngine in tests); closed together
+     *  with the main client when owned. */
+    private val ownsStreamClient = streamClient == null
+    private val streamHttp: HttpClient by lazy {
+        streamClient
+            ?: HttpClient(CIO) {
+                install(HttpTimeout) {
+                    // Disable the whole-request timeout — SSE bodies idle
+                    // between deltas (connect timeout still applies).
+                    requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+                    connectTimeoutMillis = 10_000
+                }
+            }
     }
 
     /** Convenience: `GET /documents/{id}/content` → raw bytes. */
@@ -408,11 +456,12 @@ class BridgeClient(
         path: String,
         body: ByteArray,
         attempt: Int = 0,
+        client: HttpClient = http,
     ): HttpResponse {
         val signed = apiSecret?.takeIf { it.isNotBlank() }
             ?.let { Signing.sign(it, method, path, body) }
         return try {
-            val resp = http.request(apiBase + normalize(path)) {
+            val resp = client.request(apiBase + normalize(path)) {
                 this.method = HttpMethod.parse(method)
                 if (body.isNotEmpty()) {
                     setBody(body)
@@ -425,14 +474,14 @@ class BridgeClient(
             }
             if (resp.status.value in RETRYABLE && attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1)
+                send(method, path, body, attempt + 1, client)
             } else {
                 resp
             }
         } catch (e: IOException) {
             if (attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1)
+                send(method, path, body, attempt + 1, client)
             } else {
                 throw e
             }
@@ -476,6 +525,7 @@ class BridgeClient(
 
     override fun close() {
         if (ownsClient) http.close()
+        if (ownsStreamClient) streamHttp.close()
     }
 
     private companion object {

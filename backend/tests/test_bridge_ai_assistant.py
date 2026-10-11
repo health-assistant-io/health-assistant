@@ -5,7 +5,6 @@ The LLM is patched out (`AIAssistanceService.assist`) — these tests pin the
 routing, the owner/patient isolation envelope, and the resolve contract."""
 
 import uuid
-from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -14,8 +13,7 @@ from integrations.health_assistant_bridge.provider import HealthAssistantBridgeP
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
-from app.models.chat_model import ChatMessage
-from app.models.chat_model import ChatSession
+from app.models.chat_model import ChatMessage, ChatSession
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
@@ -201,7 +199,9 @@ async def test_ai_chat_pins_the_bound_patient_and_threads_the_session(ai_ctx):
             integration=integration,
             path="ai/chat",
             method="POST",
-            request=_post_request({"message": "Summarize my lipids", "session_id": str(ctx["session_a"])}),
+            request=_post_request(
+                {"message": "Summarize my lipids", "session_id": str(ctx["session_a"])}
+            ),
         )
 
     assert result["success"] is True
@@ -315,4 +315,84 @@ async def test_ai_delete_session_is_scoped(ai_ctx):
             path=f"ai/sessions/{ctx['session_b']}",
             method="DELETE",
             request=_get_request(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx):
+    """The streaming twin: SSE frames flow through the provider's
+    StreamingResponse (consumed via its body_iterator), the service sees the
+    pinned patient context, and the single-flight turn lock is released."""
+    import json as _json
+
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    captured = {}
+
+    async def fake_assist(self, **kwargs):
+        captured.update(kwargs)
+
+        async def gen():
+            assert kwargs["stream"] is True
+            sid = kwargs["context"]["session_id"]
+            yield f'data: {{"event":"session","session_id":"{sid}"}}\n\n'
+            yield 'data: {"event":"delta","text":"Hi"}\n\n'
+            yield 'data: {"event":"flow_finished"}\n\n'
+
+        return gen()
+
+    from fastapi.responses import StreamingResponse
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        response = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request(
+                {"message": "Summarize my lipids", "session_id": str(ctx["session_a"])}
+            ),
+        )
+        assert isinstance(response, StreamingResponse)
+        assert response.media_type == "text/event-stream"
+        # Consume INSIDE the patch — the generator body (and the patched
+        # service call) only runs when iteration starts.
+        frames = [frame async for frame in response.body_iterator]
+
+    events = [_json.loads(f.removeprefix("data: ").strip()) for f in frames]
+    assert [e["event"] for e in events] == ["session", "delta", "flow_finished"]
+    assert events[0]["session_id"] == str(ctx["session_a"])
+    assert captured["context"]["patient_id"] is not None
+    assert captured["context"]["session_id"] == str(ctx["session_a"])
+
+    # The turn lock was released — an immediate second stream is accepted.
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        second = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "Again", "session_id": str(ctx["session_a"])}),
+        )
+        _ = [frame async for frame in second.body_iterator]
+
+@pytest.mark.asyncio
+async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx):
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "hi", "session_id": str(ctx["session_b"])}),
+        )
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "   "}),
         )

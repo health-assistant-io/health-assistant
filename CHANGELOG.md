@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Bridge AI assistant paths (R7 Phase 1, non-streaming):** the mobile app
+- **Bridge AI assistant paths (R7 Phase 1+2):** the mobile app
   can chat natively through the integration identity — `GET /ai/sessions`,
   `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),
   `POST /ai/chat` (one non-streaming turn; creates/treads sessions, patient
@@ -21,8 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve`. The resolve logic
   moved into the shared `app/services/hitl_resolver.py` (typed
   not-found/conflict errors) and the `/ai-assistance` endpoint now delegates
-  to it — behavior identical (404/409/400 mappings kept). Streaming (SSE),
-  branching, and confirm-with-commit cards are Phase 2.
+  to it — behavior identical (404/409/400 mappings kept).
+- **Bridge AI chat streaming (R7 Phase 2):** `POST /ai/chat/stream` returns
+  the PWA-identical SSE stream (family vocabulary + `session`/`task`/
+  `citation`/`interrupt` payload events) through the integration proxy,
+  which now passes provider `StreamingResponse`s through untouched. The
+  chat turn single-flight lock + SSE error-frame classification moved to
+  `app/ai/assistance/turns.py` and is shared by the web endpoint and the
+  bridge, so PWA and mobile turns interlock per session. The Kotlin SDK
+  gained `BridgeClient.requestLines` (line-by-line SSE reading on a
+  dedicated no-request-timeout engine, ktor kept internal).
 - **Bridge examination SDK models (kotlin-sdk):** `ExaminationSummary` now
   carries the enriched card fields (progress, per-section counts, timestamps)
   and a new typed `ExaminationDetail` (+ `ExaminationObservation`,

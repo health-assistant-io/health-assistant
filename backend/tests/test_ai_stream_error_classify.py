@@ -15,7 +15,7 @@ from openai import (
     RateLimitError,
 )
 
-from app.api.v1.endpoints.ai_assistance import _classify_stream_error
+from app.ai.assistance.turns import classify_stream_error as _classify_stream_error
 
 
 class TestClassifyStreamError:
@@ -99,7 +99,7 @@ class TestStreamErrorFrame:
     localizes), the user-facing text only for guards, plus ``retryable``."""
 
     def test_guard_frame_carries_message(self):
-        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+        from app.ai.assistance.turns import stream_error_frame as _stream_error_frame
 
         frame = _stream_error_frame(ValueError("Session not found or access denied."))
         assert frame.startswith('data: {"event": "flow_failed"')
@@ -114,7 +114,7 @@ class TestStreamErrorFrame:
     def test_provider_frame_is_code_only_and_retryable(self):
         from openai import APIConnectionError
 
-        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+        from app.ai.assistance.turns import stream_error_frame as _stream_error_frame
 
         exc = APIConnectionError(request=None)
         payload = json.loads(_stream_error_frame(exc).removeprefix("data: ").strip())
@@ -123,7 +123,7 @@ class TestStreamErrorFrame:
         assert payload["retryable"] is True
 
     def test_generic_frame_is_not_retryable_and_leaks_nothing(self):
-        from app.api.v1.endpoints.ai_assistance import _stream_error_frame
+        from app.ai.assistance.turns import stream_error_frame as _stream_error_frame
 
         frame = _stream_error_frame(RuntimeError("connect to https://api.openai.com failed"))
         payload = json.loads(frame.removeprefix("data: ").strip())

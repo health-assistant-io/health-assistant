@@ -384,6 +384,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             return await self._ai_list_sessions(integration)
         elif path == "ai/chat" and method == "POST":
             return await self._ai_chat(integration, request)
+        elif path == "ai/chat/stream" and method == "POST":
+            return await self._ai_chat_stream(integration, request)
         elif path.startswith("ai/sessions/") and method == "GET":
             parts = path.split("/")
             if len(parts) == 4 and parts[3] == "messages":
@@ -1742,11 +1744,87 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "success": bool(result.get("success", True)),
         }
 
+    async def _ai_chat_stream(
+        self, integration: UserIntegration, request: Any
+    ):
+        """`POST /ai/chat/stream` — the SSE twin of the PWA `/stream` chat:
+        family vocabulary frames (`session`/`delta`/`task`/`citation`/
+        `interrupt` + flow lifecycle), one streaming turn per session (the
+        shared single-flight lock), error frames identical to the web client.
+
+        The service keeps ONE AsyncSessionLocal open for the whole stream
+        (the bridge's per-handler session would otherwise close when this
+        method returns) — the generator closes it in its `finally`. The
+        integration proxy passes the StreamingResponse through untouched.
+        """
+        from fastapi.responses import StreamingResponse
+
+        from app.ai.assistance.service import AIAssistanceService
+        from app.ai.assistance.turns import TurnConflictError
+        from app.ai.assistance.turns import acquire_turn
+        from app.ai.assistance.turns import release_turn
+        from app.ai.assistance.turns import stream_error_frame
+        from app.core.database import AsyncSessionLocal
+
+        payload = await request.json()
+        message = (payload.get("message") or "").strip()
+        if not message:
+            raise ValueError("message is required")
+        if len(message) > 8000:
+            raise ValueError("message is too long (8000 char cap)")
+        session_id = payload.get("session_id")
+
+        context: dict[str, Any] = {}
+        db = AsyncSessionLocal()
+        try:
+            if session_id:
+                await self._ai_owned_session(db, integration, str(session_id))
+                context["session_id"] = str(session_id)
+            actor, patient_id = await self._ai_actor_and_patient(db, integration)
+            context["patient_id"] = patient_id
+        except Exception:
+            await db.close()
+            raise
+
+        lock_session_id = UUID(context["session_id"]) if session_id else None
+        if lock_session_id is not None:
+            try:
+                acquire_turn(lock_session_id)
+            except TurnConflictError as e:
+                await db.close()
+                raise ValueError(str(e)) from e
+
+        service = AIAssistanceService(db)
+
+        async def event_generator():
+            try:
+                async for frame in await service.assist(
+                    task_type="chat",
+                    user_input=message,
+                    context=context,
+                    tenant_id=integration.tenant_id,
+                    user_id=actor.user_id,
+                    stream=True,
+                ):
+                    yield frame
+            except ValueError as e:
+                # Intentional guard violation — localized, user-facing.
+                yield stream_error_frame(e)
+            except Exception as e:
+                logger.exception(
+                    "Bridge chat stream failed for integration %s", integration.id
+                )
+                yield stream_error_frame(e)
+            finally:
+                if lock_session_id is not None:
+                    release_turn(lock_session_id)
+                await db.close()
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
     async def _ai_delete_session(
         self, integration: UserIntegration, session_id: str
     ) -> dict[str, Any]:
-        from uuid import UUID
-
         from app.core.database import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:

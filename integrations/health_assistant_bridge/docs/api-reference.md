@@ -392,11 +392,13 @@ integration's user AND bound to its patient returns HTTP 400.
 | `GET /ai/sessions` | The owner's chat sessions for the bound patient, newest first: `{data: [{id, title, patient_id, updated_at}]}`. |
 | `GET /ai/sessions/{id}/messages` | The session's messages: `{data: [{id, role, content, tasks, citations, created_at}]}`. `content` is `{"text": …}`; `tasks` carries HITL proposal cards (`proposal_id`, `task_type`, `title`, `status`, `proposed_payload`). |
 | `POST /ai/chat` | One non-streaming chat turn. Body `{message, session_id?}` → `{message, session_id, success}`. Creates a session on the first turn (title auto-generated); `message` is capped at 8000 chars. The same prompt-injection guard as the PWA chat applies. |
+| `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 400 "already streaming"). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. |
 | `DELETE /ai/sessions/{id}` | Delete a chat session (scoped). |
 | `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 400 (`Task already …`). |
 
-Streaming (SSE), branching (edit/regenerate), and confirm-with-commit card
-kinds are Phase 2 — the dispatch currently returns JSON only.
+Streaming: **landed for chat in Phase 2** — `POST /ai/chat/stream` returns
+SSE (the proxy passes provider `StreamingResponse`s through). Branching
+(edit/regenerate) and web-only card kinds remain future phases.
 
 **Kotlin SDK:** use `BridgeClient.requestText(method, path)` (or `request` for
 the raw `HttpResponse`) for these — they return either a JSON dict (DELETE,
