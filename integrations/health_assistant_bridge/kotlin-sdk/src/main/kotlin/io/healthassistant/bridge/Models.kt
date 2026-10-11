@@ -550,3 +550,11 @@ data class ChatMessage(
     val citations: List<kotlinx.serialization.json.JsonObject> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null,
 )
+
+/** `PATCH /ai/sessions/{id}` reply — the renamed session row. */
+@Serializable
+data class SessionRenameResult(
+    val id: String,
+    val title: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null,
+)

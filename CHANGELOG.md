@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge session rename (WS6):** `PATCH /ai/sessions/{id}` renames a chat
+  session over the integration identity — body `{title}` (non-blank, ≤ 200
+  chars, mirroring the PWA `ChatSessionTitleUpdate` contract) →
+  `{id, title, updated_at}`, with the same owner+patient isolation envelope
+  as every other `/ai/*` path. Kotlin `renameSession(sessionId, title)` and
+  the TypeScript twin ship in the same commit (decode + wire tests included;
+  version bumps land in WS11).
 - **Bridge rich non-streaming chat turn (WS5):** `POST /ai/chat` now
   returns `{message, session_id, success, message_id, tasks, citations}` —
   the turn's persisted assistant row (id + HITL proposal cards + citations)

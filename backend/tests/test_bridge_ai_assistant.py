@@ -475,6 +475,65 @@ async def test_ai_resolve_records_dismissal_and_appends_note(ai_ctx):
 
 
 @pytest.mark.asyncio
+async def test_ai_rename_session_round_trips_the_new_title(ai_ctx):
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    result = await provider.handle_api_request(
+        integration=integration,
+        path=f"ai/sessions/{ctx['session_a']}",
+        method="PATCH",
+        request=_post_request({"title": "Lipids Q3 follow-up"}),
+    )
+
+    assert result["id"] == str(ctx["session_a"])
+    assert result["title"] == "Lipids Q3 follow-up"
+    assert result["updated_at"]
+
+    async with AsyncSessionLocal() as db:
+        session = await db.get(ChatSession, ctx["session_a"])
+        assert session.title == "Lipids Q3 follow-up"
+
+    listing = await provider.handle_api_request(
+        integration=integration,
+        path="ai/sessions",
+        method="GET",
+        request=_get_request(),
+    )
+    assert listing["data"][0]["title"] == "Lipids Q3 follow-up"
+
+
+@pytest.mark.asyncio
+async def test_ai_rename_session_is_scoped_and_validated(ai_ctx):
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_b']}",
+            method="PATCH",
+            request=_post_request({"title": "Not mine"}),
+        )
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}",
+            method="PATCH",
+            request=_post_request({"title": "   "}),
+        )
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}",
+            method="PATCH",
+            request=_post_request({"title": "x" * 201}),
+        )
+
+
+@pytest.mark.asyncio
 async def test_ai_delete_session_is_scoped(ai_ctx):
     ctx = ai_ctx
     integration = await _load_integration(ctx["integration_id"])

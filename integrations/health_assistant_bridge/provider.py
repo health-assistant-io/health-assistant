@@ -281,6 +281,11 @@ _ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
         "_ai_session_messages",
     ),
     (
+        "PATCH",
+        re.compile(r"^ai/sessions/(?P<session_id>[^/]+)$"),
+        "_ai_rename_session",
+    ),
+    (
         "DELETE",
         re.compile(r"^ai/sessions/(?P<session_id>[^/]+)$"),
         "_ai_delete_session",
@@ -1858,6 +1863,33 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 await db.close()
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    async def _ai_rename_session(
+        self, integration: UserIntegration, session_id: str, request: Any
+    ) -> dict[str, Any]:
+        """`PATCH /ai/sessions/{id}` — rename a chat session. Body `{title}`
+        (non-blank, ≤200 chars — mirrors the PWA `ChatSessionTitleUpdate`
+        contract). Returns `{id, title, updated_at}`."""
+        from uuid import UUID
+
+        from app.core.database import AsyncSessionLocal
+
+        payload = await request.json()
+        title = (payload.get("title") or "").strip()
+        if not title:
+            raise ValueError("title is required")
+        if len(title) > 200:
+            raise ValueError("title is too long (200 char cap)")
+        async with AsyncSessionLocal() as db:
+            svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
+            session = await svc.rename_session(
+                UUID(session_id), actor.user_id, integration.tenant_id, title
+            )
+        return {
+            "id": str(session.id),
+            "title": session.title,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+        }
 
     async def _ai_delete_session(
         self, integration: UserIntegration, session_id: str, request: Any

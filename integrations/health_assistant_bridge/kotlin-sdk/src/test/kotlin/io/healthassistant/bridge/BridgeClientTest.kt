@@ -643,4 +643,29 @@ class BridgeClientTest {
         assertTrue(capturedUrl!!.endsWith("/ai/sessions/s1/messages?limit=50"))
         c.close()
     }
+
+    @Test
+    fun `renameSession PATCHes and decodes the renamed row`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val c = bridge(secret) { req ->
+            assertEquals("PATCH", req.method.value)
+            respond("""{"id":"s1","title":"Lipids follow-up","updated_at":"2026-10-12T09:00:00Z"}""")
+        }
+        val r = c.renameSession("s1", "Lipids follow-up")
+        assertEquals("s1", r.id)
+        assertEquals("Lipids follow-up", r.title)
+        assertEquals("2026-10-12T09:00:00Z", r.updatedAt)
+        c.close()
+    }
+
+    @Test
+    fun `renameSession surfaces validation errors as BridgeException`() = runBlocking {
+        val c = bridge(null) {
+            respond("""{"detail":"title is required"}""", HttpStatusCode.BadRequest)
+        }
+        val ex = runCatching { c.renameSession("s1", "  ") }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        assertEquals(400, (ex as BridgeException).statusCode)
+        c.close()
+    }
 }

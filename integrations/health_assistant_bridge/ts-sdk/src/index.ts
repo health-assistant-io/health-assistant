@@ -111,6 +111,13 @@ export interface ChatTurnResult {
   citations?: Record<string, unknown>[];
 }
 
+/** Reply of `PATCH /ai/sessions/{id}` — the renamed session row. */
+export interface SessionRenameResult {
+  id: string;
+  title?: string | null;
+  updated_at?: string | null;
+}
+
 export interface BridgeClientOptions {
   /** HMAC secret. When set, /map and /sync are signed (X-Api-Signature). */
   apiSecret?: string;
@@ -251,6 +258,16 @@ export class HealthAssistantBridgeClient {
       "/ai/sessions/" + sessionId + "/messages" + (limit != null ? "?limit=" + limit : "");
     const response = await this.request("GET", this.apiUrl + path, Buffer.alloc(0), path);
     return (await response.json()) as { data: BridgeChatMessage[] };
+  }
+
+  /** Rename a session (`PATCH /ai/sessions/{id}`) — title non-blank, ≤ 200
+   * chars (validated server-side). Idempotent, so the default retry policy
+   * applies. Returns the renamed row. */
+  async renameSession(sessionId: string, title: string): Promise<SessionRenameResult> {
+    const path = "/ai/sessions/" + sessionId;
+    const rawBody = Buffer.from(JSON.stringify({ title }), "utf8");
+    const response = await this.request("PATCH", this.apiUrl + path, rawBody, path);
+    return (await response.json()) as SessionRenameResult;
   }
 
   private signedHeaders(method: string, path: string, rawBody: Buffer): Record<string, string> {

@@ -477,6 +477,18 @@ class BridgeClient(
             ChatMessage.serializer(),
         )
 
+    /** `PATCH /ai/sessions/{id}` — rename a session (title non-blank, ≤ 200
+     *  chars, validated server-side). Idempotent, so the default retry
+     *  policy applies. Returns the renamed row. */
+    suspend fun renameSession(sessionId: String, title: String): SessionRenameResult {
+        val payload = buildJsonObject { put("title", title) }
+        val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
+        return decode(
+            requestText("PATCH", "/ai/sessions/$sessionId", body),
+            SessionRenameResult.serializer(),
+        )
+    }
+
     // --- internals ------------------------------------------------------
 
     private suspend fun send(

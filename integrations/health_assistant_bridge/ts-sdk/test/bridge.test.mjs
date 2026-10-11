@@ -107,6 +107,43 @@ test("chat never auto-retries a failed turn", async (t) => {
   assert.equal(calls.length, 1);
 });
 
+test("renameSession PATCHes the session and decodes the renamed row", async (t) => {
+  const calls = mockFetch(t, () =>
+    jsonResponse({
+      id: "s1",
+      title: "Lipids follow-up",
+      updated_at: "2026-10-12T09:00:00Z",
+    }),
+  );
+
+  const client = new HealthAssistantBridgeClient(BASE, INTEGRATION, {
+    apiSecret: SECRET,
+  });
+  const result = await client.renameSession("s1", "Lipids follow-up");
+
+  assert.equal(result.id, "s1");
+  assert.equal(result.title, "Lipids follow-up");
+  assert.equal(result.updated_at, "2026-10-12T09:00:00Z");
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `${API_ROOT}/ai/sessions/s1`);
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].init.body.toString("utf8")), {
+    title: "Lipids follow-up",
+  });
+  const expected = signRequest(
+    SECRET,
+    "PATCH",
+    "/ai/sessions/s1",
+    Buffer.from(calls[0].init.body.toString("utf8"), "utf8"),
+    Number(calls[0].init.headers["X-Api-Timestamp"]),
+  );
+  assert.equal(
+    calls[0].init.headers["X-Api-Signature"],
+    expected["X-Api-Signature"],
+  );
+});
+
 test("getMessages decodes the envelope and threads limit into the query", async (t) => {
   const calls = mockFetch(t, () =>
     jsonResponse({
