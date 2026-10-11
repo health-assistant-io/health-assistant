@@ -8,7 +8,7 @@ The Bridge ships three strictly-typed client SDKs in the repository — you don'
 | TypeScript | `integrations/health_assistant_bridge/ts-sdk/` | `@health-assistant/bridge-client` | browser extensions, React Native, Node.js scripts |
 | Kotlin | `integrations/health_assistant_bridge/kotlin-sdk/` | `io.healthassistant:kotlin-sdk` | Android (and future iOS via KMP) companion apps |
 
-Both SDKs are versioned (`SDK_VERSION`) and the `/status` endpoint returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
+All three SDKs are versioned (`SDK_VERSION`) and the signed `/status` tier returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
 
 ## Python
 
@@ -170,7 +170,7 @@ val client = BridgeClient(
     apiSecret = "a-very-long-random-secret", // omit for UUID-only mode
 )
 
-val status = client.getStatus()                       // never signed
+val status = client.getStatus()                       // signed → full payload
 val resp = client.syncData(
     SyncPayload(clientVersion = "0.1", sourceSystem = "android",
         records = listOf(ClientRecord(type = "quantitative", code = "8867-4",
@@ -181,11 +181,114 @@ val body = client.requestText("GET", "/observations/latest")
 client.close()
 ```
 
-`getStatus()` is **never** signed; every other call signs when `apiSecret` is
-set. `requestText(...)` returns the response body (throwing `BridgeException`
+`/status` is two-tier: **unsigned** it is the pre-pairing liveness probe
+(`{status, server_time}` only); **signed** — automatically, whenever
+`apiSecret` is set — it returns the full discovery payload (cursor,
+`latest_sdks`, `frontend_base_url`, `server_version`, `bridge_features`).
+Every other call signs when `apiSecret` is set.
+`requestText(...)` returns the response body (throwing `BridgeException`
 on a non-2xx) so callers can decode JSON without depending on ktor. The HMAC
 parity test (`SigningParityTest`) asserts byte-for-byte equality with the
 Python `sign_request` across ASCII / empty / non-ASCII / GET vectors.
+
+## Third-party Node/TS quickstart (status → chat → stream)
+
+The TS SDK is the fastest way to build a third-party client on Node (it
+targets Node 18+: global `fetch`, `Buffer`, `AbortController`). Three calls
+cover the loop: a signed `/status` for capability discovery, one
+non-streaming chat turn, and the SSE stream. Typed chat helpers are on the
+SDK roadmap — until they land, the chat calls below are signed raw requests
+built with the exported `signRequest` helper (the same canonical form every
+SDK uses).
+
+```typescript
+import {
+  HealthAssistantBridgeClient,
+  signRequest,
+} from "@health-assistant/bridge-client";
+
+const baseUrl = "https://ha.example";
+const integrationId = "00000000-0000-0000-0000-000000000000";
+const apiSecret = "a-very-long-random-secret";
+const api = `${baseUrl}/api/v1/integrations/health_assistant_bridge/api/${integrationId}`;
+
+// 1) Signed status — the full discovery payload (feature flags, server version).
+const client = new HealthAssistantBridgeClient(baseUrl, integrationId, {
+  apiSecret,
+});
+const status = await client.getStatus();
+const canChat = status.bridge_features?.includes("ai_assistant") ?? false;
+const canStream = status.bridge_features?.includes("ai_streaming") ?? false;
+
+// 2) One non-streaming chat turn (signed POST /ai/chat).
+async function chat(message: string, sessionId?: string) {
+  const body = Buffer.from(
+    JSON.stringify({ message, session_id: sessionId }),
+    "utf8",
+  );
+  const headers = {
+    "Content-Type": "application/json",
+    ...signRequest(apiSecret, "POST", "/ai/chat", body),
+  };
+  const res = await fetch(`${api}/ai/chat`, { method: "POST", headers, body });
+  if (!res.ok) throw new Error(`chat failed: ${res.status}`);
+  return (await res.json()) as {
+    message: string;
+    session_id: string;
+    success: boolean;
+  };
+}
+
+// 3) The SSE stream (signed POST /ai/chat/stream) — yield `data:` frames.
+async function* chatStream(message: string, sessionId?: string) {
+  const body = Buffer.from(
+    JSON.stringify({ message, session_id: sessionId }),
+    "utf8",
+  );
+  const headers = {
+    "Content-Type": "application/json",
+    ...signRequest(apiSecret, "POST", "/ai/chat/stream", body),
+  };
+  const res = await fetch(`${api}/ai/chat/stream`, {
+    method: "POST",
+    headers,
+    body,
+  });
+  if (!res.ok || !res.body) throw new Error(`stream failed: ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      if (line.startsWith("data: ")) yield line.slice("data: ".length);
+    }
+  }
+}
+
+// Check the flags first, then pick the surface.
+if (canStream) {
+  for await (const frame of chatStream("Summarize my latest lab results.")) {
+    const event = JSON.parse(frame);
+    if (event.event === "delta") process.stdout.write(event.text ?? "");
+  }
+} else if (canChat) {
+  const turn = await chat("Summarize my latest lab results.");
+  console.log(turn.message);
+} else {
+  console.log("This server has no AI paths — push/sync still work.");
+}
+```
+
+Every `/ai/*` call goes through the same HMAC gate as the rest of the
+bridge: sign the exact bytes you send, send `X-Api-Signature` +
+`X-Api-Timestamp`, keep the message ≤ 8000 chars, and remember only one
+streaming turn per session runs at a time.
 
 ## See also
 

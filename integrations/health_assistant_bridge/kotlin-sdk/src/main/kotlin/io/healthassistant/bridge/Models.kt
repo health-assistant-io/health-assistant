@@ -17,6 +17,9 @@ data class ReadEnvelope<T>(
 @Serializable
 data class BridgeStatus(
     val status: String,
+    /** The server's clock (epoch seconds) — present in both tiers; lets a
+     *  skewed client resync before signing (the replay window is ±5 min). */
+    @SerialName("server_time") val serverTime: Long? = null,
     @SerialName("integration_id") val integrationId: String? = null,
     @SerialName("last_synced_at") val lastSyncedAt: String? = null,
     val cursor: String? = null,

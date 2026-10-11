@@ -4,7 +4,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.HttpTimeoutConfig
-import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
@@ -34,8 +33,11 @@ import kotlin.random.Random
 /**
  * Client for the Health Assistant Bridge two-way API proxy. Mirrors
  * python-sdk/.../async_client.py: pooled client, 30s timeout, full-jitter
- * backoff (cap 8s, 3 attempts) on 429/5xx/network. `/status` is never signed;
- * every other path is HMAC-signed when [apiSecret] is set.
+ * backoff (cap 8s, 3 attempts) on 429/5xx/network. Every path is
+ * HMAC-signed when [apiSecret] is set; without one, only the minimal
+ * unsigned [getStatus] liveness probe is answered by the server (the
+ * full discovery payload requires a signature — least-privilege by
+ * design).
  *
  * Pass a custom [client] (e.g. a MockEngine-backed HttpClient) for tests.
  */
@@ -59,11 +61,14 @@ class BridgeClient(
     private val ownsClient = client == null
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
-    /** Connectivity + cursor + SDK discovery. NEVER signed. */
-    suspend fun getStatus(): BridgeStatus {
-        val text = http.get("$apiBase/status").bodyAsText()
-        return json.decodeFromString(BridgeStatus.serializer(), text)
-    }
+    /** Two-tier status probe. **Unsigned** (no [apiSecret]) it is the
+     *  pre-pairing liveness probe — the server answers the minimal
+     *  `{status, server_time}` shape only. **Signed** (secret set) it
+     *  returns the full discovery payload: cursor, latest SDK versions,
+     *  frontend origin, [BridgeStatus.serverVersion], and the
+     *  [BridgeStatus.bridgeFeatures] flags the app gates on. */
+    suspend fun getStatus(): BridgeStatus =
+        decode(send("GET", "/status", ByteArray(0)), BridgeStatus.serializer())
 
     suspend fun requestMapping(metrics: List<MetricMappingRequest>): MapResponsePayload {
         val body = json.encodeToString(
