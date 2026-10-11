@@ -39,6 +39,57 @@ class BridgeClientTest {
     }
 
     @Test
+    fun `getStatus signs the empty body when secret set`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        var sawSig: String? = null
+        var sawTs: String? = null
+        val c = bridge(secret) { req ->
+            sawSig = req.headers["X-Api-Signature"]
+            sawTs = req.headers["X-Api-Timestamp"]
+            respond("{\"status\":\"active\"}")
+        }
+        c.getStatus()
+        assertEquals(
+            Signing.sign(secret, "GET", "/status", ByteArray(0), sawTs!!.toLong()).signature,
+            sawSig,
+        )
+        c.close()
+    }
+
+    @Test
+    fun `getStatus decodes the minimal unsigned shape`() = runBlocking {
+        val c = bridge(null) { respond("{\"status\":\"active\",\"server_time\":1760000000}") }
+        val s = c.getStatus()
+        assertEquals("active", s.status)
+        assertEquals(1760000000L, s.serverTime)
+        assertNull(s.cursor)
+        assertNull(s.serverVersion)
+        c.close()
+    }
+
+    @Test
+    fun `getStatus decodes the full signed shape`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val payload = """
+            {"status":"active","server_time":1760000000,
+             "integration_id":"00000000-0000-0000-0000-000000000000",
+             "last_synced_at":null,"cursor":"2026-07-24T12:00:00Z",
+             "latest_sdks":{"python":"1.3.0","ts":"1.3.0","kotlin":"0.5.0"},
+             "frontend_base_url":"http://localhost:3000","server_version":"1.2.0",
+             "bridge_features":["exam_enrichment","ai_assistant","ai_streaming"]}
+        """.trimIndent()
+        val c = bridge(secret) { respond(payload) }
+        val s = c.getStatus()
+        assertEquals(1760000000L, s.serverTime)
+        assertEquals("2026-07-24T12:00:00Z", s.cursor)
+        assertEquals("0.5.0", s.latestSdks?.get("kotlin"))
+        assertEquals("http://localhost:3000", s.frontendBaseUrl)
+        assertEquals("1.2.0", s.serverVersion)
+        assertEquals(listOf("exam_enrichment", "ai_assistant", "ai_streaming"), s.bridgeFeatures)
+        c.close()
+    }
+
+    @Test
     fun `request signs and signature covers the exact bytes sent`() = runBlocking {
         val secret = "test-secret-16chars!"
         val knownBody = "{\"records\":[]}".encodeToByteArray()

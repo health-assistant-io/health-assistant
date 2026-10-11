@@ -301,6 +301,52 @@ async def test_api_proxy_unsigned_status_is_minimal():
 
 
 @pytest.mark.asyncio
+async def test_api_proxy_signed_status_returns_full_provider_payload():
+    """Two-tier ``/status``: a SIGNED GET falls through to the provider and
+    returns its full payload verbatim — cursor, SDK versions, frontend
+    URL, ``server_version`` and ``bridge_features`` reach the client (the
+    unsigned minimal tier is pinned above)."""
+    secret = "topsecret"
+    integration = _integration(api_secret=secret)
+    ts = int(time.time())
+    sig = _sign(secret, "GET", "status", b"", timestamp=ts)
+    request = _request("GET", b"", headers={"X-Api-Signature": sig, "X-Api-Timestamp": str(ts)})
+    db = MagicMock()
+    db.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=integration))
+    )
+    db.commit = AsyncMock()
+
+    full_payload = {
+        "status": "active",
+        "integration_id": str(integration.id),
+        "last_synced_at": None,
+        "cursor": "2026-07-24T12:00:00Z",
+        "latest_sdks": {"python": "1.3.0", "ts": "1.3.0", "kotlin": "0.5.0"},
+        "frontend_base_url": "http://localhost:3000",
+        "server_version": "1.2.0",
+        "bridge_features": ["exam_enrichment", "ai_assistant", "ai_streaming"],
+    }
+    provider = MagicMock()
+    provider.handle_api_request = AsyncMock(return_value=full_payload)
+
+    with patch.object(integrations_endpoint, "integration_registry") as reg:
+        reg.get_provider.return_value = provider
+        result = await integrations_endpoint.integration_api_proxy(
+            domain="health_assistant_bridge",
+            integration_id=str(integration.id),
+            path="status",
+            request=request,
+            db=db,
+        )
+
+    assert result == full_payload
+    assert result["server_version"] == "1.2.0"
+    assert "ai_streaming" in result["bridge_features"]
+    provider.handle_api_request.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_api_proxy_with_secret_rejects_missing_signature():
     """api_secret set + no X-Api-Signature header → 401."""
     from fastapi import HTTPException

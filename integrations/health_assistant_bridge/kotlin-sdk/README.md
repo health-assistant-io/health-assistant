@@ -12,7 +12,7 @@ val client = BridgeClient(
     apiSecret = "<per-instance hmac secret — mandatory, shown once at instance creation>",
 )
 
-val status = client.getStatus()                       // never signed
+val status = client.getStatus()                       // signed → full payload
 client.syncData(SyncPayload(clientVersion = "0.1", sourceSystem = "android",
     records = listOf(ClientRecord(type = "quantitative", code = "8867-4",
         codingSystem = "loinc", name = "Heart Rate", value = 75.0, unit = "bpm"))))
@@ -23,8 +23,10 @@ client.close()
 
 ## Signing
 
-`/status` is **never** signed. Every other path is HMAC-SHA256 signed over
-`METHOD\n<path>\n<timestamp>\n<raw_body>` when `apiSecret` is set. See
+Every path is HMAC-SHA256 signed over
+`METHOD\n<path>\n<timestamp>\n<raw_body>` when `apiSecret` is set. `/status`
+is two-tier: unsigned it is answered with the minimal `{status, server_time}`
+liveness probe; signed it returns the full discovery payload. See
 [../docs/authentication.md](../docs/authentication.md).
 
 ## Status

@@ -12,14 +12,27 @@ const BACKOFF_CEILING_MS = 8_000;
 
 export interface BridgeStatus {
   status: string;
-  integration_id: string;
-  last_synced_at: string | null;
-  cursor: string | null;
+  /** Server clock (epoch seconds) — present in BOTH tiers; resync a skewed
+   *  client clock before signing (the replay window is ±5 min). */
+  server_time?: number;
+  /** Signed tier only (null/absent on the minimal unsigned probe). */
+  integration_id?: string;
+  last_synced_at?: string | null;
+  cursor?: string | null;
   latest_sdks?: {
     python?: string;
     ts?: string;
+    kotlin?: string;
     [key: string]: string | undefined;
   };
+  /** The server's frontend/PWA origin (e.g. `http://host:3000`). */
+  frontend_base_url?: string | null;
+  /** The server's own version (display only; capability gating uses
+   *  `bridge_features`). */
+  server_version?: string | null;
+  /** Closed feature-flag vocabulary clients gate on. Empty/absent on older
+   *  servers = every gated feature falls back to its legacy path. */
+  bridge_features?: string[];
 }
 
 export interface MetricMappingRequest {
@@ -119,7 +132,8 @@ export interface SessionRenameResult {
 }
 
 export interface BridgeClientOptions {
-  /** HMAC secret. When set, /map and /sync are signed (X-Api-Signature). */
+  /** HMAC secret. When set, requests are signed (X-Api-Signature) —
+   * including the full `/status` discovery tier. */
   apiSecret?: string;
   /** Per-request timeout in ms (default 30000). */
   timeoutMs?: number;
@@ -183,11 +197,20 @@ export class HealthAssistantBridgeClient {
   }
 
   /**
-   * Check the connection status and retrieve the current sync cursor.
-   * Never HMAC-signed (connectivity + SDK-discovery probe).
+   * Two-tier status probe. Without an `apiSecret` it is the unsigned
+   * pre-pairing probe — the server answers the minimal
+   * `{status, server_time}` shape. With `apiSecret` set the request is
+   * HMAC-signed and returns the full discovery payload: cursor, latest
+   * SDK versions, frontend origin, server version, and the
+   * `bridge_features` flags.
    */
   async getStatus(): Promise<BridgeStatus> {
-    const response = await this.request("GET", this.apiUrl + "/status");
+    const response = await this.request(
+      "GET",
+      this.apiUrl + "/status",
+      Buffer.alloc(0),
+      "/status",
+    );
     const data: BridgeStatus = (await response.json()) as BridgeStatus;
     if (data.latest_sdks?.ts && data.latest_sdks.ts !== SDK_VERSION) {
       console.warn(
@@ -295,7 +318,10 @@ export class HealthAssistantBridgeClient {
         const response = await fetch(url, {
           method: method,
           headers: headers,
-          body: rawBody as BodyInit | undefined,
+          body:
+            rawBody && rawBody.length > 0
+              ? (rawBody as BodyInit)
+              : undefined,
           signal: controller.signal,
         });
         if (!response.ok && RETRYABLE_STATUS.has(response.status) && attempt + 1 < attempts) {

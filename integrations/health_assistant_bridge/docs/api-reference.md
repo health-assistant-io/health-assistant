@@ -11,37 +11,77 @@ their documents) under one two-way API proxy:
 `{integration_id}` is the bridge instance UUID (part of the URL, bound to one
 patient). `{path}` selects the endpoint. All request/response bodies are JSON.
 
-When an `api_secret` is configured, `/map`, `/sync`, and every read/management
-path require an HMAC signature — see [Authentication](authentication.md).
-`/status` is **never** signed (it is the connectivity + SDK-discovery probe).
+When an `api_secret` is configured, every path — `/map`, `/sync`, all
+read/management routes, and the full `/status` discovery tier — requires an
+HMAC signature; see [Authentication](authentication.md). `GET /status` alone
+also answers **unsigned**, with a minimal liveness payload (least-privilege
+by design: an unpaired client learns nothing beyond liveness + server time).
 
 ---
 
 ## GET /status
 
-Connectivity probe + cursor + SDK-version discovery. Safe to call frequently.
+Two-tier by design (least-privilege, not a compatibility leftover):
 
-**Headers:** none required (never signed).
+- **Unsigned** (no `X-Api-Signature`) — the pre-pairing connectivity probe
+  (QR / paste-code flow). Returns only liveness + the server clock.
+- **Signed** (HMAC over `GET\n/status\n<timestamp>\n<empty body>`) — the
+  full discovery payload: sync cursor, latest SDK versions, frontend
+  origin, server version, and the `bridge_features` flags clients gate on.
 
-**Response (200):**
+All three SDKs sign `/status` automatically once an `api_secret` is set, so
+paired clients always see the full tier. Safe to call frequently.
+
+**Headers:** none required for the unsigned probe; the signed tier needs the
+standard `X-Api-Signature` + `X-Api-Timestamp` pair.
+
+**Unsigned response (200):**
+
+```json
+{ "status": "active", "server_time": 1760000000 }
+```
+
+**Signed response (200):**
 
 ```json
 {
   "status": "active",
+  "server_time": 1760000000,
   "integration_id": "00000000-0000-0000-0000-000000000000",
   "last_synced_at": "2026-07-24T12:00:00Z",
   "cursor": "2026-07-24T12:00:00Z",
-  "latest_sdks": { "python": "1.2.0", "ts": "1.2.0" }
+  "latest_sdks": { "python": "1.3.0", "ts": "1.3.0", "kotlin": "0.5.0" },
+  "frontend_base_url": "http://localhost:3000",
+  "server_version": "1.2.0",
+  "bridge_features": ["exam_enrichment", "ai_assistant", "ai_streaming"]
 }
 ```
 
-| Field | Type | Notes |
+| Field | Tier | Type | Notes |
+|---|---|---|---|
+| `status` | both | string | `"active"` when the instance is healthy. |
+| `server_time` | both | int | Server clock (epoch seconds) — resync a skewed client clock before signing (the replay window is ±5 min). |
+| `integration_id` | signed | string (uuid) | The instance UUID. |
+| `last_synced_at` | signed | string\|null | ISO 8601 of the last successful `/sync`. `null` before the first sync. |
+| `cursor` | signed | string\|null | The sync cursor the client last pushed. Use this to bound incremental scraping. |
+| `latest_sdks` | signed | object\|null | The Python/TS/Kotlin SDK versions the server advertises (from `manifest.json`). Compare against your client's `SDK_VERSION` and warn the user on mismatch. |
+| `frontend_base_url` | signed | string\|null | The server's frontend/PWA origin — "Open in browser" deep links over the connection the client already holds. |
+| `server_version` | signed | string\|null | The server's own version. Display only — capability gating uses `bridge_features`, never version math. |
+| `bridge_features` | signed | string[] | Closed feature-flag vocabulary clients gate on — see below. Empty/absent on older servers: every gated feature degrades to its fallback. |
+
+### `bridge_features` vocabulary
+
+A closed set — the server only ever advertises flags from this table:
+
+| Flag | Since | Gates |
 |---|---|---|
-| `status` | string | `"active"` when the instance is healthy. |
-| `integration_id` | string (uuid) | The instance UUID. |
-| `last_synced_at` | string\|null | ISO 8601 of the last successful `/sync`. `null` before the first sync. |
-| `cursor` | string\|null | The sync cursor the client last pushed. Use this to bound incremental scraping. |
-| `latest_sdks` | object\|null | The Python/TS SDK versions the server advertises (from `manifest.json`). Compare against your client's `SDK_VERSION` and warn the user on mismatch. |
+| `exam_enrichment` | 2026-10-10 | Enriched exam list/detail — card fields, per-section counts, the `GET /examinations/{id}` detail projection. |
+| `ai_assistant` | R7 Phase 1 | The `/ai/*` chat paths — sessions, messages, non-streaming chat, HITL resolve. |
+| `ai_streaming` | R7 Phase 2 | `POST /ai/chat/stream` (SSE). |
+
+**Rule:** adding a flag on the server requires updating this table in the
+same commit. Absence is meaningful — a client must treat a missing flag as
+"feature unavailable" and degrade gracefully, never error.
 
 ---
 
