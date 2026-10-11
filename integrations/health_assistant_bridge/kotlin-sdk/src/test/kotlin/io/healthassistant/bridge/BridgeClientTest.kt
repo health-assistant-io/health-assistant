@@ -565,4 +565,82 @@ class BridgeClientTest {
         assertEquals(400, (ex as BridgeException).statusCode)
         c.close()
     }
+
+    // --- AI assistant ---------------------------------------------------
+
+    @Test
+    fun `chat decodes ChatTurnResult with a task card`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val c = bridge(secret) {
+            respond(
+                """{"message":"Shall I log this?","session_id":"s1","success":true,""" +
+                    """"message_id":"m1","tasks":[{"proposal_id":"prop-1","task_type":"create_clinical_event",""" +
+                    """"title":"Log follow-up","status":"proposed","proposed_payload":{"title":"Follow-up"}}],""" +
+                    """"citations":[{"source":"biomarker:ldl","label":"LDL trend"}]}""",
+            )
+        }
+        val r = c.chat("Log my lipids", sessionId = "s1")
+        assertEquals("Shall I log this?", r.message)
+        assertEquals("s1", r.sessionId)
+        assertTrue(r.success)
+        assertEquals("m1", r.messageId)
+        val task = r.tasks.single()
+        assertEquals("prop-1", task["proposal_id"]!!.jsonPrimitive.content)
+        assertEquals("proposed", task["status"]!!.jsonPrimitive.content)
+        assertEquals("LDL trend", r.citations.single()["label"]!!.jsonPrimitive.content)
+        c.close()
+    }
+
+    @Test
+    fun `chat tolerates the max-iterations shape`() = runBlocking {
+        val c = bridge(null) {
+            respond("""{"message":"I reached my limit.","session_id":null,"success":false,"message_id":null,"tasks":[],"citations":[]}""")
+        }
+        val r = c.chat("Hello")
+        assertFalse(r.success)
+        assertNull(r.messageId)
+        assertTrue(r.tasks.isEmpty())
+        c.close()
+    }
+
+    @Test
+    fun `chat never auto-retries a failed turn`() = runBlocking {
+        val engine = MockEngine {
+            respond("{\"detail\":\"boom\"}", HttpStatusCode.InternalServerError)
+        }
+        val c =
+            BridgeClient(
+                baseUrl = "https://example.test",
+                integrationId = "00000000-0000-0000-0000-000000000000",
+                apiSecret = null,
+                client = HttpClient(engine),
+            )
+        val ex = runCatching { c.chat("Hello") }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        // A replayed chat POST would duplicate the turn — exactly one request.
+        assertEquals(1, engine.requestHistory.size)
+        c.close()
+    }
+
+    @Test
+    fun `getMessages decodes the envelope with limit param`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        var capturedUrl: String? = null
+        val c = bridge(secret) { req ->
+            capturedUrl = req.url.toString()
+            respond(
+                envelopeJson(
+                    """[{"id":"m1","role":"assistant","content":{"text":"Hi"},"tasks":[],"citations":[],"created_at":"2026-10-11T10:00:00Z"}]""",
+                ),
+            )
+        }
+        val env = c.getMessages("s1", limit = 50)
+        assertEquals(1, env.data.size)
+        val m = env.data[0]
+        assertEquals("m1", m.id)
+        assertEquals("assistant", m.role)
+        assertEquals("Hi", m.content?.get("text")?.jsonPrimitive?.content)
+        assertTrue(capturedUrl!!.endsWith("/ai/sessions/s1/messages?limit=50"))
+        c.close()
+    }
 }

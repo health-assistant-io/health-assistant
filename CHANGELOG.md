@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge rich non-streaming chat turn (WS5):** `POST /ai/chat` now
+  returns `{message, session_id, success, message_id, tasks, citations}` —
+  the turn's persisted assistant row (id + HITL proposal cards + citations)
+  is read back on the same DB session before the response is built, so
+  mobile renders task cards immediately without a messages refetch. The
+  max-iterations path (`success: false`, no assistant row) answers
+  `message_id: null` with empty arrays. The `message` guards (non-blank,
+  8000-char cap) moved into a shared validator used by both `/ai/chat` and
+  `/ai/chat/stream`, and the chat paths resolve the integration actor once
+  per turn (was twice). `GET /ai/sessions/{id}/messages` gained `?limit=`
+  (default 200, max 500, newest-first) — unbounded reads are retired; the
+  PWA endpoint is untouched. SDKs: Kotlin `chat()` (typed `ChatTurnResult`,
+  never auto-retries — the send layer gained an internal no-retry path),
+  `getMessages(sessionId, limit?)` (typed `ChatMessage` envelope); the
+  TypeScript SDK gained the same `chat`/`getMessages` + `ChatTurnResult`
+  (the request loop gained a `retry: false` option used by `chat`) and its
+  first `node:test` harness (mocked fetch: decode, signing, no-retry pin).
 - **Bridge AI assistant paths (R7 Phase 1+2):** the mobile app
   can chat natively through the integration identity — `GET /ai/sessions`,
   `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),

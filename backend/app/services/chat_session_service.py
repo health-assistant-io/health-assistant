@@ -91,8 +91,30 @@ class ChatSessionService:
         return result.scalars().first()
 
     async def get_session_messages(
-        self, session_id: UUID, user_id: UUID, tenant_id: UUID
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        tenant_id: UUID,
+        *,
+        limit: int | None = None,
+        newest_first: bool = False,
     ) -> list[ChatMessage]:
+        """Load a session's messages after verifying ownership.
+
+        Args:
+            session_id: The session to read.
+            user_id: Owning user (isolation check).
+            tenant_id: Owning tenant (isolation check).
+            limit: Cap on the rows returned (``None`` = unbounded, the
+                engine/history-reconstruction default).
+            newest_first: Flip the ordering to ``created_at`` desc (the
+                bridge's paged messages read); default is conversation
+                order (oldest first).
+
+        Returns:
+            The matched messages; empty when the session is not the
+            caller's.
+        """
         # Verify ownership
         session_result = await self.db.execute(
             select(ChatSession).where(
@@ -107,11 +129,14 @@ class ChatSessionService:
         if not session:
             return []
 
-        result = await self.db.execute(
+        query = (
             select(ChatMessage)
             .where(ChatMessage.session_id == session_id)
-            .order_by(ChatMessage.created_at)
+            .order_by(ChatMessage.created_at.desc() if newest_first else ChatMessage.created_at)
         )
+        if limit is not None:
+            query = query.limit(limit)
+        result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def get_active_path_messages(

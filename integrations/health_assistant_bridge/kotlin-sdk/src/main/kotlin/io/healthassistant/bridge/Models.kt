@@ -520,3 +520,33 @@ data class DeviceRegistration(
     @SerialName("app_version") val appVersion: String? = null,
     @SerialName("user_agent") val userAgent: String? = null,
 )
+
+// =========================================================================
+// AI assistant (bridge /ai/* paths)
+// =========================================================================
+
+/** `POST /ai/chat` reply — one non-streaming turn. [tasks] carries the HITL
+ *  proposal cards persisted with the assistant row (render them without a
+ *  messages refetch); [messageId] is null on the max-iterations path (no
+ *  assistant row), where [tasks]/[citations] are empty. */
+@Serializable
+data class ChatTurnResult(
+    val message: String? = null,
+    @SerialName("session_id") val sessionId: String? = null,
+    val success: Boolean = true,
+    @SerialName("message_id") val messageId: String? = null,
+    val tasks: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+    val citations: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+)
+
+/** One message row from `GET /ai/sessions/{id}/messages` (newest first).
+ *  [content] is `{"text": …}`; [tasks]/[citations] mirror the chat reply. */
+@Serializable
+data class ChatMessage(
+    val id: String,
+    val role: String? = null,
+    val content: kotlinx.serialization.json.JsonObject? = null,
+    val tasks: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+    val citations: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+    @SerialName("created_at") val createdAt: String? = null,
+)

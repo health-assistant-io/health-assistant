@@ -5,6 +5,7 @@ The LLM is patched out (`AIAssistanceService.assist`) — these tests pin the
 routing, the owner/patient isolation envelope, and the resolve contract."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -33,11 +34,11 @@ def _post_request(payload: dict):
     return req
 
 
-def _get_request():
+def _get_request(query_params: dict | None = None):
     from unittest.mock import MagicMock
 
     req = MagicMock()
-    req.query_params = {}
+    req.query_params = query_params or {}
     return req
 
 
@@ -108,9 +109,10 @@ async def ai_ctx():
         )
         db.add_all([session_a, session_b])
         await db.flush()
+        message_a = uuid.uuid4()
         db.add(
             ChatMessage(
-                id=uuid.uuid4(),
+                id=message_a,
                 session_id=session_a.id,
                 role="assistant",
                 content={"text": "Shall I log this as a clinical event?"},
@@ -123,6 +125,7 @@ async def ai_ctx():
                         "proposed_payload": {"title": "Hyperlipidemia follow-up"},
                     }
                 ],
+                citations=[{"source": "biomarker:ldl", "label": "LDL trend"}],
             )
         )
         await db.commit()
@@ -130,6 +133,7 @@ async def ai_ctx():
             "integration_id": integration_id,
             "session_a": session_a.id,
             "session_b": session_b.id,
+            "message_a": message_a,
         }
 
 
@@ -252,6 +256,181 @@ async def test_ai_chat_rejects_blank_and_oversized_messages(ai_ctx):
             method="POST",
             request=_post_request({"message": "x" * 8001}),
         )
+    # The shared _chat_turn_payload validator also fronts the stream twin.
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "x" * 8001}),
+        )
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_returns_tasks_and_citations_of_latest_assistant_row(ai_ctx):
+    """The rich turn: message_id/tasks/citations come from the session's
+    latest assistant row — the engine saves it before `assist` returns, so
+    the post-assist fetch (same db session, pre-commit) sees it."""
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    async def fake_assist(self, **kwargs):
+        return {
+            "message": "Shall I log this as a clinical event?",
+            "session_id": kwargs["context"]["session_id"],
+            "success": True,
+        }
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        result = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat",
+            method="POST",
+            request=_post_request(
+                {"message": "Log my lipids", "session_id": str(ctx["session_a"])}
+            ),
+        )
+
+    assert result["success"] is True
+    assert result["session_id"] == str(ctx["session_a"])
+    assert result["message_id"] == str(ctx["message_a"])
+    assert result["tasks"][0]["proposal_id"] == "prop-1"
+    assert result["tasks"][0]["status"] == "proposed"
+    assert result["citations"] == [{"source": "biomarker:ldl", "label": "LDL trend"}]
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_pins_the_engine_saves_before_assist_returns_ordering(ai_ctx):
+    """Ordering contract: the engine persists the assistant message on the
+    caller's db session BEFORE `assist` returns (mirrored here by a fake
+    that saves through ChatSessionService) — the provider's fetch must see
+    this turn's row, tasks and citations included."""
+    from app.services.chat_session_service import ChatSessionService
+
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+    saved: dict = {}
+
+    async def engine_like_assist(self, **kwargs):
+        svc = ChatSessionService(self.db)
+        row = await svc.save_message(
+            session_id=ctx["session_a"],
+            role="assistant",
+            content={"text": "Confirm and I'll log it."},
+            tasks=[
+                {
+                    "proposal_id": "prop-2",
+                    "task_type": "create_clinical_event",
+                    "title": "Log follow-up",
+                    "status": "proposed",
+                    "proposed_payload": {},
+                }
+            ],
+            citations=[{"source": "observation:abc", "label": "LDL 3.9"}],
+        )
+        saved["id"] = row.id
+        return {
+            "message": "Confirm and I'll log it.",
+            "session_id": str(row.session_id),
+            "success": True,
+        }
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=engine_like_assist):
+        result = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat",
+            method="POST",
+            request=_post_request(
+                {"message": "Log my lipids", "session_id": str(ctx["session_a"])}
+            ),
+        )
+
+    assert result["message_id"] == str(saved["id"])
+    assert result["tasks"][0]["proposal_id"] == "prop-2"
+    assert result["citations"] == [{"source": "observation:abc", "label": "LDL 3.9"}]
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_max_iterations_returns_empty_tasks_and_null_message_id(ai_ctx):
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    async def max_iterations_assist(self, **kwargs):
+        return {
+            "message": "I'm sorry, I reached my maximum reasoning limit.",
+            "success": False,
+        }
+
+    with patch(
+        "app.ai.assistance.service.AIAssistanceService.assist",
+        new=max_iterations_assist,
+    ):
+        result = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat",
+            method="POST",
+            request=_post_request(
+                {"message": "Log my lipids", "session_id": str(ctx["session_a"])}
+            ),
+        )
+
+    assert result["success"] is False
+    assert result["message_id"] is None
+    assert result["tasks"] == []
+    assert result["citations"] == []
+
+
+@pytest.mark.asyncio
+async def test_ai_messages_limit_is_honored_newest_first(ai_ctx):
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    base = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    async with AsyncSessionLocal() as db:
+        for i in range(5):
+            db.add(
+                ChatMessage(
+                    id=uuid.uuid4(),
+                    session_id=ctx["session_a"],
+                    role="user",
+                    content={"text": f"older-{i}"},
+                    created_at=base + timedelta(minutes=i),
+                )
+            )
+        await db.commit()
+
+    limited = await provider.handle_api_request(
+        integration=integration,
+        path=f"ai/sessions/{ctx['session_a']}/messages",
+        method="GET",
+        request=_get_request({"limit": "3"}),
+    )
+    assert len(limited["data"]) == 3
+    assert limited["data"][0]["id"] == str(ctx["message_a"])
+    assert limited["data"][0]["tasks"][0]["proposal_id"] == "prop-1"
+    assert limited["data"][1]["content"]["text"] == "older-4"
+    assert limited["data"][2]["content"]["text"] == "older-3"
+
+    default = await provider.handle_api_request(
+        integration=integration,
+        path=f"ai/sessions/{ctx['session_a']}/messages",
+        method="GET",
+        request=_get_request(),
+    )
+    assert len(default["data"]) == 6
+    assert default["data"][0]["id"] == str(ctx["message_a"])
+
+    garbage = await provider.handle_api_request(
+        integration=integration,
+        path=f"ai/sessions/{ctx['session_a']}/messages",
+        method="GET",
+        request=_get_request({"limit": "not-a-number"}),
+    )
+    assert len(garbage["data"]) == 6
 
 
 @pytest.mark.asyncio
@@ -375,6 +554,7 @@ async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx):
             request=_post_request({"message": "Again", "session_id": str(ctx["session_a"])}),
         )
         _ = [frame async for frame in second.body_iterator]
+
 
 @pytest.mark.asyncio
 async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx):

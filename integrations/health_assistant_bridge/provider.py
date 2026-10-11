@@ -1613,10 +1613,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         db,
         integration: UserIntegration,
         session_id: str,
+        actor: Any = None,
+        patient_id: str | None = None,
     ):
         """Load a chat session owned by the integration's user AND bound to
         the integration's patient (ValueError otherwise — the same isolation
-        envelope as every other bridge path)."""
+        envelope as every other bridge path). Callers that already resolved
+        the actor (the chat turn paths) pass ``actor``/``patient_id`` to
+        skip the redundant ``resolve_integration_actor`` round-trip."""
         from uuid import UUID as _UUID
 
         from app.services.chat_session_service import ChatSessionService
@@ -1625,12 +1629,27 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             sid = _UUID(session_id)
         except ValueError:
             raise ValueError(f"Invalid session id: {session_id}")
-        actor, patient_id = await self._ai_actor_and_patient(db, integration)
+        if actor is None or patient_id is None:
+            actor, patient_id = await self._ai_actor_and_patient(db, integration)
         svc = ChatSessionService(db)
         session = await svc.get_owned_session(sid, actor.user_id, integration.tenant_id)
         if session is None or str(session.patient_id) != patient_id:
             raise ValueError("Chat session not found for this patient.")
         return svc, actor, session
+
+    @staticmethod
+    async def _chat_turn_payload(request: Any) -> tuple[str, str | None]:
+        """Validate the shared ``/ai/chat`` body: a non-blank ``message`` of
+        at most 8000 chars plus an optional ``session_id``. Returns
+        ``(message, session_id-or-None)``; guard violations raise ValueError."""
+        payload = await request.json()
+        message = (payload.get("message") or "").strip()
+        if not message:
+            raise ValueError("message is required")
+        if len(message) > 8000:
+            raise ValueError("message is too long (8000 char cap)")
+        session_id = payload.get("session_id")
+        return message, str(session_id) if session_id else None
 
     async def _ai_list_sessions(
         self, integration: UserIntegration, request: Any
@@ -1663,14 +1682,26 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     async def _ai_session_messages(
         self, integration: UserIntegration, session_id: str, request: Any
     ) -> dict[str, Any]:
+        """`GET /ai/sessions/{id}/messages?limit=` — the session's messages,
+        newest first. ``limit`` defaults to 200 and is capped at 500 (this
+        endpoint plus the stream's `session` frame cover history sync;
+        unbounded reads are retired)."""
         from uuid import UUID
 
         from app.core.database import AsyncSessionLocal
 
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", "200")), 500))
+        except (TypeError, ValueError):
+            limit = 200
         async with AsyncSessionLocal() as db:
             svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
             messages = await svc.get_session_messages(
-                UUID(session_id), actor.user_id, integration.tenant_id
+                UUID(session_id),
+                actor.user_id,
+                integration.tenant_id,
+                limit=limit,
+                newest_first=True,
             )
             return {"data": [self._ai_message_dict(m) for m in messages]}
 
@@ -1691,26 +1722,27 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         """`POST /ai/chat` — one non-streaming chat turn (task_type=chat).
         Body: `{message, session_id?}`. The patient context is pinned to the
         bound patient server-side; a client-supplied session_id must already
-        belong to it."""
-        import json as _json
+        belong to it. The response also carries the turn's persisted
+        assistant row (`message_id` + its `tasks`/`citations`) so HITL cards
+        render without a messages refetch — the engine saves that row before
+        `assist` returns. The max-iterations path (success False, no
+        assistant row) answers `message_id: null` with empty arrays."""
+        from uuid import UUID
 
         from app.ai.assistance.service import AIAssistanceService
         from app.core.database import AsyncSessionLocal
+        from app.services.chat_session_service import ChatSessionService
 
-        payload = await request.json()
-        message = (payload.get("message") or "").strip()
-        if not message:
-            raise ValueError("message is required")
-        if len(message) > 8000:
-            raise ValueError("message is too long (8000 char cap)")
-        session_id = payload.get("session_id")
+        message, session_id = await self._chat_turn_payload(request)
 
         context: dict[str, Any] = {}
         async with AsyncSessionLocal() as db:
-            if session_id:
-                await self._ai_owned_session(db, integration, str(session_id))
-                context["session_id"] = str(session_id)
             actor, patient_id = await self._ai_actor_and_patient(db, integration)
+            if session_id:
+                await self._ai_owned_session(
+                    db, integration, session_id, actor=actor, patient_id=patient_id
+                )
+                context["session_id"] = session_id
             context["patient_id"] = patient_id
 
             service = AIAssistanceService(db)
@@ -1722,6 +1754,25 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 user_id=actor.user_id,
                 stream=False,
             )
+
+            message_id: str | None = None
+            tasks: list[Any] = []
+            citations: list[Any] = []
+            result_session_id = result.get("session_id")
+            if result_session_id:
+                svc = ChatSessionService(db)
+                messages = await svc.get_session_messages(
+                    UUID(str(result_session_id)),
+                    actor.user_id,
+                    integration.tenant_id,
+                )
+                last_assistant = next(
+                    (m for m in reversed(messages) if m.role == "assistant"), None
+                )
+                if last_assistant is not None:
+                    message_id = str(last_assistant.id)
+                    tasks = last_assistant.tasks or []
+                    citations = last_assistant.citations or []
             await db.commit()
         return {
             "message": result.get("message"),
@@ -1729,6 +1780,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 str(result["session_id"]) if result.get("session_id") else None
             ),
             "success": bool(result.get("success", True)),
+            "message_id": message_id,
+            "tasks": tasks,
+            "citations": citations,
         }
 
     async def _ai_chat_stream(
@@ -1753,21 +1807,17 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.ai.assistance.turns import stream_error_frame
         from app.core.database import AsyncSessionLocal
 
-        payload = await request.json()
-        message = (payload.get("message") or "").strip()
-        if not message:
-            raise ValueError("message is required")
-        if len(message) > 8000:
-            raise ValueError("message is too long (8000 char cap)")
-        session_id = payload.get("session_id")
+        message, session_id = await self._chat_turn_payload(request)
 
         context: dict[str, Any] = {}
         db = AsyncSessionLocal()
         try:
-            if session_id:
-                await self._ai_owned_session(db, integration, str(session_id))
-                context["session_id"] = str(session_id)
             actor, patient_id = await self._ai_actor_and_patient(db, integration)
+            if session_id:
+                await self._ai_owned_session(
+                    db, integration, session_id, actor=actor, patient_id=patient_id
+                )
+                context["session_id"] = session_id
             context["patient_id"] = patient_id
         except Exception:
             await db.close()
