@@ -376,6 +376,7 @@ async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx):
         )
         _ = [frame async for frame in second.body_iterator]
 
+
 @pytest.mark.asyncio
 async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx):
     ctx = ai_ctx

@@ -15,6 +15,7 @@ ALTER DEFAULT PRIVILEGES.
 Usage (from backend/, with the owner POSTGRES_* env):
     python scripts/setup_checkpoints.py
 """
+
 import asyncio
 
 from app.ai.graphs.checkpointer import CheckpointStore
