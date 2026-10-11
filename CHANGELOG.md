@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge examination SDK models (kotlin-sdk):** `ExaminationSummary` now
+  carries the enriched card fields (progress, per-section counts, timestamps)
+  and a new typed `ExaminationDetail` (+ `ExaminationObservation`,
+  `ExaminationClinicalEvent`) backs `getExamination()` — observations with
+  flattened reference ranges, doctors, medications, and health journeys, so
+  mobile exam pages no longer need a raw-JSON fallback. Decoding stays
+  forward-compatible (`ignoreUnknownKeys`, nullable fields).
 - **Bridge examination enrichment (mobile next-gen exam pages):** `GET /examinations`
   list items now carry the card fields — `category`, `lab_name`, `diagnoses`,
   `extraction_progress`, `observation_count`/`medication_count`/`document_count`,
@@ -23,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   belongs to, eagerly loaded). Wire docs updated in
   `integrations/health_assistant_bridge/docs/api-reference.md`; patient
   isolation unchanged (cross-patient still `ValueError`).
+
+### Changed
+- **Bridge examination reads honor soft delete + stable ordering.** Exam list
+  and detail now exclude soft-deleted examinations and soft-deleted children
+  (observations/medications/documents), so the card counts always match what
+  the section endpoints list; `_bound_examination` rejects soft-deleted exams
+  like foreign-patient ones (`ValueError`). The list also orders dateless
+  exams **last** (`nullslast`) — offline-created exams must not jump the
+  newest-first queue (Postgres DESC defaults to NULLS FIRST). The
+  `GET /examinations/{id}` detail payload is now built by spreading the list
+  projection (one source for the card fields).
 
 ### Security (plan 21)
 - **Rate limiting + security headers move onto the auth-kit counter

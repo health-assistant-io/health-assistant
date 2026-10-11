@@ -67,6 +67,18 @@ x-backend-env: &backend-env
   HA_DATA_KEY_PREVIOUS: ${HA_DATA_KEY_PREVIOUS:-}
   OCR_PROVIDER: ${OCR_PROVIDER:-openai}
   HA_AUTH_ACCESS_TTL_MINUTES: ${HA_AUTH_ACCESS_TTL_MINUTES:-60}
+  # §16 HTTP security surface (plan 21): per-bucket rate-limit ceilings
+  # (requests/minute; 0 disables a bucket; unset keeps the route default)
+  # and the rightmost-X-Forwarded-For hop count the ingress appends —
+  # without these the deployed limiter is untunable and per-IP identity
+  # keys on the proxy's socket address.
+  HA_RATELIMIT_ENABLED: ${HA_RATELIMIT_ENABLED:-true}
+  HA_RATELIMIT_AUTH: ${HA_RATELIMIT_AUTH:-}
+  HA_RATELIMIT_AUTH_EMAIL: ${HA_RATELIMIT_AUTH_EMAIL:-}
+  HA_RATELIMIT_AI: ${HA_RATELIMIT_AI:-}
+  HA_RATELIMIT_MCP: ${HA_RATELIMIT_MCP:-}
+  HA_RATELIMIT_DEFAULT: ${HA_RATELIMIT_DEFAULT:-}
+  HA_TRUSTED_PROXY_COUNT: ${HA_TRUSTED_PROXY_COUNT:-0}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}

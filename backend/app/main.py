@@ -525,12 +525,19 @@ async def smart_configuration():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (liveness — always 200; dependency states
+    ride the payload, never the status code: a degraded Redis must not
+    fail the probe containers act on)."""
     from app.core.database import DATABASE_AVAILABLE
+    from app.core.redis import redis_client
 
     db_status = "connected" if DATABASE_AVAILABLE else "not_available"
+    try:
+        redis_status = "connected" if await redis_client.ping() else "not_available"
+    except Exception:
+        redis_status = "not_available"
 
-    return {"status": "healthy", "database": db_status, "redis": "not_configured"}
+    return {"status": "healthy", "database": db_status, "redis": redis_status}
 
 
 @app.get("/")

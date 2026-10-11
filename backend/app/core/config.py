@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -535,7 +535,9 @@ class Settings(BaseSettings):
     # §16 rate-limit ceilings (career reference): per-bucket, requests per
     # minute. When set (non-null) a bucket ceiling overrides the per-route
     # code defaults; ``0`` disables the bucket. Unset ⇒ route defaults only
-    # (the pre-§16 behavior — see app/core/rate_limit.py).
+    # (the pre-§16 behavior — see app/core/rate_limit.py). A blank env
+    # value (compose forwards unset optionals as empty strings) means
+    # unset — see the validator below.
     HA_RATELIMIT_ENABLED: bool = True
     HA_RATELIMIT_AUTH: int | None = None
     HA_RATELIMIT_AUTH_EMAIL: int | None = None
@@ -707,6 +709,27 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator(
+        "HA_RATELIMIT_AUTH",
+        "HA_RATELIMIT_AUTH_EMAIL",
+        "HA_RATELIMIT_AI",
+        "HA_RATELIMIT_MCP",
+        "HA_RATELIMIT_DEFAULT",
+        mode="before",
+    )
+    @classmethod
+    def _blank_ratelimit_knob_is_unset(cls, value: object) -> object:
+        """Blank §16 ceiling = unset (route default applies).
+
+        The standalone/prod compose files forward unset optional knobs as
+        empty strings (``${HA_RATELIMIT_AUTH:-}``); without this the
+        default deployment would die at boot on ``int('')`` instead of
+        keeping the route defaults.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache
