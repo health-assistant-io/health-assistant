@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One-line remote install (`scripts/bootstrap.sh`):** `curl -fsSL
+  https://health-assistant.io/install.sh | bash` bootstraps a full install
+  without cloning — checks prerequisites up front (bash, curl, tar, Docker;
+  never installs system packages, never runs as root), resolves the latest
+  published release, downloads the official GitHub tarball, prints its
+  SHA-256 (optional strict pinning via `HEALTH_EXPECTED_SHA256`), extracts
+  to `~/health-assistant` (override with `HEALTH_INSTALL_DIR`/`--dir`,
+  `HEALTH_REF`/`--ref`), and hands off to `scripts/install.sh` with the
+  terminal re-attached so its interactive question works under a pipe.
+  `--dry-run` verifies everything without starting anything. The bootstrap
+  is a small readable wrapper — `install.sh` remains the source of truth.
 - **Mobile-grade SSE hardening (R7 WS7):** event-stream responses are never
   gzipped — `GZipMiddleware` is replaced by a thin subclass that pins the
   `text/event-stream` exclusion unconditionally (compressing streams buys
