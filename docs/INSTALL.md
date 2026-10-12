@@ -6,6 +6,33 @@ Health Assistant is a self-hosted, open-source health records platform. You own 
 
 Docker is the fastest way to get up and running. Everything (UI, API, task monitor) is served behind a single built-in Nginx proxy on port 80. You'll need: **Docker** with **Docker Compose** (Linux, WSL2, or macOS), **Git**, and **Python 3** (used only once to generate your secure keys). The stack needs about 2–3 GB of free RAM.
 
+### One-line install (no clone needed)
+
+If you'd rather not clone anything, the remote bootstrap fetches the latest
+published release, shows you its SHA-256, extracts it to `~/health-assistant`,
+and hands off to the same installer:
+
+```bash
+curl -fsSL https://health-assistant.io/install.sh | bash
+```
+
+The script is small and readable on purpose — read it before running it
+(it is also in the repo at `scripts/bootstrap.sh`). It never runs anything as
+root and never installs system packages; if Docker is missing it prints
+install instructions instead. Pin a release or relocate the install with
+environment variables or flags (`HEALTH_REF`, `HEALTH_INSTALL_DIR`,
+`HEALTH_EXPECTED_SHA256`, `--dry-run`, `--dir`, `--ref` — see `--help`).
+Everything after the flags is forwarded to `scripts/install.sh`:
+
+```bash
+curl -fsSL https://health-assistant.io/install.sh | bash -s -- --dir /srv/ha
+```
+
+The clone-based flow below does exactly the same thing and stays the source
+of truth — the one-liner is a convenience wrapper around it.
+
+### Clone-based install
+
 1. **Install Docker and Docker Compose**, then **clone the repository:**
 
    ```bash
