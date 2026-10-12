@@ -425,7 +425,8 @@ Native chat over the integration identity. The actor is the integration's
 owner (same audit identity as every bridge write); **every path pins the
 patient context to the bound patient** — sessions of other patients are
 invisible, and a client-supplied `session_id` that isn't owned by the
-integration's user AND bound to its patient returns HTTP 400.
+integration's user AND bound to its patient returns HTTP 404
+(`not_found`). See [Errors](#errors) for the typed error contract.
 
 **Rate limit:** all `/ai/*` paths share a per-integration budget of **30
 requests / 5 minutes** (mirroring the web client's per-user AI budget).
@@ -440,11 +441,11 @@ together. Non-AI bridge paths are not affected by this bucket.
 | `GET /ai/sessions` | The owner's chat sessions for the bound patient, newest first: `{data: [{id, title, patient_id, updated_at}]}`. |
 | `GET /ai/sessions/{id}/messages` | The session's messages, **newest first**: `{data: [{id, role, content, tasks, citations, created_at}]}`. `?limit=` caps the page (default 200, max 500) — this endpoint plus the stream's `session` frame cover history sync; unbounded reads are retired. `content` is `{"text": …}`; `tasks` carries HITL proposal cards (`proposal_id`, `task_type`, `title`, `status`, `proposed_payload`). |
 | `POST /ai/chat` | One non-streaming chat turn. Body `{message, session_id?}` → `{message, session_id, success, message_id, tasks, citations}`. `message_id`/`tasks`/`citations` come from the turn's persisted assistant row (saved before the turn returns), so **HITL `tasks` cards render immediately without a messages refetch**; the max-iterations path (`success: false`, no assistant row) answers `message_id: null` with empty arrays. The commit-write-then-resolve contract is unchanged: the client still commits any proposed write through the canonical REST endpoint BEFORE resolving. Creates a session on the first turn (title auto-generated); `message` is capped at 8000 chars. The same prompt-injection guard as the PWA chat applies. |
-| `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 400 "already streaming"). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. |
+| `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. |
 | `DELETE /ai/sessions/{id}` | Delete a chat session (scoped). |
-| `PATCH /ai/sessions/{id}` | Rename a chat session. Body `{title}` (non-blank, ≤ 200 chars — same contract as the PWA `PATCH /ai-assistance/sessions/{id}`) → `{id, title, updated_at}`. Scoped like every other `/ai/*` path: foreign or cross-patient sessions return HTTP 400. |
-| `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 400 (`Task already …`). |
-| `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards (session ownership + the all-tasks-terminal check) fire before the stream (HTTP 400) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 400 "already streaming"). Counts toward the `/ai/*` 30-per-5-min integration bucket. |
+| `PATCH /ai/sessions/{id}` | Rename a chat session. Body `{title}` (non-blank, ≤ 200 chars — same contract as the PWA `PATCH /ai-assistance/sessions/{id}`) → `{id, title, updated_at}`. Scoped like every other `/ai/*` path: foreign or cross-patient sessions return HTTP 404 `not_found`; a blank/oversized title returns HTTP 400 `validation`. |
+| `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 409 `hitl_conflict`. |
+| `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards fire before the stream (foreign session → 404 `not_found`, malformed selector or blank guard → 400 `validation`) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). Counts toward the `/ai/*` 30-per-5-min integration bucket. |
 
 Streaming: **landed for chat in Phase 2** — `POST /ai/chat/stream` returns
 SSE (the proxy passes provider `StreamingResponse`s through) — and for the
@@ -633,6 +634,60 @@ for the notification's kind, so the dispatch task naturally skips.
 
 **Kotlin SDK:** `registerDevice(DeviceRegistration(...))`,
 `unregisterDevice(deviceId)`, `listDevices()`.
+
+## Errors
+
+Every bridge error is programmatically distinguishable — mobile branches on
+a stable **code**, never on string-matching messages.
+
+**Typed detail envelope.** When a guard fails, the proxy answers with the
+HTTP status carried by the error and a JSON object detail:
+
+```json
+{
+  "detail": {
+    "code": "not_found",
+    "message": "Chat session not found for this patient."
+  }
+}
+```
+
+**Code vocabulary (closed set).** Adding a new code requires updating this
+table **in the same commit**:
+
+| Code | HTTP | Raised when |
+|---|---|---|
+| `not_found` | 404 | A foreign or missing session / examination / document / clinical event / medication / allergy / vaccine / doctor / notification / device row — patient-scoped isolation means "someone else's" and "doesn't exist" are indistinguishable by design. |
+| `turn_conflict` | 409 | The session's single-flight turn lock is held — another chat/resume turn is already streaming (retry after it finishes; a new turn, not a replay). |
+| `hitl_conflict` | 409 | The HITL proposal was already resolved (a repeat `resolve` call). |
+| `validation` | 400 | Malformed input or a failed guard: blank/oversized `message`/`title`, malformed ids, invalid base64, the upload size cap, unknown `/changes` types, bad enum values. |
+
+**Legacy shape (untyped 400s).** A handful of server-side processing
+failures (e.g. preview-image rendering, the AI mapping service being
+unavailable) and responses from **older servers** use the historical
+plain-string detail:
+
+```json
+{ "detail": "Failed to generate preview image." }
+```
+
+The status is still 400; SDKs decode both shapes — `code` is
+`null`/`undefined` for the plain-string form.
+
+**SDK surfaces.** Kotlin: `BridgeException.code` plus the typed subclasses
+`NotFoundException` (404), `TurnConflictException` (409/`turn_conflict`),
+`HitlConflictException` (409/`hitl_conflict`), thrown from
+`requestText` / `requestBytes` / `requestLines` / `chat`. TypeScript:
+`BridgeException.code` (switch on it — there are no subclasses), thrown
+from `request` / `requestLines`.
+
+**Relationship to SSE `flow_failed` frames.** Errors raised *before* a
+stream starts (isolation, lock, payload guards) are the HTTP errors above.
+Errors raised *inside* a streaming turn stay **in-band**: the stream ends
+with a terminal `flow_failed` frame carrying its own `code`
+(`error_type` — `guard`, `connection`, `timeout`, `rate_limit`, …) and the
+HTTP status remains 200. That frame vocabulary is unchanged by this
+contract and documented with the stream endpoints above.
 
 ## See also
 

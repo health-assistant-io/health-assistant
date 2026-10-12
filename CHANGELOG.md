@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge typed error contract (WS8):** bridge errors are now
+  programmatically distinguishable — the provider raises
+  `BridgeError(ValueError)` carrying `status_code` + a stable `code`
+  (closed vocabulary: `not_found`/404 for foreign or missing
+  session/exam/document/… rows, `turn_conflict`/409 for a held
+  single-flight turn lock, `hitl_conflict`/409 for a repeat HITL resolve,
+  `validation`/400 for malformed input/guards), and the integration API
+  proxy maps it to `HTTPException(status, detail={"code", "message"})`
+  (bare `ValueError` keeps the legacy plain-string 400 — nothing
+  regresses to 500, older clients unaffected). SDKs decode both detail
+  shapes: Kotlin `BridgeException` gained `code` plus typed
+  `NotFoundException` / `TurnConflictException` / `HitlConflictException`;
+  the TypeScript `BridgeException` gained `code` (switch on it) surfaced
+  from `request`/`requestLines`. The bridge docs gained an **Errors**
+  section (vocabulary table + envelope shapes + the closed-set rule);
+  SSE `flow_failed` guard frames are unchanged — in-stream errors stay
+  in-band. PWA endpoints untouched (they already map 404/409).
 <<<<<<< HEAD
 - **Bridge HITL resume streaming (R7 WS4):** `POST /ai/sessions/{id}/resume`
   streams the agent's continuation turn after the mobile client resolves

@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from integrations.sdk.auth import OAuthStateStore
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from integrations.sdk.exceptions import BridgeError, IntegrationAuthError, IntegrationDataError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1810,6 +1810,8 @@ async def integration_api_proxy(
         return response_data
     except NotImplementedError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except BridgeError as e:
+        raise HTTPException(status_code=e.status_code, detail={"code": e.code, "message": str(e)})
     except ValueError as e:
         # Pass ValueErrors (like validation or user errors) as 400 Bad Request
         raise HTTPException(status_code=400, detail=str(e))

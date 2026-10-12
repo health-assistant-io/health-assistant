@@ -144,20 +144,49 @@ export interface BridgeClientOptions {
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 /**
- * Thrown by `requestLines` (and future request helpers) on a non-2xx
- * response — for streams always BEFORE the first emission.
+ * Thrown by `request`/`requestLines` on a non-2xx response — for streams
+ * always BEFORE the first emission. `code` is the stable error code decoded
+ * from the typed detail envelope `{detail: {code, message}}`; undefined for
+ * older servers that answer with a plain-string detail (the raw body stays
+ * available as `body`). The closed vocabulary (`not_found`/404,
+ * `turn_conflict`/409, `hitl_conflict`/409, `validation`/400) is documented
+ * in the bridge docs' Errors table — switch on `err.code`.
  */
 export class BridgeException extends Error {
   /** The HTTP status code. */
   readonly statusCode: number;
   /** The raw response body text. */
   readonly body: string;
+  /** Stable error code from the typed detail envelope (undefined when the
+   *  detail is a plain string). */
+  readonly code?: string;
 
-  constructor(statusCode: number, body: string) {
+  constructor(statusCode: number, body: string, code?: string) {
     super(`HTTP ${statusCode}: ${body}`);
     this.name = "BridgeException";
     this.statusCode = statusCode;
     this.body = body;
+    this.code = code;
+  }
+
+  /** Decode a raw error body into a BridgeException — the typed
+   *  `{detail: {code, message}}` envelope yields `code`; a plain-string (or
+   *  non-JSON) detail leaves it undefined. */
+  static from(statusCode: number, body: string): BridgeException {
+    let code: string | undefined;
+    try {
+      const detail = (JSON.parse(body) as { detail?: unknown }).detail;
+      if (
+        detail !== null &&
+        typeof detail === "object" &&
+        typeof (detail as { code?: unknown }).code === "string"
+      ) {
+        code = (detail as { code: string }).code;
+      }
+    } catch {
+      code = undefined;
+    }
+    return new BridgeException(statusCode, body, code);
   }
 }
 
@@ -303,7 +332,7 @@ export class HealthAssistantBridgeClient {
       body: rawBody.length > 0 ? (rawBody as BodyInit) : undefined,
     });
     if (!response.ok) {
-      throw new BridgeException(response.status, await response.text());
+      throw BridgeException.from(response.status, await response.text());
     }
     if (!response.body) {
       return;
@@ -448,8 +477,9 @@ export class HealthAssistantBridgeClient {
           continue;
         }
         if (!response.ok) {
-          throw new Error(
-            "Request to " + url + " failed: " + response.status + " " + response.statusText,
+          throw BridgeException.from(
+            response.status,
+            await response.text(),
           );
         }
         return response;

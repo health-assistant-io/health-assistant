@@ -779,12 +779,95 @@ class BridgeClientTest {
 
     @Test
     fun `renameSession surfaces validation errors as BridgeException`() = runBlocking {
+        // Older-server shape: plain-string detail → statusCode 400, code null.
         val c = bridge(null) {
             respond("""{"detail":"title is required"}""", HttpStatusCode.BadRequest)
         }
         val ex = runCatching { c.renameSession("s1", "  ") }.exceptionOrNull()
         assertTrue(ex is BridgeException)
         assertEquals(400, (ex as BridgeException).statusCode)
+        assertNull(ex.code)
+        c.close()
+    }
+
+    @Test
+    fun `renameSession decodes the typed detail envelope`() = runBlocking {
+        val c = bridge(null) {
+            respond(
+                """{"detail":{"code":"validation","message":"title is required"}}""",
+                HttpStatusCode.BadRequest,
+            )
+        }
+        val ex = runCatching { c.renameSession("s1", "  ") }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        assertEquals(400, (ex as BridgeException).statusCode)
+        assertEquals("validation", (ex as BridgeException).code)
+        c.close()
+    }
+
+    @Test
+    fun `typed errors decode to their subclasses`() = runBlocking {
+        val secret = "test-secret-16chars!"
+
+        val notFound = bridge(secret) {
+            respond(
+                """{"detail":{"code":"not_found","message":"Chat session not found for this patient."}}""",
+                HttpStatusCode.NotFound,
+            )
+        }
+        val nf = runCatching { notFound.requestText("GET", "/ai/sessions/s1/messages") }
+            .exceptionOrNull()
+        assertTrue(nf is NotFoundException)
+        assertEquals(404, (nf as NotFoundException).statusCode)
+        assertEquals("not_found", nf.code)
+        notFound.close()
+
+        val conflict = bridge(secret) {
+            respond(
+                """{"detail":{"code":"hitl_conflict","message":"already resolved"}}""",
+                HttpStatusCode.Conflict,
+            )
+        }
+        val hc = runCatching {
+            conflict.requestText("POST", "/ai/sessions/s1/tasks/prop-1/resolve")
+        }.exceptionOrNull()
+        assertTrue(hc is HitlConflictException)
+        assertEquals(409, (hc as HitlConflictException).statusCode)
+        assertEquals("hitl_conflict", hc.code)
+        conflict.close()
+
+        // 404 without a code (older server) still surfaces as NotFoundException
+        // (the subclass pins its vocabulary code).
+        val legacyNotFound = bridge(null) {
+            respond("""{"detail":"Active integration not found"}""", HttpStatusCode.NotFound)
+        }
+        val lnf = runCatching { legacyNotFound.requestText("GET", "/status") }.exceptionOrNull()
+        assertTrue(lnf is NotFoundException)
+        assertEquals("not_found", (lnf as NotFoundException).code)
+        legacyNotFound.close()
+    }
+
+    @Test
+    fun `requestLines throws TurnConflictException from the typed envelope`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val engine = MockEngine {
+            respond(
+                """{"detail":{"code":"turn_conflict","message":"A reply is already streaming for this chat session."}}""",
+                HttpStatusCode.Conflict,
+            )
+        }
+        val c =
+            BridgeClient(
+                baseUrl = "https://example.test",
+                integrationId = "00000000-0000-0000-0000-000000000000",
+                apiSecret = secret,
+                client = HttpClient(engine),
+                streamClient = HttpClient(engine),
+            )
+        val ex = runCatching { c.requestLines("POST", "/ai/chat/stream").toList() }.exceptionOrNull()
+        assertTrue(ex is TurnConflictException)
+        assertEquals(409, (ex as TurnConflictException).statusCode)
+        assertEquals("turn_conflict", ex.code)
         c.close()
     }
 }

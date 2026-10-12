@@ -26,7 +26,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.random.Random
 
@@ -97,7 +99,7 @@ class BridgeClient(
     suspend fun requestText(method: String, path: String, body: ByteArray? = null): String {
         val resp = request(method, path, body)
         val text = resp.bodyAsText()
-        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, text)
+        if (resp.status.value !in 200..299) throw BridgeException.from(resp.status.value, text)
         return text
     }
 
@@ -108,7 +110,9 @@ class BridgeClient(
     suspend fun requestBytes(method: String, path: String, body: ByteArray? = null): ByteArray {
         val resp = request(method, path, body)
         val bytes = resp.bodyAsBytes()
-        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, bytes.decodeToString())
+        if (resp.status.value !in 200..299) {
+            throw BridgeException.from(resp.status.value, bytes.decodeToString())
+        }
         return bytes
     }
 
@@ -126,7 +130,7 @@ class BridgeClient(
         flow {
             val resp = send(method, path, body ?: ByteArray(0), client = streamHttp)
             if (resp.status.value !in 200..299) {
-                throw BridgeException(resp.status.value, resp.bodyAsText())
+                throw BridgeException.from(resp.status.value, resp.bodyAsText())
             }
             val channel = resp.bodyAsChannel()
             while (!channel.isClosedForRead) {
@@ -403,7 +407,7 @@ class BridgeClient(
     suspend fun markNotificationRead(recipientId: String): StatusAck {
         val resp = request("PATCH", "/notifications/$recipientId/read")
         val text = resp.bodyAsText()
-        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, text)
+        if (resp.status.value !in 200..299) throw BridgeException.from(resp.status.value, text)
         return decode(text, StatusAck.serializer())
     }
 
@@ -411,7 +415,7 @@ class BridgeClient(
     suspend fun markNotificationDismissed(recipientId: String): StatusAck {
         val resp = request("PATCH", "/notifications/$recipientId/dismiss")
         val text = resp.bodyAsText()
-        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, text)
+        if (resp.status.value !in 200..299) throw BridgeException.from(resp.status.value, text)
         return decode(text, StatusAck.serializer())
     }
 
@@ -488,7 +492,7 @@ class BridgeClient(
         val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
         val resp = send("POST", "/ai/chat", body, allowRetry = false)
         val text = resp.bodyAsText()
-        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, text)
+        if (resp.status.value !in 200..299) throw BridgeException.from(resp.status.value, text)
         return decode(text, ChatTurnResult.serializer())
     }
 
@@ -603,6 +607,50 @@ class BridgeClient(
     }
 }
 
-/** Thrown by [BridgeClient.requestText] on a non-2xx response. */
-class BridgeException(val statusCode: Int, val body: String) :
-    Exception("HTTP $statusCode: $body")
+/**
+ * Thrown by [BridgeClient] request helpers on a non-2xx response. [code] is
+ * the stable error code decoded from the typed detail envelope
+ * `{detail: {code, message}}` — null for older servers that answer with a
+ * plain-string detail (the raw body stays available as [body]). The closed
+ * vocabulary (`not_found`/404, `turn_conflict`/409, `hitl_conflict`/409,
+ * `validation`/400) is documented in the bridge docs' Errors table; typed
+ * surfaces: [NotFoundException], [TurnConflictException],
+ * [HitlConflictException] — otherwise a plain [BridgeException] (check
+ * [code] to discriminate).
+ */
+open class BridgeException(val statusCode: Int, val body: String, val code: String? = null) :
+    Exception("HTTP $statusCode: $body") {
+
+    companion object {
+        /** Decode the error body into the most specific exception: the typed
+         *  `{detail: {code, message}}` envelope drives the subclass, while a
+         *  plain-string (or non-JSON) detail yields [code] = null. */
+        fun from(statusCode: Int, body: String): BridgeException {
+            val code = decodeCode(body)
+            return when {
+                code == "turn_conflict" -> TurnConflictException(body)
+                code == "hitl_conflict" -> HitlConflictException(body)
+                code == "not_found" || statusCode == 404 -> NotFoundException(statusCode, body)
+                else -> BridgeException(statusCode, body, code)
+            }
+        }
+
+        private fun decodeCode(body: String): String? = try {
+            val detail = Json.parseToJsonElement(body).jsonObject["detail"]
+            (detail as? JsonObject)?.get("code")?.jsonPrimitive?.contentOrNull
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** 404 / `not_found` — the session/exam/document/… row is missing or owned
+ *  by another patient. */
+class NotFoundException(statusCode: Int, body: String) :
+    BridgeException(statusCode, body, "not_found")
+
+/** 409 / `turn_conflict` — another turn is already streaming on the session. */
+class TurnConflictException(body: String) : BridgeException(409, body, "turn_conflict")
+
+/** 409 / `hitl_conflict` — the HITL proposal was already resolved. */
+class HitlConflictException(body: String) : BridgeException(409, body, "hitl_conflict")

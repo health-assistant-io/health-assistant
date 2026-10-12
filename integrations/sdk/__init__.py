@@ -87,6 +87,7 @@ from .exceptions import (
     IntegrationRateLimitError,
     IntegrationDataError,
     IntegrationConfigError,
+    BridgeError,
 )
 
 __all__ = [
@@ -160,5 +161,6 @@ __all__ = [
     "IntegrationRateLimitError",
     "IntegrationDataError",
     "IntegrationConfigError",
+    "BridgeError",
 ]
 

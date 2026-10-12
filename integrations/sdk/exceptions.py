@@ -76,3 +76,32 @@ class IntegrationConfigError(IntegrationError):
     failed, logged) by default; callers that want a distinct UI surface
     ("Fix configuration" vs "Reconnect") can branch on the type.
     """
+
+
+class BridgeError(ValueError):
+    """A client-facing health-assistant-bridge error with an HTTP identity.
+
+    Raised by the bridge provider's guard sites and mapped by the
+    integration API proxy to
+    ``HTTPException(status_code, detail={"code": ..., "message": ...})`` —
+    mobile clients branch on :attr:`code` (a stable, closed vocabulary)
+    instead of string-matching messages. Subclasses :class:`ValueError` so
+    the proxy's legacy ``ValueError → 400`` path (and any older caller)
+    keeps working.
+
+    The code vocabulary (closed — adding a code requires updating the
+    Errors table in ``integrations/health_assistant_bridge/docs/
+    api-reference.md`` in the same commit):
+
+    * ``not_found``     (404) — foreign or missing session/exam/document/
+      clinical-event/… rows
+    * ``turn_conflict`` (409) — the session's single-flight turn lock is held
+    * ``hitl_conflict`` (409) — the HITL proposal was already resolved
+    * ``validation``    (400) — malformed input / failed guard; also the
+      default for a bare :class:`ValueError` reaching the proxy
+    """
+
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code

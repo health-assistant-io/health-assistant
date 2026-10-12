@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  BridgeException,
   HealthAssistantBridgeClient,
   signRequest,
 } from "../src/index.ts";
@@ -105,6 +106,50 @@ test("chat never auto-retries a failed turn", async (t) => {
   await assert.rejects(() => client.chat("Hello"));
   // A replayed chat POST would duplicate the turn — exactly one request.
   assert.equal(calls.length, 1);
+});
+
+test("request errors surface as BridgeException decoding both detail shapes", async (t) => {
+  // Typed envelope: {detail: {code, message}} → err.code.
+  const typed = mockFetch(t, () =>
+    jsonResponse(
+      {
+        detail: {
+          code: "not_found",
+          message: "Chat session not found for this patient.",
+        },
+      },
+      404,
+    ),
+  );
+  const typedClient = new HealthAssistantBridgeClient(BASE, INTEGRATION, {
+    apiSecret: SECRET,
+  });
+  await assert.rejects(
+    () => typedClient.getMessages("s-1"),
+    (err) => {
+      assert.ok(err instanceof BridgeException);
+      assert.equal(err.statusCode, 404);
+      assert.equal(err.code, "not_found");
+      assert.match(err.body, /not found for this patient/);
+      return true;
+    },
+  );
+  assert.equal(typed.length, 1);
+
+  // Plain-string detail (older servers) → BridgeException with code undefined.
+  mockFetch(t, () => jsonResponse({ detail: "nope" }, 400));
+  const plainClient = new HealthAssistantBridgeClient(BASE, INTEGRATION, {
+    apiSecret: SECRET,
+  });
+  await assert.rejects(
+    () => plainClient.getMessages("s-1"),
+    (err) => {
+      assert.ok(err instanceof BridgeException);
+      assert.equal(err.statusCode, 400);
+      assert.equal(err.code, undefined);
+      return true;
+    },
+  );
 });
 
 test("renameSession PATCHes the session and decodes the renamed row", async (t) => {

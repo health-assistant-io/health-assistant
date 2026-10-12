@@ -145,11 +145,42 @@ test("requestLines throws BridgeException before the first emission on non-2xx",
           assert.ok(err instanceof BridgeException);
           assert.equal(err.statusCode, 400);
           assert.match(err.body, /nope/);
+          assert.equal(err.code, undefined);
           return true;
         },
       );
       assert.deepEqual(lines, []);
       assert.equal(calls.length, 1);
+    },
+  );
+});
+
+test("requestLines decodes the typed detail envelope into err.code", async () => {
+  await withMockedFetch(
+    () =>
+      new Response(
+        JSON.stringify({
+          detail: {
+            code: "turn_conflict",
+            message: "A reply is already streaming for this chat session.",
+          },
+        }),
+        { status: 409 },
+      ),
+    async () => {
+      const client = new HealthAssistantBridgeClient(BASE, IID, {
+        apiSecret: SECRET,
+      });
+      await assert.rejects(
+        collect(client.requestLines("POST", "/ai/chat/stream")),
+        (err: unknown) => {
+          assert.ok(err instanceof BridgeException);
+          assert.equal(err.statusCode, 409);
+          assert.equal(err.code, "turn_conflict");
+          assert.match(err.body, /already streaming/);
+          return true;
+        },
+      );
     },
   );
 });

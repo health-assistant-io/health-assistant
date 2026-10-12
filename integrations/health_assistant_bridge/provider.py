@@ -4,7 +4,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from integrations.sdk import BaseHealthProvider
+from integrations.sdk import BaseHealthProvider, BridgeError
 from integrations.sdk.observation_builder import ObservationBuilder
 from pydantic import BaseModel, Field
 
@@ -53,9 +53,7 @@ def _flatten_reference_range(raw: Any) -> dict[str, float] | None:
     return out or None
 
 
-def _relative_score(
-    value: float | None, low: float | None, high: float | None
-) -> float | None:
+def _relative_score(value: float | None, low: float | None, high: float | None) -> float | None:
     """Relative position of a value within its reference range (0.0-1.0).
 
     Mirrors ``ObservationBuilder.build()``: (value - low) / (high - low),
@@ -175,9 +173,7 @@ def _dedup_by_biomarker(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in rows:
         key = row.get("biomarker_id") or row.get("biomarker_slug") or row.get("id")
         existing = deduped.get(key)
-        if existing is None or _effective_datetime_key(row) > _effective_datetime_key(
-            existing
-        ):
+        if existing is None or _effective_datetime_key(row) > _effective_datetime_key(existing):
             deduped[key] = row
     return list(deduped.values())
 
@@ -187,9 +183,7 @@ def _dedup_by_biomarker(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 class ClientRecord(BaseModel):
     type: str = Field(..., description="'quantitative' or 'categorical'")
-    biomarker_id: str | None = Field(
-        None, description="UUID of the mapped biomarker definition"
-    )
+    biomarker_id: str | None = Field(None, description="UUID of the mapped biomarker definition")
     code: str | None = None
     coding_system: str = Field(default="custom")
     name: str
@@ -292,9 +286,7 @@ _ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
     ),
     (
         "POST",
-        re.compile(
-            r"^ai/sessions/(?P<session_id>[^/]+)/tasks/(?P<proposal_id>[^/]+)/resolve$"
-        ),
+        re.compile(r"^ai/sessions/(?P<session_id>[^/]+)/tasks/(?P<proposal_id>[^/]+)/resolve$"),
         "_ai_resolve_task",
     ),
     (
@@ -484,9 +476,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 continue
             if isinstance(pattern, str):
                 if path == pattern:
-                    return await getattr(self, handler_name)(
-                        integration, request=request
-                    )
+                    return await getattr(self, handler_name)(integration, request=request)
                 continue
             match = pattern.match(path)
             if match is not None:
@@ -498,9 +488,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             f"Path '{path}' with method '{method}' is not supported by the bridge API."
         )
 
-    async def _api_status(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _api_status(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """``GET /status``: server version, feature flags, latest SDK versions.
 
         ``request`` is part of the uniform route-handler signature but is
@@ -559,29 +547,25 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             ],
         }
 
-    async def _api_map(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _api_map(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """``POST /map``: map raw metric names onto catalog entries via LLM."""
         # The client asks the backend to map raw names to existing catalog entries via LLM
         try:
             payload_data = await request.json()
             map_request = MapRequestPayload(**payload_data)
         except (TypeError, ValueError, RuntimeError) as e:
-            raise ValueError(f"Invalid payload format: {e}")
+            raise BridgeError(400, "validation", f"Invalid payload format: {e}")
 
         return await self._handle_map_request(integration, map_request)
 
-    async def _api_sync(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _api_sync(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """``POST /sync``: push client records into the platform."""
         # The client pushes data here
         try:
             payload_data = await request.json()
             sync_payload = SyncPayload(**payload_data)
         except (TypeError, ValueError, RuntimeError) as e:
-            raise ValueError(f"Invalid Sync payload format: {e}")
+            raise BridgeError(400, "validation", f"Invalid Sync payload format: {e}")
 
         await self.log_debug_payload(
             integration,
@@ -599,9 +583,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
             # Update the cursor if provided by the client
             if sync_payload.cursor:
-                self.set_sync_cursor(
-                    integration, "last_timestamp", sync_payload.cursor
-                )
+                self.set_sync_cursor(integration, "last_timestamp", sync_payload.cursor)
 
             return {
                 "success": True,
@@ -621,7 +603,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         pid = getattr(integration, "patient_id", None)
         if pid is None:
-            raise ValueError("Bridge instance is not bound to a patient.")
+            raise BridgeError(400, "validation", "Bridge instance is not bound to a patient.")
         return UUID(str(pid))
 
     @staticmethod
@@ -660,9 +642,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 tenant_id=integration.tenant_id, patient_id=patient_id, limit=limit
             )
             for row in fhir_result.get("items", []):
-                row["reference_range"] = _flatten_reference_range(
-                    row.get("reference_range")
-                )
+                row["reference_range"] = _flatten_reference_range(row.get("reference_range"))
                 items.append(row)
 
             try:
@@ -674,8 +654,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 )
             except Exception:
                 logger.exception(
-                    "Telemetry latest read failed for integration %s; "
-                    "returning FHIR-only",
+                    "Telemetry latest read failed for integration %s; returning FHIR-only",
                     integration.id,
                 )
                 tele_rows = []
@@ -697,9 +676,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     b_def = defs.get(row.get("slug"))
                     if b_def is None:
                         continue
-                    items.append(
-                        _observation_point_from_telemetry(row, b_def, patient_id)
-                    )
+                    items.append(_observation_point_from_telemetry(row, b_def, patient_id))
 
         # Dedup across sources: a biomarker with residue in both stores (a
         # failed/in-progress migration) must appear once — the newer row wins.
@@ -726,9 +703,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         biomarker = qp.get("biomarker")
         async with AsyncSessionLocal() as db:
             if biomarker:
-                b_def = await resolve_biomarker_definition(
-                    db, integration.tenant_id, biomarker
-                )
+                b_def = await resolve_biomarker_definition(db, integration.tenant_id, biomarker)
                 if b_def is not None and b_def.is_telemetry:
                     try:
                         rows = await get_patient_telemetry_series(
@@ -764,14 +739,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             )
         items = result.get("items", [])
         for row in items:
-            row["reference_range"] = _flatten_reference_range(
-                row.get("reference_range")
-            )
+            row["reference_range"] = _flatten_reference_range(row.get("reference_range"))
         return self._read_envelope(items)
 
-    async def _read_biomarkers(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _read_biomarkers(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from sqlalchemy import or_, select
 
         from app.core.database import AsyncSessionLocal
@@ -957,7 +928,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             eid = UUID(exam_id)
         except ValueError:
-            raise ValueError(f"Invalid examination id: {exam_id}")
+            raise BridgeError(400, "validation", f"Invalid examination id: {exam_id}")
         res = await db.execute(
             select(ExaminationModel)
             .where(
@@ -970,7 +941,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         e = res.scalars().one_or_none()
         if e is None:
-            raise ValueError("Examination not found for this patient.")
+            raise BridgeError(404, "not_found", "Examination not found for this patient.")
         return e
 
     async def _list_documents(
@@ -1046,7 +1017,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             did = UUID(doc_id)
         except ValueError:
-            raise ValueError(f"Invalid document id: {doc_id}")
+            raise BridgeError(400, "validation", f"Invalid document id: {doc_id}")
         res = await db.execute(
             select(DocumentModel).where(
                 DocumentModel.id == did,
@@ -1057,7 +1028,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         d = res.scalars().one_or_none()
         if d is None:
-            raise ValueError("Document not found for this patient.")
+            raise BridgeError(404, "not_found", "Document not found for this patient.")
         return d
 
     async def _list_documents_all(
@@ -1089,7 +1060,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             try:
                 stmt = stmt.where(DocumentModel.examination_id == UUID(exam_filter))
             except ValueError:
-                raise ValueError(f"Invalid examination_id: {exam_filter}")
+                raise BridgeError(400, "validation", f"Invalid examination_id: {exam_filter}")
         stmt = stmt.order_by(DocumentModel.created_at.desc()).limit(limit)
         async with AsyncSessionLocal() as db:
             res = await db.execute(stmt)
@@ -1146,7 +1117,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             file_path = getattr(d, "file_path", None)
             filename = d.filename
         if not file_path or not os.path.exists(file_path):
-            raise ValueError("Document file not found on disk.")
+            raise BridgeError(404, "not_found", "Document file not found on disk.")
         content_type, _ = mimetypes.guess_type(filename or file_path)
 
         def _read() -> bytes:
@@ -1183,18 +1154,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             file_path = Path(getattr(d, "file_path", ""))
             filename = d.filename
         if not file_path.exists():
-            raise ValueError("Document file not found on disk.")
+            raise BridgeError(404, "not_found", "Document file not found on disk.")
         try:
             page = int(request.query_params.get("page", "0"))
         except (TypeError, ValueError):
             page = 0
 
         # Images: serve as-is.
-        if (
-            (filename or "")
-            .lower()
-            .endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"))
-        ):
+        if (filename or "").lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
             content_type, _ = mimetypes.guess_type(filename)
 
             def _read() -> bytes:
@@ -1214,9 +1181,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             images = await convert_to_images(file_path)
         except Exception:
-            logger.exception(
-                "Bridge document preview conversion failed (doc_id=%s)", doc_id
-            )
+            logger.exception("Bridge document preview conversion failed (doc_id=%s)", doc_id)
             raise ValueError("Failed to generate preview image.")
         if not images:
             raise ValueError("Failed to generate preview image.")
@@ -1233,9 +1198,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
     # --- Phase 3: clinical-record read paths (patient-scoped) -------------
 
-    async def _read_medications(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _read_medications(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /medications` — the bound patient's medication instances.
         Newest by ``start_date`` desc (NULLs last). The patient's full history
         including inactive meds; the client filters if it wants only active."""
@@ -1263,12 +1226,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             items = [
                 {
                     "id": str(m.id),
-                    "status": m.status.value
-                    if hasattr(m.status, "value")
-                    else m.status,
-                    "intent": m.intent.value
-                    if hasattr(m.intent, "value")
-                    else m.intent,
+                    "status": m.status.value if hasattr(m.status, "value") else m.status,
+                    "intent": m.intent.value if hasattr(m.intent, "value") else m.intent,
                     "code": m.code,
                     "start_date": m.start_date.isoformat() if m.start_date else None,
                     "end_date": m.end_date.isoformat() if m.end_date else None,
@@ -1276,9 +1235,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     "frequency": m.frequency,
                     "reason": m.reason,
                     "note": m.note,
-                    "examination_id": str(m.examination_id)
-                    if m.examination_id
-                    else None,
+                    "examination_id": str(m.examination_id) if m.examination_id else None,
                     "source_integration_id": str(m.source_integration_id)
                     if m.source_integration_id
                     else None,
@@ -1290,9 +1247,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             ]
         return self._read_envelope(items)
 
-    async def _read_allergies(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _read_allergies(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /allergies` — the bound patient's allergy-intolerance instances.
         ``?active=true`` (the default) filters to active+verified; pass
         ``?active=false`` for the full history (including resolved)."""
@@ -1314,9 +1269,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         if active_only:
             stmt = stmt.where(AllergyIntolerance.clinical_status == "ACTIVE")
-        stmt = stmt.order_by(AllergyIntolerance.onset_date.desc().nullslast()).limit(
-            limit
-        )
+        stmt = stmt.order_by(AllergyIntolerance.onset_date.desc().nullslast()).limit(limit)
         async with AsyncSessionLocal() as db:
             res = await db.execute(stmt)
             items = [
@@ -1326,20 +1279,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     if hasattr(a.clinical_status, "value")
                     else a.clinical_status,
                     "verification_status": a.verification_status,
-                    "category": a.category.value
-                    if hasattr(a.category, "value")
-                    else a.category,
+                    "category": a.category.value if hasattr(a.category, "value") else a.category,
                     "criticality": a.criticality.value
                     if hasattr(a.criticality, "value")
                     else a.criticality,
                     "code": a.code,
                     "onset_date": a.onset_date.isoformat() if a.onset_date else None,
-                    "resolved_date": a.resolved_date.isoformat()
-                    if a.resolved_date
-                    else None,
-                    "last_occurrence": a.last_occurrence.isoformat()
-                    if a.last_occurrence
-                    else None,
+                    "resolved_date": a.resolved_date.isoformat() if a.resolved_date else None,
+                    "last_occurrence": a.last_occurrence.isoformat() if a.last_occurrence else None,
                     "note": a.note,
                     "reactions": a.reactions,
                     "source_integration_id": str(a.source_integration_id)
@@ -1353,9 +1300,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             ]
         return self._read_envelope(items)
 
-    async def _read_vaccines(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _read_vaccines(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /vaccines` — the bound patient's immunizations, newest first."""
         from sqlalchemy import select
 
@@ -1381,21 +1326,15 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             items = [
                 {
                     "id": str(v.id),
-                    "status": v.status.value
-                    if hasattr(v.status, "value")
-                    else v.status,
+                    "status": v.status.value if hasattr(v.status, "value") else v.status,
                     "vaccine_code": v.vaccine_code,
-                    "administered_at": v.administered_at.isoformat()
-                    if v.administered_at
-                    else None,
+                    "administered_at": v.administered_at.isoformat() if v.administered_at else None,
                     "dose_number": v.dose_number,
                     "lot_number": v.lot_number,
                     "manufacturer": v.manufacturer,
                     "location": v.location,
                     "note": v.note,
-                    "examination_id": str(v.examination_id)
-                    if v.examination_id
-                    else None,
+                    "examination_id": str(v.examination_id) if v.examination_id else None,
                     "source_integration_id": str(v.source_integration_id)
                     if v.source_integration_id
                     else None,
@@ -1465,7 +1404,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             eid = UUID(event_id)
         except ValueError:
-            raise ValueError(f"Invalid clinical event id: {event_id}")
+            raise BridgeError(400, "validation", f"Invalid clinical event id: {event_id}")
         async with AsyncSessionLocal() as db:
             res = await db.execute(
                 select(ClinicalEvent)
@@ -1492,7 +1431,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             )
             e = res.scalars().one_or_none()
             if e is None:
-                raise ValueError("Clinical event not found for this patient.")
+                raise BridgeError(404, "not_found", "Clinical event not found for this patient.")
             return e.to_dict()
 
     @staticmethod
@@ -1502,9 +1441,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         N+1 over type/anatomy/observations)."""
         status = e.status.value if hasattr(e.status, "value") else e.status
         coding_system = (
-            e.coding_system.value
-            if hasattr(e.coding_system, "value")
-            else e.coding_system
+            e.coding_system.value if hasattr(e.coding_system, "value") else e.coding_system
         )
         type_entity = getattr(e, "type_entity", None)
         return {
@@ -1527,9 +1464,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "updated_at": e.updated_at.isoformat() if e.updated_at else None,
         }
 
-    async def _bound_clinical_event(
-        self, db: Any, integration: UserIntegration, event_id: str
-    ):
+    async def _bound_clinical_event(self, db: Any, integration: UserIntegration, event_id: str):
         """Load a clinical event scoped to the bound patient (mirrors
         ``_bound_examination`` / ``_bound_document``)."""
         from uuid import UUID
@@ -1542,7 +1477,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             eid = UUID(event_id)
         except ValueError:
-            raise ValueError(f"Invalid clinical event id: {event_id}")
+            raise BridgeError(400, "validation", f"Invalid clinical event id: {event_id}")
         res = await db.execute(
             select(ClinicalEvent).where(
                 ClinicalEvent.id == eid,
@@ -1553,12 +1488,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         e = res.scalars().one_or_none()
         if e is None:
-            raise ValueError("Clinical event not found for this patient.")
+            raise BridgeError(404, "not_found", "Clinical event not found for this patient.")
         return e
 
-    async def _read_doctors(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _read_doctors(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /doctors` — tenant-wide doctor address book (the bound patient's
         owner's tenant). Doctors aren't patient-scoped (they're shared within a
         tenant); the bridge returns what the owner's role permits. Specialty
@@ -1610,9 +1543,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     # another patient's data through the integration identity.
     # ------------------------------------------------------------------
 
-    async def _ai_actor_and_patient(
-        self, db, integration: UserIntegration
-    ) -> tuple[Any, str]:
+    async def _ai_actor_and_patient(self, db, integration: UserIntegration) -> tuple[Any, str]:
         from app.services.integration_actor import resolve_integration_actor
 
         actor = await resolve_integration_actor(db, integration)
@@ -1638,32 +1569,31 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             sid = _UUID(session_id)
         except ValueError:
-            raise ValueError(f"Invalid session id: {session_id}")
+            raise BridgeError(400, "validation", f"Invalid session id: {session_id}")
         if actor is None or patient_id is None:
             actor, patient_id = await self._ai_actor_and_patient(db, integration)
         svc = ChatSessionService(db)
         session = await svc.get_owned_session(sid, actor.user_id, integration.tenant_id)
         if session is None or str(session.patient_id) != patient_id:
-            raise ValueError("Chat session not found for this patient.")
+            raise BridgeError(404, "not_found", "Chat session not found for this patient.")
         return svc, actor, session
 
     @staticmethod
     async def _chat_turn_payload(request: Any) -> tuple[str, str | None]:
         """Validate the shared ``/ai/chat`` body: a non-blank ``message`` of
         at most 8000 chars plus an optional ``session_id``. Returns
-        ``(message, session_id-or-None)``; guard violations raise ValueError."""
+        ``(message, session_id-or-None)``; guard violations raise
+        ``BridgeError`` (400 ``validation``)."""
         payload = await request.json()
         message = (payload.get("message") or "").strip()
         if not message:
-            raise ValueError("message is required")
+            raise BridgeError(400, "validation", "message is required")
         if len(message) > 8000:
-            raise ValueError("message is too long (8000 char cap)")
+            raise BridgeError(400, "validation", "message is too long (8000 char cap)")
         session_id = payload.get("session_id")
         return message, str(session_id) if session_id else None
 
-    async def _ai_list_sessions(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _ai_list_sessions(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from uuid import UUID
 
         from app.core.database import AsyncSessionLocal
@@ -1681,9 +1611,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                         "id": str(s.id),
                         "title": s.title,
                         "patient_id": str(s.patient_id) if s.patient_id else None,
-                        "updated_at": s.updated_at.isoformat()
-                        if s.updated_at
-                        else None,
+                        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
                     }
                     for s in sessions
                 ]
@@ -1726,9 +1654,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "created_at": m.created_at.isoformat() if m.created_at else None,
         }
 
-    async def _ai_chat(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _ai_chat(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`POST /ai/chat` — one non-streaming chat turn (task_type=chat).
         Body: `{message, session_id?}`. The patient context is pinned to the
         bound patient server-side; a client-supplied session_id must already
@@ -1786,18 +1712,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             await db.commit()
         return {
             "message": result.get("message"),
-            "session_id": (
-                str(result["session_id"]) if result.get("session_id") else None
-            ),
+            "session_id": (str(result["session_id"]) if result.get("session_id") else None),
             "success": bool(result.get("success", True)),
             "message_id": message_id,
             "tasks": tasks,
             "citations": citations,
         }
 
-    async def _ai_chat_stream(
-        self, integration: UserIntegration, request: Any
-    ):
+    async def _ai_chat_stream(self, integration: UserIntegration, request: Any):
         """`POST /ai/chat/stream` — the SSE twin of the PWA `/stream` chat:
         family vocabulary frames (`session`/`delta`/`task`/`citation`/
         `interrupt` + flow lifecycle), one streaming turn per session (the
@@ -1843,16 +1765,18 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         ``prepare(db)`` runs against the helper's own ``AsyncSessionLocal``
         (ownership/patient isolation first) and returns
         ``(lock_session_id, frames_factory)``; an exception from it
-        propagates before any stream starts (ValueError → HTTP 400 through
-        the proxy). The session's turn lock is acquired whenever
-        ``lock_session_id`` is known — always for resume, for chat-stream
-        when the client pinned a session — and a conflict is mapped to
-        ``ValueError`` (the bridge's 400 contract). ``frames_factory()`` is
-        awaited INSIDE the event generator, so the service call only starts
-        when iteration does, and must return the async iterator to stream:
-        ``AIAssistanceService.assist`` is awaited before iterating, while
-        ``resume_after_hitl`` is an async GENERATOR function — calling it
-        already returns the iterator and awaiting it would raise.
+        propagates before any stream starts (``BridgeError`` → its typed
+        HTTP status through the proxy, bare ``ValueError`` → 400). The
+        session's turn lock is acquired whenever ``lock_session_id`` is
+        known — always for resume, for chat-stream when the client pinned a
+        session — and a conflict is mapped to ``BridgeError`` 409
+        ``turn_conflict`` (the PWA endpoint's own mapping is unchanged).
+        ``frames_factory()`` is awaited INSIDE the event generator, so the
+        service call only starts when iteration does, and must return the
+        async iterator to stream: ``AIAssistanceService.assist`` is awaited
+        before iterating, while ``resume_after_hitl`` is an async GENERATOR
+        function — calling it already returns the iterator and awaiting it
+        would raise.
 
         The generator maps ``ValueError`` to the terminal guard
         ``flow_failed`` frame, any other exception to a logged generic
@@ -1882,7 +1806,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 lock_token = await acquire_turn(lock_session_id)
             except TurnConflictError as e:
                 await db.close()
-                raise ValueError(str(e)) from e
+                raise BridgeError(409, "turn_conflict", str(e)) from e
 
         async def event_generator():
             try:
@@ -1892,9 +1816,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 # Intentional guard violation — localized, user-facing.
                 yield stream_error_frame(e)
             except Exception as e:
-                logger.exception(
-                    "Bridge chat stream failed for integration %s", integration.id
-                )
+                logger.exception("Bridge chat stream failed for integration %s", integration.id)
                 yield stream_error_frame(e)
             finally:
                 if lock_session_id is not None:
@@ -1903,9 +1825,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-    async def _ai_resume_stream(
-        self, integration: UserIntegration, session_id: str, request: Any
-    ):
+    async def _ai_resume_stream(self, integration: UserIntegration, session_id: str, request: Any):
         """`POST /ai/sessions/{id}/resume` — the SSE twin of the PWA HITL
         resume: after the client resolves task cards (REST commit first,
         then `.../tasks/{proposal_id}/resolve`), stream the agent's
@@ -1914,7 +1834,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         server-side tasks JSONB, never trusted from the body). Isolation
         via `_ai_owned_session` first, then the session's turn lock is
         ALWAYS taken (the session id is known); a concurrent turn on the
-        session is rejected with ValueError before the stream starts.
+        session is rejected with `BridgeError` 409 `turn_conflict` before
+        the stream starts.
         Guard violations inside the stream arrive as terminal
         `flow_failed` frames with `code:"guard"`."""
         from app.ai.assistance.service import AIAssistanceService
@@ -1925,12 +1846,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             try:
                 message_id = UUID(str(payload["message_id"]))
             except ValueError:
-                raise ValueError(f"Invalid message_id: {payload['message_id']}")
+                raise BridgeError(400, "validation", f"Invalid message_id: {payload['message_id']}")
 
         async def prepare(db):
-            _svc, actor, _session = await self._ai_owned_session(
-                db, integration, session_id
-            )
+            _svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
             service = AIAssistanceService(db)
 
             async def frames():
@@ -1958,9 +1877,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         payload = await request.json()
         title = (payload.get("title") or "").strip()
         if not title:
-            raise ValueError("title is required")
+            raise BridgeError(400, "validation", "title is required")
         if len(title) > 200:
-            raise ValueError("title is too long (200 char cap)")
+            raise BridgeError(400, "validation", "title is too long (200 char cap)")
         async with AsyncSessionLocal() as db:
             svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
             session = await svc.rename_session(
@@ -2001,7 +1920,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         payload = await request.json()
         status = (payload.get("status") or "").lower()
         if status not in ("confirmed", "dismissed"):
-            raise ValueError("status must be 'confirmed' or 'dismissed'")
+            raise BridgeError(400, "validation", "status must be 'confirmed' or 'dismissed'")
         async with AsyncSessionLocal() as db:
             svc, actor, _session = await self._ai_owned_session(db, integration, session_id)
             try:
@@ -2017,15 +1936,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     tenant_id=integration.tenant_id,
                 )
             except HitlResolutionConflict as e:
-                # The bridge's error envelope is a 400 + message; the 409
-                # nuance stays a PWA-endpoint concern.
-                raise ValueError(str(e)) from e
+                raise BridgeError(409, "hitl_conflict", str(e)) from e
             await db.commit()
         return {"success": True, "task": task}
 
-    async def _changes_since(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _changes_since(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /changes?since=<ISO>&types=<csv>&limit=` — unified delta for
         two-way incremental sync. One round-trip replaces N per-type reads;
         powers the app's pull-to-refresh + the 15-min wake-up poll.
@@ -2061,17 +1976,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         since_str = qp.get("since")
         if since_str:
             try:
-                since = datetime.datetime.fromisoformat(
-                    since_str.replace("Z", "+00:00")
-                )
+                since = datetime.datetime.fromisoformat(since_str.replace("Z", "+00:00"))
                 if since.tzinfo is None:
                     since = since.replace(tzinfo=datetime.timezone.utc)
             except ValueError:
-                raise ValueError(f"Invalid 'since' ISO 8601: {since_str}")
+                raise BridgeError(400, "validation", f"Invalid 'since' ISO 8601: {since_str}")
         else:
-            since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-                days=7
-            )
+            since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
 
         try:
             limit = min(int(qp.get("limit", "500")), 2000)
@@ -2080,9 +1991,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         types_param = qp.get("types", "")
         requested = (
-            {t.strip() for t in types_param.split(",") if t.strip()}
-            if types_param
-            else None
+            {t.strip() for t in types_param.split(",") if t.strip()} if types_param else None
         )
         ALL_TYPES = (
             "medications",
@@ -2095,8 +2004,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         to_query = requested if requested else set(ALL_TYPES)
         unknown = to_query - set(ALL_TYPES)
         if unknown:
-            raise ValueError(
-                f"Unknown /changes types: {sorted(unknown)}. Valid: {list(ALL_TYPES)}"
+            raise BridgeError(
+                400,
+                "validation",
+                f"Unknown /changes types: {sorted(unknown)}. Valid: {list(ALL_TYPES)}",
             )
 
         data: dict[str, list[dict[str, Any]]] = {}
@@ -2120,24 +2031,16 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["medications"] = [
                         {
                             "id": str(m.id),
-                            "updated_at": m.updated_at.isoformat()
-                            if m.updated_at
-                            else None,
-                            "status": m.status.value
-                            if hasattr(m.status, "value")
-                            else m.status,
+                            "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+                            "status": m.status.value if hasattr(m.status, "value") else m.status,
                             "code_text": (m.code or {}).get("text")
                             if isinstance(m.code, dict)
                             else None,
-                            "start_date": m.start_date.isoformat()
-                            if m.start_date
-                            else None,
+                            "start_date": m.start_date.isoformat() if m.start_date else None,
                         }
                         for m in rows
                     ]
-                    max_updated = (
-                        max(r.updated_at for r in rows) if rows else max_updated
-                    )
+                    max_updated = max(r.updated_at for r in rows) if rows else max_updated
 
             if "allergies" in to_query:
                 res = await db.execute(
@@ -2156,9 +2059,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["allergies"] = [
                         {
                             "id": str(a.id),
-                            "updated_at": a.updated_at.isoformat()
-                            if a.updated_at
-                            else None,
+                            "updated_at": a.updated_at.isoformat() if a.updated_at else None,
                             "clinical_status": a.clinical_status.value
                             if hasattr(a.clinical_status, "value")
                             else a.clinical_status,
@@ -2188,12 +2089,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["vaccines"] = [
                         {
                             "id": str(v.id),
-                            "updated_at": v.updated_at.isoformat()
-                            if v.updated_at
-                            else None,
-                            "status": v.status.value
-                            if hasattr(v.status, "value")
-                            else v.status,
+                            "updated_at": v.updated_at.isoformat() if v.updated_at else None,
+                            "status": v.status.value if hasattr(v.status, "value") else v.status,
                             "administered_at": v.administered_at.isoformat()
                             if v.administered_at
                             else None,
@@ -2220,16 +2117,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["clinical_events"] = [
                         {
                             "id": str(e.id),
-                            "updated_at": e.updated_at.isoformat()
-                            if e.updated_at
-                            else None,
-                            "status": e.status.value
-                            if hasattr(e.status, "value")
-                            else e.status,
+                            "updated_at": e.updated_at.isoformat() if e.updated_at else None,
+                            "status": e.status.value if hasattr(e.status, "value") else e.status,
                             "title": e.title,
-                            "onset_date": e.onset_date.isoformat()
-                            if e.onset_date
-                            else None,
+                            "onset_date": e.onset_date.isoformat() if e.onset_date else None,
                         }
                         for e in rows
                     ]
@@ -2253,14 +2144,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["documents"] = [
                         {
                             "id": str(d.id),
-                            "updated_at": d.updated_at.isoformat()
-                            if d.updated_at
-                            else None,
+                            "updated_at": d.updated_at.isoformat() if d.updated_at else None,
                             "filename": d.filename,
                             "status": d.status,
-                            "examination_id": str(d.examination_id)
-                            if d.examination_id
-                            else None,
+                            "examination_id": str(d.examination_id) if d.examination_id else None,
                         }
                         for d in rows
                     ]
@@ -2284,9 +2171,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     data["examinations"] = [
                         {
                             "id": str(e.id),
-                            "updated_at": e.updated_at.isoformat()
-                            if e.updated_at
-                            else None,
+                            "updated_at": e.updated_at.isoformat() if e.updated_at else None,
                             "examination_date": e.examination_date.isoformat()
                             if e.examination_date
                             else None,
@@ -2463,9 +2348,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 row[0]
                 for row in (
                     await db.execute(
-                        select(DocumentModel.id).where(
-                            DocumentModel.examination_id == e.id
-                        )
+                        select(DocumentModel.id).where(DocumentModel.examination_id == e.id)
                     )
                 ).all()
             ]
@@ -2494,9 +2377,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     "stage": log.stage,
                     "message": log.message,
                     "data": log.data,
-                    "created_at": log.created_at.isoformat()
-                    if log.created_at
-                    else None,
+                    "created_at": log.created_at.isoformat() if log.created_at else None,
                 }
                 for log in res.scalars().all()
             ]
@@ -2519,14 +2400,16 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         filename = payload.get("filename") or "upload.bin"
         data_b64 = payload.get("data")
         if not data_b64:
-            raise ValueError("Missing base64 'data' field.")
+            raise BridgeError(400, "validation", "Missing base64 'data' field.")
         try:
             content = base64.b64decode(data_b64, validate=True)
         except (TypeError, ValueError):
-            raise ValueError("Invalid base64 'data'.")
+            raise BridgeError(400, "validation", "Invalid base64 'data'.")
         if len(content) > MAX_UPLOAD_BYTES:
-            raise ValueError(
-                f"Upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB cap."
+            raise BridgeError(
+                400,
+                "validation",
+                f"Upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB cap.",
             )
         include_in_extraction = bool(payload.get("include_in_extraction", False))
         async with AsyncSessionLocal() as db:
@@ -2587,9 +2470,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     )
                 ).scalar_one_or_none()
                 if not org:
-                    org = OrganizationModel(
-                        tenant_id=integration.tenant_id, name=lab_name
-                    )
+                    org = OrganizationModel(tenant_id=integration.tenant_id, name=lab_name)
                     db.add(org)
                     await db.flush()
                 org_id = org.id
@@ -2635,9 +2516,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             dt = datetime.datetime.now(datetime.timezone.utc)
             if record.timestamp:
                 try:
-                    dt = datetime.datetime.fromisoformat(
-                        record.timestamp.replace("Z", "+00:00")
-                    )
+                    dt = datetime.datetime.fromisoformat(record.timestamp.replace("Z", "+00:00"))
                 except ValueError:
                     pass
 
@@ -2648,9 +2527,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "snomed": CodingSystem.SNOMED,
                 "custom": CodingSystem.CUSTOM,
             }
-            coding_system = system_map.get(
-                record.coding_system.lower(), CodingSystem.CUSTOM
-            )
+            coding_system = system_map.get(record.coding_system.lower(), CodingSystem.CUSTOM)
 
             # Extract biomarker ID directly if provided
             biomarker_id = None
@@ -2672,9 +2549,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             ).set_effective_date(dt)
 
             if record.type == "quantitative" and record.value is not None:
-                obs_builder.set_value(
-                    record.value, record.unit or "", record.unit or ""
-                )
+                obs_builder.set_value(record.value, record.unit or "", record.unit or "")
             elif record.type == "categorical" and record.value_string:
                 obs_builder.set_value_string(record.value_string)
 
@@ -2693,9 +2568,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             obs.performer = [
                 {
                     "type": "Integration",
-                    "display": record.performer
-                    or instance_name
-                    or "Health Assistant Bridge",
+                    "display": record.performer or instance_name or "Health Assistant Bridge",
                     "reference": f"Integration/{integration_id}",
                 }
             ]
@@ -2705,9 +2578,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
                 try:
                     obs.examination_id = (
-                        UUID(examination_id)
-                        if isinstance(examination_id, str)
-                        else examination_id
+                        UUID(examination_id) if isinstance(examination_id, str) else examination_id
                     )
                 except ValueError:
                     pass
@@ -2939,9 +2810,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 # We do NOT db.add(integration) here because it is already attached
                 # to the outer session provided by the FastAPI Dependency `Depends(get_db)`.
                 # If we add it to the inner `AsyncSessionLocal()`, SQLAlchemy throws an error.
-                integration.last_synced_at = datetime.datetime.now(
-                    datetime.timezone.utc
-                )
+                integration.last_synced_at = datetime.datetime.now(datetime.timezone.utc)
 
                 sync_log = IntegrationSyncLog(
                     integration_id=integration.id,
@@ -3043,9 +2912,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     # tenant + patient before any side effect, so a cross-patient attempt
     # fails *before* the service call.
 
-    async def _bound_medication(
-        self, db: Any, integration: UserIntegration, medication_id: str
-    ):
+    async def _bound_medication(self, db: Any, integration: UserIntegration, medication_id: str):
         """Load a medication scoped to the bound patient (mirrors
         ``_bound_examination``). Soft-deleted rows are excluded."""
         from uuid import UUID
@@ -3058,7 +2925,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             mid = UUID(medication_id)
         except ValueError:
-            raise ValueError(f"Invalid medication id: {medication_id}")
+            raise BridgeError(400, "validation", f"Invalid medication id: {medication_id}")
         res = await db.execute(
             select(Medication).where(
                 Medication.id == mid,
@@ -3069,12 +2936,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         m = res.scalars().one_or_none()
         if m is None:
-            raise ValueError("Medication not found for this patient.")
+            raise BridgeError(404, "not_found", "Medication not found for this patient.")
         return m
 
-    async def _bound_allergy(
-        self, db: Any, integration: UserIntegration, allergy_id: str
-    ):
+    async def _bound_allergy(self, db: Any, integration: UserIntegration, allergy_id: str):
         from uuid import UUID
 
         from sqlalchemy import select
@@ -3085,7 +2950,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             aid = UUID(allergy_id)
         except ValueError:
-            raise ValueError(f"Invalid allergy id: {allergy_id}")
+            raise BridgeError(400, "validation", f"Invalid allergy id: {allergy_id}")
         res = await db.execute(
             select(AllergyIntolerance).where(
                 AllergyIntolerance.id == aid,
@@ -3096,12 +2961,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         a = res.scalars().one_or_none()
         if a is None:
-            raise ValueError("Allergy not found for this patient.")
+            raise BridgeError(404, "not_found", "Allergy not found for this patient.")
         return a
 
-    async def _bound_vaccine(
-        self, db: Any, integration: UserIntegration, vaccine_id: str
-    ):
+    async def _bound_vaccine(self, db: Any, integration: UserIntegration, vaccine_id: str):
         from uuid import UUID
 
         from sqlalchemy import select
@@ -3112,7 +2975,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             vid = UUID(vaccine_id)
         except ValueError:
-            raise ValueError(f"Invalid vaccine id: {vaccine_id}")
+            raise BridgeError(400, "validation", f"Invalid vaccine id: {vaccine_id}")
         res = await db.execute(
             select(PatientImmunization).where(
                 PatientImmunization.id == vid,
@@ -3123,12 +2986,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         v = res.scalars().one_or_none()
         if v is None:
-            raise ValueError("Immunization not found for this patient.")
+            raise BridgeError(404, "not_found", "Immunization not found for this patient.")
         return v
 
-    async def _bound_doctor(
-        self, db: Any, integration: UserIntegration, doctor_id: str
-    ):
+    async def _bound_doctor(self, db: Any, integration: UserIntegration, doctor_id: str):
         """Load a tenant-scoped doctor. Doctors aren't patient-scoped — the
         bridge returns/acts on what the owner's role permits within the
         tenant."""
@@ -3141,7 +3002,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             did = UUID(doctor_id)
         except ValueError:
-            raise ValueError(f"Invalid doctor id: {doctor_id}")
+            raise BridgeError(400, "validation", f"Invalid doctor id: {doctor_id}")
         res = await db.execute(
             select(DoctorModel).where(
                 DoctorModel.id == did,
@@ -3150,7 +3011,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         d = res.scalars().one_or_none()
         if d is None:
-            raise ValueError("Doctor not found in this tenant.")
+            raise BridgeError(404, "not_found", "Doctor not found in this tenant.")
         return d
 
     @staticmethod
@@ -3190,9 +3051,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "code": a.code,
             "onset_date": a.onset_date.isoformat() if a.onset_date else None,
             "resolved_date": a.resolved_date.isoformat() if a.resolved_date else None,
-            "last_occurrence": a.last_occurrence.isoformat()
-            if a.last_occurrence
-            else None,
+            "last_occurrence": a.last_occurrence.isoformat() if a.last_occurrence else None,
             "note": a.note,
             "reactions": a.reactions,
             "source_integration_id": str(a.source_integration_id)
@@ -3209,9 +3068,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "id": str(v.id),
             "status": v.status.value if hasattr(v.status, "value") else v.status,
             "vaccine_code": v.vaccine_code,
-            "administered_at": v.administered_at.isoformat()
-            if v.administered_at
-            else None,
+            "administered_at": v.administered_at.isoformat() if v.administered_at else None,
             "dose_number": v.dose_number,
             "lot_number": v.lot_number,
             "manufacturer": v.manufacturer,
@@ -3231,9 +3088,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         return {
             "id": str(d.id),
             "name": d.name,
-            "specialty_concept_id": str(d.specialty_concept_id)
-            if d.specialty_concept_id
-            else None,
+            "specialty_concept_id": str(d.specialty_concept_id) if d.specialty_concept_id else None,
             "specialty": d.specialty,
             "license_number": d.license_number,
             "email": d.email,
@@ -3262,7 +3117,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = MedicationRecordCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid medication payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid medication payload: {e}")
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             m = await add_patient_medication(
@@ -3285,14 +3140,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = MedicationRecordUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid medication payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid medication payload: {e}")
         async with AsyncSessionLocal() as db:
             m = await self._bound_medication(db, integration, medication_id)
-            updated = await update_patient_medication(
-                db, m.id, integration.tenant_id, data
-            )
+            updated = await update_patient_medication(db, m.id, integration.tenant_id, data)
         if updated is None:
-            raise ValueError("Medication not found for this patient.")
+            raise BridgeError(404, "not_found", "Medication not found for this patient.")
         return self._medication_to_dict(updated)
 
     async def _delete_medication(
@@ -3306,9 +3159,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             await delete_patient_medication(db, m.id, integration.tenant_id)
         return {"id": medication_id, "deleted": True, "message": "Medication deleted."}
 
-    async def _create_allergy(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _create_allergy(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.allergy import AllergyIntoleranceCreate
         from app.services.allergy_service import add_patient_allergy
@@ -3321,7 +3172,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = AllergyIntoleranceCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid allergy payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid allergy payload: {e}")
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             a = await add_patient_allergy(
@@ -3344,14 +3195,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = AllergyIntoleranceUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid allergy payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid allergy payload: {e}")
         async with AsyncSessionLocal() as db:
             a = await self._bound_allergy(db, integration, allergy_id)
-            updated = await update_patient_allergy(
-                db, a.id, integration.tenant_id, data
-            )
+            updated = await update_patient_allergy(db, a.id, integration.tenant_id, data)
         if updated is None:
-            raise ValueError("Allergy not found for this patient.")
+            raise BridgeError(404, "not_found", "Allergy not found for this patient.")
         return self._allergy_to_dict(updated)
 
     async def _delete_allergy(
@@ -3365,9 +3214,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             await delete_patient_allergy(db, a.id, integration.tenant_id)
         return {"id": allergy_id, "deleted": True, "message": "Allergy deleted."}
 
-    async def _create_vaccine(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _create_vaccine(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.vaccine import PatientImmunizationCreate
         from app.services.integration_actor import resolve_integration_actor
@@ -3380,7 +3227,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = PatientImmunizationCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid vaccine payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid vaccine payload: {e}")
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             v = await add_patient_immunization(
@@ -3403,14 +3250,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = PatientImmunizationUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid vaccine payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid vaccine payload: {e}")
         async with AsyncSessionLocal() as db:
             v = await self._bound_vaccine(db, integration, vaccine_id)
-            updated = await update_patient_immunization(
-                db, v.id, integration.tenant_id, data
-            )
+            updated = await update_patient_immunization(db, v.id, integration.tenant_id, data)
         if updated is None:
-            raise ValueError("Immunization not found for this patient.")
+            raise BridgeError(404, "not_found", "Immunization not found for this patient.")
         return self._vaccine_to_dict(updated)
 
     async def _delete_vaccine(
@@ -3442,7 +3287,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid clinical event payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid clinical event payload: {e}")
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             result = await create_event(
@@ -3466,7 +3311,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid clinical event payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid clinical event payload: {e}")
         async with AsyncSessionLocal() as db:
             await self._bound_clinical_event(db, integration, event_id)
             actor = await resolve_integration_actor(db, integration)
@@ -3503,16 +3348,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventOccurrenceCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Invalid occurrence payload: {e}")
+            raise BridgeError(400, "validation", f"Invalid occurrence payload: {e}")
         async with AsyncSessionLocal() as db:
             await self._bound_clinical_event(db, integration, event_id)
             actor = await resolve_integration_actor(db, integration)
             result = await add_occurrence(db, event_id, actor, data)
         return result
 
-    async def _create_doctor(
-        self, integration: UserIntegration, request: Any
-    ) -> dict[str, Any]:
+    async def _create_doctor(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`POST /doctors` — add a tenant-scoped doctor. The service takes
         individual kwargs (no Pydantic schema); the bridge forwards the
         recognized fields from the JSON payload."""
@@ -3522,7 +3365,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         payload = await request.json()
         name = payload.get("name")
         if not name:
-            raise ValueError("Doctor 'name' is required.")
+            raise BridgeError(400, "validation", "Doctor 'name' is required.")
         async with AsyncSessionLocal() as db:
             d = await create_doctor(
                 integration.tenant_id,
@@ -3561,14 +3404,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         )
         kwargs = {k: v for k, v in payload.items() if k in allowed}
         if not kwargs:
-            raise ValueError("No updatable fields supplied.")
+            raise BridgeError(400, "validation", "No updatable fields supplied.")
         async with AsyncSessionLocal() as db:
             await self._bound_doctor(db, integration, doctor_id)
-            updated = await update_doctor(
-                doctor_id, integration.tenant_id, db, **kwargs
-            )
+            updated = await update_doctor(doctor_id, integration.tenant_id, db, **kwargs)
         if updated is None:
-            raise ValueError("Doctor not found in this tenant.")
+            raise BridgeError(404, "not_found", "Doctor not found in this tenant.")
         return self._doctor_to_dict(updated)
 
     async def _delete_doctor(
@@ -3619,7 +3460,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
                 patient_id = UUID(patient_id)
             except ValueError:
-                raise ValueError(f"Invalid patient_id: {patient_id}")
+                raise BridgeError(400, "validation", f"Invalid patient_id: {patient_id}")
         async with AsyncSessionLocal() as db:
             items, total = await get_inbox(
                 integration.user_id,
@@ -3642,9 +3483,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.services.notification_service import get_unread_count
 
         async with AsyncSessionLocal() as db:
-            count = await get_unread_count(
-                integration.user_id, integration.tenant_id
-            )
+            count = await get_unread_count(integration.user_id, integration.tenant_id)
         return {"unread_count": count}
 
     async def _notification_read_all(
@@ -3676,18 +3515,18 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             rid = UUID(recipient_id)
         except ValueError:
-            raise ValueError(f"Invalid recipient id: {recipient_id}")
+            raise BridgeError(400, "validation", f"Invalid recipient id: {recipient_id}")
         async with AsyncSessionLocal() as db:
             ok = (
                 await mark_read(rid, integration.user_id, integration.tenant_id)
                 if action == "read"
-                else await mark_dismissed(
-                    rid, integration.user_id, integration.tenant_id
-                )
+                else await mark_dismissed(rid, integration.user_id, integration.tenant_id)
             )
         if not ok:
-            raise ValueError(
-                f"Notification recipient {recipient_id} not found for this user."
+            raise BridgeError(
+                404,
+                "not_found",
+                f"Notification recipient {recipient_id} not found for this user.",
             )
         return {"status": "success"}
 
@@ -3701,9 +3540,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         async with AsyncSessionLocal() as db:
             svc = NotificationPreferencesService(db)
-            items = await svc.get_all(
-                integration.user_id, integration.tenant_id
-            )
+            items = await svc.get_all(integration.user_id, integration.tenant_id)
         return self._read_envelope(items)
 
     async def _notification_set_preference(
@@ -3720,7 +3557,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         payload = await request.json()
         enabled = payload.get("enabled")
         if enabled is None:
-            raise ValueError("'enabled' (boolean) is required.")
+            raise BridgeError(400, "validation", "'enabled' (boolean) is required.")
         async with AsyncSessionLocal() as db:
             svc = NotificationPreferencesService(db)
             meta = await svc.set(
@@ -3774,12 +3611,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "cooldown_minutes": r.cooldown_minutes,
                 "title_template": r.title_template,
                 "body_template": r.body_template,
-                "created_at": r.created_at.isoformat()
-                if r.created_at
-                else None,
-                "updated_at": r.updated_at.isoformat()
-                if r.updated_at
-                else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
             }
             for r in rules
         ]
@@ -3794,10 +3627,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         payload = await request.json()
         payload["patient_id"] = str(patient_id)
         if not payload.get("rule_type"):
-            raise ValueError("'rule_type' is required.")
+            raise BridgeError(400, "validation", "'rule_type' is required.")
         rule = await create_rule(payload, integration.tenant_id)
         if rule is None:
-            raise ValueError("Could not create trigger (invalid payload).")
+            raise BridgeError(400, "validation", "Could not create trigger (invalid payload).")
         return {
             "id": str(rule.id),
             "rule_type": rule.rule_type,
@@ -3817,11 +3650,13 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             tid = UUID(trigger_id)
         except ValueError:
-            raise ValueError(f"Invalid trigger id: {trigger_id}")
+            raise BridgeError(400, "validation", f"Invalid trigger id: {trigger_id}")
         ok = await delete_rule(tid, integration.tenant_id)
         if not ok:
-            raise ValueError(
-                f"Trigger {trigger_id} not found in this tenant."
+            raise BridgeError(
+                404,
+                "not_found",
+                f"Trigger {trigger_id} not found in this tenant.",
             )
         return {"id": trigger_id, "deleted": True, "message": "Trigger deleted."}
 
@@ -3855,11 +3690,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         platform = payload.get("platform")
         endpoint_url = payload.get("endpoint_url")
         if not device_id:
-            raise ValueError("'device_id' is required.")
+            raise BridgeError(400, "validation", "'device_id' is required.")
         if not platform:
-            raise ValueError("'platform' is required ('unifiedpush' or 'fcm').")
+            raise BridgeError(400, "validation", "'platform' is required ('unifiedpush' or 'fcm').")
         if not endpoint_url:
-            raise ValueError("'endpoint_url' is required.")
+            raise BridgeError(400, "validation", "'endpoint_url' is required.")
 
         from app.core.database import AsyncSessionLocal
 
@@ -3893,8 +3728,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 device_id=device_id,
             )
         if not ok:
-            raise ValueError(
-                f"Device '{device_id}' not found for this user (or already inactive)."
+            raise BridgeError(
+                404,
+                "not_found",
+                f"Device '{device_id}' not found for this user (or already inactive).",
             )
         return {
             "device_id": device_id,
@@ -3912,7 +3749,5 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.services.mobile_push_service import list_devices
 
         async with AsyncSessionLocal() as db:
-            targets = await list_devices(
-                db, user_id=integration.user_id, include_inactive=False
-            )
+            targets = await list_devices(db, user_id=integration.user_id, include_inactive=False)
         return self._read_envelope([t.to_dict() for t in targets])

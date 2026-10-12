@@ -482,7 +482,8 @@ async def test_ai_resolve_records_dismissal_and_appends_note(ai_ctx):
         assert len(notes) == 1
         assert notes[0].role == "assistant"
 
-    # Second resolve → conflict mapped to ValueError (bridge 400).
+    # Second resolve → conflict (BridgeError 409 'hitl_conflict' through the
+    # proxy; still a ValueError subclass for direct provider callers).
     with pytest.raises(ValueError):
         await provider.handle_api_request(
             integration=integration,
