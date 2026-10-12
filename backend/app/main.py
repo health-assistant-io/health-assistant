@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from nx_auth.headers import HeaderPolicy, SecurityHeadersMiddleware
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.requests import ClientDisconnect
 
 from app.api.v1 import api_router
@@ -436,8 +436,30 @@ async def catalog_conflict_handler(request: Request, exc: CatalogConflict):
     )
 
 
-# CORS middleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+class SSEPassthroughGZipMiddleware(GZipMiddleware):
+    """GZip compression that never touches ``text/event-stream`` responses.
+
+    Compressing event streams buys nothing — every frame is flushed
+    immediately — and risks buffering bubbles through intermediaries (a
+    gzip encoder that only completes the stream when the stream ends).
+    The exclusion is pinned explicitly here instead of being left to the
+    middleware library's default exclusion list, so an upstream default
+    change can never silently re-introduce SSE compression; every other
+    response compresses exactly as :class:`GZipMiddleware` would.
+    """
+
+    def __init__(self, app, minimum_size: int = 500, compresslevel: int = 9):
+        super().__init__(
+            app,
+            minimum_size=minimum_size,
+            compresslevel=compresslevel,
+            exclude_content_types=tuple(
+                dict.fromkeys((*DEFAULT_EXCLUDED_CONTENT_TYPES, "text/event-stream"))
+            ),
+        )
+
+
+app.add_middleware(SSEPassthroughGZipMiddleware, minimum_size=1000)
 
 # §10 double-submit CSRF (plan 16 H3): non-safe /api/* requests that carry
 # session/CSRF cookies must echo nx_csrf in X-CSRF-Token (403 otherwise).
