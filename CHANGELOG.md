@@ -112,22 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that never cancels an in-flight frame): comments are mandated-ignorable
   per the SSE spec, so consumers filtering `data:` lines are unaffected
   while NATs/proxies hold the connection open through long tool runs.
-- **Bridge HITL resume streaming (R7 WS4):** `POST /ai/sessions/{id}/resume`
-  streams the agent's continuation turn after the mobile client resolves
-  task cards — the same SSE family vocabulary as `/ai/chat/stream` (an
-  `interrupt` card can pause the flow again), body `{message_id?}` (the
-  PWA `HitlResumeRequest` semantics), ownership isolation first, the
-  shared single-flight turn lock always taken (a concurrent turn → HTTP
-  400), guard violations surfacing as terminal `flow_failed` frames with
-  `code:"guard"`, and the `/ai/*` 30-per-5-min budget applying. The
-  Kotlin SDK gained `BridgeClient.resumeChatStream(sessionId,
-  messageId?)`; the TypeScript SDK gained its SSE streaming primitive
-  `requestLines(method, path, body?)` (fetch-based line reader, no retry,
-  `BridgeException` before the first emission on non-2xx) plus
-  `chatStream(message, sessionId?)` and `resumeChatStream(sessionId,
-  messageId?)` — all covered by the `node:test` harness. The bridge's
-  SSE-turn skeleton (DB-session lifetime, lock, error frames) is shared
-  between chat-stream and resume (`_sse_turn_stream`).
 - **Bridge session rename (WS6):** `PATCH /ai/sessions/{id}` renames a chat
   session over the integration identity — body `{title}` (non-blank, ≤ 200
   chars, mirroring the PWA `ChatSessionTitleUpdate` contract) →
