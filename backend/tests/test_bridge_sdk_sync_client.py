@@ -31,7 +31,7 @@ def _ensure_package():
         return
     pkg = types.ModuleType("health_assistant_bridge")
     pkg.__path__ = [str(_PKG_DIR)]
-    pkg.__version__ = "1.3.0"
+    pkg.__version__ = "1.4.0"
     sys.modules["health_assistant_bridge"] = pkg
 
 
@@ -221,6 +221,6 @@ def test_client_examination_record_re_exported():
                     ]
 
 
-def test_sdk_version_bumped_to_1_3_0():
+def test_sdk_version_bumped_to_1_4_0():
     init_src = (_SDK_ROOT / "health_assistant_bridge" / "__init__.py").read_text()
-    assert '__version__ = "1.3.0"' in init_src
+    assert '__version__ = "1.4.0"' in init_src

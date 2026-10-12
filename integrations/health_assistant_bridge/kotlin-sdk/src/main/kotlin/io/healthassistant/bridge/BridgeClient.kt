@@ -673,7 +673,7 @@ class BridgeClient(
         /** This SDK's version — must stay in sync with the gradle `version`
          *  and manifest.json `sdks.kotlin`. Displayed by the app next to
          *  [BridgeStatus.latestSdks] ("your SDK vs latest on the server"). */
-        const val SDK_VERSION: String = "0.5.0"
+        const val SDK_VERSION: String = "0.6.0"
 
         private const val MAX_RETRIES = 3
         private val RETRYABLE = setOf(429, 500, 502, 503, 504)

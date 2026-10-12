@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge SDK releases — Kotlin 0.6.0, Python 1.4.0, TypeScript 1.4.0:** the
+  three client SDKs ship the R7 hardening wave in lockstep (versions synced
+  across `manifest.json`, each SDK's embedded constant, and the
+  `latest_sdks` advertisement). The new versions unlock: signed `/status`
+  discovery (`bridge_features` capability gating via `getStatus()`), SSE
+  streaming with HITL resume (`chatStream`/`resumeChatStream`), typed chat
+  results (`tasks`/`citations` inline in `chat()`), typed errors
+  (`BridgeException.code`), the no-auto-retry matrix for AI turn POSTs, and
+  `transcribe()` voice input.
 - **Bridge voice input (R7 WS10):** `POST /ai/transcribe` gives mobile chat
   the PWA's speech-to-text parity — body `{data: base64, mime?}` (the
   documents base64 pattern; `;`-parameters normalized to the bare subtype),

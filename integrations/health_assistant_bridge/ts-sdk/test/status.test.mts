@@ -128,7 +128,7 @@ test("getStatus decodes the full signed payload shape", async () => {
         integration_id: IID,
         last_synced_at: null,
         cursor: "2026-07-24T12:00:00Z",
-        latest_sdks: { python: "1.3.0", ts: SDK_VERSION, kotlin: "0.5.0" },
+        latest_sdks: { python: "1.4.0", ts: SDK_VERSION, kotlin: "0.6.0" },
         frontend_base_url: "http://localhost:3000",
         server_version: "1.2.0",
         bridge_features: ["exam_enrichment", "ai_assistant", "ai_streaming"],
@@ -142,7 +142,7 @@ test("getStatus decodes the full signed payload shape", async () => {
       assert.equal(status.server_time, 1760000000);
       assert.equal(status.integration_id, IID);
       assert.equal(status.cursor, "2026-07-24T12:00:00Z");
-      assert.equal(status.latest_sdks?.kotlin, "0.5.0");
+      assert.equal(status.latest_sdks?.kotlin, "0.6.0");
       assert.equal(status.frontend_base_url, "http://localhost:3000");
       assert.equal(status.server_version, "1.2.0");
       assert.deepEqual(status.bridge_features, [

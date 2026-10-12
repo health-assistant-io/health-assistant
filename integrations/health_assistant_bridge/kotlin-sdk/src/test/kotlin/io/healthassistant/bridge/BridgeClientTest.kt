@@ -79,7 +79,7 @@ class BridgeClientTest {
             {"status":"active","server_time":1760000000,
              "integration_id":"00000000-0000-0000-0000-000000000000",
              "last_synced_at":null,"cursor":"2026-07-24T12:00:00Z",
-             "latest_sdks":{"python":"1.3.0","ts":"1.3.0","kotlin":"0.5.0"},
+             "latest_sdks":{"python":"1.4.0","ts":"1.4.0","kotlin":"0.6.0"},
              "frontend_base_url":"http://localhost:3000","server_version":"1.2.0",
              "bridge_features":["exam_enrichment","ai_assistant","ai_streaming"]}
         """.trimIndent()
@@ -87,7 +87,7 @@ class BridgeClientTest {
         val s = c.getStatus()
         assertEquals(1760000000L, s.serverTime)
         assertEquals("2026-07-24T12:00:00Z", s.cursor)
-        assertEquals("0.5.0", s.latestSdks?.get("kotlin"))
+        assertEquals("0.6.0", s.latestSdks?.get("kotlin"))
         assertEquals("http://localhost:3000", s.frontendBaseUrl)
         assertEquals("1.2.0", s.serverVersion)
         assertEquals(listOf("exam_enrichment", "ai_assistant", "ai_streaming"), s.bridgeFeatures)
