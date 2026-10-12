@@ -1,15 +1,19 @@
-"""Chat turn single-flight lock + SSE error classification.
+"""Chat turn single-flight lock + SSE error frames + stream keep-alive.
 
 Shared by the ``/ai-assistance`` endpoints and the health-assistant bridge
 (2026-10-11, R7 Phase 2): both surfaces stream chat turns and must agree on
-(a) one streaming turn per session at a time and (b) the exact terminal
-``flow_failed`` frame shape, so PWA and mobile turns on the same session
-interlock correctly and clients see one error contract.
+(a) one streaming turn per session at a time, (b) the exact terminal
+``flow_failed`` frame shape — so PWA and mobile turns on the same session
+interlock correctly and clients see one error contract — and (c) since
+R7 WS7 the SSE transport hygiene: response headers, gzip-exempt media type,
+and idle keep-alive comments.
 """
 
+import asyncio
 import json
 import logging
 import uuid
+from collections.abc import AsyncIterator
 
 from app.ai.flow_events import flow_failed_event
 from app.core.redis import redis_client
@@ -194,3 +198,83 @@ def stream_error_frame(exc: Exception) -> str:
     retryable = error_type in ("connection", "timeout", "rate_limit")
     frame = flow_failed_event(retryable, code=error_type, message=user_message)
     return f"data: {json.dumps(frame)}\n\n"
+
+
+# ---------------------------------------------------------------------------
+# SSE transport hygiene (R7 WS7)
+# ---------------------------------------------------------------------------
+
+#: Seconds of stream silence before a ``: keep-alive`` comment line is
+#: emitted. Comments are mandated-ignorable by the SSE spec (consumers
+#: filter ``data:`` lines); they hold NAT gateways and intermediaries open
+#: through long tool runs. Read at call time by :func:`sse_keep_alive`, so
+#: tests inject a short interval by monkeypatching this constant.
+SSE_HEARTBEAT_SECONDS = 15
+
+#: Headers every SSE turn stream carries: nothing downstream may cache the
+#: response, and nginx-style proxies must not buffer the stream
+#: (X-Accel-Buffering).
+SSE_RESPONSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+_KEEP_ALIVE_FRAME = ": keep-alive\n\n"
+
+
+def _silence_done(task: asyncio.Future) -> None:
+    """Retrieve a finished ``__anext__`` task's exception so cleanup is silent."""
+    if not task.cancelled():
+        task.exception()
+
+
+def _arm(iterator: AsyncIterator[str]) -> asyncio.Future:
+    """Schedule the iterator's next frame, retrieval-safe on cleanup."""
+    task = asyncio.ensure_future(iterator.__anext__())
+    task.add_done_callback(_silence_done)
+    return task
+
+
+async def sse_keep_alive(
+    frames: AsyncIterator[str], interval: float | None = None
+) -> AsyncIterator[str]:
+    """Yield ``frames``, emitting a keep-alive comment during idle stretches.
+
+    Wraps the service frame iterator of an SSE turn stream (shared by the
+    PWA ``/ai-assistance`` streams and the bridge's ``_sse_turn_stream``).
+    When no frame arrives within ``interval`` seconds, a ``: keep-alive``
+    comment line is yielded instead; SSE clients must skip it per the
+    eventsource spec, and both SDK consumers already filter for ``data:``
+    lines. Data frames are passed through verbatim and in order, and the
+    idle clock restarts after every frame.
+
+    Frame safety (why a task race): ``__anext__()`` is wrapped in a Task
+    raced against the interval with ``asyncio.wait``. On a timeout the task
+    is NOT cancelled — it is re-awaited on the next tick — so a frame that
+    completes exactly at a heartbeat boundary is delivered intact on the
+    following iteration. ``asyncio.wait_for`` would cancel the in-flight
+    ``__anext__`` and could drop such a frame; a queue fed by a reader task
+    would add a second task and a ``get()`` cancellation race for no gain.
+
+    Args:
+        frames: The async iterator of SSE frames to pass through.
+        interval: Idle seconds between keep-alive comments; ``None`` reads
+            :data:`SSE_HEARTBEAT_SECONDS` at call time (test injection).
+
+    Yields:
+        The next service frame, or ``: keep-alive\n\n`` while idle.
+    """
+    if interval is None:
+        interval = SSE_HEARTBEAT_SECONDS
+    iterator = frames.__aiter__()
+    pending = _arm(iterator)
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=interval)
+            if not done:
+                yield _KEEP_ALIVE_FRAME
+                continue
+            try:
+                yield pending.result()
+            except StopAsyncIteration:
+                return
+            pending = _arm(iterator)
+    finally:
+        pending.cancel()

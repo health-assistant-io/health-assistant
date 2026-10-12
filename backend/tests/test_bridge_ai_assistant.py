@@ -4,6 +4,7 @@
 The LLM is patched out (`AIAssistanceService.assist`) — these tests pin the
 routing, the owner/patient isolation envelope, and the resolve contract."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -613,6 +614,8 @@ async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx, tur
         )
         assert isinstance(response, StreamingResponse)
         assert response.media_type == "text/event-stream"
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["x-accel-buffering"] == "no"
         # Consume INSIDE the patch — the generator body (and the patched
         # service call) only runs when iteration starts.
         frames = [frame async for frame in response.body_iterator]
@@ -632,6 +635,50 @@ async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx, tur
             request=_post_request({"message": "Again", "session_id": str(ctx["session_a"])}),
         )
         _ = [frame async for frame in second.body_iterator]
+
+
+@pytest.mark.asyncio
+async def test_ai_chat_stream_emits_keep_alive_comments_during_idle(
+    ai_ctx, turn_redis, monkeypatch
+):
+    """WS7: idle stretches emit spec-mandated-ignorable ``: keep-alive``
+    comment lines while every data frame passes through verbatim and in
+    order — the patched service sleeps past the injected heartbeat interval
+    between frames, and the turn lock still releases with the stream."""
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+    monkeypatch.setattr(turns_mod, "SSE_HEARTBEAT_SECONDS", 0.05)
+
+    async def fake_assist(self, **kwargs):
+        async def gen():
+            yield 'data: {"event":"delta","text":"Slow tool"}\n\n'
+            await asyncio.sleep(0.13)
+            yield 'data: {"event":"flow_finished"}\n\n'
+
+        return gen()
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        response = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "Slow", "session_id": str(ctx["session_a"])}),
+        )
+        frames = [frame async for frame in response.body_iterator]
+
+    data = [frame for frame in frames if frame.startswith("data:")]
+    assert data == [
+        'data: {"event":"delta","text":"Slow tool"}\n\n',
+        'data: {"event":"flow_finished"}\n\n',
+    ]
+    comments = [frame for frame in frames if frame.startswith(":")]
+    assert comments
+    assert all(frame == ": keep-alive\n\n" for frame in comments)
+    assert frames.index(data[0]) < frames.index(comments[0]) < frames.index(data[-1])
+
+    # The turn lock was released despite the heartbeats.
+    assert turn_redis.store == {}
 
 
 @pytest.mark.asyncio
@@ -702,6 +749,8 @@ async def test_ai_resume_stream_yields_frames_threads_kwargs_and_releases(ai_ctx
         )
         assert isinstance(response, StreamingResponse)
         assert response.media_type == "text/event-stream"
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["x-accel-buffering"] == "no"
         frames = [frame async for frame in response.body_iterator]
 
     events = [_json.loads(f.removeprefix("data: ").strip()) for f in frames]

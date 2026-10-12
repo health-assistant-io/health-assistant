@@ -34,14 +34,37 @@ import kotlin.random.Random
 
 /**
  * Client for the Health Assistant Bridge two-way API proxy. Mirrors
- * python-sdk/.../async_client.py: pooled client, 30s timeout, full-jitter
- * backoff (cap 8s, 3 attempts) on 429/5xx/network. Every path is
+ * python-sdk/.../async_client.py: pooled client, 30s timeout. Every path is
  * HMAC-signed when [apiSecret] is set; without one, only the minimal
  * unsigned [getStatus] liveness probe is answered by the server (the
  * full discovery payload requires a signature — least-privilege by
  * design).
  *
  * Pass a custom [client] (e.g. a MockEngine-backed HttpClient) for tests.
+ *
+ * ## Retry matrix
+ *
+ * Two request classes, selected by [send]'s `retry` flag:
+ *
+ * - **Retried** (`retry = true`, the default): reads ([getStatus], every
+ *   typed getter), `/sync`, and idempotent mutations (Phase-6 writes keyed
+ *   on `client_request_id` / `id`, notification read/dismiss, session
+ *   rename). 429/5xx answers and `IOException`s are retried with
+ *   full-jitter backoff (3 retries, cap 8s). Retrying here is safe because
+ *   a replay either converges (idempotent writes) or was never applied.
+ * - **Never retried** (`retry = false`): the AI turn POSTs — [chat], and
+ *   every stream that goes through [requestLines] (`POST /ai/chat/stream`
+ *   and `POST /ai/sessions/{id}/resume`). A turn POST is not idempotent:
+ *   replaying it after a transport failure duplicates the user message and
+ *   the LLM spend (and a partially-delivered answer cannot be resumed
+ *   mid-SSE). With `retry = false` there is exactly one dispatch: a
+ *   429/5xx response and any `IOException` — including connect-phase
+ *   failures before the request was dispatched — surface to the caller
+ *   ([BridgeException] / `IOException`) without a second attempt.
+ *   **Recovery is the caller starting a NEW turn** (re-send the message,
+ *   or [resumeChatStream] for a HITL continuation); the server-side
+ *   single-flight turn lock keeps that new turn from colliding with one
+ *   that is still running.
  */
 class BridgeClient(
     val baseUrl: String,
@@ -122,13 +145,20 @@ class BridgeClient(
      * raw lines and parse the SSE framing themselves. Non-2xx →
      * [BridgeException] before the first emission.
      *
-     * Uses a dedicated engine WITHOUT the 30 s request timeout — a chat
-     * stream legitimately idles between deltas (connect timeout still
+     * **Never retries** (`retry = false` in [send]): the paths streamed
+     * through this reader are AI turn POSTs, and a replay after a transport
+     * failure would duplicate the turn — the user message and the LLM call —
+     * so a mid-body `IOException` surfaces to the collector with no second
+     * request. Recovery is the caller starting a NEW turn (see the class
+     * retry matrix).
+     *
+     * Runs on a dedicated engine WITHOUT the 30 s whole-request timeout — a
+     * chat stream legitimately idles between deltas (connect timeout still
      * applies; engine-level socket timeouts cover a dead peer).
      */
     fun requestLines(method: String, path: String, body: ByteArray? = null): Flow<String> =
         flow {
-            val resp = send(method, path, body ?: ByteArray(0), client = streamHttp)
+            val resp = send(method, path, body ?: ByteArray(0), client = streamHttp, retry = false)
             if (resp.status.value !in 200..299) {
                 throw BridgeException.from(resp.status.value, resp.bodyAsText())
             }
@@ -162,7 +192,9 @@ class BridgeClient(
      *  assistant message whose tasks are summarized; `null` omits the field
      *  so the server picks the most recent task-bearing message. One
      *  streaming turn per session — while another turn streams the server
-     *  answers non-2xx before the first emission. */
+     *  answers non-2xx before the first emission. Like every AI turn POST
+     *  this is **never retried** (see [requestLines] and the class retry
+     *  matrix): a failed resume is recovered by starting a new turn. */
     fun resumeChatStream(sessionId: String, messageId: String? = null): Flow<String> {
         val body = buildJsonObject {
             messageId?.let { put("message_id", it) }
@@ -481,16 +513,18 @@ class BridgeClient(
     /** `POST /ai/chat` — one non-streaming turn. The reply carries the
      *  persisted assistant row's id + HITL `tasks` cards + `citations`, so a
      *  turn with proposals renders without a messages refetch. **Never
-     *  auto-retries**: a replayed chat POST would duplicate the user message
-     *  and the LLM call (the retry-on-transient policy is for idempotent
-     *  reads/writes only). */
+     *  auto-retries** (`retry = false` in [send], one dispatch): a replayed
+     *  chat POST would duplicate the user message and the LLM call. A
+     *  failure — 429/5xx or network — surfaces to the caller; recovery is
+     *  starting a NEW turn (see the class retry matrix). The retry-on-
+     *  transient policy is for idempotent reads/writes only. */
     suspend fun chat(message: String, sessionId: String? = null): ChatTurnResult {
         val payload = buildJsonObject {
             put("message", message)
             sessionId?.let { put("session_id", it) }
         }
         val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
-        val resp = send("POST", "/ai/chat", body, allowRetry = false)
+        val resp = send("POST", "/ai/chat", body, retry = false)
         val text = resp.bodyAsText()
         if (resp.status.value !in 200..299) throw BridgeException.from(resp.status.value, text)
         return decode(text, ChatTurnResult.serializer())
@@ -518,13 +552,28 @@ class BridgeClient(
 
     // --- internals ------------------------------------------------------
 
+    /**
+     * Signed request carrying the retry policy of the two request classes
+     * (see the class retry matrix).
+     *
+     * `retry = true` (default): 429/5xx answers and `IOException`s are
+     * retried up to [MAX_RETRIES] times with full-jitter backoff — safe on
+     * reads, `/sync`, and idempotent mutations.
+     *
+     * `retry = false`: exactly one dispatch. A 429/5xx response is returned
+     * as-is (the calling helper decodes it into a [BridgeException]); an
+     * `IOException` — including a connect-phase failure BEFORE the request
+     * was dispatched — surfaces without a second attempt. Used by the
+     * non-idempotent AI turn POSTs: a replayed turn duplicates the user
+     * message and the LLM spend.
+     */
     private suspend fun send(
         method: String,
         path: String,
         body: ByteArray,
         attempt: Int = 0,
         client: HttpClient = http,
-        allowRetry: Boolean = true,
+        retry: Boolean = true,
     ): HttpResponse {
         val signed = apiSecret?.takeIf { it.isNotBlank() }
             ?.let { Signing.sign(it, method, path, body) }
@@ -540,16 +589,16 @@ class BridgeClient(
                     header("X-Api-Timestamp", signed.timestamp)
                 }
             }
-            if (allowRetry && resp.status.value in RETRYABLE && attempt < MAX_RETRIES) {
+            if (retry && resp.status.value in RETRYABLE && attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1, client, allowRetry)
+                send(method, path, body, attempt + 1, client, retry)
             } else {
                 resp
             }
         } catch (e: IOException) {
-            if (allowRetry && attempt < MAX_RETRIES) {
+            if (retry && attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1, client, allowRetry)
+                send(method, path, body, attempt + 1, client, retry)
             } else {
                 throw e
             }

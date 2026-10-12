@@ -441,11 +441,11 @@ together. Non-AI bridge paths are not affected by this bucket.
 | `GET /ai/sessions` | The owner's chat sessions for the bound patient, newest first: `{data: [{id, title, patient_id, updated_at}]}`. |
 | `GET /ai/sessions/{id}/messages` | The session's messages, **newest first**: `{data: [{id, role, content, tasks, citations, created_at}]}`. `?limit=` caps the page (default 200, max 500) — this endpoint plus the stream's `session` frame cover history sync; unbounded reads are retired. `content` is `{"text": …}`; `tasks` carries HITL proposal cards (`proposal_id`, `task_type`, `title`, `status`, `proposed_payload`). |
 | `POST /ai/chat` | One non-streaming chat turn. Body `{message, session_id?}` → `{message, session_id, success, message_id, tasks, citations}`. `message_id`/`tasks`/`citations` come from the turn's persisted assistant row (saved before the turn returns), so **HITL `tasks` cards render immediately without a messages refetch**; the max-iterations path (`success: false`, no assistant row) answers `message_id: null` with empty arrays. The commit-write-then-resolve contract is unchanged: the client still commits any proposed write through the canonical REST endpoint BEFORE resolving. Creates a session on the first turn (title auto-generated); `message` is capped at 8000 chars. The same prompt-injection guard as the PWA chat applies. |
-| `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. |
+| `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. Mobile-grade transport (WS7): idle stretches emit a `: keep-alive` comment line every 15 s — SSE comments are mandated-ignorable, so consumers must filter for `data:` lines only; the response carries `Cache-Control: no-cache` + `X-Accel-Buffering: no` and is never gzipped. |
 | `DELETE /ai/sessions/{id}` | Delete a chat session (scoped). |
 | `PATCH /ai/sessions/{id}` | Rename a chat session. Body `{title}` (non-blank, ≤ 200 chars — same contract as the PWA `PATCH /ai-assistance/sessions/{id}`) → `{id, title, updated_at}`. Scoped like every other `/ai/*` path: foreign or cross-patient sessions return HTTP 404 `not_found`; a blank/oversized title returns HTTP 400 `validation`. |
 | `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 409 `hitl_conflict`. |
-| `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards fire before the stream (foreign session → 404 `not_found`, malformed selector or blank guard → 400 `validation`) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). Counts toward the `/ai/*` 30-per-5-min integration bucket. |
+| `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards fire before the stream (foreign session → 404 `not_found`, malformed selector or blank guard → 400 `validation`) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). Counts toward the `/ai/*` 30-per-5-min integration bucket. Same mobile-grade transport as `/ai/chat/stream` (WS7): `: keep-alive` comments every 15 s of idleness — ignore `:`-prefixed lines per the SSE spec — plus `Cache-Control: no-cache` + `X-Accel-Buffering: no`, never gzipped. |
 
 Streaming: **landed for chat in Phase 2** — `POST /ai/chat/stream` returns
 SSE (the proxy passes provider `StreamingResponse`s through) — and for the
@@ -458,6 +458,23 @@ sessionId?)` decodes the rich `ChatTurnResult` (never auto-retries) and
 `BridgeClient.requestText(method, path)` (or `request` for the raw
 `HttpResponse`) covers everything else. The TypeScript SDK mirrors both
 (`chat` / `getMessages`).
+
+**Retries (SDK behavior):** the SDKs never auto-retry the AI turn POSTs —
+`POST /ai/chat`, `POST /ai/chat/stream`, and
+`POST /ai/sessions/{id}/resume` travel as a single attempt (both the
+Kotlin and TypeScript clients codify this as an explicit retry matrix).
+A chat turn is not idempotent: replaying it after a transport failure
+would duplicate the user message and the LLM call, and a partially
+delivered SSE answer cannot be resumed — so a failed or interrupted turn
+surfaces its error (typed `BridgeException` on 429/5xx) and the correct
+recovery is to start a **new** turn (re-send the message, or
+`.../resume` for a HITL continuation); the server-side single-flight
+turn lock keeps that new turn from colliding with one that is still
+running. Everything else retries with full-jitter backoff on 429/5xx +
+transient network errors (reads, `/sync`, idempotent mutations keyed on
+`client_request_id` / `id`, session rename, notification read/dismiss) —
+so a 429 from the AI bucket above reaches the caller with its
+`Retry-After` instead of being silently retried.
 
 **Notes:**
 - DELETEs are **hard** (matching the PWA endpoints). The bound patient filter
