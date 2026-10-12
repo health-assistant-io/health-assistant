@@ -272,3 +272,41 @@ async def test_preseeded_lock_rejects_edit(async_client, turn_redis):
         assert resp.status_code == 409
     finally:
         await turn_redis.delete(_turn_key(session.id))
+
+
+@pytest.mark.asyncio
+async def test_resume_is_rejected_while_a_turn_streams(async_client, turn_redis):
+    """F10 (bridge R7 WS4): the HITL resume endpoint takes the same
+    per-session turn lock — while any turn streams on the session, the
+    continuation is rejected with 409 before it starts (previously it
+    interleaved with the streaming turn, the exact interleaving the lock
+    exists to prevent)."""
+    _user, headers, session, _u1, _edited = await _seed_session_with_turn()
+
+    with _patch_service_blocking():
+        first = asyncio.create_task(
+            async_client.post(
+                "/api/v1/ai-assistance/stream",
+                headers=headers,
+                json={
+                    "task_type": "chat",
+                    "user_input": "turn 1",
+                    "context": {"session_id": str(session.id)},
+                },
+            )
+        )
+        try:
+            await _wait_until_locked(turn_redis, session.id)
+
+            resp = await async_client.post(
+                f"/api/v1/ai-assistance/sessions/{session.id}/resume",
+                headers=headers,
+                json={},
+            )
+            assert resp.status_code == 409
+            assert "already streaming" in resp.json()["detail"]
+        finally:
+            first.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await first
+    assert turn_redis._live(_turn_key(session.id)) is None

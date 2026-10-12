@@ -415,3 +415,203 @@ async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx, turn_
             method="POST",
             request=_post_request({"message": "   "}),
         )
+
+
+# ---------------------------------------------------------------------------
+# POST /ai/sessions/{id}/resume — HITL continuation streaming (WS4)
+# ---------------------------------------------------------------------------
+
+
+def _patch_resume(fake_resume):
+    """Patch ``resume_after_hitl`` with a plain function returning the async
+    generator — the REAL call shape (it is an async-generator function, so
+    the provider must iterate it directly and never await it; an ``await``
+    regression makes the tests below fail, mirroring test_hitl_resume)."""
+    return patch(
+        "app.ai.assistance.service.AIAssistanceService.resume_after_hitl",
+        new=lambda self, **kwargs: fake_resume(**kwargs),
+    )
+
+
+@pytest.mark.asyncio
+async def test_ai_resume_stream_yields_frames_threads_kwargs_and_releases(ai_ctx, turn_redis):
+    """Frames flow through the provider's StreamingResponse (consumed via
+    its body_iterator), the service receives the isolation envelope
+    (session/tenant/owner + message_id selector), and the turn lock is
+    released with the stream."""
+    import json as _json
+
+    from fastapi.responses import StreamingResponse
+
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+    captured = {}
+    message_id = uuid.uuid4()
+
+    async def fake_resume(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"event":"delta","text":"Acknowledged."}\n\n'
+        yield 'data: {"event":"flow_finished"}\n\n'
+
+    with _patch_resume(fake_resume):
+        response = await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}/resume",
+            method="POST",
+            request=_post_request({"message_id": str(message_id)}),
+        )
+        assert isinstance(response, StreamingResponse)
+        assert response.media_type == "text/event-stream"
+        frames = [frame async for frame in response.body_iterator]
+
+    events = [_json.loads(f.removeprefix("data: ").strip()) for f in frames]
+    assert [e["event"] for e in events] == ["delta", "flow_finished"]
+    assert captured["session_id"] == ctx["session_a"]
+    assert captured["message_id"] == message_id
+    assert captured["tenant_id"] == integration.tenant_id
+    assert captured["user_id"] == integration.user_id
+
+    # The turn lock was released — an immediate chat stream is accepted.
+    async def fake_assist(self, **kwargs):
+        async def gen():
+            yield 'data: {"event":"flow_finished"}\n\n'
+
+        return gen()
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        second = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "Next", "session_id": str(ctx["session_a"])}),
+        )
+        _ = [frame async for frame in second.body_iterator]
+
+
+@pytest.mark.asyncio
+async def test_ai_resume_stream_rejects_foreign_sessions_and_bad_selectors(ai_ctx, turn_redis):
+    """Isolation first: a foreign-patient session (or a malformed
+    message_id) raises ValueError before any stream starts — no lock taken."""
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_b']}/resume",
+            method="POST",
+            request=_post_request({}),
+        )
+    with pytest.raises(ValueError):
+        await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}/resume",
+            method="POST",
+            request=_post_request({"message_id": "not-a-uuid"}),
+        )
+    assert turn_redis.store == {}
+
+
+@pytest.mark.asyncio
+async def test_ai_resume_stream_maps_guard_rejection_to_guard_frame(ai_ctx, turn_redis):
+    """A ValueError raised by the continuation (ownership / no-tasks /
+    pending-task guards) surfaces as the terminal flow_failed frame with
+    code 'guard' — and the lock still releases."""
+    import json as _json
+
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    async def rejecting_resume(**kwargs):
+        raise ValueError("Tasks on the target message are not all resolved.")
+        yield
+
+    with _patch_resume(rejecting_resume):
+        response = await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}/resume",
+            method="POST",
+            request=_post_request({}),
+        )
+        frames = [frame async for frame in response.body_iterator]
+
+    assert len(frames) == 1
+    payload = _json.loads(frames[0].removeprefix("data: ").strip())
+    assert payload["event"] == "flow_failed"
+    assert payload["code"] == "guard"
+    assert "not all resolved" in payload["message"]
+    assert payload["retryable"] is False
+    assert turn_redis.store == {}
+
+
+@pytest.mark.asyncio
+async def test_ai_resume_stream_interlocks_with_inflight_chat_turn(ai_ctx, turn_redis):
+    """The single-flight lock spans both streaming surfaces: a resume on a
+    session with a mid-flight chat turn (and the reverse) is rejected before
+    the stream starts, and the lock frees when the holder's stream ends."""
+    ctx = ai_ctx
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    async def fake_assist(self, **kwargs):
+        async def gen():
+            yield 'data: {"event":"delta","text":"…"}\n\n'
+            yield 'data: {"event":"flow_finished"}\n\n'
+
+        return gen()
+
+    with patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist):
+        chat = await provider.handle_api_request(
+            integration=integration,
+            path="ai/chat/stream",
+            method="POST",
+            request=_post_request({"message": "hi", "session_id": str(ctx["session_a"])}),
+        )
+        # The handler acquired the lock before returning the response.
+        assert turn_redis._live(f"turn:{ctx['session_a']}") is not None
+
+        with pytest.raises(ValueError, match="already streaming"):
+            await provider.handle_api_request(
+                integration=integration,
+                path=f"ai/sessions/{ctx['session_a']}/resume",
+                method="POST",
+                request=_post_request({}),
+            )
+
+        # Consuming the holder's stream runs its finally → lock released.
+        _ = [frame async for frame in chat.body_iterator]
+        assert turn_redis._live(f"turn:{ctx['session_a']}") is None
+
+    captured = {}
+
+    async def fake_resume(**kwargs):
+        captured.update(kwargs)
+        yield 'data: {"event":"flow_finished"}\n\n'
+
+    with _patch_resume(fake_resume):
+        held = await provider.handle_api_request(
+            integration=integration,
+            path=f"ai/sessions/{ctx['session_a']}/resume",
+            method="POST",
+            request=_post_request({}),
+        )
+        assert turn_redis._live(f"turn:{ctx['session_a']}") is not None
+
+        with (
+            patch("app.ai.assistance.service.AIAssistanceService.assist", new=fake_assist),
+            pytest.raises(ValueError, match="already streaming"),
+        ):
+            await provider.handle_api_request(
+                integration=integration,
+                path="ai/chat/stream",
+                method="POST",
+                request=_post_request({"message": "again", "session_id": str(ctx["session_a"])}),
+            )
+
+        _ = [frame async for frame in held.body_iterator]
+
+    assert turn_redis._live(f"turn:{ctx['session_a']}") is None
+    assert captured["message_id"] is None

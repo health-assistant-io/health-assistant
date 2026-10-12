@@ -236,6 +236,23 @@ def _override_user():
     app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest.fixture(autouse=True)
+def turn_redis(monkeypatch):
+    """Hermetic turn lock for the resume endpoint tests.
+
+    The endpoint takes the shared per-session turn lock; on the real
+    client, a connection pooled by an earlier test (fresh event loop per
+    test) makes acquire/release fail unpredictably mid-suite. The
+    FakeRedis pattern from tests/test_turn_lock.py keeps these tests
+    deterministic."""
+    from app.ai.assistance import turns as turns_mod
+    from tests.test_turn_lock import FakeRedis
+
+    fake = FakeRedis()
+    monkeypatch.setattr(turns_mod, "redis_client", fake)
+    return fake
+
+
 @pytest.mark.asyncio
 async def test_resume_endpoint_streams_content(async_client):
     """The service yields family-vocabulary SSE frames; the endpoint passes

@@ -111,6 +111,30 @@ export interface BridgeClientOptions {
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 /**
+ * Thrown by `requestLines` (and future request helpers) on a non-2xx
+ * response — for streams always BEFORE the first emission.
+ */
+export class BridgeException extends Error {
+  /** The HTTP status code. */
+  readonly statusCode: number;
+  /** The raw response body text. */
+  readonly body: string;
+
+  constructor(statusCode: number, body: string) {
+    super(`HTTP ${statusCode}: ${body}`);
+    this.name = "BridgeException";
+    this.statusCode = statusCode;
+    this.body = body;
+  }
+}
+
+/** Strip one trailing CR so `\r\n`-framed lines match the Kotlin
+ *  `readUTF8Line` contract. */
+function stripTrailingCarriageReturn(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+/**
  * Build the HMAC signature headers for a signed request, mirroring the
  * server's canonical form:
  *   METHOD\n<path>\n<timestamp>\n<raw_body>
@@ -216,6 +240,101 @@ export class HealthAssistantBridgeClient {
       "/sync",
     );
     return (await response.json()) as SyncResponse;
+  }
+
+  /**
+   * Line-by-line reading of a signed streaming response body (SSE): a
+   * fetch-based reader (`response.body.getReader()` + `TextDecoder`) that
+   * yields each raw line WITHOUT its newline — including empty separator
+   * lines and `:` comment frames, matching the Kotlin SDK's `requestLines`
+   * contract — so the caller parses the SSE framing itself. Requires a
+   * `fetch` with streamable response bodies (Node >= 18; the SDK's
+   * `engines` floor already guarantees it).
+   *
+   * Deliberately NO retry and NO whole-request timeout: the stream is a
+   * turn in flight (replaying a non-idempotent POST mid-turn would
+   * duplicate it) and an SSE body legitimately idles between deltas. A
+   * non-2xx response throws {@link BridgeException} before the first
+   * emission.
+   */
+  async *requestLines(
+    method: string,
+    path: string,
+    body?: Buffer,
+  ): AsyncGenerator<string> {
+    const rawBody = body ?? Buffer.alloc(0);
+    const headers = this.signedHeaders(method, path, rawBody);
+    const response = await fetch(this.apiUrl + path, {
+      method: method,
+      headers: headers,
+      body: rawBody.length > 0 ? (rawBody as BodyInit) : undefined,
+    });
+    if (!response.ok) {
+      throw new BridgeException(response.status, await response.text());
+    }
+    if (!response.body) {
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        pending += decoder.decode(value, { stream: true });
+        let newline = pending.indexOf("\n");
+        while (newline >= 0) {
+          yield stripTrailingCarriageReturn(pending.slice(0, newline));
+          pending = pending.slice(newline + 1);
+          newline = pending.indexOf("\n");
+        }
+      }
+      pending += decoder.decode();
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+    if (pending.length > 0) {
+      yield stripTrailingCarriageReturn(pending);
+    }
+  }
+
+  /**
+   * `POST /ai/chat/stream` — one streaming chat turn. Builds and signs the
+   * `{message, session_id?}` body and yields the raw SSE lines via
+   * {@link requestLines} (`data:` frames, empty separators, `:` comments).
+   */
+  async *chatStream(message: string, sessionId?: string): AsyncGenerator<string> {
+    const payload: Record<string, unknown> =
+      sessionId === undefined ? { message } : { message, session_id: sessionId };
+    yield* this.requestLines(
+      "POST",
+      "/ai/chat/stream",
+      Buffer.from(JSON.stringify(payload), "utf8"),
+    );
+  }
+
+  /**
+   * `POST /ai/sessions/{id}/resume` — the HITL continuation turn after the
+   * user resolved task cards. `messageId` selects which assistant message's
+   * resolved tasks are summarized; `undefined` omits the field so the
+   * server picks the most recent task-bearing message. Yields the raw SSE
+   * lines via {@link requestLines}.
+   */
+  async *resumeChatStream(
+    sessionId: string,
+    messageId?: string,
+  ): AsyncGenerator<string> {
+    const payload: Record<string, unknown> =
+      messageId === undefined ? {} : { message_id: messageId };
+    yield* this.requestLines(
+      "POST",
+      `/ai/sessions/${sessionId}/resume`,
+      Buffer.from(JSON.stringify(payload), "utf8"),
+    );
   }
 
   private signedHeaders(method: string, path: string, rawBody: Buffer): Record<string, string> {

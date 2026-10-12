@@ -537,8 +537,18 @@ async def resume_hitl_session(
       * Session ownership verified (user_id + tenant_id).
       * Target message must exist and have tasks.
       * Every task on the target message must be in a terminal state.
+      * One streaming turn per session (the shared single-flight turn
+        lock): while any turn streams on the session, resume answers 409.
     """
     service = AIAssistanceService(db)
+
+    try:
+        lock_token = await acquire_turn(session_id)
+    except TurnConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=TURN_LOCK_MESSAGE,
+        ) from e
 
     async def event_generator():
         try:
@@ -564,6 +574,8 @@ async def resume_hitl_session(
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
             yield stream_error_frame(e)
+        finally:
+            await release_turn(session_id, lock_token)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

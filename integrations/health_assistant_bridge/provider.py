@@ -293,6 +293,11 @@ _ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
         "_ai_resolve_task",
     ),
     (
+        "POST",
+        re.compile(r"^ai/sessions/(?P<session_id>[^/]+)/resume$"),
+        "_ai_resume_stream",
+    ),
+    (
         "DELETE",
         re.compile(r"^documents/(?P<doc_id>[^/]+)$"),
         "_delete_document",
@@ -1739,19 +1744,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         `interrupt` + flow lifecycle), one streaming turn per session (the
         shared single-flight lock), error frames identical to the web client.
 
-        The service keeps ONE AsyncSessionLocal open for the whole stream
-        (the bridge's per-handler session would otherwise close when this
-        method returns) — the generator closes it in its `finally`. The
-        integration proxy passes the StreamingResponse through untouched.
+        The stream skeleton (the DB-session lifetime, the turn lock, the
+        error-frame mapping) lives in ``_sse_turn_stream``; this handler
+        owns the chat payload validation and the service call shape.
         """
-        from fastapi.responses import StreamingResponse
-
         from app.ai.assistance.service import AIAssistanceService
-        from app.ai.assistance.turns import TurnConflictError
-        from app.ai.assistance.turns import acquire_turn
-        from app.ai.assistance.turns import release_turn
-        from app.ai.assistance.turns import stream_error_frame
-        from app.core.database import AsyncSessionLocal
 
         payload = await request.json()
         message = (payload.get("message") or "").strip()
@@ -1762,18 +1759,68 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         session_id = payload.get("session_id")
 
         context: dict[str, Any] = {}
-        db = AsyncSessionLocal()
-        try:
+
+        async def prepare(db):
             if session_id:
                 await self._ai_owned_session(db, integration, str(session_id))
                 context["session_id"] = str(session_id)
             actor, patient_id = await self._ai_actor_and_patient(db, integration)
             context["patient_id"] = patient_id
+            service = AIAssistanceService(db)
+
+            async def frames():
+                return await service.assist(
+                    task_type="chat",
+                    user_input=message,
+                    context=context,
+                    tenant_id=integration.tenant_id,
+                    user_id=actor.user_id,
+                    stream=True,
+                )
+
+            return (UUID(context["session_id"]) if session_id else None), frames
+
+        return await self._sse_turn_stream(integration, prepare)
+
+    async def _sse_turn_stream(self, integration: UserIntegration, prepare):
+        """Shared SSE-turn skeleton for the bridge's streaming AI paths.
+
+        ``prepare(db)`` runs against the helper's own ``AsyncSessionLocal``
+        (ownership/patient isolation first) and returns
+        ``(lock_session_id, frames_factory)``; an exception from it
+        propagates before any stream starts (ValueError → HTTP 400 through
+        the proxy). The session's turn lock is acquired whenever
+        ``lock_session_id`` is known — always for resume, for chat-stream
+        when the client pinned a session — and a conflict is mapped to
+        ``ValueError`` (the bridge's 400 contract). ``frames_factory()`` is
+        awaited INSIDE the event generator, so the service call only starts
+        when iteration does, and must return the async iterator to stream:
+        ``AIAssistanceService.assist`` is awaited before iterating, while
+        ``resume_after_hitl`` is an async GENERATOR function — calling it
+        already returns the iterator and awaiting it would raise.
+
+        The generator maps ``ValueError`` to the terminal guard
+        ``flow_failed`` frame, any other exception to a logged generic
+        frame, and its ``finally`` releases the lock (owner token) and
+        closes the DB session — one session for the whole stream; the
+        integration proxy passes the ``StreamingResponse`` through
+        untouched.
+        """
+        from fastapi.responses import StreamingResponse
+
+        from app.ai.assistance.turns import TurnConflictError
+        from app.ai.assistance.turns import acquire_turn
+        from app.ai.assistance.turns import release_turn
+        from app.ai.assistance.turns import stream_error_frame
+        from app.core.database import AsyncSessionLocal
+
+        db = AsyncSessionLocal()
+        try:
+            lock_session_id, frames = await prepare(db)
         except Exception:
             await db.close()
             raise
 
-        lock_session_id = UUID(context["session_id"]) if session_id else None
         lock_token = None
         if lock_session_id is not None:
             try:
@@ -1782,18 +1829,9 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 await db.close()
                 raise ValueError(str(e)) from e
 
-        service = AIAssistanceService(db)
-
         async def event_generator():
             try:
-                async for frame in await service.assist(
-                    task_type="chat",
-                    user_input=message,
-                    context=context,
-                    tenant_id=integration.tenant_id,
-                    user_id=actor.user_id,
-                    stream=True,
-                ):
+                async for frame in await frames():
                     yield frame
             except ValueError as e:
                 # Intentional guard violation — localized, user-facing.
@@ -1809,6 +1847,48 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 await db.close()
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    async def _ai_resume_stream(
+        self, integration: UserIntegration, session_id: str, request: Any
+    ):
+        """`POST /ai/sessions/{id}/resume` — the SSE twin of the PWA HITL
+        resume: after the client resolves task cards (REST commit first,
+        then `.../tasks/{proposal_id}/resolve`), stream the agent's
+        continuation turn. Body `{message_id?}` mirrors the PWA
+        `HitlResumeRequest` (selectors only — outcomes are read from the
+        server-side tasks JSONB, never trusted from the body). Isolation
+        via `_ai_owned_session` first, then the session's turn lock is
+        ALWAYS taken (the session id is known); a concurrent turn on the
+        session is rejected with ValueError before the stream starts.
+        Guard violations inside the stream arrive as terminal
+        `flow_failed` frames with `code:"guard"`."""
+        from app.ai.assistance.service import AIAssistanceService
+
+        payload = await request.json()
+        message_id = None
+        if payload.get("message_id") is not None:
+            try:
+                message_id = UUID(str(payload["message_id"]))
+            except ValueError:
+                raise ValueError(f"Invalid message_id: {payload['message_id']}")
+
+        async def prepare(db):
+            _svc, actor, _session = await self._ai_owned_session(
+                db, integration, session_id
+            )
+            service = AIAssistanceService(db)
+
+            async def frames():
+                return service.resume_after_hitl(
+                    session_id=UUID(session_id),
+                    tenant_id=integration.tenant_id,
+                    user_id=actor.user_id,
+                    message_id=message_id,
+                )
+
+            return UUID(session_id), frames
+
+        return await self._sse_turn_stream(integration, prepare)
 
     async def _ai_delete_session(
         self, integration: UserIntegration, session_id: str, request: Any

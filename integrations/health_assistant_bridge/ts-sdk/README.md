@@ -104,3 +104,12 @@ Pass an array of metric names. Returns an AI-generated array of `MappedMetric` o
 
 ### `client.syncData(payload: SyncPayload)`
 Pushes data into the backend. The payload must strictly conform to the `ClientRecord` types (Quantitative or Categorical).
+
+### `client.requestLines(method, path, body?)`
+Line-by-line reading of a **signed streaming response body** (SSE): a fetch-based reader (`response.body.getReader()` + `TextDecoder`) that yields each raw line without its newline — including empty separator lines and `:` comment frames, matching the Kotlin SDK's `requestLines` contract — so the caller parses the SSE framing itself. Requires Node >= 18 (a global `fetch` with streamable response bodies; the SDK's `engines` floor of >= 24 already guarantees it). Deliberately **never retries** — replaying a non-idempotent POST mid-turn would duplicate it — and applies no whole-request timeout (an SSE stream legitimately idles between deltas). A non-2xx response throws `BridgeException` before the first emission.
+
+### `client.chatStream(message, sessionId?)`
+`POST /ai/chat/stream` — one streaming chat turn. Builds and signs the `{message, session_id?}` body; yields the raw SSE lines via `requestLines`.
+
+### `client.resumeChatStream(sessionId, messageId?)`
+`POST /ai/sessions/{id}/resume` — the HITL continuation turn after the user resolved task cards. `messageId` selects which assistant message's resolved tasks are summarized; omit it and the server picks the most recent task-bearing message. Yields the raw SSE lines via `requestLines`.

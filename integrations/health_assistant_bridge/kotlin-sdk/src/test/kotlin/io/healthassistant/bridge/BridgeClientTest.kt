@@ -616,4 +616,72 @@ class BridgeClientTest {
         assertEquals(400, (ex as BridgeException).statusCode)
         c.close()
     }
+
+    // --- HITL resume streaming (WS4) -----------------------------------
+
+    private fun streamBridge(secret: String, engine: MockEngine): BridgeClient =
+        BridgeClient(
+            baseUrl = "https://example.test",
+            integrationId = "00000000-0000-0000-0000-000000000000",
+            apiSecret = secret,
+            client = HttpClient(engine),
+            streamClient = HttpClient(engine),
+        )
+
+    @Test
+    fun `resumeChatStream POSTs the resume path and streams its lines`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val expectedBody = """{"message_id":"m-1"}"""
+        val sse = "data: {\"event\":\"delta\",\"text\":\"Acknowledged.\"}\n\n" +
+            "data: {\"event\":\"flow_finished\"}\n\n"
+        var sawSig: String? = null
+        val engine = MockEngine { req ->
+            sawSig = req.headers["X-Api-Signature"]
+            respond(sse, HttpStatusCode.OK, headersOf("Content-Type", "text/event-stream"))
+        }
+        val c = streamBridge(secret, engine)
+        val lines = c.resumeChatStream("s-1", "m-1").toList()
+        assertEquals(
+            listOf(
+                "data: {\"event\":\"delta\",\"text\":\"Acknowledged.\"}",
+                "",
+                "data: {\"event\":\"flow_finished\"}",
+                "",
+            ),
+            lines,
+        )
+        assertEquals(1, engine.requestHistory.size)
+        assertEquals(
+            "/api/v1/integrations/health_assistant_bridge/api/00000000-0000-0000-0000-000000000000/ai/sessions/s-1/resume",
+            engine.requestHistory[0].url.encodedPath,
+        )
+        assertEquals("POST", engine.requestHistory[0].method.value)
+        assertEquals(
+            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", expectedBody.encodeToByteArray()).signature,
+            sawSig,
+        )
+        c.close()
+    }
+
+    @Test
+    fun `resumeChatStream omits message_id when null`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        var sawSig: String? = null
+        val engine = MockEngine { req ->
+            sawSig = req.headers["X-Api-Signature"]
+            respond(
+                "data: {\"event\":\"flow_finished\"}\n\n",
+                HttpStatusCode.OK,
+                headersOf("Content-Type", "text/event-stream"),
+            )
+        }
+        val c = streamBridge(secret, engine)
+        val lines = c.resumeChatStream("s-1").toList()
+        assertEquals(listOf("data: {\"event\":\"flow_finished\"}", ""), lines)
+        assertEquals(
+            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", "{}".encodeToByteArray()).signature,
+            sawSig,
+        )
+        c.close()
+    }
 }

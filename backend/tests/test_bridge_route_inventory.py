@@ -56,6 +56,7 @@ FROZEN_ROUTES: set[tuple[str, str]] = {
     ("GET", "status"),
     ("GET", "vaccines"),
     ("PATCH", "^notifications/(?P<recipient_id>[^/]+)/(?P<action>read|dismiss)$"),
+    ("POST", "^ai/sessions/(?P<session_id>[^/]+)/resume$"),
     ("POST", "^ai/sessions/(?P<session_id>[^/]+)/tasks/(?P<proposal_id>[^/]+)/resolve$"),
     ("POST", "^clinical-events/(?P<event_id>[^/]+)/occurrences$"),
     ("POST", "^documents/(?P<doc_id>[^/]+)/extract$"),

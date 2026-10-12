@@ -46,6 +46,21 @@ def fake_redis(monkeypatch):
     return fake
 
 
+@pytest.fixture
+def turn_redis(monkeypatch):
+    """Hermetic turn lock for the streaming resume path: the real client's
+    pooled connections are loop-bound and a connection created by an
+    earlier test poisons this one's release ("attached to a different
+    loop"), leaking the key into later assertions — the FakeRedis pattern
+    from tests/test_turn_lock.py (set/eval compare-and-delete included)."""
+    from app.ai.assistance import turns as turns_mod
+    from tests.test_turn_lock import FakeRedis as TurnFakeRedis
+
+    fake = TurnFakeRedis()
+    monkeypatch.setattr(turns_mod, "redis_client", fake)
+    return fake
+
+
 class TestEnforceIntegrationRateLimitUnit:
     """The imperative helper: same key shape + §16 ceiling resolution as
     the dependency form, delegating to `_consume` (429 + Retry-After)."""
@@ -204,17 +219,20 @@ async def ai_rl_ctx():
             )
         )
         await db.flush()
-        db.add(
-            ChatSession(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                user_id=user_id,
-                patient_id=patient_id,
-                title="Rate limit target",
-            )
+        session = ChatSession(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            user_id=user_id,
+            patient_id=patient_id,
+            title="Rate limit target",
         )
+        db.add(session)
         await db.commit()
-        return {"integration_id": integration_id, "api_secret": api_secret}
+        return {
+            "integration_id": integration_id,
+            "api_secret": api_secret,
+            "session_id": session.id,
+        }
 
 
 async def _fake_assist(self, **kwargs):
@@ -247,6 +265,19 @@ async def _proxy_observations(db, integration_id: str, api_secret: str):
         integration_id=str(integration_id),
         path="observations",
         request=_signed_request(api_secret, "GET", "observations"),
+        db=db,
+    )
+
+
+async def _proxy_ai_resume(db, integration_id: str, api_secret: str, session_id):
+    from app.api.v1.endpoints import integrations as ep
+
+    path = f"ai/sessions/{session_id}/resume"
+    return await ep.integration_api_proxy(
+        domain="health_assistant_bridge",
+        integration_id=str(integration_id),
+        path=path,
+        request=_signed_request(api_secret, "POST", path, body=b"{}", json_payload={}),
         db=db,
     )
 
@@ -302,3 +333,42 @@ class TestAiBucketThroughTheProxy:
                         db, ai_rl_ctx["integration_id"], ai_rl_ctx["api_secret"]
                     )
                     assert isinstance(result, dict)
+
+    async def test_resume_path_counts_toward_the_ai_bucket(self, ai_rl_ctx, fake_redis, turn_redis):
+        """WS4: `POST /ai/sessions/{id}/resume` is an `ai/*` path — it draws
+        from the same 30/5-min budget as chat (30 resumes stream through,
+        the 31st is a 429 with Retry-After)."""
+        from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+
+        from app.api.v1.endpoints import integrations as ep
+        from app.core.database import AsyncSessionLocal
+
+        async def _fake_resume(self, **kwargs):
+            yield 'data: {"event":"flow_finished"}\n\n'
+
+        with (
+            patch(
+                "app.ai.assistance.service.AIAssistanceService.resume_after_hitl",
+                new=lambda self, **kw: _fake_resume(self, **kw),
+            ),
+            patch.object(ep.integration_registry, "get_provider") as gp,
+        ):
+            gp.return_value = HealthAssistantBridgeProvider()
+            async with AsyncSessionLocal() as db:
+                for _ in range(30):
+                    response = await _proxy_ai_resume(
+                        db,
+                        ai_rl_ctx["integration_id"],
+                        ai_rl_ctx["api_secret"],
+                        ai_rl_ctx["session_id"],
+                    )
+                    _ = [frame async for frame in response.body_iterator]
+                with pytest.raises(HTTPException) as exc:
+                    await _proxy_ai_resume(
+                        db,
+                        ai_rl_ctx["integration_id"],
+                        ai_rl_ctx["api_secret"],
+                        ai_rl_ctx["session_id"],
+                    )
+        assert exc.value.status_code == 429
+        assert "Retry-After" in exc.value.headers

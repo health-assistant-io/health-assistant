@@ -152,6 +152,24 @@ class BridgeClient(
             }
     }
 
+    /** `POST /ai/sessions/{id}/resume` — stream the HITL continuation turn
+     *  (SSE lines via [requestLines]) after the user resolved task cards
+     *  through `.../tasks/{proposal_id}/resolve`. [messageId] selects the
+     *  assistant message whose tasks are summarized; `null` omits the field
+     *  so the server picks the most recent task-bearing message. One
+     *  streaming turn per session — while another turn streams the server
+     *  answers non-2xx before the first emission. */
+    fun resumeChatStream(sessionId: String, messageId: String? = null): Flow<String> {
+        val body = buildJsonObject {
+            messageId?.let { put("message_id", it) }
+        }
+        return requestLines(
+            "POST",
+            "/ai/sessions/$sessionId/resume",
+            json.encodeToString(JsonObject.serializer(), body).encodeToByteArray(),
+        )
+    }
+
     /** Convenience: `GET /documents/{id}/content` → raw bytes. */
     suspend fun getDocumentContent(docId: String): ByteArray =
         requestBytes("GET", "/documents/$docId/content")

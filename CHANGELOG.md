@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge HITL resume streaming (R7 WS4):** `POST /ai/sessions/{id}/resume`
+  streams the agent's continuation turn after the mobile client resolves
+  task cards — the same SSE family vocabulary as `/ai/chat/stream` (an
+  `interrupt` card can pause the flow again), body `{message_id?}` (the
+  PWA `HitlResumeRequest` semantics), ownership isolation first, the
+  shared single-flight turn lock always taken (a concurrent turn → HTTP
+  400), guard violations surfacing as terminal `flow_failed` frames with
+  `code:"guard"`, and the `/ai/*` 30-per-5-min budget applying. The
+  Kotlin SDK gained `BridgeClient.resumeChatStream(sessionId,
+  messageId?)`; the TypeScript SDK gained its SSE streaming primitive
+  `requestLines(method, path, body?)` (fetch-based line reader, no retry,
+  `BridgeException` before the first emission on non-2xx) plus
+  `chatStream(message, sessionId?)` and `resumeChatStream(sessionId,
+  messageId?)` — all covered by the `node:test` harness. The bridge's
+  SSE-turn skeleton (DB-session lifetime, lock, error frames) is shared
+  between chat-stream and resume (`_sse_turn_stream`).
 - **Bridge AI rate-limit bucket (R7 WS2):** `/ai/*` proxy paths now share
   the web client's AI budget — 30 requests / 5 minutes per integration
   (HTTP 429 + `Retry-After`), enforced after HMAC verification and before
@@ -70,9 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   module-level `_ROUTES` list of `(METHOD, literal-or-regex pattern,
   handler)` entries grouped by the existing phase sections — same handlers,
   same wire responses, no behavior change. The served surface is frozen by
-  `backend/tests/test_bridge_route_inventory.py` (63 routes incl. every
-  parameterized path): adding or removing a route without updating the
-  inventory fails CI. User-invisible refactor.
+  `backend/tests/test_bridge_route_inventory.py` (64 routes incl. every
+  parameterized path — WS4 added the HITL resume path): adding or removing
+  a route without updating the inventory fails CI. User-invisible
+  refactor.
 - **Chat turn lock is now Redis-backed** (`app/ai/assistance/turns.py`):
   one streaming turn per chat session interlocks correctly across all
   workers/replicas (the previous in-process set was silently per-worker),
@@ -93,6 +110,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   projection (one source for the card fields).
 
 ### Fixed
+- **PWA HITL resume now takes the per-session turn lock (R7 WS4):** the
+  `POST /ai-assistance/sessions/{id}/resume` endpoint never acquired the
+  single-flight lock, so a HITL resume could interleave with a streaming
+  turn on the same session — exactly the interleaving the lock exists to
+  prevent. It now acquires before the stream starts (409 while a turn
+  streams, like every other turn endpoint) and releases in the
+  generator's `finally`.
 - **All three bridge SDKs now sign `GET /status`** (Kotlin `getStatus`,
   Python sync + async `get_status`, TypeScript `getStatus`) when an API
   secret is configured, so paired clients finally receive the full

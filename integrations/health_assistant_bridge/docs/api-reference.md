@@ -77,7 +77,7 @@ A closed set — the server only ever advertises flags from this table:
 |---|---|---|
 | `exam_enrichment` | 2026-10-10 | Enriched exam list/detail — card fields, per-section counts, the `GET /examinations/{id}` detail projection. |
 | `ai_assistant` | R7 Phase 1 | The `/ai/*` chat paths — sessions, messages, non-streaming chat, HITL resolve. |
-| `ai_streaming` | R7 Phase 2 | `POST /ai/chat/stream` (SSE). |
+| `ai_streaming` | R7 Phase 2 | `POST /ai/chat/stream` (SSE), and since WS4 the HITL continuation `POST /ai/sessions/{id}/resume` (same stream family). |
 
 **Rule:** adding a flag on the server requires updating this table in the
 same commit. Absence is meaningful — a client must treat a missing flag as
@@ -443,9 +443,11 @@ together. Non-AI bridge paths are not affected by this bucket.
 | `POST /ai/chat/stream` | **The SSE twin** of the PWA `/stream` chat (Phase 2): same body, response is `text/event-stream` carrying the family vocabulary + health payload events (`session`, `delta`, `task`, `citation`, `interrupt`, `flow_finished`, `flow_failed`) — one JSON object per `data:` frame, byte-identical to what the web client renders. One streaming turn per session at a time (the shared single-flight lock; a concurrent turn → HTTP 400 "already streaming"). The stream holds its own DB session; the proxy passes the `StreamingResponse` through untouched. |
 | `DELETE /ai/sessions/{id}` | Delete a chat session (scoped). |
 | `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 400 (`Task already …`). |
+| `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards (session ownership + the all-tasks-terminal check) fire before the stream (HTTP 400) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 400 "already streaming"). Counts toward the `/ai/*` 30-per-5-min integration bucket. |
 
 Streaming: **landed for chat in Phase 2** — `POST /ai/chat/stream` returns
-SSE (the proxy passes provider `StreamingResponse`s through). Branching
+SSE (the proxy passes provider `StreamingResponse`s through) — and for the
+HITL continuation in WS4 (`POST /ai/sessions/{id}/resume`). Branching
 (edit/regenerate) and web-only card kinds remain future phases.
 
 **Kotlin SDK:** use `BridgeClient.requestText(method, path)` (or `request` for
