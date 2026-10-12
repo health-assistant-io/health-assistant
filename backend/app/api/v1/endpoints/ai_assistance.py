@@ -14,10 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
 from app.ai.assistance.turns import (
+    SSE_RESPONSE_HEADERS,
     TURN_LOCK_MESSAGE,
     TurnConflictError,
     acquire_turn,
     release_turn,
+    sse_keep_alive,
     stream_error_frame,
 )
 from app.ai.schemas.assistance import (
@@ -175,15 +177,17 @@ async def assist_user_stream(
 
     async def event_generator():
         try:
-            async for frame in await service.assist(
-                task_type=request.task_type,
-                user_input=request.user_input,
-                reference_image=request.reference_image,
-                context=request.context,
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.user_id,
-                stream=True,
-                images=request.images,
+            async for frame in sse_keep_alive(
+                await service.assist(
+                    task_type=request.task_type,
+                    user_input=request.user_input,
+                    reference_image=request.reference_image,
+                    context=request.context,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    stream=True,
+                    images=request.images,
+                )
             ):
                 yield frame
         except ValueError as e:
@@ -203,7 +207,11 @@ async def assist_user_stream(
             if lock_session_id is not None:
                 await release_turn(lock_session_id, lock_token)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
 
 
 @router.get("/sessions", response_model=list[ChatSessionSchema])
@@ -310,14 +318,16 @@ async def _branch_turn_stream(
 
     async def event_generator():
         try:
-            async for frame in await service.assist(
-                task_type="chat",
-                user_input=user_input,
-                context=context or {},
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.user_id,
-                stream=True,
-                branch=branch | {"message_id": str(message_id)},
+            async for frame in sse_keep_alive(
+                await service.assist(
+                    task_type="chat",
+                    user_input=user_input,
+                    context=context or {},
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    stream=True,
+                    branch=branch | {"message_id": str(message_id)},
+                )
             ):
                 yield frame
         except ValueError as e:
@@ -333,7 +343,11 @@ async def _branch_turn_stream(
         finally:
             await release_turn(session.id, lock_token)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
 
 
 @router.post("/messages/{message_id}/edit")
@@ -556,11 +570,13 @@ async def resume_hitl_session(
             # calling it returns the generator directly — do NOT await it.
             # Awaiting would raise: "object async_generator can't be used in
             # 'await' expression".
-            async for frame in service.resume_after_hitl(
-                session_id=session_id,
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.user_id,
-                message_id=body.message_id,
+            async for frame in sse_keep_alive(
+                service.resume_after_hitl(
+                    session_id=session_id,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    message_id=body.message_id,
+                )
             ):
                 yield frame
         except ValueError as e:
@@ -577,7 +593,11 @@ async def resume_hitl_session(
         finally:
             await release_turn(session_id, lock_token)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
 
 
 @router.post("/transcribe")

@@ -1857,15 +1857,20 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         The generator maps ``ValueError`` to the terminal guard
         ``flow_failed`` frame, any other exception to a logged generic
         frame, and its ``finally`` releases the lock (owner token) and
-        closes the DB session — one session for the whole stream; the
-        integration proxy passes the ``StreamingResponse`` through
-        untouched.
+        closes the DB session — one session for the whole stream. Frames
+        flow through :func:`sse_keep_alive` (a ``: keep-alive`` comment
+        every :data:`SSE_HEARTBEAT_SECONDS` of idleness) and the response
+        carries the shared SSE headers and the ``text/event-stream`` media
+        type (exempt from gzip middleware); the integration proxy passes
+        the ``StreamingResponse`` through untouched.
         """
         from fastapi.responses import StreamingResponse
 
+        from app.ai.assistance.turns import SSE_RESPONSE_HEADERS
         from app.ai.assistance.turns import TurnConflictError
         from app.ai.assistance.turns import acquire_turn
         from app.ai.assistance.turns import release_turn
+        from app.ai.assistance.turns import sse_keep_alive
         from app.ai.assistance.turns import stream_error_frame
         from app.core.database import AsyncSessionLocal
 
@@ -1886,7 +1891,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         async def event_generator():
             try:
-                async for frame in await frames():
+                async for frame in sse_keep_alive(await frames()):
                     yield frame
             except ValueError as e:
                 # Intentional guard violation — localized, user-facing.
@@ -1901,7 +1906,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     await release_turn(lock_session_id, lock_token)
                 await db.close()
 
-        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers=SSE_RESPONSE_HEADERS,
+        )
 
     async def _ai_resume_stream(
         self, integration: UserIntegration, session_id: str, request: Any
