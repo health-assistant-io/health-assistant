@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { setupErrorDetail, type ProviderSetupErrorDetail } from '../../../api/aiConfig';
 
-const ERROR_CODES = [
+export const ERROR_CODES = [
   'invalid_key',
   'insufficient_credit',
   'new_user_quota',

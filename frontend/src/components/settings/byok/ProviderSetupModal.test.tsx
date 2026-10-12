@@ -280,7 +280,7 @@ describe('ProviderSetupModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('editing the base URL hides automatic setup; manual connect creates the row without auto-configure', async () => {
+  it('editing the base URL reroutes automatic setup through the manual create path', async () => {
     const user = userEvent.setup();
     const { onClose, onManual } = renderModal();
     createProvider.mockResolvedValue({ id: 'prov-9' });
@@ -290,13 +290,9 @@ describe('ProviderSetupModal', () => {
     await user.clear(baseInput);
     await user.type(baseInput, 'https://relay.test/v1');
 
-    // edited preset → automatic setup no longer represents it
-    expect(
-      screen.queryByRole('button', { name: 'Set up automatically' }),
-    ).not.toBeInTheDocument();
-
+    // edited preset → the automatic action saves through the manual form
     await user.type(await screen.findByLabelText('API Key'), 'sk-test');
-    await user.click(screen.getByRole('button', { name: 'Set up manually' }));
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
     await waitFor(() =>
       expect(createProvider).toHaveBeenCalledWith(

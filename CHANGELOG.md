@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BYOK setup UI swaps to the library kit (plan 26 Phase 2):** the
+  byok port's tiles, guided form and re-run review now render
+  `@neuronection/assistant-ui` components (`provider-setup-tiles` with the
+  Custom tile, `provider-setup-form` with the hosting toggle + country
+  riding `advancedExtra` and §15 error-enum copy via `errorLabels`,
+  `setup-review` over the library switch row); the local `ProviderLogo.tsx`
+  and the hand-rolled review `SwitchRow` are deleted in the same commit.
+  Behavior change: with an edited base URL / hosting / country the
+  **Set up automatically** action now saves through the manual create path
+  (study semantics) instead of hiding itself — the explicit *Set up
+  manually* footer action remains. The review keeps its four-key
+  snake_case wire body (`bind_decision` arrives with the Phase 5 decision
+  port). Dep pin `^0.52.0` → `^0.54.0` (0.54.0 pending publish — verified
+  against the packed RC tarball: frontend lint + build + 722/722 tests,
+  backend 3470 passed + 1 skipped, byok R1–R7 gate green; lockfile
+  registry-pinned, publish-ready).
+
 ### Added
 - **Bridge SDK releases — Kotlin 0.6.0, Python 1.4.0, TypeScript 1.4.0:** the
   three client SDKs ship the R7 hardening wave in lockstep (versions synced

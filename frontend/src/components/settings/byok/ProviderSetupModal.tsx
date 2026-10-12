@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Banknote,
-  Check,
-  Copy,
-  ExternalLink,
-  House,
-  Loader2,
-  Settings2,
-  X,
-} from 'lucide-react';
+import { Banknote, Check, House } from 'lucide-react';
 import { ModelPicker, type ModelPickerProvider } from '@neuronection/assistant-ui';
 import {
   COUNTRIES,
   countryDisplayName,
 } from '@neuronection/assistant-ui/countries';
+import {
+  ProviderSetupForm,
+  type ProviderSetupFormValue,
+} from '@neuronection/assistant-ui/provider-setup-form';
+import {
+  ProviderSetupTiles,
+  ProviderSetupManualTile,
+} from '@neuronection/assistant-ui/provider-setup-tiles';
 import {
   aiConfigApi,
   setupErrorDetail,
@@ -28,8 +27,7 @@ import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
 import { SearchableDropdown } from '../../ui/SearchableDropdown';
 
-import { ProviderLogo } from './ProviderLogo';
-import { SetupErrorPanel } from './setupErrors';
+import { ERROR_CODES } from './setupErrors';
 
 type Phase = 'tiles' | 'form' | 'done';
 
@@ -382,34 +380,15 @@ export const ProviderSetupModal: React.FC<{
       footer={
         phase === 'form' && preset ? (
           <div className="flex w-full items-center justify-between gap-2">
-            <Button variant="ghost" size="sm" onClick={backToTiles}>
-              {t('settings.ai.setup.choose_another')}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              title={t('settings.ai.setup.manually_hint')}
+              onClick={() => void connectManual().catch(() => undefined)}
+            >
+              {t('settings.ai.setup.manually')}
             </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                title={t('settings.ai.setup.manually_hint')}
-                onClick={() => void connectManual().catch(() => undefined)}
-              >
-                {t('settings.ai.setup.manually')}
-              </Button>
-              {!forcedManual ? (
-                <Button
-                  size="sm"
-                  disabled={(!preset.local && apiKey.trim().length === 0) || pending}
-                  onClick={() => void connect().catch(() => undefined)}
-                >
-                  {pending ? (
-                    <Loader2 className="animate-spin" aria-hidden />
-                  ) : (
-                    <Check aria-hidden />
-                  )}
-                  {t('settings.ai.setup.automatically')}
-                </Button>
-              ) : null}
-            </div>
           </div>
         ) : (
           <div className="flex w-full items-center justify-end gap-2">
@@ -426,142 +405,86 @@ export const ProviderSetupModal: React.FC<{
         </p>
 
         {phase === 'tiles' ? (
-          <div
-            className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-            role="group"
-            aria-label={t('settings.ai.setup.title')}
-          >
-            {order.map((key) => {
+          <ProviderSetupTiles
+            presets={order.map((key) => {
               const tile = presets?.[key];
-              if (!tile) return null;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className="flex h-auto flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-4 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface dark:hover:bg-dark-bg"
-                  onClick={() => openForm(key)}
-                >
-                  <ProviderLogo presetKey={key} label={tile.name} />
-                  <span className="w-full truncate text-center text-sm font-medium text-gray-900 dark:text-dark-text">
-                    {tile.name}
-                  </span>
-                  {tile.local ? (
-                    <span className="text-[11px] text-gray-500 dark:text-dark-muted">
-                      {t('settings.ai.local_kind')}
-                    </span>
-                  ) : null}
-                </button>
-              );
+              return { key, name: tile?.name ?? key, local: tile?.local ?? false };
             })}
-            <button
-              type="button"
-              className="flex h-auto flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-4 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface dark:hover:bg-dark-bg"
+            onSelect={openForm}
+            label={t('settings.ai.setup.title')}
+            localLabel={t('settings.ai.local_kind')}
+          >
+            <ProviderSetupManualTile
               onClick={() => {
                 onClose();
                 onManual();
               }}
             >
-              <Settings2 className="h-5 w-5 text-gray-400" aria-hidden />
-              <span className="w-full truncate text-center text-sm font-medium text-gray-900 dark:text-dark-text">
-                {t('settings.ai.setup.custom')}
-              </span>
-            </button>
-          </div>
+              {t('settings.ai.setup.custom')}
+            </ProviderSetupManualTile>
+          </ProviderSetupTiles>
         ) : null}
 
         {phase === 'form' && preset ? (
           <>
-            <ol className="list-decimal space-y-1 pl-5 text-xs">
-              {(preset.steps ?? []).map((step, index) => (
-                <li
-                  key={index}
-                  className="flex items-start justify-between gap-2 text-gray-500 dark:text-dark-muted"
-                >
-                  <span>{step.replace('{url}', preset.key_url ?? '')}</span>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1"
-                    aria-label={t('settings.ai.setup.copy_step')}
-                    title={t('settings.ai.setup.copy_step')}
-                    onClick={() => void navigator.clipboard.writeText(step)}
-                  >
-                    <Copy className="h-3 w-3" aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ol>
-            {preset.free_tier_note ? (
-              <p className="text-xs text-gray-500 dark:text-dark-muted">
-                {preset.free_tier_note}
-              </p>
-            ) : null}
-            {preset.key_url ? (
-              <a
-                className="inline-flex items-center gap-1 text-xs text-blue-600 underline dark:text-blue-400"
-                href={preset.key_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink className="h-3 w-3" aria-hidden />
-                {t('settings.ai.setup.get_key')}
-              </a>
-            ) : null}
-            <label className="block space-y-1 text-sm">
-              <span className="text-gray-500 dark:text-dark-muted">
-                {t('settings.ai.setup.connection_name')}
-              </span>
-              <input
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                value={name}
-                placeholder={preset.name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            {!preset.local ? (
-              <label className="block space-y-1 text-sm">
-                <span className="text-gray-500 dark:text-dark-muted">
-                  {t('settings.ai.api_key')}
-                </span>
-                <input
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  autoFocus
-                />
-              </label>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-dark-muted">
-                {t('settings.ai.setup.no_key_needed')}
-              </p>
-            )}
-            <details className="rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-border">
-              <summary className="cursor-pointer text-sm font-medium">
-                {t('settings.ai.setup.advanced')}
-              </summary>
-              <div className="space-y-3 pt-2">
-                <label className="block space-y-1 text-sm">
-                  <span className="text-gray-500 dark:text-dark-muted">
-                    {t('settings.ai.base_url')}
-                  </span>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono disabled:opacity-80 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                    value={advancedBase}
-                    disabled={preset.fixed_base}
-                    onChange={(event) => setAdvancedBase(event.target.value)}
-                  />
-                </label>
-                {!preset.fixed_base ? (
-                  <p className="text-[11px] text-gray-500 dark:text-dark-muted">
-                    {t('settings.ai.setup.base_edit_hint')}
-                  </p>
-                ) : null}
-                <HostingToggle local={isLocal} onChange={setIsLocal} disabled={preset.local} />
-                <CountrySelect country={country} onChange={setCountry} />
-              </div>
-            </details>
-            <SetupErrorPanel error={error} plainError={plainError} />
+            <ProviderSetupForm
+              preset={{
+                name: preset.name,
+                keyUrl: preset.key_url ?? undefined,
+                steps: preset.steps ?? undefined,
+                freeTierNote: preset.free_tier_note ?? undefined,
+                fixedBase: preset.fixed_base,
+                baseUrl: preset.base_url,
+                local: preset.local,
+              }}
+              value={{ name, apiKey, baseUrl: advancedBase }}
+              onChange={(value: ProviderSetupFormValue) => {
+                setName(value.name);
+                setApiKey(value.apiKey);
+                setAdvancedBase(value.baseUrl ?? '');
+              }}
+              testing={pending}
+              error={
+                error
+                  ? { code: error.code, suspectedVendor: error.suspected_vendor ?? null }
+                  : plainError
+                    ? { code: 'unknown' }
+                    : null
+              }
+              errorLabels={{
+                ...Object.fromEntries(
+                  ERROR_CODES.map((code) => [code, t(`settings.ai.setup.errors.${code}`)]),
+                ),
+                unknown: plainError ?? t('settings.ai.setup.errors.unknown'),
+              }}
+              suspectedVendorHint={t('settings.ai.setup.errors.suspected_vendor', {
+                vendor: error?.suspected_vendor ?? '',
+              })}
+              advancedExtra={
+                <>
+                  <HostingToggle local={isLocal} onChange={setIsLocal} disabled={preset.local} />
+                  <CountrySelect country={country} onChange={setCountry} />
+                </>
+              }
+              copyLabel={t('settings.ai.setup.copy_step')}
+              getKeyLabel={t('settings.ai.setup.get_key')}
+              nameLabel={t('settings.ai.setup.connection_name')}
+              apiKeyLabel={t('settings.ai.api_key')}
+              noKeyLabel={t('settings.ai.setup.no_key_needed')}
+              advancedLabel={t('settings.ai.setup.advanced')}
+              baseUrlLabel={t('settings.ai.base_url')}
+              baseUrlHint={t('settings.ai.setup.base_edit_hint')}
+              submitLabel={t('settings.ai.setup.automatically')}
+              cancelLabel={t('settings.ai.setup.choose_another')}
+              onSubmit={() => {
+                if (forcedManual) {
+                  void connectManual().catch(() => undefined);
+                } else {
+                  void connect().catch(() => undefined);
+                }
+              }}
+              onCancel={backToTiles}
+            />
           </>
         ) : null}
       </div>
