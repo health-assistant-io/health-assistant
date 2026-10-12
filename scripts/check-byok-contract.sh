@@ -9,6 +9,17 @@
 #   R3 setup orchestration lives in the sanctioned AI layer
 #   R4 the uniform contract-test matrix file exists and names the core cases
 #   R5 setup options naming (camelCase in TS; snake_case in Python payloads)
+#   R6 decision preset data is on the schema-2 wave and reaches the generated
+#      modules (plan 26 / ADR-0032 presets v2) — catches a stale
+#      canonical+generated PAIR, which R1 cannot see (R1 compares generated
+#      against the LOCAL canonical, so a stale pair passes silently)
+#   R7 decision secrets live under provider:<id> ids (plan 26 D8) — no
+#      bespoke decision secret ids; the one legacy exception is desktop's
+#      pre-plan-26 Jev key id 'openrouter:key', retired by the plan 26
+#      Phase 1 S2 migration (the exemption dies with it)
+#
+# Self-test: check-byok-contract.selftest.sh (same dir; materializes temp
+# trees for the R6/R7 pass/fail cases).
 #
 # Usage: check-byok-contract.sh [--self]   (run from the repo root)
 set -uo pipefail
@@ -96,11 +107,14 @@ fi
 
 # R3 — setup orchestration lives in the sanctioned AI layer.
 # TS repos: imported only by the AI layer + IPC handlers (renderer reaches it
-# through the typed bridge — that is the sanctioned path).
+# through the typed bridge — that is the sanctioned path). The IPC surface is
+# `src/main/ipc-handlers.ts` and, since desktop's registrar decomposition
+# (fc0fcaa), the per-domain registrars under `src/main/ipc/` — same surface,
+# split files.
 # Python repos: backend/app/ai/providers/setup.py, imported only by the AI
 # layer + the API surface (the FastAPI router is the sanctioned consumer).
 if [ -f "$ROOT/src/main/ai/providers/setup.ts" ]; then
-  OUTSIDE="$(grep -rln "from '@main/ai/providers/setup'" "$ROOT/src" 2>/dev/null | grep -v "src/main/ipc-handlers.ts" || true)"
+  OUTSIDE="$(grep -rln "from '@main/ai/providers/setup'" "$ROOT/src" 2>/dev/null | grep -v "src/main/ipc-handlers.ts" | grep -v "src/main/ipc/" || true)"
   if [ -n "$OUTSIDE" ]; then
     bad "R3 setup module imported outside the AI layer / IPC surface:"
     echo "$OUTSIDE" >&2
@@ -175,6 +189,102 @@ if [ -f "$OPTS_FILE_PY" ]; then
   fi
 else
   note "R5 skipped (no Python setup module)"
+fi
+
+# R6 — decision preset data present + generated (plan 26 / ADR-0032, presets
+# v2 schema-2 wave). The vendored canonical must declare schema >= 2 with
+# 'decision' in the capability vocabulary, and every generated module must
+# carry the decision fields — a repo that regenerated against a STALE local
+# canonical (or stripped the decision data) fails here even though R1's
+# generated-vs-local comparison is consistent.
+if [ -f "$ROOT/contracts/ai-presets.json" ]; then
+  R6_TS="$ROOT/src/shared/ai/providerPresets.generated.ts"
+  R6_PY="$ROOT/backend/app/ai/providers/presets_data.py"
+  BYOK_SCHEMA="$(sed -nE 's/.*"schema"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ROOT/contracts/ai-presets.json" | head -1)"
+  if [ -z "$BYOK_SCHEMA" ]; then
+    bad "R6 contracts/ai-presets.json declares no schema version (expected >= 2, the plan 26 presets v2 wave)"
+  elif [ "$BYOK_SCHEMA" -lt 2 ]; then
+    bad "R6 contracts/ai-presets.json is schema $BYOK_SCHEMA (pre-decision) — re-vendor the dev canonical + sync script (plan 26 / ADR-0032 presets v2)"
+  elif ! grep -q '"decision"' "$ROOT/contracts/ai-presets.json"; then
+    bad "R6 contracts/ai-presets.json lacks the 'decision' capability (D1 vocabulary freeze)"
+  else
+    good "R6 canonical presets are on the schema-$BYOK_SCHEMA decision wave"
+  fi
+  if [ -f "$R6_TS" ]; then
+    if grep -q "decisionModels" "$R6_TS" && grep -q "decisionDefault" "$R6_TS" && grep -q "CAPABILITY_VOCABULARY" "$R6_TS"; then
+      good "R6 generated TS module carries the decision fields (decisionModels/decisionDefault/CAPABILITY_VOCABULARY)"
+    else
+      bad "R6 $R6_TS lacks the decision fields — regenerate with the vendored schema-2 sync script"
+    fi
+  fi
+  if [ -f "$R6_PY" ]; then
+    if grep -q "decision_models" "$R6_PY" && grep -q "decision_default" "$R6_PY" && grep -q "CAPABILITY_VOCABULARY" "$R6_PY"; then
+      good "R6 generated Python module carries the decision fields (decision_models/decision_default/CAPABILITY_VOCABULARY)"
+    else
+      bad "R6 $R6_PY lacks the decision fields — regenerate with the vendored schema-2 sync script"
+    fi
+  fi
+  if [ ! -f "$R6_TS" ] && [ ! -f "$R6_PY" ]; then
+    note "R6 generated-module check skipped (no generated preset module yet — required once the repo ships the setup surface)"
+  fi
+else
+  note "R6 skipped (canonical presets not vendored yet — required once the repo ships the setup surface)"
+fi
+
+# R7 — decision secrets live under provider:<id> ids (plan 26 D8). Secret-id
+# literals in decision code must be provider-row ids; bespoke ids
+# (jev:key, decision:key, engine secrets, …) are violations. Template ids
+# built as `provider:${id}` / "provider:%s" are the sanctioned form. Legacy
+# exemption: the exact id 'openrouter:key' (desktop's pre-plan-26 Jev key,
+# src/shared/ai/decisions.ts) — retired by the plan 26 Phase 1 S2 migration.
+R7_LEGACY_SEEN=0
+check_decision_secret_line() {  # grep -rn hit line (file:lineno:content)
+  local line="$1" val
+  val="$(printf '%s' "$line" | grep -oE "[\"'][a-zA-Z0-9:_.-]+[\"']" | tail -1)"
+  val="${val%\'}"; val="${val#\'}"; val="${val%\"}"; val="${val#\"}"
+  if [ -z "$val" ]; then
+    return 0
+  fi
+  case "$val" in
+    provider:*)
+      return 0
+      ;;
+    openrouter:key)
+      R7_LEGACY_SEEN=1
+      return 0
+      ;;
+    *)
+      bad "R7 decision secret id '$val' is not a provider:<id> id (plan 26 D8): $line"
+      ;;
+  esac
+}
+DECISION_SECRET_RE="(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*['\"][a-zA-Z0-9:_.-]+['\"]"
+if [ -d "$ROOT/src" ]; then
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    check_decision_secret_line "$hit"
+  done < <(grep -rnE "$DECISION_SECRET_RE" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)
+  TEMPLATE_HITS="$(grep -rnE "(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*[\`']provider:" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
+  if [ -n "$TEMPLATE_HITS" ]; then
+    good "R7 decision secret ids are provider-templated (TS)"
+  fi
+fi
+if [ -d "$ROOT/backend/app" ]; then
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    check_decision_secret_line "$hit"
+  done < <(grep -rnE "$DECISION_SECRET_RE" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)
+  TEMPLATE_HITS_PY="$(grep -rnE "(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*[\`']provider:" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)"
+  if [ -n "$TEMPLATE_HITS_PY" ]; then
+    good "R7 decision secret ids are provider-templated (Python)"
+  fi
+fi
+if [ "$FAIL" -eq 0 ]; then
+  if [ "$R7_LEGACY_SEEN" -eq 1 ]; then
+    note "R7 legacy secret id 'openrouter:key' present (retired by plan 26 Phase 1 S2 — exemption dies with it)"
+  else
+    good "R7 no decision secrets outside provider:<id> ids"
+  fi
 fi
 
 if [ "$FAIL" -eq 0 ]; then

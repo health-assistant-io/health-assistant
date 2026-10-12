@@ -2,9 +2,13 @@
 # AI-architecture alignment gate (ADR-0008 / guidelines/ai-features.md).
 #
 # Enforces, per product repo (python and js/electron kinds):
-#   R1  no provider-SDK imports (openai / anthropic / google-genai) outside
-#       the AI layer (python: backend/app/ai/chat_models.py; js: src/main/ai/)
-#       and tests
+#   R1  no provider-SDK imports (openai / anthropic / google-genai; decision
+#       transports: @typesafe-ai/sdk js, typesafe_sdk python — plan 26 /
+#       ADR-0032) outside the AI layer (python: backend/app/ai/
+#       chat_models.py; js: src/main/ai/) and tests. The python
+#       typesafe_sdk pattern activates when the plan 26 Phase 3/5 ports
+#       adopt the SDK; it is in the sanctioned surface from the start so
+#       no port ever ships with the SDK outside the AI layer.
 #   R2  LangChain chat classes, the agent/graph stack (langchain,
 #       @langchain/langgraph*), and MCP libraries (fastmcp / mcp /
 #       @langchain/mcp-adapters) imported only inside the AI layer
@@ -92,7 +96,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     SCAN_ARGS=(--include='*.py' -rIlnE
       --exclude-dir='.venv' --exclude-dir='venv' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='__pycache__' --exclude-dir='.git')
-    SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai)'
+    SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai|from typesafe_sdk[. ]|import typesafe_sdk$)'
     CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import)'
     GRAPH_RE='StateGraph'
     DEPS_FILES=("$backend/pyproject.toml")

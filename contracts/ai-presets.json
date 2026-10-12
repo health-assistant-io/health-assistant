@@ -1,6 +1,6 @@
 {
-  "schema": 1,
-  "capabilityVocabulary": ["text", "vision", "tools", "stt", "tts", "embeddings"],
+  "schema": 2,
+  "capabilityVocabulary": ["text", "vision", "tools", "stt", "tts", "embeddings", "decision"],
   "presetOrder": ["openai", "gemini", "openrouter", "anthropic", "groq", "mistral", "deepseek", "ollama"],
   "presets": {
     "openai": {
@@ -49,6 +49,10 @@
       "preferredModel": { "id": "openrouter/auto", "name": "Auto (best match)", "caps": ["text", "tools"] },
       "curatedModels": ["openrouter/auto"],
       "sttModel": null,
+      "decisionModels": [
+        { "id": "openrouter.jev-latest", "name": "Jev via OpenRouter (latest)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"], "provisional": true }
+      ],
+      "decisionDefault": "openrouter.jev-latest",
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -144,6 +148,29 @@
         "Pull a model, e.g. run: ollama pull llama3.3",
         "Make sure Ollama is running on this machine.",
         "Connect below — no API key needed."
+      ],
+      "freeTierNote": null
+    },
+    "typesafe": {
+      "name": "TypeSafe",
+      "wireType": "decision",
+      "baseUrl": "https://api.typesafe.ai",
+      "fixedBase": false,
+      "local": false,
+      "keyUrl": "https://console.typesafe.ai/keys",
+      "preferredModel": null,
+      "curatedModels": null,
+      "sttModel": null,
+      "decisionModels": [
+        { "id": "jev-latest", "name": "Jev (latest)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
+      ],
+      "decisionDefault": "jev-latest",
+      "provisional": true,
+      "steps": [
+        "Open {url} and sign in.",
+        "Create an API key.",
+        "Copy the key.",
+        "Paste it below and connect."
       ],
       "freeTierNote": null
     }

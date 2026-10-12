@@ -4,6 +4,12 @@
 // Reads contracts/ai-presets.json NEXT TO ITSELF (../contracts/ relative to
 // this script's dir, i.e. works in both dev and vendored product layouts).
 //
+// Schema 2 (plan 26 / ADR-0032, additive): capabilityVocabulary gains
+// 'decision', the 'decision' wire type, per-preset decision_models[] +
+// decision_default + provisional markers. Old fields are untouched;
+// generated files refuse unknown schema versions — re-vendor the canonical +
+// this script in the same wave everywhere (ADR-0024 sync-and-gate).
+//
 // Usage:
 //   node sync-ai-presets.mjs --ts <out.ts>     write the TypeScript data module
 //   node sync-ai-presets.mjs --py <out.py>     write the Python data module
@@ -18,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const canonicalPath = join(here, '..', 'contracts', 'ai-presets.json');
 
-const SUPPORTED_SCHEMA = 1;
+const SUPPORTED_SCHEMA = 2;
 
 function fail(code, message) {
   console.error(`sync-ai-presets: ${message}`);
@@ -51,6 +57,21 @@ function tsPresetEntry(key, p) {
     lines.push(`      curatedModels: [${p.curatedModels.map((m) => JSON.stringify(m)).join(', ')}],`);
   }
   if (p.sttModel !== null) lines.push(`      sttModel: ${JSON.stringify(p.sttModel)},`);
+  if (p.decisionModels !== null && p.decisionModels !== undefined) {
+    lines.push(`      decisionModels: [`);
+    for (const m of p.decisionModels) {
+      const override = m.base_url_override !== undefined && m.base_url_override !== null
+        ? `baseUrlOverride: ${JSON.stringify(m.base_url_override)}, `
+        : '';
+      const provisional = m.provisional === true ? `, provisional: true` : '';
+      lines.push(`        { modelId: ${JSON.stringify(m.id)}, name: ${JSON.stringify(m.name)}, transport: ${JSON.stringify(m.transport)}, ${override}caps: [${m.caps.map((c) => JSON.stringify(c)).join(', ')}]${provisional} },`);
+    }
+    lines.push(`      ],`);
+  }
+  if (p.decisionDefault !== null && p.decisionDefault !== undefined) {
+    lines.push(`      decisionDefault: ${JSON.stringify(p.decisionDefault)},`);
+  }
+  if (p.provisional === true) lines.push(`      provisional: true,`);
   if (p.steps !== null) {
     lines.push(`      steps: [${p.steps.map((s) => JSON.stringify(tsPascal(s))).join(', ')}],`);
   }
@@ -61,6 +82,7 @@ function tsPresetEntry(key, p) {
 
 function generateTs() {
   const order = data.presetOrder.map((k) => `  ${JSON.stringify(k)},`).join('\n');
+  const vocabulary = (data.capabilityVocabulary ?? []).map((c) => `  ${JSON.stringify(c)},`).join('\n');
   const presets = Object.entries(data.presets).map(([key, p]) => tsPresetEntry(key, p)).join('\n');
   const hints = data.keyPrefixHints
     .map((h) => `  { prefix: ${JSON.stringify(h.prefix)}, presetKey: ${JSON.stringify(h.preset)} },`)
@@ -70,13 +92,27 @@ function generateTs() {
 
 export const AI_PRESETS_SCHEMA = ${data.schema};
 
+export const CAPABILITY_VOCABULARY = [
+${vocabulary}
+] as const;
+
 export const PROVIDER_PRESET_ORDER = [
 ${order}
 ] as const;
 
+export interface DecisionModelData {
+  modelId: string;
+  name: string;
+  transport: 'systemone';
+  baseUrlOverride?: string;
+  caps: string[];
+  /** Not live-verified yet (plan 26 / ADR-0032 D5) — no product exposes it as verified. */
+  provisional?: boolean;
+}
+
 export interface ProviderPresetData {
   label: string;
-  wireType: 'openai_compatible' | 'anthropic' | 'google';
+  wireType: 'openai_compatible' | 'anthropic' | 'google' | 'decision';
   apiBase: string;
   fixedBase: boolean;
   local: boolean;
@@ -84,6 +120,10 @@ export interface ProviderPresetData {
   preferredModel?: { modelId: string; name: string; caps: string[] };
   curatedModels?: string[];
   sttModel?: string;
+  decisionModels?: DecisionModelData[];
+  decisionDefault?: string;
+  /** Preset-level provisional marker (plan 26 owner ruling 2026-10-12) — not live-verified. */
+  provisional?: boolean;
   steps?: string[];
   freeTierNote?: string;
 }
@@ -105,8 +145,28 @@ function pyStr(s) {
 function generatePy() {
   const pyBool = (b) => (b ? 'True' : 'False');
   const order = data.presetOrder.map((k) => `    ${pyStr(k)},`).join('\n');
+  const vocabulary = (data.capabilityVocabulary ?? []).map((c) => `    ${pyStr(c)},`).join('\n');
   const presets = Object.entries(data.presets)
     .map(([key, p]) => {
+      const decisionModels = p.decisionModels === null || p.decisionModels === undefined
+        ? [`        "decision_models": None,`]
+        : [
+            `        "decision_models": [`,
+            ...p.decisionModels.map((m) => {
+              const parts = [
+                `"id": ${pyStr(m.id)}`,
+                `"name": ${pyStr(m.name)}`,
+                `"transport": ${pyStr(m.transport)}`,
+              ];
+              if (m.base_url_override !== undefined && m.base_url_override !== null) {
+                parts.push(`"base_url_override": ${pyStr(m.base_url_override)}`);
+              }
+              parts.push(`"caps": [${m.caps.map(pyStr).join(', ')}]`);
+              if (m.provisional === true) parts.push(`"provisional": True`);
+              return `            {${parts.join(', ')}},`;
+            }),
+            `        ],`,
+          ];
       const rows = [
         `        "name": ${pyStr(p.name)},`,
         `        "wire_type": ${pyStr(p.wireType)},`,
@@ -131,6 +191,9 @@ function generatePy() {
               `        ],`,
             ].join('\n'),
         `        "stt_model": ${p.sttModel === null ? 'None' : pyStr(p.sttModel)},`,
+        ...decisionModels,
+        `        "decision_default": ${p.decisionDefault === null || p.decisionDefault === undefined ? 'None' : pyStr(p.decisionDefault)},`,
+        `        "provisional": ${p.provisional === true ? 'True' : 'None'},`,
         p.steps === null
           ? `        "steps": None,`
           : [
@@ -150,6 +213,10 @@ function generatePy() {
 # Canonical file: dev/contracts/ai-presets.json; regenerate with the sync script, never hand-edit.
 
 SCHEMA = ${data.schema}
+
+CAPABILITY_VOCABULARY = [
+${vocabulary}
+]
 
 PRESET_ORDER = [
 ${order}

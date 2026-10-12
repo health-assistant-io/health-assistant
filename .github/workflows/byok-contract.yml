@@ -36,3 +36,5 @@ jobs:
           node-version: 24
       - name: Run BYOK contract gate
         run: bash scripts/check-byok-contract.sh --self
+      - name: Run BYOK contract self-test (R6/R7)
+        run: bash scripts/check-byok-contract.selftest.sh
