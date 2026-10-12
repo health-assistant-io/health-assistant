@@ -1829,9 +1829,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             raise
 
         lock_session_id = UUID(context["session_id"]) if session_id else None
+        lock_token = None
         if lock_session_id is not None:
             try:
-                acquire_turn(lock_session_id)
+                lock_token = await acquire_turn(lock_session_id)
             except TurnConflictError as e:
                 await db.close()
                 raise ValueError(str(e)) from e
@@ -1859,7 +1860,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 yield stream_error_frame(e)
             finally:
                 if lock_session_id is not None:
-                    release_turn(lock_session_id)
+                    await release_turn(lock_session_id, lock_token)
                 await db.close()
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")

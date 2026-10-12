@@ -3,7 +3,9 @@
 Two branches of one session NEVER stream concurrently: the lock is
 per-SESSION, not per-branch. While one turn streams, a second turn on ANY
 branch (plain send, edit, regenerate) is rejected with 409 before any row
-is written; the lock releases when the stream closes.
+is written; the lock releases when the stream closes. The lock is
+Redis-backed (bridge R7 WS3) — these tests pin the behavior through the
+endpoints with the Redis client swapped for the FakeRedis stand-in.
 """
 
 import asyncio
@@ -12,10 +14,25 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.ai.assistance import turns as turns_mod
 from app.api.v1.endpoints import ai_assistance as ai_assistance_ep
 from app.models.enums import Role
 from app.services.chat_session_service import ChatSessionService
 from tests._auth_helpers import auth_headers, create_tenant, create_user
+from tests.test_turn_lock import FakeRedis
+
+
+def _turn_key(session_id) -> str:
+    return f"turn:{session_id}"
+
+
+@pytest.fixture
+def turn_redis(monkeypatch):
+    """Swap the turn lock's Redis client for the in-memory fake (the
+    established FakeRedis pattern — no real Redis in unit tests)."""
+    fake = FakeRedis()
+    monkeypatch.setattr(turns_mod, "redis_client", fake)
+    return fake
 
 
 async def _seed_session_with_turn():
@@ -64,18 +81,18 @@ async def _read_stream_head(resp):
     return resp.status_code
 
 
-async def _wait_until_locked(session_id, timeout_s: float = 5.0) -> None:
+async def _wait_until_locked(turn_redis: FakeRedis, session_id, timeout_s: float = 5.0) -> None:
     """Poll until the turn lock holds ``session_id`` (the background turn
     has entered its stream)."""
     deadline = asyncio.get_running_loop().time() + timeout_s
-    while session_id not in ai_assistance_ep._ACTIVE_TURNS:
+    while turn_redis._live(_turn_key(session_id)) is None:
         if asyncio.get_running_loop().time() > deadline:
             raise AssertionError("turn never acquired the session lock")
         await asyncio.sleep(0.02)
 
 
 @pytest.mark.asyncio
-async def test_second_concurrent_turn_on_any_branch_is_rejected(async_client):
+async def test_second_concurrent_turn_on_any_branch_is_rejected(async_client, turn_redis):
     """Gate (b): while one turn streams, a second turn on ANOTHER branch of
     the same session is rejected with 409."""
     _user, headers, session, u1, edited = await _seed_session_with_turn()
@@ -92,7 +109,7 @@ async def test_second_concurrent_turn_on_any_branch_is_rejected(async_client):
             )
         )
         try:
-            await _wait_until_locked(session.id)
+            await _wait_until_locked(turn_redis, session.id)
 
             # Turn 2 on a DIFFERENT branch (the original spine) is rejected
             # while turn 1 streams.
@@ -119,11 +136,11 @@ async def test_second_concurrent_turn_on_any_branch_is_rejected(async_client):
             first.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await first
-    assert session.id not in ai_assistance_ep._ACTIVE_TURNS
+    assert turn_redis._live(_turn_key(session.id)) is None
 
 
 @pytest.mark.asyncio
-async def test_lock_releases_after_stream_and_scopes_per_session(async_client):
+async def test_lock_releases_after_stream_and_scopes_per_session(async_client, turn_redis):
     """After the stream closes the lock is free again; an unrelated session
     is never blocked (per-SESSION, not global)."""
     _user, headers, session, _u1, _edited = await _seed_session_with_turn()
@@ -144,7 +161,7 @@ async def test_lock_releases_after_stream_and_scopes_per_session(async_client):
             )
         )
         try:
-            await _wait_until_locked(session.id)
+            await _wait_until_locked(turn_redis, session.id)
 
             # Unrelated session (auto-create path): NOT blocked — its turn
             # streams concurrently on a DIFFERENT session.
@@ -156,7 +173,7 @@ async def test_lock_releases_after_stream_and_scopes_per_session(async_client):
                 )
             )
             await asyncio.sleep(0.2)
-            assert other.done() is False or session.id in ai_assistance_ep._ACTIVE_TURNS
+            assert other.done() is False or turn_redis._live(_turn_key(session.id)) is not None
 
             # Same session while streaming: rejected.
             blocked = await async_client.post(
@@ -200,14 +217,14 @@ async def test_lock_releases_after_stream_and_scopes_per_session(async_client):
         assert after.status_code == 200
         await after.aclose()
 
-    assert session.id not in ai_assistance_ep._ACTIVE_TURNS
+    assert turn_redis._live(_turn_key(session.id)) is None
 
 
 @pytest.mark.asyncio
-async def test_lock_survives_stream_exceptions(async_client):
+async def test_lock_survives_stream_exceptions(async_client, turn_redis):
     """A raising stream still releases the lock (finally on the generator)."""
     _user, headers, session, _u1, _edited = await _seed_session_with_turn()
-    assert session.id not in ai_assistance_ep._ACTIVE_TURNS
+    assert turn_redis._live(_turn_key(session.id)) is None
 
     with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
 
@@ -231,15 +248,15 @@ async def test_lock_survives_stream_exceptions(async_client):
         assert resp.status_code == 200
         assert "flow_failed" in resp.text  # classified terminal frame
 
-    assert session.id not in ai_assistance_ep._ACTIVE_TURNS
+    assert turn_redis._live(_turn_key(session.id)) is None
 
 
 @pytest.mark.asyncio
-async def test_preseeded_lock_rejects_edit(async_client):
+async def test_preseeded_lock_rejects_edit(async_client, turn_redis):
     """Unit-level: a held lock (e.g. a turn started by another handler)
     rejects edit/regenerate on the same session with 409."""
     _user, headers, session, _u1, edited = await _seed_session_with_turn()
-    ai_assistance_ep._ACTIVE_TURNS.add(session.id)
+    await turn_redis.set(_turn_key(session.id), "held-elsewhere", nx=True, ex=900)
     try:
         resp = await async_client.post(
             f"/api/v1/ai-assistance/messages/{edited.id}/edit",
@@ -254,4 +271,4 @@ async def test_preseeded_lock_rejects_edit(async_client):
         )
         assert resp.status_code == 409
     finally:
-        ai_assistance_ep._ACTIVE_TURNS.discard(session.id)
+        await turn_redis.delete(_turn_key(session.id))

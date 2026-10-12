@@ -13,12 +13,30 @@ import pytest_asyncio
 from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import select
 
+from app.ai.assistance import turns as turns_mod
 from app.core.database import AsyncSessionLocal
 from app.models.chat_model import ChatMessage, ChatSession
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
+from tests.test_turn_lock import FakeRedis
+
+
+@pytest.fixture
+def turn_redis(monkeypatch):
+    """Swap the turn lock's Redis client for the in-memory fake.
+
+    The shared async redis client pools connections per event loop; pytest
+    gives every test a fresh loop, so a connection pooled by an earlier
+    test (e.g. through the rate-limiter dependency) poisons later real-
+    Redis calls ("attached to a different loop") — the turn lock would
+    silently degrade open and can leave an orphaned key behind. The fake
+    keeps these tests hermetic and deterministic.
+    """
+    fake = FakeRedis()
+    monkeypatch.setattr(turns_mod, "redis_client", fake)
+    return fake
 
 
 def _post_request(payload: dict):
@@ -557,7 +575,7 @@ async def test_ai_delete_session_is_scoped(ai_ctx):
 
 
 @pytest.mark.asyncio
-async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx):
+async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx, turn_redis):
     """The streaming twin: SSE frames flow through the provider's
     StreamingResponse (consumed via its body_iterator), the service sees the
     pinned patient context, and the single-flight turn lock is released."""
@@ -616,7 +634,7 @@ async def test_ai_chat_stream_yields_sse_frames_and_pins_the_patient(ai_ctx):
 
 
 @pytest.mark.asyncio
-async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx):
+async def test_ai_chat_stream_isolates_foreign_sessions_and_blanks(ai_ctx, turn_redis):
     ctx = ai_ctx
     integration = await _load_integration(ctx["integration_id"])
     provider = HealthAssistantBridgeProvider()

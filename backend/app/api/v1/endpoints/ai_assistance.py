@@ -1,6 +1,3 @@
-import json
-import uuid
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import (
@@ -16,12 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.assistance.service import AIAssistanceService
 from app.ai.assistance.stt import TranscriptionError, transcribe_audio
-from app.ai.assistance.turns import TURN_LOCK_MESSAGE
-from app.ai.assistance.turns import TurnConflictError
-from app.ai.assistance.turns import acquire_turn
-from app.ai.assistance.turns import release_turn
-from app.ai.assistance.turns import stream_error_frame
-from app.ai.flow_events import flow_failed_event
+from app.ai.assistance.turns import (
+    TURN_LOCK_MESSAGE,
+    TurnConflictError,
+    acquire_turn,
+    release_turn,
+    stream_error_frame,
+)
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
@@ -43,9 +41,11 @@ from app.core.security import get_current_user
 from app.models.enums import HitlTaskStatus  # noqa: F401 -- re-exported for schema consumers
 from app.schemas.user import TokenData
 from app.services.chat_session_service import ChatSessionService, is_internal_message
-from app.services.hitl_resolver import HitlResolutionConflict
-from app.services.hitl_resolver import HitlResolutionError
-from app.services.hitl_resolver import resolve_chat_task
+from app.services.hitl_resolver import (
+    HitlResolutionConflict,
+    HitlResolutionError,
+    resolve_chat_task,
+)
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
@@ -163,9 +163,10 @@ async def assist_user_stream(
 
     context_session = (request.context or {}).get("session_id")
     lock_session_id = UUID(context_session) if context_session else None
+    lock_token = None
     if lock_session_id is not None:
         try:
-            acquire_turn(lock_session_id)
+            lock_token = await acquire_turn(lock_session_id)
         except TurnConflictError as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -200,7 +201,7 @@ async def assist_user_stream(
             yield stream_error_frame(e)
         finally:
             if lock_session_id is not None:
-                release_turn(lock_session_id)
+                await release_turn(lock_session_id, lock_token)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -299,7 +300,7 @@ async def _branch_turn_stream(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
 
     try:
-        acquire_turn(session.id)
+        lock_token = await acquire_turn(session.id)
     except TurnConflictError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -330,7 +331,7 @@ async def _branch_turn_stream(
             logging.getLogger(__name__).exception("Branch turn streaming failed")
             yield stream_error_frame(e)
         finally:
-            release_turn(session.id)
+            await release_turn(session.id, lock_token)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

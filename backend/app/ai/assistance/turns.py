@@ -8,33 +8,120 @@ interlock correctly and clients see one error contract.
 """
 
 import json
+import logging
 import uuid
 
 from app.ai.flow_events import flow_failed_event
+from app.core.redis import redis_client
 
-#: Per-session single-flight turn lock (plan 13 H2, study FIFO reference →
-#: career's rejection shape): one streaming turn per session at a time — the
-#: lock is per-SESSION, not per-branch, so two branches of one session never
-#: stream concurrently (branch pointer writes and checkpoint threads would
-#: otherwise interleave). Acquired before the StreamingResponse is built and
-#: released when the stream generator closes.
-_ACTIVE_TURNS: set[uuid.UUID] = set()
+logger = logging.getLogger(__name__)
 
 TURN_LOCK_MESSAGE = "A reply is already streaming for this chat session."
+
+#: Lock key TTL (seconds) — bounds every leak class (a returned-but-never-
+#: iterated StreamingResponse whose generator body never runs, a crashed
+#: handler, a lost ``finally``): 15 min ~ 10x a worst-case turn.
+TURN_LOCK_TTL_SECONDS = 900
+
+#: Atomic compare-and-delete — only the turn whose token is still stored may
+#: remove the key; a late ``finally`` from a superseded turn must not unlock
+#: a newer one.
+_RELEASE_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
 
 
 class TurnConflictError(Exception):
     """Another turn is already streaming for the session (HTTP 409 upstream)."""
 
 
-def acquire_turn(session_id: uuid.UUID) -> None:
-    if session_id in _ACTIVE_TURNS:
+def _turn_key(session_id: uuid.UUID) -> str:
+    return f"turn:{session_id}"
+
+
+async def _compare_and_delete(key: str, token: str) -> int:
+    """Run :data:`_RELEASE_SCRIPT` atomically in Redis.
+
+    Kept as a small module-level callable so tests can inject a fake
+    release path (the FakeRedis pattern has no Lua engine) by
+    monkeypatching this binding.
+    """
+    return await redis_client.eval(_RELEASE_SCRIPT, 1, key, token)
+
+
+async def acquire_turn(session_id: uuid.UUID) -> str | None:
+    """Acquire the per-session single-flight turn lock (one streaming turn
+    per session at a time — per session, not per branch, so two branches of
+    one session never stream concurrently).
+
+    Runs ``SET turn:{session_id} {token} NX EX 900`` with a fresh owner
+    token (``uuid4`` hex) and returns it; the caller MUST pass the same
+    token to :func:`release_turn`.
+
+    Returns:
+        The owner token, or ``None`` when Redis was unreachable and the
+        turn was allowed anyway (degrade-open — nothing to release).
+
+    Raises:
+        TurnConflictError: another turn currently holds the session's lock.
+
+    Multi-worker correctness: the lock lives in Redis (``app.core.redis.
+    redis_client``), so every uvicorn worker and replica interlocks on the
+    same key — the previous in-process set was silently per-worker.
+
+    TTL rationale: 900 s ~ 10x a worst-case turn (~90 s of tool calls plus
+    streaming), so every leak class — a returned-but-never-iterated
+    ``StreamingResponse`` whose generator (and ``finally``) never runs, a
+    crashed handler, a lost cleanup — self-heals when the key expires
+    instead of persisting until restart.
+
+    Degrade-open: on ANY Redis error the turn is ALLOWED and a loud warning
+    is logged (family precedent — ``app/core/rate_limit.py``: availability
+    over protection). A Redis outage is a lost interlock, never a chat
+    outage; keys written before the outage are reclaimed by the TTL.
+    """
+    token = uuid.uuid4().hex
+    try:
+        locked = await redis_client.set(
+            _turn_key(session_id), token, nx=True, ex=TURN_LOCK_TTL_SECONDS
+        )
+    except Exception:
+        logger.warning(
+            "Turn lock acquire degraded open for session %s (Redis unreachable)",
+            session_id,
+            exc_info=True,
+        )
+        return None
+    if not locked:
         raise TurnConflictError(TURN_LOCK_MESSAGE)
-    _ACTIVE_TURNS.add(session_id)
+    return token
 
 
-def release_turn(session_id: uuid.UUID) -> None:
-    _ACTIVE_TURNS.discard(session_id)
+async def release_turn(session_id: uuid.UUID, token: str | None) -> None:
+    """Release the session's turn lock, but only if ``token`` still owns it.
+
+    Compare-and-delete via :func:`_compare_and_delete` (Lua, atomic in
+    Redis): a late ``finally`` from a superseded turn — e.g. its key
+    expired and a newer turn re-locked — deletes nothing. ``token=None``
+    (degrade-open acquire wrote no key) is a no-op.
+
+    Degrades open on any Redis error (loud warning): the 900 s TTL reclaims
+    the key, so a failed release never wedges the session.
+    """
+    if token is None:
+        return
+    try:
+        await _compare_and_delete(_turn_key(session_id), token)
+    except Exception:
+        logger.warning(
+            "Turn lock release degraded open for session %s "
+            "(Redis unreachable; TTL will reclaim the key)",
+            session_id,
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------

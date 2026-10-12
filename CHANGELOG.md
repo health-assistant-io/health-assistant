@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TypeScript SDK gained the same `chat`/`getMessages` + `ChatTurnResult`
   (the request loop gained a `retry: false` option used by `chat`) and its
   first `node:test` harness (mocked fetch: decode, signing, no-retry pin).
+- **Bridge AI rate-limit bucket (R7 WS2):** `/ai/*` proxy paths now share
+  the web client's AI budget — 30 requests / 5 minutes per integration
+  (HTTP 429 + `Retry-After`), enforced after HMAC verification and before
+  dispatch. The existing `HA_RATELIMIT_AI` setting governs both surfaces
+  together (override the ceiling or `0` to disable); non-AI bridge paths
+  are unaffected.
 - **Bridge AI assistant paths (R7 Phase 1+2):** the mobile app
   can chat natively through the integration identity — `GET /ai/sessions`,
   `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),
@@ -91,6 +97,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `backend/tests/test_bridge_route_inventory.py` (63 routes incl. every
   parameterized path): adding or removing a route without updating the
   inventory fails CI. User-invisible refactor.
+- **Chat turn lock is now Redis-backed** (`app/ai/assistance/turns.py`):
+  one streaming turn per chat session interlocks correctly across all
+  workers/replicas (the previous in-process set was silently per-worker),
+  every lock is TTL-bounded (900 s — a crashed or never-iterated stream
+  can no longer wedge a session until restart), release is an atomic
+  compare-and-delete so a superseded turn can never unlock a newer one,
+  and a Redis outage degrades open (turns are allowed; a lost interlock,
+  never a chat outage — the family rate-limiter precedent). Behavior from
+  the clients is unchanged: 409 on the PWA, `ValueError` on the bridge.
 - **Bridge examination reads honor soft delete + stable ordering.** Exam list
   and detail now exclude soft-deleted examinations and soft-deleted children
   (observations/medications/documents), so the card counts always match what
