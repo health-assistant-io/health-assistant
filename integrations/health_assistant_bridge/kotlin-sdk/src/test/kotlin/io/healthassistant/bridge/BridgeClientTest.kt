@@ -100,7 +100,8 @@ class BridgeClientTest {
         val knownBody = "{\"records\":[]}".encodeToByteArray()
         val c = bridge(secret) { req ->
             val sent = req.headers["X-Api-Signature"]
-            assertEquals(Signing.sign(secret, "POST", "/sync", knownBody).signature, sent)
+            val sentTs = req.headers["X-Api-Timestamp"]!!.toLong()
+            assertEquals(Signing.sign(secret, "POST", "/sync", knownBody, sentTs).signature, sent)
             respond("{\"success\":true}")
         }
         val resp = c.request("POST", "/sync", knownBody)
@@ -181,14 +182,18 @@ class BridgeClientTest {
     @Test
     fun `getDocumentContent signs the request`() = runBlocking {
         val secret = "test-secret-16chars!"
-        val expectedSig = Signing.sign(secret, "GET", "/documents/abc/content").signature
         var sawSig: String? = null
+        var sawTs: String? = null
         val c = bridge(secret) { req ->
             sawSig = req.headers["X-Api-Signature"]
+            sawTs = req.headers["X-Api-Timestamp"]
             respond(byteArrayOf(1, 2, 3, 4))
         }
         c.getDocumentContent("abc")
-        assertEquals(expectedSig, sawSig)
+        assertEquals(
+            Signing.sign(secret, "GET", "/documents/abc/content", timestamp = sawTs!!.toLong()).signature,
+            sawSig,
+        )
         c.close()
     }
 
@@ -690,8 +695,10 @@ class BridgeClientTest {
         val sse = "data: {\"event\":\"delta\",\"text\":\"Acknowledged.\"}\n\n" +
             "data: {\"event\":\"flow_finished\"}\n\n"
         var sawSig: String? = null
+        var sawTs: String? = null
         val engine = MockEngine { req ->
             sawSig = req.headers["X-Api-Signature"]
+            sawTs = req.headers["X-Api-Timestamp"]
             respond(sse, HttpStatusCode.OK, headersOf("Content-Type", "text/event-stream"))
         }
         val c = streamBridge(secret, engine)
@@ -712,7 +719,7 @@ class BridgeClientTest {
         )
         assertEquals("POST", engine.requestHistory[0].method.value)
         assertEquals(
-            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", expectedBody.encodeToByteArray()).signature,
+            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", expectedBody.encodeToByteArray(), sawTs!!.toLong()).signature,
             sawSig,
         )
         c.close()
@@ -722,8 +729,10 @@ class BridgeClientTest {
     fun `resumeChatStream omits message_id when null`() = runBlocking {
         val secret = "test-secret-16chars!"
         var sawSig: String? = null
+        var sawTs: String? = null
         val engine = MockEngine { req ->
             sawSig = req.headers["X-Api-Signature"]
+            sawTs = req.headers["X-Api-Timestamp"]
             respond(
                 "data: {\"event\":\"flow_finished\"}\n\n",
                 HttpStatusCode.OK,
@@ -734,7 +743,7 @@ class BridgeClientTest {
         val lines = c.resumeChatStream("s-1").toList()
         assertEquals(listOf("data: {\"event\":\"flow_finished\"}", ""), lines)
         assertEquals(
-            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", "{}".encodeToByteArray()).signature,
+            Signing.sign(secret, "POST", "/ai/sessions/s-1/resume", "{}".encodeToByteArray(), sawTs!!.toLong()).signature,
             sawSig,
         )
         c.close()
@@ -956,9 +965,11 @@ class BridgeClientTest {
         val expectedBody = """{"data":"AQID","mime":"audio/webm;codecs=opus"}"""
         var sawSig: String? = null
         var sawPath: String? = null
+        var sawTs: String? = null
         val c = bridge(secret) { req ->
             sawSig = req.headers["X-Api-Signature"]
             sawPath = req.url.encodedPath
+            sawTs = req.headers["X-Api-Timestamp"]
             respond("""{"text":"Hello from voice.","success":true}""")
         }
         val r = c.transcribe(audio, "audio/webm;codecs=opus")
@@ -971,7 +982,7 @@ class BridgeClientTest {
             ),
         )
         assertEquals(
-            Signing.sign(secret, "POST", "/ai/transcribe", expectedBody.encodeToByteArray()).signature,
+            Signing.sign(secret, "POST", "/ai/transcribe", expectedBody.encodeToByteArray(), sawTs!!.toLong()).signature,
             sawSig,
         )
         c.close()
