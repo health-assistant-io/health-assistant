@@ -197,6 +197,35 @@ export function signRequest(
   return { "X-Api-Signature": digest, "X-Api-Timestamp": ts };
 }
 
+/**
+ * Client for the Health Assistant Bridge two-way API proxy (Node/TypeScript
+ * twin of the Kotlin `BridgeClient`). Every request is HMAC-signed when
+ * `apiSecret` is set.
+ *
+ * ## Retry matrix
+ *
+ * Two request classes, selected by the private `request()`'s `retry` option:
+ *
+ * - **Retried** (default): reads (`getStatus`, every typed getter),
+ *   `/sync`, and idempotent mutations (Phase-6 writes keyed on
+ *   `client_request_id` / `id`, notification read/dismiss, session rename).
+ *   429/5xx answers and transient fetch failures are retried with
+ *   full-jitter backoff (up to `maxRetries` attempts). Retrying is safe
+ *   because a replay either converges (idempotent writes) or was never
+ *   applied.
+ * - **Never retried**: the AI turn POSTs — {@link chat}, and every stream
+ *   that goes through {@link requestLines} (`POST /ai/chat/stream` via
+ *   {@link chatStream} and `POST /ai/sessions/{id}/resume` via
+ *   {@link resumeChatStream}). A turn POST is not idempotent: replaying it
+ *   after a transport failure duplicates the user message and the LLM spend
+ *   (and a partially-delivered answer cannot be resumed mid-stream). Those
+ *   paths are single-attempt by construction: a 429/5xx response and any
+ *   network failure — including one before the request was dispatched —
+ *   surface to the caller without a second attempt. **Recovery is starting
+ *   a NEW turn** (re-send the message, or {@link resumeChatStream} for a
+ *   HITL continuation); the server-side single-flight turn lock keeps that
+ *   new turn from colliding with one that is still running.
+ */
 export class HealthAssistantBridgeClient {
   private baseUrl: string;
   private integrationId: string;
@@ -284,11 +313,13 @@ export class HealthAssistantBridgeClient {
    * `fetch` with streamable response bodies (Node >= 18; the SDK's
    * `engines` floor already guarantees it).
    *
-   * Deliberately NO retry and NO whole-request timeout: the stream is a
-   * turn in flight (replaying a non-idempotent POST mid-turn would
-   * duplicate it) and an SSE body legitimately idles between deltas. A
-   * non-2xx response throws {@link BridgeException} before the first
-   * emission.
+   * Deliberately NO retry and NO whole-request timeout: the paths streamed
+   * through this reader are AI turn POSTs, and a replay after a transport
+   * failure would duplicate the turn — the user message and the LLM call —
+   * so there is exactly one fetch: a 429/5xx answer throws
+   * {@link BridgeException} before the first emission, and a mid-body
+   * stream error surfaces to the consumer with no second request. Recovery
+   * is the caller starting a NEW turn (see the class retry matrix).
    */
   async *requestLines(
     method: string,
@@ -339,6 +370,8 @@ export class HealthAssistantBridgeClient {
    * `POST /ai/chat/stream` — one streaming chat turn. Builds and signs the
    * `{message, session_id?}` body and yields the raw SSE lines via
    * {@link requestLines} (`data:` frames, empty separators, `:` comments).
+   * Like every AI turn POST this is **never retried** (see the class retry
+   * matrix): a failed turn is recovered by starting a NEW turn.
    */
   async *chatStream(message: string, sessionId?: string): AsyncGenerator<string> {
     const payload: Record<string, unknown> =
@@ -355,7 +388,9 @@ export class HealthAssistantBridgeClient {
    * user resolved task cards. `messageId` selects which assistant message's
    * resolved tasks are summarized; `undefined` omits the field so the
    * server picks the most recent task-bearing message. Yields the raw SSE
-   * lines via {@link requestLines}.
+   * lines via {@link requestLines}. Like every AI turn POST this is
+   * **never retried** (see the class retry matrix): a failed resume is
+   * recovered by starting a new turn.
    */
   async *resumeChatStream(
     sessionId: string,
@@ -375,8 +410,9 @@ export class HealthAssistantBridgeClient {
   /** One non-streaming chat turn over `POST /ai/chat`. The reply carries the
    * persisted assistant row's id + HITL `tasks` cards + `citations`, so a
    * turn with proposals renders without a messages refetch. NEVER
-   * auto-retries: a replayed chat POST would duplicate the user message and
-   * the LLM call. */
+   * auto-retries (`retry: false` — one dispatch): a replayed chat POST would
+   * duplicate the user message and the LLM call. Recovery for a failed turn
+   * is starting a NEW turn (see the class retry matrix). */
   async chat(message: string, sessionId?: string): Promise<ChatTurnResult> {
     const payload: Record<string, string> = { message };
     if (sessionId) {

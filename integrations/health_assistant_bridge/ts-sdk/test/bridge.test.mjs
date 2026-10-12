@@ -107,6 +107,22 @@ test("chat never auto-retries a failed turn", async (t) => {
   assert.equal(calls.length, 1);
 });
 
+test("a retrying read still retries a 503 (default policy unchanged)", async (t) => {
+  const calls = mockFetch(t, (_call, n) =>
+    n === 1
+      ? jsonResponse({ detail: "unavailable" }, 503)
+      : jsonResponse({ data: [{ id: "m1", role: "user", content: { text: "Hi" } }] }),
+  );
+
+  const client = new HealthAssistantBridgeClient(BASE, INTEGRATION);
+  const envelope = await client.getMessages("s1");
+
+  assert.equal(envelope.data.length, 1);
+  // Reads are idempotent — the 503 was retried with backoff.
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].init.method, "GET");
+});
+
 test("renameSession PATCHes the session and decodes the renamed row", async (t) => {
   const calls = mockFetch(t, () =>
     jsonResponse({

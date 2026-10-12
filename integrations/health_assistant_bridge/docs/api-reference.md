@@ -458,6 +458,23 @@ sessionId?)` decodes the rich `ChatTurnResult` (never auto-retries) and
 `HttpResponse`) covers everything else. The TypeScript SDK mirrors both
 (`chat` / `getMessages`).
 
+**Retries (SDK behavior):** the SDKs never auto-retry the AI turn POSTs —
+`POST /ai/chat`, `POST /ai/chat/stream`, and
+`POST /ai/sessions/{id}/resume` travel as a single attempt (both the
+Kotlin and TypeScript clients codify this as an explicit retry matrix).
+A chat turn is not idempotent: replaying it after a transport failure
+would duplicate the user message and the LLM call, and a partially
+delivered SSE answer cannot be resumed — so a failed or interrupted turn
+surfaces its error (typed `BridgeException` on 429/5xx) and the correct
+recovery is to start a **new** turn (re-send the message, or
+`.../resume` for a HITL continuation); the server-side single-flight
+turn lock keeps that new turn from colliding with one that is still
+running. Everything else retries with full-jitter backoff on 429/5xx +
+transient network errors (reads, `/sync`, idempotent mutations keyed on
+`client_request_id` / `id`, session rename, notification read/dismiss) —
+so a 429 from the AI bucket above reaches the caller with its
+`Retry-After` instead of being silently retried.
+
 **Notes:**
 - DELETEs are **hard** (matching the PWA endpoints). The bound patient filter
   rejects cross-patient attempts *before* any side effect.

@@ -184,6 +184,45 @@ test("a mid-body stream error surfaces without a second request (no retry)", asy
   }
 });
 
+test("chatStream never retries a failed dispatch (fetch rejects → exactly one call)", async () => {
+  const realFetch = globalThis.fetch;
+  let callsCount = 0;
+  globalThis.fetch = (async () => {
+    callsCount++;
+    throw new TypeError("fetch failed");
+  }) as typeof fetch;
+  try {
+    const client = new HealthAssistantBridgeClient(BASE, IID, {
+      apiSecret: SECRET,
+    });
+    await assert.rejects(() => collect(client.chatStream("Hello")));
+    // A replayed turn POST would duplicate the turn — exactly one request.
+    assert.equal(callsCount, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("chatStream never retries a 503 stream turn (BridgeException, one call)", async () => {
+  await withMockedFetch(
+    () => new Response('{"detail":"down"}', { status: 503 }),
+    async (calls) => {
+      const client = new HealthAssistantBridgeClient(BASE, IID, {
+        apiSecret: SECRET,
+      });
+      await assert.rejects(
+        collect(client.chatStream("Hello")),
+        (err: unknown) => {
+          assert.ok(err instanceof BridgeException);
+          assert.equal((err as BridgeException).statusCode, 503);
+          return true;
+        },
+      );
+      assert.equal(calls.length, 1);
+    },
+  );
+});
+
 test("chatStream signs POST /ai/chat/stream and threads the session id", async () => {
   await withMockedFetch(
     () => sseResponse(['data: {"event":"delta","text":"Hi"}\n\n']),

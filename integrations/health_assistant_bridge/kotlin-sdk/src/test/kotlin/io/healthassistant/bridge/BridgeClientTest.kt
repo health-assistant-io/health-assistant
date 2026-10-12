@@ -6,8 +6,13 @@ import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.utils.io.writeString
+import io.ktor.utils.io.writer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.io.IOException
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -617,6 +622,56 @@ class BridgeClientTest {
         c.close()
     }
 
+    @Test
+    fun `requestLines never retries a 503 stream turn`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val engine = MockEngine { respond("""{"detail":"down"}""", HttpStatusCode.ServiceUnavailable) }
+        val c = streamBridge(secret, engine)
+        val ex = runCatching { c.requestLines("POST", "/ai/chat/stream").toList() }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        assertEquals(503, (ex as BridgeException).statusCode)
+        // A replayed turn POST would duplicate the turn — exactly one request.
+        assertEquals(1, engine.requestHistory.size)
+        c.close()
+    }
+
+    @Test
+    fun `requestLines surfaces a mid-body stream failure without a second request`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val failingBody = CoroutineScope(Dispatchers.Unconfined).writer {
+            channel.writeString("data: {\"event\":\"delta\",\"text\":\"partial\"}\n\n")
+            channel.flush()
+            throw IOException("connection reset mid-body")
+        }.channel
+        val engine = MockEngine {
+            respond(failingBody, HttpStatusCode.OK, headersOf("Content-Type", "text/event-stream"))
+        }
+        val c = streamBridge(secret, engine)
+        val ex = runCatching {
+            c.requestLines("POST", "/ai/chat/stream").toList()
+        }.exceptionOrNull()
+        assertTrue(ex is IOException)
+        // The turn was dispatched once — no replay after the mid-body failure.
+        assertEquals(1, engine.requestHistory.size)
+        c.close()
+    }
+
+    @Test
+    fun `requestLines never retries a failed dispatch`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        var dispatches = 0
+        val engine = MockEngine {
+            dispatches++
+            throw IOException("connection reset before response headers")
+        }
+        val c = streamBridge(secret, engine)
+        val ex = runCatching { c.requestLines("POST", "/ai/chat/stream").toList() }.exceptionOrNull()
+        assertTrue(ex is IOException)
+        // One dispatch, no second attempt — the connect-phase failure is surfaced.
+        assertEquals(1, dispatches)
+        c.close()
+    }
+
     // --- HITL resume streaming (WS4) -----------------------------------
 
     private fun streamBridge(secret: String, engine: MockEngine): BridgeClient =
@@ -738,6 +793,27 @@ class BridgeClientTest {
         assertTrue(ex is BridgeException)
         // A replayed chat POST would duplicate the turn — exactly one request.
         assertEquals(1, engine.requestHistory.size)
+        c.close()
+    }
+
+    @Test
+    fun `chat never retries a failed dispatch`() = runBlocking {
+        var dispatches = 0
+        val engine = MockEngine {
+            dispatches++
+            throw IOException("connection reset mid-turn")
+        }
+        val c =
+            BridgeClient(
+                baseUrl = "https://example.test",
+                integrationId = "00000000-0000-0000-0000-000000000000",
+                apiSecret = null,
+                client = HttpClient(engine),
+            )
+        val ex = runCatching { c.chat("Hello") }.exceptionOrNull()
+        assertTrue(ex is IOException)
+        // One dispatch, no second attempt — the failure surfaces to the caller.
+        assertEquals(1, dispatches)
         c.close()
     }
 
