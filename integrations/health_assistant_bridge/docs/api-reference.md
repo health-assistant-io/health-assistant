@@ -446,6 +446,7 @@ together. Non-AI bridge paths are not affected by this bucket.
 | `PATCH /ai/sessions/{id}` | Rename a chat session. Body `{title}` (non-blank, ≤ 200 chars — same contract as the PWA `PATCH /ai-assistance/sessions/{id}`) → `{id, title, updated_at}`. Scoped like every other `/ai/*` path: foreign or cross-patient sessions return HTTP 404 `not_found`; a blank/oversized title returns HTTP 400 `validation`. |
 | `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve` | Record the human resolution of a HITL card. Body `{status: "confirmed"\|"dismissed", final_payload?, result?, error?}` → `{success, task}`. Same contract as the PWA endpoint: **the client commits any proposed write through the canonical REST endpoint BEFORE resolving** — this only records the outcome + the agent-awareness note. A repeat resolve fails with HTTP 409 `hitl_conflict`. |
 | `POST /ai/sessions/{id}/resume` | **HITL continuation turn (WS4):** after resolving task cards via `.../resolve`, stream the agent's continuation — an SSE response in the same family vocabulary as `/ai/chat/stream` (`delta`/`task`/`citation`/`interrupt` + flow lifecycle; the agent may raise a new `interrupt` card, pausing the flow again). Body `{message_id?}` selects which assistant message's tasks are summarized (default: the most recent task-bearing message; selectors only — outcomes are read server-side from the tasks JSONB). Guards fire before the stream (foreign session → 404 `not_found`, malformed selector or blank guard → 400 `validation`) or inside it as a terminal `flow_failed` frame with `code:"guard"`. One streaming turn per session (the shared single-flight lock; a concurrent turn → HTTP 409 `turn_conflict`). Counts toward the `/ai/*` 30-per-5-min integration bucket. Same mobile-grade transport as `/ai/chat/stream` (WS7): `: keep-alive` comments every 15 s of idleness — ignore `:`-prefixed lines per the SSE spec — plus `Cache-Control: no-cache` + `X-Accel-Buffering: no`, never gzipped. |
+| `POST /ai/transcribe` | **Voice input (WS10)** — speech-to-text parity with the PWA `/ai-assistance/transcribe`. Body `{data: base64, mime?}` (the documents base64 pattern); a full mime with parameters (`audio/webm;codecs=opus`) is normalized to the bare subtype before the **shared allowlist** (`audio/webm`, `audio/ogg`, `audio/mp4`, `audio/mpeg`, `audio/x-m4a`, `audio/wav`, `audio/x-wav`, `audio/flac` — the same `app/ai/assistance/stt.py` list the PWA checks; an absent mime defaults to `audio/webm`). The decoded audio is capped at `AI_STT_MAX_AUDIO_BYTES` (20 MiB default — the proxy's 40 MiB machine-body cap bounds the base64 envelope). Guards are typed 400 `validation`: missing/invalid base64, empty audio, a mime outside the allowlist, oversize audio. **The audio is ephemeral:** decoded in memory, streamed to the tenant's STT model (the same gateway task the PWA endpoint uses, resolved for the integration's owner — no patient pinning, transcription never reads or writes patient data), and discarded — no DB rows, no files, no object storage. The transcribed text runs through the same non-blocking prompt-injection guard (audit correlation) and the reply is `{text, success}` (`success` false when nothing was transcribed). An upstream STT failure answers HTTP 502 `stt_failed`. Counts toward the `/ai/*` 30-per-5-min bucket. |
 
 Streaming: **landed for chat in Phase 2** — `POST /ai/chat/stream` returns
 SSE (the proxy passes provider `StreamingResponse`s through) — and for the
@@ -454,10 +455,11 @@ HITL continuation in WS4 (`POST /ai/sessions/{id}/resume`). Branching
 
 **Kotlin SDK:** typed wrappers exist for the chat paths — `chat(message,
 sessionId?)` decodes the rich `ChatTurnResult` (never auto-retries) and
-`getMessages(sessionId, limit?)` reads the paged history; the generic
-`BridgeClient.requestText(method, path)` (or `request` for the raw
-`HttpResponse`) covers everything else. The TypeScript SDK mirrors both
-(`chat` / `getMessages`).
+`getMessages(sessionId, limit?)` reads the paged history; `transcribe(audio,
+mime)` covers voice input (read-only — retried like every idempotent call).
+The generic `BridgeClient.requestText(method, path)` (or `request` for the
+raw `HttpResponse`) covers everything else. The TypeScript SDK mirrors all
+of them (`chat` / `getMessages` / `transcribe`).
 
 **Retries (SDK behavior):** the SDKs never auto-retry the AI turn POSTs —
 `POST /ai/chat`, `POST /ai/chat/stream`, and
@@ -470,11 +472,13 @@ surfaces its error (typed `BridgeException` on 429/5xx) and the correct
 recovery is to start a **new** turn (re-send the message, or
 `.../resume` for a HITL continuation); the server-side single-flight
 turn lock keeps that new turn from colliding with one that is still
-running. Everything else retries with full-jitter backoff on 429/5xx +
-transient network errors (reads, `/sync`, idempotent mutations keyed on
-`client_request_id` / `id`, session rename, notification read/dismiss) —
-so a 429 from the AI bucket above reaches the caller with its
-`Retry-After` instead of being silently retried.
+running. `POST /ai/transcribe` is the exception by design: audio is
+ephemeral server-side (a replay just re-transcribes), so it **keeps**
+the retry policy. Everything else retries with full-jitter backoff on
+429/5xx + transient network errors (reads, `/sync`, idempotent mutations
+keyed on `client_request_id` / `id`, session rename, notification
+read/dismiss) — so a 429 from the AI bucket above reaches the caller
+with its `Retry-After` instead of being silently retried.
 
 **Notes:**
 - DELETEs are **hard** (matching the PWA endpoints). The bound patient filter
@@ -677,7 +681,8 @@ table **in the same commit**:
 | `not_found` | 404 | A foreign or missing session / examination / document / clinical event / medication / allergy / vaccine / doctor / notification / device row — patient-scoped isolation means "someone else's" and "doesn't exist" are indistinguishable by design. |
 | `turn_conflict` | 409 | The session's single-flight turn lock is held — another chat/resume turn is already streaming (retry after it finishes; a new turn, not a replay). |
 | `hitl_conflict` | 409 | The HITL proposal was already resolved (a repeat `resolve` call). |
-| `validation` | 400 | Malformed input or a failed guard: blank/oversized `message`/`title`, malformed ids, invalid base64, the upload size cap, unknown `/changes` types, bad enum values. |
+| `validation` | 400 | Malformed input or a failed guard: blank/oversized `message`/`title`, malformed ids, invalid base64, the upload size cap, unknown `/changes` types, bad enum values, and the `/ai/transcribe` input guards (empty audio, a MIME outside the shared audio allowlist, audio beyond `AI_STT_MAX_AUDIO_BYTES`, an unresolvable STT target). |
+| `stt_failed` | 502 | The upstream speech-to-text provider failed on `POST /ai/transcribe` (timeout, auth, non-2xx). The audio was not persisted — retry with a fresh recording. |
 
 **Legacy shape (untyped 400s).** A handful of server-side processing
 failures (e.g. preview-image rendering, the AI mapping service being

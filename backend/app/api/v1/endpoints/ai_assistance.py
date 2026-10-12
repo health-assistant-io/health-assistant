@@ -12,7 +12,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.assistance.service import AIAssistanceService
-from app.ai.assistance.stt import TranscriptionError, transcribe_audio
+from app.ai.assistance.stt import (
+    ALLOWED_AUDIO_MIME as _ALLOWED_AUDIO_MIME,
+)
+from app.ai.assistance.stt import (
+    TranscriptionError,
+    transcribe_audio,
+)
 from app.ai.assistance.turns import (
     SSE_RESPONSE_HEADERS,
     TURN_LOCK_MESSAGE,
@@ -51,20 +57,6 @@ from app.services.hitl_resolver import (
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
-
-# Audio MIME types accepted for STT — Opus/WebM (Chrome default) + the common
-# fallbacks. WAV/PCM is allowed (some browsers lack Opus) but discouraged by the
-# client, which always requests Opus when available.
-_ALLOWED_AUDIO_MIME = {
-    "audio/webm",
-    "audio/ogg",
-    "audio/mp4",
-    "audio/mpeg",
-    "audio/x-m4a",
-    "audio/wav",
-    "audio/x-wav",
-    "audio/flac",
-}
 
 
 async def _validate_owned_session(context: dict, current_user: TokenData, db: AsyncSession) -> None:

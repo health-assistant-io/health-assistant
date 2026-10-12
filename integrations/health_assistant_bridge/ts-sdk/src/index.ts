@@ -131,6 +131,15 @@ export interface SessionRenameResult {
   updated_at?: string | null;
 }
 
+/** Reply of `POST /ai/transcribe` — voice input. `success` is false when
+ * the provider transcribed nothing (silence); the audio is ephemeral
+ * server-side (never persisted — the gateway rate budget + audit trail are
+ * the only ledger). */
+export interface TranscriptionResult {
+  text: string | null;
+  success: boolean;
+}
+
 export interface BridgeClientOptions {
   /** HMAC secret. When set, requests are signed (X-Api-Signature) —
    * including the full `/status` discovery tier. */
@@ -237,7 +246,9 @@ export function signRequest(
  *
  * - **Retried** (default): reads (`getStatus`, every typed getter),
  *   `/sync`, and idempotent mutations (Phase-6 writes keyed on
- *   `client_request_id` / `id`, notification read/dismiss, session rename).
+ *   `client_request_id` / `id`, notification read/dismiss, session rename),
+ *   plus the read-only voice-input {@link transcribe} POST (audio is
+ *   ephemeral server-side — a replay just re-transcribes).
  *   429/5xx answers and transient fetch failures are retried with
  *   full-jitter backoff (up to `maxRetries` attempts). Retrying is safe
  *   because a replay either converges (idempotent writes) or was never
@@ -475,6 +486,24 @@ export class HealthAssistantBridgeClient {
     const rawBody = Buffer.from(JSON.stringify({ title }), "utf8");
     const response = await this.request("PATCH", this.apiUrl + path, rawBody, path);
     return (await response.json()) as SessionRenameResult;
+  }
+
+  /** Voice input over `POST /ai/transcribe`: base64 `audio` + `mime` (a
+   * full mime with parameters, e.g. `audio/webm;codecs=opus`, is
+   * normalized and allowlisted server-side; oversize audio or a non-audio
+   * mime is a typed 400 `validation`). The audio is **ephemeral**
+   * server-side — transcribed and discarded, never persisted — so this is
+   * read-only (a replay just re-transcribes) and the default retry policy
+   * applies, unlike the AI turn POSTs (see the class retry matrix).
+   * Counts toward the `/ai/*` rate budget. */
+  async transcribe(audio: Buffer, mime: string): Promise<TranscriptionResult> {
+    const path = "/ai/transcribe";
+    const rawBody = Buffer.from(
+      JSON.stringify({ data: audio.toString("base64"), mime }),
+      "utf8",
+    );
+    const response = await this.request("POST", this.apiUrl + path, rawBody, path);
+    return (await response.json()) as TranscriptionResult;
   }
 
   private signedHeaders(method: string, path: string, rawBody: Buffer): Record<string, string> {

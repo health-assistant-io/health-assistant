@@ -12,6 +12,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Bridge voice input (R7 WS10):** `POST /ai/transcribe` gives mobile chat
+  the PWA's speech-to-text parity — body `{data: base64, mime?}` (the
+  documents base64 pattern; `;`-parameters normalized to the bare subtype),
+  checked against the audio MIME allowlist now shared from
+  `app/ai/assistance/stt.py` (moved out of the PWA endpoint module — one
+  list, never duplicated) and capped at `AI_STT_MAX_AUDIO_BYTES`. The STT
+  target is resolved for the integration's owner through the same gateway
+  service layer the PWA endpoint uses (ADR-0018 family-ai rule — no
+  provider SDK imports outside `app/ai/`). **Audio is ephemeral:** decoded
+  in memory, streamed to the tenant's STT model, and discarded — no DB
+  rows, no files, no object storage (pinned by test); the `/ai/*`
+  30-per-5-min budget and audit trail are the only ledger. The transcribed
+  text runs through the non-blocking prompt-injection guard
+  (`bridge_transcription` audit context) exactly like the PWA, and the
+  reply is `{text, success}`. Input guards are typed 400 `validation`
+  (missing/invalid base64, empty audio, disallowed mime, oversize); an
+  upstream STT failure answers 502 with the new `stt_failed` code
+  (Errors table updated). SDKs: Kotlin `transcribe(audio, mime)` and
+  TypeScript `transcribe(audio, mime)` returning `TranscriptionResult` —
+  read-only semantics (a replay just re-transcribes), so unlike the AI
+  turn POSTs they keep the standard retry policy.
 - **Bridge typed error contract (WS8):** bridge errors are now
   programmatically distinguishable — the provider raises
   `BridgeError(ValueError)` carrying `status_code` + a stable `code`

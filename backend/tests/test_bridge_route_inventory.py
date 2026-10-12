@@ -64,6 +64,7 @@ FROZEN_ROUTES: set[tuple[str, str]] = {
     ("POST", "^examinations/(?P<exam_id>[^/]+)/documents$"),
     ("POST", "ai/chat"),
     ("POST", "ai/chat/stream"),
+    ("POST", "ai/transcribe"),
     ("POST", "allergies"),
     ("POST", "clinical-events"),
     ("POST", "doctors"),

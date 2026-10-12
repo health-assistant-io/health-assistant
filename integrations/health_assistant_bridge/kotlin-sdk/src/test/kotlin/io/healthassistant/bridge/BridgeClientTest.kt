@@ -946,4 +946,58 @@ class BridgeClientTest {
         assertEquals("turn_conflict", ex.code)
         c.close()
     }
+
+    // --- Voice input (WS10) ---------------------------------------------
+
+    @Test
+    fun `transcribe POSTs base64 audio with mime and decodes the reply`() = runBlocking {
+        val secret = "test-secret-16chars!"
+        val audio = byteArrayOf(0x01, 0x02, 0x03)
+        val expectedBody = """{"data":"AQID","mime":"audio/webm;codecs=opus"}"""
+        var sawSig: String? = null
+        var sawPath: String? = null
+        val c = bridge(secret) { req ->
+            sawSig = req.headers["X-Api-Signature"]
+            sawPath = req.url.encodedPath
+            respond("""{"text":"Hello from voice.","success":true}""")
+        }
+        val r = c.transcribe(audio, "audio/webm;codecs=opus")
+        assertEquals("Hello from voice.", r.text)
+        assertTrue(r.success)
+        assertTrue(
+            sawPath!!.endsWith(
+                "/api/v1/integrations/health_assistant_bridge/api/" +
+                    "00000000-0000-0000-0000-000000000000/ai/transcribe",
+            ),
+        )
+        assertEquals(
+            Signing.sign(secret, "POST", "/ai/transcribe", expectedBody.encodeToByteArray()).signature,
+            sawSig,
+        )
+        c.close()
+    }
+
+    @Test
+    fun `transcribe decodes the no-text shape`() = runBlocking {
+        val c = bridge(null) { respond("""{"text":"","success":false}""") }
+        val r = c.transcribe(byteArrayOf(0x01), "audio/webm")
+        assertEquals("", r.text)
+        assertFalse(r.success)
+        c.close()
+    }
+
+    @Test
+    fun `transcribe surfaces typed validation errors`() = runBlocking {
+        val c = bridge(null) {
+            respond(
+                """{"detail":{"code":"validation","message":"Unsupported audio format. Use WebM/Opus, OGG, MP4, or WAV."}}""",
+                HttpStatusCode.BadRequest,
+            )
+        }
+        val ex = runCatching { c.transcribe(byteArrayOf(0x01), "video/webm") }.exceptionOrNull()
+        assertTrue(ex is BridgeException)
+        assertEquals(400, (ex as BridgeException).statusCode)
+        assertEquals("validation", ex.code)
+        c.close()
+    }
 }

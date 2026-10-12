@@ -30,6 +30,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.util.Base64
 import kotlin.random.Random
 
 /**
@@ -47,9 +48,11 @@ import kotlin.random.Random
  * Two request classes, selected by [send]'s `retry` flag:
  *
  * - **Retried** (`retry = true`, the default): reads ([getStatus], every
- *   typed getter), `/sync`, and idempotent mutations (Phase-6 writes keyed
+ *   typed getter), `/sync`, idempotent mutations (Phase-6 writes keyed
  *   on `client_request_id` / `id`, notification read/dismiss, session
- *   rename). 429/5xx answers and `IOException`s are retried with
+ *   rename), and the read-only voice-input POST (audio is
+ *   ephemeral server-side — a replay just re-transcribes). 429/5xx
+ *   answers and `IOException`s are retried with
  *   full-jitter backoff (3 retries, cap 8s). Retrying here is safe because
  *   a replay either converges (idempotent writes) or was never applied.
  * - **Never retried** (`retry = false`): the AI turn POSTs — [chat], and
@@ -547,6 +550,27 @@ class BridgeClient(
         return decode(
             requestText("PATCH", "/ai/sessions/$sessionId", body),
             SessionRenameResult.serializer(),
+        )
+    }
+
+    /** `POST /ai/transcribe` — voice input: base64 [audio] + [mime] (a full
+     *  mime with parameters, e.g. `audio/webm;codecs=opus`, is normalized
+     *  and allowlisted server-side; audio beyond the server's
+     *  `AI_STT_MAX_AUDIO_BYTES` cap and non-audio mimes are rejected with
+     *  a typed 400 `validation`). The audio is **ephemeral** server-side —
+     *  transcribed and discarded, never persisted — so this is read-only
+     *  (a replay just re-transcribes) and the default retry policy
+     *  applies (unlike the AI turn POSTs; see the class retry matrix).
+     *  Counts toward the /ai/ family rate budget. */
+    suspend fun transcribe(audio: ByteArray, mime: String): TranscriptionResult {
+        val payload = buildJsonObject {
+            put("data", Base64.getEncoder().encodeToString(audio))
+            put("mime", mime)
+        }
+        val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
+        return decode(
+            requestText("POST", "/ai/transcribe", body),
+            TranscriptionResult.serializer(),
         )
     }
 

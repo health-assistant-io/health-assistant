@@ -269,6 +269,7 @@ _ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
     ("GET", "ai/sessions", "_ai_list_sessions"),
     ("POST", "ai/chat", "_ai_chat"),
     ("POST", "ai/chat/stream", "_ai_chat_stream"),
+    ("POST", "ai/transcribe", "_ai_transcribe"),
     (
         "GET",
         re.compile(r"^ai/sessions/(?P<session_id>[^/]+)/messages$"),
@@ -1948,6 +1949,100 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 raise BridgeError(409, "hitl_conflict", str(e)) from e
             await db.commit()
         return {"success": True, "task": task}
+
+    async def _ai_transcribe(
+        self, integration: UserIntegration, request: Any
+    ) -> dict[str, Any]:
+        """`POST /ai/transcribe` — speech-to-text for mobile voice input
+        (the PWA ``/ai-assistance/transcribe`` contract over the bridge
+        identity; STT is a gateway task per ADR-0018 — the same service
+        layer, no provider SDK imports outside ``app/ai/``).
+
+        Body: ``{data: base64, mime?}`` (the documents base64 pattern). A
+        full mime with parameters (``audio/webm;codecs=opus``) is
+        normalized to the bare subtype before the shared
+        ``ALLOWED_AUDIO_MIME`` allowlist check; an absent mime is allowed
+        (``audio/webm`` assumed), mirroring the PWA. Size is capped at
+        ``settings.AI_STT_MAX_AUDIO_BYTES``; guard violations are typed
+        400 ``validation``. Owner-scoped (``resolve_integration_actor`` —
+        no patient pinning): transcription never reads or writes patient
+        data.
+
+        The audio is **ephemeral**: decoded in memory, streamed to the
+        tenant's STT target, and discarded — no DB rows, no files, no
+        object storage; the gateway's rate budget + audit trail are the
+        only ledger. The transcribed text runs through
+        ``check_user_input_safety`` (non-blocking audit correlation,
+        context ``bridge_transcription``) exactly like the PWA, and the
+        reply is ``{text, success}`` (``success`` false when the provider
+        transcribed nothing). An upstream STT failure answers 502
+        ``stt_failed``.
+        """
+        import base64
+        import binascii
+
+        from app.ai.assistance.service import AIAssistanceService
+        from app.ai.assistance.stt import ALLOWED_AUDIO_MIME
+        from app.ai.assistance.stt import TranscriptionError
+        from app.ai.assistance.stt import transcribe_audio
+        from app.core.config import settings
+        from app.core.database import AsyncSessionLocal
+        from app.services.integration_actor import resolve_integration_actor
+        from app.utils.prompt_guard import check_user_input_safety
+
+        payload = await request.json()
+        data_b64 = payload.get("data")
+        if data_b64 is None or not isinstance(data_b64, str):
+            raise BridgeError(400, "validation", "Missing base64 'data' field.")
+        try:
+            audio = base64.b64decode(data_b64, validate=True)
+        except (binascii.Error, TypeError, ValueError):
+            raise BridgeError(400, "validation", "Invalid base64 'data'.")
+        if not audio:
+            raise BridgeError(400, "validation", "Empty audio recording.")
+
+        raw_mime = str(payload.get("mime") or "").split(";")[0].strip().lower()
+        if raw_mime and raw_mime not in ALLOWED_AUDIO_MIME:
+            raise BridgeError(
+                400,
+                "validation",
+                "Unsupported audio format. Use WebM/Opus, OGG, MP4, or WAV.",
+            )
+
+        max_bytes = settings.AI_STT_MAX_AUDIO_BYTES
+        if len(audio) > max_bytes:
+            limit_mb = max_bytes / (1024 * 1024)
+            raise BridgeError(
+                400,
+                "validation",
+                f"Audio exceeds the {limit_mb:.0f} MiB limit.",
+            )
+
+        mime_for_provider = raw_mime or "audio/webm"
+
+        async with AsyncSessionLocal() as db:
+            actor = await resolve_integration_actor(db, integration)
+            service = AIAssistanceService(db)
+            try:
+                target = await service.ai_provider_service.get_stt_target(
+                    tenant_id=actor.tenant_id, user_id=actor.user_id
+                )
+            except TranscriptionError as e:
+                raise BridgeError(400, "validation", str(e)) from e
+
+        try:
+            text = await transcribe_audio(
+                audio,
+                filename="recording.webm",
+                mime_type=mime_for_provider,
+                target=target,
+            )
+        except TranscriptionError as e:
+            raise BridgeError(502, "stt_failed", str(e)) from e
+
+        if text:
+            check_user_input_safety(text, context="bridge_transcription")
+        return {"text": text, "success": bool(text)}
 
     async def _changes_since(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         """`GET /changes?since=<ISO>&types=<csv>&limit=` — unified delta for

@@ -561,3 +561,12 @@ data class SessionRenameResult(
     val title: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
 )
+
+/** `POST /ai/transcribe` reply — voice input. [success] is false when the
+ *  provider transcribed nothing (silence); the audio is ephemeral
+ *  server-side (never persisted). */
+@Serializable
+data class TranscriptionResult(
+    val text: String? = null,
+    val success: Boolean = false,
+)

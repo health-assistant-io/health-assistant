@@ -32,6 +32,22 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Audio MIME types accepted for STT — Opus/WebM (Chrome/MediaRecorder default)
+# + the common fallbacks. WAV/PCM is allowed (some browsers lack Opus) but
+# discouraged by clients, which request Opus when available. The single source
+# of truth shared by the PWA endpoint and the health-assistant bridge — never
+# duplicate this list.
+ALLOWED_AUDIO_MIME = {
+    "audio/webm",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/x-m4a",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/flac",
+}
+
 
 @dataclass
 class STTTarget:
