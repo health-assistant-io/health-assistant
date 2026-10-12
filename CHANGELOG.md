@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   messageId?)` — all covered by the `node:test` harness. The bridge's
   SSE-turn skeleton (DB-session lifetime, lock, error frames) is shared
   between chat-stream and resume (`_sse_turn_stream`).
+- **One-line remote install (`scripts/bootstrap.sh`):** `curl -fsSL
+  https://health-assistant.io/install.sh | bash` bootstraps a full install
+  without cloning — checks prerequisites up front (bash, curl, tar, Docker;
+  never installs system packages, never runs as root), resolves the latest
+  published release, downloads the official GitHub tarball, prints its
+  SHA-256 (optional strict pinning via `HEALTH_EXPECTED_SHA256`), extracts
+  to `~/health-assistant` (override with `HEALTH_INSTALL_DIR`/`--dir`,
+  `HEALTH_REF`/`--ref`), and hands off to `scripts/install.sh` with the
+  terminal re-attached so its interactive question works under a pipe.
+  `--dry-run` verifies everything without starting anything. The bootstrap
+  is a small readable wrapper — `install.sh` remains the source of truth.
 - **Bridge session rename (WS6):** `PATCH /ai/sessions/{id}` renames a chat
   session over the integration identity — body `{title}` (non-blank, ≤ 200
   chars, mirroring the PWA `ChatSessionTitleUpdate` contract) →
