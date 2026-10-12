@@ -98,6 +98,39 @@ export interface SyncResponse {
   error?: string;
 }
 
+// --- AI assistant (bridge /ai/* paths) -------------------------------------
+
+/** One message row from `GET /ai/sessions/{id}/messages` (newest first).
+ * `content` is `{text: …}`; `tasks` carries HITL proposal cards. */
+export interface BridgeChatMessage {
+  id: string;
+  role?: string;
+  content?: { text?: string; [key: string]: unknown };
+  tasks?: Record<string, unknown>[];
+  citations?: Record<string, unknown>[];
+  created_at?: string | null;
+}
+
+/** Reply of `POST /ai/chat` — one non-streaming turn. `tasks` carries the
+ * HITL proposal cards persisted with the assistant row (render them without
+ * a messages refetch); `message_id` is null on the max-iterations path (no
+ * assistant row), where `tasks`/`citations` are empty. */
+export interface ChatTurnResult {
+  message: string | null;
+  session_id: string | null;
+  success: boolean;
+  message_id?: string | null;
+  tasks?: Record<string, unknown>[];
+  citations?: Record<string, unknown>[];
+}
+
+/** Reply of `PATCH /ai/sessions/{id}` — the renamed session row. */
+export interface SessionRenameResult {
+  id: string;
+  title?: string | null;
+  updated_at?: string | null;
+}
+
 export interface BridgeClientOptions {
   /** HMAC secret. When set, requests are signed (X-Api-Signature) —
    * including the full `/status` discovery tier. */
@@ -337,6 +370,48 @@ export class HealthAssistantBridgeClient {
     );
   }
 
+  // --- AI assistant ---------------------------------------------------------
+
+  /** One non-streaming chat turn over `POST /ai/chat`. The reply carries the
+   * persisted assistant row's id + HITL `tasks` cards + `citations`, so a
+   * turn with proposals renders without a messages refetch. NEVER
+   * auto-retries: a replayed chat POST would duplicate the user message and
+   * the LLM call. */
+  async chat(message: string, sessionId?: string): Promise<ChatTurnResult> {
+    const payload: Record<string, string> = { message };
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+    const path = "/ai/chat";
+    const rawBody = Buffer.from(JSON.stringify(payload), "utf8");
+    const response = await this.request("POST", this.apiUrl + path, rawBody, path, {
+      retry: false,
+    });
+    return (await response.json()) as ChatTurnResult;
+  }
+
+  /** The session's messages (`GET /ai/sessions/{id}/messages`), newest
+   * first. `limit` defaults to 200 server-side (max 500). */
+  async getMessages(
+    sessionId: string,
+    limit?: number,
+  ): Promise<{ data: BridgeChatMessage[] }> {
+    const path =
+      "/ai/sessions/" + sessionId + "/messages" + (limit != null ? "?limit=" + limit : "");
+    const response = await this.request("GET", this.apiUrl + path, Buffer.alloc(0), path);
+    return (await response.json()) as { data: BridgeChatMessage[] };
+  }
+
+  /** Rename a session (`PATCH /ai/sessions/{id}`) — title non-blank, ≤ 200
+   * chars (validated server-side). Idempotent, so the default retry policy
+   * applies. Returns the renamed row. */
+  async renameSession(sessionId: string, title: string): Promise<SessionRenameResult> {
+    const path = "/ai/sessions/" + sessionId;
+    const rawBody = Buffer.from(JSON.stringify({ title }), "utf8");
+    const response = await this.request("PATCH", this.apiUrl + path, rawBody, path);
+    return (await response.json()) as SessionRenameResult;
+  }
+
   private signedHeaders(method: string, path: string, rawBody: Buffer): Record<string, string> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (this.apiSecret) {
@@ -350,10 +425,12 @@ export class HealthAssistantBridgeClient {
     url: string,
     rawBody?: Buffer,
     signPath?: string,
+    opts?: { retry?: boolean },
   ): Promise<Response> {
     const headers =
       rawBody && signPath ? this.signedHeaders(method, signPath, rawBody) : {};
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+    const attempts = opts?.retry === false ? 1 : this.maxRetries;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.timeoutMs);
       try {
@@ -366,7 +443,7 @@ export class HealthAssistantBridgeClient {
               : undefined,
           signal: controller.signal,
         });
-        if (!response.ok && RETRYABLE_STATUS.has(response.status) && attempt + 1 < this.maxRetries) {
+        if (!response.ok && RETRYABLE_STATUS.has(response.status) && attempt + 1 < attempts) {
           await this.backoff(attempt);
           continue;
         }
@@ -377,7 +454,7 @@ export class HealthAssistantBridgeClient {
         }
         return response;
       } catch (err) {
-        if (attempt + 1 >= this.maxRetries || !this.isTransient(err)) {
+        if (attempt + 1 >= attempts || !this.isTransient(err)) {
           throw err;
         }
         await this.backoff(attempt);
@@ -385,7 +462,7 @@ export class HealthAssistantBridgeClient {
         clearTimeout(timer);
       }
     }
-    throw new Error("Request to " + url + " failed after " + this.maxRetries + " attempts.");
+    throw new Error("Request to " + url + " failed after " + attempts + " attempts.");
   }
 
   private isTransient(err: unknown): boolean {

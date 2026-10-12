@@ -472,6 +472,46 @@ class BridgeClient(
     suspend fun listDevices(): ReadEnvelope<MobilePushTarget> =
         readEnvelope("/devices", MobilePushTarget.serializer())
 
+    // --- AI assistant (bridge /ai/* paths) ------------------------------
+
+    /** `POST /ai/chat` — one non-streaming turn. The reply carries the
+     *  persisted assistant row's id + HITL `tasks` cards + `citations`, so a
+     *  turn with proposals renders without a messages refetch. **Never
+     *  auto-retries**: a replayed chat POST would duplicate the user message
+     *  and the LLM call (the retry-on-transient policy is for idempotent
+     *  reads/writes only). */
+    suspend fun chat(message: String, sessionId: String? = null): ChatTurnResult {
+        val payload = buildJsonObject {
+            put("message", message)
+            sessionId?.let { put("session_id", it) }
+        }
+        val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
+        val resp = send("POST", "/ai/chat", body, allowRetry = false)
+        val text = resp.bodyAsText()
+        if (resp.status.value !in 200..299) throw BridgeException(resp.status.value, text)
+        return decode(text, ChatTurnResult.serializer())
+    }
+
+    /** `GET /ai/sessions/{id}/messages?limit=` — the session's messages,
+     *  newest first. `limit` defaults to 200 server-side (max 500). */
+    suspend fun getMessages(sessionId: String, limit: Int? = null): ReadEnvelope<ChatMessage> =
+        readEnvelope(
+            "/ai/sessions/$sessionId/messages" + (limit?.let { "?limit=$it" } ?: ""),
+            ChatMessage.serializer(),
+        )
+
+    /** `PATCH /ai/sessions/{id}` — rename a session (title non-blank, ≤ 200
+     *  chars, validated server-side). Idempotent, so the default retry
+     *  policy applies. Returns the renamed row. */
+    suspend fun renameSession(sessionId: String, title: String): SessionRenameResult {
+        val payload = buildJsonObject { put("title", title) }
+        val body = json.encodeToString(JsonObject.serializer(), payload).encodeToByteArray()
+        return decode(
+            requestText("PATCH", "/ai/sessions/$sessionId", body),
+            SessionRenameResult.serializer(),
+        )
+    }
+
     // --- internals ------------------------------------------------------
 
     private suspend fun send(
@@ -480,6 +520,7 @@ class BridgeClient(
         body: ByteArray,
         attempt: Int = 0,
         client: HttpClient = http,
+        allowRetry: Boolean = true,
     ): HttpResponse {
         val signed = apiSecret?.takeIf { it.isNotBlank() }
             ?.let { Signing.sign(it, method, path, body) }
@@ -495,16 +536,16 @@ class BridgeClient(
                     header("X-Api-Timestamp", signed.timestamp)
                 }
             }
-            if (resp.status.value in RETRYABLE && attempt < MAX_RETRIES) {
+            if (allowRetry && resp.status.value in RETRYABLE && attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1, client)
+                send(method, path, body, attempt + 1, client, allowRetry)
             } else {
                 resp
             }
         } catch (e: IOException) {
-            if (attempt < MAX_RETRIES) {
+            if (allowRetry && attempt < MAX_RETRIES) {
                 backoff(attempt)
-                send(method, path, body, attempt + 1, client)
+                send(method, path, body, attempt + 1, client, allowRetry)
             } else {
                 throw e
             }
