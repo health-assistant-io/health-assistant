@@ -14,9 +14,9 @@
 #      canonical+generated PAIR, which R1 cannot see (R1 compares generated
 #      against the LOCAL canonical, so a stale pair passes silently)
 #   R7 decision secrets live under provider:<id> ids (plan 26 D8) — no
-#      bespoke decision secret ids; the one legacy exception is desktop's
-#      pre-plan-26 Jev key id 'openrouter:key', retired by the plan 26
-#      Phase 1 S2 migration (the exemption dies with it)
+#      bespoke decision secret ids anywhere (desktop's pre-plan-26
+#      'openrouter:key' exemption was retired with the plan 26 Phase 1
+#      S2 migration)
 #
 # Self-test: check-byok-contract.selftest.sh (same dir; materializes temp
 # trees for the R6/R7 pass/fail cases).
@@ -233,11 +233,9 @@ fi
 
 # R7 — decision secrets live under provider:<id> ids (plan 26 D8). Secret-id
 # literals in decision code must be provider-row ids; bespoke ids
-# (jev:key, decision:key, engine secrets, …) are violations. Template ids
-# built as `provider:${id}` / "provider:%s" are the sanctioned form. Legacy
-# exemption: the exact id 'openrouter:key' (desktop's pre-plan-26 Jev key,
-# src/shared/ai/decisions.ts) — retired by the plan 26 Phase 1 S2 migration.
-R7_LEGACY_SEEN=0
+# (jev:key, decision:key, engine secrets, the retired 'openrouter:key', …)
+# are violations. Template ids built as `provider:${id}` / "provider:%s"
+# are the sanctioned form.
 check_decision_secret_line() {  # grep -rn hit line (file:lineno:content)
   local line="$1" val
   val="$(printf '%s' "$line" | grep -oE "[\"'][a-zA-Z0-9:_.-]+[\"']" | tail -1)"
@@ -247,10 +245,6 @@ check_decision_secret_line() {  # grep -rn hit line (file:lineno:content)
   fi
   case "$val" in
     provider:*)
-      return 0
-      ;;
-    openrouter:key)
-      R7_LEGACY_SEEN=1
       return 0
       ;;
     *)
@@ -280,11 +274,7 @@ if [ -d "$ROOT/backend/app" ]; then
   fi
 fi
 if [ "$FAIL" -eq 0 ]; then
-  if [ "$R7_LEGACY_SEEN" -eq 1 ]; then
-    note "R7 legacy secret id 'openrouter:key' present (retired by plan 26 Phase 1 S2 — exemption dies with it)"
-  else
-    good "R7 no decision secrets outside provider:<id> ids"
-  fi
+  good "R7 no decision secrets outside provider:<id> ids"
 fi
 
 if [ "$FAIL" -eq 0 ]; then

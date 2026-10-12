@@ -88,19 +88,25 @@ expect "R6 fail: generated module stripped of decision fields" 1 'R6 .*lacks the
 # R7 cases
 # ---------------------------------------------------------------------------
 
-# R7 pass: provider-templated secret builder + the legacy openrouter:key id.
+# R7 pass: provider-templated secret builder only (the legacy openrouter:key
+# exemption is gone — the id is a plain violation now).
 T="$WORK/r7-pass"; vendor_gate "$T"
-mkdir -p "$T/src/main/services" "$T/src/main/ai/decide" "$T/src/shared/ai"
+mkdir -p "$T/src/main/services"
 cat > "$T/src/main/services/SecretService.ts" <<'EOF'
 export const providerSecretKey = (providerId: string): string => `provider:${providerId}`;
-export const openrouterSecretKey = (): string => JEV_SECRET_ID;
 EOF
+run_gate "$T"
+expect "R7 pass: provider ids only" 0 'R7 no decision secrets outside'
+
+# R7 fail: the retired legacy 'openrouter:key' id (plan 26 Phase 1 S2 removed
+# the exemption — it must fail like any bespoke id).
+T="$WORK/r7-legacy-openrouter"; vendor_gate "$T"
+mkdir -p "$T/src/shared/ai"
 cat > "$T/src/shared/ai/decisions.ts" <<'EOF'
 export const JEV_SECRET_ID = 'openrouter:key';
 EOF
 run_gate "$T"
-expect "R7 pass: provider ids + legacy openrouter:key exempt (noted)" 0 \
-  "R7 legacy secret id 'openrouter:key' present" 'R7 decision secret id'
+expect "R7 fail: legacy 'openrouter:key' is no longer exempt" 1 "R7 decision secret id 'openrouter:key' is not a provider:<id> id"
 
 # R7 fail: bespoke decision secret id.
 T="$WORK/r7-fail"; vendor_gate "$T"
