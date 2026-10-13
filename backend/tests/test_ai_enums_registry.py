@@ -48,6 +48,9 @@ class TestTaskType:
             "generate_category_icon",
             "chat",
             "transcription",
+            # §15 embeddings wave: the embed slot (setup gap-fills it from
+            # the preset's docs-verified embeddings default).
+            "embed",
             # Plan 26 / ADR-0032: the four decision slots (explicitly
             # reviewed additions — the summary resolves them without the
             # default chat fallback, and the PHI scope guard applies).

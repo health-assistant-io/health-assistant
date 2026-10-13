@@ -235,7 +235,8 @@ class AIModelCapability(enum.StrEnum):
       * ``STT``         — speech-to-text (``whisper-1``; the ``transcription``
                           task). Replaces the legacy ``audio_input`` value.
       * ``TTS``         — text-to-speech (no health task consumes it yet).
-      * ``EMBEDDINGS``  — embedding vectors (no health task consumes it yet).
+      * ``EMBEDDINGS``  — embedding vectors (the ``embed`` task; setup
+                          gap-fills the slot from the preset default).
       * ``DECISION``    — decision models (plan 26 / ADR-0032). Sparse and
                           explicit-only, never inferred from a model name:
                           a decision model serves the ``decision_*`` task

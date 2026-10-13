@@ -579,6 +579,10 @@ class Settings(BaseSettings):
     # env still overrides for deployments that need it.
     OPENAI_STT_MODEL: str = str(_CANONICAL_PRESETS.get("openai", {}).get("stt_model") or "")
 
+    # AI Chat — embeddings (the ``embed`` task). Batch text-embedding calls
+    # against the assigned provider; the timeout guards the whole batch.
+    AI_EMBED_TIMEOUT_SECONDS: int = 30
+
     @model_validator(mode="after")
     def _validate_data_key(self) -> "Settings":
         """Identity-auth §8 (plan 16 H4): the DATA_KEY family (Fernet at rest).

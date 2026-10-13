@@ -311,6 +311,7 @@ class AIConfigSummary(BaseModel):
     generate_category_icon: TaskTypeAssignment | None
     chat: TaskTypeAssignment | None
     transcription: TaskTypeAssignment | None
+    embed: TaskTypeAssignment | None = None
     decision_tool_dispatch: TaskTypeAssignment | None = None
     decision_boolean_gate: TaskTypeAssignment | None = None
     decision_choice: TaskTypeAssignment | None = None
@@ -331,14 +332,16 @@ class ProviderSetupOptions(BaseModel):
     """§15 options body (editable review surfaces).
 
     Field names ARE the contract (snake_case in Python payloads — byok gate
-    R5): ``curated_ids / bind_chat / bind_vision / bind_stt / bind_decision``
-    (the five-bind body, plan 26 D14).
+    R5): ``curated_ids / bind_chat / bind_vision / bind_stt /
+    bind_embeddings / bind_decision`` (the five-bind body gained
+    ``bind_embeddings`` with the plan-26 embeddings wave).
     """
 
     curated_ids: list[str] | None = None
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
+    bind_embeddings: bool = True
     bind_decision: bool = True
 
 
@@ -369,6 +372,7 @@ class ProviderSetupResponse(BaseModel):
     assigned_chat_model: str | None = None
     assigned_vision_model: str | None = None
     assigned_stt_model: str | None = None
+    assigned_embeddings_model: str | None = None
     assigned_decision_slots: dict[str, str] | None = None
 
 
@@ -403,6 +407,7 @@ class ProviderPresetResponse(BaseModel):
     preferred_model: dict[str, Any] | None = None
     curated_models: list[str] | None = None
     stt_model: str | None = None
+    embeddings_model: str | None = None
     decision_models: list[dict[str, Any]] | None = None
     decision_default: str | None = None
     provisional: bool | None = None

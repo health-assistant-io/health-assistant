@@ -11,7 +11,8 @@ Uniform family semantics (dev/guidelines/ai-features.md §15, frozen
 * gap-fill only empty/dead slots — live assignments are never clobbered;
 * ``preset_key`` stamp + adoption of manual rows (same type+base, earliest
   first); options body ``curated_ids / bind_chat / bind_vision / bind_stt /
-  bind_decision`` (the five-bind body, plan 26 D14).
+  bind_embeddings / bind_decision`` (the five-bind body gained
+  ``bind_embeddings`` with the plan-26 embeddings wave — six wire flags).
 
 Health deltas (recorded per plan 17 Phase 3 + plan 26 Phase 5):
 
@@ -20,8 +21,9 @@ Health deltas (recorded per plan 17 Phase 3 + plan 26 Phase 5):
   scopes' providers and assignments are never read for adoption and never
   written. ``bind_decision`` gap-fill is scope-local the same way.
 * **Slot mapping.** The family ``chat``/text slot is health's ``default``
-  task (the resolution fallback), the ``vision`` slot is ``ocr``, and the
-  ``stt`` slot is ``transcription``. Health has no embeddings slot. The
+  task (the resolution fallback), the ``vision`` slot is ``ocr``, the
+  ``stt`` slot is ``transcription``, and the ``embeddings`` slot is
+  ``embed``. The
   decision slots are health task types (``decision_tool_dispatch`` &c.).
 * **Decision-only presets** (wire type ``decision``, e.g. ``typesafe``)
   validate via the decision probe (D13/D18) — one minimal typed question
@@ -69,6 +71,7 @@ _SLOT_TASK_TYPES: dict[str, str] = {
     "chat": TaskType.DEFAULT.value,
     "vision": TaskType.OCR.value,
     "stt": TaskType.TRANSCRIPTION.value,
+    "embeddings": TaskType.EMBED.value,
 }
 
 
@@ -95,6 +98,7 @@ class SetupOptions:
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
+    bind_embeddings: bool = True
     bind_decision: bool = True
 
 
@@ -106,6 +110,7 @@ class SetupOutcome:
     assigned_chat_model: str | None = None
     assigned_vision_model: str | None = None
     assigned_stt_model: str | None = None
+    assigned_embeddings_model: str | None = None
     assigned_decision_slots: dict[str, str] | None = None
 
 
@@ -124,7 +129,7 @@ class _PersistedModel:
 def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
     """Infer the §15 capability set from a model id (optional Gemini methods)."""
     name = external_id.lower()
-    if "embedding" in name or "bge" in name or (methods is not None and "embedContent" in methods):
+    if "embed" in name or "bge" in name or (methods is not None and "embedContent" in methods):
         return ["embeddings"]
     if any(hint in name for hint in ("whisper", "transcribe", "stt")):
         return ["stt"]
@@ -628,7 +633,7 @@ async def setup_provider_from_preset(
         provider.api_key = encrypt_secret(key)
     await db.flush()
 
-    assigned: dict[str, str | None] = {"chat": None, "vision": None, "stt": None}
+    assigned: dict[str, str | None] = {"chat": None, "vision": None, "stt": None, "embed": None}
 
     preferred = preset["preferred_model"]
     preferred_model_id = preferred["id"] if preferred else None
@@ -730,6 +735,38 @@ async def setup_provider_from_preset(
                 by_wire_id[stt_resolved_id],
             )
 
+    # Embeddings default (§15 embeddings wave): the preset's docs-verified
+    # default gap-fills the EMPTY embed slot — resolved in the curated
+    # catalog by external_id or snapshot-suffix match, empty slots only,
+    # never a live binding.
+    embeddings_model_id = preset["embeddings_model"]
+    embeddings_resolved_id = None
+    if embeddings_model_id:
+        embeddings_resolved_id = next(
+            (
+                item.external_id
+                for item in persist_catalog
+                if item.external_id == embeddings_model_id
+                or _match_curated(item.external_id, curated) == embeddings_model_id
+            ),
+            None,
+        )
+    if options.bind_embeddings and embeddings_resolved_id:
+        _, embeddings_model = await _slot_alive(
+            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["embeddings"]
+        )
+        if embeddings_model is None:
+            assigned["embed"] = embeddings_resolved_id
+            await _bind_slot(
+                db,
+                scope,
+                tenant_id,
+                user_id,
+                _SLOT_TASK_TYPES["embeddings"],
+                provider,
+                by_wire_id[embeddings_resolved_id],
+            )
+
     # Decision slots (plan 26 D14/D17): capability-aware gap-fill at the
     # SAME scope — each EMPTY declared slot gets the preset's decision
     # default; live slots are never clobbered; `open-args` is not a slot;
@@ -762,6 +799,7 @@ async def setup_provider_from_preset(
         assigned_chat_model=assigned["chat"],
         assigned_vision_model=assigned["vision"],
         assigned_stt_model=assigned["stt"],
+        assigned_embeddings_model=assigned["embed"],
         assigned_decision_slots=assigned_decision or None,
     )
 

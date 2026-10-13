@@ -470,6 +470,7 @@ class AIProviderService:
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
             transcription=task_assignments.get("transcription"),
+            embed=task_assignments.get("embed"),
             decision_tool_dispatch=task_assignments.get("decision_tool_dispatch"),
             decision_boolean_gate=task_assignments.get("decision_boolean_gate"),
             decision_choice=task_assignments.get("decision_choice"),

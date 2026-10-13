@@ -11,6 +11,7 @@ Examples:
   * ``chat``        → needs ``text``
   * ``ocr``         → needs ``vision``
   * ``transcription`` → needs ``stt``
+  * ``embed``       → needs ``embeddings``
   * ``decision_*``  → needs ``decision`` (never falls back to ``text``)
   * every other text-generation task (define_*, magic_fill, …) → ``text``
 """
@@ -31,6 +32,7 @@ TASK_REQUIRED_CAPABILITY: dict = {
     TaskType.CHAT: {AIModelCapability.TEXT},
     TaskType.OCR: {AIModelCapability.VISION},
     TaskType.TRANSCRIPTION: {AIModelCapability.STT},
+    TaskType.EMBED: {AIModelCapability.EMBEDDINGS},
     TaskType.DECISION_TOOL_DISPATCH: {AIModelCapability.DECISION},
     TaskType.DECISION_BOOLEAN_GATE: {AIModelCapability.DECISION},
     TaskType.DECISION_CHOICE: {AIModelCapability.DECISION},

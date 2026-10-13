@@ -44,6 +44,13 @@ Plan 26 / ADR-0032 additions (decision capability + slots, scope-aware D17):
     ride ``presetOrder``; no provisional markers remain);
 23. PHI scope guard (D17): assignments are PHI-excluded by default; the
     explicit ``phi_allowed`` opt-in exists on decision_* task types only.
+
+§15 embeddings wave (the preset's docs-verified embeddings default):
+
+24. the EMPTY ``embed`` slot gap-fills from ``embeddings_model``
+    (``bind_embeddings``; resolved in the curated catalog) — a live
+    binding is never clobbered;
+25. ``bind_embeddings=false`` persists no embed binding.
 """
 
 import uuid
@@ -52,7 +59,7 @@ from typing import Any
 import httpx
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.ai.providers import setup as byok_setup
 from app.ai.providers.errors import classify_provider_error, extract_error_status
@@ -268,6 +275,10 @@ def test_preset_metadata_uniformity() -> None:
     assert SETUP_PRESETS["openai"]["type"] == "openai"
     assert SETUP_PRESETS["openai"]["wire_type"] == "openai_compatible"
     assert SETUP_PRESETS["openai"]["stt_model"] == "whisper-1"
+    # §15 embeddings wave: the docs-verified defaults ride the overlay
+    assert SETUP_PRESETS["openai"]["embeddings_model"] == "text-embedding-3-small"
+    assert SETUP_PRESETS["mistral"]["embeddings_model"] == "mistral-embed"
+    assert SETUP_PRESETS["openrouter"]["embeddings_model"] is None
     assert [hint["prefix"] for hint in KEY_PREFIX_HINTS] == [
         "sk-ant-",
         "sk-or-v1-",
@@ -653,6 +664,10 @@ def test_case_12_capability_inference_split() -> None:
     assert infer_caps("tts-1") == ["tts"]
     assert infer_caps("tts-1-hd") == ["tts"]
     assert infer_caps("text-embedding-3-small") == ["embeddings"]
+    # §15 embeddings wave: the docs-verified default ids that carry only
+    # the "embed" substring (no -ing) still infer the embeddings capability.
+    assert infer_caps("mistral-embed") == ["embeddings"]
+    assert infer_caps("nomic-embed-text") == ["embeddings"]
     assert infer_caps("gpt-5.6-terra") == ["text", "vision", "tools"]
     assert infer_caps("llama3.3") == ["text"]
 
@@ -878,6 +893,7 @@ async def test_setup_options_are_honored_and_use_contract_names(
     assert hasattr(options, "bind_chat")
     assert hasattr(options, "bind_vision")
     assert hasattr(options, "bind_stt")
+    assert hasattr(options, "bind_embeddings")
     assert hasattr(options, "bind_decision")
 
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
@@ -895,6 +911,39 @@ async def test_setup_options_are_honored_and_use_contract_names(
     assert outcome.assigned_chat_model is None
     assert outcome.assigned_stt_model is None
     assert outcome.assigned_vision_model == "gpt-5.6-terra"
+
+
+async def test_setup_endpoint_six_bind_body_and_embeddings_outcome(
+    async_client, user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wire body accepts ``bind_embeddings`` (snake_case, R5) and the
+    outcome carries ``assigned_embeddings_model``."""
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_catalog(monkeypatch, wire_catalog(["mistral-large-latest", "mistral-embed"]))
+    response = await async_client.post(
+        "/api/v1/ai-config/providers/mistral/setup",
+        json={"api_key": "sk-key", "options": {"bind_embeddings": True}},
+        headers=user_ctx["headers"],
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["assigned_embeddings_model"] == "mistral-embed"
+
+    # bind off through the same body: the outcome binds nothing and the
+    # existing (never-clobbered) binding survives
+    install_catalog(monkeypatch, wire_catalog(["mistral-large-latest", "mistral-embed"]))
+    response = await async_client.post(
+        "/api/v1/ai-config/providers/mistral/setup",
+        json={"api_key": "sk-key", "options": {"bind_embeddings": False}},
+        headers=user_ctx["headers"],
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["assigned_embeddings_model"] is None
+    row = await slot_of(tenant_id, user_id, "embed")
+    assert row is not None
+    async with AsyncSessionLocal() as session:
+        model = await session.get(AIModel, row.model_id)
+        assert model is not None and model.model_name == "mistral-embed"
 
 
 async def test_setup_endpoint_maps_classified_errors_to_the_15_body(
@@ -1572,3 +1621,71 @@ def test_case_23b_probe_model_id_derives_from_canonical_data() -> None:
     # The env-fallback STT default also derives from the canonical data
     # (openai.stt_model), not a literal.
     assert Settings.model_fields["OPENAI_STT_MODEL"].default == ALL_PRESETS["openai"]["stt_model"]
+
+
+# ---------------------------------------------------------------------------
+# cases 24/25 — embeddings default gap-fill (§15 embeddings wave)
+# ---------------------------------------------------------------------------
+
+
+async def test_case_24_embeddings_default_gapfills_empty_slot(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§15 embeddings wave: the preset's docs-verified embeddings default
+    gap-fills the EMPTY ``embed`` slot (``bind_embeddings``; empty slots
+    only — never a live binding).
+
+    ``mistral`` is the enabled preset whose data exercises the full path
+    today (no curated allowlist, so the fetched catalog persists whole and
+    the docs-verified ``mistral-embed`` default resolves in it).
+    """
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_catalog(monkeypatch, wire_catalog(["mistral-large-latest", "mistral-embed"]))
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db, "mistral", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
+        )
+
+    assert outcome.assigned_embeddings_model == "mistral-embed"
+    row = await slot_of(tenant_id, user_id, "embed")
+    assert row is not None and row.model_id is not None
+    async with AsyncSessionLocal() as session:
+        embeddings_model = await session.get(AIModel, row.model_id)
+        assert embeddings_model is not None
+        assert embeddings_model.model_name == "mistral-embed"
+        assert embeddings_model.get_capabilities() == ["embeddings"]
+
+    # never clobbers: a live embeddings binding survives re-setup
+    other = await _seed_model(outcome.provider_id, "my-embed", ["embeddings"])
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(AITaskAssignment).where(AITaskAssignment.id == row.id).values(model_id=other.id)
+        )
+        await session.commit()
+    async with AsyncSessionLocal() as db:
+        outcome_two = await byok_setup.setup_provider_from_preset(
+            db, "mistral", "sk-key", scope=AIScope.USER, tenant_id=tenant_id, user_id=user_id
+        )
+    assert outcome_two.assigned_embeddings_model is None
+    refreshed = await slot_of(tenant_id, user_id, "embed")
+    assert refreshed is not None and refreshed.model_id == other.id
+
+
+async def test_case_25_bind_embeddings_off_binds_nothing(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_catalog(monkeypatch, wire_catalog(["mistral-large-latest", "mistral-embed"]))
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            "mistral",
+            "sk-key",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            options=byok_setup.SetupOptions(bind_embeddings=False),
+        )
+
+    assert outcome.assigned_embeddings_model is None
+    assert await slot_of(tenant_id, user_id, "embed") is None

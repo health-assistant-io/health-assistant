@@ -139,6 +139,9 @@ class TaskType(enum.StrEnum):
     GENERATE_CATEGORY_ICON = "generate_category_icon"
     CHAT = "chat"
     TRANSCRIPTION = "transcription"
+    #: Embedding vectors (§15 family ``embeddings`` capability) — the embed
+    #: slot the setup gap-fill binds the preset's docs-verified default into.
+    EMBED = "embed"
 
     # --- Decision slots (plan 26 / ADR-0032; D17: PHI scope guard applies) ---
     #: Health's storage of the family ``decision:<cap>`` slots (§3 contract

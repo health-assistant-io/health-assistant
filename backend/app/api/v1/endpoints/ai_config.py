@@ -822,6 +822,7 @@ async def list_provider_presets():
             preferred_model=row["preferred_model"],
             curated_models=row["curated_models"],
             stt_model=row["stt_model"],
+            embeddings_model=row["embeddings_model"],
             decision_models=row["decision_models"],
             decision_default=row["decision_default"],
             provisional=row["provisional"],
@@ -887,6 +888,7 @@ async def setup_provider(
                 bind_chat=body.options.bind_chat,
                 bind_vision=body.options.bind_vision,
                 bind_stt=body.options.bind_stt,
+                bind_embeddings=body.options.bind_embeddings,
                 bind_decision=body.options.bind_decision,
             ),
             **_scope_context(body.scope, current_user),
@@ -913,6 +915,7 @@ async def setup_provider(
         assigned_chat_model=outcome.assigned_chat_model,
         assigned_vision_model=outcome.assigned_vision_model,
         assigned_stt_model=outcome.assigned_stt_model,
+        assigned_embeddings_model=outcome.assigned_embeddings_model,
         assigned_decision_slots=outcome.assigned_decision_slots,
     )
 
