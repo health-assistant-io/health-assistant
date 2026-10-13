@@ -48,6 +48,13 @@ class TestTaskType:
             "generate_category_icon",
             "chat",
             "transcription",
+            # Plan 26 / ADR-0032: the four decision slots (explicitly
+            # reviewed additions — the summary resolves them without the
+            # default chat fallback, and the PHI scope guard applies).
+            "decision_tool_dispatch",
+            "decision_boolean_gate",
+            "decision_choice",
+            "decision_score",
         ]
 
     def test_default_is_first(self):

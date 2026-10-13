@@ -8,6 +8,14 @@ hand-edit). This module is the ONLY place health-specific deviations live:
 * per-app enablement: presets whose health factory is not wired yet are
   disabled here, with a recorded reason — never a canonical edit.
 
+Plan 26 / ADR-0032 (Phase 5): ``ALL_PRESETS`` is the full mappable surface
+(including decision-only presets such as ``typesafe``, which ride ``presets``
+but never ``presetOrder`` — joining the order is the exposure switch, per
+§13.3); ``SETUP_PRESETS`` stays the TILE surface (family order minus
+health-disabled presets). The setup endpoint accepts ``ALL_PRESETS``;
+decision-only presets validate via the decision probe (D13), never a
+catalog fetch.
+
 Canonical text: dev/guidelines/ai-features.md §15; data: dev/contracts/
 ai-presets.json.
 """
@@ -27,8 +35,11 @@ PRESET_ORDER: tuple[str, ...] = tuple(_PRESET_ORDER)
 #: Canonical §15 wire type → health's ProviderType (the registry dispatch key).
 #: ``openai_compatible`` covers OpenAI, OpenRouter, Groq, Mistral, DeepSeek and
 #: Ollama (health's ``OPENAI`` builder is the wired OpenAI-compatible one).
+#: ``decision`` (ADR-0032 §4/D13) maps to the decision-only provider type —
+#: served by the decide funnel, never an LLM builder.
 WIRE_TYPE_TO_PROVIDER_TYPE: dict[str, str] = {
     "openai_compatible": ProviderType.OPENAI.value,
+    "decision": ProviderType.DECISION.value,
 }
 
 #: Presets not offered by health's setup surface yet, with the recorded reason.
@@ -48,8 +59,26 @@ DISABLED_PRESET_REASONS: dict[str, str] = {
 #: No base-URL overrides needed: health's setup fetcher appends the same
 #: resource paths as the canonical data assumes (``{base}/models`` etc.).
 
-SETUP_PRESETS: dict[str, dict[str, Any]] = {
-    key: {
+_PRESET_FIELDS = (
+    "name",
+    "wire_type",
+    "base_url",
+    "fixed_base",
+    "local",
+    "key_url",
+    "preferred_model",
+    "curated_models",
+    "stt_model",
+    "decision_models",
+    "decision_default",
+    "provisional",
+    "steps",
+    "free_tier_note",
+)
+
+
+def _build(key: str, row: dict[str, Any]) -> dict[str, Any]:
+    return {
         "name": row["name"],
         "type": WIRE_TYPE_TO_PROVIDER_TYPE[row["wire_type"]],
         "wire_type": row["wire_type"],
@@ -60,13 +89,26 @@ SETUP_PRESETS: dict[str, dict[str, Any]] = {
         "preferred_model": row["preferred_model"],
         "curated_models": row["curated_models"],
         "stt_model": row["stt_model"],
+        "decision_models": row["decision_models"],
+        "decision_default": row["decision_default"],
+        "provisional": row["provisional"],
         "steps": row["steps"],
         "free_tier_note": row["free_tier_note"],
     }
-    for key in _PRESET_ORDER
-    if key not in DISABLED_PRESET_REASONS
-    for row in (_PRESET_DATA[key],)
-    if row["wire_type"] in WIRE_TYPE_TO_PROVIDER_TYPE
+
+
+#: Every canonical preset health can dispatch (tiles + decision-only). The
+#: provisional exposure switch rides ``PRESET_ORDER`` below.
+ALL_PRESETS: dict[str, dict[str, Any]] = {
+    key: _build(key, row)
+    for key, row in _PRESET_DATA.items()
+    if row["wire_type"] in WIRE_TYPE_TO_PROVIDER_TYPE and key not in DISABLED_PRESET_REASONS
+}
+
+#: The TILE surface (§15): family order, minus health-disabled presets.
+#: Decision-only presets not in ``PRESET_ORDER`` never appear here.
+SETUP_PRESETS: dict[str, dict[str, Any]] = {
+    key: ALL_PRESETS[key] for key in _PRESET_ORDER if key in ALL_PRESETS
 }
 
 KEY_PREFIX_HINTS: tuple[dict[str, str], ...] = tuple(_KEY_PREFIX_HINT_DATA)
@@ -74,6 +116,10 @@ KEY_PREFIX_HINTS: tuple[dict[str, str], ...] = tuple(_KEY_PREFIX_HINT_DATA)
 
 def is_preset_key(key: str) -> bool:
     return key in SETUP_PRESETS
+
+
+def is_any_preset_key(key: str) -> bool:
+    return key in ALL_PRESETS
 
 
 def guess_preset_for_key(api_key: str | None) -> str | None:
@@ -85,3 +131,11 @@ def guess_preset_for_key(api_key: str | None) -> str | None:
         if trimmed.startswith(hint["prefix"]):
             return hint["preset"]
     return None
+
+
+def decision_models_for_preset(key: str) -> list[dict[str, Any]]:
+    """The preset's decision models (presets v2), empty when it declares none."""
+    models = ALL_PRESETS.get(key, {}).get("decision_models")
+    if not models:
+        return []
+    return [dict(entry) for entry in models]

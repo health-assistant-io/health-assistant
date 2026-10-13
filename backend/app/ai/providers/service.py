@@ -8,6 +8,7 @@ from sqlalchemy import delete, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import chat_models
+from app.ai.decide.registry import resolve_decision_candidates
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import get_llm_builder
 from app.ai.providers.resolution import resolve_active_assignment
@@ -406,7 +407,17 @@ class AIProviderService:
         task_assignments = {}
 
         for task_type in task_types:
-            assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
+            if TaskType.is_decision(task_type):
+                # D4 slot separation: decision slots resolve their own rows
+                # only — NEVER the "default" chat fallback.
+                decision_rows = await resolve_decision_candidates(
+                    self.db, task_type, tenant_id, user_id
+                )
+                assignment = decision_rows[0] if decision_rows else None
+            else:
+                assignment = await self.get_active_assignment_for_task(
+                    task_type, tenant_id, user_id
+                )
             if assignment:
                 provider = (
                     await self.get_provider(assignment.provider_id)
@@ -459,6 +470,10 @@ class AIProviderService:
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
             transcription=task_assignments.get("transcription"),
+            decision_tool_dispatch=task_assignments.get("decision_tool_dispatch"),
+            decision_boolean_gate=task_assignments.get("decision_boolean_gate"),
+            decision_choice=task_assignments.get("decision_choice"),
+            decision_score=task_assignments.get("decision_score"),
             workflows=workflows,
             ai_agent_max_iterations=max_iterations,
         )
@@ -532,6 +547,11 @@ class AIProviderService:
         user_id: UUID | None = None,
     ) -> BaseChatModel:
         """Get an initialized LangChain chat model for a specific task"""
+        if TaskType.is_decision(task_type):
+            raise ValueError(
+                f"task '{task_type}' is a decision slot — it resolves through "
+                "the decide funnel, never an LLM builder (D4/D13)"
+            )
         assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
 
         provider = None
@@ -550,6 +570,14 @@ class AIProviderService:
             )
 
             if provider:
+                if provider.provider_type == ProviderType.DECISION.value:
+                    # D13: routing a decision-only provider at chat is a
+                    # config error the resolver rejects — never fall through
+                    # to the OpenAI-compatible builder.
+                    raise ValueError(
+                        f"provider '{provider.name}' is decision-only — assign a "
+                        "chat-capable provider for this task"
+                    )
                 # Resolve the LLM builder for this provider_type via the registry.
                 # Unknown/unwired provider types fall back to the OpenAI-compatible
                 # builder (with a logged warning) instead of 500ing.

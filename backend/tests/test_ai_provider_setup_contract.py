@@ -25,6 +25,25 @@ Case manifest (normative semantics, names indicative):
     rejection (409);
 14. USER-scope isolation — SYSTEM/TENANT assignments and other users' rows
     are never clobbered by a setup.
+
+Plan 26 / ADR-0032 additions (decision capability + slots, scope-aware D17):
+
+15. bind_decision capability-aware gap-fill into the four ``decision_*``
+    task slots — at the SAME scope, never ``open-args``, rows stay
+    PHI-excluded;
+16. bind_decision=false persists the decision models, binds no slots;
+17. live decision slots never clobbered (fill empty only);
+18. decision-only preset (wire type ``decision``) validates via the decision
+    probe — ok path persists + binds; failure persists nothing;
+19. probe timeout classifies ``timeout``;
+20. probe is no oracle without a valid key (403 → unknown; 402 →
+    insufficient_credit);
+21. slot separation enforced both directions + ``open-args`` never
+    assignable + the summary never inherits the ``default`` chat fallback;
+22. preset catalog decision data shape (provisional rides ``presets``, not
+    ``presetOrder``);
+23. PHI scope guard (D17): assignments are PHI-excluded by default; the
+    explicit ``phi_allowed`` opt-in exists on decision_* task types only.
 """
 
 import uuid
@@ -857,6 +876,7 @@ async def test_setup_options_are_honored_and_use_contract_names(
     assert hasattr(options, "bind_chat")
     assert hasattr(options, "bind_vision")
     assert hasattr(options, "bind_stt")
+    assert hasattr(options, "bind_decision")
 
     tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
     install_catalog(monkeypatch, wire_catalog(["gpt-5.6-terra", "whisper-1"]))
@@ -996,3 +1016,521 @@ async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
         headers=user_ctx["headers"],
     )
     assert forbidden.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# plan 26 / ADR-0032 - decision cases (15-22) + the D17 PHI scope guard (23)
+# ---------------------------------------------------------------------------
+
+HEALTH_DECISION_SLOTS = [
+    "decision_tool_dispatch",
+    "decision_boolean_gate",
+    "decision_choice",
+    "decision_score",
+]
+
+
+def install_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    result: object,
+) -> list[tuple[str, str, str]]:
+    from app.ai.decide.systemone.probe import DecisionProbeInput
+
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_probe(probe_input: DecisionProbeInput):
+        calls.append(
+            (
+                probe_input.provider.preset_key or "",
+                probe_input.model.model_name,
+                probe_input.api_key,
+            )
+        )
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(byok_setup, "probe_decision_provider", fake_probe)
+    return calls
+
+
+async def _seed_live_decision_slot(
+    tenant_id, user_id, task_type: str
+) -> tuple[AIProviderModel, AIModel, AITaskAssignment]:
+    """A decision model bound to ``task_type`` from a DIFFERENT provider."""
+    async with AsyncSessionLocal() as session:
+        provider = AIProviderModel(
+            name="Other TypeSafe",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            provider_type="decision",
+            api_base="https://api.typesafe.ai",
+            api_key=None,
+            is_active=True,
+            settings={},
+        )
+        session.add(provider)
+        await session.flush()
+        model = AIModel(
+            provider_id=provider.id,
+            name="pinned-jev",
+            model_name="pinned-jev",
+            capabilities=["decision"],
+            decision_transport="systemone",
+            is_active=True,
+            settings={},
+        )
+        session.add(model)
+        await session.flush()
+        row = AITaskAssignment(
+            task_type=task_type,
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            provider_id=provider.id,
+            model_id=model.id,
+            is_active=True,
+            priority=0,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(provider)
+        await session.refresh(model)
+        await session.refresh(row)
+        return provider, model, row
+
+
+async def test_case_15_bind_decision_gapfills_declared_slots_scope_local(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_catalog(monkeypatch, wire_catalog(["openrouter/auto"]))
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            "openrouter",
+            "sk-or-v1-key",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+
+    assert outcome.assigned_chat_model == "openrouter/auto"
+    assert outcome.assigned_decision_slots is not None
+    assert set(outcome.assigned_decision_slots) == set(HEALTH_DECISION_SLOTS)
+    assert set(outcome.assigned_decision_slots.values()) == {"openrouter.jev-latest"}
+    assert outcome.catalog_count == 2
+    async with AsyncSessionLocal() as session:
+        decision_models = (
+            (
+                await session.execute(
+                    select(AIModel).where(AIModel.model_name == "openrouter.jev-latest")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(decision_models) == 1
+        assert decision_models[0].get_capabilities() == ["decision"]
+        assert decision_models[0].decision_transport == "systemone"
+        for slot in HEALTH_DECISION_SLOTS:
+            row = await slot_of(tenant_id, user_id, slot)
+            assert row is not None
+            assert str(row.model_id) == str(decision_models[0].id)
+            assert row.provider_id == decision_models[0].provider_id
+            assert row.scope == AIScope.USER
+            assert row.phi_allowed is False
+
+
+async def test_case_16_bind_decision_off_persists_models_binds_nothing(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_catalog(monkeypatch, wire_catalog(["openrouter/auto"]))
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            "openrouter",
+            "sk-or-v1-key",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            options=byok_setup.SetupOptions(bind_decision=False),
+        )
+
+    assert outcome.assigned_decision_slots is None
+    assert outcome.assigned_chat_model == "openrouter/auto"
+    async with AsyncSessionLocal() as session:
+        decision_models = (
+            (
+                await session.execute(
+                    select(AIModel).where(AIModel.model_name == "openrouter.jev-latest")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(decision_models) == 1
+    for slot in HEALTH_DECISION_SLOTS:
+        assert await slot_of(tenant_id, user_id, slot) is None
+
+
+async def test_case_17_bind_decision_never_clobbers_live_slots(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    _p, live_model, live_row = await _seed_live_decision_slot(
+        tenant_id, user_id, "decision_tool_dispatch"
+    )
+    install_catalog(monkeypatch, wire_catalog(["openrouter/auto"]))
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            "openrouter",
+            "sk-or-v1-b",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+
+    assert outcome.assigned_chat_model == "openrouter/auto"
+    assert outcome.assigned_decision_slots is not None
+    assert "decision_tool_dispatch" not in outcome.assigned_decision_slots
+    assert set(outcome.assigned_decision_slots) == {
+        "decision_boolean_gate",
+        "decision_choice",
+        "decision_score",
+    }
+    async with AsyncSessionLocal() as session:
+        refreshed = (
+            (
+                await session.execute(
+                    select(AITaskAssignment).where(AITaskAssignment.id == live_row.id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert refreshed is not None
+        assert str(refreshed.model_id) == str(live_model.id)
+
+
+async def test_case_18_decision_only_preset_probe_validates_and_persists(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ai.decide.systemone.probe import DecisionProbeResult
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    probe_calls = install_probe(
+        monkeypatch,
+        DecisionProbeResult(ok=True, latency_ms=5, resolved_model="jev-1.13"),
+    )
+    async with AsyncSessionLocal() as db:
+        outcome = await byok_setup.setup_provider_from_preset(
+            db,
+            "typesafe",
+            "  ts-key  ",
+            scope=AIScope.USER,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+
+    assert probe_calls == [("typesafe", "jev-latest", "ts-key")]
+    assert outcome.assigned_chat_model is None
+    assert outcome.assigned_decision_slots is not None
+    assert set(outcome.assigned_decision_slots.values()) == {"jev-latest"}
+    assert outcome.catalog_count == 1
+    async with AsyncSessionLocal() as session:
+        providers = (
+            (
+                await session.execute(
+                    select(AIProviderModel).where(
+                        AIProviderModel.tenant_id == tenant_id,
+                        AIProviderModel.preset_key == "typesafe",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(providers) == 1
+        provider = providers[0]
+        assert provider.provider_type == "decision"
+        assert provider.api_base == "https://api.typesafe.ai"
+        assert provider.scope == AIScope.USER
+        models = (
+            (await session.execute(select(AIModel).where(AIModel.provider_id == provider.id)))
+            .scalars()
+            .all()
+        )
+        assert [m.model_name for m in models] == ["jev-latest"]
+        assert models[0].get_capabilities() == ["decision"]
+        assert models[0].decision_transport == "systemone"
+        from app.core.encryption import decrypt_secret
+
+        assert decrypt_secret(provider.api_key) == "ts-key"
+
+
+async def test_case_18_decision_only_probe_failure_persists_nothing(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ai.decide.systemone.probe import DecisionProbeResult
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_probe(
+        monkeypatch,
+        DecisionProbeResult(ok=False, latency_ms=5, status=401, error="bad key"),
+    )
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(byok_setup.SetupError) as excinfo:
+            await byok_setup.setup_provider_from_preset(
+                db,
+                "typesafe",
+                "ts-bad",
+                scope=AIScope.USER,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+    assert excinfo.value.classified.code.value == "invalid_key"
+    providers, _models = await user_rows(tenant_id)
+    assert providers == []
+
+
+async def test_case_19_decision_only_probe_timeout_classifies_timeout(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ai.decide.systemone.probe import DecisionProbeResult
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_probe(
+        monkeypatch,
+        DecisionProbeResult(ok=False, latency_ms=10_000, kind="timeout", error="probe timed out"),
+    )
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(byok_setup.SetupError) as excinfo:
+            await byok_setup.setup_provider_from_preset(
+                db,
+                "typesafe",
+                "ts-key",
+                scope=AIScope.USER,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+
+    assert excinfo.value.classified.code.value == "timeout"
+    providers, _models = await user_rows(tenant_id)
+    assert providers == []
+
+
+async def test_case_20_probe_is_no_oracle_without_a_valid_key(
+    user_ctx, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ai.decide.systemone.probe import DecisionProbeResult
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    install_probe(
+        monkeypatch,
+        DecisionProbeResult(ok=False, latency_ms=5, status=403, error="forbidden"),
+    )
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(byok_setup.SetupError) as forbidden:
+            await byok_setup.setup_provider_from_preset(
+                db,
+                "typesafe",
+                "not-a-real-key",
+                scope=AIScope.USER,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+    assert forbidden.value.classified.code.value == "unknown"
+
+    install_probe(
+        monkeypatch,
+        DecisionProbeResult(ok=False, latency_ms=5, status=402, error="no credit"),
+    )
+    async with AsyncSessionLocal() as db:
+        with pytest.raises(byok_setup.SetupError) as credit:
+            await byok_setup.setup_provider_from_preset(
+                db,
+                "typesafe",
+                "not-a-real-key",
+                scope=AIScope.USER,
+                tenant_id=tenant_id,
+                user_id=user_id,
+            )
+    assert credit.value.classified.code.value == "insufficient_credit"
+    providers, _models = await user_rows(tenant_id)
+    assert providers == []
+
+
+async def test_case_21_slot_separation_enforced_both_directions(
+    user_ctx,
+) -> None:
+    from app.ai.providers.capabilities import required_capabilities_for_task
+    from app.models.enums import AIModelCapability
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    chat_provider = await _seed_provider(tenant_id, user_id, name="Chat")
+    await _seed_model(chat_provider.id, "gpt-x", ["text", "vision"])
+    decision_provider = await _seed_provider(
+        tenant_id,
+        user_id,
+        name="TypeSafe",
+        provider_type="decision",
+        api_base="https://api.typesafe.ai",
+    )
+    decision_model = await _seed_model(decision_provider.id, "jev-latest", ["decision"])
+    async with AsyncSessionLocal() as session:
+        decision_model.decision_transport = "systemone"
+        session.add(decision_model)
+        await session.commit()
+
+    assert required_capabilities_for_task("decision_tool_dispatch") == {AIModelCapability.DECISION}
+
+    async with AsyncSessionLocal() as db:
+        bound = await byok_setup.set_default_model(
+            db, decision_provider, "jev-latest", task="decision_tool_dispatch"
+        )
+        assert bound.model_name == "jev-latest"
+        with pytest.raises(ValueError, match="decision"):
+            await byok_setup.set_default_model(db, chat_provider, "gpt-x", task="decision_choice")
+        with pytest.raises(ValueError, match="text"):
+            await byok_setup.set_default_model(db, decision_provider, "jev-latest", task="default")
+        with pytest.raises(ValueError, match="unknown task"):
+            await byok_setup.set_default_model(
+                db, decision_provider, "jev-latest", task="decision_open_args"
+            )
+
+
+async def test_case_21_summary_never_falls_back_to_chat_default(user_ctx) -> None:
+    """D4: the config summary resolves decision slots from their own rows —
+    a bound ``default`` (chat) assignment never leaks into them."""
+    from app.ai.providers.enums import TaskType
+    from app.ai.providers.service import AIProviderService
+
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    chat_provider = await _seed_provider(tenant_id, user_id, name="Chat")
+    chat_model = await _seed_model(chat_provider.id, "gpt-x", ["text"])
+    await _seed_slot(tenant_id, user_id, chat_provider.id, chat_model.id, TaskType.DEFAULT.value)
+
+    async with AsyncSessionLocal() as db:
+        summary = await AIProviderService(db).get_config_summary(
+            tenant_id=tenant_id, user_id=user_id, scope=AIScope.USER
+        )
+    for slot in HEALTH_DECISION_SLOTS:
+        assert getattr(summary, slot) is None
+    assert summary.default is not None
+
+
+def test_case_22_preset_catalog_decision_data_shape() -> None:
+    from app.ai.providers.presets import (
+        ALL_PRESETS,
+        PRESET_ORDER,
+        SETUP_PRESETS,
+        decision_models_for_preset,
+    )
+
+    assert "typesafe" in ALL_PRESETS
+    assert "typesafe" not in PRESET_ORDER
+    assert "typesafe" not in SETUP_PRESETS
+    assert ALL_PRESETS["typesafe"]["type"] == "decision"
+    assert ALL_PRESETS["typesafe"]["provisional"] is True
+    assert ALL_PRESETS["typesafe"]["decision_default"] == "jev-latest"
+    openrouter = ALL_PRESETS["openrouter"]
+    assert openrouter["decision_default"] == "openrouter.jev-latest"
+    assert openrouter["decision_models"][0]["provisional"] is True
+    assert decision_models_for_preset("openai") == []
+    for preset in ALL_PRESETS.values():
+        for entry in preset["decision_models"] or []:
+            assert set(entry["caps"]) <= {
+                "tool-dispatch",
+                "boolean-gate",
+                "choice",
+                "score",
+            }
+
+
+async def test_case_23_phi_scope_guard_explicit_opt_in_only(async_client, user_ctx) -> None:
+    """D17: assignments are PHI-excluded by default; the opt-in exists on
+    decision_* task types only, and only via the explicit assignment API."""
+    tenant_id, user_id = user_ctx["tenant_id"], user_ctx["user_id"]
+    decision_provider = await _seed_provider(
+        tenant_id,
+        user_id,
+        name="TypeSafe",
+        provider_type="decision",
+        api_base="https://api.typesafe.ai",
+    )
+    model = await _seed_model(decision_provider.id, "jev-latest", ["decision"])
+
+    rejected = await async_client.post(
+        "/api/v1/ai-config/task-assignments",
+        json={
+            "task_type": "chat",
+            "scope": "USER",
+            "provider_id": str(decision_provider.id),
+            "model_id": str(model.id),
+            "phi_allowed": True,
+        },
+        headers=user_ctx["headers"],
+    )
+    assert rejected.status_code == 422
+
+    created = await async_client.post(
+        "/api/v1/ai-config/task-assignments",
+        json={
+            "task_type": "decision_tool_dispatch",
+            "scope": "USER",
+            "provider_id": str(decision_provider.id),
+            "model_id": str(model.id),
+            "phi_allowed": True,
+        },
+        headers=user_ctx["headers"],
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["phi_allowed"] is True
+
+    plain = await async_client.post(
+        "/api/v1/ai-config/task-assignments",
+        json={
+            "task_type": "decision_score",
+            "scope": "USER",
+            "provider_id": str(decision_provider.id),
+            "model_id": str(model.id),
+        },
+        headers=user_ctx["headers"],
+    )
+    assert plain.status_code == 201, plain.text
+    assert plain.json()["phi_allowed"] is False
+
+    revoked = await async_client.put(
+        f"/api/v1/ai-config/task-assignments/{created.json()['id']}",
+        json={"phi_allowed": False},
+        headers=user_ctx["headers"],
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["phi_allowed"] is False
+
+    # Smuggling the opt-in onto a NON-decision task type is a 422 — the
+    # guard is decision-specific by contract.
+    chat_provider = await _seed_provider(tenant_id, user_id, name="Chat")
+    chat_model = await _seed_model(chat_provider.id, "gpt-x", ["text"])
+    chat_assignment = await async_client.post(
+        "/api/v1/ai-config/task-assignments",
+        json={
+            "task_type": "default",
+            "scope": "USER",
+            "provider_id": str(chat_provider.id),
+            "model_id": str(chat_model.id),
+        },
+        headers=user_ctx["headers"],
+    )
+    assert chat_assignment.status_code == 201, chat_assignment.text
+    smuggled = await async_client.put(
+        f"/api/v1/ai-config/task-assignments/{chat_assignment.json()['id']}",
+        json={"phi_allowed": True},
+        headers=user_ctx["headers"],
+    )
+    assert smuggled.status_code == 422

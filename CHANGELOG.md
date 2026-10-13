@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Decision models (plan 26 Phase 5 / ADR-0032):** the §15 family
+  `decision` capability and its four slots land in health — stored as
+  `decision_tool_dispatch` / `decision_boolean_gate` / `decision_choice` /
+  `decision_score` task assignments (scope-aware, USER default; admins
+  SYSTEM/TENANT) with priority-ordered fallback across the scope cascade
+  and D4 slot separation enforced in both directions (decision models never
+  serve chat/OCR tasks; a decision-only provider routed at chat is a
+  rejected config error). The decide funnel (`app/ai/decide/`) resolves
+  `decision:*` slots → model → provider over the `systemone` transport
+  (`typesafe-sdk`, AI-layer confined), with per-revision resolution caching,
+  fail-open semantics and a structured audit record per invocation. Setup
+  gains the five-bind options body (`bind_decision`): decision models
+  persist from preset `decision_models`, gap-fill fills each **empty**
+  declared slot at the setup's own scope, and decision-only presets (e.g.
+  the provisional `typesafe`) validate via the decision probe — a classified
+  failure persists nothing. **PHI scope guard (D17):** `decision_*`
+  assignments are PHI-excluded by default — a PHI-adjacent dispatch runs
+  only on assignments carrying the explicit `phi_allowed` opt-in
+  (task-assignment API; gap-fill and set-default never set it). Migration
+  `d1e2c3i4s5i6` adds `ai_models.decision_transport` +
+  `ai_task_assignments.phi_allowed` (tested round-trip). Contract matrix
+  grows the decision + probe + PHI cases (23 cases).
+
 ### Changed
 - **BYOK setup UI swaps to the library kit (plan 26 Phase 2):** the
   byok port's tiles, guided form and re-run review now render

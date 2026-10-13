@@ -236,6 +236,11 @@ class AIModelCapability(enum.StrEnum):
                           task). Replaces the legacy ``audio_input`` value.
       * ``TTS``         — text-to-speech (no health task consumes it yet).
       * ``EMBEDDINGS``  — embedding vectors (no health task consumes it yet).
+      * ``DECISION``    — decision models (plan 26 / ADR-0032). Sparse and
+                          explicit-only, never inferred from a model name:
+                          a decision model serves the ``decision_*`` task
+                          slots ONLY, and those slots never accept anything
+                          else (D4 slot separation, both directions).
     """
 
     TEXT = "text"
@@ -244,6 +249,7 @@ class AIModelCapability(enum.StrEnum):
     STT = "stt"
     TTS = "tts"
     EMBEDDINGS = "embeddings"
+    DECISION = "decision"
 
     @classmethod
     def all_values(cls) -> list:

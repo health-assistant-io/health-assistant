@@ -11,6 +11,7 @@ Examples:
   * ``chat``        → needs ``text``
   * ``ocr``         → needs ``vision``
   * ``transcription`` → needs ``stt``
+  * ``decision_*``  → needs ``decision`` (never falls back to ``text``)
   * every other text-generation task (define_*, magic_fill, …) → ``text``
 """
 
@@ -23,11 +24,17 @@ from app.models.enums import AIModelCapability
 
 # The capability each task type REQUIRES (a model must advertise it to be
 # eligible). Tasks not listed default to {TEXT} (the baseline modality every
-# model carries). Kept as TaskType keys so renames are caught at import time.
+# model carries) — EXCEPT the decision slots, which are listed explicitly so
+# they can never silently fall into the text baseline (D4 slot separation).
+# Kept as TaskType keys so renames are caught at import time.
 TASK_REQUIRED_CAPABILITY: dict = {
     TaskType.CHAT: {AIModelCapability.TEXT},
     TaskType.OCR: {AIModelCapability.VISION},
     TaskType.TRANSCRIPTION: {AIModelCapability.STT},
+    TaskType.DECISION_TOOL_DISPATCH: {AIModelCapability.DECISION},
+    TaskType.DECISION_BOOLEAN_GATE: {AIModelCapability.DECISION},
+    TaskType.DECISION_CHOICE: {AIModelCapability.DECISION},
+    TaskType.DECISION_SCORE: {AIModelCapability.DECISION},
 }
 
 
@@ -35,7 +42,8 @@ def required_capabilities_for_task(task_type: object) -> set[AIModelCapability]:
     """Return the set of capabilities a model must have to serve ``task_type``.
 
     Unknown/unmapped task types (the long tail of text-generation tasks) fall
-    back to ``{TEXT}``.
+    back to ``{TEXT}``. Decision slots are explicit members of the map above —
+    they require ``decision`` and nothing else.
     """
     key = TaskType.from_string(str(task_type)) if task_type is not None else None
     return set(TASK_REQUIRED_CAPABILITY.get(key, {AIModelCapability.TEXT}))

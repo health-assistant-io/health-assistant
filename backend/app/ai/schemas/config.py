@@ -122,10 +122,17 @@ class AIModelCreate(BaseModel):
             "Modalities this model supports (its features): 'text' (baseline, "
             "every model), 'vision' (image input — multimodal chat / vision "
             "OCR), 'stt' (speech-to-text — the 'transcription' task), plus "
-            "'tools' / 'tts' / 'embeddings' (§15 family vocabulary). Tasks "
-            "require specific capabilities, so the task-assignment picker "
-            "only offers eligible models."
+            "'tools' / 'tts' / 'embeddings' / 'decision' (§15 family "
+            "vocabulary). Tasks require specific capabilities, so the "
+            "task-assignment picker only offers eligible models. 'decision' "
+            "is explicit-only (never inferred) and serves the decision_* "
+            "slots exclusively (D4 slot separation)."
         ),
+    )
+    decision_transport: str | None = Field(
+        None,
+        max_length=20,
+        description="Decision transport seam (ADR-0032): 'systemone' or null",
     )
     is_active: bool = Field(default=True, description="Enable/disable model")
     max_tokens: int = Field(default=65536, ge=1, description="Max tokens for model")
@@ -145,6 +152,7 @@ class AIModelUpdate(BaseModel):
     model_name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None)
     capabilities: list[AIModelCapability] | None = Field(None)
+    decision_transport: str | None = Field(None, max_length=20)
     is_active: bool | None = Field(None)
     max_tokens: int | None = Field(None, ge=1)
     temperature: float | None = Field(None, ge=0.0, le=2.0)
@@ -164,6 +172,7 @@ class AIModelResponse(BaseModel):
     model_name: str
     description: str | None
     capabilities: list[AIModelCapability] = Field(default_factory=lambda: [AIModelCapability.TEXT])
+    decision_transport: str | None = None
     is_active: bool
     max_tokens: int | None = 65536
     temperature: float | None = 0.7
@@ -187,6 +196,7 @@ class AITaskAssignmentResponse(BaseModel):
     model_name: str | None = None
     is_active: bool
     priority: int
+    phi_allowed: bool = False
     tenant_id: UUID | None
     user_id: UUID | None
     created_at: datetime | None
@@ -209,6 +219,14 @@ class AITaskAssignmentCreate(BaseModel):
     model_id: UUID | None = Field(None, description="Model ID")
     is_active: bool = Field(default=True, description="Enable/disable assignment")
     priority: int = Field(default=0, ge=0, description="Priority for ordering")
+    phi_allowed: bool = Field(
+        default=False,
+        description=(
+            "D17 PHI scope guard (decision_* assignments only): explicit "
+            "opt-in that lets PHI-adjacent dispatches run on this slot. "
+            "False by default; rejected on non-decision task types."
+        ),
+    )
     tenant_id: UUID | None = Field(None, description="Tenant ID (nullable for global)")
     user_id: UUID | None = Field(None, description="User ID (nullable for global/tenant)")
 
@@ -223,6 +241,10 @@ class AITaskAssignmentUpdate(BaseModel):
     model_id: UUID | None = Field(None)
     is_active: bool | None = Field(None)
     priority: int | None = Field(None, ge=0)
+    phi_allowed: bool | None = Field(
+        default=None,
+        description="D17 PHI opt-in (decision_* assignments only; explicit).",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -289,6 +311,10 @@ class AIConfigSummary(BaseModel):
     generate_category_icon: TaskTypeAssignment | None
     chat: TaskTypeAssignment | None
     transcription: TaskTypeAssignment | None
+    decision_tool_dispatch: TaskTypeAssignment | None = None
+    decision_boolean_gate: TaskTypeAssignment | None = None
+    decision_choice: TaskTypeAssignment | None = None
+    decision_score: TaskTypeAssignment | None = None
     workflows: dict[str, list[TaskTypeAssignment]] | None = None
     ai_agent_max_iterations: int = 20
 
@@ -305,13 +331,15 @@ class ProviderSetupOptions(BaseModel):
     """§15 options body (editable review surfaces).
 
     Field names ARE the contract (snake_case in Python payloads — byok gate
-    R5): ``curated_ids / bind_chat / bind_vision / bind_stt``.
+    R5): ``curated_ids / bind_chat / bind_vision / bind_stt / bind_decision``
+    (the five-bind body, plan 26 D14).
     """
 
     curated_ids: list[str] | None = None
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
+    bind_decision: bool = True
 
 
 class ProviderSetupRequest(BaseModel):
@@ -341,6 +369,7 @@ class ProviderSetupResponse(BaseModel):
     assigned_chat_model: str | None = None
     assigned_vision_model: str | None = None
     assigned_stt_model: str | None = None
+    assigned_decision_slots: dict[str, str] | None = None
 
 
 class ProviderSetDefaultRequest(BaseModel):
@@ -374,6 +403,9 @@ class ProviderPresetResponse(BaseModel):
     preferred_model: dict[str, Any] | None = None
     curated_models: list[str] | None = None
     stt_model: str | None = None
+    decision_models: list[dict[str, Any]] | None = None
+    decision_default: str | None = None
+    provisional: bool | None = None
     steps: list[str] | None = None
     free_tier_note: str | None = None
 
