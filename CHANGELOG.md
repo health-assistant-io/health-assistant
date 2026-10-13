@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (plan 26 Phase 6 closeout)
+- **Ruff: the generated presets module is excluded from the formatter**
+  (`[tool.ruff.format]` exclude; the lint E501 per-file-ignore stays) —
+  the scoped family accommodation; `ruff format --check .` is now
+  green here too. Vendored gates re-synced to the dev masters: byok
+  gate **R8** (no needle/llm decision-engine code), the alignment
+  family table lists health strict, and the convergence gate's `--self`
+  roots at the vendored copy's repo with layout probing (the old
+  directory-name heuristic mis-fired "missing backend/pyproject.toml"
+  when invoked from the parent directory).
+
 ### Added
 - **Decision models (plan 26 Phase 5 / ADR-0032):** the §15 family
   `decision` capability and its four slots land in health — stored as
