@@ -4,6 +4,7 @@ import { Check, Database, Eye, Loader2, Mic, Type, Volume2, Wrench } from 'lucid
 import { SetupReview, type SetupReviewOptions } from '@neuronection/assistant-ui/setup-review';
 import {
   aiConfigApi,
+  DECISION_SLOT_TASK_TYPES,
   type ProviderSetupErrorDetail,
 } from '../../../api/aiConfig';
 import { useAIConfigStore } from '../../../store/slices/aiConfigSlice';
@@ -57,7 +58,7 @@ export const ReRunSetupDialog: React.FC<{
     bindChat: true,
     bindVision: true,
     bindStt: true,
-    bindDecision: false,
+    bindDecision: true,
   });
   const initialized = useRef(false);
   useEffect(() => {
@@ -86,6 +87,16 @@ export const ReRunSetupDialog: React.FC<{
     });
   };
 
+  const decisionDeclared = (preset?.decision_models?.length ?? 0) > 0;
+  const bindDecision = decisionDeclared && options.bindDecision;
+  const decisionFilled = DECISION_SLOT_TASK_TYPES.filter(
+    (slot) => configSummary?.[slot as 'decision_score']?.model,
+  ).length;
+  const decisionNowLabel = t('settings.ai.setup.review.decision_now', {
+    count: decisionFilled,
+    total: DECISION_SLOT_TASK_TYPES.length,
+  });
+
   const reviewSlots = [
     {
       id: 'chat',
@@ -112,6 +123,17 @@ export const ReRunSetupDialog: React.FC<{
           },
         ]
       : []),
+    ...(decisionDeclared
+      ? [
+          {
+            id: 'decision',
+            label: t('settings.ai.setup.review.fill_decision'),
+            bind: bindDecision,
+            currentValue: decisionNowLabel,
+            optionsKey: 'bindDecision' as const,
+          },
+        ]
+      : []),
   ];
 
   const apply = async () => {
@@ -127,6 +149,7 @@ export const ReRunSetupDialog: React.FC<{
           bind_chat: options.bindChat,
           bind_vision: options.bindVision,
           bind_stt: options.bindStt,
+          bind_decision: bindDecision,
         },
       });
       onClose();

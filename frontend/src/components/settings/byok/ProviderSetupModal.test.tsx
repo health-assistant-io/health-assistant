@@ -130,6 +130,10 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.slot_chat': 'Text / chat',
   'settings.ai.setup.slot_vision': 'Vision',
   'settings.ai.setup.slot_stt': 'Transcription',
+  'settings.ai.slot_decision_tool_dispatch': 'Tool dispatch',
+  'settings.ai.slot_decision_boolean_gate': 'Boolean gate',
+  'settings.ai.slot_decision_choice': 'Choice',
+  'settings.ai.slot_decision_score': 'Score',
   'settings.ai.setup.get_key': 'Get an API key',
   'settings.ai.setup.connection_name': 'Connection name',
   'settings.ai.setup.no_key_needed': 'No API key needed for this local provider.',
@@ -261,6 +265,53 @@ describe('ProviderSetupModal', () => {
     );
     expect(screen.getByText('Heads-up: this key looks like a openrouter key.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose another provider' })).toBeInTheDocument();
+  });
+
+  it('success panel renders decision rows bound to the provider decision models (plan 26)', async () => {
+    const user = userEvent.setup();
+    setupProvider.mockResolvedValue({
+      ...SETUP_OK,
+      assigned_decision_slots: {
+        decision_tool_dispatch: 'openrouter.jev-latest',
+        decision_boolean_gate: 'openrouter.jev-latest',
+        decision_choice: 'openrouter.jev-latest',
+        decision_score: 'openrouter.jev-latest',
+      },
+    });
+    getProviderWithModels.mockResolvedValue({
+      models: [
+        {
+          id: 'm1',
+          provider_id: 'prov-1',
+          name: 'GPT-5.6 Terra',
+          model_name: 'gpt-5.6-terra',
+          capabilities: ['text', 'vision', 'tools'],
+          is_active: true,
+        },
+        {
+          id: 'm-jev',
+          provider_id: 'prov-1',
+          name: 'Jev via OpenRouter (latest)',
+          model_name: 'openrouter.jev-latest',
+          capabilities: ['decision'],
+          decision_transport: 'systemone',
+          is_active: true,
+        },
+      ],
+    });
+    renderModal();
+    await user.click(await screen.findByText('OpenAI'));
+    await user.type(await screen.findByLabelText('API Key'), 'sk-or-v1-key');
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+
+    expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
+    for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
+      expect(screen.getByText(slot)).toBeInTheDocument();
+    }
+    // the decision rows offer only the provider's decision models (D4)
+    const jevRow = screen.getByText('Tool dispatch').closest('div')!;
+    expect(within(jevRow).getByText('Jev via OpenRouter (latest)')).toBeInTheDocument();
+    expect(within(jevRow).queryByText('GPT-5.6 Terra')).not.toBeInTheDocument();
   });
 
   it('local presets hide the key field and the footer can go back to the tiles', async () => {

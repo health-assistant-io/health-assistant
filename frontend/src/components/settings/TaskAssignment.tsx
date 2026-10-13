@@ -1,12 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AudioLines, Cpu, Eye, MessageSquare, Sparkles, type LucideIcon } from 'lucide-react';
+import {
+  AudioLines,
+  Cpu,
+  Eye,
+  Languages,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  Tag,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   TaskAssignmentPicker,
   type ModelPickerProvider,
   type TaskAssignmentSection,
 } from '@neuronection/assistant-ui';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
+import { isDecisionSlot } from '../../api/aiConfig';
 import { Button } from '../ui/Button';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
@@ -18,6 +30,35 @@ const DEFAULT_SLOT_TASKS = [
     labelKey: 'settings.ai.task_transcription',
     requires: 'stt' as const,
     icon: AudioLines,
+  },
+];
+
+/** Decision slots (plan 26 / ADR-0032): health task types for the family
+ *  `decision:<cap>` slots; fallback = priority ordering (§3 contract table). */
+const DECISION_SLOT_TASKS = [
+  {
+    value: 'decision_tool_dispatch',
+    labelKey: 'settings.ai.slot_decision_tool_dispatch',
+    hintKey: 'settings.ai.slot_decision_tool_dispatch_hint',
+    icon: Wrench,
+  },
+  {
+    value: 'decision_boolean_gate',
+    labelKey: 'settings.ai.slot_decision_boolean_gate',
+    hintKey: 'settings.ai.slot_decision_boolean_gate_hint',
+    icon: ShieldCheck,
+  },
+  {
+    value: 'decision_choice',
+    labelKey: 'settings.ai.slot_decision_choice',
+    hintKey: 'settings.ai.slot_decision_choice_hint',
+    icon: Languages,
+  },
+  {
+    value: 'decision_score',
+    labelKey: 'settings.ai.slot_decision_score',
+    hintKey: 'settings.ai.slot_decision_score_hint',
+    icon: Tag,
   },
 ];
 
@@ -131,7 +172,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
   const value: Record<string, string | null> = {};
   const secondaryValue: Record<string, string | null> = {};
-  for (const task of [...DEFAULT_SLOT_TASKS, ...OTHER_TASKS]) {
+  for (const task of [...DEFAULT_SLOT_TASKS, ...OTHER_TASKS, ...DECISION_SLOT_TASKS]) {
     value[task.value] = assignmentFor(task.value)?.model_id ?? null;
   }
   secondaryValue[DEFAULT_TASK_TYPE] =
@@ -169,7 +210,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   };
 
   // §15 defaults-first IA (desktop parity): the modality slots (text /
-  // vision / stt) lead, derived tasks follow as a separate group.
+  // vision / stt) lead, the Decision models group follows (D3/D12 — the
+  // verbatim privacy notice ships as its description, per §13.5), derived
+  // tasks last.
   const sections: TaskAssignmentSection[] = [
     {
       id: 'defaults',
@@ -184,6 +227,18 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       })),
     },
     {
+      id: 'decision',
+      label: t('settings.ai.section_decision'),
+      description: t('settings.ai.decision_privacy'),
+      tasks: DECISION_SLOT_TASKS.map((task) => ({
+        id: task.value,
+        label: t(task.labelKey),
+        description: t(task.hintKey),
+        requires: 'decision' as const,
+        icon: task.icon,
+      })),
+    },
+    {
       id: 'other',
       label: t('settings.ai.section_tasks'),
       tasks: OTHER_TASKS.map((task) => ({
@@ -194,6 +249,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       })),
     },
   ];
+
+  const togglePhi = async (taskType: string, phiAllowed: boolean) => {
+    const existing = assignmentFor(taskType);
+    if (!existing) return;
+    await updateTaskAssignment(existing.id, { phi_allowed: phiAllowed });
+  };
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -235,8 +296,23 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         clearLabel={t('settings.ai.clear_assignment')}
         disabled={isLoading}
         renderMeta={(task) => {
-          if (task.id === DEFAULT_TASK_TYPE) return null;
           const assigned = assignmentFor(task.id);
+          if (isDecisionSlot(task.id) && assigned) {
+            // D17 PHI scope guard: the explicit opt-in lives on the
+            // decision assignment itself; default off, surfaced here.
+            return (
+              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={assigned.phi_allowed ?? false}
+                  onChange={(e) =>
+                    void togglePhi(task.id, e.target.checked).catch(() => undefined)
+                  }
+                />
+                {t('settings.ai.phi_override')}
+              </label>
+            );
+          }
           if (assigned) return null;
           return (
             <p className="text-xs italic text-gray-500 dark:text-gray-400">

@@ -33,7 +33,8 @@ export type AIModelCapability =
   | 'tools'
   | 'stt'
   | 'tts'
-  | 'embeddings';
+  | 'embeddings'
+  | 'decision';
 
 export const ALL_MODEL_CAPABILITIES: AIModelCapability[] = [
   'text',
@@ -42,6 +43,7 @@ export const ALL_MODEL_CAPABILITIES: AIModelCapability[] = [
   'stt',
   'tts',
   'embeddings',
+  'decision',
 ];
 
 export interface AIModel {
@@ -53,6 +55,8 @@ export interface AIModel {
   description?: string | null;
   /** Capability set this model advertises (§15 family vocabulary). */
   capabilities?: AIModelCapability[];
+  /** Decision transport seam (ADR-0032): 'systemone' or null. */
+  decision_transport?: string | null;
   is_active: boolean;
   /** Null = cleared in settings; the runtime then uses the LLM's default. */
   max_tokens: number | null;
@@ -73,6 +77,8 @@ export interface AITaskAssignment {
   model_name?: string;
   is_active: boolean;
   priority: number;
+  /** D17 PHI scope guard (decision_* assignments; explicit opt-in). */
+  phi_allowed?: boolean;
   tenant_id?: string;
   user_id?: string;
   created_at?: string;
@@ -115,6 +121,8 @@ export interface AITaskAssignmentCreate {
   model_id?: string;
   is_active?: boolean;
   priority?: number;
+  /** D17 PHI scope guard (decision_* assignments only; explicit opt-in). */
+  phi_allowed?: boolean;
   tenant_id?: string;
   user_id?: string;
 }
@@ -131,7 +139,9 @@ export interface TaskAssignment {
 // BYOK one-click setup (§15)
 // ---------------------------------------------------------------------------
 
-/** One enabled setup preset (§15 canonical data, health overlay applied). */
+/** One preset on the setup surface (§15 canonical data + health overlay).
+ *  Decision-only presets (typesafe) carry their decision data but never ride
+ *  `order` (the tile surface) — the §13.3 exposure switch. */
 export interface ProviderPreset {
   key: string;
   name: string;
@@ -144,6 +154,16 @@ export interface ProviderPreset {
   preferred_model?: { id: string; name: string; caps: string[] } | null;
   curated_models?: string[] | null;
   stt_model?: string | null;
+  decision_models?: {
+    id: string;
+    name: string;
+    transport: string;
+    caps: string[];
+    base_url_override?: string;
+    provisional?: boolean;
+  }[] | null;
+  decision_default?: string | null;
+  provisional?: boolean | null;
   steps?: string[] | null;
   free_tier_note?: string | null;
 }
@@ -160,6 +180,7 @@ export interface ProviderSetupOptionsBody {
   bind_chat?: boolean;
   bind_vision?: boolean;
   bind_stt?: boolean;
+  bind_decision?: boolean;
 }
 
 export interface ProviderSetupResult {
@@ -169,6 +190,7 @@ export interface ProviderSetupResult {
   assigned_chat_model?: string | null;
   assigned_vision_model?: string | null;
   assigned_stt_model?: string | null;
+  assigned_decision_slots?: Record<string, string> | null;
 }
 
 /** §15 error enum + mis-paste hint, served by the setup endpoint on 422. */
@@ -178,84 +200,40 @@ export interface ProviderSetupErrorDetail {
   message?: string;
 }
 
+/** The four decision slots (plan 26 / ADR-0032) — D4 slot separation and
+ *  the D17 PHI scope guard key off these health task types. */
+export const DECISION_SLOT_TASK_TYPES = [
+  'decision_tool_dispatch',
+  'decision_boolean_gate',
+  'decision_choice',
+  'decision_score',
+] as const;
+
+export const isDecisionSlot = (taskType: string): boolean =>
+  (DECISION_SLOT_TASK_TYPES as readonly string[]).includes(taskType);
+
 export interface AIConfigSummary {
   providers: AIProvider[];
   models: AIModel[];
   task_assignments: AITaskAssignment[];
-  default?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  ocr?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  nlp?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  medication_interaction?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  anomaly_detection?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  fill_biomarker_form?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  fill_medication_form?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  magic_fill_examination?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  define_biomarker?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  define_medication?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  suggest_category_icon?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
-  generate_category_icon?: {
-    task_type: string;
-    provider?: AIProvider;
-    model?: AIModel;
-    assignment_id?: string;
-  };
+  default?: TaskAssignment;
+  ocr?: TaskAssignment;
+  nlp?: TaskAssignment;
+  medication_interaction?: TaskAssignment;
+  anomaly_detection?: TaskAssignment;
+  fill_biomarker_form?: TaskAssignment;
+  fill_medication_form?: TaskAssignment;
+  magic_fill_examination?: TaskAssignment;
+  define_biomarker?: TaskAssignment;
+  define_medication?: TaskAssignment;
+  suggest_category_icon?: TaskAssignment;
+  generate_category_icon?: TaskAssignment;
   chat?: TaskAssignment;
   transcription?: TaskAssignment;
+  decision_tool_dispatch?: TaskAssignment;
+  decision_boolean_gate?: TaskAssignment;
+  decision_choice?: TaskAssignment;
+  decision_score?: TaskAssignment;
   workflows?: Record<string, TaskAssignment[]>;
   ai_agent_max_iterations: number;
 }

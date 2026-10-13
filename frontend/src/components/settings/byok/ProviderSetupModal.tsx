@@ -16,6 +16,8 @@ import {
 } from '@neuronection/assistant-ui/provider-setup-tiles';
 import {
   aiConfigApi,
+  isDecisionSlot,
+  DECISION_SLOT_TASK_TYPES,
   setupErrorDetail,
   type AIModel,
   type ProviderPreset,
@@ -104,7 +106,8 @@ function CountrySelect({ country, onChange }: { country: string; onChange: (c: s
 }
 
 /** Per-slot rebind pickers shown after a successful setup (§15 success panel).
- *  Slot mapping is health's: chat→default, vision→ocr, stt→transcription. */
+ *  Slot mapping is health's: chat→default, vision→ocr, stt→transcription;
+ *  decision slots (plan 26) list only the provider's decision models. */
 function SuccessDefaults({
   providerId,
   result,
@@ -134,6 +137,23 @@ function SuccessDefaults({
 
   if (models === null) return null;
   const providerModels = models.filter((model) => model.is_active);
+  const decisionModels = providerModels.filter(
+    (model) => Boolean(model.decision_transport) || model.capabilities?.includes('decision'),
+  );
+  const decisionCatalog: ModelPickerProvider[] =
+    decisionModels.length > 0
+      ? [
+          {
+            id: providerId,
+            name: result.provider.name,
+            models: decisionModels.map((model) => ({
+              id: model.model_name,
+              name: model.name || model.model_name,
+              capabilities: model.capabilities?.length ? model.capabilities : ['decision'],
+            })),
+          },
+        ]
+      : [];
   const catalog: ModelPickerProvider[] = [
     {
       id: providerId,
@@ -189,6 +209,11 @@ function SuccessDefaults({
         ]
       : []),
   ];
+  const decisionRows = DECISION_SLOT_TASK_TYPES.map((slot) => ({
+    task: slot,
+    label: t(`settings.ai.slot_${slot}`),
+    assigned: result.assigned_decision_slots?.[slot] ?? null,
+  }));
 
   if (providerModels.length === 0) {
     return (
@@ -213,6 +238,18 @@ function SuccessDefaults({
           label={row.label}
         />
       ))}
+      {decisionModels.length > 0
+        ? decisionRows.map((row) => (
+            <ModelPicker
+              key={row.task}
+              providers={decisionCatalog}
+              value={slotValue(row.assigned)}
+              onChange={(modelName) => void bind(row.task, modelName).catch(() => undefined)}
+              clearable={false}
+              label={row.label}
+            />
+          ))
+        : null}
       {error ? <p className="text-xs text-red-600 dark:text-red-400">{error}</p> : null}
     </div>
   );

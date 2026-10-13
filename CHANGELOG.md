@@ -33,7 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (task-assignment API; gap-fill and set-default never set it). Migration
   `d1e2c3i4s5i6` adds `ai_models.decision_transport` +
   `ai_task_assignments.phi_allowed` (tested round-trip). Contract matrix
-  grows the decision + probe + PHI cases (23 cases).
+  grows the decision + probe + PHI cases (23 cases). Settings UI: a
+  *Decision models* group in task assignment (library pickers,
+  capability-filtered, with the verbatim cloud privacy notice), decision
+  rows in the setup success panel, and the five-bind re-run review.
 
 ### Changed
 - **BYOK setup UI swaps to the library kit (plan 26 Phase 2):** the

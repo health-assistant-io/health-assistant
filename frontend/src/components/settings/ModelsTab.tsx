@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Eye, FileText, AudioLines, Cpu } from 'lucide-react';
+import { Eye, FileText, AudioLines, Cpu, Sparkles } from 'lucide-react';
 import {
   ModelRegistry,
   type CapabilityDescriptor,
@@ -23,6 +23,7 @@ const CAP_ICONS: Record<AIModelCapability, typeof FileText> = {
   stt: AudioLines,
   tts: AudioLines,
   embeddings: FileText,
+  decision: Sparkles,
 };
 
 /** App-side capability inference for provider catalogs that don't report

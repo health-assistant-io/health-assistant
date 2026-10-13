@@ -13,6 +13,14 @@ const providers: AIProvider[] = [
     api_base: 'https://api.openai.com/v1',
     is_active: true,
   },
+  {
+    id: 'prov-ts',
+    name: 'TypeSafe',
+    scope: 'USER',
+    provider_type: 'decision',
+    api_base: 'https://api.typesafe.ai',
+    is_active: true,
+  },
 ];
 
 const models: AIModel[] = [
@@ -36,6 +44,17 @@ const models: AIModel[] = [
     max_tokens: 65536,
     temperature: 0.7,
   },
+  {
+    id: 'm-jev',
+    provider_id: 'prov-ts',
+    name: 'Jev via OpenRouter (latest)',
+    model_name: 'openrouter.jev-latest',
+    capabilities: ['decision'],
+    decision_transport: 'systemone',
+    is_active: true,
+    max_tokens: 65536,
+    temperature: 0.7,
+  },
 ];
 
 const assignments: AITaskAssignment[] = [
@@ -50,6 +69,18 @@ const assignments: AITaskAssignment[] = [
     user_id: 'u1',
   },
 ];
+
+const decisionAssignment: AITaskAssignment = {
+  id: 'a-decision-td',
+  task_type: 'decision_tool_dispatch',
+  scope: 'USER',
+  provider_id: 'prov-ts',
+  model_id: 'm-jev',
+  is_active: true,
+  priority: 0,
+  phi_allowed: false,
+  user_id: 'u1',
+};
 
 const store = {
   providers,
@@ -71,6 +102,18 @@ const STRINGS: Record<string, string> = {
   'settings.ai.tasks_hint': 'Assign a model to each AI task.',
   'settings.ai.section_defaults': 'Default models',
   'settings.ai.section_defaults_hint': 'The modality slots every task falls back to.',
+  'settings.ai.section_decision': 'Decision models',
+  'settings.ai.decision_privacy':
+    'Decision models run in the cloud: your prompt and the candidate tools for the step are sent to the assigned provider (e.g. TypeSafe or OpenRouter). Your API key stays on this device.',
+  'settings.ai.slot_decision_tool_dispatch': 'Tool dispatch',
+  'settings.ai.slot_decision_tool_dispatch_hint': 'Picks the tool (if any) a step should use',
+  'settings.ai.slot_decision_boolean_gate': 'Boolean gate',
+  'settings.ai.slot_decision_boolean_gate_hint': 'Yes/no checks that guard a step',
+  'settings.ai.slot_decision_choice': 'Choice',
+  'settings.ai.slot_decision_choice_hint': 'Picks one option from a known set',
+  'settings.ai.slot_decision_score': 'Score',
+  'settings.ai.slot_decision_score_hint': 'Rates input against a rubric',
+  'settings.ai.phi_override': 'Allow PHI-adjacent dispatch (patient data may be sent to this decision provider)',
   'settings.ai.section_tasks': 'Other tasks',
   'settings.ai.task_default': 'Global Default Fallback',
   'settings.ai.task_ocr': 'Document Parsing (OCR)',
@@ -203,5 +246,56 @@ describe('TaskAssignment', () => {
     await user.click(screen.getByRole('button', { name: 'Clear assignment — Assistant Chat' }));
     await waitFor(() => expect(store.deleteTaskAssignment).toHaveBeenCalledWith('a-chat'));
     store.taskAssignments = assignments;
+  });
+
+  it('renders the Decision models group with the verbatim privacy notice (plan 26 §13.5)', () => {
+    render(<TaskAssignment scope="user" userId="u1" />);
+    expect(screen.getByText('Decision models')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Decision models run in the cloud: your prompt and the candidate tools for the step are sent to the assigned provider (e.g. TypeSafe or OpenRouter). Your API key stays on this device.',
+      ),
+    ).toBeInTheDocument();
+    for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
+      expect(screen.getByText(slot)).toBeInTheDocument();
+    }
+  });
+
+  it('filters the decision slots to decision-capable models via requires (D2b)', async () => {
+    const user = userEvent.setup();
+    render(<TaskAssignment scope="user" userId="u1" />);
+    await user.click(screen.getByRole('combobox', { name: 'Tool dispatch' }));
+    const listbox = await screen.findByRole('listbox');
+    expect(
+      within(listbox).getByRole('option', { name: 'Jev via OpenRouter (latest)' }),
+    ).toBeInTheDocument();
+    expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
+  });
+
+  it('surfaces the PHI scope guard on an assigned decision slot and flips it via the explicit opt-in (D17)', async () => {
+    const user = userEvent.setup();
+    store.taskAssignments = [...assignments, decisionAssignment];
+    render(<TaskAssignment scope="user" userId="u1" />);
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'Allow PHI-adjacent dispatch (patient data may be sent to this decision provider)',
+    });
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    await user.click(checkbox);
+    await waitFor(() =>
+      expect(store.updateTaskAssignment).toHaveBeenCalledWith(
+        'a-decision-td',
+        expect.objectContaining({ phi_allowed: true }),
+      ),
+    );
+    store.taskAssignments = assignments;
+  });
+
+  it('hides the PHI opt-in while the decision slot is unassigned', () => {
+    render(<TaskAssignment scope="user" userId="u1" />);
+    expect(
+      screen.queryByRole('checkbox', {
+        name: /Allow PHI-adjacent dispatch/,
+      }),
+    ).not.toBeInTheDocument();
   });
 });
