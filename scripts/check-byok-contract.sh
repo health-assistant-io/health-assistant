@@ -20,10 +20,10 @@
 #   R8 no needle/llm decision-engine code (plan 26 D7/S1: needle 3 was
 #      discarded and the llm engine deleted with the transport rewrite —
 #      systemone is the only decision transport). The ban targets ENGINE
-#      CODE markers (class/constant names, module paths); the idempotent
-#      legacy-config migrations that retire real user stores may keep
-#      mentioning the retired names in their own logic — they never
-#      import the engines.
+#      CODE markers (class/constant names, module paths); comments and
+#      string data about the retired engines never match (the one-time
+#      legacy-config migrations were themselves deleted outright in the
+#      plan 26 §13.8 no-legacy sweep).
 #
 # Self-test: check-byok-contract.selftest.sh (same dir; materializes temp
 # trees for the R6/R7 pass/fail cases).
@@ -85,18 +85,19 @@ else
 fi
 
 # R2 — no 'audio' capability literals (vocabulary is stt/tts post-freeze).
-# TS repos: under src/ (AppConfig.ts hosts the sanctioned load-time legacy
-# migration shim audio → [stt, tts]; it is exempt).
+# TS repos: under src/ (the AppConfig.ts load-time audio→[stt,tts] shim
+# was deleted outright with the plan 26 §13.8 no-legacy sweep — no
+# exemption remains).
 # Python repos: under backend/app/ (alembic versions host the one-time data
 # migration; they are exempt, as is the generated presets module). Files whose
 # 'audio' is the MaterialKind/media-file vocabulary (audio files as study
 # materials — unrelated to model capabilities) are exempt by path.
-AUDIO_HITS="$(grep -rn "'audio'" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" | grep -v "src/shared/config/AppConfig.ts" || true)"
+AUDIO_HITS="$(grep -rn "'audio'" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
 if [ -n "$AUDIO_HITS" ]; then
   bad "R2 legacy 'audio' capability literals found (vocabulary is stt/tts):"
   echo "$AUDIO_HITS" >&2
 else
-  good "R2 no 'audio' capability literals outside the migration shim"
+  good "R2 no legacy 'audio' capability literals (vocabulary is stt/tts)"
 fi
 AUDIO_HITS_PY="$(grep -rEn "['\"]audio['\"]" "$ROOT/backend/app" 2>/dev/null \
   | grep -v "backend/alembic/versions/" \

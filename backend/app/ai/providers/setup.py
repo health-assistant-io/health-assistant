@@ -51,7 +51,7 @@ from app.ai.decide.types import DECISION_SLOTS
 from app.ai.providers.capabilities import required_capabilities_for_task
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.errors import ClassifiedProviderError, classify_provider_error
-from app.ai.providers.presets import ALL_PRESETS
+from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
 from app.ai.providers.service import guard_api_base
 from app.core.encryption import decrypt_secret, encrypt_secret
 from app.models.ai_provider_model import (
@@ -486,7 +486,7 @@ async def _upsert_decision_models(
 
 
 async def _probe_decision_preset(
-    provider: AIProviderModel, api_key: str, specs: list[dict[str, Any]]
+    provider: AIProviderModel, api_key: str, preset: dict[str, Any]
 ) -> None:
     """Validate a decision-only preset via the decision probe (D13/D18).
 
@@ -494,7 +494,7 @@ async def _probe_decision_preset(
     exactly like a catalog fetch (timeout → ``timeout``, 401 →
     ``invalid_key`` &c.); the caller rolls back — nothing persists.
     """
-    model_name = str(specs[0]["id"]) if specs else "jev-latest"
+    model_name = decision_probe_model_id(preset)
     model = AIModel(
         provider_id=provider.id,
         name=model_name,
@@ -585,7 +585,7 @@ async def setup_provider_from_preset(
     catalog: list[RemoteModel] = []
     try:
         if decision_only:
-            await _probe_decision_preset(provider, key, decision_specs)
+            await _probe_decision_preset(provider, key, preset)
         else:
             catalog = await fetch_remote_models(
                 preset["wire_type"], provider.api_base, key or None, transport=transport

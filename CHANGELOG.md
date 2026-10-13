@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (plan 26 §13.8/§15 single-source sweep, 2026-10-13)
+- **No canonical model ids as code literals:** the decision probe's
+  model id derives from the synced preset data via
+  `decision_probe_model_id()` (specs → `decision_default`, raising on a
+  preset that declares neither — never an invented `jev-latest`); the
+  revalidate probe for a model-less decision provider derives from the
+  provider's preset stamp, failing with an actionable message when
+  nothing is derivable; and the `OPENAI_STT_MODEL` env-fallback default
+  now reads the canonical `openai.stt_model` instead of a literal
+  (env still overrides). Contract matrix gains the derivation pin
+  (case 23b).
+
 ### Changed (plan 26 Phase 6 closeout)
 - **Ruff: the generated presets module is excluded from the formatter**
   (`[tool.ruff.format]` exclude; the lint E501 per-file-ignore stays) —

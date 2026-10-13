@@ -1534,3 +1534,19 @@ async def test_case_23_phi_scope_guard_explicit_opt_in_only(async_client, user_c
         headers=user_ctx["headers"],
     )
     assert smuggled.status_code == 422
+
+
+def test_case_23b_probe_model_id_derives_from_canonical_data() -> None:
+    """§15 single-source: probe ids come from the synced preset data —
+    never a code literal (family closeout fix, 2026-10-13)."""
+    from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
+    from app.core.config import Settings
+
+    assert decision_probe_model_id({"decision_models": [{"id": "custom-jev"}]}) == "custom-jev"
+    assert decision_probe_model_id({"decision_default": "fallback-id"}) == "fallback-id"
+    assert decision_probe_model_id(ALL_PRESETS["typesafe"]) == "jev-latest"
+    with pytest.raises(ValueError, match="declares no decision models"):
+        decision_probe_model_id({})
+    # The env-fallback STT default also derives from the canonical data
+    # (openai.stt_model), not a literal.
+    assert Settings.model_fields["OPENAI_STT_MODEL"].default == ALL_PRESETS["openai"]["stt_model"]

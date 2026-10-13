@@ -139,17 +139,21 @@ expect "R7 pass: python provider-templated secret id" 0 'R7 no decision secrets 
 # R8 cases (plan 26 D7/S1 — needle/llm engine code is gone family-wide)
 # ---------------------------------------------------------------------------
 
-# R8 pass: the legacy-config MIGRATION may mention retired names in its own
-# logic (it retires real stores and imports nothing) — not engine code.
-T="$WORK/r8-pass-migration"; vendor_gate "$T"
+# R8 pass: retired names in comments/strings never match — the ban is on
+# ENGINE CODE (class/constant names, module paths), and notes about the
+# retired engines are not imports (the one-time legacy-config migrations
+# were themselves deleted outright in the plan 26 §13.8 no-legacy sweep;
+# comments and string data still never match the patterns).
+T="$WORK/r8-pass-mentions"; vendor_gate "$T"
 mkdir -p "$T/src/main/ai/decide"
-cat > "$T/src/main/ai/decide/migrate-legacy-config.ts" <<'EOF'
+cat > "$T/src/main/ai/decide/notes.ts" <<'EOF'
 // decision.engine 'llm'/'needle' configs became unassigned slots; the
-// openrouter:key keyring entry was copy-then-verify-then-deleted.
+// openrouter:key keyring entry was copy-then-verify-then-deleted and the
+// one-time migration code was then removed outright (§13.8).
 export const needleCacheRemoved = true;
 EOF
 run_gate "$T"
-expect "R8 pass: legacy-config migration mentions retired names" 0 'R8 no needle/llm decision-engine code'
+expect "R8 pass: retired names in comments/strings never match" 0 'R8 no needle/llm decision-engine code'
 
 # R8 fail (TS): a needle engine module import.
 T="$WORK/r8-fail-import"; vendor_gate "$T"

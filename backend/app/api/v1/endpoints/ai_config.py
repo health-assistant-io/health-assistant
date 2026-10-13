@@ -305,6 +305,35 @@ async def fetch_external_models(
         raise HTTPException(status_code=502, detail="Upstream provider request failed")
 
 
+def _preset_derived_probe_model(provider: AIProviderModel) -> AIModel | None:
+    """A throwaway probe model derived from the provider's preset stamp.
+
+    §15 single-source: the probe id comes from the synced canonical data
+    (the preset's ``decision_models[0].id`` / ``decision_default``) —
+    never a code literal. Returns None when nothing can be derived
+    (no preset stamp, or the preset declares no decision models): the
+    caller fails honestly instead of inventing an id.
+    """
+    from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
+
+    if not provider.preset_key:
+        return None
+    preset = ALL_PRESETS.get(provider.preset_key)
+    if preset is None:
+        return None
+    try:
+        model_name = decision_probe_model_id(preset)
+    except ValueError:
+        return None
+    return AIModel(
+        provider_id=provider.id,
+        name=model_name,
+        model_name=model_name,
+        capabilities=[AIModelCapability.DECISION.value],
+        decision_transport="systemone",
+    )
+
+
 async def _probe_decision_provider_models(
     db: AsyncSession, provider: AIProviderModel
 ) -> list[dict[str, Any]]:
@@ -325,17 +354,11 @@ async def _probe_decision_provider_models(
         .scalars()
         .all()
     )
-    probe_model = (
-        decision_models[0]
-        if decision_models
-        else AIModel(
-            provider_id=provider.id,
-            name="jev-latest",
-            model_name="jev-latest",
-            capabilities=[AIModelCapability.DECISION.value],
-            decision_transport="systemone",
+    probe_model = decision_models[0] if decision_models else _preset_derived_probe_model(provider)
+    if probe_model is None:
+        raise RuntimeError(
+            "no decision model to probe: add a decision model to this provider, then revalidate"
         )
-    )
     result = await asyncio.to_thread(
         probe_decision_provider,
         DecisionProbeInput(

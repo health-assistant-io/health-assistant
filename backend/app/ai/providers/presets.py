@@ -139,3 +139,22 @@ def decision_models_for_preset(key: str) -> list[dict[str, Any]]:
     if not models:
         return []
     return [dict(entry) for entry in models]
+
+
+def decision_probe_model_id(preset: dict[str, Any]) -> str:
+    """The model id a decision probe asks about for a decision preset.
+
+    §15 single-source rule: the id comes from the synced canonical data
+    (``decision_models[0].id``, falling back to ``decision_default``) —
+    never from a code literal, so a canonical curation change flows
+    through without a code edit. A decision preset that declares neither
+    is a data inconsistency: surfaced as an error, not papered over with
+    an invented id.
+    """
+    specs = preset.get("decision_models") or []
+    if specs:
+        return str(specs[0]["id"])
+    default = preset.get("decision_default")
+    if default:
+        return str(default)
+    raise ValueError("decision preset declares no decision models (canonical presets data)")

@@ -8,6 +8,8 @@ from typing import ClassVar
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.ai.providers.presets_data import PRESETS as _CANONICAL_PRESETS
+
 
 def _resolve_env_file() -> str | None:
     """Locate the .env file for Pydantic Settings.
@@ -571,8 +573,11 @@ class Settings(BaseSettings):
     # the transcription call timeout.
     AI_STT_MAX_AUDIO_BYTES: int = 20 * 1024 * 1024  # 20 MiB compressed audio
     AI_STT_TIMEOUT_SECONDS: int = 60
-    # Default STT model when no DB assignment exists (OpenAI-compatible API).
-    OPENAI_STT_MODEL: str = "whisper-1"
+    # Default STT model when no DB assignment exists (OpenAI-compatible
+    # API). §15 single-source: the default derives from the synced
+    # canonical preset data (openai.stt_model), never a code literal —
+    # env still overrides for deployments that need it.
+    OPENAI_STT_MODEL: str = str(_CANONICAL_PRESETS.get("openai", {}).get("stt_model") or "")
 
     @model_validator(mode="after")
     def _validate_data_key(self) -> "Settings":
