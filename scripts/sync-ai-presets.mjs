@@ -57,6 +57,9 @@ function tsPresetEntry(key, p) {
     lines.push(`      curatedModels: [${p.curatedModels.map((m) => JSON.stringify(m)).join(', ')}],`);
   }
   if (p.sttModel !== null) lines.push(`      sttModel: ${JSON.stringify(p.sttModel)},`);
+  if (p.embeddingsModel !== null && p.embeddingsModel !== undefined) {
+    lines.push(`      embeddingsModel: ${JSON.stringify(p.embeddingsModel)},`);
+  }
   if (p.decisionModels !== null && p.decisionModels !== undefined) {
     lines.push(`      decisionModels: [`);
     for (const m of p.decisionModels) {
@@ -120,6 +123,7 @@ export interface ProviderPresetData {
   preferredModel?: { modelId: string; name: string; caps: string[] };
   curatedModels?: string[];
   sttModel?: string;
+  embeddingsModel?: string;
   decisionModels?: DecisionModelData[];
   decisionDefault?: string;
   /** Preset-level provisional marker (plan 26 owner ruling 2026-10-12) — not live-verified. */
@@ -191,6 +195,7 @@ function generatePy() {
               `        ],`,
             ].join('\n'),
         `        "stt_model": ${p.sttModel === null ? 'None' : pyStr(p.sttModel)},`,
+        `        "embeddings_model": ${p.embeddingsModel === null || p.embeddingsModel === undefined ? 'None' : pyStr(p.embeddingsModel)},`,
         ...decisionModels,
         `        "decision_default": ${p.decisionDefault === null || p.decisionDefault === undefined ? 'None' : pyStr(p.decisionDefault)},`,
         `        "provisional": ${p.provisional === true ? 'True' : 'None'},`,

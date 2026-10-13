@@ -11,8 +11,9 @@
       "local": false,
       "keyUrl": "https://platform.openai.com/api-keys",
       "preferredModel": { "id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "caps": ["text", "tools", "vision"] },
-      "curatedModels": ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "whisper-1"],
+      "curatedModels": ["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "whisper-1", "text-embedding-3-small"],
       "sttModel": "whisper-1",
+      "embeddingsModel": "text-embedding-3-small",
       "steps": [
         "Open {url} and sign in.",
         "Create a new secret key.",
@@ -29,8 +30,9 @@
       "local": false,
       "keyUrl": "https://aistudio.google.com/app/apikey",
       "preferredModel": { "id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash", "caps": ["text", "tools", "vision"] },
-      "curatedModels": ["gemini-3.8-flash"],
+      "curatedModels": ["gemini-3.8-flash", "gemini-embedding-2"],
       "sttModel": null,
+      "embeddingsModel": "gemini-embedding-2",
       "steps": [
         "Open {url} and sign in with a Google account.",
         "Create an API key — the free tier is enough to start.",
@@ -49,6 +51,7 @@
       "preferredModel": { "id": "openrouter/auto", "name": "Auto (best match)", "caps": ["text", "tools"] },
       "curatedModels": ["openrouter/auto"],
       "sttModel": null,
+      "embeddingsModel": null,
       "decisionModels": [
         { "id": "typesafe/jev-1.13", "name": "Jev 1.13 via OpenRouter (pinned)", "transport": "systemone", "base_url_override": "https://openrouter.ai/api", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] },
         { "id": "~typesafe/jev-latest", "name": "Jev via OpenRouter (latest)", "transport": "systemone", "base_url_override": "https://openrouter.ai/api", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
@@ -72,6 +75,7 @@
       "preferredModel": { "id": "claude-sonnet-5", "name": "Claude Sonnet 5", "caps": ["text", "tools", "vision"] },
       "curatedModels": ["claude-sonnet-5"],
       "sttModel": null,
+      "embeddingsModel": null,
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -90,6 +94,7 @@
       "preferredModel": null,
       "curatedModels": null,
       "sttModel": null,
+      "embeddingsModel": null,
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -108,6 +113,7 @@
       "preferredModel": null,
       "curatedModels": null,
       "sttModel": null,
+      "embeddingsModel": "mistral-embed",
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -126,6 +132,7 @@
       "preferredModel": null,
       "curatedModels": null,
       "sttModel": null,
+      "embeddingsModel": null,
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -151,6 +158,7 @@
         { "id": "clef-flash", "name": "Clef Flash (image-capable)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
       ],
       "decisionDefault": "nimble",
+      "embeddingsModel": "nomic-embed-text",
       "steps": [
         "Install Ollama v0.35.0 or newer from ollama.com (the clef decision models need v0.35.1+).",
         "Pull a chat model, e.g. run: ollama pull llama3.3",
@@ -174,6 +182,7 @@
         { "id": "jev-latest", "name": "Jev (latest)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
       ],
       "decisionDefault": "jev-latest",
+      "embeddingsModel": null,
       "steps": [
         "Open {url} — the TypeSafe API docs.",
         "Get a key from the TypeSafe console.",
