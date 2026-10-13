@@ -105,6 +105,10 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
   is_allowed() {  # path repo-relative -> ai layer, tests, or graphs dir
     case "$1" in
       "$FACTORY"|"$FACTORY"/*|"$tests_dir"/*|"$GRAPHS_DIR"/*) return 0 ;;
+      # Python repos: the AI layer is the whole app/ai dir (the decision
+      # funnel lives in app/ai/decide/ — plan 26 §3.7 sanctions the decision
+      # SDK inside the AI layer, not the chat factory alone).
+      "$AI_LAYER"|"$AI_LAYER"/*) return 0 ;;
       *) return 1 ;;
     esac
   }
