@@ -135,5 +135,48 @@ EOF
 run_gate "$T"
 expect "R7 pass: python provider-templated secret id" 0 'R7 no decision secrets outside provider:<id> ids'
 
+# ---------------------------------------------------------------------------
+# R8 cases (plan 26 D7/S1 — needle/llm engine code is gone family-wide)
+# ---------------------------------------------------------------------------
+
+# R8 pass: the legacy-config MIGRATION may mention retired names in its own
+# logic (it retires real stores and imports nothing) — not engine code.
+T="$WORK/r8-pass-migration"; vendor_gate "$T"
+mkdir -p "$T/src/main/ai/decide"
+cat > "$T/src/main/ai/decide/migrate-legacy-config.ts" <<'EOF'
+// decision.engine 'llm'/'needle' configs became unassigned slots; the
+// openrouter:key keyring entry was copy-then-verify-then-deleted.
+export const needleCacheRemoved = true;
+EOF
+run_gate "$T"
+expect "R8 pass: legacy-config migration mentions retired names" 0 'R8 no needle/llm decision-engine code'
+
+# R8 fail (TS): a needle engine module import.
+T="$WORK/r8-fail-import"; vendor_gate "$T"
+mkdir -p "$T/src/main/ai/decide"
+cat > "$T/src/main/ai/decide/index.ts" <<'EOF'
+import { NeedleEngine } from './needle/engine';
+EOF
+run_gate "$T"
+expect "R8 fail: needle engine import" 1 'R8 needle/llm decision-engine code found'
+
+# R8 fail (TS): the deleted decide/jev module path (renamed to systemone).
+T="$WORK/r8-fail-jev-path"; vendor_gate "$T"
+mkdir -p "$T/src/main/ai/decide"
+cat > "$T/src/main/ai/decide/registry.ts" <<'EOF'
+import { client } from './jev/client';
+EOF
+run_gate "$T"
+expect "R8 fail: decide/jev module path" 1 'R8 needle/llm decision-engine code found'
+
+# R8 fail (python): a needle engine import under the decide layer.
+T="$WORK/r8-fail-py"; vendor_gate "$T"
+mkdir -p "$T/backend/app/ai/decide"
+cat > "$T/backend/app/ai/decide/registry.py" <<'EOF'
+from app.ai.decide.needle import NeedleEngine
+EOF
+run_gate "$T"
+expect "R8 fail: python needle engine import" 1 'R8 needle/llm decision-engine code found'
+
 echo "byok gate selftest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -349,13 +349,21 @@ main() {
   fi
 
   if [ "$self" = 1 ]; then
-    # Self mode: check the repo we are standing in.
+    # Self mode: check the repo this vendored copy lives in (its root sits
+    # one level up from the script), probing the packaging layout instead
+    # of guessing from the checkout directory name — CI workspaces and
+    # worktrees carry no family naming guarantee. Product backends carry
+    # backend/pyproject.toml; the kit (any root-packaged repo) carries
+    # pyproject.toml at the root. The pre-plan-26-Phase-6 basename
+    # heuristic fired "FAIL C5: missing backend/pyproject.toml" whenever
+    # the cwd was not named like the repo (auth-kit from any other dir;
+    # health's core copy invoked from its health-assistant parent).
     local here rel
-    here="$(basename "$(pwd)")"
+    here="$(cd "$GATE_DIR/.." && pwd)"
     rel="backend/pyproject.toml"
-    [ "$here" = "auth-kit" ] && rel="pyproject.toml"
-    echo "== family convergence: $(pwd) (self)"
-    check_repo "." "$rel"
+    [ -f "$here/$rel" ] || rel="pyproject.toml"
+    echo "== family convergence: $here (self)"
+    check_repo "$here" "$rel"
     if [ "$REPO_FAIL" = 1 ]; then
       echo "RESULT: FAIL"
       return 1

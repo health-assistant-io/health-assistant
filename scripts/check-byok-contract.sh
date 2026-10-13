@@ -17,6 +17,13 @@
 #      bespoke decision secret ids anywhere (desktop's pre-plan-26
 #      'openrouter:key' exemption was retired with the plan 26 Phase 1
 #      S2 migration)
+#   R8 no needle/llm decision-engine code (plan 26 D7/S1: needle 3 was
+#      discarded and the llm engine deleted with the transport rewrite —
+#      systemone is the only decision transport). The ban targets ENGINE
+#      CODE markers (class/constant names, module paths); the idempotent
+#      legacy-config migrations that retire real user stores may keep
+#      mentioning the retired names in their own logic — they never
+#      import the engines.
 #
 # Self-test: check-byok-contract.selftest.sh (same dir; materializes temp
 # trees for the R6/R7 pass/fail cases).
@@ -272,6 +279,27 @@ if [ -d "$ROOT/backend/app" ]; then
   if [ -n "$TEMPLATE_HITS_PY" ]; then
     good "R7 decision secret ids are provider-templated (Python)"
   fi
+fi
+
+# R8 — no needle/llm decision-engine code (plan 26 D7/S1). Engine-code
+# markers only: the deleted desktop engine classes/modules and their
+# Python equivalents (which never shipped). The legacy-config migration
+# modules legitimately reference the retired names while retiring real
+# stores — they import nothing, so they cannot match these patterns.
+LEGACY_ENGINE_RE='NeedleEngine|JEV_SECRET_ID|NEEDLE_WEIGHTS|decide/(needle|jev|llm)|app\.ai\.decide\.(needle|jev|llm)|from ["'"'"']\.{1,2}/(needle|jev)(/|["'"'"'])|from \.{1,2}(needle|jev) import'
+LEGACY_HITS=""
+if [ -d "$ROOT/src" ]; then
+  LEGACY_HITS="$(grep -rnE "$LEGACY_ENGINE_RE" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
+fi
+if [ -d "$ROOT/backend/app" ]; then
+  LEGACY_HITS="${LEGACY_HITS:+$LEGACY_HITS
+}$(grep -rnE "$LEGACY_ENGINE_RE" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)"
+fi
+if [ -n "$LEGACY_HITS" ]; then
+  bad "R8 needle/llm decision-engine code found (D7 — systemone is the only transport):"
+  echo "$LEGACY_HITS" >&2
+else
+  good "R8 no needle/llm decision-engine code (systemone is the only transport)"
 fi
 if [ "$FAIL" -eq 0 ]; then
   good "R7 no decision secrets outside provider:<id> ids"

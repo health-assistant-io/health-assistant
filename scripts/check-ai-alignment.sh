@@ -43,10 +43,14 @@ DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE="$(dirname "$DEV_ROOT")"
 
 # repo (relative to workspace) : mode : tests dir (repo-relative) : kind
+# All four repos run strict since plan 26 Phase 6 (career's grand port and
+# health's decision port landed; both had been transition from the plan 10
+# era — their own CIs already ran --self --mode strict, so the family scan
+# table now matches).
 REPOS=(
   "study-assistant:strict:backend/tests:python"
-  "career-assistant:transition:backend/tests:python"
-  "health-assistant/core:transition:backend/tests:python"
+  "career-assistant:strict:backend/tests:python"
+  "health-assistant/core:strict:backend/tests:python"
   "desktop-assistant:strict:tests:js"
 )
 

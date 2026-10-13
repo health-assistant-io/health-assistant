@@ -37,8 +37,11 @@ ok_case()   { PASS=$((PASS + 1)); echo "ok   $1"; }
 fail_case() { FAIL=$((FAIL + 1)); echo "FAIL $1"; echo "$2" | sed 's/^/     /'; }
 
 # run_self DIR -- run the gate's --self mode inside DIR; sets RUN_OUT/RUN_RC.
+# --self roots the check at the VENDORED COPY's repo (one level above the
+# script), so the tree under test runs its own planted copy — gate_artifacts()
+# puts one in every fixture (same discipline as the byok selftest).
 run_self() {
-  RUN_OUT="$(cd "$1" && bash "$GATE" --self 2>&1)"
+  RUN_OUT="$(cd "$1" && bash "$1/scripts/check-family-convergence.sh" --self 2>&1)"
   RUN_RC=$?
 }
 
