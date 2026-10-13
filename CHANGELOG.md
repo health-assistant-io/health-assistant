@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (embeddings defaults wave — first-class embeddings support, 2026-10-13)
+- **Embeddings are a first-class task:** the canonical presets contract
+  gained a docs-verified `embeddings_model` per preset (re-vendored
+  byte-identical; `text-embedding-3-small` for OpenAI, `gemini-embedding-2`
+  for Gemini, `mistral-embed` for Mistral, `nomic-embed-text` for Ollama —
+  honest nulls for vendors without an embeddings API). Health now exposes
+  the `embed` task slot: capability-filtered picker in the defaults group
+  (en + el i18n), surfaced in the config summary, and served by a real,
+  tested gateway path (`run_embed` — OpenAI-compatible `/embeddings` and
+  Google `embedContent`/`batchEmbedContents` per the preset wire type,
+  provider errors typed through the shared classifier). Infrastructure-first:
+  no product feature calls it yet.
+- **Setup binds the embeddings default:** one-click setup gap-fills the
+  EMPTY embed slot from the preset's docs-verified default
+  (`bind_embeddings`, the five-bind options body's sixth flag; empty slots
+  only, live bindings never clobbered, `assigned_embeddings_model` in the
+  outcome and the success panel). Model-id inference recognizes the
+  `embed` substring (`mistral-embed`, `nomic-embed-text`).
+
+### Changed (embeddings defaults wave — decision pickers get a preset hint, 2026-10-13)
+- **Empty decision pickers suggest the preset default:** when a decision
+  slot is unassigned and a configured provider's preset declares
+  `decision_default`, a muted "Suggested: <model>" line appears under the
+  picker (en + el). Display-only — nothing is ever auto-assigned.
+
 ### Added (plan 26 follow-up wave B — capability chips on the setup tiles, 2026-10-13)
 - **The preset grid is self-explanatory:** the setup wizard derives
   per-tile capability chips from the API preset data — chat type → Chat

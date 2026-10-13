@@ -237,6 +237,15 @@ function SuccessDefaults({
           },
         ]
       : []),
+    ...(hasCap('embeddings')
+      ? [
+          {
+            task: 'embed',
+            label: t('settings.ai.setup.slot_embeddings'),
+            assigned: result.assigned_embeddings_model,
+          },
+        ]
+      : []),
   ];
   const decisionRows = DECISION_SLOT_TASK_TYPES.map((slot) => ({
     task: slot,

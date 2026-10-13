@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AudioLines,
   Cpu,
+  Database,
   Eye,
   Languages,
   MessageSquare,
@@ -18,7 +19,7 @@ import {
   type TaskAssignmentSection,
 } from '@neuronection/assistant-ui';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
-import { isDecisionSlot } from '../../api/aiConfig';
+import { aiConfigApi, isDecisionSlot, type ProviderPreset } from '../../api/aiConfig';
 import { Button } from '../ui/Button';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
@@ -30,6 +31,12 @@ const DEFAULT_SLOT_TASKS = [
     labelKey: 'settings.ai.task_transcription',
     requires: 'stt' as const,
     icon: AudioLines,
+  },
+  {
+    value: 'embed',
+    labelKey: 'settings.ai.task_embed',
+    requires: 'embeddings' as const,
+    icon: Database,
   },
 ];
 
@@ -148,6 +155,36 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     clearError,
   } = useAIConfigStore();
   const [setupOpen, setSetupOpen] = useState(false);
+  const [presets, setPresets] = useState<Record<string, ProviderPreset> | null>(null);
+
+  useEffect(() => {
+    if (presets) return;
+    let cancelled = false;
+    aiConfigApi
+      .listProviderPresets()
+      .then((data) => {
+        if (!cancelled) setPresets(data.presets);
+      })
+      .catch(() => {
+        if (!cancelled) setPresets({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [presets]);
+
+  /** Decision pre-suggestion (display-only, §15 embeddings-wave companion):
+   *  the first preset-stamped provider whose preset declares a
+   *  `decision_default` — surfaced as a hint on EMPTY decision pickers,
+   *  never auto-assigned. */
+  const suggestedDecisionDefault = useMemo(() => {
+    if (!presets) return null;
+    for (const provider of providers) {
+      const preset = provider.preset_key ? presets[provider.preset_key] : undefined;
+      if (preset?.decision_default) return preset.decision_default;
+    }
+    return null;
+  }, [presets, providers]);
 
   const assignmentFor = (taskType: string) =>
     taskAssignments.find((a) => a.task_type === taskType && a.is_active);
@@ -210,9 +247,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   };
 
   // §15 defaults-first IA (desktop parity): the modality slots (text /
-  // vision / stt) lead, the Decision models group follows (D3/D12 — the
-  // verbatim privacy notice ships as its description, per §13.5), derived
-  // tasks last.
+  // vision / stt / embeddings) lead, the Decision models group follows
+  // (D3/D12 — the verbatim privacy notice ships as its description, per
+  // §13.5), derived tasks last.
   const sections: TaskAssignmentSection[] = [
     {
       id: 'defaults',
@@ -315,14 +352,21 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           }
           if (assigned) return null;
           return (
-            <p className="text-xs italic text-gray-500 dark:text-gray-400">
-              {t('settings.ai.not_assigned_hint', {
-                scope:
-                  scope === 'user'
-                    ? t('settings.ai.scope_org')
-                    : t('settings.ai.scope_system'),
-              })}
-            </p>
+            <>
+              {isDecisionSlot(task.id) && suggestedDecisionDefault ? (
+                <p className="text-xs italic text-gray-400 dark:text-gray-500" data-testid="decision-suggestion">
+                  {t('settings.ai.suggested_default', { model: suggestedDecisionDefault })}
+                </p>
+              ) : null}
+              <p className="text-xs italic text-gray-500 dark:text-gray-400">
+                {t('settings.ai.not_assigned_hint', {
+                  scope:
+                    scope === 'user'
+                      ? t('settings.ai.scope_org')
+                      : t('settings.ai.scope_system'),
+                })}
+              </p>
+            </>
           );
         }}
       />

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskAssignment } from './TaskAssignment';
+import { aiConfigApi } from '../../api/aiConfig';
 import type { AIModel, AIProvider, AITaskAssignment } from '../../api/aiConfig';
 
 const providers: AIProvider[] = [
@@ -20,6 +21,7 @@ const providers: AIProvider[] = [
     provider_type: 'decision',
     api_base: 'https://api.typesafe.ai',
     is_active: true,
+    preset_key: 'typesafe',
   },
 ];
 
@@ -40,6 +42,16 @@ const models: AIModel[] = [
     name: 'GPT-4o Vision',
     model_name: 'gpt-4o-2024-11-20',
     capabilities: ['text', 'vision'],
+    is_active: true,
+    max_tokens: 65536,
+    temperature: 0.7,
+  },
+  {
+    id: 'm-embed',
+    provider_id: 'prov-1',
+    name: 'Embed Small',
+    model_name: 'text-embedding-3-small',
+    capabilities: ['embeddings'],
     is_active: true,
     max_tokens: 65536,
     temperature: 0.7,
@@ -129,6 +141,7 @@ const STRINGS: Record<string, string> = {
   'settings.ai.task_generate_category_icon': 'Generate Custom SVG Icon',
   'settings.ai.task_chat': 'Assistant Chat',
   'settings.ai.task_transcription': 'Voice Input (Speech-to-Text)',
+  'settings.ai.task_embed': 'Text Embeddings',
   'settings.ai.fallback_label': 'Fallback',
   'settings.ai.primary_label': 'Primary',
   'settings.ai.primary_info': 'The model used whenever this task runs.',
@@ -138,6 +151,7 @@ const STRINGS: Record<string, string> = {
   'settings.ai.scope_org': 'organization',
   'settings.ai.scope_system': 'system',
   'settings.ai.dismiss': 'Dismiss',
+  'settings.ai.suggested_default': 'Suggested: {{model}}',
 };
 
 vi.mock('react-i18next', () => ({
@@ -153,8 +167,19 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+let listPresetsSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   vi.clearAllMocks();
+  // The decision pre-suggestion fetches the preset surface on mount; tests
+  // default to an empty surface and opt in where the hint is asserted.
+  listPresetsSpy = vi
+    .spyOn(aiConfigApi, 'listProviderPresets')
+    .mockResolvedValue({ order: [], presets: {}, disabled: {} });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('TaskAssignment', () => {
@@ -297,5 +322,90 @@ describe('TaskAssignment', () => {
         name: /Allow PHI-adjacent dispatch/,
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it('renders the embed slot in the defaults group and filters it to embeddings-capable models (§15 embeddings wave)', async () => {
+    const user = userEvent.setup();
+    render(<TaskAssignment scope="user" userId="u1" />);
+    expect(screen.getByText('Text Embeddings')).toBeInTheDocument();
+    const defaults = screen.getByText('Default models');
+    const defaultsGroup = defaults.closest('div')?.parentElement ?? document.body;
+    expect(within(defaultsGroup).getByText('Text Embeddings')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Text Embeddings' }));
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).getByRole('option', { name: 'Embed Small' })).toBeInTheDocument();
+    expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
+  });
+
+  it('creates an embed assignment through the new slot', async () => {
+    const user = userEvent.setup();
+    render(<TaskAssignment scope="user" userId="u1" />);
+    await user.click(screen.getByRole('combobox', { name: 'Text Embeddings' }));
+    await user.click(await screen.findByRole('option', { name: 'Embed Small' }));
+    await waitFor(() =>
+      expect(store.createTaskAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task_type: 'embed',
+          scope: 'USER',
+          provider_id: 'prov-1',
+          model_id: 'm-embed',
+        }),
+      ),
+    );
+  });
+
+  it('hints the preset decision_default on EMPTY decision pickers — display-only (never auto-assigns)', async () => {
+    listPresetsSpy.mockResolvedValue({
+      order: ['typesafe'],
+      presets: {
+        typesafe: {
+          key: 'typesafe',
+          name: 'TypeSafe',
+          provider_type: 'decision',
+          wire_type: 'decision',
+          base_url: 'https://api.typesafe.ai',
+          fixed_base: true,
+          local: false,
+          decision_default: 'jev-latest',
+        },
+      },
+      disabled: {},
+    });
+    render(<TaskAssignment scope="user" userId="u1" />);
+    const hints = await screen.findAllByText('Suggested: jev-latest');
+    expect(hints.length).toBeGreaterThan(0);
+    // Display-only: a hint never mutates the store.
+    expect(store.createTaskAssignment).not.toHaveBeenCalled();
+    expect(store.updateTaskAssignment).not.toHaveBeenCalled();
+  });
+
+  it('shows no decision suggestion once the slot is assigned', async () => {
+    listPresetsSpy.mockResolvedValue({
+      order: ['typesafe'],
+      presets: {
+        typesafe: {
+          key: 'typesafe',
+          name: 'TypeSafe',
+          provider_type: 'decision',
+          wire_type: 'decision',
+          base_url: 'https://api.typesafe.ai',
+          fixed_base: true,
+          local: false,
+          decision_default: 'jev-latest',
+        },
+      },
+      disabled: {},
+    });
+    store.taskAssignments = [...assignments, decisionAssignment];
+    render(<TaskAssignment scope="user" userId="u1" />);
+    await waitFor(() => expect(listPresetsSpy).toHaveBeenCalled());
+    // The assigned tool-dispatch row shows the PHI guard instead; the hint
+    // remains only on the three still-empty decision pickers.
+    expect(screen.getAllByText('Suggested: jev-latest')).toHaveLength(3);
+    expect(
+      screen.queryByRole('combobox', { name: 'Tool dispatch' }),
+    ).toBeInTheDocument();
+    store.taskAssignments = assignments;
   });
 });

@@ -154,6 +154,7 @@ export interface ProviderPreset {
   preferred_model?: { id: string; name: string; caps: string[] } | null;
   curated_models?: string[] | null;
   stt_model?: string | null;
+  embeddings_model?: string | null;
   decision_models?: {
     id: string;
     name: string;
@@ -180,6 +181,7 @@ export interface ProviderSetupOptionsBody {
   bind_chat?: boolean;
   bind_vision?: boolean;
   bind_stt?: boolean;
+  bind_embeddings?: boolean;
   bind_decision?: boolean;
 }
 
@@ -190,6 +192,7 @@ export interface ProviderSetupResult {
   assigned_chat_model?: string | null;
   assigned_vision_model?: string | null;
   assigned_stt_model?: string | null;
+  assigned_embeddings_model?: string | null;
   assigned_decision_slots?: Record<string, string> | null;
 }
 
@@ -230,6 +233,7 @@ export interface AIConfigSummary {
   generate_category_icon?: TaskAssignment;
   chat?: TaskAssignment;
   transcription?: TaskAssignment;
+  embed?: TaskAssignment;
   decision_tool_dispatch?: TaskAssignment;
   decision_boolean_gate?: TaskAssignment;
   decision_choice?: TaskAssignment;
