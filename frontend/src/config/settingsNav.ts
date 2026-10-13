@@ -11,6 +11,7 @@ import {
   Globe,
   Database,
   Bone,
+  Wrench,
 } from 'lucide-react';
 
 /**
@@ -77,6 +78,7 @@ export const userSettingsHeader: SettingsNavHeader = {
 export const tenantSettingsNav: SettingsNavItem[] = [
   { to: '/admin/tenant/settings', icon: Building2, labelKey: 'settings.nav_general', labelFallback: 'General', end: true },
   { to: '/admin/tenant/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
+  { to: '/admin/tenant/tools', icon: Wrench, labelKey: 'settings.nav_tools', labelFallback: 'Tools' },
 ];
 
 export const tenantSettingsHeader: SettingsNavHeader = {
@@ -92,6 +94,7 @@ export const tenantSettingsHeader: SettingsNavHeader = {
 export const systemSettingsNav: SettingsNavItem[] = [
   { to: '/admin/system/settings', icon: Globe, labelKey: 'settings.nav_general', labelFallback: 'General', end: true },
   { to: '/admin/system/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
+  { to: '/admin/system/tools', icon: Wrench, labelKey: 'settings.nav_tools', labelFallback: 'Tools' },
   { to: '/admin/system/integrations', icon: Plug, labelKey: 'common.integrations', labelFallback: 'Integrations' },
   // Catalogs moved to top-level nav (/catalogs, all users) — Phase C.
   { to: '/admin/anatomy-atlas', icon: Bone, labelKey: 'settings.nav_anatomy_atlas', labelFallback: 'Anatomy Atlas' },
