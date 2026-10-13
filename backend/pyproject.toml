@@ -115,6 +115,13 @@ extend-immutable-calls = [
     "fastapi.Form",
 ]
 
+[tool.ruff.format]
+# The generated presets module (sync-ai-presets.mjs from the dev canonical)
+# is not formatter-stable — its long decision-model dict lines are emitted
+# deliberately and lint-ignored above (plan 26 Phase 6: the family-wide
+# accommodation; the byok gate's R1 guards the data, not ruff).
+exclude = ["app/ai/providers/presets_data.py"]
+
 [tool.mypy]
 # The type gate grows by ratchet: packages join `files` only when clean,
 # and never leave (the family pattern — career's ratchet is the template).
