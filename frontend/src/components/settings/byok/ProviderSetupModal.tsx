@@ -33,6 +33,35 @@ import { ERROR_CODES } from './setupErrors';
 
 type Phase = 'tiles' | 'form' | 'done';
 
+/**
+ * Capability chips for a preset tile (plan 26 §13.3 follow-up): derived
+ * from the API preset data — chat type → chat (+ vision where the
+ * preferred model carries it, + stt where stt_model exists),
+ * decision_models → decision, keyless-local → local. Labels via i18n.
+ */
+function chipsForPreset(
+  preset: ProviderPreset,
+  t: (key: string) => string,
+): { key: string; label: string }[] {
+  const chips: { key: string; label: string }[] = [];
+  if (preset.provider_type !== 'decision') {
+    chips.push({ key: 'chat', label: t('settings.ai.chip_chat') });
+    if (preset.preferred_model?.caps.includes('vision')) {
+      chips.push({ key: 'vision', label: t('settings.ai.chip_vision') });
+    }
+    if (preset.stt_model) {
+      chips.push({ key: 'stt', label: t('settings.ai.chip_stt') });
+    }
+  }
+  if (preset.decision_models && preset.decision_models.length > 0) {
+    chips.push({ key: 'decision', label: t('settings.ai.chip_decision') });
+  }
+  if (preset.local) {
+    chips.push({ key: 'local', label: t('settings.ai.chip_local') });
+  }
+  return chips;
+}
+
 const SCOPE_MAP = {
   global: 'SYSTEM',
   tenant: 'TENANT',
@@ -445,7 +474,8 @@ export const ProviderSetupModal: React.FC<{
           <ProviderSetupTiles
             presets={order.map((key) => {
               const tile = presets?.[key];
-              return { key, name: tile?.name ?? key, local: tile?.local ?? false };
+              if (!tile) return { key, name: key };
+              return { key, name: tile.name, chips: chipsForPreset(tile, t) };
             })}
             onSelect={openForm}
             label={t('settings.ai.setup.title')}

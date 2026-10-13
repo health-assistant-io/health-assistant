@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (plan 26 follow-up wave B — capability chips on the setup tiles, 2026-10-13)
+- **The preset grid is self-explanatory:** the setup wizard derives
+  per-tile capability chips from the API preset data — chat type → Chat
+  (+ Vision where the preferred model carries it, + Speech-to-text where
+  `stt_model` exists), `decision_models` → Decision, keyless-local →
+  Local — rendered by assistant-ui 0.55.0's new `chips` prop with i18n
+  labels (`settings.ai.chip_*`, en + el). The grid now reads: openai
+  [Chat, Vision, Speech-to-text] · gemini [Chat, Vision] (overlay
+  disabled) · openrouter [Chat, Decision] · typesafe [Decision] ·
+  groq/mistral/deepseek [Chat] · ollama [Chat, Decision, Local].
+
 ### Changed (plan 26 §13.3 follow-up — decision presets exposed, 2026-10-13)
 - **Three decision providers, one transport, docs-verified:** the
   `typesafe` preset flips into `presetOrder` (a decision-only tile after
