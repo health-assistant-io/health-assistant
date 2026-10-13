@@ -796,12 +796,12 @@ async def list_provider_presets():
     """The preset surface (§15 canonical data + health overlay).
 
     ``presets`` covers every mappable preset (``ALL_PRESETS`` — including
-    decision-only entries such as ``typesafe``, which carry their decision
-    data but ride ``presets`` only, never ``presetOrder``; §13.3 exposure
-    switch). ``order`` stays the TILE surface (family order minus
-    health-disabled presets). Public metadata only — no keys, no secrets.
-    Disabled registry-native presets are reported with their recorded
-    reasons so the UI stays explainable.
+    decision-only entries such as ``typesafe``). ``order`` is the TILE
+    surface (family order minus health-disabled presets; the docs-verified
+    ``typesafe`` preset rides the order like every preset — the §13.3
+    exposure switch flipped 2026-10-13). Public metadata only — no keys,
+    no secrets. Disabled registry-native presets are reported with their
+    recorded reasons so the UI stays explainable.
     """
     from app.ai.providers.presets import (
         ALL_PRESETS,

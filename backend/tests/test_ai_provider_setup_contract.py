@@ -40,8 +40,8 @@ Plan 26 / ADR-0032 additions (decision capability + slots, scope-aware D17):
     insufficient_credit);
 21. slot separation enforced both directions + ``open-args`` never
     assignable + the summary never inherits the ``default`` chat fallback;
-22. preset catalog decision data shape (provisional rides ``presets``, not
-    ``presetOrder``);
+22. preset catalog decision data shape (docs-verified decision presets
+    ride ``presetOrder``; no provisional markers remain);
 23. PHI scope guard (D17): assignments are PHI-excluded by default; the
     explicit ``phi_allowed`` opt-in exists on decision_* task types only.
 """
@@ -256,7 +256,9 @@ def test_preset_metadata_uniformity() -> None:
         "ollama",
         "openai",
         "openrouter",
+        "typesafe",
     ]
+    assert PRESET_ORDER.index("typesafe") > PRESET_ORDER.index("openrouter")
     # health delta: gemini/anthropic overlay-disabled with recorded reasons
     assert set(DISABLED_PRESET_REASONS) == {"gemini", "anthropic"}
     assert DISABLED_PRESET_REASONS["gemini"]
@@ -1119,13 +1121,13 @@ async def test_case_15_bind_decision_gapfills_declared_slots_scope_local(
     assert outcome.assigned_chat_model == "openrouter/auto"
     assert outcome.assigned_decision_slots is not None
     assert set(outcome.assigned_decision_slots) == set(HEALTH_DECISION_SLOTS)
-    assert set(outcome.assigned_decision_slots.values()) == {"openrouter.jev-latest"}
-    assert outcome.catalog_count == 2
+    assert set(outcome.assigned_decision_slots.values()) == {"typesafe/jev-1.13"}
+    assert outcome.catalog_count == 3
     async with AsyncSessionLocal() as session:
         decision_models = (
             (
                 await session.execute(
-                    select(AIModel).where(AIModel.model_name == "openrouter.jev-latest")
+                    select(AIModel).where(AIModel.model_name == "typesafe/jev-1.13")
                 )
             )
             .scalars()
@@ -1165,13 +1167,15 @@ async def test_case_16_bind_decision_off_persists_models_binds_nothing(
         decision_models = (
             (
                 await session.execute(
-                    select(AIModel).where(AIModel.model_name == "openrouter.jev-latest")
+                    select(AIModel).where(
+                        AIModel.model_name.in_(["typesafe/jev-1.13", "~typesafe/jev-latest"])
+                    )
                 )
             )
             .scalars()
             .all()
         )
-        assert len(decision_models) == 1
+        assert len(decision_models) == 2
     for slot in HEALTH_DECISION_SLOTS:
         assert await slot_of(tenant_id, user_id, slot) is None
 
@@ -1432,15 +1436,33 @@ def test_case_22_preset_catalog_decision_data_shape() -> None:
         decision_models_for_preset,
     )
 
+    # §13.3 exposure switch flipped (2026-10-13): the docs-verified
+    # decision presets ride presetOrder; no provisional markers remain.
     assert "typesafe" in ALL_PRESETS
-    assert "typesafe" not in PRESET_ORDER
-    assert "typesafe" not in SETUP_PRESETS
+    assert "typesafe" in PRESET_ORDER
+    assert "typesafe" in SETUP_PRESETS
     assert ALL_PRESETS["typesafe"]["type"] == "decision"
-    assert ALL_PRESETS["typesafe"]["provisional"] is True
+    assert ALL_PRESETS["typesafe"]["provisional"] is None
     assert ALL_PRESETS["typesafe"]["decision_default"] == "jev-latest"
     openrouter = ALL_PRESETS["openrouter"]
-    assert openrouter["decision_default"] == "openrouter.jev-latest"
-    assert openrouter["decision_models"][0]["provisional"] is True
+    assert openrouter["decision_default"] == "typesafe/jev-1.13"
+    assert [entry["id"] for entry in openrouter["decision_models"]] == [
+        "typesafe/jev-1.13",
+        "~typesafe/jev-latest",
+    ]
+    assert all(
+        entry.get("base_url_override") == "https://openrouter.ai/api"
+        for entry in openrouter["decision_models"]
+    )
+    ollama = ALL_PRESETS["ollama"]
+    assert [entry["id"] for entry in ollama["decision_models"]] == [
+        "nimble",
+        "tev1",
+        "clef",
+        "clef-flash",
+    ]
+    assert ollama["decision_default"] == "nimble"
+    assert ollama["key_url"] is None
     assert decision_models_for_preset("openai") == []
     for preset in ALL_PRESETS.values():
         for entry in preset["decision_models"] or []:

@@ -208,6 +208,24 @@ def strip_chat_version_segment(base_url: str) -> str:
     return trimmed
 
 
+KEYLESS_SYSTEMONE_API_KEY = "keyless-local"
+"""The official SDK requires a non-empty API key (D9 — no hand-rolled
+wire clients), so keyless presets resolve with this sentinel instead of
+failing needs-key: a keyless server (local Ollama) ignores the
+Authorization header. Never a real secret; keyed presets keep the
+needs-key failure."""
+
+
+def preset_is_keyless(preset_key: str | None) -> bool:
+    """The preset expects no key (no ``key_url`` in the canonical data)."""
+    if not preset_key:
+        return False
+    from app.ai.providers.presets_data import PRESETS
+
+    row = PRESETS.get(preset_key)
+    return row is not None and row["key_url"] is None
+
+
 def resolve_systemone_base_url(provider: AIProviderModel, model: AIModel) -> str | None:
     if provider.preset_key:
         from app.ai.providers.presets import decision_models_for_preset

@@ -8,13 +8,14 @@ hand-edit). This module is the ONLY place health-specific deviations live:
 * per-app enablement: presets whose health factory is not wired yet are
   disabled here, with a recorded reason — never a canonical edit.
 
-Plan 26 / ADR-0032 (Phase 5): ``ALL_PRESETS`` is the full mappable surface
-(including decision-only presets such as ``typesafe``, which ride ``presets``
-but never ``presetOrder`` — joining the order is the exposure switch, per
-§13.3); ``SETUP_PRESETS`` stays the TILE surface (family order minus
-health-disabled presets). The setup endpoint accepts ``ALL_PRESETS``;
-decision-only presets validate via the decision probe (D13), never a
-catalog fetch.
+Plan 26 / ADR-0032 (Phase 5 + the 2026-10-13 §13.3 follow-up):
+``ALL_PRESETS`` is the full mappable surface (including decision-only
+presets such as ``typesafe``); ``SETUP_PRESETS`` stays the TILE surface
+(family order minus health-disabled presets). The docs-verified
+``typesafe`` preset rides ``presetOrder`` like every preset — the
+exposure switch flipped 2026-10-13 (a canonical edit, never a per-repo
+one). The setup endpoint accepts ``ALL_PRESETS``; decision-only presets
+validate via the decision probe (D13), never a catalog fetch.
 
 Canonical text: dev/guidelines/ai-features.md §15; data: dev/contracts/
 ai-presets.json.

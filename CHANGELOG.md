@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (plan 26 §13.3 follow-up — decision presets exposed, 2026-10-13)
+- **Three decision providers, one transport, docs-verified:** the
+  `typesafe` preset flips into `presetOrder` (a decision-only tile after
+  OpenRouter; keyUrl → docs.typesafe.ai/api with console-worded steps —
+  the console URL is not stated in the docs); Ollama gains decision
+  models (`nimble` default, `tev1`, `clef`, `clef-flash` — pull-required,
+  version floor riding the preset steps: v0.35.0+, clef models v0.35.1+)
+  and now surfaces decision rows in setup keylessly; OpenRouter's
+  decision ids are corrected to `typesafe/jev-1.13` (pinned, the
+  default) + `~typesafe/jev-latest` (rolling) with the systemone surface
+  pinned via `base_url_override` (`https://openrouter.ai/api` — the
+  `/api` prefix; the SDK appends `/v1/systemone`). No `provisional`
+  markers remain on decision data. Canonical + sync re-vendored
+  byte-identical; `presets_data.py` regenerated.
+- **Keyless decision resolution (local Ollama):** the official
+  `typesafe-sdk` requires a non-empty API key (D9), so keyless presets
+  (no `key_url` in the canonical data) resolve through the explicit
+  sentinel key instead of failing `needs-key`; keyed presets keep the
+  needs-key failure. Pinned by the conformance suite; the contract
+  matrix's exposure assertions flip to the new reality (typesafe in the
+  tile surface, openrouter ids + override pinned, ollama decision data
+  pinned).
+
 ### Changed (plan 26 §13.8/§15 single-source sweep, 2026-10-13)
 - **No canonical model ids as code literals:** the decision probe's
   model id derives from the synced preset data via

@@ -504,6 +504,91 @@ async def test_resolution_needs_key_then_priority_fallback_chain(decide_ctx) -> 
     assert fallback_gone.code == "needs-key"
 
 
+async def test_resolution_keyless_preset_uses_the_sentinel_key(decide_ctx) -> None:
+    """§13.3 follow-up: local Ollama decision models resolve keylessly — the
+    official SDK requires a non-empty key (D9), so keyless presets (no
+    ``key_url`` in the canonical data) carry the explicit sentinel."""
+    from app.ai.decide.systemone.client import KEYLESS_SYSTEMONE_API_KEY
+
+    async with AsyncSessionLocal() as session:
+        provider = AIProviderModel(
+            name="Ollama (local)",
+            scope=AIScope.USER,
+            tenant_id=decide_ctx["tenant_id"],
+            user_id=decide_ctx["user_id"],
+            provider_type="openai",
+            api_base="http://localhost:11434/v1",
+            api_key=None,
+            preset_key="ollama",
+            is_active=True,
+            settings={},
+        )
+        session.add(provider)
+        await session.flush()
+        model = AIModel(
+            provider_id=provider.id,
+            name="nimble",
+            model_name="nimble",
+            capabilities=["decision"],
+            decision_transport="systemone",
+            is_active=True,
+            settings={},
+        )
+        session.add(model)
+        await session.commit()
+    await assign_slot(decide_ctx, model.id)
+
+    async with AsyncSessionLocal() as db:
+        resolution = await resolve_decision(
+            DecisionCapability.TOOL_DISPATCH, db, deps_of(db, decide_ctx)
+        )
+
+    assert isinstance(resolution, SystemOneResolution)
+    assert resolution.api_key == KEYLESS_SYSTEMONE_API_KEY
+    assert resolution.base_url == "http://localhost:11434"
+    assert resolution.model.model_name == "nimble"
+
+
+async def test_resolution_keyed_preset_without_key_still_needs_key(decide_ctx) -> None:
+    """The keyless path is preset-data-driven (no ``key_url``), never a
+    local/key heuristic a keyed preset could ride."""
+    async with AsyncSessionLocal() as session:
+        provider = AIProviderModel(
+            name="OpenRouter",
+            scope=AIScope.USER,
+            tenant_id=decide_ctx["tenant_id"],
+            user_id=decide_ctx["user_id"],
+            provider_type="openai",
+            api_base="https://openrouter.ai/api/v1",
+            api_key=None,
+            preset_key="openrouter",
+            is_active=True,
+            settings={},
+        )
+        session.add(provider)
+        await session.flush()
+        model = AIModel(
+            provider_id=provider.id,
+            name="typesafe/jev-1.13",
+            model_name="typesafe/jev-1.13",
+            capabilities=["decision"],
+            decision_transport="systemone",
+            is_active=True,
+            settings={},
+        )
+        session.add(model)
+        await session.commit()
+    await assign_slot(decide_ctx, model.id)
+
+    async with AsyncSessionLocal() as db:
+        resolution = await resolve_decision(
+            DecisionCapability.TOOL_DISPATCH, db, deps_of(db, decide_ctx)
+        )
+
+    assert isinstance(resolution, UnavailableResolution)
+    assert resolution.code == "needs-key"
+
+
 async def test_resolution_user_scope_wins_over_system(decide_ctx) -> None:
     _sys_provider, sys_model = await seed_decision_provider(
         decide_ctx, with_key=True, model_name="jev-system", scope=AIScope.SYSTEM

@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "capabilityVocabulary": ["text", "vision", "tools", "stt", "tts", "embeddings", "decision"],
-  "presetOrder": ["openai", "gemini", "openrouter", "anthropic", "groq", "mistral", "deepseek", "ollama"],
+  "presetOrder": ["openai", "gemini", "openrouter", "typesafe", "anthropic", "groq", "mistral", "deepseek", "ollama"],
   "presets": {
     "openai": {
       "name": "OpenAI",
@@ -50,9 +50,10 @@
       "curatedModels": ["openrouter/auto"],
       "sttModel": null,
       "decisionModels": [
-        { "id": "openrouter.jev-latest", "name": "Jev via OpenRouter (latest)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"], "provisional": true }
+        { "id": "typesafe/jev-1.13", "name": "Jev 1.13 via OpenRouter (pinned)", "transport": "systemone", "base_url_override": "https://openrouter.ai/api", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] },
+        { "id": "~typesafe/jev-latest", "name": "Jev via OpenRouter (latest)", "transport": "systemone", "base_url_override": "https://openrouter.ai/api", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
       ],
-      "decisionDefault": "openrouter.jev-latest",
+      "decisionDefault": "typesafe/jev-1.13",
       "steps": [
         "Open {url} and sign in.",
         "Create an API key.",
@@ -143,9 +144,17 @@
       "preferredModel": null,
       "curatedModels": null,
       "sttModel": null,
+      "decisionModels": [
+        { "id": "nimble", "name": "Nimble", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] },
+        { "id": "tev1", "name": "Tev1", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] },
+        { "id": "clef", "name": "Clef (image-capable)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] },
+        { "id": "clef-flash", "name": "Clef Flash (image-capable)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
+      ],
+      "decisionDefault": "nimble",
       "steps": [
-        "Install Ollama from ollama.com.",
-        "Pull a model, e.g. run: ollama pull llama3.3",
+        "Install Ollama v0.35.0 or newer from ollama.com (the clef decision models need v0.35.1+).",
+        "Pull a chat model, e.g. run: ollama pull llama3.3",
+        "Pull the decision models you want, e.g. run: ollama pull nimble",
         "Make sure Ollama is running on this machine.",
         "Connect below — no API key needed."
       ],
@@ -157,7 +166,7 @@
       "baseUrl": "https://api.typesafe.ai",
       "fixedBase": false,
       "local": false,
-      "keyUrl": "https://console.typesafe.ai/keys",
+      "keyUrl": "https://docs.typesafe.ai/api",
       "preferredModel": null,
       "curatedModels": null,
       "sttModel": null,
@@ -165,10 +174,9 @@
         { "id": "jev-latest", "name": "Jev (latest)", "transport": "systemone", "caps": ["tool-dispatch", "boolean-gate", "choice", "score"] }
       ],
       "decisionDefault": "jev-latest",
-      "provisional": true,
       "steps": [
-        "Open {url} and sign in.",
-        "Create an API key.",
+        "Open {url} — the TypeSafe API docs.",
+        "Get a key from the TypeSafe console.",
         "Copy the key.",
         "Paste it below and connect."
       ],
