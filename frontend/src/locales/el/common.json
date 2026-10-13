@@ -2031,7 +2031,12 @@
       "chip_decision": "Απόφαση",
       "chip_local": "Τοπικό",
       "task_embed": "Ενσωματώσεις Κειμένου",
-      "suggested_default": "Πρόταση: {{model}}"
+      "suggested_default": "Πρόταση: {{model}}",
+      "caps_decision": "απόφαση",
+      "caps_standalone": "Αυτόνομος τύπος",
+      "transport": "Μεταφορά",
+      "use_catalog": "Επιλογή από τον κατάλογο",
+      "provider_context": "Πάροχος"
     },
     "notifications_source_system": "Ειδοποιήσεις συστήματος",
     "notifications_source_system_desc": "Ειδοποιήσεις που παράγει η ίδια η πλατφόρμα (αποτελέσματα συγχρονισμού, αντίγραφα ασφαλείας, συμβάντα λογαριασμού).",

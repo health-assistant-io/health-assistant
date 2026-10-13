@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (assistant-ui 0.57.0 — capability-kind model form, 2026-10-14)
+- **The models-tab add/edit form matches study's capability-kind UX:**
+  `decision` joins the capability pills, standalone kinds
+  (decision/stt/tts/embeddings) select exclusively — chat caps combine —
+  per-capability generation options, the decision transport row
+  (systemone, carried on create/update via `decision_transport`), the
+  provider context banner (configured name + base URL) and the labelled
+  ghost manual toggle with direction copy. i18n en + el
+  (`settings.ai.caps_decision`, `transport`, `use_catalog`,
+  `provider_context`).
+
 ### Added (embeddings defaults wave — first-class embeddings support, 2026-10-13)
 - **Embeddings are a first-class task:** the canonical presets contract
   gained a docs-verified `embeddings_model` per preset (re-vendored

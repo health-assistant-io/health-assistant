@@ -117,11 +117,12 @@ export const ModelsTab: React.FC = () => {
         : undefined,
     temperature: model.temperature ?? null,
     maxTokens: model.max_tokens ?? null,
+    decisionTransport: model.decision_transport ?? undefined,
     extra: model.description ? { description: model.description } : undefined,
   }));
 
   const capDescriptors: CapabilityDescriptor[] = (
-    ['text', 'vision', 'tools', 'stt', 'tts', 'embeddings'] as AIModelCapability[]
+    ['text', 'vision', 'tools', 'stt', 'tts', 'embeddings', 'decision'] as AIModelCapability[]
   ).map((cap) => ({
     value: cap,
     label: t(`settings.ai.caps_${cap}`),
@@ -134,6 +135,7 @@ export const ModelsTab: React.FC = () => {
       model_name: draft.externalId,
       description: draft.extra?.description?.trim() || undefined,
       capabilities: draft.caps as AIModelCapability[],
+      decision_transport: draft.decisionTransport ?? null,
       is_active: true,
       max_tokens: draft.maxTokens ?? undefined,
       temperature: draft.temperature ?? undefined,
@@ -162,6 +164,9 @@ export const ModelsTab: React.FC = () => {
       ...(patch.caps !== undefined ? { capabilities: patch.caps as AIModelCapability[] } : {}),
       ...(patch.temperature !== undefined ? { temperature: patch.temperature } : {}),
       ...(patch.maxTokens !== undefined ? { max_tokens: patch.maxTokens } : {}),
+      ...(patch.decisionTransport !== undefined
+        ? { decision_transport: patch.decisionTransport || null }
+        : {}),
       ...(settingsPatch !== undefined ? { settings: settingsPatch } : {}),
       ...(patch.extra && 'description' in patch.extra
         ? { description: patch.extra.description.trim() || null }
@@ -189,6 +194,13 @@ export const ModelsTab: React.FC = () => {
         providers={registryProviders}
         models={registryModels}
         caps={capDescriptors}
+        standaloneCaps={['stt', 'tts', 'embeddings', 'decision']}
+        standaloneLabel={t('settings.ai.caps_standalone')}
+        capImplications={{ vision: ['text'], tools: ['text'] }}
+        decisionTransport="systemone"
+        decisionTransportLabel={t('settings.ai.transport')}
+        useCatalogLabel={t('settings.ai.use_catalog')}
+        providerContextLabel={t('settings.ai.provider_context')}
         expandedProviderId={expandedProviderId}
         onExpandedProviderChange={setExpandedProviderId}
         remoteModels={remote.models}
