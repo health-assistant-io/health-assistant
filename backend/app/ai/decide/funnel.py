@@ -103,7 +103,10 @@ class RunDecisionParams:
 
 @dataclass
 class DecisionFunnelDeps(DecisionEngineDeps):
-    session_factory: object | None = None
+    """Funnel-level deps — extends the registry deps with nothing extra in
+    health: the audit record is a structured log line, so there is no
+    session factory to route writes through (study's shape kept the field
+    for its ``AiInteraction`` writes)."""
 
 
 def resolution_transport(resolution: object) -> DecisionTransport | None:
