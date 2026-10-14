@@ -152,6 +152,13 @@ class TaskType(enum.StrEnum):
     DECISION_CHOICE = "decision_choice"
     DECISION_SCORE = "decision_score"
 
+    # --- Decision default (ADR-0036 §1; D17 PHI scope guard applies) ---
+    #: The ``decision`` default slot joins the vocabulary beside the kind
+    #: overrides: resolution order is kind override → decision default →
+    #: unavailable — never a hop onto ``default`` (D4 slot separation).
+    #: Single-slot per ADR-0037 (no fallback of its own).
+    DECISION = "decision"
+
     @classmethod
     def all_values(cls) -> list[str]:
         """Ordered list of task_type string values.
@@ -170,6 +177,11 @@ class TaskType(enum.StrEnum):
             return cls(value)
         except ValueError:
             return None
+
+    @classmethod
+    def is_decision_default(cls, value: str | None) -> bool:
+        """True for the ``decision`` default slot (ADR-0036)."""
+        return value == cls.DECISION.value
 
     @classmethod
     def is_decision(cls, value: str | None) -> bool:

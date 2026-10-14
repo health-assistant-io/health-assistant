@@ -17,6 +17,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
 
+from app.models.enums import AIScope
+
 from app.ai.decide import (
     PHI_EXCLUDED_CODE,
     DecisionCapability,
@@ -49,9 +51,10 @@ from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
-    AIScope,
     AITaskAssignment,
 )
+from app.ai.providers.enums import TaskType
+from app.models.enums import AIScope
 from app.models.tenant_model import TenantModel
 
 
@@ -415,6 +418,91 @@ async def test_resolution_unassigned_slot_is_off(decide_ctx) -> None:
         )
 
     assert resolution.kind == "off"
+
+
+async def test_resolution_default_serves_all_kinds(decide_ctx) -> None:
+    """ADR-0036 matrix 1: a `decision` default alone serves all four
+    kinds across the scope cascade — the kind rows stay empty."""
+    _p, model = await seed_decision_provider(decide_ctx, model_name="default-jev")
+    await assign_slot(decide_ctx, model.id, task_type=TaskType.DECISION.value)
+    async with AsyncSessionLocal() as db:
+        for capability in (
+            DecisionCapability.TOOL_DISPATCH,
+            DecisionCapability.BOOLEAN_GATE,
+            DecisionCapability.CHOICE,
+            DecisionCapability.SCORE,
+        ):
+            resolution = await resolve_decision(capability, db, deps_of(db, decide_ctx))
+            assert isinstance(resolution, SystemOneResolution)
+            assert resolution.model.model_name == "default-jev"
+
+
+async def test_resolution_kind_override_wins_only_for_its_kind(decide_ctx) -> None:
+    """ADR-0036 matrix 2 + the no-third-hop law: the override serves its
+    kind; an unusable override reports honestly unavailable — it never
+    silently substitutes the default; the other kinds keep inheriting."""
+    _dp, default_model = await seed_decision_provider(
+        decide_ctx, with_key=True, model_name="default-jev"
+    )
+    _op, override_model = await seed_decision_provider(
+        decide_ctx, with_key=True, model_name="override-jev"
+    )
+    await assign_slot(decide_ctx, default_model.id, task_type=TaskType.DECISION.value)
+    await assign_slot(decide_ctx, override_model.id)
+
+    async with AsyncSessionLocal() as db:
+        dispatched = await resolve_decision(
+            DecisionCapability.TOOL_DISPATCH, db, deps_of(db, decide_ctx)
+        )
+        assert isinstance(dispatched, SystemOneResolution)
+        assert dispatched.model.model_name == "override-jev"
+
+        gated = await resolve_decision(DecisionCapability.BOOLEAN_GATE, db, deps_of(db, decide_ctx))
+        assert isinstance(gated, SystemOneResolution)
+        assert gated.model.model_name == "default-jev"
+
+
+async def test_resolution_unusable_kind_override_does_not_hop_to_the_default(
+    decide_ctx,
+) -> None:
+    _dp, default_model = await seed_decision_provider(
+        decide_ctx, with_key=True, model_name="default-jev"
+    )
+    # A text model assigned to the kind slot — exists but unusable.
+    chat_provider = AIProviderModel(
+        name="Chat",
+        scope=AIScope.USER,
+        tenant_id=decide_ctx["tenant_id"],
+        user_id=decide_ctx["user_id"],
+        provider_type="openai",
+        api_base="https://api.openai.com/v1",
+        api_key=None,
+        is_active=True,
+        settings={},
+    )
+    chat_model = AIModel(
+        provider_id=None,
+        name="gpt-x",
+        model_name="gpt-x",
+        capabilities=["text"],
+        is_active=True,
+        settings={},
+    )
+    async with AsyncSessionLocal() as session:
+        session.add(chat_provider)
+        await session.flush()
+        chat_model.provider_id = chat_provider.id
+        session.add(chat_model)
+        await session.commit()
+        await session.refresh(chat_model)
+    await assign_slot(decide_ctx, chat_model.id)
+    await assign_slot(decide_ctx, default_model.id, task_type=TaskType.DECISION.value)
+
+    async with AsyncSessionLocal() as db:
+        resolution = await resolve_decision(
+            DecisionCapability.TOOL_DISPATCH, db, deps_of(db, decide_ctx)
+        )
+    assert resolution.kind == "unconfigured"
 
 
 async def test_resolution_never_falls_back_to_the_chat_default(decide_ctx) -> None:

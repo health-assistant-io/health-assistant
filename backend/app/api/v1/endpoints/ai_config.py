@@ -484,7 +484,9 @@ def _guard_phi_allowed(task_type: str, phi_allowed: bool) -> None:
     Setting ``phi_allowed`` on a non-decision task type is a 422 — the guard
     is decision-specific by contract, not a general assignment flag.
     """
-    if phi_allowed and not TaskType.is_decision(task_type):
+    if phi_allowed and not (
+        TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type)
+    ):
         raise HTTPException(
             status_code=422,
             detail="phi_allowed applies to decision_* task assignments only",

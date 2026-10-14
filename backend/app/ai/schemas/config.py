@@ -316,6 +316,8 @@ class AIConfigSummary(BaseModel):
     decision_boolean_gate: TaskTypeAssignment | None = None
     decision_choice: TaskTypeAssignment | None = None
     decision_score: TaskTypeAssignment | None = None
+    # ADR-0036: the decision default row rides the summary.
+    decision: TaskTypeAssignment | None = None
     workflows: dict[str, list[TaskTypeAssignment]] | None = None
     ai_agent_max_iterations: int = 20
 

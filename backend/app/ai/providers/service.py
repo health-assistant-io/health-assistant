@@ -407,9 +407,10 @@ class AIProviderService:
         task_assignments = {}
 
         for task_type in task_types:
-            if TaskType.is_decision(task_type):
-                # D4 slot separation: decision slots resolve their own rows
-                # only — NEVER the "default" chat fallback.
+            if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
+                # D4 slot separation: decision slots + the decision default
+                # resolve their own rows only — NEVER the "default" chat
+                # fallback.
                 decision_rows = await resolve_decision_candidates(
                     self.db, task_type, tenant_id, user_id
                 )
@@ -475,6 +476,8 @@ class AIProviderService:
             decision_boolean_gate=task_assignments.get("decision_boolean_gate"),
             decision_choice=task_assignments.get("decision_choice"),
             decision_score=task_assignments.get("decision_score"),
+            # ADR-0036: the decision default row rides the summary.
+            decision=task_assignments.get("decision"),
             workflows=workflows,
             ai_agent_max_iterations=max_iterations,
         )
@@ -548,7 +551,7 @@ class AIProviderService:
         user_id: UUID | None = None,
     ) -> BaseChatModel:
         """Get an initialized LangChain chat model for a specific task"""
-        if TaskType.is_decision(task_type):
+        if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
             raise ValueError(
                 f"task '{task_type}' is a decision slot — it resolves through "
                 "the decide funnel, never an LLM builder (D4/D13)"

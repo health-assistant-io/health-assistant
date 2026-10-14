@@ -37,6 +37,8 @@ TASK_REQUIRED_CAPABILITY: dict = {
     TaskType.DECISION_BOOLEAN_GATE: {AIModelCapability.DECISION},
     TaskType.DECISION_CHOICE: {AIModelCapability.DECISION},
     TaskType.DECISION_SCORE: {AIModelCapability.DECISION},
+    # ADR-0036: the decision default slot — decision-capable models only.
+    TaskType.DECISION: {AIModelCapability.DECISION},
 }
 
 

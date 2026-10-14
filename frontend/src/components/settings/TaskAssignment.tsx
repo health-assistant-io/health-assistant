@@ -11,20 +11,25 @@ import {
   Sparkles,
   Tag,
   Wrench,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import {
+  ModelPicker,
   TaskAssignmentPicker,
   type ModelPickerProvider,
   type TaskAssignmentSection,
 } from '@neuronection/assistant-ui';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
-import { aiConfigApi, isDecisionSlot, type ProviderPreset } from '../../api/aiConfig';
+import { aiConfigApi, DECISION_DEFAULT_TASK_TYPE, isDecisionSlot, type ProviderPreset } from '../../api/aiConfig';
 import { Button } from '../ui/Button';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
+/** The uniform "Default models" rows (plan 29 uniform ruling + ADR-0037
+ *  single-slot defaults): four capability defaults + the decision
+ *  default, one picker each. */
 const DEFAULT_SLOT_TASKS = [
-  { value: 'default', labelKey: 'settings.ai.task_default', requires: 'text' as const, icon: MessageSquare, secondaryOnly: true },
+  { value: 'default', labelKey: 'settings.ai.task_default', requires: 'text' as const, icon: MessageSquare },
   { value: 'ocr', labelKey: 'settings.ai.task_ocr', requires: 'vision' as const, icon: Eye },
   {
     value: 'transcription',
@@ -39,6 +44,17 @@ const DEFAULT_SLOT_TASKS = [
     icon: Database,
   },
 ];
+
+/** ADR-0036: the decision default row rides the "Default models"
+ *  section like every capability default (single picker; the kind rows
+ *  carry the PHI opt-in explicitly below). */
+const DECISION_DEFAULT_ROW = {
+  value: DECISION_DEFAULT_TASK_TYPE,
+  labelKey: 'settings.ai.task_decision_default',
+  hintKey: 'settings.ai.task_decision_default_hint',
+  requires: 'decision' as const,
+  icon: Sparkles,
+};
 
 /** Decision slots (plan 26 / ADR-0032): health task types for the family
  *  `decision:<cap>` slots; fallback = priority ordering (§3 contract table). */
@@ -128,7 +144,77 @@ const OTHER_TASKS = [
   { value: 'chat', labelKey: 'settings.ai.task_chat', requires: 'text', icon: Cpu },
 ];
 
-const DEFAULT_TASK_TYPE = 'default';
+/** One Decision kinds group row (plan 29 / ADR-0036 D4, uniform ruling):
+ *  composed from the library `ModelPicker` — its option list LEADS with
+ *  the labeled null entry ("Inherits — {resolved default model}") and
+ *  choosing it assigns null, which *is* the inherit state. The D17 PHI
+ *  opt-in stays on the assignment row. */
+function DecisionKindRow({
+  slot,
+  label,
+  description,
+  icon: Icon,
+  catalog,
+  modelValue,
+  inheritLabel,
+  clearLabel,
+  disabled,
+  meta,
+  onAssign,
+}: {
+  slot: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  catalog: ModelPickerProvider[];
+  modelValue: string | null;
+  inheritLabel: string;
+  clearLabel: string;
+  disabled: boolean;
+  meta?: React.ReactNode;
+  onAssign: (modelId: string | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-surface-raised)] p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--as-radius)] bg-[var(--as-muted)] text-[var(--as-muted-fg)]">
+          <Icon className="size-4" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-[var(--as-fg)]">{label}</p>
+          <p className="truncate text-xs text-[var(--as-muted-fg)]">{description}</p>
+          {meta ?? null}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 self-center">
+        <ModelPicker
+          providers={catalog}
+          value={modelValue ?? ''}
+          nullOption={{ label: inheritLabel }}
+          onChange={(modelId: string | null) => onAssign(modelId)}
+          disabled={disabled}
+          clearable={false}
+          label={label}
+          hideLabel
+          className="w-56"
+        />
+        {modelValue ? (
+          <button
+            type="button"
+            aria-label={`${clearLabel} — ${label}`}
+            disabled={disabled}
+            onClick={() => onAssign(null)}
+            className="cursor-pointer rounded-[var(--as-radius-sm)] p-1.5 text-[var(--as-muted-fg)] transition-colors hover:bg-[var(--as-muted)] hover:text-[var(--as-fg)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)] disabled:pointer-events-none disabled:opacity-50"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const PHI_TOGGLE_KEY = 'settings.ai.phi_override';
 
 interface TaskAssignmentProps {
   scope?: 'global' | 'tenant' | 'user';
@@ -207,13 +293,61 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     return Object.values(groups);
   }, [providers, models]);
 
+  const decisionCatalog: ModelPickerProvider[] = useMemo(
+    () =>
+      catalog
+        .map((provider) => ({
+          ...provider,
+          models: provider.models.filter((model) =>
+            model.capabilities?.includes('decision'),
+          ),
+        }))
+        .filter((provider) => provider.models.length > 0),
+    [catalog],
+  );
+
   const value: Record<string, string | null> = {};
-  const secondaryValue: Record<string, string | null> = {};
-  for (const task of [...DEFAULT_SLOT_TASKS, ...OTHER_TASKS, ...DECISION_SLOT_TASKS]) {
+  for (const task of [
+    ...DEFAULT_SLOT_TASKS,
+    ...OTHER_TASKS,
+    ...DECISION_SLOT_TASKS.map((entry) => ({ value: entry.value as string })),
+    DECISION_DEFAULT_ROW,
+  ]) {
     value[task.value] = assignmentFor(task.value)?.model_id ?? null;
   }
-  secondaryValue[DEFAULT_TASK_TYPE] =
-    assignmentFor(DEFAULT_TASK_TYPE)?.model_id ?? null;
+
+  // ADR-0036 §4: what a kind's labeled null option names — the `decision`
+  // default row's model (client-resolved from the summary).
+  // ADR-0036 §4: what a kind's labeled null option names — the `decision`
+  // default row's model, client-resolved from the value map.
+  const decisionDefaultId = value[DECISION_DEFAULT_TASK_TYPE] ?? null;
+  const decisionDefaultName =
+    decisionCatalog.flatMap((p) => p.models).find((m) => m.id === decisionDefaultId)?.name ??
+    null;
+  const inheritLabel = decisionDefaultName
+    ? t('settings.ai.decision_inherits_label', { model: decisionDefaultName })
+    : t('settings.ai.decision_inherits_empty');
+
+  // D7 "Simplify": only when all four kinds resolve to one model and the
+  // default is empty — a suggestion, never automatic.
+  let simplifyModelId: string | null = null;
+  if (!decisionDefaultId) {
+    let resolved: string | null = null;
+    let uniform = true;
+    for (const task of DECISION_SLOT_TASKS) {
+      const kindModel = value[task.value] ?? null;
+      if (!kindModel) {
+        uniform = false;
+        break;
+      }
+      if (resolved === null) resolved = kindModel;
+      else if (resolved !== kindModel) {
+        uniform = false;
+        break;
+      }
+    }
+    if (uniform && resolved !== null) simplifyModelId = resolved;
+  }
 
   const assign = async (taskType: string, modelId: string | null) => {
     const existing = assignmentFor(taskType);
@@ -255,25 +389,23 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       id: 'defaults',
       label: t('settings.ai.section_defaults'),
       description: t('settings.ai.section_defaults_hint'),
-      tasks: DEFAULT_SLOT_TASKS.map((task) => ({
-        id: task.value,
-        label: t(task.labelKey),
-        requires: task.requires,
-        icon: task.icon,
-        ...(task.secondaryOnly ? { secondaryOnly: true } : {}),
-      })),
-    },
-    {
-      id: 'decision',
-      label: t('settings.ai.section_decision'),
-      description: t('settings.ai.decision_privacy'),
-      tasks: DECISION_SLOT_TASKS.map((task) => ({
-        id: task.value,
-        label: t(task.labelKey),
-        description: t(task.hintKey),
-        requires: 'decision' as const,
-        icon: task.icon,
-      })),
+      tasks: [
+        ...DEFAULT_SLOT_TASKS.map((task) => ({
+          id: task.value,
+          label: t(task.labelKey),
+          requires: task.requires,
+          icon: task.icon,
+        })),
+        // ADR-0036: the decision default row rides the uniform section
+        // like every capability default (single picker per ADR-0037).
+        {
+          id: DECISION_DEFAULT_ROW.value,
+          label: t(DECISION_DEFAULT_ROW.labelKey),
+          description: t(DECISION_DEFAULT_ROW.hintKey),
+          requires: DECISION_DEFAULT_ROW.requires,
+          icon: DECISION_DEFAULT_ROW.icon,
+        },
+      ],
     },
     {
       id: 'other',
@@ -319,14 +451,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         sections={sections}
         providers={catalog}
         value={value}
-        secondaryValue={secondaryValue}
         onAssign={(taskId, modelId) =>
           void assign(taskId, modelId || null).catch(() => undefined)
         }
-        onAssignSecondary={(taskId, modelId) =>
-          void assign(taskId, modelId || null).catch(() => undefined)
-        }
-        secondaryLabel={t('settings.ai.fallback_label')}
         primaryLabel={t('settings.ai.primary_label')}
         primaryInfo={t('settings.ai.primary_info')}
         fallbackInfo={t('settings.ai.fallback_info')}
@@ -334,42 +461,132 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         disabled={isLoading}
         renderMeta={(task) => {
           const assigned = assignmentFor(task.id);
-          if (isDecisionSlot(task.id) && assigned) {
-            // D17 PHI scope guard: the explicit opt-in lives on the
-            // decision assignment itself; default off, surfaced here.
+          // The decision default row: D17 PHI opt-in + the empty-default
+          // hint/suggestion + the D7 Simplify chip.
+          if (task.id === DECISION_DEFAULT_TASK_TYPE) {
             return (
-              <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={assigned.phi_allowed ?? false}
-                  onChange={(e) =>
-                    void togglePhi(task.id, e.target.checked).catch(() => undefined)
-                  }
-                />
-                {t('settings.ai.phi_override')}
-              </label>
+              <div className="space-y-1">
+                {assigned ? (
+                  <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <input
+                      type="checkbox"
+                      checked={assigned.phi_allowed ?? false}
+                      onChange={(e) =>
+                        void togglePhi(task.id, e.target.checked).catch(() => undefined)
+                      }
+                    />
+                    {t('settings.ai.phi_override')}
+                  </label>
+                ) : null}
+                {!assigned ? (
+                  <div className="space-y-1">
+                    <p className="text-xs italic text-gray-400 dark:text-gray-500">
+                      {t('settings.ai.decision_defaults_empty_hint')}
+                      {suggestedDecisionDefault
+                        ? ' ' +
+                          t('settings.ai.suggested_default', {
+                            model: suggestedDecisionDefault,
+                          })
+                        : ''}
+                    </p>
+                    {simplifyModelId ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-600 hover:bg-gray-50 dark:border-dark-border dark:text-dark-muted"
+                        onClick={() =>
+                          void assign(DECISION_DEFAULT_TASK_TYPE, simplifyModelId).catch(
+                            () => undefined,
+                          )
+                        }
+                      >
+                        {t('settings.ai.decision_simplify_use_as_default', {
+                          model:
+                            decisionCatalog
+                              .flatMap((p) => p.models)
+                              .find((m) => m.id === simplifyModelId)?.name ?? simplifyModelId,
+                        })}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             );
           }
+          if (isDecisionSlot(task.id)) return null;
           if (assigned) return null;
           return (
-            <>
-              {isDecisionSlot(task.id) && suggestedDecisionDefault ? (
-                <p className="text-xs italic text-gray-400 dark:text-gray-500" data-testid="decision-suggestion">
-                  {t('settings.ai.suggested_default', { model: suggestedDecisionDefault })}
-                </p>
-              ) : null}
-              <p className="text-xs italic text-gray-500 dark:text-gray-400">
-                {t('settings.ai.not_assigned_hint', {
-                  scope:
-                    scope === 'user'
-                      ? t('settings.ai.scope_org')
-                      : t('settings.ai.scope_system'),
-                })}
-              </p>
-            </>
+            <p className="text-xs italic text-gray-500 dark:text-gray-400">
+              {t('settings.ai.not_assigned_hint', {
+                scope:
+                  scope === 'user'
+                    ? t('settings.ai.scope_org')
+                    : t('settings.ai.scope_system'),
+              })}
+            </p>
           );
         }}
       />
+
+      {/* Decision kinds group (plan 29 / ADR-0036 uniform ruling): the
+          four kind rows with the labeled inherit entry; the privacy
+          notice (§13.5) is the section description. */}
+      <div className="flex flex-col gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-muted">
+            {t('settings.ai.section_decision_kinds')}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-dark-muted">
+            {t('settings.ai.decision_privacy')}
+          </p>
+        </div>
+        {DECISION_SLOT_TASKS.map((task) => {
+          const kindModel = value[task.value] ?? null;
+          const kindAssigned = assignmentFor(task.value);
+          return (
+            <DecisionKindRow
+              key={task.value}
+              slot={task.value}
+              label={t(task.labelKey)}
+              description={t(task.hintKey)}
+              icon={task.icon}
+              catalog={decisionCatalog}
+              modelValue={kindModel}
+              inheritLabel={inheritLabel}
+              clearLabel={t('settings.ai.clear_assignment')}
+              disabled={isLoading}
+              meta={
+                <div className="space-y-1">
+                  {kindAssigned ? (
+                    // D17 PHI scope guard: the explicit opt-in lives on
+                    // the decision assignment itself.
+                    <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      <input
+                        type="checkbox"
+                        checked={kindAssigned.phi_allowed ?? false}
+                        onChange={(e) =>
+                          void togglePhi(task.value, e.target.checked).catch(() => undefined)
+                        }
+                      />
+                      {t(PHI_TOGGLE_KEY)}
+                    </label>
+                  ) : null}
+                  {!kindModel && suggestedDecisionDefault && !decisionDefaultId ? (
+                    <p
+                      className="text-xs italic text-gray-400 dark:text-gray-500"
+                      data-testid="decision-suggestion"
+                    >
+                      {t('settings.ai.suggested_default', { model: suggestedDecisionDefault })}
+                    </p>
+                  ) : null}
+                </div>
+              }
+              onAssign={(modelId) =>
+                void assign(task.value, modelId).catch(() => undefined)
+              }
+            />
+          );
+        })}
+      </div>
       <ProviderSetupModal
         open={setupOpen}
         onClose={() => setSetupOpen(false)}

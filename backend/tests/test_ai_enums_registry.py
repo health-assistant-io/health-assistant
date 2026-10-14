@@ -58,6 +58,9 @@ class TestTaskType:
             "decision_boolean_gate",
             "decision_choice",
             "decision_score",
+            # ADR-0036: the decision default slot (kind override → default
+            # → unavailable; PHI scope guard applies; single-slot per 0037).
+            "decision",
         ]
 
     def test_default_is_first(self):

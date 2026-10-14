@@ -84,8 +84,7 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.review.models_label': 'Curated models',
   'settings.ai.setup.review.fill_text': 'Fill text/chat default',
   'settings.ai.setup.review.fill_vision': 'Fill vision default',
-  'settings.ai.setup.review.fill_decision': 'Fill empty decision slots',
-  'settings.ai.setup.review.decision_now': 'now: {{count}} of {{total}} slots filled',
+  'settings.ai.setup.review.fill_decision': 'Set the default decision model',
   'settings.ai.setup.review.now': 'now: {{model}}',
   'settings.ai.setup.review.unset': 'not set',
   'settings.ai.setup.review.footnote':
@@ -128,9 +127,11 @@ describe('ReRunSetupDialog (five-bind review body)', () => {
     const user = userEvent.setup();
     const { onClose } = renderDialog();
 
-    const decisionSwitch = await screen.findByRole('switch', { name: /Fill empty decision slots/ });
+    const decisionSwitch = await screen.findByRole('switch', { name: /Set the default decision model/ });
     expect(decisionSwitch).toBeChecked();
-    expect(screen.getByText('now: 0 of 4 slots filled')).toBeInTheDocument();
+    // ADR-0036 §3: the review reads the single default slot like any
+    // capability row.
+    expect(screen.getAllByText('now: not set').length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() =>
@@ -183,7 +184,7 @@ describe('ReRunSetupDialog (five-bind review body)', () => {
     const user = userEvent.setup();
     renderDialog();
 
-    const decisionSwitch = await screen.findByRole('switch', { name: /Fill empty decision slots/ });
+    const decisionSwitch = await screen.findByRole('switch', { name: /Set the default decision model/ });
     await user.click(decisionSwitch);
     expect(decisionSwitch).not.toBeChecked();
 

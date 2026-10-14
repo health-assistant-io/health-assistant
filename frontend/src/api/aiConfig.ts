@@ -212,6 +212,10 @@ export const DECISION_SLOT_TASK_TYPES = [
   'decision_score',
 ] as const;
 
+/** ADR-0036: the decision default slot joins the vocabulary beside the
+ *  kind overrides (kind override → decision default → unavailable). */
+export const DECISION_DEFAULT_TASK_TYPE = 'decision';
+
 export const isDecisionSlot = (taskType: string): boolean =>
   (DECISION_SLOT_TASK_TYPES as readonly string[]).includes(taskType);
 
@@ -238,6 +242,8 @@ export interface AIConfigSummary {
   decision_boolean_gate?: TaskAssignment;
   decision_choice?: TaskAssignment;
   decision_score?: TaskAssignment;
+  /** ADR-0036: the decision default row rides the summary. */
+  decision?: TaskAssignment;
   workflows?: Record<string, TaskAssignment[]>;
   ai_agent_max_iterations: number;
 }

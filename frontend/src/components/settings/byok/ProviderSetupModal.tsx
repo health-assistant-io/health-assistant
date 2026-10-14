@@ -17,7 +17,7 @@ import {
 import {
   aiConfigApi,
   isDecisionSlot,
-  DECISION_SLOT_TASK_TYPES,
+  DECISION_DEFAULT_TASK_TYPE,
   setupErrorDetail,
   type AIModel,
   type ProviderPreset,
@@ -247,11 +247,15 @@ function SuccessDefaults({
         ]
       : []),
   ];
-  const decisionRows = DECISION_SLOT_TASK_TYPES.map((slot) => ({
-    task: slot,
-    label: t(`settings.ai.slot_${slot}`),
-    assigned: result.assigned_decision_slots?.[slot] ?? null,
-  }));
+  // ADR-0036 §3: setup binds the `decision` default slot only — one
+  // assignment, one review row; kind slots inherit.
+  const decisionRows = [
+    {
+      task: DECISION_DEFAULT_TASK_TYPE,
+      label: t('settings.ai.task_decision_default'),
+      assigned: result.assigned_decision_slots?.[DECISION_DEFAULT_TASK_TYPE] ?? null,
+    },
+  ];
 
   if (providerModels.length === 0) {
     return (

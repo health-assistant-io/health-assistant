@@ -142,6 +142,16 @@ const STRINGS: Record<string, string> = {
   'settings.ai.task_chat': 'Assistant Chat',
   'settings.ai.task_transcription': 'Voice Input (Speech-to-Text)',
   'settings.ai.task_embed': 'Text Embeddings',
+  // plan 29 / ADR-0036: the decision default row + Decision kinds group.
+  'settings.ai.task_decision_default': 'Default decision model',
+  'settings.ai.task_decision_default_hint':
+    'One decision model serves all four kinds until a kind needs its own override.',
+  'settings.ai.section_decision_kinds': 'Decision kinds',
+  'settings.ai.decision_defaults_empty_hint':
+    'Assign one decision model to power all four decision kinds — override a kind only when it needs a different model.',
+  'settings.ai.decision_simplify_use_as_default': 'Simplify: use {{model}} as default',
+  'settings.ai.decision_inherits_label': 'Inherits — {{model}}',
+  'settings.ai.decision_inherits_empty': 'Inherits',
   'settings.ai.fallback_label': 'Fallback',
   'settings.ai.primary_label': 'Primary',
   'settings.ai.primary_info': 'The model used whenever this task runs.',
@@ -183,12 +193,14 @@ afterEach(() => {
 });
 
 describe('TaskAssignment', () => {
-  it('renders the fallback row (fallback picker only) and the task sections', () => {
+  it('renders the default row as a single primary picker and the task sections (ADR-0037)', () => {
     render(<TaskAssignment scope="user" userId="u1" />);
     expect(screen.getAllByText('Global Default Fallback').length).toBeGreaterThan(0);
     expect(screen.getByText('Document Parsing (OCR)')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Fallback — Global Default Fallback' })).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Global Default Fallback' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Global Default Fallback' })).toBeInTheDocument();
+    // ADR-0037: the default row is single-picker — no fallback pickers
+    // anywhere on the defaults rows.
+    expect(screen.queryByRole('combobox', { name: 'Fallback — Global Default Fallback' })).not.toBeInTheDocument();
   });
 
   it('groups the modality slots (defaults) ahead of the derived tasks (§15 IA)', () => {
@@ -202,10 +214,10 @@ describe('TaskAssignment', () => {
     expect(within(defaultsGroup).getByText('Voice Input (Speech-to-Text)')).toBeInTheDocument();
   });
 
-  it('shows the stored default in the fallback picker and inherit hints on unassigned tasks', () => {
+  it('shows the stored default in its primary picker and inherit hints on unassigned tasks', () => {
     render(<TaskAssignment scope="user" userId="u1" />);
     expect(
-      within(screen.getByRole('combobox', { name: 'Fallback — Global Default Fallback' }).closest('div')!).getByText('GPT-4o Clinical'),
+      within(screen.getByRole('combobox', { name: 'Global Default Fallback' })).getByText('GPT-4o Clinical'),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/the organization default fallback/).length).toBeGreaterThan(0);
   });
@@ -237,12 +249,10 @@ describe('TaskAssignment', () => {
     expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
   });
 
-  it('updates the default fallback via the secondary channel', async () => {
+  it('updates the default through its own picker (ADR-0037: single-slot)', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(
-      screen.getByRole('combobox', { name: 'Fallback — Global Default Fallback' }),
-    );
+    await user.click(screen.getByRole('combobox', { name: 'Global Default Fallback' }));
     await user.click(await screen.findByRole('option', { name: 'GPT-4o Clinical' }));
     await waitFor(() =>
       expect(store.updateTaskAssignment).toHaveBeenCalledWith(
@@ -273,9 +283,10 @@ describe('TaskAssignment', () => {
     store.taskAssignments = assignments;
   });
 
-  it('renders the Decision models group with the verbatim privacy notice (plan 26 §13.5)', () => {
+  it('renders the Decision kinds group with the verbatim privacy notice (plan 29 §13.5)', () => {
     render(<TaskAssignment scope="user" userId="u1" />);
-    expect(screen.getByText('Decision models')).toBeInTheDocument();
+    expect(screen.getByText('Decision kinds')).toBeInTheDocument();
+    expect(screen.getByText('Default decision model')).toBeInTheDocument();
     expect(
       screen.getByText(
         'Decision models run in the cloud: your prompt and the candidate tools for the step are sent to the assigned provider (e.g. TypeSafe or OpenRouter). Your API key stays on this device.',

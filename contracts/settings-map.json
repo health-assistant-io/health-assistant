@@ -48,7 +48,7 @@
       "id": "ai.tasks",
       "group": "ai",
       "title": "Task assignments",
-      "definition": "Capability/task → model slots (text/vision/stt/tts/embeddings) plus decision:* slots, primary + fallback. Includes the decision-group privacy notice.",
+      "definition": "Capability/task → model slots (text/vision/stt/tts/embeddings), the decision default slot (decision) and its decision:<kind> override slots, primary + fallback — resolution per ADR-0036 (kind override → decision default → unassigned). Includes the decision-group privacy note.",
       "home": { "tab": "ai", "section": "tasks" },
       "secrets": "none",
       "scope": "user > system fallback (web) / profile (desktop)",
@@ -63,9 +63,9 @@
       "secrets": "product secret store — never a plaintext column",
       "scope": "user (web) / profile (desktop)",
       "adopters": {
-        "desktop-assistant": "aligned (section id 'search': ordered multi-provider list)",
-        "study-assistant": "aligned (single provider; multi-instance is the family target shape)",
-        "career-assistant": "aligned (admin tools tab → web-search section, SearXNG URL)",
+        "desktop-assistant": "aligned (section id 'search': ordered multi-provider list; catalog + fixtures vendored, parity wall — plan 28 Phase 3)",
+        "study-assistant": "aligned (multi-provider family shape since plan 28 Phase 1: ordered providers[] + vendored adapter core, ADR-0035)",
+        "career-assistant": "aligned (ordered providers[] shape + catalog since plan 28 Phase 4; career's SSRF-guarded searxng transport stays app-side — searxng ships, keyed POST providers wait for guarded adapters)",
         "health-assistant/core": "n/a (no web search yet)"
       }
     },

@@ -130,6 +130,7 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.slot_chat': 'Text / chat',
   'settings.ai.setup.slot_vision': 'Vision',
   'settings.ai.setup.slot_stt': 'Transcription',
+  'settings.ai.task_decision_default': 'Default decision model',
   'settings.ai.slot_decision_tool_dispatch': 'Tool dispatch',
   'settings.ai.slot_decision_boolean_gate': 'Boolean gate',
   'settings.ai.slot_decision_choice': 'Choice',
@@ -271,12 +272,8 @@ describe('ProviderSetupModal', () => {
     const user = userEvent.setup();
     setupProvider.mockResolvedValue({
       ...SETUP_OK,
-      assigned_decision_slots: {
-        decision_tool_dispatch: 'openrouter.jev-latest',
-        decision_boolean_gate: 'openrouter.jev-latest',
-        decision_choice: 'openrouter.jev-latest',
-        decision_score: 'openrouter.jev-latest',
-      },
+      // ADR-0036 §3: setup binds the `decision` default slot only.
+      assigned_decision_slots: { decision: 'openrouter.jev-latest' },
     });
     getProviderWithModels.mockResolvedValue({
       models: [
@@ -305,13 +302,14 @@ describe('ProviderSetupModal', () => {
     await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
     expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
+    // ADR-0036 §3: ONE decision review row — the default decision model;
+    // the kind slots inherit (plan 29 / ADR-0036).
+        const decisionReviewRow = screen.getByText('Default decision model').closest('div')!;
+    // The picker resolves the bound model's display name (D4: kind rows inherit).
+    expect(within(decisionReviewRow).getByText('Jev via OpenRouter (latest)')).toBeInTheDocument();
     for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
-      expect(screen.getByText(slot)).toBeInTheDocument();
+      expect(screen.queryByText(slot)).not.toBeInTheDocument();
     }
-    // the decision rows offer only the provider's decision models (D4)
-    const jevRow = screen.getByText('Tool dispatch').closest('div')!;
-    expect(within(jevRow).getByText('Jev via OpenRouter (latest)')).toBeInTheDocument();
-    expect(within(jevRow).queryByText('GPT-5.6 Terra')).not.toBeInTheDocument();
   });
 
   it('local presets hide the key field and the footer can go back to the tiles', async () => {

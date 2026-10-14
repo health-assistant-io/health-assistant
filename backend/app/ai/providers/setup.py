@@ -23,8 +23,9 @@ Health deltas (recorded per plan 17 Phase 3 + plan 26 Phase 5):
 * **Slot mapping.** The family ``chat``/text slot is health's ``default``
   task (the resolution fallback), the ``vision`` slot is ``ocr``, the
   ``stt`` slot is ``transcription``, and the ``embeddings`` slot is
-  ``embed``. The
-  decision slots are health task types (``decision_tool_dispatch`` &c.).
+  ``embed``. The decision kinds are health task types
+  (``decision_tool_dispatch`` &c.); ADR-0036: setup binds only the
+  ``decision`` default slot (kind slots inherit).
 * **Decision-only presets** (wire type ``decision``, e.g. ``typesafe``)
   validate via the decision probe (D13/D18) — one minimal typed question
   under the abort timeout; a classified failure persists nothing. They ride
@@ -49,7 +50,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.decide.systemone.probe import DecisionProbeInput, probe_decision_provider
-from app.ai.decide.types import DECISION_SLOTS
 from app.ai.providers.capabilities import required_capabilities_for_task
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.errors import ClassifiedProviderError, classify_provider_error
@@ -782,11 +782,15 @@ async def setup_provider_from_preset(
         candidate = decision_rows.get(str(decision_default))
         if candidate is None:
             candidate = next(iter(decision_rows.values()))
-        for slot in DECISION_SLOTS:
-            _, live_model = await _slot_alive(db, scope, tenant_id, user_id, slot)
-            if live_model is None:
-                assigned_decision[slot] = candidate.model_name
-                await _bind_slot(db, scope, tenant_id, user_id, slot, provider, candidate)
+        # ADR-0036 §3: setup binds the `decision` default slot only — one
+        # assignment, one review row; kind slots inherit. Single-slot per
+        # ADR-0037 (no fallback leg of its own).
+        _, live_model = await _slot_alive(db, scope, tenant_id, user_id, TaskType.DECISION.value)
+        if live_model is None:
+            assigned_decision[TaskType.DECISION.value] = candidate.model_name
+            await _bind_slot(
+                db, scope, tenant_id, user_id, TaskType.DECISION.value, provider, candidate
+            )
         if assigned_decision:
             await db.flush()
 

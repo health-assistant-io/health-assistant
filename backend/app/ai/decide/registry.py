@@ -6,7 +6,11 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.providers.enums import DecisionCapability, DecisionTransport
+from app.ai.providers.enums import (
+    DecisionCapability,
+    DecisionTransport,
+    TaskType,
+)
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
@@ -229,7 +233,9 @@ async def default_config_revision(
     rotates the revision.
     """
     parts: list[str] = []
-    for slot in DECISION_SLOTS:
+    # ADR-0036: the `decision` default row participates in the revision —
+    # every kind's resolution chain reads it through the same cascade.
+    for slot in (TaskType.DECISION.value, *DECISION_SLOTS):
         rows = await _decision_candidates(db, slot, tenant_id, user_id)
         if not rows:
             parts.append(f"{slot}:-")
@@ -289,6 +295,13 @@ async def _compute_resolution(
 ) -> DecisionResolution:
     task_type = decision_task_type(capability)
     candidates = await _decision_candidates(db, task_type, deps.tenant_id, deps.user_id)
+    if not candidates:
+        # ADR-0036 §2: an empty kind slot inherits the `decision` default
+        # slot across the same scope cascade — never a hop onto ``default``
+        # (D4 slot separation); the default is single-slot (ADR-0037).
+        candidates = await _decision_candidates(
+            db, TaskType.DECISION.value, deps.tenant_id, deps.user_id
+        )
     if not candidates:
         return OffResolution()
     rejections: list[str] = []

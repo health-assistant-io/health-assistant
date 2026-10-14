@@ -4,7 +4,7 @@ import { Check, Database, Eye, Loader2, Mic, Type, Volume2, Wrench } from 'lucid
 import { SetupReview, type SetupReviewOptions } from '@neuronection/assistant-ui/setup-review';
 import {
   aiConfigApi,
-  DECISION_SLOT_TASK_TYPES,
+  DECISION_DEFAULT_TASK_TYPE,
   type ProviderSetupErrorDetail,
 } from '../../../api/aiConfig';
 import { useAIConfigStore } from '../../../store/slices/aiConfigSlice';
@@ -89,13 +89,6 @@ export const ReRunSetupDialog: React.FC<{
 
   const decisionDeclared = (preset?.decision_models?.length ?? 0) > 0;
   const bindDecision = decisionDeclared && options.bindDecision;
-  const decisionFilled = DECISION_SLOT_TASK_TYPES.filter(
-    (slot) => configSummary?.[slot as 'decision_score']?.model,
-  ).length;
-  const decisionNowLabel = t('settings.ai.setup.review.decision_now', {
-    count: decisionFilled,
-    total: DECISION_SLOT_TASK_TYPES.length,
-  });
 
   const reviewSlots = [
     {
@@ -129,7 +122,9 @@ export const ReRunSetupDialog: React.FC<{
             id: 'decision',
             label: t('settings.ai.setup.review.fill_decision'),
             bind: bindDecision,
-            currentValue: decisionNowLabel,
+            // ADR-0036 §3: the single `decision` default slot — its
+            // "now" value reads like the other rows.
+            currentValue: nowLabel(DECISION_DEFAULT_TASK_TYPE),
             optionsKey: 'bindDecision' as const,
           },
         ]

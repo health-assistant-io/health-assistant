@@ -1079,6 +1079,9 @@ HEALTH_DECISION_SLOTS = [
     "decision_choice",
     "decision_score",
 ]
+# ADR-0036: setup binds only the `decision` default slot (kind slots
+# inherit).
+HEALTH_DECISION_BIND_SLOT = "decision"
 
 
 def install_probe(
@@ -1169,7 +1172,9 @@ async def test_case_15_bind_decision_gapfills_declared_slots_scope_local(
 
     assert outcome.assigned_chat_model == "openrouter/auto"
     assert outcome.assigned_decision_slots is not None
-    assert set(outcome.assigned_decision_slots) == set(HEALTH_DECISION_SLOTS)
+    # ADR-0036 §3: setup binds the `decision` default slot only — one
+    # assignment row; kind slots inherit.
+    assert set(outcome.assigned_decision_slots) == {HEALTH_DECISION_BIND_SLOT}
     assert set(outcome.assigned_decision_slots.values()) == {"typesafe/jev-1.13"}
     assert outcome.catalog_count == 3
     async with AsyncSessionLocal() as session:
@@ -1185,13 +1190,16 @@ async def test_case_15_bind_decision_gapfills_declared_slots_scope_local(
         assert len(decision_models) == 1
         assert decision_models[0].get_capabilities() == ["decision"]
         assert decision_models[0].decision_transport == "systemone"
+        # the bound row: the decision default slot at the requested scope.
+        bound = await slot_of(tenant_id, user_id, HEALTH_DECISION_BIND_SLOT)
+        assert bound is not None
+        assert str(bound.model_id) == str(decision_models[0].id)
+        assert bound.provider_id == decision_models[0].provider_id
+        assert bound.scope == AIScope.USER
+        assert bound.phi_allowed is False
         for slot in HEALTH_DECISION_SLOTS:
             row = await slot_of(tenant_id, user_id, slot)
-            assert row is not None
-            assert str(row.model_id) == str(decision_models[0].id)
-            assert row.provider_id == decision_models[0].provider_id
-            assert row.scope == AIScope.USER
-            assert row.phi_allowed is False
+            assert row is None, f"kind slot {slot} must inherit, not be bound"
 
 
 async def test_case_16_bind_decision_off_persists_models_binds_nothing(
@@ -1248,13 +1256,11 @@ async def test_case_17_bind_decision_never_clobbers_live_slots(
         )
 
     assert outcome.assigned_chat_model == "openrouter/auto"
+    # ADR-0036 §3: the live kind row is unclobbered and setup binds only
+    # the `decision` default slot; the kind row keeps the kind inheriting
+    # from nothing but its own override (law: kind row wins).
     assert outcome.assigned_decision_slots is not None
-    assert "decision_tool_dispatch" not in outcome.assigned_decision_slots
-    assert set(outcome.assigned_decision_slots) == {
-        "decision_boolean_gate",
-        "decision_choice",
-        "decision_score",
-    }
+    assert set(outcome.assigned_decision_slots) == {HEALTH_DECISION_BIND_SLOT}
     async with AsyncSessionLocal() as session:
         refreshed = (
             (
