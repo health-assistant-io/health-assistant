@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProviderSetupModal } from './ProviderSetupModal';
@@ -30,6 +30,12 @@ const storeState = {
         is_active: true,
       },
     ],
+    // Live "now:" context for the review's assignment rows — the text
+    // default is taken, vision/transcription are unset.
+    default: {
+      task_type: 'default',
+      model: { id: 'm0', provider_id: 'prov-0', name: 'GPT-4o legacy', model_name: 'gpt-4o-legacy', is_active: true },
+    },
   },
 };
 
@@ -56,7 +62,7 @@ vi.mock('../../../api/aiConfig', async (importOriginal) => {
 });
 
 const PRESETS = {
-  order: ['openai', 'ollama'],
+  order: ['openai', 'openrouter', 'ollama'],
   presets: {
     openai: {
       key: 'openai',
@@ -71,6 +77,32 @@ const PRESETS = {
       curated_models: ['gpt-5.6-terra', 'whisper-1'],
       stt_model: 'whisper-1',
       steps: ['Open {url} and sign in.', 'Paste it below and connect.'],
+      free_tier_note: null,
+    },
+    openrouter: {
+      key: 'openrouter',
+      name: 'OpenRouter',
+      provider_type: 'openai',
+      wire_type: 'openai_compatible',
+      base_url: 'https://openrouter.ai/api/v1',
+      fixed_base: true,
+      local: false,
+      key_url: null,
+      preferred_model: null,
+      curated_models: ['openrouter/auto'],
+      stt_model: null,
+      decision_models: [
+        {
+          id: 'openrouter.jev-latest',
+          name: 'Jev via OpenRouter (latest)',
+          transport: 'systemone',
+          caps: ['tool-dispatch', 'boolean-gate', 'choice', 'score'],
+          provisional: true,
+        },
+      ],
+      decision_default: 'openrouter.jev-latest',
+      provisional: null,
+      steps: null,
       free_tier_note: null,
     },
     ollama: {
@@ -148,6 +180,24 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.copy_step': 'Copy step',
   'settings.ai.setup.errors.invalid_key': 'That API key was rejected.',
   'settings.ai.setup.errors.suspected_vendor': 'Heads-up: this key looks like a {{vendor}} key.',
+  'common.back': 'Back',
+  'settings.ai.setup.step.progress': 'Setup progress',
+  'settings.ai.setup.step.connect': 'Connect provider',
+  'settings.ai.setup.step.defaults': 'Choose defaults',
+  'settings.ai.setup.review.intro':
+    '{{name}} connected — {{count}} models found. Choose the models to add, then which empty defaults they fill.',
+  'settings.ai.setup.review.models_title': 'Models to add',
+  'settings.ai.setup.review.models_hint':
+    'Selected models are added to your catalog and become assignable everywhere.',
+  'settings.ai.setup.review.models_footnote': 'Only the selected models are added — you can add more anytime.',
+  'settings.ai.setup.review.assignments_title': 'Default assignments',
+  'settings.ai.setup.review.assignments_hint':
+    'Each switch fills that empty default with the shown model — existing assignments are never touched.',
+  'settings.ai.setup.review.fills': 'fills: {{model}}',
+  'settings.ai.setup.review.no_candidate': 'no model selected',
+  'settings.ai.setup.review.now': 'now: {{model}}',
+  'settings.ai.setup.review.unset': 'not set',
+  'settings.ai.setup.review.apply': 'Apply',
 };
 
 vi.mock('react-i18next', () => ({
@@ -225,7 +275,7 @@ describe('ProviderSetupModal', () => {
     expect(base).not.toHaveAttribute('disabled');
   });
 
-  it('set up automatically calls the store action with the trimmed key and shows the success panel', async () => {
+  it('set up automatically: bind-less connect → review → apply → done (two-step wizard)', async () => {
     const user = userEvent.setup();
     setupProvider.mockResolvedValue(SETUP_OK);
     renderModal();
@@ -233,13 +283,45 @@ describe('ProviderSetupModal', () => {
     await user.type(await screen.findByLabelText('API Key'), '  sk-test  ');
     await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
+    // connect is bind-less — the review step decides what registers/binds
     await waitFor(() =>
       expect(setupProvider).toHaveBeenCalledWith('openai', {
         api_key: 'sk-test',
         name: null,
         scope: 'USER',
+        options: { bind_chat: false, bind_vision: false, bind_stt: false, bind_decision: false },
       }),
     );
+
+    // step 2 is explicit: the wizard header names it, the assignments
+    // section carries now/fills context per task row
+    expect(await screen.findByText('Choose defaults')).toBeInTheDocument();
+    expect(screen.getByText('Default assignments')).toBeInTheDocument();
+    // terra serves chat and vision — both rows name it; the live text
+    // default rides the chat row's now-context
+    expect(await screen.findAllByText(/fills: gpt-5\.6-terra/)).toHaveLength(2);
+    expect(screen.getByText(/now: gpt-4o-legacy · fills: gpt-5\.6-terra/)).toBeInTheDocument();
+    // whisper keeps its own card → its own candidate
+    expect(screen.getByText(/fills: whisper-1/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(setupProvider).toHaveBeenLastCalledWith(
+        'openai',
+        expect.objectContaining({
+          api_key: 'sk-test',
+          options: expect.objectContaining({
+            curated_ids: ['gpt-5.6-terra', 'whisper-1'],
+            bind_chat: true,
+            bind_vision: true,
+            bind_stt: true,
+            bind_decision: false,
+          }),
+        }),
+      ),
+    );
+
+    // done: the success panel with its per-slot pickers
     expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
     expect(screen.getByText('2 curated models were added.')).toBeInTheDocument();
     expect(screen.getByText('Default models')).toBeInTheDocument();
@@ -300,6 +382,10 @@ describe('ProviderSetupModal', () => {
     await user.click(await screen.findByText('OpenAI'));
     await user.type(await screen.findByLabelText('API Key'), 'sk-or-v1-key');
     await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+    // the openai preset declares no decision models → no decision review row
+    expect(await screen.findByText('Default assignments')).toBeInTheDocument();
+    expect(screen.queryByText('Default decision model')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
     // ADR-0036 §3: ONE decision review row — the default decision model;
@@ -310,6 +396,72 @@ describe('ProviderSetupModal', () => {
     for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
       expect(screen.queryByText(slot)).not.toBeInTheDocument();
     }
+  });
+
+  it('setup review offers the decision default for decision-capable presets (ADR-0036)', async () => {
+    const user = userEvent.setup();
+    setupProvider.mockResolvedValue({
+      ...SETUP_OK,
+      provider: { ...SETUP_OK.provider, name: 'OpenRouter', preset_key: 'openrouter' },
+      catalog_count: 1,
+      assigned_chat_model: null,
+      assigned_vision_model: null,
+      assigned_stt_model: null,
+      assigned_decision_slots: null,
+    });
+    getProviderWithModels.mockResolvedValue({
+      models: [
+        {
+          id: 'm-auto',
+          provider_id: 'prov-1',
+          name: 'Auto (best match)',
+          model_name: 'openrouter/auto',
+          capabilities: ['text'],
+          is_active: true,
+        },
+        {
+          id: 'm-jev',
+          provider_id: 'prov-1',
+          name: 'Jev via OpenRouter (latest)',
+          model_name: 'openrouter.jev-latest',
+          capabilities: ['decision'],
+          decision_transport: 'systemone',
+          is_active: true,
+        },
+      ],
+    });
+    renderModal();
+    await user.click(await screen.findByText('OpenRouter'));
+    await user.type(await screen.findByLabelText('API Key'), 'sk-or-v1-key');
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+
+    // review: the decision default row names the model it would bind
+    // (openrouter declares decision models; the Jev card never rides the
+    // curated list, so the sub-line is where it must surface)
+    expect(await screen.findByText('Choose defaults')).toBeInTheDocument();
+    expect(screen.getByText('Default decision model')).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/fills: Jev via OpenRouter \(latest\)/)).length,
+    ).toBeGreaterThan(0);
+    // the auto card is text-only → the vision row has no candidate and disables
+    expect(screen.getByText(/fills: openrouter\/auto/)).toBeInTheDocument();
+    expect(screen.getByText('no model selected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(setupProvider).toHaveBeenLastCalledWith(
+        'openrouter',
+        expect.objectContaining({
+          options: expect.objectContaining({
+            curated_ids: ['openrouter/auto'],
+            bind_decision: true,
+          }),
+        }),
+      ),
+    );
+    // done: the registered decision model feeds the default-decision picker
+    expect(await screen.findByText('OpenRouter is connected.')).toBeInTheDocument();
+    expect(screen.getByText('Default decision model')).toBeInTheDocument();
   });
 
   it('local presets hide the key field and the footer can go back to the tiles', async () => {

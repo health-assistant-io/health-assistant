@@ -2027,6 +2027,11 @@
       "not_assigned_hint": "No assignment — the {{scope}} default fallback is used.",
       "setup": {
         "title": "Add a provider",
+        "step": {
+          "progress": "Setup progress",
+          "connect": "Connect provider",
+          "defaults": "Choose defaults"
+        },
         "modal_hint": "Connect a provider with your own API key. Neutral list — pick whichever you prefer.",
         "form_title": "Set up {{name}}",
         "done": "{{name}} is connected.",
@@ -2049,6 +2054,14 @@
         "no_model_deep_link": "No model is assigned yet — AI tasks will not run until you connect a provider.",
         "review": {
           "key_note": "{{name}} will be re-checked against the vendor catalog. Your stored key is reused — it is never displayed.",
+          "intro": "{{name}} connected — {{count}} models found. Choose the models to add, then which empty defaults they fill.",
+          "models_title": "Models to add",
+          "models_hint": "Selected models are added to your catalog and become assignable everywhere.",
+          "models_footnote": "Only the selected models are added — you can add more anytime.",
+          "assignments_title": "Default assignments",
+          "assignments_hint": "Each switch fills that empty default with the shown model — existing assignments are never touched.",
+          "fills": "fills: {{model}}",
+          "no_candidate": "no model selected",
           "models_label": "Curated models",
           "fill_text": "Fill text/chat default",
           "fill_vision": "Fill vision default",

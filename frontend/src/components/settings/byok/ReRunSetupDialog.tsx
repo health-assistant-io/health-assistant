@@ -14,7 +14,9 @@ import { Modal } from '../../ui/Modal';
 
 import { SetupErrorPanel, setupErrorDetail } from './setupErrors';
 
-const CAP_ICONS: Record<string, typeof Type> = {
+/** Exported for the setup modal's review step (family two-step design) —
+ *  the curated cards and the effective-candidate resolution share them. */
+export const CAP_ICONS: Record<string, typeof Type> = {
   text: Type,
   vision: Eye,
   tools: Wrench,
@@ -24,7 +26,7 @@ const CAP_ICONS: Record<string, typeof Type> = {
 };
 
 /** Display-only capability guess for curated model cards (§15 review). */
-function guessCaps(externalId: string): string[] {
+export function guessCaps(externalId: string): string[] {
   const id = externalId.toLowerCase();
   if (id.includes('embedding') || id.includes('bge')) return ['embeddings'];
   if (/(whisper|transcribe|stt)/.test(id)) return ['stt'];

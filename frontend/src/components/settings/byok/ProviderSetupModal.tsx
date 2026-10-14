@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Banknote, Check, House } from 'lucide-react';
+import { Banknote, Check, House, Loader2 } from 'lucide-react';
 import { ModelPicker, type ModelPickerProvider } from '@neuronection/assistant-ui';
 import {
   COUNTRIES,
@@ -14,9 +14,11 @@ import {
   ProviderSetupTiles,
   ProviderSetupManualTile,
 } from '@neuronection/assistant-ui/provider-setup-tiles';
+import { SetupReview, type SetupReviewOptions } from '@neuronection/assistant-ui/setup-review';
+import { SetupSteps } from '@neuronection/assistant-ui/setup-steps';
+import { SetupAssignments } from '@neuronection/assistant-ui/setup-assignments';
 import {
   aiConfigApi,
-  isDecisionSlot,
   DECISION_DEFAULT_TASK_TYPE,
   setupErrorDetail,
   type AIModel,
@@ -29,9 +31,10 @@ import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
 import { SearchableDropdown } from '../../ui/SearchableDropdown';
 
-import { ERROR_CODES } from './setupErrors';
+import { ERROR_CODES, SetupErrorPanel } from './setupErrors';
+import { CAP_ICONS, guessCaps } from './ReRunSetupDialog';
 
-type Phase = 'tiles' | 'form' | 'done';
+type Phase = 'tiles' | 'form' | 'review' | 'done';
 
 /**
  * Capability chips for a preset tile (plan 26 §13.3 follow-up): derived
@@ -306,6 +309,10 @@ export const ProviderSetupModal: React.FC<{
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
   const createProvider = useAIConfigStore((state) => state.createProvider);
+  // Live "now:" context for the review's assignment rows — the store's
+  // summary is refreshed by the connect call itself, so entering the
+  // review reads post-connect assignments and model display names.
+  const configSummary = useAIConfigStore((state) => state.configSummary);
 
   const [presets, setPresets] = useState<Record<string, ProviderPreset> | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -321,6 +328,18 @@ export const ProviderSetupModal: React.FC<{
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<ProviderSetupResult | null>(null);
   const [resultName, setResultName] = useState('');
+  // Review step (parity with the re-run dialog): connect binds nothing —
+  // what registers and what fills the empty defaults is chosen here.
+  const [reviewOptions, setReviewOptions] = useState<SetupReviewOptions>({
+    curatedIds: [],
+    bindChat: true,
+    bindVision: true,
+    bindStt: true,
+    bindDecision: true,
+  });
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<ProviderSetupErrorDetail | null>(null);
+  const [applyPlainError, setApplyPlainError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || presets) return;
@@ -336,6 +355,13 @@ export const ProviderSetupModal: React.FC<{
   if (!open) return null;
 
   const preset: ProviderPreset | null = presetKey ? presets?.[presetKey] ?? null : null;
+  // Decision models never ride the curated cards (ADR-0036 §3: one default
+  // slot, kinds inherit) — the switch binds the preset's `decision_default`
+  // only, so a decision section without one stays hidden (it could not
+  // bind anything).
+  const decisionCandidate =
+    preset?.decision_models?.find((entry) => entry.id === preset.decision_default) ?? null;
+  const decisionDeclared = decisionCandidate !== null;
 
   const openForm = (key: string) => {
     setPresetKey(key);
@@ -370,20 +396,70 @@ export const ProviderSetupModal: React.FC<{
     setError(null);
     setPlainError(null);
     try {
+      // Connect + register only — binds stay off so the review step
+      // decides what fills the defaults (same contract as re-setup).
       const data = await setupProvider(presetKey, {
         api_key: preset.local ? null : apiKey.trim() || null,
         name: name.trim() || null,
         scope: SCOPE_MAP[scope],
+        options: {
+          bind_chat: false,
+          bind_vision: false,
+          bind_stt: false,
+          bind_decision: false,
+        },
       });
       setResultName(name.trim() || preset.name);
       setResult(data);
-      setPhase('done');
+      setReviewOptions({
+        curatedIds: preset.curated_models ?? [],
+        bindChat: true,
+        bindVision: true,
+        bindStt: true,
+        bindDecision: decisionDeclared,
+      });
+      setApplyError(null);
+      setApplyPlainError(null);
+      setPhase('review');
     } catch (err: any) {
       const detail = setupErrorDetail(err);
       setError(detail);
       setPlainError(detail ? null : (err?.message ?? String(err)));
     } finally {
       setPending(false);
+    }
+  };
+
+  /** Apply the reviewed choices (second pass over the same preset): the
+   *  curated "models to add" selection plus the per-capability fill-empty
+   *  switches. Binding stays gap-fill backend-side — only empty defaults
+   *  are filled, nothing existing is ever removed. */
+  const applyReview = async () => {
+    if (presetKey === null || preset === null || applying) return;
+    setApplying(true);
+    setApplyError(null);
+    setApplyPlainError(null);
+    try {
+      const data = await setupProvider(presetKey, {
+        api_key: preset.local ? null : apiKey.trim() || null,
+        name: name.trim() || null,
+        scope: SCOPE_MAP[scope],
+        options: {
+          curated_ids: preset.curated_models ? reviewOptions.curatedIds : undefined,
+          bind_chat: reviewOptions.bindChat,
+          bind_vision: reviewOptions.bindVision,
+          bind_stt: reviewOptions.bindStt,
+          bind_decision: reviewOptions.bindDecision && decisionDeclared,
+        },
+      });
+      setResult(data);
+      setPhase('done');
+    } catch (err: any) {
+      const detail = setupErrorDetail(err);
+      setApplyError(detail);
+      setApplyPlainError(detail ? null : (err?.message ?? String(err)));
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -413,6 +489,187 @@ export const ProviderSetupModal: React.FC<{
       setPending(false);
     }
   };
+
+  if (phase === 'review' && result && preset) {
+    // Effective candidates mirror the backend's gap-fill resolution:
+    // preferred model (when its card stays selected) → first selected
+    // curated text model; vision rides the same model when capable, else
+    // the first selected vision-capable card; stt must keep its card.
+    const selectedCurated = (preset.curated_models ?? []).filter((id) =>
+      reviewOptions.curatedIds.includes(id),
+    );
+    const preferredId = preset.preferred_model?.id ?? null;
+    const textCandidate =
+      (preferredId !== null && selectedCurated.includes(preferredId) ? preferredId : null) ??
+      selectedCurated.find((id) => guessCaps(id).includes('text')) ??
+      selectedCurated[0] ??
+      null;
+    const visionCandidate =
+      (textCandidate !== null && guessCaps(textCandidate).includes('vision')
+        ? textCandidate
+        : null) ??
+      selectedCurated.find((id) => guessCaps(id).includes('vision')) ??
+      null;
+    const sttCandidate =
+      preset.stt_model && selectedCurated.includes(preset.stt_model) ? preset.stt_model : null;
+
+    const modelLabels = Object.fromEntries(
+      (configSummary?.models ?? []).map((model) => [model.model_name, model.name || model.model_name]),
+    );
+    const nowLabel = (slotTask: string) => {
+      const model = configSummary?.[slotTask as 'default']?.model;
+      const label = model ? (modelLabels[model.model_name] ?? model.model_name) : null;
+      return t('settings.ai.setup.review.now', {
+        model: label ?? t('settings.ai.setup.review.unset'),
+      });
+    };
+    const fillsLabel = (candidate: string | null, slotTask: string) =>
+      candidate === null
+        ? t('settings.ai.setup.review.no_candidate')
+        : `${nowLabel(slotTask)} · ${t('settings.ai.setup.review.fills', { model: candidate })}`;
+
+    // Health slot mapping: chat→default, vision→ocr, stt→transcription;
+    // the decision row reads the `decision` default slot (ADR-0036 §3).
+    const assignmentRows = [
+      ...(preset.provider_type !== 'decision'
+        ? [
+            {
+              id: 'chat',
+              label: t('settings.ai.setup.slot_chat'),
+              sub: fillsLabel(textCandidate, 'default'),
+              candidate: textCandidate,
+              bind: reviewOptions.bindChat,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindChat: next })),
+            },
+            {
+              id: 'vision',
+              label: t('settings.ai.setup.slot_vision'),
+              sub: fillsLabel(visionCandidate, 'ocr'),
+              candidate: visionCandidate,
+              bind: reviewOptions.bindVision,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindVision: next })),
+            },
+            ...(preset.stt_model
+              ? [
+                  {
+                    id: 'stt',
+                    label: t('settings.ai.setup.slot_stt'),
+                    sub: fillsLabel(sttCandidate, 'transcription'),
+                    candidate: sttCandidate,
+                    bind: reviewOptions.bindStt,
+                    set: (next: boolean) =>
+                      setReviewOptions((current) => ({ ...current, bindStt: next })),
+                  },
+                ]
+              : []),
+          ]
+        : []),
+      ...(decisionDeclared
+        ? [
+            {
+              id: 'decision',
+              label: t('settings.ai.task_decision_default'),
+              sub: fillsLabel(decisionCandidate!.name, DECISION_DEFAULT_TASK_TYPE),
+              candidate: decisionCandidate!.name,
+              bind: reviewOptions.bindDecision,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindDecision: next })),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <Modal
+        open
+        onOpenChange={(o) => (!o ? onClose() : undefined)}
+        title={t('settings.ai.setup.title')}
+        footer={
+          <div className="flex w-full items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={applying}
+              onClick={() => setPhase('form')}
+            >
+              {t('common.back')}
+            </Button>
+            <Button
+              size="sm"
+              disabled={applying}
+              onClick={() => void applyReview().catch(() => undefined)}
+            >
+              {applying ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+              {t('settings.ai.setup.review.apply')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-dark-muted">
+            {t('settings.ai.setup.review.intro', {
+              name: resultName || preset.name,
+              count: result.catalog_count,
+            })}
+          </p>
+
+          <SetupSteps
+            steps={[
+              { id: 'connect', label: t('settings.ai.setup.step.connect') },
+              { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+            ]}
+            current={1}
+            label={t('settings.ai.setup.step.progress')}
+          />
+
+          {(preset.curated_models ?? []).length > 0 ? (
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-dark-text">
+                  {t('settings.ai.setup.review.models_title')}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-dark-muted">
+                  {t('settings.ai.setup.review.models_hint')}
+                </p>
+              </div>
+              <SetupReview
+                models={(preset.curated_models ?? []).map((modelId) => ({
+                  id: modelId,
+                  name: modelId,
+                  caps: guessCaps(modelId),
+                  selected: reviewOptions.curatedIds.includes(modelId),
+                }))}
+                slots={[]}
+                capIcons={CAP_ICONS}
+                modelsLabel={t('settings.ai.setup.review.models_title')}
+                footnote={t('settings.ai.setup.review.models_footnote')}
+                onOptionsChange={(options) =>
+                  setReviewOptions((current) => ({ ...current, curatedIds: options.curatedIds }))
+                }
+              />
+            </section>
+          ) : null}
+
+          <SetupAssignments
+            title={t('settings.ai.setup.review.assignments_title')}
+            hint={t('settings.ai.setup.review.assignments_hint')}
+            rows={assignmentRows.map((row) => ({
+              id: row.id,
+              label: row.label,
+              hint: row.sub,
+              checked: row.bind,
+              disabled: row.candidate === null,
+              onCheckedChange: row.set,
+            }))}
+          />
+
+          <SetupErrorPanel error={applyError} plainError={applyPlainError} />
+        </div>
+      </Modal>
+    );
+  }
 
   if (phase === 'done' && result) {
     return (
@@ -482,6 +739,15 @@ export const ProviderSetupModal: React.FC<{
         <p className="text-xs text-gray-500 dark:text-dark-muted">
           {t('settings.ai.setup.modal_hint')}
         </p>
+
+        <SetupSteps
+          steps={[
+            { id: 'connect', label: t('settings.ai.setup.step.connect') },
+            { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+          ]}
+          current={0}
+          label={t('settings.ai.setup.step.progress')}
+        />
 
         {phase === 'tiles' ? (
           <ProviderSetupTiles
