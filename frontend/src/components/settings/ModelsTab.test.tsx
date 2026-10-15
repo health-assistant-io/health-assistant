@@ -125,6 +125,8 @@ describe('ModelsTab', () => {
     render(<ModelsTab />);
     await user.click(await screen.findByRole('button', { name: 'Add model' }));
     const dialog = await screen.findByRole('dialog');
+    // step 1 — whisper-1 is a transcription model
+    await user.click(within(dialog).getByRole('button', { name: 'Speech-to-text' }));
     await user.click(within(dialog).getByRole('combobox', { name: 'Model' }));
     await user.click(screen.getByRole('option', { name: 'whisper-1' }));
     expect(within(dialog).getByLabelText('Display label')).toHaveValue('Whisper 1');

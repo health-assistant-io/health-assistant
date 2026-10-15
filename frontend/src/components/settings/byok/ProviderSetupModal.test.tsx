@@ -114,10 +114,18 @@ const PRESETS = {
       fixed_base: false,
       local: true,
       key_url: null,
-      preferred_model: null,
+      preferred_model: { id: 'gemma4:e4b', name: 'Gemma 4 E4B', caps: ['text', 'tools', 'vision'] },
       curated_models: null,
       stt_model: null,
-      steps: null,
+      embeddings_model: 'embeddinggemma-2:440m',
+      steps: [
+        'Install Ollama v0.35.0 or newer from ollama.com (the clef decision models need v0.35.1+).',
+        'Pull the default chat/vision model, e.g. run: ollama pull gemma4:e4b',
+        'Pull the embeddings model, e.g. run: ollama pull embeddinggemma-2:440m',
+        'Pull the decision models you want, e.g. run: ollama pull nimble',
+        'Make sure Ollama is running on this machine.',
+        'Connect below — no API key needed.',
+      ],
       free_tier_note: null,
     },
   },
@@ -264,8 +272,9 @@ describe('ProviderSetupModal', () => {
     expect(
       await screen.findByText(/open https:\/\/platform\.openai\.com\/api-keys and sign in\./i),
     ).toBeInTheDocument();
-    // every checklist step carries a copy affordance
-    expect(screen.getAllByRole('button', { name: 'Copy step' })).toHaveLength(2);
+    // command-less guidance steps carry no copy affordance
+    const checklist = screen.getByRole('list', { name: 'Setup steps' });
+    expect(within(checklist).queryByRole('button', { name: 'Copy step' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Get an API key' })).toHaveAttribute(
       'href',
       'https://platform.openai.com/api-keys',
@@ -273,6 +282,18 @@ describe('ProviderSetupModal', () => {
     await user.click(screen.getByText('Advanced'));
     const base = screen.getByDisplayValue('https://api.openai.com/v1');
     expect(base).not.toHaveAttribute('disabled');
+  });
+
+  it('preset form copies exactly the run command on ollama steps', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByRole('button', { name: /Ollama/ }));
+    // each run command renders as an inline code chip with its own copy button
+    expect(await screen.findByText('ollama pull gemma4:e4b')).toBeInTheDocument();
+    const checklist = screen.getByRole('list', { name: 'Setup steps' });
+    expect(within(checklist).getAllByRole('button', { name: 'Copy step' })).toHaveLength(3);
+    expect(within(checklist).getByText('ollama pull embeddinggemma-2:440m')).toBeInTheDocument();
+    expect(within(checklist).getByText('ollama pull nimble')).toBeInTheDocument();
   });
 
   it('set up automatically: bind-less connect → review → apply → done (two-step wizard)', async () => {
