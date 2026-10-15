@@ -21,6 +21,16 @@
 #       audio/speech, /v1/models — ADR-0018) stay inside the AI layer
 #       (python: backend/app/ai/; js: src/main/ai/) — these are raw
 #       httpx/fetch surfaces invisible to R1/R2's import checks
+#   R6  wire-parameter construction stays in the AI layer: the modern
+#       token-cap parameter name (max_completion_tokens) appears only in
+#       backend/app/ai/ (python) / src/main/ai/ (js) + tests (+ ops
+#       scripts/ for the REST pings) — config storage spells max_tokens,
+#       and a stray occurrence means a hand-rolled payload or rename
+#       (ADR-0038)
+#   R7  sampling temperature is omit-unless-configured: no numeric
+#       temperature default may be manufactured in app code (the old
+#       0.7/0.0 defaults turned every model row into a reasoning-model
+#       breaker — ADR-0038 temperature addendum); unset = send nothing
 #
 # Modes: strict (findings fail) or transition (findings reported, exit 0).
 # Repos with pre-existing R1–R5 surfaces run in transition until their
@@ -162,6 +172,45 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     rel="${f#"$dir"/}"
     is_allowed_r2 "$rel" || report R5 "$rel" 'audio/catalog endpoint call outside the AI layer (ADR-0018)'
   done < <(grep "${SCAN_ARGS[@]}" 'audio/transcriptions|audio/speech|/v1/models|generativelanguage[.]googleapis[.]com' "$backend" 2>/dev/null | sort -u)
+
+  # R6 (ADR-0038): max_completion_tokens is payload construction — it lives
+  # in the AI layer (the vendored wire module / factory) and tests, plus
+  # ops scripts/ for the REST pings. Config storage and API schemas spell
+  # max_tokens; a stray occurrence is a hand-rolled payload or rename.
+  if [ "$kind" = "python" ]; then
+    r6_scan=("$backend/app"); r6_args=(--include='*.py' -rIlnE
+      --exclude-dir='__pycache__' --exclude-dir='.git')
+    r6_extra='scripts/*'
+  else
+    r6_scan=("$dir/src"); r6_args=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
+      --exclude-dir='node_modules' --exclude-dir='dist' --exclude-dir='build'
+      --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
+    r6_extra='src/shared/*'
+  fi
+  while IFS= read -r f; do
+    rel="${f#"$dir"/}"
+    case "$rel" in
+      "$AI_LAYER"|"$AI_LAYER"/*|"$tests_dir"/*|$r6_extra) ;;
+      *) report R6 "$rel" 'max_completion_tokens outside the AI layer (ADR-0038)' ;;
+    esac
+  done < <(grep "${r6_args[@]}" 'max_completion_tokens' "${r6_scan[@]}" 2>/dev/null | sort -u)
+
+  # R7 (ADR-0038 temperature addendum): no manufactured temperature defaults
+  # in app code — unset rides the provider default (the only value reasoning
+  # families accept); a user-set value must be the only way a number rides
+  # the wire. Tests are exempt (they construct fixtures explicitly).
+  if [ "$kind" = "python" ]; then
+    r7_scan=("$backend/app"); r7_args=(--include='*.py' -rIlnE
+      --exclude-dir='__pycache__' --exclude-dir='.git')
+  else
+    r7_scan=("$dir/src"); r7_args=(--include='*.ts' --include='*.tsx' --include='*.js' -rIlnE
+      --exclude-dir='node_modules' --exclude-dir='dist' --exclude-dir='build'
+      --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
+  fi
+  while IFS= read -r f; do
+    rel="${f#"$dir"/}"
+    case "$rel" in "$tests_dir"/*) ;; *) report R7 "$rel" 'manufactured temperature default — omit unless configured (ADR-0038)' ;; esac
+  done < <(grep "${r7_args[@]}" 'temperature[^A-Za-z0-9_]*[:=][[:space:]]*0\.' "${r7_scan[@]}" 2>/dev/null | sort -u)
 
   if [ "$graphs" -eq 1 ]; then
     grep -qh 'langgraph' "${DEPS_FILES[@]}" 2>/dev/null || report R4 'deps' 'graphs exist but no langgraph dependency'

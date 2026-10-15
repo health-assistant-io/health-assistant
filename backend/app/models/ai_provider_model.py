@@ -136,7 +136,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     decision_transport = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
-    temperature = Column(Float, default=0.7)
+    temperature = Column(Float, nullable=True)
     is_local = Column(Boolean, nullable=True)  # Override provider's is_local
     settings = Column(JSONB, nullable=True, default=dict)
 

@@ -136,7 +136,12 @@ class AIModelCreate(BaseModel):
     )
     is_active: bool = Field(default=True, description="Enable/disable model")
     max_tokens: int = Field(default=65536, ge=1, description="Max tokens for model")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Temperature setting")
+    temperature: float | None = Field(
+        None,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature; null sends nothing (provider default — required for reasoning families)",
+    )
     is_local: bool | None = Field(None, description="Override provider's is_local setting")
     settings: dict[str, Any] | None = Field(
         default_factory=dict, description="Model-specific settings"
@@ -175,7 +180,7 @@ class AIModelResponse(BaseModel):
     decision_transport: str | None = None
     is_active: bool
     max_tokens: int | None = 65536
-    temperature: float | None = 0.7
+    temperature: float | None = None
     is_local: bool | None = None
     settings: dict[str, Any] | None
     created_at: datetime | None

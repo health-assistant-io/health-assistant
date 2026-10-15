@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "adr": "0038",
+  "description": "Family wire-parameter acceptance wall (ADR-0038). One shared fixture table, loaded by every product repo's wire-params contract test: Python factories via the vendored app/ai/wire_params.py, desktop via resolveMaxTokensParam/wireTokenParamFetch. Rows are language-neutral; a change here is a contract change (one dev commit + one sync run).",
+  "endpointDetection": [
+    { "name": "openai v1 path", "apiBase": "https://api.openai.com/v1", "expected": true },
+    { "name": "openai bare host", "apiBase": "https://api.openai.com", "expected": true },
+    { "name": "ollama local", "apiBase": "http://localhost:11434/v1", "expected": false },
+    { "name": "openrouter", "apiBase": "https://openrouter.ai/api/v1", "expected": false },
+    { "name": "lm studio local", "apiBase": "http://127.0.0.1:1234/v1", "expected": false },
+    { "name": "empty base", "apiBase": null, "expected": false },
+    { "name": "lookalike host suffix", "apiBase": "https://api.openai.com.evil.test/v1", "expected": false },
+    { "name": "lookalike path", "apiBase": "https://proxy.internal/api.openai.com", "expected": false },
+    { "name": "not a url", "apiBase": "not a url", "expected": false }
+  ],
+  "maxTokensParam": [
+    { "name": "openai type rides the modern wire", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": null, "expected": "max_completion_tokens" },
+    { "name": "openai type with empty base counts as the OpenAI default", "providerType": "openai", "apiBase": null, "override": null, "expected": "max_completion_tokens" },
+    { "name": "openai type pointed at a proxy falls back to the compatible wire", "providerType": "openai", "apiBase": "http://localhost:4000/v1", "override": null, "expected": "max_tokens" },
+    { "name": "compatible row pointing at OpenAI gets the modern wire", "providerType": "openai_compatible", "apiBase": "https://api.openai.com/v1", "override": null, "expected": "max_completion_tokens" },
+    { "name": "compatible row elsewhere keeps the classic wire", "providerType": "openai_compatible", "apiBase": "http://localhost:11434/v1", "override": null, "expected": "max_tokens" },
+    { "name": "override max_tokens wins on the OpenAI endpoint", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": "max_tokens", "expected": "max_tokens" },
+    { "name": "override max_completion_tokens wins on a compatible endpoint", "providerType": "openai_compatible", "apiBase": "http://localhost:11434/v1", "override": "max_completion_tokens", "expected": "max_completion_tokens" },
+    { "name": "override none strips the cap everywhere", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": "none", "expected": "none" },
+    { "name": "auto override equals detection", "providerType": "openai_compatible", "apiBase": "http://localhost:11434/v1", "override": "auto", "expected": "max_tokens" }
+  ],
+  "temperatureOmission": [
+    { "name": "unset sends nothing (provider default applies)", "temperature": null, "sent": false },
+    { "name": "explicit value rides the wire", "temperature": 0.2, "sent": true },
+    { "name": "explicit default-1 value rides the wire", "temperature": 1, "sent": true }
+  ],
+  "temperatureModelId": "gpt-4o",
+  "temperatureNote": "Rows run against a model id whose family accepts temperature (temperatureModelId) so the rows pin the omit-unless-configured rule, not family locking. Family locking on reasoning ids is repo-local behavior (desktop's bare-id guard), not part of this wall."
+}

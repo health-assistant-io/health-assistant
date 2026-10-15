@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (endpoint-routed token cap + optional temperature — compatible servers and reasoning models both work, 2026-10-15)
+- **`build_openai` routes the token-cap parameter by endpoint (the shared
+  wire policy):** api.openai.com always receives `max_completion_tokens`
+  (modern OpenAI models hard-reject `max_tokens`), while
+  OpenAI-compatible base URLs (LocalAI, vLLM, Ollama, LM Studio,
+  llama.cpp) keep `max_tokens` via `CompatibleChatOpenAI` — Python
+  `langchain-openai`'s unconditional rename broke the latter. Model ids
+  are never sniffed for the wire contract. Pinned by
+  tests/test_chat_models_wire.py and the shared fixture table.
+- **Temperature is omit-unless-configured:** the manufactured `0.7`
+  default (model rows, schema, ENV fallbacks, OCR/NLP processors) is
+  retired — an unset temperature sends nothing, so reasoning-family
+  models (GPT-5 / o-series, which reject any non-default temperature)
+  work out of the box; a user-chosen value still rides the wire.
+  Migration clears rows still carrying the old manufactured default.
+  Pinned by tests/test_chat_models_wire.py.
+- **The policy is canonical and enforced:** the wire rules live in the
+  vendored `app/ai/wire_params.py` (byte-identical across the family —
+  this repo no longer carries its own copy), the shared fixture table
+  (`tests/fixtures/wire_params.fixtures.json`) drives the new
+  tests/test_wire_params_contract.py alongside the other repos, and
+  alignment rules R6/R7 keep wire construction in the AI layer and
+  temperature defaults out of app code.
+
 ### Changed (assistant-ui 0.57.0 — capability-kind model form, 2026-10-14)
 - **The models-tab add/edit form matches study's capability-kind UX:**
   `decision` joins the capability pills, standalone kinds

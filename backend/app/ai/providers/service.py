@@ -590,7 +590,7 @@ class AIProviderService:
                     api_key=provider.get_api_key_plaintext(),
                     base_url=provider.api_base or "https://api.openai.com/v1",
                     model_name=model.model_name if model else "gpt-4o-mini",
-                    temperature=model.temperature if model else 0.7,
+                    temperature=model.temperature if model else None,
                     max_tokens=model.max_tokens if model else 65536,
                     reasoning_effort=_model_reasoning_effort(model),
                 )
@@ -604,7 +604,8 @@ class AIProviderService:
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
             model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
-            temperature=0.7,
+            # Unset: the provider default applies (ADR-0038 addendum).
+            temperature=None,
             max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
         )
 
@@ -638,7 +639,7 @@ class AIProviderService:
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o",
-                        temperature=model.temperature if model else 0.0,
+                        temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
                     )
@@ -649,7 +650,7 @@ class AIProviderService:
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o",
                     max_tokens=model.max_tokens if model else 65536,
-                    temperature=model.temperature if model else 0.0,
+                    temperature=model.temperature if model else None,
                     llm=llm,
                 )
 
@@ -694,7 +695,7 @@ class AIProviderService:
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o-mini",
-                        temperature=model.temperature if model else 0.7,
+                        temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
                     )
@@ -704,7 +705,7 @@ class AIProviderService:
                     api_key=provider.get_api_key_plaintext(),
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o-mini",
-                    temperature=model.temperature if model else 0.7,
+                    temperature=model.temperature if model else None,
                     llm=llm,
                 )
 
@@ -718,7 +719,7 @@ class AIProviderService:
                 api_key=settings.OPENAI_API_KEY,
                 api_base=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
                 model=settings.OPENAI_MODEL or "gpt-4o-mini",
-                temperature=0.7,
+                temperature=None,
             )
 
         logger.warning(
