@@ -593,6 +593,7 @@ class AIProviderService:
                     temperature=model.temperature if model else None,
                     max_tokens=model.max_tokens if model else 65536,
                     reasoning_effort=_model_reasoning_effort(model),
+                    chat_transport=model.chat_transport if model else None,
                 )
 
         # Fallback to environment variables
@@ -607,6 +608,7 @@ class AIProviderService:
             # Unset: the provider default applies (ADR-0038 addendum).
             temperature=None,
             max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
+            chat_transport=None,
         )
 
     async def get_ocr_processor(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
@@ -642,6 +644,7 @@ class AIProviderService:
                         temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
+                        chat_transport=model.chat_transport if model else None,
                     )
 
                 return get_ocr_processor(
@@ -698,6 +701,7 @@ class AIProviderService:
                         temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
+                        chat_transport=model.chat_transport if model else None,
                     )
 
                 return get_nlp_extractor(

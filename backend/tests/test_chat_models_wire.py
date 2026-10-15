@@ -48,3 +48,33 @@ def test_compatible_endpoint_cap_keeps_classic_parameter() -> None:
     assert isinstance(model, ChatOpenAI)
     assert model._default_params["max_tokens"] == 512
     assert "max_completion_tokens" not in model._default_params
+
+
+def test_responses_transport_on_the_openai_endpoint() -> None:
+    """ADR-0039: a row opted into responses rides /responses store-less —
+    reasoning_effort (passed through) + function tools keep working on
+    gpt-6-family models."""
+    model = build_openai(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model_name="gpt-6-luna",
+        temperature=None,
+        max_tokens=512,
+        reasoning_effort="high",
+        chat_transport="responses",
+    )
+    assert isinstance(model, ChatOpenAI)
+    assert model.use_responses_api is True
+    assert model.store is False
+
+
+def test_responses_transport_ignored_off_the_openai_endpoint() -> None:
+    model = build_openai(
+        api_key="sk-test",
+        base_url="http://localhost:1234/v1",
+        model_name="gpt-6-luna",
+        max_tokens=512,
+        chat_transport="responses",
+    )
+    assert isinstance(model, CompatibleChatOpenAI)
+    assert getattr(model, "use_responses_api", None) is not True

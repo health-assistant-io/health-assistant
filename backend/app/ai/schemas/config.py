@@ -134,6 +134,11 @@ class AIModelCreate(BaseModel):
         max_length=20,
         description="Decision transport seam (ADR-0032): 'systemone' or null",
     )
+    chat_transport: str | None = Field(
+        None,
+        max_length=20,
+        description="OpenAI API surface seam (ADR-0039): 'responses' or 'completions'; null = auto",
+    )
     is_active: bool = Field(default=True, description="Enable/disable model")
     max_tokens: int = Field(default=65536, ge=1, description="Max tokens for model")
     temperature: float | None = Field(
@@ -158,6 +163,7 @@ class AIModelUpdate(BaseModel):
     description: str | None = Field(None)
     capabilities: list[AIModelCapability] | None = Field(None)
     decision_transport: str | None = Field(None, max_length=20)
+    chat_transport: str | None = Field(None, max_length=20)
     is_active: bool | None = Field(None)
     max_tokens: int | None = Field(None, ge=1)
     temperature: float | None = Field(None, ge=0.0, le=2.0)
@@ -178,6 +184,7 @@ class AIModelResponse(BaseModel):
     description: str | None
     capabilities: list[AIModelCapability] = Field(default_factory=lambda: [AIModelCapability.TEXT])
     decision_transport: str | None = None
+    chat_transport: str | None = None
     is_active: bool
     max_tokens: int | None = 65536
     temperature: float | None = None

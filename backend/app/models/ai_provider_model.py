@@ -134,6 +134,11 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
     # NULL = not a decision model. Callers never branch on the value — the
     # decide funnel's registry resolves transport → engine.
     decision_transport = Column(String(20), nullable=True)
+    # Chat transport seam (ADR-0039): 'responses' | 'completions'.
+    # NULL/anything else = auto = chat completions. Honored only when the
+    # base URL rides OpenAI's own API; the responses path is always
+    # constructed store-less.
+    chat_transport = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
     temperature = Column(Float, nullable=True)

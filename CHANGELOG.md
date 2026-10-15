@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alignment rules R6/R7 keep wire construction in the AI layer and
   temperature defaults out of app code.
 
+### Added (model transport knob — reasoning + function tools on gpt-6 via the Responses API, 2026-10-15)
+- **Model rows can set `chat_transport='responses'`** (nullable column,
+  migration c1h2a4t5t6r; create/update/response schemas carry it) to
+  ride the Responses API — honored only when the base URL is
+  api.openai.com (compatible servers don't implement /responses and
+  keep completions), always store-less (`store=False`; the API stores
+  outputs by default and the storage posture here is "never"). The
+  gpt-6 family rejects function tools + `reasoning_effort` on chat
+  completions; the knob keeps reasoning on tool tasks, while
+  `reasoning_effort='none'` remains the zero-config alternative.
+  `auto`/NULL stays on completions — nothing changes for existing rows.
+  The shared fixture table pins the resolution matrix.
+
 ### Changed (assistant-ui 0.57.0 — capability-kind model form, 2026-10-14)
 - **The models-tab add/edit form matches study's capability-kind UX:**
   `decision` joins the capability pills, standalone kinds
