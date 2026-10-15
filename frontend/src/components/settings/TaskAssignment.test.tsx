@@ -150,8 +150,8 @@ const STRINGS: Record<string, string> = {
   'settings.ai.decision_defaults_empty_hint':
     'Assign one decision model to power all four decision kinds — override a kind only when it needs a different model.',
   'settings.ai.decision_simplify_use_as_default': 'Simplify: use {{model}} as default',
-  'settings.ai.decision_inherits_label': 'Inherits — {{model}}',
-  'settings.ai.decision_inherits_empty': 'Inherits',
+  'settings.ai.inherited': 'Inherited',
+  'settings.ai.defaults_to': 'Defaults to {{model}}',
   'settings.ai.fallback_label': 'Fallback',
   'settings.ai.primary_label': 'Primary',
   'settings.ai.primary_info': 'The model used whenever this task runs.',
@@ -295,6 +295,39 @@ describe('TaskAssignment', () => {
     for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
       expect(screen.getByText(slot)).toBeInTheDocument();
     }
+    // Single-picker ruling (2026-10-14): an unset kind *is* the inherit
+    // state — the trigger reads the short muted state word, with no
+    // explicit inherit entry and no fallback picker anywhere on the kind
+    // rows. Presentation ruling: with the default row empty, no
+    // "Defaults to …" meta line either.
+    expect(screen.getAllByText('Inherited')).toHaveLength(4);
+    expect(screen.queryByText(/Defaults to /)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /^Fallback/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the Inherited trigger and Defaults-to meta from the resolved decision default (presentation ruling)', () => {
+    store.taskAssignments = [
+      ...assignments,
+      {
+        id: 'a-decision-default',
+        task_type: 'decision',
+        scope: 'USER',
+        provider_id: 'prov-ts',
+        model_id: 'm-jev',
+        is_active: true,
+        priority: 0,
+        user_id: 'u1',
+      },
+    ];
+    render(<TaskAssignment scope="user" userId="u1" />);
+    // All four kinds are empty → each trigger reads the short state word
+    // and a meta line names the inherit target (the resolved Default
+    // decision model).
+    expect(screen.getAllByText('Inherited')).toHaveLength(4);
+    expect(
+      screen.getAllByText('Defaults to Jev via OpenRouter (latest)'),
+    ).toHaveLength(4);
+    store.taskAssignments = assignments;
   });
 
   it('filters the decision slots to decision-capable models via requires (D2b)', async () => {
@@ -306,6 +339,40 @@ describe('TaskAssignment', () => {
       within(listbox).getByRole('option', { name: 'Jev via OpenRouter (latest)' }),
     ).toBeInTheDocument();
     expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
+    // Single-picker ruling: the model list carries no explicit inherit entry.
+    expect(within(listbox).queryByRole('option', { name: /Inherits/ })).not.toBeInTheDocument();
+  });
+
+  it('assigns a decision kind through its single picker (single-picker ruling)', async () => {
+    const user = userEvent.setup();
+    render(<TaskAssignment scope="user" userId="u1" />);
+    await user.click(screen.getByRole('combobox', { name: 'Tool dispatch' }));
+    await user.click(
+      await screen.findByRole('option', { name: 'Jev via OpenRouter (latest)' }),
+    );
+    await waitFor(() =>
+      expect(store.createTaskAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          task_type: 'decision_tool_dispatch',
+          scope: 'USER',
+          provider_id: 'prov-ts',
+          model_id: 'm-jev',
+        }),
+      ),
+    );
+  });
+
+  it('returns an assigned decision kind to inherit via the row-level clear button', async () => {
+    const user = userEvent.setup();
+    store.taskAssignments = [...assignments, decisionAssignment];
+    render(<TaskAssignment scope="user" userId="u1" />);
+    await user.click(
+      screen.getByRole('button', { name: 'Clear assignment — Tool dispatch' }),
+    );
+    await waitFor(() =>
+      expect(store.deleteTaskAssignment).toHaveBeenCalledWith('a-decision-td'),
+    );
+    store.taskAssignments = assignments;
   });
 
   it('surfaces the PHI scope guard on an assigned decision slot and flips it via the explicit opt-in (D17)', async () => {

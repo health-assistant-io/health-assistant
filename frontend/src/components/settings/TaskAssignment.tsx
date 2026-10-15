@@ -57,7 +57,9 @@ const DECISION_DEFAULT_ROW = {
 };
 
 /** Decision slots (plan 26 / ADR-0032): health task types for the family
- *  `decision:<cap>` slots; fallback = priority ordering (§3 contract table). */
+ *  `decision:<cap>` slots. Empty = inherits the Default decision model
+ *  (the backend's priority-order fallback data stays untouched; the UI
+ *  no longer offers a fallback picker). */
 const DECISION_SLOT_TASKS = [
   {
     value: 'decision_tool_dispatch',
@@ -144,31 +146,33 @@ const OTHER_TASKS = [
   { value: 'chat', labelKey: 'settings.ai.task_chat', requires: 'text', icon: Cpu },
 ];
 
-/** One Decision kinds group row (plan 29 / ADR-0036 D4, uniform ruling):
- *  composed from the library `ModelPicker` — its option list LEADS with
- *  the labeled null entry ("Inherits — {resolved default model}") and
- *  choosing it assigns null, which *is* the inherit state. The D17 PHI
- *  opt-in stays on the assignment row. */
+/** One Decision kinds group row (single-picker ruling, 2026-10-14):
+ *  composed from the library `ModelPicker` — no explicit inherit option:
+ *  an unset kind simply *is* the inherit state (the runtime already
+ *  resolves it from the Default decision model). Presentation ruling
+ *  (2026-10-14): the unset trigger reads the short muted state word
+ *  ("Inherited"); which model it inherits from is a small "Defaults to
+ *  {model}" meta line under the description, not the trigger. Clearing
+ *  (X) returns the kind to inherit. The D17 PHI opt-in stays on the
+ *  assignment row. */
 function DecisionKindRow({
-  slot,
   label,
   description,
   icon: Icon,
   catalog,
   modelValue,
-  inheritLabel,
+  inheritedLabel,
   clearLabel,
   disabled,
   meta,
   onAssign,
 }: {
-  slot: string;
   label: string;
   description: string;
   icon: LucideIcon;
   catalog: ModelPickerProvider[];
   modelValue: string | null;
-  inheritLabel: string;
+  inheritedLabel: string;
   clearLabel: string;
   disabled: boolean;
   meta?: React.ReactNode;
@@ -190,7 +194,7 @@ function DecisionKindRow({
         <ModelPicker
           providers={catalog}
           value={modelValue ?? ''}
-          nullOption={{ label: inheritLabel }}
+          placeholder={inheritedLabel}
           onChange={(modelId: string | null) => onAssign(modelId)}
           disabled={disabled}
           clearable={false}
@@ -316,17 +320,21 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     value[task.value] = assignmentFor(task.value)?.model_id ?? null;
   }
 
-  // ADR-0036 §4: what a kind's labeled null option names — the `decision`
-  // default row's model (client-resolved from the summary).
-  // ADR-0036 §4: what a kind's labeled null option names — the `decision`
-  // default row's model, client-resolved from the value map.
+  // Single-picker ruling + presentation ruling (2026-10-14): an unset
+  // kind's trigger reads the short muted state word "Inherited"; the
+  // detail — which model the Default decision model row resolves to,
+  // client-side from the value map (the runtime resolves the same thing
+  // when a kind is unset) — becomes a "Defaults to {model}" meta line,
+  // shown only while that row resolves. Overridden kinds show the model
+  // name in the trigger and get no meta line.
   const decisionDefaultId = value[DECISION_DEFAULT_TASK_TYPE] ?? null;
   const decisionDefaultName =
     decisionCatalog.flatMap((p) => p.models).find((m) => m.id === decisionDefaultId)?.name ??
     null;
-  const inheritLabel = decisionDefaultName
-    ? t('settings.ai.decision_inherits_label', { model: decisionDefaultName })
-    : t('settings.ai.decision_inherits_empty');
+  const inheritedLabel = t('settings.ai.inherited');
+  const defaultsToLabel = decisionDefaultName
+    ? t('settings.ai.defaults_to', { model: decisionDefaultName })
+    : null;
 
   // D7 "Simplify": only when all four kinds resolve to one model and the
   // default is empty — a suggestion, never automatic.
@@ -454,9 +462,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         onAssign={(taskId, modelId) =>
           void assign(taskId, modelId || null).catch(() => undefined)
         }
-        primaryLabel={t('settings.ai.primary_label')}
-        primaryInfo={t('settings.ai.primary_info')}
-        fallbackInfo={t('settings.ai.fallback_info')}
         clearLabel={t('settings.ai.clear_assignment')}
         disabled={isLoading}
         renderMeta={(task) => {
@@ -527,9 +532,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         }}
       />
 
-      {/* Decision kinds group (plan 29 / ADR-0036 uniform ruling): the
-          four kind rows with the labeled inherit entry; the privacy
-          notice (§13.5) is the section description. */}
+      {/* Decision kinds group (single-picker ruling, 2026-10-14): the
+          four kind rows — empty = inherits the Default decision model
+          (trigger reads the short "Inherited" state word; the resolved
+          model is the "Defaults to …" meta line); the privacy notice
+          (§13.5) is the section description. */}
       <div className="flex flex-col gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-dark-muted">
@@ -545,17 +552,19 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           return (
             <DecisionKindRow
               key={task.value}
-              slot={task.value}
               label={t(task.labelKey)}
               description={t(task.hintKey)}
               icon={task.icon}
               catalog={decisionCatalog}
               modelValue={kindModel}
-              inheritLabel={inheritLabel}
+              inheritedLabel={inheritedLabel}
               clearLabel={t('settings.ai.clear_assignment')}
               disabled={isLoading}
               meta={
                 <div className="space-y-1">
+                  {!kindModel && defaultsToLabel ? (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{defaultsToLabel}</p>
+                  ) : null}
                   {kindAssigned ? (
                     // D17 PHI scope guard: the explicit opt-in lives on
                     // the decision assignment itself.

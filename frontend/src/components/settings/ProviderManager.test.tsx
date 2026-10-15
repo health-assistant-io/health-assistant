@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProviderManager } from './ProviderManager';
 import type { AIProvider } from '../../api/aiConfig';
@@ -23,6 +23,9 @@ const providers: AIProvider[] = [
 
 const store = {
   providers,
+  models: [{ id: 'm-1', provider_id: 'prov-1', name: 'GPT 4o', model_name: 'gpt-4o' }] as Array<
+    Record<string, unknown>
+  >,
   createProvider: vi.fn().mockResolvedValue(providers[0]),
   updateProvider: vi.fn().mockResolvedValue(providers[0]),
   deleteProvider: vi.fn().mockResolvedValue(undefined),
@@ -70,6 +73,10 @@ const STRINGS: Record<string, string> = {
   'settings.ai.test_failed': 'Failed',
   'settings.ai.models_count': '{{count}} models',
   'settings.ai.no_key': 'no key',
+  'settings.ai.not_tested': 'Not tested',
+  'settings.ai.key_set': 'key set',
+  'settings.ai.actions_aria': 'Actions for {{name}}',
+  'settings.ai.edit': 'Edit',
   'settings.ai.provider_name': 'Friendly Name',
   'settings.ai.base_url': 'API Base URL',
   'settings.ai.api_key': 'API Key',
@@ -115,33 +122,88 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const openActionsMenu = async (name: string) => {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  return user;
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  store.models = [{ id: 'm-1', provider_id: 'prov-1', name: 'GPT 4o', model_name: 'gpt-4o' }];
 });
 
 describe('ProviderManager', () => {
-  it('renders provider cards with scope, hosting and masked key', () => {
+  it('renders provider cards with badges, the base-URL subtitle and the live model count', () => {
     render(<ProviderManager scope="user" userId="u1" />);
     expect(screen.getByText('OpenAI Main')).toBeInTheDocument();
     expect(screen.getByText('Personal')).toBeInTheDocument();
     expect(screen.getByText('Cloud / Managed Service')).toBeInTheDocument();
-    expect(screen.getByText(/https:\/\/api.openai.com\/v1 · \*\*\*sk-1a2b/)).toBeInTheDocument();
-    expect(screen.getByText('🇺🇸')).toBeInTheDocument();
+    // base URL: discrete subtitle (full text on its tooltip), plus the name tooltip
+    expect(screen.getByText(/https:\/\/api\.openai\.com\/v1/)).toBeInTheDocument();
+    expect(screen.getByText('OpenAI Main')).toHaveAttribute(
+      'title',
+      'https://api.openai.com/v1',
+    );
+    // keyed provider → no key chip (implied); raw key never leaks
+    expect(screen.queryByText(/\*\*\*sk-1a2b/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provider-key-prov-1')).toBeNull();
+    // live registered-model count from the store
+    expect(screen.getByText('1 models')).toBeInTheDocument();
+    // country badge keeps its flag + code and the country as tooltip
+    expect(screen.getByTestId('provider-country-prov-1')).toHaveTextContent('🇺🇸 US');
   });
 
-  it('tests the connection inline and reports the model count', async () => {
-    const user = userEvent.setup();
+  it('tests the connection from the actions menu and reports the model count', async () => {
     render(<ProviderManager scope="user" userId="u1" />);
-    await user.click(screen.getByRole('button', { name: 'Test' }));
+    await openActionsMenu('OpenAI Main');
+    // no inline test button on the card — test lives only in the menu
+    expect(screen.queryByRole('button', { name: 'Test' })).toBeNull();
+    const item = await screen.findByRole('menuitem', { name: 'Test' });
+    const user = userEvent.setup();
+    await user.click(item);
     expect(store.fetchExternalModels).toHaveBeenCalledWith('prov-1');
-    expect(await screen.findByText('2 models')).toBeInTheDocument();
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+    // the meta is the live registered-model count from the store
+    expect(screen.getByText('1 models')).toBeInTheDocument();
   });
 
-  it('edits a provider through the ProviderForm dialog without touching the stored key', async () => {
-    const user = userEvent.setup();
+  it('disables the Test action while a test is running', async () => {
     render(<ProviderManager scope="user" userId="u1" />);
-    await user.click(screen.getByRole('button', { name: 'Edit Provider' }));
+    let resolveTest: (value: unknown[]) => void = () => undefined;
+    store.fetchExternalModels.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveTest = resolve;
+        }),
+    );
+    await openActionsMenu('OpenAI Main');
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Test' }));
+    // the connection row flips to its testing state while the ping runs
+    expect(await screen.findByRole('status')).toHaveTextContent('Test');
+    // reopen the menu — Test is disabled and marked busy while pending
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Actions for OpenAI Main' }), {
+      key: 'ArrowDown',
+    });
+    const item = await screen.findByRole('menuitem', { name: 'Test' }, { timeout: 2000 });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveAttribute('aria-busy', 'true');
+    resolveTest([{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }]);
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
+  });
+
+  it('omits the Test action when no registered model exists', async () => {
+    store.models = [];
+    render(<ProviderManager scope="user" userId="u1" />);
+    await openActionsMenu('OpenAI Main');
+    expect(await screen.findByRole('menuitem', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Test' })).toBeNull();
+  });
+
+  it('edits a provider through the actions menu and the ProviderForm dialog without touching the stored key', async () => {
+    render(<ProviderManager scope="user" userId="u1" />);
+    const user = await openActionsMenu('OpenAI Main');
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = screen.getByRole('dialog');
     const name = within(dialog).getByLabelText('Friendly Name');
     expect(name).toHaveValue('OpenAI Main');
@@ -182,10 +244,10 @@ describe('ProviderManager', () => {
     );
   });
 
-  it('routes deletion through the app confirmation flow', async () => {
-    const user = userEvent.setup();
+  it('routes deletion through the actions menu and the app confirmation flow', async () => {
     render(<ProviderManager scope="user" userId="u1" />);
-    await user.click(screen.getByRole('button', { name: 'Delete Provider' }));
+    const user = await openActionsMenu('OpenAI Main');
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete Provider' }));
     expect(showConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Delete Provider', confirmVariant: 'danger' }),
     );
