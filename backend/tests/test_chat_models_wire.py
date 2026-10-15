@@ -51,9 +51,8 @@ def test_compatible_endpoint_cap_keeps_classic_parameter() -> None:
 
 
 def test_responses_transport_on_the_openai_endpoint() -> None:
-    """ADR-0039: a row opted into responses rides /responses store-less —
-    reasoning_effort (passed through) + function tools keep working on
-    gpt-6-family models."""
+    """ADR-0039: auto rows on the OpenAI endpoint ride /responses
+    store-less; 'completions' pins the legacy wire."""
     model = build_openai(
         api_key="sk-test",
         base_url="https://api.openai.com/v1",
@@ -61,11 +60,19 @@ def test_responses_transport_on_the_openai_endpoint() -> None:
         temperature=None,
         max_tokens=512,
         reasoning_effort="high",
-        chat_transport="responses",
     )
     assert isinstance(model, ChatOpenAI)
     assert model.use_responses_api is True
     assert model.store is False
+    pinned = build_openai(
+        api_key="sk-test",
+        base_url="https://api.openai.com/v1",
+        model_name="gpt-6-luna",
+        max_tokens=512,
+        chat_transport="completions",
+    )
+    # 'completions' pins the legacy wire explicitly (SDK field default None).
+    assert pinned.use_responses_api is not True
 
 
 def test_responses_transport_ignored_off_the_openai_endpoint() -> None:

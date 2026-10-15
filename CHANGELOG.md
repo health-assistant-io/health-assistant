@@ -46,7 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   completions; the knob keeps reasoning on tool tasks, while
   `reasoning_effort='none'` remains the zero-config alternative.
   `auto`/NULL stays on completions — nothing changes for existing rows.
-  The shared fixture table pins the resolution matrix.
+  The shared fixture table pins the resolution matrix. **Field learning,
+  same day:** gpt-6 rejects tool tasks on completions even with
+  reasoning_effort omitted — so `auto` now routes by endpoint
+  (api.openai.com → responses store-less, else completions;
+  `chat_transport='completions'` pins the legacy wire).
 
 ### Changed (assistant-ui 0.57.0 — capability-kind model form, 2026-10-14)
 - **The models-tab add/edit form matches study's capability-kind UX:**

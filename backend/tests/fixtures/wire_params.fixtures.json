@@ -30,5 +30,16 @@
     { "name": "explicit default-1 value rides the wire", "temperature": 1, "sent": true }
   ],
   "temperatureModelId": "gpt-4o",
-  "temperatureNote": "Rows run against a model id whose family accepts temperature (temperatureModelId) so the rows pin the omit-unless-configured rule, not family locking. Family locking on reasoning ids is repo-local behavior (desktop's bare-id guard), not part of this wall."
+  "temperatureNote": "Rows run against a model id whose family accepts temperature (temperatureModelId) so the rows pin the omit-unless-configured rule, not family locking. Family locking on reasoning ids is repo-local behavior (desktop's bare-id guard), not part of this wall.",
+  "chatTransport": [
+    { "name": "auto rides the Responses wire on the OpenAI endpoint", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": null, "expected": "responses" },
+    { "name": "auto rides responses with an empty base on an openai-typed row", "providerType": "openai", "apiBase": null, "override": null, "expected": "responses" },
+    { "name": "auto stays on completions for a compatible row", "providerType": "openai_compatible", "apiBase": "http://localhost:11434/v1", "override": null, "expected": "completions" },
+    { "name": "responses honored on the OpenAI endpoint", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": "responses", "expected": "responses" },
+    { "name": "responses honored for a compatible row pointing at OpenAI", "providerType": "openai_compatible", "apiBase": "https://api.openai.com/v1", "override": "responses", "expected": "responses" },
+    { "name": "responses ignored off the OpenAI endpoint (local server)", "providerType": "openai_compatible", "apiBase": "http://localhost:11434/v1", "override": "responses", "expected": "completions" },
+    { "name": "responses ignored on an OpenAI-typed proxy", "providerType": "openai", "apiBase": "http://localhost:4000/v1", "override": "responses", "expected": "completions" },
+    { "name": "explicit completions pins the legacy wire even on OpenAI", "providerType": "openai", "apiBase": "https://api.openai.com/v1", "override": "completions", "expected": "completions" }
+  ],
+  "chatTransportNote": "The knob is model-scoped config (chat_transport column / chatTransport field). 'responses' is honored only when the base URL rides OpenAI's own API — compatible servers don't implement /responses. The responses path must be constructed store-less (store=False / zdrEnabled) everywhere."
 }

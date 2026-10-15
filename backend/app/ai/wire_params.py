@@ -125,3 +125,39 @@ def token_cap_kwargs(provider_type: str, cap: int, base_url: str | None = None) 
     if resolve_max_tokens_param(provider_type, base_url) == "max_completion_tokens":
         return {"max_completion_tokens": cap}
     return {"max_tokens": cap}
+
+
+#: Provider-facing transport knob (ADR-0039): which OpenAI API surface a
+#: model's chat requests ride. ``auto`` (default) = chat completions —
+#: today's behavior everywhere; ``responses`` opts a row into the
+#: Responses API; ``completions`` pins the legacy wire explicitly.
+ChatTransportOverride = Literal["auto", "completions", "responses"]
+
+
+def resolve_chat_transport(
+    provider_type: str,
+    base_url: str | None,
+    override: str | None = None,
+) -> Literal["completions", "responses"]:
+    """Resolve the API surface for a model's chat requests (ADR-0039).
+
+    ``auto`` routes by endpoint: on OpenAI's own API the Responses wire
+    is the default — the gpt-6 family rejects function tools on chat
+    completions even with ``reasoning_effort`` omitted entirely (the
+    model reasons by default; the wire demands an explicit choice), and
+    /responses keeps reasoning + tools working for every current and
+    future family without per-model configuration. Everywhere else the
+    completions wire is the default (OpenAI-compatible servers don't
+    implement ``/responses``). ``completions`` pins the legacy wire
+    explicitly; ``responses`` opts a row in regardless of endpoint
+    (still only honored on OpenAI's API).
+
+    The Responses path must always be constructed state-less
+    (``store=False`` / ``zdrEnabled``) — the API stores outputs by
+    default, and the family's storage posture is "never".
+    """
+    if override == "completions":
+        return "completions"
+    if is_openai_wire(provider_type, base_url):
+        return "responses"
+    return "completions"
