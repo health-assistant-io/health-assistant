@@ -2051,6 +2051,9 @@
       "suggested_default": "Πρόταση: {{model}}",
       "caps_decision": "απόφαση",
       "caps_standalone": "Αυτόνομος τύπος",
+      "caps_modifiers": {
+        "caps_modifiers": "Υποστηρίζει επίσης"
+      },
       "transport": "Μεταφορά",
       "use_catalog": "Επιλογή από τον κατάλογο",
       "provider_context": "Πάροχος",

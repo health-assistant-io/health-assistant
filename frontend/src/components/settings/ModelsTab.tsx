@@ -197,6 +197,10 @@ export const ModelsTab: React.FC = () => {
         standaloneCaps={['stt', 'tts', 'embeddings', 'decision']}
         standaloneLabel={t('settings.ai.caps_standalone')}
         capImplications={{ vision: ['text'], tools: ['text'] }}
+        defaultCaps={(provider) =>
+          provider.type === 'decision' ? ['decision'] : ['text', 'vision', 'tools']
+        }
+        modifiersLabel={t('settings.ai.caps_modifiers')}
         decisionTransport="systemone"
         decisionTransportLabel={t('settings.ai.transport')}
         useCatalogLabel={t('settings.ai.use_catalog')}

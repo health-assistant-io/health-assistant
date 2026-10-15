@@ -775,6 +775,7 @@ export const ProviderSetupModal: React.FC<{
           <>
             <ProviderSetupForm
               preset={{
+                key: presetKey ?? undefined,
                 name: preset.name,
                 keyUrl: preset.key_url ?? undefined,
                 steps: preset.steps ?? undefined,

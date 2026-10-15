@@ -2119,6 +2119,9 @@
       "suggested_default": "Suggested: {{model}}",
       "caps_decision": "decision",
       "caps_standalone": "Standalone",
+      "caps_modifiers": {
+        "caps_modifiers": "Also supports"
+      },
       "transport": "Transport",
       "use_catalog": "Pick from the catalog",
       "provider_context": "Provider"

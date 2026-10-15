@@ -144,6 +144,7 @@ def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
         "gpt-4.1",
         "gpt-4-turbo",
         "gpt-5",
+        "gpt-6",
         "claude-3",
         "claude-4",
         "claude-sonnet",
@@ -160,6 +161,7 @@ def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
     tool_hints = (
         "gpt-4",
         "gpt-5",
+        "gpt-6",
         "o3",
         "o4",
         "claude",
