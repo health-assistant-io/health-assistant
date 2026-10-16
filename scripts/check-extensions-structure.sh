@@ -97,9 +97,11 @@ else
 fi
 
 # 3 — fastmcp/mcp imports only under backend/app/ai/ (same CLASS_RE as the
-# vendored check-ai-alignment gate R2, so the two checks agree by construction)
+# vendored check-ai-alignment gate R2, so the two checks agree by construction;
+# tightened 2026-10-17 to catch nested module paths + plain imports — the
+# first-level match was the plan-32 Phase 9 blind spot)
 mcp_hits="$(
-  grep -rln -E 'from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import' "$ROOT/backend/app" 2>/dev/null \
+  grep -rln -E 'from fastmcp([. ]|$)|from mcp[.](server|client|shared)([.]| import)|import mcp[.](server|client|shared)' "$ROOT/backend/app" 2>/dev/null \
   | grep -v __pycache__ | grep -v "^$ROOT/backend/app/ai/" || true)"
 if [ -n "$mcp_hits" ]; then
   note "fastmcp/mcp imports outside app/ai/ (ADR-0012 alignment gate R2):"

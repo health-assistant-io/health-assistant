@@ -12,7 +12,12 @@
 #   R2  LangChain chat classes, the agent/graph stack (langchain,
 #       @langchain/langgraph*), and MCP libraries (fastmcp / mcp /
 #       @langchain/mcp-adapters) imported only inside the AI layer
-#       (python: backend/app/ai/; js: src/main/ai/) (+ tests)
+#       (python: backend/app/ai/; js: src/main/ai/) (+ tests).
+#       The mcp/fastmcp match covers nested module paths and plain
+#       imports (from mcp.server.mcpserver import …, import mcp.client…)
+#       — first-level-module matching alone let study ship an MCP server
+#       import outside ai/ while the gate stayed green (plan 32 Phase 9
+#       observation; tightened 2026-10-17)
 #   R3  LangGraph graphs (StateGraph; js: also createAgent) live under the
 #       ai/graphs/ dir (python: backend/app/ai/graphs; js: src/main/ai/graphs)
 #   R4  langgraph (+ langgraph-checkpoint-* when persistent checkpointing
@@ -111,7 +116,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
       --exclude-dir='.venv' --exclude-dir='venv' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='__pycache__' --exclude-dir='.git')
     SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai|from typesafe_sdk[. ]|import typesafe_sdk$)'
-    CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import)'
+    CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp([. ]|$)|from mcp[.](server|client|shared)([.]| import)|import mcp[.](server|client|shared))'
     GRAPH_RE='StateGraph'
     DEPS_FILES=("$backend/pyproject.toml")
   fi
