@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 
 from app.ai.schemas.nlp import MappedMetric, MapResponsePayload
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.user_integration import UserIntegration
 
 
@@ -56,7 +56,7 @@ async def test_handle_api_request_status(provider, integration_mock):
 
 @pytest.mark.asyncio
 @patch(
-    "integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._handle_map_request"
+    "app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider._handle_map_request"
 )
 async def test_handle_api_request_map(mock_handle_map, provider, integration_mock):
     request_mock = AsyncMock()
@@ -74,7 +74,7 @@ async def test_handle_api_request_map(mock_handle_map, provider, integration_moc
 
 @pytest.mark.asyncio
 @patch(
-    "integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data"
+    "app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data"
 )
 async def test_handle_api_request_sync(mock_save, provider, integration_mock):
     request_mock = AsyncMock()
@@ -101,7 +101,7 @@ async def test_handle_api_request_sync(mock_save, provider, integration_mock):
 
 @pytest.mark.asyncio
 @patch(
-    "integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data"
+    "app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data"
 )
 async def test_handle_api_request_sync_examinations(mock_save, provider, integration_mock):
     request_mock = AsyncMock()
@@ -141,7 +141,7 @@ async def test_handle_api_request_sync_examinations(mock_save, provider, integra
 
 @pytest.mark.asyncio
 async def test_parse_records(provider, integration_mock):
-    from integrations.health_assistant_bridge.provider import ClientRecord
+    from app.extensions.builtin.health_assistant_bridge.provider import ClientRecord
 
     builder = provider.create_observation_builder(integration_mock)
 
@@ -173,11 +173,10 @@ async def test_parse_records(provider, integration_mock):
 
 
 @pytest.mark.asyncio
-@patch("integrations.health_assistant_bridge.provider.HealthAssistantBridgeProvider")
+@patch("app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider")
 async def test_handle_map_request_internal(mock_provider, provider, integration_mock):
-    from integrations.health_assistant_bridge.provider import MapRequestPayload
-
     from app.ai.schemas.nlp import MetricMappingRequest
+    from app.extensions.builtin.health_assistant_bridge.provider import MapRequestPayload
 
     # We will mock the DB call internally
     with patch("app.core.database.AsyncSessionLocal") as mock_session_local:
@@ -249,7 +248,7 @@ def test_bridge_routes_examinations_through_canonical_service():
     import inspect
     import re
 
-    from integrations.health_assistant_bridge import provider as bridge_mod
+    from app.extensions.builtin.health_assistant_bridge import provider as bridge_mod
 
     src = inspect.getsource(bridge_mod.HealthAssistantBridgeProvider._process_and_save_sync_data)
 
@@ -296,7 +295,7 @@ async def test_parse_records_does_not_leak_reference_range_across_records(
     ``ObservationBuilder`` across loop iterations, so a record that set a
     reference range leaked it into the following record (which intended to
     have none). The fix resets the builder per iteration (SDK skill §10.4)."""
-    from integrations.health_assistant_bridge.provider import ClientRecord
+    from app.extensions.builtin.health_assistant_bridge.provider import ClientRecord
 
     builder = provider.create_observation_builder(integration_mock)
     records = [
@@ -330,7 +329,7 @@ async def test_parse_records_does_not_leak_reference_range_across_records(
 @pytest.mark.asyncio
 async def test_parse_records_does_not_leak_interpretation(provider, integration_mock):
     """Same leak, for the interpretation field."""
-    from integrations.health_assistant_bridge.provider import ClientRecord
+    from app.extensions.builtin.health_assistant_bridge.provider import ClientRecord
 
     builder = provider.create_observation_builder(integration_mock)
     records = [
@@ -397,7 +396,7 @@ async def test_read_observations_latest_scopes_to_bound_patient(provider, integr
     with (
         patch("app.core.database.AsyncSessionLocal", mock_session_local),
         patch(
-            "integrations.health_assistant_bridge.provider.list_observations_latest",
+            "app.extensions.builtin.health_assistant_bridge.provider.list_observations_latest",
             create=True,
             side_effect=fake_list,
         ),

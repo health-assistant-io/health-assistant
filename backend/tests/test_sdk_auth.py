@@ -1,4 +1,4 @@
-"""Unit tests for integrations.sdk.auth (Stage 2 Pair A).
+"""Unit tests for app.extensions.sdk.auth (Stage 2 Pair A).
 
 HTTP is mocked via ``httpx.MockTransport``; the OAuth state store uses a tiny
 in-memory async fake (no fakeredis dependency). The token-store cipher is
@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from cryptography.fernet import Fernet
-from integrations.sdk.auth import (
+
+from app.extensions.sdk.auth import (
     DEFAULT_SCOPES,
     OAuthStateStore,
     OAuthTokenStore,
@@ -27,8 +28,8 @@ from integrations.sdk.auth import (
     refresh_token,
     register_client,
 )
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
-from integrations.sdk.secrets import SecretCipher
+from app.extensions.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from app.extensions.sdk.secrets import SecretCipher
 
 # ---------- fixtures ----------
 
@@ -195,7 +196,7 @@ async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
 
@@ -223,9 +224,9 @@ async def test_discover_smart_429_retries_then_raises_rate_limit(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
-    from integrations.sdk.exceptions import IntegrationRateLimitError
+    from app.extensions.sdk.exceptions import IntegrationRateLimitError
 
     async with _mock_client(lambda r: httpx.Response(429)) as http:
         with pytest.raises(IntegrationRateLimitError):
@@ -523,7 +524,7 @@ async def test_request_json_maps_oauth_400_to_auth_error():
     invalid_client, …) must surface as IntegrationAuthError so the worker
     flips the instance to ERROR + prompts reconnect — not a silent
     IntegrationDataError that leaves it ACTIVE and failing every sync."""
-    from integrations.sdk.auth import _request_json
+    from app.extensions.sdk.auth import _request_json
 
     def handler(request):
         return httpx.Response(
@@ -539,7 +540,7 @@ async def test_request_json_maps_oauth_400_to_auth_error():
 @pytest.mark.asyncio
 async def test_request_json_non_oauth_400_still_data_error():
     """A 4xx without an OAuth ``error`` field stays IntegrationDataError."""
-    from integrations.sdk.auth import _request_json
+    from app.extensions.sdk.auth import _request_json
 
     async with _mock_client(lambda r: httpx.Response(422, text="bad shape")) as http:
         with pytest.raises(IntegrationDataError):
@@ -616,7 +617,7 @@ async def test_revoke_routes_through_retry_request_not_raw_post(monkeypatch):
 
         http.post = _spy_post  # type: ignore[method-assign]
 
-        import integrations.sdk.http as http_module
+        import app.extensions.sdk.http as http_module
 
         real_retry = http_module._retry_request
 
@@ -786,7 +787,7 @@ async def test_concurrent_get_live_token_refreshes_once(monkeypatch):
     token was consumed → next refresh ``invalid_grant`` → spurious reconnect.
     """
     # Squat the poll interval so the waiter doesn't sleep long.
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
 
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
@@ -932,7 +933,7 @@ async def test_get_live_token_returns_cached_when_not_expired():
 async def test_force_refresh_acquires_lock_and_refreshes(monkeypatch):
     """force_refresh on a free lock: acquires, refreshes, releases. Exactly
     one /token POST."""
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
     refresh_calls = {"n": 0}
@@ -975,7 +976,7 @@ async def test_force_refresh_lock_held_waits_for_leader(monkeypatch):
     """force_refresh when another caller holds the lock: waits for the
     leader's refresh rather than burning a second single-use refresh_token.
     Exactly one /token POST total (no double-refresh)."""
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
     refresh_calls = {"n": 0}

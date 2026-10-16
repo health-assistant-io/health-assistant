@@ -95,7 +95,7 @@ services:
       - HA_REFRESH_KEY=${HA_REFRESH_KEY:-}
       - HA_DATA_KEY=${HA_DATA_KEY:-}
       - HA_DATA_KEY_PREVIOUS=${HA_DATA_KEY_PREVIOUS:-}
-      - PYTHONPATH=/app/backend:/app
+      - PYTHONPATH=/app/backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,12 +156,11 @@ services:
       - MCP_CONNECTION_IDLE_TIMEOUT=${MCP_CONNECTION_IDLE_TIMEOUT:-900}
       - MCP_PER_INSTANCE_CONCURRENCY=${MCP_PER_INSTANCE_CONCURRENCY:-4}
       - MCP_ALLOW_INSECURE_HTTP=${MCP_ALLOW_INSECURE_HTTP:-false}
-      - PYTHONPATH=/app/backend:/app
+      - PYTHONPATH=/app/backend
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ../backend:/app/backend
-      - ../integrations:/app/integrations
       - uploads:/app/uploads
     depends_on:
       postgres:
@@ -239,7 +238,7 @@ services:
       - MCP_CONNECTION_IDLE_TIMEOUT=${MCP_CONNECTION_IDLE_TIMEOUT:-900}
       - MCP_PER_INSTANCE_CONCURRENCY=${MCP_PER_INSTANCE_CONCURRENCY:-4}
       - MCP_ALLOW_INSECURE_HTTP=${MCP_ALLOW_INSECURE_HTTP:-false}
-      - PYTHONPATH=/app/backend:/app
+      - PYTHONPATH=/app/backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -275,7 +274,7 @@ services:
       - POSTGRES_USER=neuronection_health_app
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - HA_DATABASE_URL=postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
-      - PYTHONPATH=/app/backend:/app
+      - PYTHONPATH=/app/backend
     depends_on:
       redis:
         condition: service_healthy
@@ -301,7 +300,7 @@ services:
       - "${FLOWER_PORT:-5555}:5555"
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - PYTHONPATH=/app/backend:/app
+      - PYTHONPATH=/app/backend
     depends_on:
       redis:
         condition: service_healthy

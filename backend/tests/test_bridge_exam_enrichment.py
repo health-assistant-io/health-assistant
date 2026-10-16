@@ -11,10 +11,10 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.clinical_event import ClinicalEvent, ClinicalEventStatus, EventExaminationLink
 from app.models.concept_model import Concept
 from app.models.doctor_model import DoctorModel

@@ -12,7 +12,8 @@ import hmac
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from integrations.webhook.config_flow import WebhookConfigFlow
+
+from app.extensions.builtin.webhook.config_flow import WebhookConfigFlow
 
 # ---------------------------------------------------------------------------
 # Config-flow validation

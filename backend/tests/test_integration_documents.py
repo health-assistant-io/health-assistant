@@ -86,7 +86,7 @@ def test_sdk_base_declares_documents_opt_in_hook_with_safe_defaults():
     ``pull_documents`` with safe defaults (False / []) so existing
     providers that don't opt in are unaffected. Mirrors the contract tests
     for clinical events / examinations / catalog / HITL proposals."""
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert hasattr(SDKBaseProvider, "supports_documents")
     assert hasattr(SDKBaseProvider, "pull_documents")
@@ -106,9 +106,9 @@ def test_sdk_base_declares_documents_opt_in_hook_with_safe_defaults():
 
 
 def test_document_pull_is_reexported_from_sdk():
-    """``from integrations.sdk import DocumentPull`` must work."""
-    from integrations.sdk import DocumentPull
-    from integrations.sdk.documents import DocumentPull as Source
+    """``from app.extensions.sdk import DocumentPull`` must work."""
+    from app.extensions.sdk import DocumentPull
+    from app.extensions.sdk.documents import DocumentPull as Source
 
     assert DocumentPull is Source, "SDK re-export must alias the spec, not duplicate it"
 
@@ -185,9 +185,8 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
     dropped — the under-cap items still land."""
     from unittest.mock import patch
 
-    from integrations.sdk.documents import DocumentPull
-
     from app.core.database import AsyncSessionLocal
+    from app.extensions.sdk.documents import DocumentPull
     from app.models.document_model import DocumentModel
     from app.services import integration_sync_service as svc
 

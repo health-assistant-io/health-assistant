@@ -22,7 +22,7 @@ async def list_system_integrations(
     db: AsyncSession = Depends(get_db),
 ):
     """List all system integration configurations, including newly discovered ones."""
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
 
     # Get all discovered manifests from the filesystem
     manifests = integration_registry.get_all_manifests()
@@ -86,7 +86,7 @@ async def enable_system_integration(
     await db.commit()
 
     # Trigger a registry reload to make it immediately available
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
 
     await integration_registry.initialize(db)
 
@@ -116,7 +116,7 @@ async def disable_system_integration(
     await db.commit()
 
     # Trigger a registry reload so the provider is unloaded immediately.
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
 
     await integration_registry.initialize(db)
 

@@ -1,5 +1,5 @@
 # ruff: noqa: RUF043 -- long immutable strings / legacy patterns; reflow when touched
-"""Unit tests for ``integrations.sdk.net_guard`` — the SSRF defense layer.
+"""Unit tests for ``app.extensions.sdk.net_guard`` — the SSRF defense layer.
 
 The resolver is injected so the tests never touch the network. The contract
 under test:
@@ -18,8 +18,9 @@ from __future__ import annotations
 import ipaddress
 
 import pytest
-from integrations.sdk.exceptions import IntegrationDataError
-from integrations.sdk.net_guard import (
+
+from app.extensions.sdk.exceptions import IntegrationDataError
+from app.extensions.sdk.net_guard import (
     SSRFBlockedError,
     assert_safe_url,
     is_blocked_ip,

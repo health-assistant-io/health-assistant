@@ -284,10 +284,11 @@ async def _proxy_ai_resume(db, integration_id: str, api_secret: str, session_id)
 
 class TestAiBucketThroughTheProxy:
     async def test_31st_ai_chat_in_window_is_throttled(self, ai_rl_ctx, fake_redis):
-        from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-
         from app.api.v1.endpoints import integrations as ep
         from app.core.database import AsyncSessionLocal
+        from app.extensions.builtin.health_assistant_bridge.provider import (
+            HealthAssistantBridgeProvider,
+        )
 
         with (
             patch("app.ai.assistance.service.AIAssistanceService.assist", new=_fake_assist),
@@ -312,10 +313,11 @@ class TestAiBucketThroughTheProxy:
         )
 
     async def test_31st_observations_still_succeeds_ai_bucket_only(self, ai_rl_ctx, fake_redis):
-        from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-
         from app.api.v1.endpoints import integrations as ep
         from app.core.database import AsyncSessionLocal
+        from app.extensions.builtin.health_assistant_bridge.provider import (
+            HealthAssistantBridgeProvider,
+        )
 
         with (
             patch("app.ai.assistance.service.AIAssistanceService.assist", new=_fake_assist),
@@ -338,10 +340,11 @@ class TestAiBucketThroughTheProxy:
         """WS4: `POST /ai/sessions/{id}/resume` is an `ai/*` path — it draws
         from the same 30/5-min budget as chat (30 resumes stream through,
         the 31st is a 429 with Retry-After)."""
-        from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-
         from app.api.v1.endpoints import integrations as ep
         from app.core.database import AsyncSessionLocal
+        from app.extensions.builtin.health_assistant_bridge.provider import (
+            HealthAssistantBridgeProvider,
+        )
 
         async def _fake_resume(self, **kwargs):
             yield 'data: {"event":"flow_finished"}\n\n'

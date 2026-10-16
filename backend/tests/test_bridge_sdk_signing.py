@@ -16,14 +16,15 @@ _SDK_DIR = os.path.join(
     "..",
     "..",
     "integrations",
-    "health_assistant_bridge",
+    "health-assistant-bridge",
     "python-sdk",
 )
 sys.path.insert(0, _SDK_DIR)
 
 import pytest  # noqa: E402
 from health_assistant_bridge.signing import sign_request  # noqa: E402
-from integrations.sdk.webhook_security import verify_canonical_signature  # noqa: E402
+
+from app.extensions.sdk.webhook_security import verify_canonical_signature  # noqa: E402
 
 SECRET = "topsecret"
 BODY = b'{"records":[]}'

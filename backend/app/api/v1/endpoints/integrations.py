@@ -9,13 +9,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from integrations.sdk.auth import OAuthStateStore
-from integrations.sdk.exceptions import BridgeError, IntegrationAuthError, IntegrationDataError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.integration_registry import integration_registry
 from app.core.rate_limit import (
     enforce_integration_rate_limit,
     rate_limit,
@@ -23,6 +20,9 @@ from app.core.rate_limit import (
 )
 from app.core.redis import redis_client
 from app.core.security import get_current_user
+from app.extensions.registry import integration_registry
+from app.extensions.sdk.auth import OAuthStateStore
+from app.extensions.sdk.exceptions import BridgeError, IntegrationAuthError, IntegrationDataError
 from app.models.enums import IntegrationStatus
 from app.models.fhir.patient import Patient
 from app.models.user_integration import UserIntegration
@@ -44,8 +44,8 @@ _MACHINE_BODY_CAP_BYTES = 40 * 1024 * 1024
 def _provider_overrides(provider: Any, hook: str) -> bool:
     """True when the provider class actually implements ``hook`` (vs the
     SDK base's safe default)."""
-    from integrations.base import BaseHealthProvider as _CoreBase
-    from integrations.sdk.base import BaseHealthProvider as _SdkBase
+    from app.extensions.sdk.base import BaseHealthProvider as _CoreBase
+    from app.extensions.sdk.base import BaseHealthProvider as _SdkBase
 
     fn = getattr(type(provider), hook, None)
     if fn is None:
@@ -155,7 +155,7 @@ async def get_integration_documentation(
     import json
     import os
 
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
 
     # We don't check if it's enabled here, so users can read docs before enabling.
     # We do check if the domain is known to the registry (discovered).
@@ -163,18 +163,7 @@ async def get_integration_documentation(
     if not any(m.get("domain") == domain for m in manifests):
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    base_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "..",
-            "..",
-            "..",
-            "integrations",
-            domain,
-        )
-    )
+    base_path = integration_registry.base_dir(domain)
 
     # 1. Check for structured docs (docs-tree.json)
     docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
@@ -354,7 +343,7 @@ async def submit_config_flow(
         wants_webhook = provider is not None and _provider_overrides(provider, "handle_webhook")
         wants_api = provider is not None and _provider_overrides(provider, "handle_api_request")
         try:
-            from integrations.sdk.secrets import SecretCipher
+            from app.extensions.sdk.secrets import SecretCipher
 
             cipher = SecretCipher.from_settings()
             if wants_webhook and not validated_config.get("webhook_secret"):
@@ -1209,7 +1198,7 @@ async def rotate_instance_secret(
         raise HTTPException(status_code=404, detail="Integration instance not found")
 
     try:
-        from integrations.sdk.secrets import SecretCipher
+        from app.extensions.sdk.secrets import SecretCipher
 
         cipher = SecretCipher.from_settings()
     except RuntimeError as e:
@@ -1341,7 +1330,7 @@ def _resolve_secret_field(
         # doesn't declare the field. Decrypt directly with the instance id
         # as context.
         try:
-            from integrations.sdk.secrets import SecretCipher
+            from app.extensions.sdk.secrets import SecretCipher
 
             decrypted = SecretCipher.from_settings().decrypt_value(raw, context=context)
             return decrypted if isinstance(decrypted, str) and decrypted else None
@@ -1381,11 +1370,11 @@ def _verify_webhook_signature(secret: str, raw_body: bytes, provided_signature: 
 
     Returns True iff the computed HMAC matches the provided signature.
 
-    Thin wrapper around :func:`integrations.sdk.webhook_security.verify_hmac_signature`
+    Thin wrapper around :func:`app.extensions.sdk.webhook_security.verify_hmac_signature`
     — the canonical implementation lives in the SDK so providers can
     reuse it without re-implementing the algorithm.
     """
-    from integrations.sdk.webhook_security import verify_hmac_signature
+    from app.extensions.sdk.webhook_security import verify_hmac_signature
 
     return verify_hmac_signature(secret, raw_body, provided_signature)
 
@@ -1426,9 +1415,9 @@ def _verify_api_signature(
     is empty.
 
     Thin wrapper around
-    :func:`integrations.sdk.webhook_security.verify_canonical_signature`.
+    :func:`app.extensions.sdk.webhook_security.verify_canonical_signature`.
     """
-    from integrations.sdk.webhook_security import verify_canonical_signature
+    from app.extensions.sdk.webhook_security import verify_canonical_signature
 
     return verify_canonical_signature(
         secret,

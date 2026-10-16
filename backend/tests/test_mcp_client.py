@@ -14,13 +14,14 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from integrations.mcp_client.security import (
+
+from app.extensions.builtin.mcp_client.security import (
     build_ssl_context,
     get_allowed_commands,
     validate_http_url,
     validate_stdio_command,
 )
-from integrations.mcp_client.tool_adapter import (
+from app.extensions.builtin.mcp_client.tool_adapter import (
     MAX_DESCRIPTION_LEN,
     _extract_text_result,
     filter_and_adapt_tools,
@@ -29,7 +30,7 @@ from integrations.mcp_client.tool_adapter import (
 )
 
 # These imports don't require fastmcp and don't touch the DB.
-from integrations.sdk.secrets import (
+from app.extensions.sdk.secrets import (
     SecretCipher,
     decrypt_fields,
     encrypt_fields,
@@ -222,13 +223,13 @@ class TestConfigFlowSdkHooks:
     """Verify the MCP config flow declares capabilities via SDK hooks."""
 
     def test_get_secret_fields(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         assert set(cf.get_secret_fields()) == {"env", "headers", "auth_token"}
 
     def test_max_instances_per_user_from_settings(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         assert cf.max_instances_per_user == 5  # MCP_MAX_SERVERS_PER_USER default
@@ -236,7 +237,7 @@ class TestConfigFlowSdkHooks:
     def test_prepare_for_storage_encrypts_secrets(self):
         import asyncio
 
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         enc = asyncio.run(
@@ -253,7 +254,7 @@ class TestConfigFlowSdkHooks:
         assert enc["url"] == "https://x.com"
 
     def test_prepare_for_read_masks_secrets(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = cf.prepare_for_read({"env": {"K": "V"}, "auth_token": "tok", "url": "u"})
@@ -263,7 +264,7 @@ class TestConfigFlowSdkHooks:
 
     def test_default_config_flow_has_no_secrets_and_no_cap(self):
         """Existing integrations (dev_dummy, webhook, etc.) are unaffected."""
-        from integrations.sdk import BaseConfigFlow
+        from app.extensions.sdk import BaseConfigFlow
 
         class DummyCF(BaseConfigFlow):
             domain = "dummy"
@@ -358,7 +359,7 @@ class TestExtractResult:
 class TestDescriptionTruncation:
     def test_long_description_truncated_in_adapter(self):
         pytest.importorskip("fastmcp")
-        from integrations.mcp_client.tool_adapter import adapt_tool
+        from app.extensions.builtin.mcp_client.tool_adapter import adapt_tool
 
         long_desc = "x" * (MAX_DESCRIPTION_LEN + 100)
         mcp_tool = MagicMock()
@@ -389,7 +390,8 @@ class TestAdapterEndToEnd:
     def test_discover_and_call(self):
         pytest.importorskip("fastmcp")
         from fastmcp import Client, FastMCP
-        from integrations.mcp_client.connection_manager import (
+
+        from app.extensions.builtin.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
         )
@@ -443,7 +445,8 @@ class TestAdapterEndToEnd:
     def test_disabled_tools_filtered(self):
         pytest.importorskip("fastmcp")
         from fastmcp import Client, FastMCP
-        from integrations.mcp_client.connection_manager import (
+
+        from app.extensions.builtin.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
         )
@@ -502,7 +505,7 @@ class TestAggregator:
 
     def _patch_registry(self, monkeypatch, providers):
         """providers: dict {domain: provider_mock}."""
-        from app.core import integration_registry as reg_mod
+        from app.extensions import registry as reg_mod
 
         fake_registry = MagicMock()
         fake_registry.get_provider.side_effect = lambda d: providers.get(d)
@@ -665,7 +668,7 @@ class TestAggregator:
 
 class TestConfigFlow:
     def test_validates_http_url(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
@@ -680,7 +683,7 @@ class TestConfigFlow:
         assert out["transport"] == "http"
 
     def test_rejects_insecure_http(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -695,7 +698,7 @@ class TestConfigFlow:
             )
 
     def test_validates_stdio_command(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
@@ -711,7 +714,7 @@ class TestConfigFlow:
         assert out["command"] == "npx"
 
     def test_rejects_disallowed_stdio(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -727,7 +730,7 @@ class TestConfigFlow:
             )
 
     def test_rejects_missing_instance_name(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -739,21 +742,21 @@ class TestConfigFlow:
 
 class TestProvider:
     def test_pull_data_noop(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         out = asyncio.run(provider.pull_data(MagicMock()))
         assert out == []
 
     def test_supports_tools_true(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         assert provider.supports_tools() is True
 
     def test_get_tools_returns_empty_on_failure(self):
         """get_tools swallows errors and returns [] (SDK contract)."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
@@ -761,7 +764,7 @@ class TestProvider:
         integration.instance_name = "Bad"
 
         # Patch the connection manager to raise.
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -779,14 +782,14 @@ class TestProvider:
 
     def test_list_tools_action_returns_structured_results(self):
         """The list_tools custom action returns display blocks, not just a message."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
         integration.id = uuid.uuid4()
         integration.instance_name = "TestServer"
 
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -819,14 +822,14 @@ class TestProvider:
 
     def test_test_connection_action_returns_kv_block(self):
         """The test_connection custom action returns a kv block with status."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
         integration.id = uuid.uuid4()
         integration.instance_name = "TestServer"
 
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -846,7 +849,7 @@ class TestProvider:
             cm_mod.mcp_connection_manager = original
 
     def test_custom_actions(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         actions = provider.get_custom_actions()
@@ -854,7 +857,7 @@ class TestProvider:
         assert ids == {"test_connection", "list_tools", "restart_connection"}
 
     def test_api_proxy_refuses_tool_invocation(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         # Only GET /status is allowed.
@@ -870,7 +873,7 @@ class TestDisplayBlocks:
     """Verify the SDK display block builders (integrations/sdk/display.py)."""
 
     def test_kv_block(self):
-        from integrations.sdk import kv_block
+        from app.extensions.sdk import kv_block
 
         b = kv_block("Conn", {"Status": "Connected", "Tools": 3})
         assert b["type"] == "kv"
@@ -878,14 +881,14 @@ class TestDisplayBlocks:
         assert b["items"] == {"Status": "Connected", "Tools": 3}
 
     def test_list_block(self):
-        from integrations.sdk import list_block
+        from app.extensions.sdk import list_block
 
         b = list_block("Tools", ["echo", "add"])
         assert b["type"] == "list"
         assert b["items"] == ["echo", "add"]
 
     def test_table_block(self):
-        from integrations.sdk import table_block
+        from app.extensions.sdk import table_block
 
         b = table_block("T", ["Name", "Desc"], [["echo", "Echos"], ["add", "Adds"]])
         assert b["type"] == "table"
@@ -893,48 +896,48 @@ class TestDisplayBlocks:
         assert b["rows"] == [["echo", "Echos"], ["add", "Adds"]]
 
     def test_json_block(self):
-        from integrations.sdk import json_block
+        from app.extensions.sdk import json_block
 
         b = json_block("Raw", {"k": "v"})
         assert b["type"] == "json"
         assert b["data"] == {"k": "v"}
 
     def test_text_block(self):
-        from integrations.sdk import text_block
+        from app.extensions.sdk import text_block
 
         b = text_block("Note", "hello world")
         assert b["type"] == "text"
         assert b["content"] == "hello world"
 
     def test_code_block_with_language(self):
-        from integrations.sdk import code_block
+        from app.extensions.sdk import code_block
 
         b = code_block("Cmd", "curl x", "bash")
         assert b["type"] == "code"
         assert b["language"] == "bash"
 
     def test_code_block_without_language(self):
-        from integrations.sdk import code_block
+        from app.extensions.sdk import code_block
 
         b = code_block("Cmd", "curl x")
         assert "language" not in b
 
     def test_action_result_with_message_and_results(self):
-        from integrations.sdk import action_result, list_block
+        from app.extensions.sdk import action_result, list_block
 
         r = action_result("Discovered 2 tools", [list_block("Tools", ["a", "b"])])
         assert r["message"] == "Discovered 2 tools"
         assert len(r["results"]) == 1
 
     def test_action_result_message_only(self):
-        from integrations.sdk import action_result
+        from app.extensions.sdk import action_result
 
         r = action_result("just a toast")
         assert r == {"message": "just a toast"}
         assert "results" not in r
 
     def test_action_result_extra_fields(self):
-        from integrations.sdk import action_result, list_block
+        from app.extensions.sdk import action_result, list_block
 
         r = action_result("msg", [list_block("T", ["x"])], tools=["x"])
         assert r["tools"] == ["x"]  # backwards-compat extra field

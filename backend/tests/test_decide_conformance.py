@@ -17,8 +17,6 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
 
-from app.models.enums import AIScope
-
 from app.ai.decide import (
     PHI_EXCLUDED_CODE,
     DecisionCapability,
@@ -46,14 +44,13 @@ from app.ai.decide.systemone.client import (
 )
 from app.ai.decide.systemone.probe import DecisionProbeInput
 from app.ai.decide.types import DecisionAnswer
-from app.ai.providers.enums import DecisionTransport, SystemOneErrorKind
+from app.ai.providers.enums import DecisionTransport, SystemOneErrorKind, TaskType
 from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
     AITaskAssignment,
 )
-from app.ai.providers.enums import TaskType
 from app.models.enums import AIScope
 from app.models.tenant_model import TenantModel
 

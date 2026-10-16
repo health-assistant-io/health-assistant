@@ -16,14 +16,14 @@ from app.ai.providers.service import guard_api_base
 
 
 def test_public_url_allowed(monkeypatch):
-    import integrations.sdk.net_guard as ng
+    import app.extensions.sdk.net_guard as ng
 
     monkeypatch.setattr(ng, "assert_safe_url", lambda url, **kw: [])
     guard_api_base("https://api.openai.com/v1")
 
 
 def test_loopback_literal_blocked(monkeypatch):
-    import integrations.sdk.net_guard as ng
+    import app.extensions.sdk.net_guard as ng
 
     calls = []
 
@@ -38,7 +38,7 @@ def test_loopback_literal_blocked(monkeypatch):
 
 
 def test_dns_name_resolving_internally_blocked(monkeypatch):
-    import integrations.sdk.net_guard as ng
+    import app.extensions.sdk.net_guard as ng
 
     def _fake(url, **kw):
         raise ng.SSRFBlockedError("resolves to private")
@@ -49,7 +49,7 @@ def test_dns_name_resolving_internally_blocked(monkeypatch):
 
 
 def test_empty_api_base_is_noop(monkeypatch):
-    import integrations.sdk.net_guard as ng
+    import app.extensions.sdk.net_guard as ng
 
     def _boom(url, **kw):
         raise AssertionError("should not be called")
@@ -60,8 +60,7 @@ def test_empty_api_base_is_noop(monkeypatch):
 
 
 def test_debug_allows_private(monkeypatch):
-    import integrations.sdk.net_guard as ng
-
+    import app.extensions.sdk.net_guard as ng
     from app.core.config import settings
 
     captured = {}
@@ -77,8 +76,7 @@ def test_debug_allows_private(monkeypatch):
 
 
 def test_prod_blocks_private(monkeypatch):
-    import integrations.sdk.net_guard as ng
-
+    import app.extensions.sdk.net_guard as ng
     from app.core.config import settings
 
     captured = {}
@@ -97,8 +95,7 @@ def test_prod_blocks_private(monkeypatch):
 
 async def test_create_provider_rejects_internal_api_base(monkeypatch):
     """Service-level: create_provider with a private api_base raises ValueError."""
-    import integrations.sdk.net_guard as ng
-
+    import app.extensions.sdk.net_guard as ng
     from app.ai.providers.service import AIProviderService
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal

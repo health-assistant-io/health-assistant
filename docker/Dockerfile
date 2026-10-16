@@ -42,7 +42,6 @@ COPY backend/scripts /app/backend/scripts
 # behind GET /setup/extension-catalog, demo mode's sample PDF) — omitting
 # this dir shipped images whose wizard dropdowns and seed stages ran empty.
 COPY backend/data /app/backend/data
-COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
 RUN useradd --create-home --uid 10001 ha \
@@ -50,7 +49,7 @@ RUN useradd --create-home --uid 10001 ha \
     && chown -R ha:ha /app /data /var/healthassistant
 USER ha
 
-ENV PYTHONPATH=/app/backend:/app
+ENV PYTHONPATH=/app/backend
 WORKDIR /app/backend
 
 EXPOSE 8000

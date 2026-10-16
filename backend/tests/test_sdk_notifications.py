@@ -1,4 +1,4 @@
-"""Unit tests for integrations.sdk.notifications dataclasses.
+"""Unit tests for app.extensions.sdk.notifications dataclasses.
 
 Coverage today is minimal — the dev_dummy reference implementation exercises
 the behavior end-to-end via the integration endpoints, but there was no
@@ -8,7 +8,7 @@ pins the defaults so future edits can't silently regress them.
 
 from uuid import uuid4
 
-from integrations.sdk.notifications import (
+from app.extensions.sdk.notifications import (
     NotificationAction,
     NotificationSpec,
     NotificationTypeSpec,

@@ -17,7 +17,7 @@ import pytest
 _SDK_ROOT = (
     pathlib.Path(__file__).resolve().parents[2]
     / "integrations"
-    / "health_assistant_bridge"
+    / "health-assistant-bridge"
     / "python-sdk"
 )
 _PKG_DIR = _SDK_ROOT / "health_assistant_bridge"

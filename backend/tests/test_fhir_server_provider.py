@@ -1,4 +1,4 @@
-"""Unit tests for integrations.fhir_server.provider (Stage 2 pull + Stage 2b push).
+"""Unit tests for app.extensions.builtin.fhir_server.provider (Stage 2 pull + Stage 2b push).
 
 Covers the per-instance ``auth_mode`` (smart vs none/tokenless), the SMART
 refresh-on-401 path, the push pipeline (echo exclusion, custom-coding exclusion,
@@ -14,8 +14,9 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from integrations.fhir_server.provider import FhirServerProvider
-from integrations.sdk.exceptions import IntegrationAuthError
+
+from app.extensions.builtin.fhir_server.provider import FhirServerProvider
+from app.extensions.sdk.exceptions import IntegrationAuthError
 
 
 def _client(handler):
@@ -297,7 +298,10 @@ async def test_run_push_excludes_echo_and_custom_coding_and_rewrites_subject():
 
     with (
         _patch_db([pushable, echo, custom]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -337,7 +341,10 @@ async def test_run_push_412_counted_as_skipped():
 
     with (
         _patch_db([obs]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -365,7 +372,10 @@ async def test_run_push_excludes_background_echo_by_domain_display():
 
     with (
         _patch_db([bg_echo, pushable]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -487,7 +497,10 @@ async def test_action_push_preview_lists_candidates_without_sending():
 
     with (
         _patch_db([pushable, echo]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         response = await provider.execute_custom_action(integ, "push_preview")
 

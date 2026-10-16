@@ -10,7 +10,8 @@ uniform route-handler signature ``(integration, request, **named-groups)``.
 from inspect import signature
 
 import pytest
-from integrations.health_assistant_bridge.provider import (
+
+from app.extensions.builtin.health_assistant_bridge.provider import (
     _ROUTES,
     HealthAssistantBridgeProvider,
 )

@@ -21,7 +21,7 @@ Post-fix contract pinned here:
 import hashlib
 import hmac
 
-from integrations.sdk.webhook_security import verify_canonical_signature
+from app.extensions.sdk.webhook_security import verify_canonical_signature
 
 
 def _sign(
@@ -122,7 +122,7 @@ def test_real_sdk_sign_request_verifies_through_bare_path():
     sdk_root = (
         pathlib.Path(__file__).resolve().parents[2]
         / "integrations"
-        / "health_assistant_bridge"
+        / "health-assistant-bridge"
         / "python-sdk"
     )
     spec = importlib.util.spec_from_file_location(

@@ -1,11 +1,12 @@
-"""Unit tests for integrations.sdk.fhir (Stage 2 Pair B)."""
+"""Unit tests for app.extensions.sdk.fhir (Stage 2 Pair B)."""
 
 from uuid import uuid4
 
 import httpx
 import pytest
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
-from integrations.sdk.fhir import (
+
+from app.extensions.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from app.extensions.sdk.fhir import (
     fhir_conditional_update,
     fhir_create,
     fhir_observation_to_create,
@@ -376,19 +377,19 @@ def test_parse_operation_outcome_does_not_dump_phi_resource():
 
 # ---------------------------------------------------------------------------
 # fhir_create (POST /{Resource}) — was previously implemented but not
-# re-exported from integrations.sdk. These tests lock in the public export
+# re-exported from app.extensions.sdk. These tests lock in the public export
 # and the documented behavior.
 # ---------------------------------------------------------------------------
 
 
 def test_fhir_create_is_reexported_from_sdk_package():
-    """``from integrations.sdk import fhir_create`` must succeed.
+    """``from app.extensions.sdk import fhir_create`` must succeed.
 
     Regression for the public-API gap: ``fhir_create`` was defined in
     ``integrations/sdk/fhir.py:179`` but absent from
     ``integrations/sdk/__init__.py``'s imports / ``__all__``.
     """
-    from integrations.sdk import fhir_create as re_exported
+    from app.extensions.sdk import fhir_create as re_exported
 
     assert callable(re_exported)
     assert re_exported is fhir_create
@@ -459,7 +460,7 @@ def test_fhir_helpers_route_through_shared_retry_request():
     """
     import inspect
 
-    from integrations.sdk import fhir as fhir_mod
+    from app.extensions.sdk import fhir as fhir_mod
 
     create_src = inspect.getsource(fhir_mod.fhir_create)
     update_src = inspect.getsource(fhir_mod.fhir_conditional_update)
@@ -482,7 +483,7 @@ async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
 

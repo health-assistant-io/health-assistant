@@ -2,7 +2,7 @@
 
 Closes the gap left by ``ConceptProvenance.INTEGRATION`` (declared in the
 enum but unwritten before workstream F). Providers opt in via
-:meth:`integrations.sdk.base.BaseHealthProvider.supports_catalog_proposals`
+:meth:`app.extensions.sdk.base.BaseHealthProvider.supports_catalog_proposals`
 + :meth:`pull_catalog_proposals`; the engine's ``run_sync`` calls
 :func:`apply_proposal` on each item.
 
@@ -32,12 +32,12 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from integrations.sdk.catalog import CatalogProposal
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.extensions.sdk.catalog import CatalogProposal
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.enums import (
     ConceptKind,

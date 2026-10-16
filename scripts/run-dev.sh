@@ -120,12 +120,11 @@ if [[ "$NO_BOOTSTRAP" = false ]]; then
   uv sync --frozen
   export PATH="$PWD/$VENV_DIR/bin:$PATH"
 
-  # PYTHONPATH must include backend (for `app.*`) and project root (for
-  # `integrations.*`). Exported here so every Procfile.dev process inherits it
-  # without re-setting it.
-  dc_backend_root="$PWD"
-  dc_backend_parent="$(dirname "$PWD")"
-  export PYTHONPATH="$dc_backend_root:$dc_backend_parent"
+  # PYTHONPATH needs backend only — the extension subsystem lives inside
+  # the app package (backend/app/extensions, ADR-0040 D24). The bridge SDK
+  # satellites under ../integrations are standalone packages, never imported
+  # by the backend.
+  export PYTHONPATH="$PWD"
 
   dc_step "running database migrations"
   alembic upgrade head || dc_error "Migration failed. Proceeding anyway..."

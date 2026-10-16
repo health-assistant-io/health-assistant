@@ -473,11 +473,10 @@ async def run_sync(
 
     Returns a :class:`SyncResult`. The caller decides how to surface errors.
     """
-    from integrations.sdk.exceptions import (
+    from app.extensions.sdk.exceptions import (
         IntegrationAuthError,
         IntegrationRateLimitError,
     )
-
     from app.models.user_integration import IntegrationStatus, IntegrationSyncLog
 
     started = _now()
@@ -1433,7 +1432,7 @@ async def _emit_provider_notifications(
     Called from ``run_sync``'s ``finally`` block after a successful/partial
     sync, AND from the webhook handler (see :func:`post_sync_notifications`).
     The provider's :meth:`get_notifications` returns a list of
-    :class:`~integrations.sdk.notifications.NotificationSpec`. The platform
+    :class:`~app.extensions.sdk.notifications.NotificationSpec`. The platform
     emits each with:
 
     * ``source=NotificationSource.INTEGRATION``

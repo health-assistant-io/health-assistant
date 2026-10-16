@@ -49,9 +49,10 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from integrations.dev_dummy.config_flow import DevDummyConfigFlow
-from integrations.dev_dummy.provider import DevDummyProvider
-from integrations.sdk.exceptions import (
+
+from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
+from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
+from app.extensions.sdk.exceptions import (
     IntegrationAuthError,
     IntegrationDataError,
     IntegrationRateLimitError,
@@ -517,7 +518,7 @@ async def test_pull_hitl_proposals_respects_toggle(provider: DevDummyProvider):
 @pytest.mark.asyncio
 async def test_handle_proposal_resolution_advances_cursor(provider: DevDummyProvider):
     integration = make_integration(config={})
-    from integrations.sdk import ProposalOutcome
+    from app.extensions.sdk import ProposalOutcome
 
     await provider.handle_proposal_resolution(integration, uuid4(), ProposalOutcome())
     assert provider.get_sync_cursor(integration, "hitl_stress_index_resolved") is True

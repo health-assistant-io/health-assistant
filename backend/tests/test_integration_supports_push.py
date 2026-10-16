@@ -21,7 +21,7 @@ Post-fix contract pinned here:
 import inspect
 from unittest.mock import MagicMock
 
-from integrations.sdk.base import BaseHealthProvider
+from app.extensions.sdk.base import BaseHealthProvider
 
 # ---------------------------------------------------------------------------
 # pull_data is no longer abstract
@@ -105,8 +105,8 @@ def test_supports_push_can_be_force_disabled():
 def test_dev_dummy_and_fhir_server_are_detected_as_pushers():
     """The two real providers that override ``push_data`` are picked up
     automatically (regression: they must not silently stop pushing)."""
-    from integrations.dev_dummy.provider import DevDummyProvider
-    from integrations.fhir_server.provider import FhirServerProvider
+    from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
+    from app.extensions.builtin.fhir_server.provider import FhirServerProvider
 
     assert DevDummyProvider().supports_push() is True
     assert FhirServerProvider().supports_push() is True
@@ -114,8 +114,10 @@ def test_dev_dummy_and_fhir_server_are_detected_as_pushers():
 
 def test_webhook_bridge_mcp_are_not_pushers():
     """The push-only / tool-only providers do not push outward."""
-    from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-    from integrations.webhook.provider import WebhookProvider
+    from app.extensions.builtin.health_assistant_bridge.provider import (
+        HealthAssistantBridgeProvider,
+    )
+    from app.extensions.builtin.webhook.provider import WebhookProvider
 
     assert WebhookProvider().supports_push() is False
     assert HealthAssistantBridgeProvider().supports_push() is False

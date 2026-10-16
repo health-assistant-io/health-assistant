@@ -51,7 +51,7 @@ def guard_api_base(api_base: str) -> None:
 
     Raises ``ValueError`` with a client-facing message on violation.
     """
-    from integrations.sdk.net_guard import SSRFBlockedError, assert_safe_url
+    from app.extensions.sdk.net_guard import SSRFBlockedError, assert_safe_url
 
     if not api_base:
         return

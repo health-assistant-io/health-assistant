@@ -11,16 +11,16 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from integrations.sdk.catalog import (
+from sqlalchemy import select
+
+from app.core.database import AsyncSessionLocal
+from app.extensions.sdk.catalog import (
     CatalogProposal,
     biomarker_proposal,
     concept_proposal,
     edge_proposal,
     medication_proposal,
 )
-from sqlalchemy import select
-
-from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import CatalogScope
 from app.models.tenant_model import TenantModel

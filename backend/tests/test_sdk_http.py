@@ -1,4 +1,4 @@
-"""Unit tests for integrations.sdk.http (Stage 2 Pair B).
+"""Unit tests for app.extensions.sdk.http (Stage 2 Pair B).
 
 All HTTP is mocked via httpx.MockTransport — no network, no DB.
 """
@@ -7,12 +7,13 @@ import json
 
 import httpx
 import pytest
-from integrations.sdk.exceptions import (
+
+from app.extensions.sdk.exceptions import (
     IntegrationAuthError,
     IntegrationDataError,
     IntegrationRateLimitError,
 )
-from integrations.sdk.http import DEFAULT_MAX_PAGES, _backoff_delay, http_request, paginate_bundle
+from app.extensions.sdk.http import DEFAULT_MAX_PAGES, _backoff_delay, http_request, paginate_bundle
 
 
 def _client(handler):
@@ -206,7 +207,7 @@ async def test_http_request_applies_jitter_on_5xx_retry(monkeypatch):
     async def _capture_sleep(d):
         sleeps.append(d)
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _capture_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _capture_sleep)
 
     def handler(request):
         return httpx.Response(503, text="down")
@@ -233,7 +234,7 @@ async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch
     async def _capture_sleep(d):
         sleeps.append(d)
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _capture_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _capture_sleep)
 
     def handler(request):
         # Server says "wait exactly 7 seconds"; we must honor it verbatim.
@@ -257,7 +258,7 @@ async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
     def handler(request):
         return httpx.Response(429, headers={"Retry-After": "120"})
@@ -280,7 +281,7 @@ async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatc
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
     def handler(request):
         # No Retry-After header at all.
@@ -299,12 +300,12 @@ async def test_http_request_429_http_date_retry_after_is_parsed(monkeypatch):
     both forms (audit Phase 3.5) — a date in the future surfaces as a
     positive ``retry_after_seconds`` (not ``None`` as the digit-only parser
     previously left it). A date already in the past clamps to 0."""
-    from integrations.sdk.http import _parse_retry_after
+    from app.extensions.sdk.http import _parse_retry_after
 
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
 
     # Unit-test the parser directly.
     assert _parse_retry_after("Wed, 21 Oct 2099 07:28:00 GMT") is not None

@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (extensions — D24 relocation onto the family extension home)
+- **The integrations framework relocated to `backend/app/extensions/`**
+  (the family extension subsystem home, one layout across the Python
+  products): the SDK surface is now `app/extensions/sdk/` (the old core
+  ABCs folded into `sdk/base.py`), the five bundled integrations live in
+  `app/extensions/builtin/<domain>/`, and the registry is
+  `app/extensions/registry.py` (`app.core.integration_registry` is
+  gone). Imports change from `integrations.*` to `app.extensions.*`.
+- **The bridge client SDKs are satellites:** python/ts/kotlin SDKs moved
+  to `integrations/health-assistant-bridge/` (from
+  `integrations/health_assistant_bridge/`); they are consumer-facing
+  packages the backend never imports. `PYTHONPATH` no longer needs the
+  repo root; the runtime Docker image stops copying `integrations/`.
+- **MCP client construction is AI-layer-confined** (the family MCP rule):
+  fastmcp imports now live only in `app/ai/mcp_client_factory.py`;
+  the bundled `mcp_client` extension delegates to it (alignment gate R2
+  holds after the move).
+- Default-on semantics, capability probing and the error model are
+  unchanged in this commit — they converge in the follow-up commits of
+  this wave.
+
 ### Fixed (endpoint-routed token cap + optional temperature — compatible servers and reasoning models both work, 2026-10-15)
 - **`build_openai` routes the token-cap parameter by endpoint (the shared
   wire policy):** api.openai.com always receives `max_completion_tokens`

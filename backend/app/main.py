@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI):
 
     # Seed initial data
     from app.core.database import DATABASE_AVAILABLE
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
     from app.services.seed_service import seed_service
 
     if DATABASE_AVAILABLE:
@@ -279,7 +279,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to close checkpoint store cleanly: {e}")
 
     try:
-        from app.core.integration_registry import integration_registry
+        from app.extensions.registry import integration_registry
 
         for provider in integration_registry.get_all_providers():
             try:

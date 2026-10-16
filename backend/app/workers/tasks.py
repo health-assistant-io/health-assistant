@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.core.integration_registry import integration_registry
+from app.extensions.registry import integration_registry
 from app.models.enums import IntegrationStatus
 from app.models.user_integration import UserIntegration
 from app.workers.celery_app import celery_app

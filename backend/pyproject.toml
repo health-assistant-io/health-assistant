@@ -131,9 +131,9 @@ follow_imports = "silent"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# `..` adds the repo root so the `integrations` package (source of truth,
-# imported via PYTHONPATH) resolves — kept from pytest.ini.
-pythonpath = [".", ".."]
+# the extension subsystem (app/extensions) is an ordinary app package —
+# tests need only the backend root on the path.
+pythonpath = ["."]
 env_files = [".env.test", ".env"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"

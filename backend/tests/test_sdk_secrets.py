@@ -1,4 +1,4 @@
-"""Unit tests for ``integrations.sdk.secrets`` — Fernet field encryption.
+"""Unit tests for ``app.extensions.sdk.secrets`` — Fernet field encryption.
 
 Covers the Phase 1.2 hardening: ``MultiFernet`` key rotation (decrypt with a
 previous key after rotating the primary), ``_kid`` tagging, and the opt-in
@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import pytest
 from cryptography.fernet import Fernet
-from integrations.sdk.secrets import (
+
+from app.extensions.sdk.secrets import (
     KEY_ID_MARKER,
     SECRET_MARKER,
     SecretCipher,
@@ -207,7 +208,7 @@ def _patch_settings(monkeypatch, primary_key: str, previous: str = ""):
     """Make ``SecretCipher.from_settings()`` use the given keys without booting
     the full app config. ``encrypt_fields`` / ``decrypt_fields`` call the
     classmethod, so patching it covers the field-level helpers too."""
-    from integrations.sdk import secrets as secrets_mod
+    from app.extensions.sdk import secrets as secrets_mod
 
     monkeypatch.setattr(
         secrets_mod.SecretCipher,

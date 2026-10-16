@@ -18,13 +18,15 @@ RUNTIME_IMAGE_ALLOWLIST = (
     "docker/Dockerfile.worker",
 )
 
+# Bundled extensions ship inside backend/app (the extension subsystem);
+# the bridge SDK satellites under integrations/ are consumer packages the
+# backend never imports — they stay out of the runtime image.
 RUNTIME_COPY_PATHS = (
     "backend/app",
     "backend/alembic",
     "backend/alembic.ini",
     "backend/scripts",
     "backend/data",
-    "integrations",
 )
 
 RUNTIME_DATA_FILES = (

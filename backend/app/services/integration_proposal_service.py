@@ -25,12 +25,12 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from integrations.sdk.catalog import CatalogProposal
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import utcnow as _now
+from app.extensions.sdk.catalog import CatalogProposal
 from app.models.enums import HitlTaskStatus
 from app.models.integration_proposal import IntegrationProposal
 
@@ -468,7 +468,7 @@ async def resolve_proposal(
     # the provider learns whether the apply succeeded.
     if provider is not None and action == "approve":
         try:
-            from integrations.sdk.proposals import ProposalOutcome
+            from app.extensions.sdk.proposals import ProposalOutcome
 
             outcome = ProposalOutcome(
                 action=action,

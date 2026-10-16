@@ -328,7 +328,7 @@ def test_ring_old_ciphertext_decrypts_and_reseals_under_new_primary(monkeypatch)
 def test_sdk_ring_rotation_with_legacy_env_names(monkeypatch):
     """The integrations SDK ring (bridge pairing secrets) rotates through
     the same family under the legacy env names — untouched semantics."""
-    from integrations.sdk.secrets import SecretCipher
+    from app.extensions.sdk.secrets import SecretCipher
 
     monkeypatch.setattr(settings, "HA_DATA_KEY", OLD_DATA_KEY)
     monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", "")

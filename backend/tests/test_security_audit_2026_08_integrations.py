@@ -27,8 +27,8 @@ def test_mcp_stdio_disabled_by_default():
 
 
 def test_mcp_inline_code_args_rejected():
-    from integrations.mcp_client import security as mcp_sec
-    from integrations.mcp_client.security import validate_stdio_command
+    from app.extensions.builtin.mcp_client import security as mcp_sec
+    from app.extensions.builtin.mcp_client.security import validate_stdio_command
 
     with patch.object(mcp_sec, "get_allowed_commands", return_value=["python", "node"]):
         ok, reason = validate_stdio_command("python", ["-c", "import os; os.system('id')"])
@@ -44,7 +44,7 @@ def test_mcp_inline_code_args_rejected():
 
 
 def test_mcp_stdio_disabled_message_when_allowlist_empty():
-    from integrations.mcp_client.security import validate_stdio_command
+    from app.extensions.builtin.mcp_client.security import validate_stdio_command
 
     ok, reason = validate_stdio_command("python", ["script.py"])
     assert not ok
@@ -52,7 +52,7 @@ def test_mcp_stdio_disabled_message_when_allowlist_empty():
 
 
 def test_mcp_http_url_blocks_private_targets():
-    from integrations.mcp_client.security import validate_http_url
+    from app.extensions.builtin.mcp_client.security import validate_http_url
 
     for url in (
         "https://169.254.169.254/latest/meta-data/",
@@ -72,7 +72,7 @@ def test_mcp_http_url_blocks_private_targets():
 def test_fetch_attachment_uses_net_guard():
     import inspect
 
-    from integrations.fhir_server import provider as fhir_provider
+    from app.extensions.builtin.fhir_server import provider as fhir_provider
 
     src = inspect.getsource(fhir_provider.FhirServerProvider)
     assert "assert_safe_url" in src
@@ -370,7 +370,7 @@ async def test_config_flow_provisions_machine_secrets():
         patch.object(integ.integration_registry, "get_config_flow") as gcf,
         patch.object(integ.integration_registry, "get_provider") as gp,
         patch(
-            "integrations.sdk.secrets.SecretCipher.from_settings",
+            "app.extensions.sdk.secrets.SecretCipher.from_settings",
             return_value=_FakeCipher(),
         ),
         patch.object(integ, "is_domain_disabled", new=AsyncMock(return_value=False)),
@@ -413,7 +413,7 @@ async def test_rotate_secret_owner_scoped_and_returns_once():
 
     from sqlalchemy.orm.attributes import flag_modified  # noqa: F401
 
-    with patch("integrations.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()):
+    with patch("app.extensions.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()):
         result = await integ.rotate_instance_secret(
             str(row.id),
             patient_id="22222222-2222-4222-8222-222222222222",
@@ -469,7 +469,7 @@ async def test_rotate_secret_missing_instance_404():
 async def test_rotated_secret_verifies_and_old_one_dies():
     """End-to-end shape: after rotation the machine route accepts a signature
     computed with the NEW secret and rejects the OLD one."""
-    from integrations.sdk.webhook_security import verify_canonical_signature
+    from app.extensions.sdk.webhook_security import verify_canonical_signature
 
     old_secret = "old-secret-old-secret-old-secret-1"
     new_secret = _rotate_plain()

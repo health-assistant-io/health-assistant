@@ -2,9 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from integrations.base import BaseConfigFlow, BaseHealthProvider
 
-from app.core.integration_registry import IntegrationRegistry
+from app.extensions.registry import IntegrationRegistry
+from app.extensions.sdk.base import BaseConfigFlow, BaseHealthProvider
 
 
 @pytest.mark.asyncio
@@ -151,14 +151,14 @@ def test_core_base_no_longer_declares_legacy_oauth_stubs():
 
     Source-level guard against a revert.
     """
-    from integrations import base as core_base
+    from app.extensions.sdk import base as core_base
 
     for legacy_name in ("get_auth_url", "exchange_token", "refresh_access_token"):
         assert not hasattr(core_base.BaseHealthProvider, legacy_name), (
             f"BaseHealthProvider.{legacy_name} should be removed — the SDK "
-            f"base (integrations/sdk/base.py) declares the canonical "
+            f"base (app/extensions/sdk/base.py) declares the canonical "
             f"begin_oauth / complete_oauth pair, and SmartOAuth "
-            f"(integrations/sdk/auth.py) handles token refresh. Re-adding "
+            f"(app/extensions/sdk/auth.py) handles token refresh. Re-adding "
             f"the legacy stub would re-introduce the silent no-op footgun."
         )
 
@@ -168,18 +168,19 @@ def test_core_base_does_not_import_warnings_module():
     cleanup) imported ``warnings``. With the methods gone, the import should
     be gone too — guards against an partial revert that leaves a dangling
     import."""
-    import importlib
     import inspect
 
-    from integrations import base as core_base
+    from app.extensions.sdk import base as core_base
 
     src = inspect.getsource(core_base)
     assert "import warnings" not in src, (
-        "integrations/base.py should not import warnings — the legacy "
+        "the provider base should not import warnings — the legacy "
         "OAuth stubs that used it have been removed"
     )
-    # Sanity: the module is still importable
-    assert importlib.reload(core_base) is core_base
+    # NOTE: no importlib.reload here — reloading the folded base module
+    # (the D24 fold put the core ABCs and the SDK surface in one module)
+    # re-creates every class object and silently breaks identity checks
+    # for providers imported before the reload.
 
 
 # ---------------------------------------------------------------------------
@@ -191,15 +192,15 @@ def test_sdk_base_no_longer_declares_fetch_json():
     """``BaseHealthProvider.fetch_json`` was a pre-``http_request`` GET helper
     that inlined its own retry loop. It had zero provider overrides or call
     sites at removal time, and every retry/backoff/jitter concern now lives
-    in ``integrations.sdk.http._retry_request``. Providers that need a
+    in ``app.extensions.sdk.http._retry_request``. Providers that need a
     robust GET call ``await http_request(self._http_client, "GET", url,
     ...)`` instead. Source-level guard against a revert.
     """
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert not hasattr(SDKBaseProvider, "fetch_json"), (
         "SDK BaseHealthProvider.fetch_json should be removed — the shared "
-        "_retry_request helper (integrations.sdk.http) replaced it. "
+        "_retry_request helper (app.extensions.sdk.http) replaced it. "
         "Re-adding it would re-introduce a divergent retry implementation."
     )
 
@@ -211,7 +212,7 @@ def test_sdk_base_no_longer_imports_asyncio_or_legacy_exceptions():
     also catch, but this test makes the intent explicit)."""
     import inspect
 
-    from integrations.sdk import base as sdk_base
+    from app.extensions.sdk import base as sdk_base
 
     src = inspect.getsource(sdk_base)
     assert "import asyncio" not in src, (
@@ -240,7 +241,7 @@ def test_sdk_base_declares_clinical_events_opt_in_hook_with_safe_defaults():
     don't opt in are unaffected. Source-level guard for the contract."""
     import inspect
 
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     # Defaults — False / [] so the engine's ``_opt_in`` probe skips
     # providers that haven't opted in.
@@ -264,11 +265,10 @@ def test_sdk_base_declares_clinical_events_opt_in_hook_with_safe_defaults():
 
 
 def test_clinical_event_create_is_reexported_from_sdk():
-    """``from integrations.sdk import ClinicalEventCreate`` must work — the
+    """``from app.extensions.sdk import ClinicalEventCreate`` must work — the
     SDK re-exports the schema so providers can build event payloads in
     ``pull_clinical_events`` without reaching into ``app.schemas``."""
-    from integrations.sdk import ClinicalEventCreate
-
+    from app.extensions.sdk import ClinicalEventCreate
     from app.schemas.clinical_event import ClinicalEventCreate as SchemaSource
 
     assert ClinicalEventCreate is SchemaSource, (
@@ -283,7 +283,7 @@ def test_sdk_base_declares_examinations_opt_in_hook_with_safe_defaults():
     contract test above."""
     import inspect
 
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert hasattr(SDKBaseProvider, "supports_examinations")
     assert hasattr(SDKBaseProvider, "pull_examinations")
@@ -303,11 +303,10 @@ def test_sdk_base_declares_examinations_opt_in_hook_with_safe_defaults():
 
 
 def test_examination_create_is_reexported_from_sdk():
-    """``from integrations.sdk import ExaminationCreate`` must work — the
+    """``from app.extensions.sdk import ExaminationCreate`` must work — the
     SDK re-exports the schema so providers can build exam payloads in
     ``pull_examinations`` without reaching into ``app.schemas``."""
-    from integrations.sdk import ExaminationCreate
-
+    from app.extensions.sdk import ExaminationCreate
     from app.schemas.examination import ExaminationCreate as SchemaSource
 
     assert ExaminationCreate is SchemaSource, (
@@ -328,7 +327,7 @@ def test_sdk_base_declares_catalog_proposals_opt_in_hook_with_safe_defaults():
     + examinations contract tests."""
     import inspect
 
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert hasattr(SDKBaseProvider, "supports_catalog_proposals")
     assert hasattr(SDKBaseProvider, "pull_catalog_proposals")
@@ -348,12 +347,12 @@ def test_sdk_base_declares_catalog_proposals_opt_in_hook_with_safe_defaults():
 
 
 def test_catalog_proposal_is_reexported_from_sdk():
-    """``from integrations.sdk import CatalogProposal`` must work — the SDK
+    """``from app.extensions.sdk import CatalogProposal`` must work — the SDK
     re-exports the spec so providers can build proposals in
     ``pull_catalog_proposals`` without reaching into the SDK submodule
     directly."""
-    from integrations.sdk import CatalogProposal
-    from integrations.sdk.catalog import (
+    from app.extensions.sdk import CatalogProposal
+    from app.extensions.sdk.catalog import (
         CatalogProposal as CatalogProposalSource,
     )
 
@@ -377,7 +376,7 @@ def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
     catalog-proposals contract tests."""
     import inspect
 
-    from integrations.sdk.base import BaseHealthProvider as SDKBaseProvider
+    from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
     assert hasattr(SDKBaseProvider, "supports_hitl_proposals")
     assert hasattr(SDKBaseProvider, "pull_hitl_proposals")
@@ -426,12 +425,12 @@ def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
 
 
 def test_integration_proposal_spec_is_reexported_from_sdk():
-    """``from integrations.sdk import IntegrationProposalSpec`` must work —
+    """``from app.extensions.sdk import IntegrationProposalSpec`` must work —
     the SDK re-exports the spec so providers can build HITL proposals in
     ``pull_hitl_proposals`` without reaching into the SDK submodule
     directly."""
-    from integrations.sdk import IntegrationProposalSpec
-    from integrations.sdk.proposals import (
+    from app.extensions.sdk import IntegrationProposalSpec
+    from app.extensions.sdk.proposals import (
         IntegrationProposalSpec as SpecSource,
     )
 
@@ -441,10 +440,10 @@ def test_integration_proposal_spec_is_reexported_from_sdk():
 
 
 def test_proposal_outcome_is_reexported_from_sdk():
-    """``from integrations.sdk import ProposalOutcome`` must work — the
+    """``from app.extensions.sdk import ProposalOutcome`` must work — the
     resolver passes instances of this to ``handle_proposal_resolution``."""
-    from integrations.sdk import ProposalOutcome
-    from integrations.sdk.proposals import ProposalOutcome as OutcomeSource
+    from app.extensions.sdk import ProposalOutcome
+    from app.extensions.sdk.proposals import ProposalOutcome as OutcomeSource
 
     assert ProposalOutcome is OutcomeSource, "SDK re-export must alias the spec, not duplicate it"
 
@@ -543,7 +542,7 @@ async def test_initialize_passes_per_domain_system_config(monkeypatch):
 def test_dev_dummy_provider_overrides_setup():
     """The reference provider overrides setup() so authors have a
     copy-paste example of the lifecycle hook."""
-    from integrations.dev_dummy.provider import DevDummyProvider
+    from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
 
     # The class must override setup (not just inherit the no-op default).
     assert DevDummyProvider.setup.__qualname__.startswith("DevDummyProvider"), (
@@ -553,7 +552,7 @@ def test_dev_dummy_provider_overrides_setup():
 
 @pytest.mark.asyncio
 async def test_dev_dummy_setup_does_not_raise():
-    from integrations.dev_dummy.provider import DevDummyProvider
+    from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
 
     provider = DevDummyProvider()
     # Must accept both shapes: dict / None.

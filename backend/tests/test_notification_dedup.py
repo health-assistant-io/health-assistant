@@ -275,7 +275,7 @@ async def test_emit_dedup_is_best_effort_no_unique_constraint():
 
 def test_notification_spec_supports_digest_key():
     """``NotificationSpec`` carries the optional digest_key field."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec(title="x")
     assert spec.digest_key is None  # default
@@ -286,7 +286,7 @@ def test_notification_spec_supports_digest_key():
 
 def test_notification_spec_builder_digest_key():
     """The fluent builder exposes ``.digest_key(key)``."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec.builder(title="x").digest_key("dev_dummy:hr:patient/abc").build()
     assert spec.digest_key == "dev_dummy:hr:patient/abc"
@@ -296,7 +296,7 @@ def test_notification_to_payload_does_not_leak_digest_key():
     """``digest_key`` is platform routing metadata, not user-visible
     payload content. ``to_payload()`` must not include it (the engine
     forwards it as a kwarg to ``emit``, not via the payload dict)."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec(title="x", digest_key="some:key")
     payload = spec.to_payload()

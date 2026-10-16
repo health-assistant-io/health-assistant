@@ -11,11 +11,11 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import select
 
 from app.ai.assistance import turns as turns_mod
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.chat_model import ChatMessage, ChatSession
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel

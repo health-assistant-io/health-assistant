@@ -323,7 +323,7 @@ async def test_ingest_document_bytes_dedup_race_recovers(
 
 def test_document_pull_spec_carries_external_id():
     """The SDK ``DocumentPull`` Pydantic spec must accept ``external_id``."""
-    from integrations.sdk import DocumentPull
+    from app.extensions.sdk import DocumentPull
 
     spec = DocumentPull(
         filename="x.pdf",
@@ -336,7 +336,7 @@ def test_document_pull_spec_carries_external_id():
 def test_document_pull_spec_external_id_optional():
     """Providers that don't have a stable upstream id leave it unset —
     they manage idempotency via cursor."""
-    from integrations.sdk import DocumentPull
+    from app.extensions.sdk import DocumentPull
 
     spec = DocumentPull(filename="x.pdf", content=b"data")
     assert spec.external_id is None

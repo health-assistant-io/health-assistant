@@ -29,7 +29,7 @@ PATIENT = uuid4()
 
 def test_observation_builder_keeps_timezone():
     """regression regression: builder must NOT strip tzinfo."""
-    from integrations.sdk.observation_builder import ObservationBuilder
+    from app.extensions.sdk.observation_builder import ObservationBuilder
 
     tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=UTC)
     obs = (
@@ -58,8 +58,7 @@ def test_built_observation_passes_fhir_validation():
     `effective_datetime` lacked tzinfo, `isoformat()` produced no offset,
     and fhir.resources rejected it.
     """
-    from integrations.sdk.observation_builder import ObservationBuilder
-
+    from app.extensions.sdk.observation_builder import ObservationBuilder
     from app.models.fhir import Observation
     from app.services.fhir_helpers import assert_valid_fhir
 

@@ -179,9 +179,10 @@ async def typed_err_ctx():
 
 
 async def _proxy(db, ctx, path: str, method: str, payload: dict | None = None, body: bytes = b""):
-    from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-
     from app.api.v1.endpoints import integrations as ep
+    from app.extensions.builtin.health_assistant_bridge.provider import (
+        HealthAssistantBridgeProvider,
+    )
 
     if payload is not None:
         import json as _json
@@ -300,7 +301,7 @@ class TestTypedErrorsThroughTheProxy:
             raise ValueError("boom")
 
         with patch(
-            "integrations.health_assistant_bridge.provider"
+            "app.extensions.builtin.health_assistant_bridge.provider"
             ".HealthAssistantBridgeProvider.handle_api_request",
             new=_boom,
         ):
@@ -313,7 +314,7 @@ class TestTypedErrorsThroughTheProxy:
 
     async def test_bridge_error_subclasses_value_error(self):
         """Direct provider callers' `pytest.raises(ValueError)` keeps passing."""
-        from integrations.sdk import BridgeError
+        from app.extensions.sdk import BridgeError
 
         err = BridgeError(404, "not_found", "Exam not found for this patient.")
         assert isinstance(err, ValueError)

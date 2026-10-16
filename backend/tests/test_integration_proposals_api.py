@@ -10,10 +10,10 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from integrations.sdk.proposals import biomarker_hitl_proposal
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.sdk.proposals import biomarker_hitl_proposal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import HitlTaskStatus, Role
 from app.models.fhir.medication import MedicationCatalog
@@ -468,7 +468,7 @@ async def test_resolve_medication_proposal_writes_catalog(
 ):
     """Non-biomarker kinds route through apply_proposal too — verify with
     a medication proposal."""
-    from integrations.sdk.proposals import medication_hitl_proposal
+    from app.extensions.sdk.proposals import medication_hitl_proposal
 
     headers, tenant_id, user_id, integration_id = owner_headers_and_integration
     spec = medication_hitl_proposal(

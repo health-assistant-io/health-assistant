@@ -22,11 +22,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-from integrations.sdk.exceptions import BridgeError
 from sqlalchemy import func, select
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+from app.extensions.sdk.exceptions import BridgeError
 from app.models.chat_model import ChatMessage, ChatSession
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
