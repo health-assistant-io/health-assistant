@@ -718,6 +718,35 @@
         "bridge": "—",
         "gitImport": "managed MCP servers from sources",
         "notes": "search stays the ADR-0035 reference; T3-MCP reference",
+        "honors": [
+          "net",
+          "secrets",
+          "chat-tools",
+          "sync",
+          "state",
+          "fs-read",
+          "fs-write-quarantine",
+          "decision",
+          "llm",
+          "run",
+          "report",
+          "propose",
+          "notify",
+          "ui:panel",
+          "ui:page",
+          "ui:window",
+          "ui:chat-card",
+          "ui:settings"
+        ],
+        "honorsNote": "Capabilities the study host implements today; a bundled manifest declaring anything else self-disables at registration. Window hosting (ui:window) is honored-shaped per D17 but opt-in per surface kind.",
+        "connectorProfile": {
+          "note": "The connector kind's study profile (plan 32 Phase 7): the discovery/parse adapter shapes are ratified as-is — they keep their shapes while living in the D24 subsystem home (backend/app/extensions/).",
+          "search": "The ADR-0035 vendored trio providers over injectable httpx transports (perform_search/perform_fetch, normalized {title,url,content} hits); its 9-kind SearchError taxonomy maps mechanically to the charter codes via the D4 note (legacyMappingNote) — the study host projects it app-side and the trio stays byte-identical.",
+          "discovery": "DiscoveryProvider.search(query, cap, transport) -> normalized DiscoveryResult rows; results are suggestions, never auto-imported (ADR-167); MCP tool legs validate every row app-side and audit each call.",
+          "parse": "The URLParser protocol (matches/fetch -> ParsedDocument) over the content pipeline's ordered registry; the MCP parse-contract adapter registers at composition time from extensions/runtime.",
+          "mcp": "D19 instances over the mcp.servers preference rows: sealed keyring token/env slots (x-secret), per-tool allowlist with declared discovery|parse contracts, explicit refresh, one audit row per call, T3 perimeter disclosure verbatim (consent.t3PerimeterDisclosure).",
+          "externalSources": "The bundled external-sources connector (rss | youtube_channel | youtube_playlist | site_search) fetches user-configured URLs, so it declares 'sync' only (the career user-configured-URL precedent): RSS rides plain httpx with conditional GET, YouTube metadata extraction is a yt-dlp subprocess outside the polite perimeter, site_search rides the search trio's transports — the fetch-leg transport honesty is declared in the manifest description, never as a fixed 'net' domains list."
+        },
         "surfaces": "opt-in (surface hosting adoption deferred past this program — recorded per the Phase-4 plan row; two-app rule already satisfied by career + desktop)"
       },
       {
