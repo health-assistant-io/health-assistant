@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "contract": "settings-map",
-  "updated": "2026-10-14",
+  "updated": "2026-10-15",
   "purpose": "One family taxonomy for settings surfaces: what a setting IS decides where it LIVES. Canonical per ADR-0033 / ADR-0031 (sync-and-gate): this file is the master; product repos vendor it byte-identical under contracts/ and scripts/verify-wiring.sh flags drift. A setting may not ship (or move) in any product without a domain entry (or adopter line) here.",
 
   "groups": {
@@ -48,7 +48,7 @@
       "id": "ai.tasks",
       "group": "ai",
       "title": "Task assignments",
-      "definition": "Capability/task → model slots (text/vision/stt/tts/embeddings), the decision default slot (decision) and its decision:<kind> override slots, primary + fallback — resolution per ADR-0036 (kind override → decision default → unassigned). Includes the decision-group privacy note.",
+      "definition": "Capability/task → model slots (text/vision/stt/tts/embeddings), the decision default slot (decision) and its decision:<kind> override slots, primary + fallback — resolution per ADR-0036 (kind override → decision default → unassigned). Capability defaults are single-slot per ADR-0037 (fallbacks live only on specialist assignments: task rows and decision:<kind> overrides). Includes the decision-group privacy note.",
       "home": { "tab": "ai", "section": "tasks" },
       "secrets": "none",
       "scope": "user > system fallback (web) / profile (desktop)",
@@ -149,14 +149,14 @@
     {
       "id": "tools.connectors",
       "group": "tools",
-      "title": "Connectors (MCP client)",
-      "definition": "External tool servers the assistant can call (MCP client connectors).",
+      "title": "Connectors (MCP client + job sources)",
+      "definition": "External tool servers the assistant can call (MCP client connectors) AND job-source connectors (posting ingestion sources with catalog-driven config; plan 32 Phase 1 / ADR-0040) — one connectors section covers both connector-kind surfaces.",
       "home": { "tab": "tools", "section": "connectors" },
-      "secrets": "product secret store",
+      "secrets": "product secret store — never a plaintext column",
       "scope": "user",
       "adopters": {
         "study-assistant": "aligned (connectors section also carries the read-only MCP resource-server info card, ADR-0012)",
-        "career-assistant": "aligned (admin tools tab → connectors section, GitHub token)"
+        "career-assistant": "aligned (admin tools tab → connectors section: MCP GitHub token + job-source connector instances with x-secret slots and per-source probes, plan 32 Phase 1)"
       }
     },
     {
@@ -268,7 +268,7 @@
         { "id": "tools", "group": "tools", "admin": true, "sections": [
           { "id": "web-search", "domains": ["tools.web-search"] },
           { "id": "connectors", "domains": ["tools.connectors"] }
-        ], "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token)" },
+        ], "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token); plan 32 Phase 1 broadened connectors to also host job-source connector instances (manifest catalog + x-secret slots + probes)" },
         { "id": "automations", "group": "automations", "domains": ["automations.runs"], "note": "renamed from 'scheduler' in plan 27 Phase 3; legacy route redirects" },
         { "id": "notifications", "group": "app" },
         { "id": "taxonomy", "group": "app", "admin": true },
