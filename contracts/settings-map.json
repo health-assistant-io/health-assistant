@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "contract": "settings-map",
-  "updated": "2026-10-15",
+  "updated": "2026-10-16",
   "purpose": "One family taxonomy for settings surfaces: what a setting IS decides where it LIVES. Canonical per ADR-0033 / ADR-0031 (sync-and-gate): this file is the master; product repos vendor it byte-identical under contracts/ and scripts/verify-wiring.sh flags drift. A setting may not ship (or move) in any product without a domain entry (or adopter line) here.",
 
   "groups": {
@@ -155,8 +155,8 @@
       "secrets": "product secret store — never a plaintext column",
       "scope": "user",
       "adopters": {
-        "study-assistant": "aligned (connectors section also carries the read-only MCP resource-server info card, ADR-0012)",
-        "career-assistant": "aligned (admin tools tab → connectors section: MCP GitHub token + job-source connector instances with x-secret slots and per-source probes, plan 32 Phase 1)"
+        "study-assistant": "aligned (connectors section manages MCP server instances — D19 rows with keyring token/env slots, per-tool allowlists, explicit refresh — plus the read-only MCP resource-server info card, ADR-0012; plan 32 Phase 7)",
+        "career-assistant": "aligned (admin tools tab → connectors section: MCP GitHub token + job-source connector instances with x-secret slots and per-source probes, plan 32 Phase 1; extension sources — git import, consent, pins — ride the same section since Phase 3)"
       }
     },
     {
@@ -229,7 +229,7 @@
           { "id": "translation", "domains": ["tools.translation"] },
           { "id": "decisions", "domains": ["tools.decisions"] }
         ] },
-        { "id": "apps", "group": "app", "note": "mini-app packs (ADR-0029)" },
+        { "id": "apps", "group": "app", "note": "mini-app packs (ADR-0029); hosts the extension Sources block since plan 32 Phase 8 (git/local import, consent with origin chips, pins/updates/park)" },
         { "id": "automation", "group": "automations", "domains": ["automations.runs"] },
         { "id": "commands", "group": "app" },
         { "id": "hotkeys", "group": "app" },
