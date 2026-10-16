@@ -18,8 +18,8 @@ from app.schemas.examination import ExaminationCreate
 from app.schemas.fhir.observation import ObservationCreate
 
 # Phase 4 of the fhir-server multi-resource sync plan: the treatment-
-# resource pull hooks (supports_medications / supports_allergies /
-# supports_immunizations) return these typed payloads.
+# resource data-class hooks (medication / allergy / immunization) return
+# these typed payloads.
 from app.schemas.medication import MedicationRecordCreate
 from app.schemas.vaccine import PatientImmunizationCreate
 

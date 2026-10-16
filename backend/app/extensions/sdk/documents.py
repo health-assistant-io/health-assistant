@@ -5,8 +5,7 @@ integration that pulls scanned lab reports, a wearable companion app
 that syncs ECG printouts, a fax-to-email gateway that forwards PDFs)
 opt into the document-pull path by:
 
-1. Overriding :meth:`BaseHealthProvider.supports_documents` to return
-   ``True``.
+1. Declaring the ``document`` data class in the manifest's ``itemSchema``.
 2. Implementing :meth:`BaseHealthProvider.pull_documents` to return a
    list of :class:`DocumentPull` objects — each carrying the filename,
    raw bytes, and optional metadata for linking.

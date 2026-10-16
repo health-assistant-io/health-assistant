@@ -255,6 +255,13 @@ async def test_sync_active_integrations_degrades_when_redis_down():
     with (
         patch.object(worker_tasks, "get_async_session", return_value=(db, _async_engine())),
         patch.object(worker_tasks, "integration_registry"),
+        patch.object(
+            __import__(
+                "app.services.integration_sync_service", fromlist=["integration_registry"]
+            ).integration_registry,
+            "has_capability",
+            lambda domain, cap: cap == "sync",
+        ),
         patch("app.core.redis.redis_client", fake_redis),
         patch.object(worker_tasks.logger, "warning", _warn),
         patch("app.services.integration_sync_service.logger.warning", _warn),

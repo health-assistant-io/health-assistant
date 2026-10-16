@@ -1,12 +1,57 @@
 {
-  "domain": "mcp_client",
-  "name": "MCP Client",
-  "version": "1.0.0",
-  "integration_type": [],
-  "description": "Connect to Model Context Protocol servers (STDIO / HTTP / SSE) and expose their tools to the Health Assistant chat.",
-  "author": "Core",
-  "access_type": "hybrid",
-  "categories": ["AI", "Tools"],
-  "icon": "Cable",
-  "dependencies": []
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "connector",
+  "id": "mcp-client",
+  "version": "2.0.0",
+  "description": "Connect to Model Context Protocol servers (STDIO / HTTP / SSE) and expose their tools to the Health Assistant chat. Server processes run out-of-band (T3): they open their own network connections outside this app's SSRF perimeter; the app governs what they return (per-tool allowlist, result caps, audited calls).",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["developer", "productivity"],
+  "capabilities": ["chat-tools", "secrets"],
+  "tools": [
+    {
+      "id": "mcp-server-tool",
+      "riskClass": "state-changing",
+      "titleKey": "tools.mcpServerTool.title",
+      "descriptionKey": "tools.mcpServerTool.description"
+    }
+  ],
+  "itemSchema": {
+    "type": "object",
+    "properties": {}
+  },
+  "supportsIncremental": false,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "transport": { "type": "string", "title": "stdio, http or sse" },
+      "url": { "type": "string", "title": "Server URL (http/sse transports)" },
+      "command": { "type": "string", "title": "Server command (stdio transport)" },
+      "env": {
+        "type": "string",
+        "title": "Environment variables for the server process",
+        "x-secret": true
+      },
+      "headers": {
+        "type": "string",
+        "title": "Extra HTTP headers for the server",
+        "x-secret": true
+      },
+      "auth_token": {
+        "type": "string",
+        "title": "Bearer token for the server",
+        "x-secret": true
+      }
+    }
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "MCP Client",
+        "summary": "Expose Model Context Protocol server tools in the chat."
+      }
+    }
+  }
 }

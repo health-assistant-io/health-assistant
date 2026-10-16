@@ -1,6 +1,6 @@
 """Pydantic schemas for the integration-proposal HITL flow (workstream G).
 
-The flow: provider opts in via ``supports_hitl_proposals`` + emits
+The flow: provider declares the ``hitl_proposal`` data class + emits
 ``IntegrationProposalSpec`` objects through ``pull_hitl_proposals``; the
 engine persists each as a PROPOSED ``IntegrationProposal`` row + fires an
 HITL notification; the user reviews via

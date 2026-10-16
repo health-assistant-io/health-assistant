@@ -4,7 +4,7 @@ Workstream G of the integrations follow-ups pass. Closes the gap left by
 ``ConceptProvenance.INTEGRATION`` for the case where the integration wants
 a human to review its catalog contributions before they apply. Today
 (workstream F) integrations can already auto-apply catalog entries via
-``supports_catalog_proposals``; this module is the opt-in HITL layer for
+the ``catalog_proposal`` data class; this module is the opt-in HITL layer for
 providers that want a human-in-the-loop gate.
 
 Two layers:

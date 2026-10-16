@@ -1,12 +1,65 @@
 {
-  "domain": "dev_dummy",
-  "name": "Developer Dummy Data",
-  "version": "2.0.0",
-  "integration_type": ["pull", "push"],
-  "description": "Reference integration that exercises every SDK capability — pull/push, webhook, two-way API, tools, notifications, clinical events, examinations, catalog/HITL proposals, documents.",
-  "author": "Core",
-  "access_type": "local",
-  "categories": ["System", "Development", "Testing"],
-  "icon": "Bug",
-  "dependencies": []
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "bridge",
+  "id": "dev-dummy",
+  "version": "3.0.0",
+  "description": "Reference extension that exercises every SDK capability — pull/push, inbound webhook, two-way API, chat tools, notifications, clinical events, examinations, catalog/HITL proposals, documents. The contract test-bed for the whole extension surface.",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["developer", "data"],
+  "capabilities": [
+    "sync",
+    "push",
+    "notify",
+    "chat-tools",
+    "secrets",
+    "state",
+    "inbound-webhook",
+    "inbound-api"
+  ],
+  "tools": [
+    {
+      "id": "dummy-metric-summary",
+      "riskClass": "read-only",
+      "titleKey": "tools.dummyMetricSummary.title",
+      "descriptionKey": "tools.dummyMetricSummary.description"
+    }
+  ],
+  "itemSchema": {
+    "type": "object",
+    "properties": {
+      "observation": { "type": "string", "title": "Biomarker observation (pull_data)" },
+      "clinical_event": { "type": "string", "title": "Longitudinal clinical event" },
+      "examination": { "type": "string", "title": "Examination / lab encounter" },
+      "document": { "type": "string", "title": "Document bytes (OCR pipeline)" },
+      "catalog_proposal": { "type": "string", "title": "Auto-applied catalog entry proposal" },
+      "hitl_proposal": { "type": "string", "title": "Human-reviewed HITL proposal" }
+    }
+  },
+  "supportsIncremental": true,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "webhook_secret": {
+        "type": "string",
+        "title": "Webhook signing secret",
+        "x-secret": true
+      },
+      "api_secret": {
+        "type": "string",
+        "title": "Two-way API signing secret",
+        "x-secret": true
+      }
+    }
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "Developer Dummy Data",
+        "summary": "Reference extension exercising every SDK capability — the contract test-bed."
+      }
+    }
+  }
 }

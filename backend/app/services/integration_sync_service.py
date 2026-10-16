@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import utcnow as _now
 from app.core.database import AsyncSessionLocal
+from app.extensions.registry import integration_registry
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
@@ -56,28 +57,42 @@ INTEGRATION_MAX_DOCS_PER_SYNC = 20
 INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 * 1024 * 1024  # 50 MiB
 
 
-def _opt_in(provider: Any, hook_name: str) -> bool:
-    """Generic capability probe for opt-in provider hooks.
+def _declared(provider: Any, hook_name: str) -> bool:
+    """Declared-capability gate (D3/D18 — replaces hook probing).
 
-    Returns the boolean result of calling ``provider.<hook_name>()`` if the
-    method exists; ``False`` otherwise. Centralizes the ``getattr`` /
-    callable-check dance so the engine can grow new opt-in hooks
-    (``supports_clinical_events``, future ``supports_examinations``,
-    ``supports_documents`` ...) without each call site re-implementing it.
+    ``hook_name`` keeps the historical opt-in names as the engine's
+    internal vocabulary; the ANSWER now comes from the registry: the
+    ``push``/``notify`` charter capabilities, or (for the pull families)
+    the data classes declared in the manifest's ``itemSchema`` (this
+    host's connector-kind profile). An undeclared capability is never
+    called — capabilities gate at registration, never mid-run.
     """
-    fn = getattr(provider, hook_name, None)
-    if not callable(fn):
+    domain = getattr(provider, "domain", None) or getattr(
+        getattr(provider, "integration", None), "provider", None
+    )
+    if not domain:
         return False
-    try:
-        return bool(fn())
-    except Exception:
-        logger.warning(
-            "provider %s.%s raised; treating as not-supported",
-            type(provider).__name__,
-            hook_name,
-            exc_info=True,
-        )
+    if hook_name == "supports_push":
+        return integration_registry.has_capability(domain, "push")
+    if hook_name == "supports_notifications":
+        return integration_registry.has_capability(domain, "notify")
+    data_class = _PULL_HOOK_DATA_CLASSES.get(hook_name)
+    if data_class is None:
+        logger.warning("unknown capability hook %r", hook_name)
         return False
+    return data_class in integration_registry.declared_data_classes(domain)
+
+
+_PULL_HOOK_DATA_CLASSES = {
+    "supports_clinical_events": "clinical_event",
+    "supports_examinations": "examination",
+    "supports_catalog_proposals": "catalog_proposal",
+    "supports_hitl_proposals": "hitl_proposal",
+    "supports_documents": "document",
+    "supports_medications": "medication",
+    "supports_allergies": "allergy",
+    "supports_immunizations": "immunization",
+}
 
 
 def _obs_value(obs: Observation) -> float | None:
@@ -497,7 +512,14 @@ async def run_sync(
     result: SyncResult | None = None
     try:
         # ---- pull ----
-        observations_data = await provider.pull_data(integration)
+        # The ``sync`` capability gates the pull leg: extensions without it
+        # (webhook, bridge, mcp_client) have no beat-driven ingestion — their
+        # ``pull_data`` default is a no-op, so skipping the call is
+        # behavior-preserving and honest (declared capabilities, not probes).
+        if integration_registry.has_capability(integration.provider, "sync"):
+            observations_data = await provider.pull_data(integration)
+        else:
+            observations_data = []
         pulled = len(observations_data) if observations_data else 0
 
         observations: list[Observation] = []
@@ -565,7 +587,7 @@ async def run_sync(
         # the push hook's resilience).
         events_pulled = 0
         events_written = 0
-        supports_events = _opt_in(provider, "supports_clinical_events")
+        supports_events = _declared(provider, "supports_clinical_events")
         if supports_events:
             try:
                 events_data = await provider.pull_clinical_events(integration)
@@ -631,7 +653,7 @@ async def run_sync(
         # the provider set on ``ExaminationCreate``; value is the resulting
         # exam's UUID. Empty when the provider doesn't opt into exams.
         exam_by_external_id: dict[str, UUID] = {}
-        supports_exams = _opt_in(provider, "supports_examinations")
+        supports_exams = _declared(provider, "supports_examinations")
         if supports_exams:
             try:
                 exams_data = await provider.pull_examinations(integration)
@@ -697,7 +719,7 @@ async def run_sync(
         # don't abort the sync (mirrors the events / exams hooks).
         proposals_pulled = 0
         proposals_applied = 0
-        supports_proposals = _opt_in(provider, "supports_catalog_proposals")
+        supports_proposals = _declared(provider, "supports_catalog_proposals")
         if supports_proposals:
             try:
                 proposals_data = await provider.pull_catalog_proposals(integration)
@@ -774,7 +796,7 @@ async def run_sync(
         # the sync (mirrors the events / exams / catalog-proposals hooks).
         hitl_pulled = 0
         hitl_inserted = 0
-        supports_hitl = _opt_in(provider, "supports_hitl_proposals")
+        supports_hitl = _declared(provider, "supports_hitl_proposals")
         if supports_hitl:
             try:
                 hitl_specs = await provider.pull_hitl_proposals(integration)
@@ -871,7 +893,7 @@ async def run_sync(
         # Both enforced before ``ingest_document_bytes`` is called.
         docs_pulled = 0
         docs_written = 0
-        supports_docs = _opt_in(provider, "supports_documents")
+        supports_docs = _declared(provider, "supports_documents")
         if supports_docs:
             try:
                 docs_data = await provider.pull_documents(integration)
@@ -1008,7 +1030,7 @@ async def run_sync(
         # abort the sync (mirrors the events / exams / docs hooks).
         meds_pulled = 0
         meds_written = 0
-        supports_meds = _opt_in(provider, "supports_medications")
+        supports_meds = _declared(provider, "supports_medications")
         if supports_meds:
             try:
                 meds_data = await provider.pull_medications(integration)
@@ -1053,7 +1075,7 @@ async def run_sync(
         # the engine writes each via ``allergy_service.add_patient_allergy``.
         allergies_pulled = 0
         allergies_written = 0
-        supports_allergies = _opt_in(provider, "supports_allergies")
+        supports_allergies = _declared(provider, "supports_allergies")
         if supports_allergies:
             try:
                 allergy_data = await provider.pull_allergies(integration)
@@ -1098,7 +1120,7 @@ async def run_sync(
         # ``vaccine_service.add_patient_immunization``.
         immuns_pulled = 0
         immuns_written = 0
-        supports_immuns = _opt_in(provider, "supports_immunizations")
+        supports_immuns = _declared(provider, "supports_immunizations")
         if supports_immuns:
             try:
                 immun_data = await provider.pull_immunizations(integration)
@@ -1145,7 +1167,7 @@ async def run_sync(
         # are still called; push-only-default providers skip the no-op.
         push_result: dict[str, Any] | None = None
         try:
-            if _opt_in(provider, "supports_push"):
+            if _declared(provider, "supports_push"):
                 push_result = await provider.push_data(integration, {"status": f"{source}_sync"})
         except Exception as push_err:
             logger.warning("Push failed for %s: %s", integration.provider, push_err)
@@ -1444,7 +1466,7 @@ async def _emit_provider_notifications(
 
     Failures are logged and swallowed — never propagate to the sync result.
     """
-    if provider is None or not getattr(provider, "supports_notifications", lambda: False)():
+    if provider is None or not _declared(provider, "supports_notifications"):
         return
 
     context = {

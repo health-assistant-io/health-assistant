@@ -224,12 +224,6 @@ class DevDummyProvider(BaseHealthProvider):
     # §G — Notifications
     # ==================================================================
 
-    def supports_notifications(self) -> bool:
-        """Opt in. Without this override, only the platform baseline
-        ('synced N records' / 'sync failed') fires.
-        """
-        return True
-
     def get_notification_types(self) -> list[NotificationTypeSpec]:
         """Statically declare the notification kinds this provider can emit.
 
@@ -601,10 +595,6 @@ class DevDummyProvider(BaseHealthProvider):
     # §J — Chat tools (LangChain)
     # ==================================================================
 
-    def supports_tools(self) -> bool:
-        """Opt in to exposing tools to the chat assistant."""
-        return True
-
     async def get_tools(self, integration: UserIntegration) -> list[Any]:
         """Return LangChain tools the chat assistant can call.
 
@@ -684,9 +674,6 @@ class DevDummyProvider(BaseHealthProvider):
     # §K — Clinical events (FHIR Condition / EpisodeOfCare analogue)
     # ==================================================================
 
-    def supports_clinical_events(self) -> bool:
-        return True
-
     async def pull_clinical_events(self, integration: UserIntegration) -> list[ClinicalEventCreate]:
         """Emit a sample 'flu episode' clinical event.
 
@@ -728,9 +715,6 @@ class DevDummyProvider(BaseHealthProvider):
     # §L — Examinations (FHIR Encounter analogue)
     # ==================================================================
 
-    def supports_examinations(self) -> bool:
-        return True
-
     async def pull_examinations(self, integration: UserIntegration) -> list[ExaminationCreate]:
         """Emit a sample 'annual checkup' examination.
 
@@ -767,9 +751,6 @@ class DevDummyProvider(BaseHealthProvider):
     # §M — Catalog proposals (auto-apply)
     # ==================================================================
 
-    def supports_catalog_proposals(self) -> bool:
-        return True
-
     async def pull_catalog_proposals(self, integration: UserIntegration) -> list[CatalogProposal]:
         """Auto-propose a 'Sleep Quality Score' biomarker definition.
 
@@ -805,9 +786,6 @@ class DevDummyProvider(BaseHealthProvider):
     # ==================================================================
     # §N — HITL proposals (human review)
     # ==================================================================
-
-    def supports_hitl_proposals(self) -> bool:
-        return True
 
     async def pull_hitl_proposals(
         self, integration: UserIntegration
@@ -882,9 +860,6 @@ class DevDummyProvider(BaseHealthProvider):
     # ==================================================================
     # §O — Documents
     # ==================================================================
-
-    def supports_documents(self) -> bool:
-        return True
 
     async def pull_documents(self, integration: UserIntegration) -> list[DocumentPull]:
         """Synthesise a small text 'lab report' once per instance.

@@ -5,8 +5,8 @@ that adds a new "Sleep Quality" metric, a hospital integration that knows
 about a disease→biomarker mapping the local catalog doesn't, …) opt into
 catalog contributions by:
 
-1. Overriding :meth:`BaseHealthProvider.supports_catalog_proposals` to return
-   ``True``.
+1. Declaring the ``catalog_proposal`` data class in the manifest's
+   ``itemSchema``.
 2. Implementing :meth:`BaseHealthProvider.pull_catalog_proposals` to return a
    list of :class:`CatalogProposal` objects.
 

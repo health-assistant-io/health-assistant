@@ -26,7 +26,7 @@ class IntegrationProposal(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
     review.
 
     Workstream G of the integrations follow-ups pass. Providers opt in via
-    ``BaseHealthProvider.supports_hitl_proposals`` and emit
+    the ``hitl_proposal`` data-class declaration and emit
     ``IntegrationProposalSpec`` objects through ``pull_hitl_proposals``. The
     engine persists each as a PROPOSED row + fires an HITL notification;
     the user reviews via ``/api/v1/integrations/instance/{id}/proposals/...``

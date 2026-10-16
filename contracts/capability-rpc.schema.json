@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neuronection.dev/contracts/capability-rpc.schema.json",
+  "title": "Capability RPC message (capability-rpc/1) — one JSON object per line",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "type": {
+      "enum": ["call", "result", "error", "event"]
+    },
+    "id": {
+      "type": ["integer", "string"],
+      "minimum": 0,
+      "maxLength": 64,
+      "$comment": "Correlation id, host-assigned for host->ext calls, extension-assigned for ext->host capability calls; echoed by result/error. 'ok' for events is not permitted — events carry ids only for audit correlation."
+    },
+    "method": {
+      "enum": [
+        "cap.net.fetch",
+        "cap.state.get",
+        "cap.state.set",
+        "cap.items.emit",
+        "cap.secrets.need",
+        "ext.invoke",
+        "ext.dispose",
+        "evt.progress",
+        "evt.log"
+      ],
+      "$comment": "Closed method vocabulary (extension-charter.json rpc) — an unknown method is a protocol error and the call is refused (never dispatched)."
+    },
+    "params": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "array", "object", "null"],
+        "$comment": "Params are method-specific (typed shapes in capability-rpc.md §4/§5); the schema bounds the envelope — hosts validate params per method at the seam. String values are capped at 8192 chars host-side (framing cap: one line <= limits.rpcLineMaxBytes)."
+      }
+    },
+    "result": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": true,
+      "$comment": "Method-specific result payload (typed shapes in the spec); bounded by the framing cap."
+    },
+    "error": {
+      "$ref": "#/$defs/errorEnvelope"
+    }
+  },
+  "required": ["v", "type", "id"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "call" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["method", "params"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "result" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["result"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "error" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["method", "error"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "event" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "method": { "enum": ["evt.progress", "evt.log"] }
+        },
+        "required": ["method"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": { "const": "call" },
+          "method": { "enum": ["evt.progress", "evt.log"] }
+        },
+        "required": ["type", "method"]
+      },
+      "then": false,
+      "$comment": "Events are never calls (and vice versa) — the type discriminates."
+    }
+  ],
+  "$defs": {
+    "errorEnvelope": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "not-ready",
+            "needs-secret",
+            "invalid",
+            "unsupported",
+            "io",
+            "not-found",
+            "path-denied",
+            "net-denied",
+            "auth",
+            "rate-limited",
+            "unreachable",
+            "protocol",
+            "provider",
+            "budget",
+            "canceled"
+          ],
+          "$comment": "The charter error enum, verbatim (extension-charter.json errors) — one typed vocabulary across manifests, envelopes and the seam."
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 500,
+          "$comment": "Capped JSON data, never a raw exception string, never rendered as prose."
+        },
+        "retryable": {
+          "enum": ["yes", "no", "after-delay", "after-config-change"]
+        },
+        "retryAfterMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["code", "detail", "retryable"],
+      "additionalProperties": false
+    }
+  },
+  "$comment": "STRUCTURAL GATE for one framed line. The protocol's behavioral law lives in contracts/capability-rpc.md: one process per extension, frozen module surface, wall-clock + memory watchdogs per call, per-extension quotas, one audit row per capability call, secrets never crossing the seam, net only via the host-side polite runtime scoped to declared domains (all hops)."
+}

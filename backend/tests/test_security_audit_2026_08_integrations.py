@@ -350,9 +350,7 @@ async def test_config_flow_provisions_machine_secrets():
     config_flow.is_oauth = False
 
     provider = MagicMock()
-    # Provider "implements" both hooks (distinct from base defaults).
-    type(provider).handle_webhook = lambda self, i, p, r=None: []
-    type(provider).handle_api_request = lambda self, i, p, m, r: {}
+    provider.domain = "health_assistant_bridge"
 
     patient = MagicMock()
     patient.id = "22222222-2222-4222-8222-222222222222"
@@ -369,6 +367,18 @@ async def test_config_flow_provisions_machine_secrets():
     with (
         patch.object(integ.integration_registry, "get_config_flow") as gcf,
         patch.object(integ.integration_registry, "get_provider") as gp,
+        patch.object(
+            integ.integration_registry,
+            "has_capability",
+            side_effect=lambda domain, cap: (
+                cap
+                in (
+                    {"inbound-webhook", "inbound-api"}
+                    if domain == "health_assistant_bridge"
+                    else set()
+                )
+            ),
+        ),
         patch(
             "app.extensions.sdk.secrets.SecretCipher.from_settings",
             return_value=_FakeCipher(),

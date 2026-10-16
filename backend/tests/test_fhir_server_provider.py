@@ -999,16 +999,22 @@ async def test_reset_cursors_clears_per_resource_cursors():
 # ---------------------------------------------------------------------------
 
 
-def test_all_pull_hooks_declared():
-    """fhir_server opts into every multi-resource pull capability."""
-    provider = FhirServerProvider()
-    assert provider.supports_clinical_events() is True
-    assert provider.supports_examinations() is True
-    assert provider.supports_documents() is True
-    assert provider.supports_hitl_proposals() is True
-    assert provider.supports_medications() is True
-    assert provider.supports_allergies() is True
-    assert provider.supports_immunizations() is True
+def test_all_pull_data_classes_declared():
+    """fhir_server declares every multi-resource data class it can pull."""
+    from app.extensions.registry import IntegrationRegistry
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    declared = reg.declared_data_classes("fhir_server")
+    assert {
+        "clinical_event",
+        "examination",
+        "document",
+        "hitl_proposal",
+        "medication",
+        "allergy",
+        "immunization",
+    } <= declared
 
 
 # ---------------------------------------------------------------------------

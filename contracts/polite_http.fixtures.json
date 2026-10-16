@@ -1,0 +1,741 @@
+{
+  "schema": 1,
+  "contract": "polite-http-fixtures",
+  "purpose": "Behavioral acceptance wall for the family Connector Runtime (ADR-0040 clause 6 / plan-32 D5+D23), executed by every host from its vendored suites against the vendored polite_http.py (implementations may differ, outputs may not). Executor contract: routes match the FIRST entry whose 'match' (URL path, optional 'host') equals the outgoing request; 'text'+'repeat' builds the body; 'raise' raises a connect error; 'Retry-After' may be {'__now_plus__': <seconds>} (HTTP-date form, relative — fixtures never pin wall-clock dates). The executor injects a deterministic jitter rng (delay = cap/2, so backoff attempt n sleeps min(2^n, 60)/2), a simulated monotonic clock that advances only when sleep is called, and one shared httpx.MockTransport client + rate limiter + robots cache per case (steps run sequentially against them). 'seenPaths' asserts every path the transport saw, in order, across the whole case; 'slept' entries are exact seconds or [min, max] ranges; 'transportHost'/'hostHeader'/'sni' assert the DNS-pinning rewrite on the step's last request.",
+  "requiredGroups": ["ssrf-denied", "ssrf-escape-hatches", "redirects", "rebinding", "retry-after", "conditional-get", "robots", "rate-caps", "size-caps", "domain-scope", "happy-path"],
+  "cases": [
+    {
+      "name": "ssrf-denied-loopback-literal",
+      "group": "ssrf-denied",
+      "because": "Literal loopback IPv4 must never leave the process.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://127.0.0.1:6379/anything"},
+          "expect": {"error": {"code": "net-denied", "retryable": "no"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-ipv6-loopback-literal",
+      "group": "ssrf-denied",
+      "because": "IPv6 loopback literal.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://[::1]/x"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-metadata-link-local",
+      "group": "ssrf-denied",
+      "because": "Cloud metadata endpoints (169.254.169.254) are the classic SSRF target.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://169.254.169.254/latest/meta-data/"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-ipv4-mapped-ipv6",
+      "group": "ssrf-denied",
+      "because": "IPv4-mapped IPv6 (::ffff:a.b.c.d) unwraps to the IPv4 rules.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://[::ffff:169.254.169.254]/latest"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-decimal-ipv4",
+      "group": "ssrf-denied",
+      "because": "Decimal IPv4 form (2130706433 == 127.0.0.1) — stricter than health: coerced and checked before any DNS reliance.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://2130706433/x"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-octal-ipv4",
+      "group": "ssrf-denied",
+      "because": "Octal IPv4 form (0177.0.0.1 == 127.0.0.1).",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://0177.0.0.1/x"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-short-ipv4",
+      "group": "ssrf-denied",
+      "because": "Short inet_aton form (127.1 == 127.0.0.1).",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http://127.1/x"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-dns-resolves-private",
+      "group": "ssrf-denied",
+      "because": "Resolve-and-check: a hostname resolving into RFC 1918 space is denied.",
+      "resolver": {"internal.example": ["10.0.0.5"]},
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "https://internal.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-one-of-several-addresses-private",
+      "group": "ssrf-denied",
+      "because": "Round-robin/dual-stack: EVERY resolved address is checked; one private address among public ones denies.",
+      "resolver": {"roundrobin.example": ["93.184.216.34", "192.168.0.9"]},
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "https://roundrobin.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-scheme-file",
+      "group": "ssrf-denied",
+      "because": "Scheme allowlist is http/https only.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "file:///etc/passwd"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-scheme-gopher",
+      "group": "ssrf-denied",
+      "because": "Non-http schemes never reach a socket.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "gopher://good.example/x"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-no-host",
+      "group": "ssrf-denied",
+      "because": "A URL without a host is malformed and denied, not defaulted.",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "http:///path-only"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-userinfo-url",
+      "group": "ssrf-denied",
+      "because": "Credentials in URLs are denied (no basic-auth smuggling).",
+      "routes": [],
+      "steps": [
+        {
+          "request": {"url": "https://user:pass@good.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-allowed-host-bypass",
+      "group": "ssrf-escape-hatches",
+      "because": "Health's escape hatch preserved: allowlisted hostnames bypass the private-range check (trusted self-hosted setups); the hatch is injectable config, never env.",
+      "resolver": {"internal.example": ["10.0.0.5"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "lan-ok"}],
+      "config": {"guard": {"allowedHosts": ["internal.example"]}},
+      "steps": [
+        {
+          "request": {"url": "https://internal.example/feed"},
+          "expect": {"response": {"status": 200, "bodyContains": "lan-ok"}}
+        }
+      ]
+    },
+    {
+      "name": "ssrf-allowed-block-private-ranges-off",
+      "group": "ssrf-escape-hatches",
+      "because": "Health's second hatch preserved: block_private_ranges=false disables the range check wholesale (host-injected).",
+      "resolver": {"internal.example": ["10.0.0.5"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "lan-ok"}],
+      "config": {"guard": {"blockPrivateRanges": false}},
+      "steps": [
+        {
+          "request": {"url": "https://internal.example/feed"},
+          "expect": {"response": {"status": 200}}
+        }
+      ]
+    },
+    {
+      "name": "resolution-failure-best-effort-allow",
+      "group": "ssrf-escape-hatches",
+      "because": "Health parity: a name that fails guard-time resolution is allowed best-effort (air-gapped runs, synthetic test hostnames); the request then goes out by name — no pin is possible.",
+      "resolver": {"__gaierror__": ["airgapped.example"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "offline-ok"}],
+      "steps": [
+        {
+          "request": {"url": "https://airgapped.example/feed"},
+          "expect": {
+            "response": {"status": 200, "bodyContains": "offline-ok"},
+            "transportHost": "airgapped.example",
+            "hostHeader": "airgapped.example"
+          }
+        }
+      ]
+    },
+    {
+      "name": "redirect-to-internal-revalidated-per-hop",
+      "group": "redirects",
+      "because": "D23: an attacker-controlled redirect to a metadata endpoint is denied BEFORE any request leaves — the guard re-runs on every hop (stricter than health).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/start", "status": 302, "headers": {"Location": "http://169.254.169.254/latest/meta-data/"}}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/start"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/start"]}
+        }
+      ]
+    },
+    {
+      "name": "redirect-to-loopback-name-denied",
+      "group": "redirects",
+      "because": "Redirect to a NAME resolving to loopback is denied at the hop (resolve-then-check applies per hop too).",
+      "resolver": {"good.example": ["93.184.216.34"], "localhost": ["127.0.0.1"]},
+      "routes": [{"match": "/start", "status": 302, "headers": {"Location": "http://localhost:6379/data"}}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/start"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/start"]}
+        }
+      ]
+    },
+    {
+      "name": "redirect-chain-exceeds-cap",
+      "group": "redirects",
+      "because": "A redirect chain longer than the cap is a provider error, never an infinite walk.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/hop", "status": 302, "headers": {"Location": "/hop"}},
+        {"match": "/start", "status": 302, "headers": {"Location": "/hop"}}
+      ],
+      "config": {"respectRobots": false, "maxRedirects": 5},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/start"},
+          "expect": {"error": {"code": "provider"}}
+        }
+      ]
+    },
+    {
+      "name": "redirect-relative-location-followed",
+      "group": "redirects",
+      "because": "Relative Location headers resolve against the current hop and the walk completes.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/start", "status": 302, "headers": {"Location": "/next"}},
+        {"match": "/next", "status": 200, "text": "arrived", "headers": {"ETag": "\"next-etag\""}}
+      ],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/start"},
+          "expect": {"response": {"status": 200, "etag": "\"next-etag\"", "url": "https://good.example/next"}, "seenPaths": ["/start", "/next"]}
+        }
+      ]
+    },
+    {
+      "name": "domain-scope-vs-cname-cdn-hop",
+      "group": "redirects",
+      "because": "D23: the declared-domain scope applies per hop — a CDN-lookalike hop outside *.example.io is denied even though it resolves publicly.",
+      "resolver": {"cdn.example.io": ["93.184.216.34"], "evil-cdn.example.net": ["93.184.216.35"]},
+      "routes": [{"match": "/asset", "status": 302, "headers": {"Location": "https://evil-cdn.example.net/asset"}}],
+      "config": {"respectRobots": false, "domains": ["cdn.example.io"]},
+      "steps": [
+        {
+          "request": {"url": "https://cdn.example.io/asset"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/asset"]}
+        }
+      ]
+    },
+    {
+      "name": "dns-rebind-pinned-to-checked-address",
+      "group": "rebinding",
+      "because": "D23: resolve-then-connect pinning where the transport allows — the connect target is the guard-checked address, the Host header and TLS SNI keep the original name.",
+      "resolver": {"rebind.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "pinned-ok"}],
+      "steps": [
+        {
+          "request": {"url": "https://rebind.example/feed"},
+          "expect": {
+            "response": {"status": 200},
+            "transportHost": "93.184.216.34",
+            "hostHeader": "rebind.example",
+            "sni": "rebind.example"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dns-rebind-residual-unpinned-documented",
+      "group": "rebinding",
+      "because": "The recorded residual: with pinning disabled the request goes out by name and a rebinding DNS can answer the second lookup differently (guidelines/security.md documents the residual; pinning is the default).",
+      "resolver": {"rebind.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "unpinned"}],
+      "config": {"pinResolvedAddress": false},
+      "steps": [
+        {
+          "request": {"url": "https://rebind.example/feed"},
+          "expect": {"response": {"status": 200}, "transportHost": "rebind.example"}
+        }
+      ]
+    },
+    {
+      "name": "retry-after-integer-seconds-honored",
+      "group": "retry-after",
+      "because": "RFC 7231 delta-seconds form overrides computed backoff; the fetch then succeeds.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/feed", "ifCalls": 1, "status": 429, "headers": {"Retry-After": "2"}, "text": "slow"},
+        {"match": "/feed", "status": 200, "text": "ok"}
+      ],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}, "slept": [2.0]}
+        }
+      ]
+    },
+    {
+      "name": "retry-after-http-date-honored",
+      "group": "retry-after",
+      "because": "RFC 7231 HTTP-date form (now+30s templated — fixtures never pin wall-clock dates).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/feed", "ifCalls": 1, "status": 429, "headers": {"Retry-After": {"__now_plus__": 30}}},
+        {"match": "/feed", "status": 200, "text": "ok"}
+      ],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}, "slept": [[29.0, 31.0]]}
+        }
+      ]
+    },
+    {
+      "name": "retry-after-malformed-falls-back-to-backoff",
+      "group": "retry-after",
+      "because": "A malformed Retry-After falls back to full-jitter backoff (deterministic rng: attempt 1 → cap 2 → 1.0s).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/feed", "ifCalls": 1, "status": 429, "headers": {"Retry-After": "soon-ish"}, "text": "x"},
+        {"match": "/feed", "status": 200, "text": "ok"}
+      ],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}, "slept": [1.0]}
+        }
+      ]
+    },
+    {
+      "name": "retry-429-exhausted-surfaces-payload",
+      "group": "retry-after",
+      "because": "429 exhausted → typed rate-limited with the surfaced Retry-After payload in retry_after_ms.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 429, "headers": {"Retry-After": "7"}, "text": "slow"}],
+      "config": {"respectRobots": false, "maxRetries": 3},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "rate-limited", "retryable": "after-delay", "retryAfterMs": 7000}, "slept": [7.0, 7.0]}
+        }
+      ]
+    },
+    {
+      "name": "retry-5xx-exhausted-provider",
+      "group": "retry-after",
+      "because": "5xx retried with full-jitter backoff (deterministic: attempts 1,2 → 1.0s, 2.0s) then typed provider.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 503, "text": "down"}],
+      "config": {"respectRobots": false, "maxRetries": 3},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "provider", "retryable": "yes"}, "slept": [1.0, 2.0]}
+        }
+      ]
+    },
+    {
+      "name": "auth-401-immediate",
+      "group": "retry-after",
+      "because": "401 raises auth immediately — retrying rejected credentials is waste.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 401, "text": "no"}],
+      "config": {"respectRobots": false, "maxRetries": 3},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "auth", "retryable": "after-config-change"}, "slept": [], "seenPaths": ["/feed"]}
+        }
+      ]
+    },
+    {
+      "name": "auth-403-immediate",
+      "group": "retry-after",
+      "because": "403 behaves like 401 (immediate auth error).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 403, "text": "no"}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "auth"}}
+        }
+      ]
+    },
+    {
+      "name": "others-returned-not-raised",
+      "group": "retry-after",
+      "because": "Health parity: statuses outside the retried/auth sets are RETURNED — the caller decides (404 is not an exception).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 404, "text": "gone"}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 404, "bodyContains": "gone"}, "slept": []}
+        }
+      ]
+    },
+    {
+      "name": "network-error-retried-then-unreachable",
+      "group": "retry-after",
+      "because": "Transport-level failures retry with backoff, then surface typed unreachable (before any HTTP verdict).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "raise": "connect_error"}],
+      "config": {"respectRobots": false, "maxRetries": 3},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "unreachable", "retryable": "yes"}, "slept": [1.0, 2.0]}
+        }
+      ]
+    },
+    {
+      "name": "conditional-get-validators-forwarded",
+      "group": "conditional-get",
+      "because": "Cached etag/last_modified state becomes If-None-Match/If-Modified-Since on the wire.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 200, "text": "ok"}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {
+            "url": "https://good.example/feed",
+            "state": {"etag": "\"v1\"", "last_modified": "Wed, 21 Oct 2026 07:28:00 GMT"}
+          },
+          "expect": {
+            "response": {"status": 200},
+            "sentHeaders": {"If-None-Match": "\"v1\"", "If-Modified-Since": "Wed, 21 Oct 2026 07:28:00 GMT"}
+          }
+        }
+      ]
+    },
+    {
+      "name": "not-modified-passthrough",
+      "group": "conditional-get",
+      "because": "304 is returned to the caller (others-returned policy) so connectors implement incremental sync.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/feed", "status": 304}],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed", "state": {"etag": "\"v1\""}},
+          "expect": {"response": {"status": 304}}
+        }
+      ]
+    },
+    {
+      "name": "robots-disallow-denies",
+      "group": "robots",
+      "because": "A disallowed path never hits the transport.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "User-agent: *\nDisallow: /private"},
+        {"match": "/private/feed", "status": 200, "text": "secret"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/private/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/robots.txt"]}
+        }
+      ]
+    },
+    {
+      "name": "robots-5xx-denies-fail-closed",
+      "group": "robots",
+      "because": "D23: robots 5xx ⇒ DENY — a broken robots server must not become an open door.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 503},
+        {"match": "/feed", "status": 200, "text": "should-not-happen"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/robots.txt"]}
+        }
+      ]
+    },
+    {
+      "name": "robots-transport-error-denies-fail-closed",
+      "group": "robots",
+      "because": "No definitive robots verdict ⇒ deny (the fetch itself never leaves).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "raise": "connect_error"}, {"match": "/feed", "status": 200, "text": "x"}],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/robots.txt"]}
+        }
+      ]
+    },
+    {
+      "name": "robots-404-allows",
+      "group": "robots",
+      "because": "REP default: no robots.txt (4xx) means no restrictions.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "allowed"}],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200, "bodyContains": "allowed"}, "seenPaths": ["/robots.txt", "/feed"]}
+        }
+      ]
+    },
+    {
+      "name": "robots-wildcard-and-anchor-precision",
+      "group": "robots",
+      "because": "Parser precision: 'Disallow: /a*b$' denies /axxb but not /axxby.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "User-agent: *\nDisallow: /a*b$"},
+        {"match": "/axxb", "status": 200, "text": "x"},
+        {"match": "/axxby", "status": 200, "text": "y"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/axxb"},
+          "expect": {"error": {"code": "net-denied"}}
+        },
+        {
+          "request": {"url": "https://good.example/axxby"},
+          "expect": {"response": {"status": 200}, "seenPaths": ["/robots.txt", "/axxby"]}
+        }
+      ]
+    },
+    {
+      "name": "robots-agent-specific-group",
+      "group": "robots",
+      "because": "A group bound to another crawler's product token does not bind the runtime's UA.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "User-agent: OtherBot\nDisallow: /"},
+        {"match": "/feed", "status": 200, "text": "fine"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}}
+        }
+      ]
+    },
+    {
+      "name": "robots-cached-across-requests",
+      "group": "robots",
+      "because": "One robots fetch per host per cache lifetime — seenPaths shows no second /robots.txt.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "User-agent: *\nDisallow: /nothing"},
+        {"match": "/feed", "status": 200, "text": "one"},
+        {"match": "/feed2", "status": 200, "text": "two"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}}
+        },
+        {
+          "request": {"url": "https://good.example/feed2"},
+          "expect": {"response": {"status": 200}, "seenPaths": ["/robots.txt", "/feed", "/feed2"]}
+        }
+      ]
+    },
+    {
+      "name": "rate-cap-second-request-waits",
+      "group": "rate-caps",
+      "because": "Token bucket rpm=2: the robots preflight + first fetch consume the burst; the second fetch waits one interval. The reservation consumes the refilled token, so the third waits again (deterministic under the simulated clock).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "ok"}],
+      "config": {"requestsPerMinute": 2},
+      "steps": [
+        {"request": {"url": "https://good.example/feed"}, "expect": {"response": {"status": 200}, "slept": []}},
+        {"request": {"url": "https://good.example/feed"}, "expect": {"response": {"status": 200}, "slept": [30.0]}},
+        {"request": {"url": "https://good.example/feed"}, "expect": {"response": {"status": 200}, "slept": [30.0]}}
+      ]
+    },
+    {
+      "name": "rate-cap-per-host-isolated",
+      "group": "rate-caps",
+      "because": "Buckets are per host: host A exhausted does not delay host B.",
+      "resolver": {"a.example": ["93.184.216.34"], "b.example": ["93.184.216.35"]},
+      "routes": [{"match": "/feed", "status": 200, "text": "ok"}],
+      "config": {"requestsPerMinute": 1, "respectRobots": false},
+      "steps": [
+        {"request": {"url": "https://a.example/feed"}, "expect": {"response": {"status": 200}, "slept": []}},
+        {
+          "request": {"url": "https://a.example/feed"},
+          "expect": {"response": {"status": 200}, "slept": [60.0]}
+        },
+        {"request": {"url": "https://b.example/feed"}, "expect": {"response": {"status": 200}, "slept": []}}
+      ]
+    },
+    {
+      "name": "rate-cap-includes-robots-preflight",
+      "group": "rate-caps",
+      "because": "The robots preflight is a real request and charges the same bucket (rpm=1: robots takes the token, the fetch waits).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [{"match": "/robots.txt", "status": 404}, {"match": "/feed", "status": 200, "text": "ok"}],
+      "config": {"requestsPerMinute": 1},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200}, "slept": [60.0], "seenPaths": ["/robots.txt", "/feed"]}
+        }
+      ]
+    },
+    {
+      "name": "size-cap-truncates-body",
+      "group": "size-caps",
+      "because": "Response bodies are capped in flight; truncated flags the cut.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 404},
+        {"match": "/feed", "status": 200, "text": "x", "repeat": 1024}
+      ],
+      "config": {"maxResponseBytes": 100},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"response": {"status": 200, "truncated": true, "bodyLength": 100}}
+        }
+      ]
+    },
+    {
+      "name": "robots-size-cap-denies-fail-closed",
+      "group": "size-caps",
+      "because": "A robots.txt exceeding its cap gives no definitive verdict ⇒ deny.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "#", "repeat": 70000},
+        {"match": "/feed", "status": 200, "text": "x"}
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": ["/robots.txt"]}
+        }
+      ]
+    },
+    {
+      "name": "domain-scope-exact-and-wildcard-allowed",
+      "group": "domain-scope",
+      "because": "Exact and leading-wildcard declarations both admit their hosts.",
+      "resolver": {"good.example": ["93.184.216.34"], "api.good.example": ["93.184.216.36"]},
+      "routes": [
+        {"host": "good.example", "match": "/robots.txt", "status": 404},
+        {"host": "api.good.example", "match": "/robots.txt", "status": 404},
+        {"match": "/feed", "status": 200, "text": "scoped"}
+      ],
+      "config": {"domains": ["good.example", "*.good.example"], "respectRobots": true},
+      "steps": [
+        {"request": {"url": "https://good.example/feed"}, "expect": {"response": {"status": 200}}},
+        {"request": {"url": "https://api.good.example/feed"}, "expect": {"response": {"status": 200}}}
+      ]
+    },
+    {
+      "name": "domain-scope-denied-unlisted-host",
+      "group": "domain-scope",
+      "because": "A host outside the declared scope is denied before resolution.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [],
+      "config": {"domains": ["other.example"]},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+        }
+      ]
+    },
+    {
+      "name": "happy-path-validators-and-final-url",
+      "group": "happy-path",
+      "because": "The plain polite GET: 200 with ETag/Last-Modified captured for the next conditional round-trip.",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/robots.txt", "status": 200, "text": "User-agent: *\nDisallow: /private"},
+        {
+          "match": "/feed",
+          "status": 200,
+          "text": "{\"jobs\":[]}",
+          "headers": {"ETag": "\"v1\"", "Last-Modified": "Wed, 21 Oct 2026 07:28:00 GMT"}
+        }
+      ],
+      "steps": [
+        {
+          "request": {"url": "https://good.example/feed"},
+          "expect": {
+            "response": {
+              "status": 200,
+              "etag": "\"v1\"",
+              "lastModified": "Wed, 21 Oct 2026 07:28:00 GMT",
+              "truncated": false,
+              "url": "https://good.example/feed"
+            },
+            "transportHost": "93.184.216.34",
+            "hostHeader": "good.example"
+          }
+        }
+      ]
+    }
+  ]
+}

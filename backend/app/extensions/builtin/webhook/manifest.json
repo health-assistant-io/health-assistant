@@ -1,12 +1,39 @@
 {
-  "domain": "webhook",
-  "name": "Universal Webhook",
-  "version": "1.0.0",
-  "integration_type": ["push"],
-  "description": "Receive data from any app or custom script via HTTP POST with customizable parsers.",
-  "author": "Core",
-  "access_type": "local",
-  "categories": ["System", "Services", "Automation"],
-  "icon": "Webhook",
-  "dependencies": []
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "bridge",
+  "id": "webhook",
+  "version": "2.0.0",
+  "description": "Receive data from any app or custom script via signed HTTP POST with customizable parsers. Inbound-only bridge: deliveries are HMAC-verified, parsed and stored as observations.",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["data", "productivity"],
+  "capabilities": ["inbound-webhook", "secrets"],
+  "itemSchema": {
+    "type": "object",
+    "properties": {
+      "observation": { "type": "string", "title": "Biomarker observation parsed from a delivery" }
+    }
+  },
+  "supportsIncremental": false,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "webhook_secret": {
+        "type": "string",
+        "title": "Webhook signing secret",
+        "x-secret": true
+      },
+      "parser": { "type": "string", "title": "Payload parser id" }
+    }
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "Universal Webhook",
+        "summary": "Receive data from any app or script via signed HTTP POST."
+      }
+    }
+  }
 }

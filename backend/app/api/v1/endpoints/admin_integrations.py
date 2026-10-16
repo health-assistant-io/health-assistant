@@ -22,7 +22,7 @@ async def list_system_integrations(
     db: AsyncSession = Depends(get_db),
 ):
     """List all system integration configurations, including newly discovered ones."""
-    from app.extensions.registry import integration_registry
+    from app.extensions.registry import domain_of, integration_registry
 
     # Get all discovered manifests from the filesystem
     manifests = integration_registry.get_all_manifests()
@@ -38,14 +38,16 @@ async def list_system_integrations(
     # Integrations are ENABLED BY DEFAULT: a missing DB row means enabled.
     discovered_domains = set()
     for manifest in manifests:
-        domain = manifest.get("domain")
-        if domain:
+        ext_id = manifest.get("id")
+        if ext_id:
+            domain = domain_of(str(ext_id))
+            title = (manifest.get("i18n") or {}).get("locales", {}).get("en", {}).get("title")
             discovered_domains.add(domain)
             db_record = db_integrations.get(domain)
             response.append(
                 {
                     "domain": domain,
-                    "name": manifest.get("name", domain),
+                    "name": title or domain,
                     "version": manifest.get("version", "Unknown"),
                     "is_enabled": db_record.is_enabled if db_record else True,
                 }

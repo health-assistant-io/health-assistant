@@ -697,9 +697,6 @@ class FhirServerProvider(BaseHealthProvider):
 
     # ---- Phase 1: clinical events (Condition) ----
 
-    def supports_clinical_events(self) -> bool:
-        return True
-
     async def pull_clinical_events(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "Condition"):
             return []
@@ -726,9 +723,6 @@ class FhirServerProvider(BaseHealthProvider):
 
     # ---- Phase 1: examinations (Encounter) ----
 
-    def supports_examinations(self) -> bool:
-        return True
-
     async def pull_examinations(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "Encounter"):
             return []
@@ -754,9 +748,6 @@ class FhirServerProvider(BaseHealthProvider):
         return out
 
     # ---- Phase 2: documents (DocumentReference) ----
-
-    def supports_documents(self) -> bool:
-        return True
 
     async def pull_documents(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "DocumentReference"):
@@ -817,9 +808,6 @@ class FhirServerProvider(BaseHealthProvider):
         return out
 
     # ---- Phase 3: HITL catalog proposals (unmapped LOINC/SNOMED codes) ----
-
-    def supports_hitl_proposals(self) -> bool:
-        return True
 
     async def pull_hitl_proposals(self, integration: UserIntegration) -> list[Any]:
         """Propose biomarker definitions for remote codes the local catalog lacks.
@@ -966,9 +954,6 @@ class FhirServerProvider(BaseHealthProvider):
 
     # ---- Phase 4: medications (MedicationStatement + MedicationRequest) ----
 
-    def supports_medications(self) -> bool:
-        return True
-
     async def pull_medications(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "Medication"):
             return []
@@ -999,9 +984,6 @@ class FhirServerProvider(BaseHealthProvider):
 
     # ---- Phase 4: allergies (AllergyIntolerance) ----
 
-    def supports_allergies(self) -> bool:
-        return True
-
     async def pull_allergies(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "AllergyIntolerance"):
             return []
@@ -1027,9 +1009,6 @@ class FhirServerProvider(BaseHealthProvider):
         return out
 
     # ---- Phase 4: immunizations (Immunization) ----
-
-    def supports_immunizations(self) -> bool:
-        return True
 
     async def pull_immunizations(self, integration: UserIntegration) -> list[Any]:
         if not self._can_pull(integration, "Immunization"):

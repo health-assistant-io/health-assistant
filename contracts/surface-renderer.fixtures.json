@@ -1,0 +1,806 @@
+{
+  "schema": 1,
+  "contract": "surface-renderer",
+  "title": "Declarative surface renderer — family parity fixtures (ADR-0040 clause 16 / D17 / D23)",
+  "status": "normative — both hosts' renderers (assistant-ui SurfaceRenderer, desktop TS renderer) must satisfy every case: implementations may differ, outputs may not.",
+  "basis": [
+    "ADR-0040 clause 16 (surfaces: declarative UI family-wide)",
+    "ADR-0029 (mini-app packs — the seeded vocabulary + the evidence law)",
+    "dev/contracts/extension-charter.json components/actions (closed vocabularies)",
+    "dev/contracts/mini-app-packs.json report.actions (the closed run:*/item:* action ids, ADR-0029)"
+  ],
+  "vocabulary": {
+    "components": [
+      "stat",
+      "table",
+      "cards",
+      "filter-bar",
+      "select",
+      "badge",
+      "progress",
+      "actions",
+      "evidence"
+    ],
+    "actions": {
+      "run": [
+        "run:cancel",
+        "run:retry",
+        "run:resume",
+        "run:arm",
+        "run:export",
+        "run:diff"
+      ],
+      "item": [
+        "item:exclude",
+        "item:override",
+        "item:restore",
+        "item:reveal",
+        "item:open"
+      ]
+    }
+  },
+  "viewProperty": "hosts map this denormalized view onto their own transport shapes; parity is asserted per case, not per wire byte.",
+  "expectKey": "every case's expect entries are deterministic: a host test renders the case's surface and asserts each entry (kind 'note' is documentation only and is never asserted). Hosts additionally assert the no-html invariant (kind 'no-html') on EVERY case — raw markup from any extension surface never mounts.",
+  "$defs": {
+    "expectKind": "component | bar | row | text | click | change | absent | no-html | note"
+  },
+  "cases": [
+    {
+      "id": "stat-badge-progress-binds",
+      "purpose": "top presentation nodes in canonical type order (stat → badge → progress); dot-path binds resolve into values; missing binds degrade to '—' / an empty bar",
+      "surface": {
+        "nodes": [
+          {
+            "id": "status",
+            "type": "badge",
+            "bind": "run.status"
+          },
+          {
+            "id": "scanned",
+            "type": "stat",
+            "bind": "totals.scanned"
+          },
+          {
+            "id": "kept",
+            "type": "stat",
+            "bind": "totals.keep"
+          },
+          {
+            "id": "missing",
+            "type": "stat",
+            "bind": "totals.absent"
+          },
+          {
+            "id": "decided",
+            "type": "progress",
+            "bind": "decided"
+          },
+          {
+            "id": "blind",
+            "type": "progress",
+            "bind": "totals.missing"
+          }
+        ],
+        "values": {
+          "run": {
+            "status": "ok"
+          },
+          "totals": {
+            "scanned": 120,
+            "keep": 45
+          },
+          "decided": {
+            "done": 3,
+            "total": 4
+          }
+        },
+        "labels": {
+          "report.status": "Status",
+          "report.scanned": "Files scanned",
+          "report.kept": "Kept",
+          "report.missing": "Unknown bucket",
+          "report.decided": "Decided"
+        }
+      },
+      "expect": [
+        {
+          "kind": "component",
+          "type": "badge",
+          "id": "status",
+          "label": "Status",
+          "value": "ok"
+        },
+        {
+          "kind": "component",
+          "type": "stat",
+          "id": "scanned",
+          "label": "Files scanned",
+          "value": "120"
+        },
+        {
+          "kind": "component",
+          "type": "stat",
+          "id": "kept",
+          "label": "Kept",
+          "value": "45"
+        },
+        {
+          "kind": "component",
+          "type": "stat",
+          "id": "missing",
+          "label": "Unknown bucket",
+          "value": "—"
+        },
+        {
+          "kind": "bar",
+          "id": "decided",
+          "label": "Decided",
+          "percent": 75
+        },
+        {
+          "kind": "bar",
+          "id": "blind",
+          "percent": 0
+        }
+      ]
+    },
+    {
+      "id": "badge-missing-bind",
+      "purpose": "a badge whose bind is absent degrades to '—' text, never a blank chip",
+      "surface": {
+        "nodes": [
+          {
+            "id": "mood",
+            "type": "badge",
+            "bind": "totals.nothing"
+          }
+        ],
+        "values": {},
+        "labels": {
+          "report.mood": "Mood"
+        }
+      },
+      "expect": [
+        {
+          "kind": "component",
+          "type": "badge",
+          "id": "mood",
+          "label": "Mood",
+          "value": "—"
+        }
+      ]
+    },
+    {
+      "id": "table-columns-and-rows",
+      "purpose": "closed table: headers resolve per column, cells bind row values, badges ride badgeField, row and cell walk keys are stable, evidence rides the first cell",
+      "surface": {
+        "nodes": [
+          {
+            "id": "layouts",
+            "type": "table",
+            "columns": [
+              "title",
+              "density",
+              "language"
+            ]
+          },
+          {
+            "id": "evidence",
+            "type": "evidence"
+          }
+        ],
+        "rows": [
+          {
+            "id": "row-1",
+            "values": {
+              "title": "Compact",
+              "density": "low",
+              "language": "en"
+            },
+            "badge": "recommended",
+            "badgeField": "density",
+            "evidence": {
+              "rule": "coverage",
+              "answers": {
+                "match": 3
+              }
+            },
+            "evidenceSummary": "rule.coverage · match"
+          },
+          {
+            "id": "row-2",
+            "values": {
+              "title": "Airy",
+              "density": "high",
+              "language": "de"
+            }
+          }
+        ],
+        "labels": {
+          "report.layouts.title": "Layout",
+          "report.layouts.density": "Density",
+          "report.layouts.language": "Language"
+        }
+      },
+      "expect": [
+        {
+          "kind": "component",
+          "type": "table",
+          "id": "layouts",
+          "columns": [
+            "Layout",
+            "Density",
+            "Language"
+          ],
+          "rows": [
+            {
+              "rowId": "row-1",
+              "cells": [
+                "Compact",
+                "recommended",
+                "en"
+              ],
+              "evidenceSummary": "Evidence — rule.coverage · match"
+            },
+            {
+              "rowId": "row-2",
+              "cells": [
+                "Airy",
+                "high",
+                "de"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "table-row-actions",
+      "purpose": "row actions render only closed ids and reach the funnel with the row id; unknown ids never render — degrade PROBE (intentionally unknown ids/types, render-level closed-vocabulary law)",
+      "surface": {
+        "nodes": [
+          {
+            "id": "items",
+            "type": "table",
+            "columns": [
+              "title"
+            ]
+          },
+          {
+            "id": "evidence",
+            "type": "evidence"
+          }
+        ],
+        "rows": [
+          {
+            "id": "f1",
+            "values": {
+              "title": "letter-a"
+            },
+            "actions": [
+              "item:open",
+              "run:x-closed"
+            ]
+          },
+          {
+            "id": "f2",
+            "values": {
+              "title": "letter-b"
+            },
+            "actions": [
+              "item:exclude"
+            ]
+          },
+          {
+            "id": "f3",
+            "values": {
+              "title": "letter-c"
+            },
+            "actions": [
+              "nonsense"
+            ]
+          },
+          {
+            "id": "f4",
+            "values": {
+              "title": "letter-d"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "kind": "row",
+          "rowId": "f1"
+        },
+        {
+          "kind": "row",
+          "rowId": "f4",
+          "note": "no action column for rows without actions"
+        },
+        {
+          "kind": "click",
+          "click": "surface-action-item:open-f1",
+          "event": {
+            "id": "item:open",
+            "rowId": "f1"
+          }
+        },
+        {
+          "kind": "click",
+          "click": "surface-action-item:exclude-f2",
+          "event": {
+            "id": "item:exclude",
+            "rowId": "f2"
+          }
+        },
+        {
+          "kind": "absent",
+          "testid": "surface-action-run:x-closed-f1"
+        },
+        {
+          "kind": "absent",
+          "testid": "surface-action-nonsense-f3"
+        }
+      ],
+      "degradeProbe": true
+    },
+    {
+      "id": "cards-items",
+      "purpose": "cards without groups: title + badge + meta segments + typed actions + evidence summary",
+      "surface": {
+        "nodes": [
+          {
+            "id": "gallery",
+            "type": "cards",
+            "of": "items"
+          },
+          {
+            "id": "evidence",
+            "type": "evidence"
+          }
+        ],
+        "rows": [
+          {
+            "id": "card-1",
+            "values": {},
+            "title": "Modernist",
+            "badge": "3 columns",
+            "meta": [
+              "sans headings",
+              "two-column body"
+            ],
+            "actions": [
+              "item:open"
+            ],
+            "evidence": {
+              "coverage": 42
+            },
+            "evidenceSummary": "42 listings"
+          },
+          {
+            "id": "card-2",
+            "values": {},
+            "title": "Mono",
+            "badge": "1 column"
+          }
+        ],
+        "labels": {
+          "action.item:open": "Use this layout"
+        }
+      },
+      "expect": [
+        {
+          "kind": "row",
+          "rowId": "card-1",
+          "title": "Modernist",
+          "badge": "3 columns",
+          "meta": [
+            "sans headings",
+            "two-column body"
+          ],
+          "evidenceSummary": "Evidence — 42 listings",
+          "actionLabel": "Use this layout"
+        },
+        {
+          "kind": "row",
+          "rowId": "card-2",
+          "title": "Mono",
+          "badge": "1 column"
+        }
+      ]
+    },
+    {
+      "id": "cards-groups",
+      "purpose": "grouped cards: section headings resolve via the groups/status.* label lookup in first-seen row order, with per-group counts",
+      "surface": {
+        "nodes": [
+          {
+            "id": "review",
+            "type": "cards",
+            "of": "groups"
+          },
+          { "id": "evidence", "type": "evidence" }
+        ],
+        "rows": [
+          {
+            "id": "g1",
+            "values": {},
+            "title": "alpha",
+            "group": "keep"
+          },
+          {
+            "id": "g2",
+            "values": {},
+            "title": "beta",
+            "group": "ask"
+          },
+          {
+            "id": "g3",
+            "values": {},
+            "title": "gamma",
+            "group": "keep"
+          }
+        ],
+        "labels": {
+          "status.keep": "Keep",
+          "status.ask": "Needs a look"
+        }
+      },
+      "expect": [
+        {
+          "kind": "row",
+          "rowId": "g1",
+          "section": {
+            "heading": "Keep",
+            "count": 2
+          }
+        },
+        {
+          "kind": "row",
+          "rowId": "g2",
+          "section": {
+            "heading": "Needs a look",
+            "count": 1
+          }
+        },
+        {
+          "kind": "row",
+          "rowId": "g3",
+          "section": {
+            "heading": "Keep",
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "filter-bar-controlled",
+      "purpose": "filter-bar chips are one controlled facet: an All reset chip + option chips, aria-pressed selection, change events out",
+      "surface": {
+        "nodes": [
+          {
+            "id": "filters",
+            "type": "filter-bar",
+            "filters": [
+              "verdict"
+            ]
+          }
+        ],
+        "rows": [
+          {
+            "id": "f1",
+            "values": {
+              "verdict": "keep"
+            },
+            "title": "Row one",
+            "badge": "keep",
+            "badgeField": "verdict",
+            "evidence": {
+              "answers": [
+                1,
+                2
+              ]
+            }
+          }
+        ],
+        "labels": {
+          "status.keep": "Keep"
+        }
+      },
+      "filters": [
+        {
+          "id": "verdict",
+          "options": [
+            {
+              "value": "keep",
+              "label": "Keep"
+            },
+            {
+              "value": "ask"
+            },
+            {
+              "value": "candidate",
+              "label": "Candidate"
+            }
+          ]
+        }
+      ],
+      "activeFilters": {
+        "verdict": "ask"
+      },
+      "expect": [
+        {
+          "kind": "text",
+          "text": "All",
+          "aria": {
+            "aria-pressed": "false"
+          }
+        },
+        {
+          "kind": "text",
+          "text": "Keep",
+          "aria": {
+            "aria-pressed": "false"
+          }
+        },
+        {
+          "kind": "text",
+          "text": "ask",
+          "aria": {
+            "aria-pressed": "true"
+          }
+        },
+        {
+          "kind": "click",
+          "click": "surface-filter-verdict-candidate",
+          "event": {
+            "facet": "verdict",
+            "value": "candidate"
+          }
+        }
+      ]
+    },
+    {
+      "id": "select-facet-controlled",
+      "purpose": "select is a single controlled dropdown facet bound by the node's bind; option labels resolve via the facet def then status.*",
+      "surface": {
+        "nodes": [
+          {
+            "id": "density",
+            "type": "select",
+            "bind": "density",
+            "options": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        ],
+        "labels": {
+          "report.density": "Density",
+          "status.high": "Airy"
+        }
+      },
+      "filters": [
+        {
+          "id": "density",
+          "options": [
+            {
+              "value": "low",
+              "label": "Compact"
+            },
+            {
+              "value": "medium"
+            },
+            {
+              "value": "high"
+            }
+          ]
+        }
+      ],
+      "activeFilters": {
+        "density": ""
+      },
+      "expect": [
+        {
+          "kind": "component",
+          "type": "select",
+          "id": "density",
+          "label": "Density",
+          "optionText": [
+            "All",
+            "Compact",
+            "medium",
+            "Airy"
+          ]
+        },
+        {
+          "kind": "change",
+          "select": "surface-select-density",
+          "value": "high",
+          "event": {
+            "facet": "density",
+            "value": "high"
+          }
+        }
+      ]
+    },
+    {
+      "id": "actions-node",
+      "purpose": "the actions node renders only closed action ids as buttons wired to the funnel — degrade PROBE (intentionally unknown ids/types, render-level closed-vocabulary law)",
+      "surface": {
+        "nodes": [
+          {
+            "id": "actions",
+            "type": "actions",
+            "actions": [
+              "run:export",
+              "run:diff",
+              "run:q-delete"
+            ]
+          }
+        ]
+      },
+      "labels": {
+        "action.run:export": "Export report"
+      },
+      "expect": [
+        {
+          "kind": "click",
+          "click": "surface-action-run:export",
+          "text": "Export report",
+          "event": {
+            "id": "run:export",
+            "rowId": null
+          }
+        },
+        {
+          "kind": "absent",
+          "testid": "surface-action-run:q-delete"
+        }
+      ],
+      "degradeProbe": true
+    },
+    {
+      "id": "evidence-disclosure",
+      "purpose": "evidence is mandatory wherever a recommendation renders — rows carrying evidence carry a summary line; rows without stay clean",
+      "surface": {
+        "nodes": [
+          {
+            "id": "items",
+            "type": "table",
+            "columns": [
+              "title",
+              "verdict"
+            ]
+          },
+          {
+            "id": "evidence",
+            "type": "evidence"
+          }
+        ],
+        "rows": [
+          {
+            "id": "e1",
+            "values": {
+              "title": "report.md",
+              "verdict": "ask"
+            },
+            "badge": "needs a look",
+            "badgeField": "verdict",
+            "evidence": {
+              "rule": "unusual-perms",
+              "answers": {
+                "perms": "0o777"
+              }
+            },
+            "evidenceSummary": "rule.unusual-perms · perms"
+          },
+          {
+            "id": "e2",
+            "values": {
+              "title": "notes.txt",
+              "verdict": "keep"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "kind": "row",
+          "rowId": "e1",
+          "evidenceSummary": "Evidence — rule.unusual-perms · perms"
+        },
+        {
+          "kind": "row",
+          "rowId": "e2"
+        }
+      ]
+    },
+    {
+      "id": "unknown-node-degrade",
+      "purpose": "an unrecognized node type never renders (closed vocabulary at the render seam, defense-in-depth behind manifest validation) — degrade PROBE (intentionally unknown ids/types, render-level closed-vocabulary law)",
+      "surface": {
+        "nodes": [
+          {
+            "id": "ghost",
+            "type": "telepathy",
+            "bind": "totals.x"
+          },
+          {
+            "id": "kept",
+            "type": "stat",
+            "bind": "totals.scanned"
+          }
+        ],
+        "values": {
+          "totals": {
+            "scanned": 7
+          }
+        },
+        "labels": {
+          "report.ghost": "Ghosted",
+          "report.kept": "Kept"
+        }
+      },
+      "expect": [
+        {
+          "kind": "component",
+          "type": "stat",
+          "id": "kept",
+          "label": "Kept",
+          "value": "7"
+        },
+        {
+          "kind": "absent",
+          "testid": "surface-ghost"
+        }
+      ],
+      "degradeProbe": true
+    },
+    {
+      "id": "truncated-notice-and-no-html",
+      "purpose": "host-resolved truncation notice renders role=status; the renderer is a closed vocabulary — raw markup from an extension never mounts (D17, every tier)",
+      "surface": {
+        "nodes": [
+          {
+            "id": "scanned",
+            "type": "stat",
+            "bind": "totals.scanned"
+          }
+        ],
+        "values": {
+          "totals": {
+            "scanned": 5
+          }
+        },
+        "labels": {
+          "report.scanned": "Files scanned"
+        }
+      },
+      "truncatedLabel": "12 more runs omitted — rerun to refresh",
+      "expect": [
+        {
+          "kind": "component",
+          "type": "stat",
+          "id": "scanned",
+          "label": "Files scanned",
+          "value": "5"
+        },
+        {
+          "kind": "text",
+          "text": "12 more runs omitted — rerun to refresh",
+          "role": "status"
+        },
+        {
+          "kind": "note",
+          "note": "the no-html kind is asserted on every case below (uniform run) — listed once here per the mandate"
+        },
+        {
+          "kind": "no-html"
+        }
+      ]
+    }
+  ]
+}

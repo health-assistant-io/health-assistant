@@ -1,0 +1,1166 @@
+{
+  "schema": 1,
+  "contract": "extension-contract-fixtures",
+  "purpose": "Phase 0 acceptance wall for the extension charter artifacts (ADR-0040 / plan 32): valid/invalid manifests, source descriptors, capability-RPC messages, plus the configSchema-evolution semantics. scripts/check-extension-contract.py runs every case and fails loudly on drift; hosts re-run the same cases from the vendored suites (implementations may differ, outputs may not).",
+  "manifest": {
+    "against": "extension-manifest.schema.json (root = imported manifest)",
+    "valid": [
+      {
+        "name": "connector-minimal",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token"
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              },
+              "max-items": {
+                "type": "number",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 300
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Greenhouse jobs",
+                "summary": "Job postings from Greenhouse boards"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "reserved-id-prefix-is-lint-layered",
+        "note": "DELIBERATE pass: the structural gate accepts the id shape (pattern only); reserved-prefix rejection (host-, neuro-) is a validator-owned lint recorded in the schema $comment — the checker asserts this case passes structure AND that the $comment names the lint.",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "neuro-impersonator",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Lint-layered"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "miniapp-surface",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "mini-calc",
+          "version": "1.2.0",
+          "author": "Neuronection",
+          "license": "MIT",
+          "capabilities": [
+            "ui:chat-card",
+            "ui:settings"
+          ],
+          "categories": [
+            "utilities"
+          ],
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Calculator",
+                "summary": "Quick math in chat"
+              },
+              "el": {
+                "title": "Αριθμομηχανή"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "chat-tools-with-riskclass",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "board-tools",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "capabilities": [
+            "chat-tools"
+          ],
+          "tools": [
+            {
+              "id": "list-boards",
+              "riskClass": "read-only",
+              "titleKey": "tools.list-boards"
+            },
+            {
+              "id": "archive-board",
+              "riskClass": "state-changing",
+              "titleKey": "tools.archive-board"
+            },
+            {
+              "id": "delete-board",
+              "riskClass": "destructive",
+              "titleKey": "tools.delete-board"
+            }
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Board tools"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "miniapp-string-apiversion",
+        "because": "the mini-app kind KEEPS the ADR-0029 integer apiVersion — the envelope string is rejected",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kind": "mini-app",
+          "packKind": "assessment",
+          "id": "bad-pack",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "fs-read",
+            "run"
+          ],
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "connector-integer-apiversion",
+        "because": "connector/bridge carry the named envelope string + kindVersion",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "connector",
+          "id": "bad-connector",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "unknown-capability",
+        "because": "closed capability taxonomy — unknown ids are rejected, not ignored",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "teleporter",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "teleport"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "chat-tools-without-riskclass",
+        "because": "the risk-class wall (D20/ADR-0011): a chat-tools contribution without riskClass fails schema validation",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "risky-tools",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "chat-tools"
+          ],
+          "tools": [
+            {
+              "id": "no-risk",
+              "titleKey": "tools.no-risk"
+            }
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "icon-svg-rejected",
+        "because": "raster-only data-URLs — SVG is the script vector (desktop precedent), structurally rejected",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "svg-icon",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==",
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "unknown-envelope-field",
+        "because": "additionalProperties false everywhere — no undocumented field survives",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "extra-field",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "eval": true,
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "net-without-domains",
+        "because": "net requires its declared-domain scope (every hop is re-validated against it)",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "open-net",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "net"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "bridge-without-inbound",
+        "because": "inbound-* capabilities are bridge-kind only — a bridge declares at least one",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "bridge",
+          "id": "not-really-bridge",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "net"
+          ],
+          "domains": [
+            "api.example.com"
+          ],
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "inbound-on-connector",
+        "because": "the inbound inverse: a connector kind cannot declare inbound-webhook",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "hooky-connector",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "inbound-webhook",
+            "sync"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "ui-custom-code-imported",
+        "because": "ui:custom-code is T1 bundled-only — absent from the importable enum",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "custom-ui",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "ui:custom-code"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "code-entry-in-imported",
+        "because": "imported manifests never carry code — an imported manifest with code.entry is rejected (ADR-0029 rule, structural)",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "smuggled-code",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "code": {
+            "entry": "main.js"
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "packkind-on-connector",
+        "because": "packKind is the mini-app kind's axis only",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "packKind": "assessment",
+          "id": "confused",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "kindversion-on-miniapp",
+        "because": "the mini-app kind's refinement IS its apiVersion integer — no kindVersion field",
+        "doc": {
+          "apiVersion": 1,
+          "kindVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "double-version",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "ui:chat-card"
+          ],
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "bundled": {
+    "against": "extension-manifest.schema.json $defs.bundledManifest",
+    "valid": [
+      {
+        "name": "bundled-miniapp-with-code",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "mini-translate",
+          "version": "1.4.0",
+          "author": "Neuronection",
+          "license": "MIT",
+          "capabilities": [
+            "ui:custom-code",
+            "llm"
+          ],
+          "contributions": {
+            "commands": [
+              {
+                "id": "translate",
+                "labelKey": "cmd.translate"
+              }
+            ]
+          },
+          "code": {
+            "entry": "src/main.ts"
+          },
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Translate"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "bundled-bridge-webhook",
+        "note": "Bridges are T1-only in v1 (inbound-* outside the importable set) — the bridge kind is exercised through the bundled manifest.",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "bridge",
+          "id": "home-events-hook",
+          "version": "0.3.1",
+          "author": "A. Author",
+          "license": "Apache-2.0",
+          "capabilities": [
+            "inbound-webhook",
+            "notify",
+            "state"
+          ],
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Home events hook"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "bundled-inbound-on-connector",
+        "because": "inbound-* capabilities are bridge-kind only — the shared envelopeRules branch fires on bundled manifests too",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "hooky-bundled",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "inbound-webhook",
+            "sync"
+          ],
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "sources": {
+    "against": "extension-sources.schema.json (root descriptor; desiredState against $defs.desiredStateDocument; localSource against $defs.localSourceDescriptor — dev/test only, hosts gate it off in production)",
+    "valid": [
+      {
+        "name": "release-tag-source",
+        "doc": {
+          "url": "https://git.example.com/ext/greenhouse-jobs",
+          "ref": {
+            "strategy": "release-tag"
+          }
+        }
+      },
+      {
+        "name": "full-source-with-pin",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "tag-pattern",
+            "value": "v*"
+          },
+          "subpath": "connectors/greenhouse",
+          "credentials": [
+            {
+              "slot": "github-readonly",
+              "purpose": "Private-repo read credential"
+            }
+          ],
+          "pin": {
+            "ref": "v1.2.0",
+            "digest": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          }
+        }
+      },
+      {
+        "name": "local-source-descriptor",
+        "against": "localSource",
+        "doc": {
+          "local": {
+            "path": "/home/dev/src/career-connector-template"
+          },
+          "ref": {
+            "strategy": "branch",
+            "value": "main"
+          }
+        }
+      },
+      {
+        "name": "local-source-with-pin",
+        "against": "localSource",
+        "doc": {
+          "local": {
+            "path": "/opt/dogfood/connectors"
+          },
+          "ref": {
+            "strategy": "commit-pin",
+            "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "subpath": "fetchers/greenhouse",
+          "pin": {
+            "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "digest": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+          },
+          "notes": "dogfood checkout"
+        }
+      },
+      {
+        "name": "desired-state",
+        "against": "desiredState",
+        "doc": {
+          "schema": 1,
+          "sources": [
+            {
+              "url": "https://github.com/example/career-connectors",
+              "ref": {
+                "strategy": "tag-pattern",
+                "value": "v*"
+              },
+              "credentials": [
+                {
+                  "slot": "github-readonly"
+                }
+              ]
+            }
+          ],
+          "extensions": [
+            {
+              "id": "greenhouse-jobs",
+              "sourceUrl": "https://github.com/example/career-connectors",
+              "pin": {
+                "ref": "v1.2.0",
+                "digest": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "url-with-userinfo",
+        "because": "inline credentials in the URL are structurally invalid (no '@' anywhere)",
+        "doc": {
+          "url": "https://user:ghp_secrettoken@git.example.com/ext/repo",
+          "ref": {
+            "strategy": "release-tag"
+          }
+        }
+      },
+      {
+        "name": "ssh-transport-url",
+        "because": "https-only: the ssh/git@ transport is refused at the seam",
+        "doc": {
+          "url": "git@github.com:example/career-connectors.git",
+          "ref": {
+            "strategy": "release-tag"
+          }
+        }
+      },
+      {
+        "name": "inline-token-as-slot",
+        "because": "a token VALUE cannot even be expressed as a slot reference (bounded id pattern) — inline secrets are structurally invalid",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "release-tag"
+          },
+          "credentials": [
+            {
+              "slot": "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+            }
+          ]
+        }
+      },
+      {
+        "name": "credential-value-field",
+        "because": "the credentials object has no value/token field — additionalProperties false rejects the smuggle",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "release-tag"
+          },
+          "credentials": [
+            {
+              "slot": "github-readonly",
+              "value": "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+            }
+          ]
+        }
+      },
+      {
+        "name": "subpath-traversal",
+        "because": "subpath segments cannot contain '..' — each segment starts alnum",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "release-tag"
+          },
+          "subpath": "../../etc/passwd"
+        }
+      },
+      {
+        "name": "local-path-traversal",
+        "against": "localSource",
+        "because": "local paths are absolute and '..'-segment-free structurally — traversal is rejected at the seam, never filtered",
+        "doc": {
+          "local": {
+            "path": "../outside/career-connector-template"
+          },
+          "ref": {
+            "strategy": "branch",
+            "value": "main"
+          }
+        }
+      },
+      {
+        "name": "local-path-relative",
+        "against": "localSource",
+        "because": "a local path must be absolute — a bare relative name is structurally invalid",
+        "doc": {
+          "local": {
+            "path": "career-connector-template"
+          },
+          "ref": {
+            "strategy": "branch",
+            "value": "main"
+          }
+        }
+      },
+      {
+        "name": "root-rejects-local-source",
+        "because": "production descriptors are https-only: the root requires `url` and has no `local` property — a local-kind document never validates against the production root",
+        "doc": {
+          "local": {
+            "path": "/home/dev/src/career-connector-template"
+          },
+          "ref": {
+            "strategy": "branch",
+            "value": "main"
+          }
+        }
+      },
+      {
+        "name": "commit-pin-not-sha",
+        "because": "commit-pin values are 40/64-hex shas, bounded ref names",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "commit-pin",
+            "value": "main"
+          }
+        }
+      },
+      {
+        "name": "branch-without-value",
+        "because": "branch strategy requires its value",
+        "doc": {
+          "url": "https://github.com/example/career-connectors",
+          "ref": {
+            "strategy": "branch"
+          }
+        }
+      },
+      {
+        "name": "desired-state-remove-field",
+        "against": "desiredState",
+        "because": "deletion is structurally inexpressible — reconcile never deletes data (D22)",
+        "doc": {
+          "schema": 1,
+          "sources": [],
+          "extensions": [
+            {
+              "id": "greenhouse-jobs",
+              "sourceUrl": "https://github.com/example/career-connectors",
+              "pin": {
+                "ref": "v1.2.0",
+                "digest": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+              },
+              "remove": true
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "rpc": {
+    "against": "capability-rpc.schema.json",
+    "valid": [
+      {
+        "name": "call-net-fetch",
+        "doc": {
+          "v": 1,
+          "type": "call",
+          "id": 7,
+          "method": "cap.net.fetch",
+          "params": {
+            "url": "https://boards-api.greenhouse.io/v1/boards/x/jobs",
+            "maxBytes": 65536
+          }
+        }
+      },
+      {
+        "name": "result",
+        "doc": {
+          "v": 1,
+          "type": "result",
+          "id": 7,
+          "result": {
+            "status": 200,
+            "body": "[]",
+            "finalUrl": "https://boards-api.greenhouse.io/v1/boards/x/jobs"
+          }
+        }
+      },
+      {
+        "name": "error-typed",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 7,
+          "method": "cap.net.fetch",
+          "error": {
+            "code": "net-denied",
+            "detail": "{\"hop\":1,\"host\":\"10.0.0.1\"}",
+            "retryable": "no"
+          }
+        }
+      },
+      {
+        "name": "event-progress",
+        "doc": {
+          "v": 1,
+          "type": "event",
+          "id": "run-42",
+          "method": "evt.progress",
+          "params": {
+            "percent": 30
+          }
+        }
+      },
+      {
+        "name": "call-secrets-need",
+        "doc": {
+          "v": 1,
+          "type": "call",
+          "id": 8,
+          "method": "cap.secrets.need",
+          "params": {
+            "slot": "api-token"
+          }
+        }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "unknown-method",
+        "because": "closed method vocabulary",
+        "doc": {
+          "v": 1,
+          "type": "call",
+          "id": 9,
+          "method": "cap.fs.read",
+          "params": {
+            "path": "/etc/passwd"
+          }
+        }
+      },
+      {
+        "name": "error-code-outside-enum",
+        "because": "the seam carries the charter error enum verbatim",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 9,
+          "method": "cap.state.get",
+          "error": {
+            "code": "kaboom",
+            "detail": "{}",
+            "retryable": "no"
+          }
+        }
+      },
+      {
+        "name": "event-with-capability-method",
+        "because": "events are evt.* only — a capability method as event is a protocol violation",
+        "doc": {
+          "v": 1,
+          "type": "event",
+          "id": 10,
+          "method": "cap.net.fetch",
+          "params": {}
+        }
+      },
+      {
+        "name": "call-missing-params",
+        "because": "calls carry params (even empty)",
+        "doc": {
+          "v": 1,
+          "type": "call",
+          "id": 11,
+          "method": "cap.state.get"
+        }
+      },
+      {
+        "name": "raw-exception-detail-over-cap",
+        "because": "detail is capped (limits.errorDetailMaxChars) — raw exception strings never cross",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 12,
+          "method": "cap.items.emit",
+          "error": {
+            "code": "io",
+            "detail": "Traceback (most recent call last): File \"x.py\", line 1, in <module> RuntimeError: Unhandled exception with a very long message that exceeds the five hundred character cap by a wide margin, padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded overflow overflow overflow overflow overflow overflow overflow overflow overflow",
+            "retryable": "no"
+          }
+        }
+      }
+    ]
+  },
+  "configEvolution": {
+    "law": "A configSchema change that invalidates stored instance config marks the instance needs-config — never silently defaulted (D6/D21). The checker proves the mechanism: the stored config validates against the original schema and FAILS against the evolved one, and needs-config is a charter status condition.",
+    "cases": [
+      {
+        "name": "required-field-added",
+        "stored": {
+          "threshold": 0.8,
+          "dry-run": true
+        },
+        "original": {
+          "type": "object",
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dry-run": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        },
+        "evolved": {
+          "type": "object",
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dry-run": {
+              "type": "boolean",
+              "default": true
+            },
+            "board-token": {
+              "type": "string",
+              "x-secret": true
+            }
+          },
+          "required": [
+            "board-token"
+          ]
+        },
+        "expectOriginal": "valid",
+        "expectEvolved": "invalid"
+      },
+      {
+        "name": "type-narrowed",
+        "stored": {
+          "max-items": "one hundred"
+        },
+        "original": {
+          "type": "object",
+          "properties": {
+            "max-items": {
+              "type": "string"
+            }
+          }
+        },
+        "evolved": {
+          "type": "object",
+          "properties": {
+            "max-items": {
+              "type": "number",
+              "minimum": 1
+            }
+          }
+        },
+        "expectOriginal": "valid",
+        "expectEvolved": "invalid"
+      }
+    ]
+  }
+}

@@ -103,20 +103,11 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
     # --- Tool Exposure (for the Chat Assistant) ---
 
-    def supports_tools(self) -> bool:
-        """Whether this integration exposes tools to the chat assistant.
-
-        Override to return ``True`` and implement :meth:`get_tools` to make
-        the integration's capabilities available as LangChain tools in chat.
-        Default: ``False`` (no tools).
-        """
-        return False
-
     async def get_tools(self, integration: UserIntegration) -> list[Any]:
         """Return LangChain-compatible tools for this instance.
 
-        Only called by the platform tool aggregator when
-        :meth:`supports_tools` is ``True``. Tools should be standard
+        Only called by the platform tool aggregator when the manifest
+        declares the ``chat-tools`` capability. Tools should be standard
         LangChain ``StructuredTool`` / ``@tool`` objects so the existing
         ``llm.bind_tools`` + reasoning loop works unchanged.
 
@@ -162,18 +153,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         raise NotImplementedError(f"Action '{action_id}' is not implemented by {self.domain}.")
 
     # --- Notifications ---
-
-    def supports_notifications(self) -> bool:
-        """Whether this integration emits rich, event-driven notifications.
-
-        Override to return ``True`` and implement :meth:`get_notifications`
-        to surface threshold breaches, HITL-style prompts, anomaly alerts,
-        daily summaries, etc. — anything beyond the universal "sync done"
-        baseline that the platform emits for every integration.
-
-        Default: ``False`` (only the baseline sync-outcome notification fires).
-        """
-        return False
 
     def get_notification_types(self) -> list[Any]:
         """Statically declare the notification kinds this provider can emit.
@@ -247,21 +226,13 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # Workstream B.2 of the integrations follow-ups pass. A provider that
     # can pull longitudinal clinical events (hospital admissions, chronic
     # conditions, pregnancies, etc.) from an upstream system overrides
-    # ``supports_clinical_events`` to return True and implements
+    # the ``clinical_event`` data class declared in their manifest's
     # ``pull_clinical_events``. The platform's ``run_sync`` pipeline calls
     # the hook after ``apply_telemetry_split``, resolves a service-context
     # actor via ``integration_actor.resolve_integration_actor``, and writes
     # each event via ``clinical_event_service.create_event`` (which dedups
     # on ``(tenant, patient, source_integration_id, external_id)`` when the
     # provider sets ``external_id`` on the payload).
-
-    def supports_clinical_events(self) -> bool:
-        """Return True if this provider pulls clinical events from upstream.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_clinical_events`.
-        """
-        return False
 
     async def pull_clinical_events(self, integration: UserIntegration) -> list[Any]:
         """Pull clinical events for this integration instance.
@@ -273,8 +244,8 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         duplicates. ``source_integration_id`` is supplied automatically by
         the engine (the integration's own id); providers can't fake it.
 
-        Default: ``[]`` (no events). Override on providers that opt in via
-        :meth:`supports_clinical_events`. Swallow per-instance errors and
+        Default: ``[]`` (no events). Called only when declared via
+        :meth:`pull_clinical_events` runs only when declared. Swallow per-instance errors and
         return ``[]`` on failure so one bad integration doesn't break the
         whole sync turn.
         """
@@ -284,7 +255,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # Workstream E.3 of the integrations follow-ups pass. Mirrors the
     # clinical-events opt-in shape (workstream B.2) — providers that can
     # pull exams (lab encounters, hospital visits, imaging appointments)
-    # from an upstream system override ``supports_examinations`` to return
+    # from an upstream system declare the ``examination`` data class in
     # True and implement ``pull_examinations``. The platform's ``run_sync``
     # pipeline calls the hook after the clinical-events step, resolves a
     # service-context actor via ``integration_actor.resolve_integration_actor``,
@@ -293,14 +264,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # bridge-provider migration). Dedup contract: provider sets
     # ``external_id`` on the payload to the upstream's stable encounter id;
     # the engine stamps ``source_integration_id`` automatically.
-
-    def supports_examinations(self) -> bool:
-        """Return True if this provider pulls examinations from upstream.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_examinations`.
-        """
-        return False
 
     async def pull_examinations(self, integration: UserIntegration) -> list[Any]:
         """Pull examinations (FHIR Encounters) for this integration instance.
@@ -312,8 +275,8 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         duplicates. ``source_integration_id`` is supplied automatically by
         the engine (the integration's own id); providers can't fake it.
 
-        Default: ``[]`` (no exams). Override on providers that opt in via
-        :meth:`supports_examinations`. Swallow per-instance errors and
+        Default: ``[]`` (no exams). Called only when declared via
+        :meth:`pull_examinations` (declared only). Swallow per-instance errors and
         return ``[]`` on failure so one bad integration doesn't break the
         whole sync turn.
         """
@@ -324,7 +287,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # contribute catalog entries (biomarker classes, medications, concepts,
     # typed concept edges) sourced from upstream — closing the gap left by
     # ``ConceptProvenance.INTEGRATION`` (declared in the enum but unwritten
-    # before F). Mirrors the supports_X / pull_X shape from B + E. The
+    # before F). Rides the same declaration shape as the clinical-events hook. The
     # platform's ``run_sync`` calls the hook after the examinations step,
     # resolves a service-context actor via
     # ``integration_actor.resolve_integration_actor``, and applies each
@@ -333,14 +296,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # stamps ``ConceptProvenance.INTEGRATION`` provenance where the
     # underlying model supports it. Idempotent on the natural key per
     # kind, so re-syncs are no-ops.
-
-    def supports_catalog_proposals(self) -> bool:
-        """Return True if this provider contributes catalog entries.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_catalog_proposals`.
-        """
-        return False
 
     async def pull_catalog_proposals(self, integration: UserIntegration) -> list[Any]:
         """Pull catalog proposals for this integration instance.
@@ -356,7 +311,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         already proposed.
 
         Default: ``[]`` (no proposals). Override on providers that opt in
-        via :meth:`supports_catalog_proposals`. Swallow per-instance errors
+        via the ``catalog_proposal`` data-class declaration. Swallow per-instance errors
         and return ``[]`` on failure so one bad integration doesn't break
         the whole sync turn.
         """
@@ -364,7 +319,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
     # --- HITL proposals (opt-in) ----------------------------------------
     # Workstream G of the integrations follow-ups pass. The HITL layer is
-    # the human-in-the-loop counterpart to ``supports_catalog_proposals``
+    # the human-in-the-loop counterpart to the catalog-proposals hook
     # (workstream F) — same payload shapes, but the integration asks the
     # platform to queue each proposal for human review instead of
     # auto-applying. The platform's ``run_sync`` calls the hook after the
@@ -378,20 +333,11 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # ``handle_proposal_resolution`` callback so it can react.
     #
     # Why both hooks exist: a single provider can opt into both. Use
-    # ``supports_catalog_proposals`` for entries the provider is confident
+    # the ``catalog_proposal`` data class for entries the provider is confident
     # about (low-risk, idempotent — e.g. declaring a known LOINC code the
-    # local catalog is missing). Use ``supports_hitl_proposals`` for
+    # local catalog is missing). Use the ``hitl_proposal`` data class for
     # entries that need a human's judgement (e.g. mapping a novel upstream
     # biomarker to an existing catalog class).
-
-    def supports_hitl_proposals(self) -> bool:
-        """Return True if this provider contributes HITL proposals.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_hitl_proposals` (and optionally
-        :meth:`handle_proposal_resolution`).
-        """
-        return False
 
     async def pull_hitl_proposals(self, integration: UserIntegration) -> list[Any]:
         """Pull HITL proposals for this integration instance.
@@ -409,7 +355,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         advance their own cursor in :meth:`handle_proposal_resolution`.
 
         Default: ``[]`` (no proposals). Override on providers that opt in
-        via :meth:`supports_hitl_proposals`. Swallow per-instance errors
+        via the ``hitl_proposal`` data-class declaration. Swallow per-instance errors
         and return ``[]`` on failure so one bad integration doesn't break
         the whole sync turn.
         """
@@ -443,11 +389,11 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
     # --- Documents (opt-in) ---------------------------------------------
     # Workstream C of the integrations follow-ups pass. Mirrors the
-    # supports_X / pull_X shape from B + E + F + G — providers that can
+    # declaration shape from B + E + F — providers that can
     # deliver document bytes from upstream (a hospital integration
     # pulling scanned lab reports, a fax-to-email gateway, a wearable
     # companion app syncing ECG printouts) override
-    # ``supports_documents`` to return True and implement
+    # the ``document`` data class declared in their manifest and implement
     # ``pull_documents``. The platform's ``run_sync`` pipeline calls the
     # hook after the examinations + catalog-proposals + HITL-proposals
     # steps, resolves a service-context actor via
@@ -456,14 +402,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # path the UI upload endpoint uses). The OCR + LLM extraction Celery
     # task fires automatically when ``include_in_extraction=True`` on
     # the spec.
-
-    def supports_documents(self) -> bool:
-        """Return True if this provider pulls documents from upstream.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_documents`.
-        """
-        return False
 
     async def pull_documents(self, integration: UserIntegration) -> list[Any]:
         """Pull documents for this integration instance.
@@ -488,7 +426,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         integration's own id); providers only set ``external_id``.
 
         Default: ``[]`` (no documents). Override on providers that opt
-        in via :meth:`supports_documents`. Swallow per-instance errors
+        in via the ``document`` data-class declaration. Swallow per-instance errors
         and return ``[]`` on failure so one bad integration doesn't
         break the whole sync turn.
         """
@@ -497,10 +435,10 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # --- Medications (opt-in) -------------------------------------------
     # Phase 4 (Route A) of the fhir-server multi-resource sync plan
     # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Mirrors
-    # the supports_X / pull_X shape from B + E + F + G + C — providers
+    # the declaration shape from B + E + F + G + C — providers
     # that can pull patient medications (FHIR MedicationStatement /
     # MedicationRequest) from an upstream system override
-    # ``supports_medications`` to return True and implement
+    # the ``medication`` data class declared in their manifest and implement
     # ``pull_medications``. The platform's ``run_sync`` pipeline calls
     # the hook after the documents step, resolves a service-context
     # actor via ``integration_actor.resolve_integration_actor``, and
@@ -509,14 +447,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # canonical TokenData + dedup-kwargs shape). Dedup contract: provider
     # sets ``external_id`` on the payload to the upstream's stable
     # medication id; the engine stamps ``source_integration_id``.
-
-    def supports_medications(self) -> bool:
-        """Return True if this provider pulls patient medications.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_medications`.
-        """
-        return False
 
     async def pull_medications(self, integration: UserIntegration) -> list[Any]:
         """Pull patient medications (FHIR MedicationStatement/Request).
@@ -532,7 +462,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         MedicationStatement.
 
         Default: ``[]``. Override on providers that opt in via
-        :meth:`supports_medications`. Swallow per-instance errors and
+        :meth:`pull_medications` (declared only). Swallow per-instance errors and
         return ``[]`` on failure.
         """
         return []
@@ -540,17 +470,9 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # --- Allergies (opt-in) ---------------------------------------------
     # Same shape as medications. Providers that can pull patient
     # allergies (FHIR AllergyIntolerance) override
-    # ``supports_allergies`` to return True and implement
+    # the ``allergy`` data class declared in their manifest and implement
     # ``pull_allergies``. Written via
     # ``allergy_service.add_patient_allergy``.
-
-    def supports_allergies(self) -> bool:
-        """Return True if this provider pulls patient allergies.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_allergies`.
-        """
-        return False
 
     async def pull_allergies(self, integration: UserIntegration) -> list[Any]:
         """Pull patient allergies (FHIR AllergyIntolerance).
@@ -562,24 +484,16 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         engine.
 
         Default: ``[]``. Override on providers that opt in via
-        :meth:`supports_allergies`.
+        the ``allergy`` data-class declaration.
         """
         return []
 
     # --- Immunizations (opt-in) -----------------------------------------
     # Same shape as medications + allergies. Providers that can pull
     # patient immunizations (FHIR Immunization) override
-    # ``supports_immunizations`` to return True and implement
+    # the ``immunization`` data class declared in their manifest and implement
     # ``pull_immunizations``. Written via
     # ``vaccine_service.add_patient_immunization``.
-
-    def supports_immunizations(self) -> bool:
-        """Return True if this provider pulls patient immunizations.
-
-        Default: ``False``. Opt in by overriding to ``True`` AND
-        implementing :meth:`pull_immunizations`.
-        """
-        return False
 
     async def pull_immunizations(self, integration: UserIntegration) -> list[Any]:
         """Pull patient immunizations (FHIR Immunization / vaccine doses).
@@ -591,7 +505,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         engine.
 
         Default: ``[]``. Override on providers that opt in via
-        :meth:`supports_immunizations`.
+        the ``immunization`` data-class declaration.
         """
         return []
 
@@ -649,19 +563,6 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         new this cycle".
         """
         return []
-
-    def supports_push(self) -> bool:
-        """Opt-in flag for outbound push. Return ``True`` when
-        :meth:`push_data` does real work; the engine skips the call otherwise.
-
-        Mirrors the ``supports_*`` opt-in pattern used by the eight ``pull_*``
-        families. The default detects a real ``push_data`` override by
-        comparing against the base no-op, so providers that already implement
-        ``push_data`` (``dev_dummy``, ``fhir_server``) are picked up
-        automatically — no extra override needed. Return ``False`` explicitly
-        to disable push even when ``push_data`` is overridden.
-        """
-        return self.push_data.__func__ is not BaseHealthProvider.push_data
 
     async def handle_webhook(
         self, integration: UserIntegration, payload: Any, request: Any = None

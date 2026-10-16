@@ -11,6 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (extensions — the charter envelope, vendored contracts, declared capabilities)
+- **The family extension-contract set is vendored**: `contracts/`
+  (charter vocabularies, manifest/sources schemas, capability-RPC spec +
+  the hostile fixture walls) plus the Python modules
+  `app/extensions/{contract,polite_http,conformance}.py` — byte-identical
+  from the dev canonicals via `scripts/sync-extension-contract.sh`,
+  drift-gated by verify-wiring. The in-repo fixture wall
+  (`tests/test_extensions_contract.py`) runs the same 85 structural +
+  hostile cases every family host runs.
+- **All five bundled manifests re-authored onto the `extension/v1`
+  envelope** (kind connector/bridge, kindVersion, declared capabilities,
+  provenance author/license, closed-vocabulary categories, i18n, item
+  data-class schema, `x-secret` on credential fields): validated against
+  the vendored schema AT REGISTRATION — an invalid manifest never loads
+  (loose reads end). The registry keys by envelope id; health's
+  underscore `domain` survives as the product alias (ruling 4), so REST
+  paths and stored provider values are unchanged.
+- **Declared capabilities replace `supports_*` probing everywhere
+  (D18)**: the `notify`/`push`/`chat-tools`/`inbound-webhook`/
+  `inbound-api`/`sync` capabilities and the itemSchema data classes
+  (observation, clinical_event, examination, document, medication,
+  allergy, immunization, catalog/hitl proposals) gate the engine at the
+  `_opt_in`/`_provider_overrides` choke points, the tool aggregator and
+  the machine-secret provisioning. The eleven `supports_*` hooks are
+  deleted from the SDK base and the providers; suites re-authored in the
+  same commit. Beat-driven pull now requires the `sync` capability
+  (webhook/bridge/mcp pulls were no-ops before — same outcomes, honest
+  declarations).
+- **D19 secret honesty gate at registration**: every config-flow secret
+  field must be `x-secret`-declared in the manifest configSchema or the
+  extension refuses to load.
+
 ### Changed (extensions — D24 relocation onto the family extension home)
 - **The integrations framework relocated to `backend/app/extensions/`**
   (the family extension subsystem home, one layout across the Python

@@ -1,17 +1,41 @@
 {
-  "domain": "health_assistant_bridge",
-  "name": "Health Assistant Bridge",
-  "version": "1.1.0",
-  "integration_type": ["push"],
-  "description": "Connect mobile apps and custom clients to a Health Assistant instance using the official Python, TypeScript, or Kotlin SDKs.",
-  "author": "Core",
-  "access_type": "cloud",
-  "categories": ["System", "Mobile", "Services"],
-  "icon": "Smartphone",
-  "dependencies": [],
-  "sdks": {
-    "python": "1.4.0",
-    "ts": "1.4.0",
-    "kotlin": "0.6.0"
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "bridge",
+  "id": "health-assistant-bridge",
+  "version": "2.0.0",
+  "description": "Connect mobile apps and custom clients to this Health Assistant instance through a signed two-way API (HMAC-SHA256). Ships the official Python, TypeScript and Kotlin client SDKs as satellites under integrations/health-assistant-bridge/.",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["data", "productivity"],
+  "capabilities": ["inbound-api", "secrets"],
+  "itemSchema": {
+    "type": "object",
+    "properties": {
+      "observation": { "type": "string", "title": "Biomarker observation / telemetry sample" },
+      "examination": { "type": "string", "title": "Client-pushed examination" },
+      "document": { "type": "string", "title": "Client-pushed document bytes" },
+      "clinical_event": { "type": "string", "title": "Client-pushed clinical event" }
+    }
+  },
+  "supportsIncremental": false,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "api_secret": {
+        "type": "string",
+        "title": "API signing secret",
+        "x-secret": true
+      }
+    }
+  },
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "Health Assistant Bridge",
+        "summary": "Signed two-way API for mobile apps and custom clients."
+      }
+    }
   }
 }

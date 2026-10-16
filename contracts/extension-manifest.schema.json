@@ -1,0 +1,931 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neuronection.dev/contracts/extension-manifest.schema.json",
+  "title": "Extension manifest — envelope + kind refinements (extension/v1, structural gate)",
+  "type": "object",
+  "properties": {
+    "apiVersion": {
+      "type": [
+        "integer",
+        "string"
+      ],
+      "$comment": "Kind-conditional: connector/bridge carry the named envelope string 'extension/v1' + kindVersion (the per-kind refinement); the mini-app kind KEEPS the ADR-0029 integer apiVersion (the integer IS the mini-app refinement). Narrowed by the allOf branches below."
+    },
+    "kindVersion": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1,
+      "$comment": "Per-kind refinement major (connector/bridge only; the mini-app kind's refinement IS its apiVersion integer)."
+    },
+    "kind": {
+      "enum": [
+        "connector",
+        "mini-app",
+        "bridge"
+      ]
+    },
+    "packKind": {
+      "enum": [
+        "assessment",
+        "surface"
+      ],
+      "$comment": "The mini-app kind's own sub-kind (ADR-0029 kind axis) — required iff kind == mini-app."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,39}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "$comment": "Provenance — rendered verbatim by every consent surface (D19)."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "$comment": "Provenance — SPDX identifier preferred (e.g. MIT, Apache-2.0) or 'proprietary'; rendered verbatim by consent surfaces."
+    },
+    "repository": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9](:[0-9]{1,5})?(/[^\\s@\\\\]*)?$",
+      "$comment": "Provenance — https-only git URL (the family distribution surface is git URLs, D13); no userinfo, no whitespace."
+    },
+    "categories": {
+      "type": "array",
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "files",
+          "data",
+          "search",
+          "productivity",
+          "utilities",
+          "developer",
+          "home",
+          "learning"
+        ]
+      },
+      "$comment": "Closed browse vocabulary (D25) — mirrored from extension-charter.json categories.vocabulary."
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "net",
+          "fs-read",
+          "fs-write-quarantine",
+          "secrets",
+          "chat-tools",
+          "decision",
+          "llm",
+          "run",
+          "report",
+          "propose",
+          "notify",
+          "state",
+          "ui:panel",
+          "ui:page",
+          "ui:window",
+          "ui:chat-card",
+          "ui:settings",
+          "sync"
+        ]
+      },
+      "$comment": "Closed taxonomy (ADR-0040 clause 3). This enum is DERIVED — ids whose charter tiers intersect {0,2} (importable at T0/T2); scripts/check-extension-contract.py re-derives it and fails on drift. Excluded here: ui:custom-code (T1 bundled-only), fs-write-mutate (reserved), push and inbound-* (T1-only in v1) — the $defs.bundledManifest enum carries the full taxonomy. Validator-owned lint beyond structure: tier x kind legality against the charter, capability semantics per kind."
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 253,
+        "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+        "$comment": "Hostname or leading-wildcard host — the net capability's polite-runtime scope; every hop (redirects included) is re-validated against this list (D14/D23)."
+      },
+      "$comment": "Required iff 'net' is declared."
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/toolContribution"
+      },
+      "$comment": "chat-tools contributions — required iff 'chat-tools' is declared; every entry carries its ADR-0011 risk class (D20)."
+    },
+    "configSchema": {
+      "$ref": "#/$defs/configSchema"
+    },
+    "defaults": {
+      "type": "object",
+      "maxProperties": 64,
+      "$comment": "Initial values for configSchema properties; must match configSchema (validator-owned)."
+    },
+    "secrets": {
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$",
+            "$comment": "Secret-slot REFERENCE — an id the host resolves in the settings-map-declared secret store; never a value."
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "privacy": {
+      "$ref": "#/$defs/privacy"
+    },
+    "i18n": {
+      "$ref": "#/$defs/i18n"
+    },
+    "icon": {
+      "type": "string",
+      "maxLength": 65536,
+      "pattern": "^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$",
+      "$comment": "Inline raster-only data-URL (png/jpeg/webp) — SVG/XPM are structurally rejected at this seam (script-vector risk, desktop precedent); the byte cap is the real limit, char count a cheap proxy; absent = deterministic monogram fallback."
+    },
+    "itemSchema": {
+      "$ref": "#/$defs/configSchema",
+      "$comment": "connector refinement: the item contract for emitted items (the per-kind payload schema — RawPosting etc. are domain contracts instantiated through this shape)."
+    },
+    "supportsIncremental": {
+      "type": "boolean",
+      "$comment": "connector refinement: whether the connector returns next_state cursors (incremental sync)."
+    },
+    "run": {
+      "type": "object",
+      "maxProperties": 8,
+      "additionalProperties": true,
+      "$comment": "mini-app refinement (assessment packs): the ADR-0029 run pipeline — deep validation is the mini-app kind's own structural gate (contracts/mini-app-packs.manifest.schema.json) and the desktop validator; bounded here so the envelope stays closed."
+    },
+    "report": {
+      "type": "object",
+      "maxProperties": 4,
+      "required": [
+        "nodes"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 96,
+          "items": {
+            "type": "object",
+            "maxProperties": 8,
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false,
+      "$comment": "mini-app refinement: declarative report — component vocabulary closed by the charter + the ADR-0029 schema (delegated deep validation)."
+    },
+    "liveCard": {
+      "type": "object",
+      "maxProperties": 4,
+      "additionalProperties": true,
+      "$comment": "mini-app refinement: live run-card schema (ADR-0029, delegated deep validation)."
+    },
+    "surfaces": {
+      "type": "object",
+      "maxProperties": 7,
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "$ref": "#/properties/report"
+        },
+        "panel": {
+          "$ref": "#/properties/report"
+        },
+        "window": {
+          "$ref": "#/properties/report"
+        }
+      },
+      "$comment": "mini-app refinement (plan 32 Phase 4, append-only): per-surface declarative schemas — page (routed, host-rendered), panel (embeddable block), window (host-owned OS/browser window; capability ui:window + degrade law, D17). Each entry carries the SAME report-shaped closed component vocabulary. Hosts validate the nodes against their vendored surface laws (career app/extensions/surfaces.py; the desktop mini-app schema gains this in its Phase-8 wave)."
+    },
+    "data": {
+      "type": "object",
+      "maxProperties": 24,
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "array"
+          },
+          {
+            "type": "object"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "properties": {},
+      "$comment": "mini-app refinement (plan 32 Phase 4, append-only): declared T0 DATA the host renders — string keys map to VALUE ARRAYS (the declarative rows/cards; no code at T0). Hosts bind surface nodes onto these keys (bind paths of the form '<key>.<field>'). Rows are capped by the surface host."
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "id",
+    "version",
+    "capabilities",
+    "author",
+    "license",
+    "i18n"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "$ref": "#/$defs/envelopeRules"
+    }
+  ],
+  "$defs": {
+    "envelopeRules": {
+      "$comment": "Kind/capability refinement rules shared by the imported root and $defs.bundledManifest — hosts validate BOTH against these (structural).",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "connector"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "apiVersion": {
+                "const": "extension/v1"
+              },
+              "packKind": false,
+              "run": false,
+              "report": false,
+              "liveCard": false
+            },
+            "required": [
+              "apiVersion",
+              "kindVersion",
+              "itemSchema",
+              "supportsIncremental"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "bridge"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "apiVersion": {
+                "const": "extension/v1"
+              },
+              "packKind": false,
+              "run": false,
+              "report": false,
+              "liveCard": false,
+              "capabilities": {
+                "contains": {
+                  "enum": [
+                    "inbound-webhook",
+                    "inbound-api"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "apiVersion",
+              "kindVersion"
+            ],
+            "$comment": "A bridge declares at least one inbound capability — that is what makes it a bridge (D1). In v1 inbound-* is T1-only, so bridges are bundled-only; the importable enum carries no inbound ids (charter sources.importableSet)."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "contains": {
+                  "enum": [
+                    "inbound-webhook",
+                    "inbound-api"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "capabilities"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "bridge"
+                ]
+              }
+            },
+            "$comment": "inbound-* capabilities are bridge-kind only."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "mini-app"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "apiVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "kindVersion": false,
+              "itemSchema": false,
+              "supportsIncremental": false
+            },
+            "required": [
+              "apiVersion",
+              "packKind"
+            ],
+            "$comment": "The mini-app kind KEEPS the ADR-0029 integer apiVersion (current 1) — the integer IS the refinement; no kindVersion field. packKind is the ADR-0029 kind axis re-authored into the envelope (one-time, D18 mapping note in the charter)."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "contains": {
+                  "const": "net"
+                }
+              }
+            },
+            "required": [
+              "capabilities"
+            ]
+          },
+          "then": {
+            "required": [
+              "domains"
+            ],
+            "$comment": "net requires its declared-domain scope."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "contains": {
+                  "const": "chat-tools"
+                }
+              }
+            },
+            "required": [
+              "capabilities"
+            ]
+          },
+          "then": {
+            "required": [
+              "tools"
+            ],
+            "$comment": "chat-tools requires its contribution list; every entry's riskClass is required by $defs.toolContribution — the risk-class wall (D20)."
+          }
+        }
+      ]
+    },
+    "toolContribution": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,63}$",
+          "$comment": "Namespaced host-side as <extensionId>:<id> — collision spoofing is impossible by construction."
+        },
+        "riskClass": {
+          "enum": [
+            "read-only",
+            "state-changing",
+            "destructive"
+          ]
+        },
+        "titleKey": {
+          "type": "string",
+          "maxLength": 120,
+          "$comment": "i18n key for the tool's user-facing label (key-presence lint is validator-owned)."
+        },
+        "descriptionKey": {
+          "type": "string",
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "id",
+        "riskClass"
+      ],
+      "additionalProperties": false
+    },
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "properties": {
+          "type": "object",
+          "maxProperties": 64,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/configField"
+          }
+        },
+        "required": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "properties"
+      ],
+      "additionalProperties": false,
+      "$comment": "JSON Schema subset (2020-12): the ADR-0029 config shape + `required` (connector config has required fields — career's Pydantic config_model precedent) + x-secret field marking (D19). Flat types, no $ref/combinators/nesting beyond limits.configDepthMax (host-owned depth lint). Also the connector itemSchema shape (item contracts are flat records)."
+    },
+    "configField": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "array"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "enum": {
+          "type": "array",
+          "minItems": 1
+        },
+        "default": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "array"
+          ]
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "minLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pattern": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "minItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "x-secret": {
+          "enum": [
+            true
+          ],
+          "$comment": "Marks this field as a secret: the value lives only in the settings-map-declared secret store — a plaintext value in stored config is a conformance failure and a registration-time throw (D19)."
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "privacy": {
+      "type": "object",
+      "properties": {
+        "sendsContent": {
+          "type": "boolean"
+        },
+        "sensitiveGlobs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "contentCapBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8192
+        }
+      },
+      "required": [
+        "sendsContent",
+        "sensitiveGlobs"
+      ],
+      "additionalProperties": false,
+      "$comment": "Mini-app kind semantics (ADR-0029); connectors whose net traffic carries user content declare it equivalently (validator-owned lint per kind)."
+    },
+    "i18n": {
+      "type": "object",
+      "properties": {
+        "defaultLocale": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$"
+        },
+        "locales": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": "object",
+            "maxProperties": 400,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 400
+            }
+          }
+        }
+      },
+      "required": [
+        "defaultLocale",
+        "locales"
+      ],
+      "additionalProperties": false,
+      "$comment": "UI labels only; 'title' key required in every locale (validator-owned completeness lint, ADR-0029); 'summary' is the per-locale one-line display string (D25, <= limits.summaryMaxChars). Extension labels never render outside i18n resolution — the family string rule."
+    },
+    "bundledManifest": {
+      "title": "Extension manifest — bundled (T1 code shipped with the product)",
+      "type": "object",
+      "properties": {
+        "apiVersion": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "$comment": "Same kind-conditional scheme as the root; the allOf branches of the ROOT apply to bundled validation too (hosts validate bundled manifests against the same envelope)."
+        },
+        "kindVersion": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "kind": {
+          "enum": [
+            "connector",
+            "mini-app",
+            "bridge"
+          ]
+        },
+        "packKind": {
+          "enum": [
+            "assessment",
+            "surface"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,39}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "repository": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9](:[0-9]{1,5})?(/[^\\s@\\\\]*)?$"
+        },
+        "categories": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "files",
+              "data",
+              "search",
+              "productivity",
+              "utilities",
+              "developer",
+              "home",
+              "learning"
+            ]
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "net",
+              "fs-read",
+              "fs-write-quarantine",
+              "fs-write-mutate",
+              "secrets",
+              "chat-tools",
+              "decision",
+              "llm",
+              "run",
+              "report",
+              "propose",
+              "notify",
+              "push",
+              "state",
+              "ui:panel",
+              "ui:page",
+              "ui:window",
+              "ui:chat-card",
+              "ui:settings",
+              "ui:custom-code",
+              "inbound-webhook",
+              "inbound-api",
+              "sync"
+            ]
+          },
+          "$comment": "Bundled enum = the full charter taxonomy incl. ui:custom-code (T1-only) and reserved fs-write-mutate (rejected by the tier/vocabulary lint with a precise reason, never silently)."
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 253,
+            "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "items": {
+            "$ref": "#/$defs/toolContribution"
+          }
+        },
+        "configSchema": {
+          "$ref": "#/$defs/configSchema"
+        },
+        "defaults": {
+          "type": "object",
+          "maxProperties": 64
+        },
+        "secrets": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{1,63}$"
+              },
+              "purpose": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "privacy": {
+          "$ref": "#/$defs/privacy"
+        },
+        "i18n": {
+          "$ref": "#/$defs/i18n"
+        },
+        "icon": {
+          "type": "string",
+          "maxLength": 65536,
+          "pattern": "^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+        },
+        "itemSchema": {
+          "$ref": "#/$defs/configSchema"
+        },
+        "supportsIncremental": {
+          "type": "boolean"
+        },
+        "run": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": true
+        },
+        "report": {
+          "type": "object",
+          "maxProperties": 4,
+          "required": [
+            "nodes"
+          ],
+          "properties": {
+            "nodes": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 96,
+              "items": {
+                "type": "object",
+                "maxProperties": 8,
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "liveCard": {
+          "type": "object",
+          "maxProperties": 4,
+          "additionalProperties": true
+        },
+        "contributions": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": true,
+          "$comment": "Slot contributions (mini-app kind) — bundled/code-tier only."
+        },
+        "code": {
+          "type": "object",
+          "properties": {
+            "entry": {
+              "type": "string",
+              "maxLength": 255,
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]{0,254}$"
+            }
+          },
+          "required": [
+            "entry"
+          ],
+          "additionalProperties": false,
+          "$comment": "T1 bundled entry point relative to the extension dir. An IMPORTED manifest carrying code/entry is rejected by the root schema (additionalProperties: false) — the ADR-0029 rule, structural here."
+        },
+        "surfaces": {
+          "type": "object",
+          "maxProperties": 7,
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "page": {
+              "$ref": "#/properties/report"
+            },
+            "panel": {
+              "$ref": "#/properties/report"
+            },
+            "window": {
+              "$ref": "#/properties/report"
+            }
+          },
+          "$comment": "mini-app refinement (plan 32 Phase 4, append-only): per-surface declarative schemas (page/panel/window), same closed vocabulary."
+        },
+        "data": {
+          "type": "object",
+          "maxProperties": 24,
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "array"
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "properties": {},
+          "$comment": "mini-app refinement (plan 32 Phase 4, append-only): declared T0 data the host renders."
+        }
+      },
+      "required": [
+        "apiVersion",
+        "kind",
+        "id",
+        "version",
+        "capabilities",
+        "author",
+        "license",
+        "i18n"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "$ref": "#/$defs/envelopeRules"
+        }
+      ],
+      "$comment": "Kept in structural lockstep with the root envelope (scripts/check-extension-contract.py proves the property sets agree — the mini-app-packs.manifest.schema.json bundled precedent). Kind/capability refinement rules are shared via $defs.envelopeRules."
+    }
+  },
+  "$comment": "STRUCTURAL GATE ONLY — a manifest passing this schema is NOT 'valid'. Host-owned (validator) rules beyond structure: 1. tier x kind x capability legality against extension-charter.json (incl. ui:custom-code bundled-only, fs-write-mutate reserved, inbound-* bridge-only is structural here); 2. cross-references (defaults vs configSchema, i18n key completeness incl. title/summary, tools referencing declared capabilities, domains present iff net); 3. reserved id prefixes (host-, neuro-); 4. apiVersion <= host per kind (self-disable with path-precise reason otherwise); 5. manifest byte cap (limits.manifestMaxBytes); 6. mini-app deep structure via contracts/mini-app-packs.manifest.schema.json (the ratified kind refinement)."
+}

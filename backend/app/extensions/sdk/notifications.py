@@ -2,7 +2,7 @@
 
 Providers opt into rich, event-driven notifications by:
 
-1. Overriding :meth:`BaseHealthProvider.supports_notifications` to return ``True``.
+1. Declaring the ``notify`` capability in the manifest.
 2. Implementing :meth:`BaseHealthProvider.get_notifications` to inspect the
    just-synced observations and return a list of :class:`NotificationSpec`
    objects.

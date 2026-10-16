@@ -101,6 +101,13 @@ target-version = "py312"
 # data lines are exempt (same accommodation as study's port; the byok
 # gate's compared blocks exclude this file, so convergence stays green).
 "app/ai/providers/presets_data.py" = ["E501"]
+# Vendored family extension-contract modules (dev/contracts canonical via
+# scripts/sync-extension-contract.sh, byte-identical, never edited here —
+# ADR-0031/ADR-0040): lint findings belong in the dev canonical, not the
+# vendored copy; drift is gated by the sync ledger + verify-wiring.
+"app/extensions/polite_http.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+"app/extensions/contract.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+"app/extensions/conformance.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
@@ -120,7 +127,12 @@ extend-immutable-calls = [
 # is not formatter-stable — its long decision-model dict lines are emitted
 # deliberately and lint-ignored above (plan 26 Phase 6: the family-wide
 # accommodation; the byok gate's R1 guards the data, not ruff).
-exclude = ["app/ai/providers/presets_data.py"]
+exclude = [
+  "app/ai/providers/presets_data.py",
+  "app/extensions/polite_http.py",
+  "app/extensions/contract.py",
+  "app/extensions/conformance.py",
+]
 
 [tool.mypy]
 # The type gate grows by ratchet: packages join `files` only when clean,

@@ -11,6 +11,16 @@ from app.extensions.sdk.base import BaseConfigFlow, BaseHealthProvider
 async def test_integration_registry_loads_manifests():
     registry = IntegrationRegistry()
 
+    # A minimal valid bundled envelope (validated at registration against
+    # the vendored schema — the loose-read era ended with the charter).
+    envelope = (
+        '{"apiVersion": "extension/v1", "kindVersion": 1, "kind": "bridge",'
+        ' "id": "dev-dummy", "version": "1.0.0",'
+        ' "capabilities": ["inbound-webhook"], "author": "Test",'
+        ' "license": "Apache-2.0",'
+        ' "i18n": {"defaultLocale": "en", "locales": {"en": {"title": "Dummy"}}}}'
+    )
+
     # Mock os.listdir to pretend 'dev_dummy' exists
     with (
         patch("os.listdir") as mock_listdir,
@@ -24,14 +34,91 @@ async def test_integration_registry_loads_manifests():
 
         # Setup mock open context manager
         file_mock = MagicMock()
-        file_mock.read.return_value = '{"domain": "dev_dummy", "name": "Dummy"}'
+        file_mock.read.return_value = envelope
         mock_open.return_value.__enter__.return_value = file_mock
 
         registry._load_manifests()
 
         manifests = registry.get_all_manifests()
         assert len(manifests) == 1
-        assert manifests[0]["domain"] == "dev_dummy"
+        # The registry keys by the envelope id; the product domain is the alias.
+        assert manifests[0]["id"] == "dev-dummy"
+        assert registry.get_manifest("dev_dummy")["id"] == "dev-dummy"
+
+
+def test_registry_rejects_invalid_manifests():
+    """Registration-time validation (the charter gate): a manifest that
+    fails the envelope schema never enters the registry — logged and
+    excluded (self-disabled with reason), never half-loaded."""
+    registry = IntegrationRegistry()
+
+    bad = '{"apiVersion": "extension/v1", "kind": "bridge"}'
+    with (
+        patch("os.listdir", return_value=["broken_ext"]),
+        patch("os.path.isdir", return_value=True),
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", new_callable=MagicMock) as mock_open,
+    ):
+        file_mock = MagicMock()
+        file_mock.read.return_value = bad
+        mock_open.return_value.__enter__.return_value = file_mock
+
+        registry._load_manifests()
+
+    assert registry.get_all_manifests() == []
+    assert registry.get_provider("broken_ext") is None
+
+
+def test_bundled_manifests_validate_against_the_envelope():
+    """Every shipped builtin manifest validates against the vendored
+    family schema (bundled form) — no bundled extension may bypass the
+    charter envelope."""
+    import json
+    from pathlib import Path
+
+    from app.extensions import contract
+
+    schema = json.loads(
+        (
+            Path(__file__).resolve().parents[2] / "contracts" / "extension-manifest.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    base = Path(__file__).resolve().parents[1] / "app" / "extensions" / "builtin"
+    shipped = [d for d in base.iterdir() if (d / "manifest.json").exists()]
+    assert len(shipped) == 5
+    for d in sorted(shipped):
+        doc = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
+        err = contract.validate(doc, schema["$defs"]["bundledManifest"], schema)
+        assert err is None, f"{d.name}: {err}"
+
+
+def test_capability_gate_reads_declarations():
+    """``has_capability`` / ``declared_data_classes`` answer from the
+    manifest — the engine's only capability source (D3/D18)."""
+    registry = IntegrationRegistry()
+    registry._load_manifests()
+
+    assert registry.has_capability("dev_dummy", "inbound-webhook")
+    assert registry.has_capability("dev_dummy", "inbound-api")
+    assert registry.has_capability("dev_dummy", "push")
+    assert registry.has_capability("dev_dummy", "notify")
+    assert registry.has_capability("fhir_server", "sync")
+    assert registry.has_capability("webhook", "inbound-webhook")
+    assert registry.has_capability("health_assistant_bridge", "inbound-api")
+    assert registry.has_capability("mcp_client", "chat-tools")
+    assert not registry.has_capability("webhook", "inbound-api")
+    assert not registry.has_capability("webhook", "sync")
+    assert not registry.has_capability("mcp_client", "sync")
+    assert not registry.has_capability("no_such_domain", "sync")
+
+    assert "observation" in registry.declared_data_classes("fhir_server")
+    assert "medication" in registry.declared_data_classes("fhir_server")
+    assert "clinical_event" in registry.declared_data_classes("fhir_server")
+    assert registry.declared_data_classes("webhook") == frozenset({"observation"})
+    assert registry.declared_data_classes("no_such_domain") == frozenset()
+
+    # The alias form resolves too (health's underscore domains).
+    assert registry.has_capability("fhir-server", "sync")
 
 
 @pytest.mark.asyncio
@@ -235,32 +322,27 @@ def test_sdk_base_no_longer_imports_asyncio_or_legacy_exceptions():
 # ---------------------------------------------------------------------------
 
 
-def test_sdk_base_declares_clinical_events_opt_in_hook_with_safe_defaults():
-    """``BaseHealthProvider`` must declare ``supports_clinical_events`` and
-    ``pull_clinical_events`` with safe defaults so existing providers that
-    don't opt in are unaffected. Source-level guard for the contract."""
+def test_clinical_events_rides_the_declared_data_class():
+    """The clinical_events pull leg is gated on the ``clinical_event`` data class
+    declared in the manifest's ``itemSchema`` (D18) — the ``supports_clinical_events``
+    probing hook is gone. The SDK base keeps the safe ``[]`` default."""
     import inspect
 
+    from app.extensions.registry import IntegrationRegistry
     from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
-    # Defaults — False / [] so the engine's ``_opt_in`` probe skips
-    # providers that haven't opted in.
-    assert hasattr(SDKBaseProvider, "supports_clinical_events")
-    assert hasattr(SDKBaseProvider, "pull_clinical_events")
-
-    # Pull the default method off the class (unbound) and confirm the body
-    # shape guards against a future revert that flips the default.
-    supports_src = inspect.getsource(SDKBaseProvider.supports_clinical_events)
-    assert "return False" in supports_src, (
-        "supports_clinical_events must default to False — flipping it to "
-        "True would opt every existing integration into the clinical-events "
-        "pull path"
+    assert not hasattr(SDKBaseProvider, "supports_clinical_events"), (
+        "supports_clinical_events is gone — the engine reads declared data classes, never probes"
     )
-
     pull_src = inspect.getsource(SDKBaseProvider.pull_clinical_events)
-    assert "return []" in pull_src, (
-        "pull_clinical_events must default to [] — providers that haven't "
-        "implemented it must return an empty list, not raise"
+    assert "return []" in pull_src
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    assert "clinical_event" in reg.declared_data_classes(
+        "fhir_server"
+    ) or "clinical_event" in reg.declared_data_classes("dev_dummy"), (
+        "at least one bundled extension must exercise the clinical_event data class"
     )
 
 
@@ -276,29 +358,27 @@ def test_clinical_event_create_is_reexported_from_sdk():
     )
 
 
-def test_sdk_base_declares_examinations_opt_in_hook_with_safe_defaults():
-    """``BaseHealthProvider`` must declare ``supports_examinations`` and
-    ``pull_examinations`` with safe defaults (False / []) so existing
-    providers that don't opt in are unaffected. Mirrors the clinical-events
-    contract test above."""
+def test_examinations_rides_the_declared_data_class():
+    """The examinations pull leg is gated on the ``examination`` data class
+    declared in the manifest's ``itemSchema`` (D18) — the ``supports_examinations``
+    probing hook is gone. The SDK base keeps the safe ``[]`` default."""
     import inspect
 
+    from app.extensions.registry import IntegrationRegistry
     from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
-    assert hasattr(SDKBaseProvider, "supports_examinations")
-    assert hasattr(SDKBaseProvider, "pull_examinations")
-
-    supports_src = inspect.getsource(SDKBaseProvider.supports_examinations)
-    assert "return False" in supports_src, (
-        "supports_examinations must default to False — flipping it to True "
-        "would opt every existing integration into the examinations pull "
-        "path"
+    assert not hasattr(SDKBaseProvider, "supports_examinations"), (
+        "supports_examinations is gone — the engine reads declared data classes, never probes"
     )
-
     pull_src = inspect.getsource(SDKBaseProvider.pull_examinations)
-    assert "return []" in pull_src, (
-        "pull_examinations must default to [] — providers that haven't "
-        "implemented it must return an empty list, not raise"
+    assert "return []" in pull_src
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    assert "examination" in reg.declared_data_classes(
+        "fhir_server"
+    ) or "examination" in reg.declared_data_classes("dev_dummy"), (
+        "at least one bundled extension must exercise the examination data class"
     )
 
 
@@ -320,29 +400,27 @@ def test_examination_create_is_reexported_from_sdk():
 # ---------------------------------------------------------------------------
 
 
-def test_sdk_base_declares_catalog_proposals_opt_in_hook_with_safe_defaults():
-    """``BaseHealthProvider`` must declare ``supports_catalog_proposals`` and
-    ``pull_catalog_proposals`` with safe defaults (False / []) so existing
-    providers that don't opt in are unaffected. Mirrors the clinical-events
-    + examinations contract tests."""
+def test_catalog_proposals_rides_the_declared_data_class():
+    """The catalog_proposals pull leg is gated on the ``catalog_proposal`` data class
+    declared in the manifest's ``itemSchema`` (D18) — the ``supports_catalog_proposals``
+    probing hook is gone. The SDK base keeps the safe ``[]`` default."""
     import inspect
 
+    from app.extensions.registry import IntegrationRegistry
     from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
-    assert hasattr(SDKBaseProvider, "supports_catalog_proposals")
-    assert hasattr(SDKBaseProvider, "pull_catalog_proposals")
-
-    supports_src = inspect.getsource(SDKBaseProvider.supports_catalog_proposals)
-    assert "return False" in supports_src, (
-        "supports_catalog_proposals must default to False — flipping it to "
-        "True would opt every existing integration into the catalog-proposal "
-        "pull path"
+    assert not hasattr(SDKBaseProvider, "supports_catalog_proposals"), (
+        "supports_catalog_proposals is gone — the engine reads declared data classes, never probes"
     )
-
     pull_src = inspect.getsource(SDKBaseProvider.pull_catalog_proposals)
-    assert "return []" in pull_src, (
-        "pull_catalog_proposals must default to [] — providers that haven't "
-        "implemented it must return an empty list, not raise"
+    assert "return []" in pull_src
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    assert "catalog_proposal" in reg.declared_data_classes(
+        "fhir_server"
+    ) or "catalog_proposal" in reg.declared_data_classes("dev_dummy"), (
+        "at least one bundled extension must exercise the catalog_proposal data class"
     )
 
 
@@ -368,59 +446,27 @@ def test_catalog_proposal_is_reexported_from_sdk():
 # ---------------------------------------------------------------------------
 
 
-def test_sdk_base_declares_hitl_proposals_opt_in_hook_with_safe_defaults():
-    """``BaseHealthProvider`` must declare ``supports_hitl_proposals``,
-    ``pull_hitl_proposals``, and ``handle_proposal_resolution`` with safe
-    defaults (False / [] / no-op) so existing providers that don't opt in
-    are unaffected. Mirrors the clinical-events + examinations +
-    catalog-proposals contract tests."""
+def test_hitl_proposals_rides_the_declared_data_class():
+    """The hitl_proposals pull leg is gated on the ``hitl_proposal`` data class
+    declared in the manifest's ``itemSchema`` (D18) — the ``supports_hitl_proposals``
+    probing hook is gone. The SDK base keeps the safe ``[]`` default."""
     import inspect
 
+    from app.extensions.registry import IntegrationRegistry
     from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
 
-    assert hasattr(SDKBaseProvider, "supports_hitl_proposals")
-    assert hasattr(SDKBaseProvider, "pull_hitl_proposals")
-    assert hasattr(SDKBaseProvider, "handle_proposal_resolution")
-
-    supports_src = inspect.getsource(SDKBaseProvider.supports_hitl_proposals)
-    assert "return False" in supports_src, (
-        "supports_hitl_proposals must default to False — flipping it to "
-        "True would opt every existing integration into the HITL pull "
-        "path"
+    assert not hasattr(SDKBaseProvider, "supports_hitl_proposals"), (
+        "supports_hitl_proposals is gone — the engine reads declared data classes, never probes"
     )
-
     pull_src = inspect.getsource(SDKBaseProvider.pull_hitl_proposals)
-    assert "return []" in pull_src, (
-        "pull_hitl_proposals must default to [] — providers that haven't "
-        "implemented it must return an empty list, not raise"
-    )
+    assert "return []" in pull_src
 
-    # ``handle_proposal_resolution`` must be awaitable + no-op by default.
-    import asyncio
-    import uuid
-
-    class _P(SDKBaseProvider):
-        domain = "test"
-
-        async def pull_data(self, integration):
-            return []
-
-    provider = _P()
-    coro = provider.handle_proposal_resolution(None, uuid.uuid4(), None)
-    assert hasattr(coro, "__await__"), (
-        "handle_proposal_resolution must be async so the resolver can ``await`` it unconditionally"
-    )
-    assert asyncio.run(coro) is None, (
-        "handle_proposal_resolution must default to a no-op (return None) "
-        "so providers that haven't opted in don't need to override it"
-    )
-
-    # Source-level guard: the default body should explicitly return None
-    # so a future revert that drops the ``return`` doesn't implicitly
-    # return None (works but loses the documented contract).
-    cb_src = inspect.getsource(SDKBaseProvider.handle_proposal_resolution)
-    assert "return None" in cb_src, (
-        "handle_proposal_resolution must explicitly ``return None`` — documents the no-op contract"
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    assert "hitl_proposal" in reg.declared_data_classes(
+        "fhir_server"
+    ) or "hitl_proposal" in reg.declared_data_classes("dev_dummy"), (
+        "at least one bundled extension must exercise the hitl_proposal data class"
     )
 
 

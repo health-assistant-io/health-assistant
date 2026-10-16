@@ -1,0 +1,801 @@
+{
+  "schema": 1,
+  "contract": "extension-charter",
+  "title": "Family extension charter — vocabularies (extension/v1)",
+  "status": {
+    "states": [
+      "ok",
+      "degraded",
+      "failing",
+      "stale"
+    ],
+    "fields": {
+      "last_success_at": "RFC3339 timestamp of the last successful sync/effect",
+      "consecutive_failures": "integer >= 0"
+    },
+    "conditions": [
+      "needs-config"
+    ],
+    "law": "Every ingestion surface renders this one status vocabulary (D21); cooldown, circuit-breaking and cadence stay host-profile policy — their OUTCOME is this shared shape. An instance whose stored config stops validating against its configSchema carries the needs-config condition — never silently defaulted."
+  },
+  "basis": [
+    "ADR-0040 (family extension charter — the law)",
+    "ADR-0011 (agentic execution trust boundary; risk classes; MCP spawn policy)",
+    "ADR-0012 (MCP surfaces — AI-layer adapters stay in ai/)",
+    "ADR-0015 (HITL: Class-B contract, Tier 1 floor)",
+    "ADR-0029/ADR-0030 (mini-app packs & Tier 2 — ratified unchanged as the mini-app kind refinement)",
+    "ADR-0031 (backend contract-sharing boundary — sync-and-gate)",
+    "ADR-0033 (settings map — settings/secret-store homes)",
+    "ADR-0035 (web-search family contract — the pattern this charter generalizes)"
+  ],
+  "derivation": {
+    "singleSource": "This document is the single normative source for the family extension vocabularies (kinds, tiers, capabilities, risk classes, errors, lifecycle, instances, status, surfaces, components, categories, consent, updates, GitOps). Per-language validators and binding layers are generated or vendored against this file and its sibling schemas; a hand-written per-host vocabulary copy is a drift bug, not a convenience (ADR-0040 clause 10).",
+    "schemaSiblings": "extension-manifest.schema.json, extension-sources.schema.json and capability-rpc.schema.json are sibling artifacts whose vocabularies MUST stay subsets of this charter — scripts/check-extension-contract.py enforces that at the scripts/verify-wiring.sh gate (closed vocabularies, no duplication, drift-checked).",
+    "fixtureWall": "extension-contract.fixtures.json is the Phase 0 acceptance wall: valid/invalid manifests, source descriptors, RPC messages, config-evolution and risk-class cases. Every host runs the same fixture wall from the vendored suites (ADR-0040 clause 22: implementations may differ, outputs may not).",
+    "appendOnly": "Evolution is append-only within a major: new capability ids, error codes, lifecycle/status states, surfaces, components and categories may be added WITHOUT bumping the envelope; removing or re-semanticizing anything bumps the affected kind's refinement major — never a global major (D6/F14)."
+  },
+  "apiVersion": {
+    "envelope": "extension/v1",
+    "policy": "Runtimes accept manifests whose apiVersion is <= their own and self-disable otherwise with a path-precise reason ('requires host <kind> refinement >= N') — the ADR-0029 policy, family-wide. Unknown fields anywhere self-disable; extensions never half-run (ADR-0029 clause 2). Majors bump PER KIND, never globally: one kind's break never forces a family-wide major.",
+    "wireShape": {
+      "connector": "apiVersion: \"extension/v1\" (string, the envelope) + kindVersion: integer (the connector refinement).",
+      "bridge": "apiVersion: \"extension/v1\" + kindVersion: integer (the bridge refinement; bridge shares the connector refinement lineage — it is a connector kind with inbound capabilities).",
+      "mini-app": "apiVersion: INTEGER (the ADR-0029 pack apiVersion, unchanged) — the integer IS the mini-app refinement version; there is no separate kindVersion field. The envelope version is implied by ratification: ADR-0029 apiVersion 1 == extension/v1 + mini-app refinement 1."
+    },
+    "kinds": {
+      "connector": {
+        "refinement": 1
+      },
+      "mini-app": {
+        "refinement": 1,
+        "lineage": "ADR-0029 apiVersion 1 — the ratified pack contract IS this kind's refinement, unchanged (D1/D8). mini-app-packs.json stays its own normative vocabulary source; the desktop-subset mapping below proves charter superset."
+      },
+      "bridge": {
+        "refinement": 1
+      }
+    },
+    "mappingNotes": [
+      "One-time re-authoring note (D18), never a runtime shim: when a product adopts the envelope, mini-app manifests re-author mechanically: {kind: assessment|surface, apiVersion: 1} becomes {kind: mini-app, packKind: assessment|surface, apiVersion: 1} — same integer, no alias, no dual read (hosts validate the envelope only).",
+      "Desktop's pack contract stays byte-stable until its Phase 8 alignment wave; until then the mini-app-packs.manifest.schema.json remains the mini-app kind's structural gate and this charter proves superset."
+    ]
+  },
+  "kinds": {
+    "connector": "Data in/out extensions: sources, fetchers, bridges-out, engines-of-record for external data. Result envelope {items, next_state, partial_errors[]} (ADR-0040 clause 9); item schemas are per-kind contracts (RawPosting, ObservationCreate, DiscoveryResult, search hits) — no family-wide universal item.",
+    "mini-app": "UI + pipeline packs — the ratified ADR-0029 contract as this kind's refinement (run pipeline, report schema, liveCard, contributions), hostable by ANY product; desktop is the reference host.",
+    "bridge": "Inbound machine surface — a connector kind with inbound capabilities (inbound-webhook, inbound-api). Server-class (S) hosts only; inbound auth mechanics are platform-owned (health's chokepoint rule is cited, not ported)."
+  },
+  "aliases": {
+    "note": "Product names survive as kind aliases (owner ruling 4) — documentation may use them; wire shapes and code never do.",
+    "integration": "health's name for connector/bridge extensions",
+    "connector": "career's name for the connector kind (the SDK noun is unchanged)",
+    "source engine / provider": "study's name for connector-kind search/discovery extensions",
+    "pack / mini app": "desktop's name for the mini-app kind"
+  },
+  "tiers": {
+    "loadBearingRule": "Imported third-party code NEVER runs in-process. In-process (T1) is reserved for code reviewed and shipped with the product. Anything importable from outside is T2 (sandboxed capability RPC) or T3 (external process). Tier is provenance at install time, never manifest data (the tierProvenance rule). This rule closes career's entry-point hole, matches health's MCP spawn policy and study's plan-73 rejection of importable scripts.",
+    "ladder": [
+      {
+        "id": "T0",
+        "name": "declarative",
+        "runs": "Validated data only; the host interprets; no code ever.",
+        "precedent": "desktop pack imports; study vendored adapters; career CSV/JSON-LD built-ins"
+      },
+      {
+        "id": "T1",
+        "name": "bundled",
+        "runs": "Reviewed code shipped inside the product, in-process.",
+        "precedent": "health providers, career built-ins, desktop Tier-1 packs"
+      },
+      {
+        "id": "T2",
+        "name": "imported code",
+        "runs": "Third-party code in a sandboxed subprocess behind the capability RPC shim (contracts/capability-rpc.md): frozen module surface, wall-clock + memory watchdogs, quotas, net only via the host-side polite runtime, no sockets in the sandbox.",
+        "precedent": "desktop ADR-0030 (the reference); Python hosts Phase 5"
+      },
+      {
+        "id": "T3",
+        "name": "external process",
+        "runs": "MCP server or any host-sanctioned out-of-process engine (ADR-0012 governs). Makes its own network calls outside the host perimeter — consent-disclosed verbatim (see consent.t3PerimeterDisclosure).",
+        "precedent": "study MCP connectors (reference), health mcp_client, career bridge"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "net",
+      "tiers": [
+        1,
+        2
+      ],
+      "grants": "Outbound HTTP through the host's polite runtime (contracts/polite_http.py, Phase 1): SSRF guard (resolve-then-connect, reserved ranges, every address, re-validated on EVERY hop), full-jitter retry with Retry-After, conditional GET, per-host token-bucket caps, robots.txt, size caps — scoped to the manifest's declared domains.",
+      "hostEnforced": "T0 never grants net (exfiltration class, ADR-0029 clause 6). T2 reaches it only as cap.net.fetch over the capability RPC — connectors never open sockets (D14). T1 receives the vendored runtime injected. A T3 process's own sockets are NOT this capability — they are outside the host perimeter and consent-disclosed (D22)."
+    },
+    {
+      "id": "fs-read",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "File metadata and — only with the privacy declaration and step-level allow — capped content excerpts, strictly inside the run's root allowlist (ADR-0029).",
+      "hostEnforced": "Every path resolves inside the run root; traversal, mount/device escape and refused roots re-validated per call; extensions hold no OS handles. The T2 sandbox has no fs calls in capability-rpc v1 (append-only future)."
+    },
+    {
+      "id": "fs-write-quarantine",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "The single destructive verb of v1: move-to-quarantine, executed ONLY by the host propose executor after HITL Class-B approval, per-item-atomic (ADR-0029).",
+      "hostEnforced": "The extension declares the proposal; it never writes. Stale/changed items drop to 'ask'; quarantine layout, retention and restore are host-owned."
+    },
+    {
+      "id": "fs-write-mutate",
+      "tiers": [],
+      "status": "reserved — refinement >= 2 (ADR-0029 apiVersion >= 2 lineage)",
+      "grants": "Closed mutation verbs (rename, move) with a mandatory undo journal, HITL-armed, host-executed. A v1 validator REJECTS it with a precise 'requires refinement >= 2' reason."
+    },
+    {
+      "id": "secrets",
+      "tiers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "grants": "Named secret-slot declarations (a manifest secrets list, or configSchema fields marked x-secret: true). Slot values live only in the settings-map-declared secret store (ADR-0033 INV-4); a plaintext secret in stored config is a conformance failure and a registration-time throw (D19).",
+      "hostEnforced": "T1 code resolves values through the host secret API at call time, never from config. T0/T2/T3 never see values: the host injects into host-side calls, resolves spawn-time references for T3, and the T2 seam returns needs-secret — a value never crosses the seam (D14). Source descriptors reference secret slots for private-repo credentials; an inline token is structurally invalid (extension-sources.schema.json)."
+    },
+    {
+      "id": "chat-tools",
+      "tiers": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "grants": "Contributes tools to the host chat funnels (ADR-0008/0011 unchanged). EVERY contribution declares its ADR-0011 risk class in the manifest — read-only | state-changing | destructive (D20); a contribution without a risk class fails schema validation (the risk-class wall).",
+      "hostEnforced": "Gated at registration like every capability: read-only auto-runs unless user-disabled; state-changing is per-grant; destructive is confirmed EVERY call and never grant-bypassable. Tool ids are namespaced <extensionId>:<toolId> (collision-spoofing prevention). Capability-type entries stay non-executable in every funnel (ADR-0015 item 5)."
+    },
+    {
+      "id": "decision",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "Atomic typed questions (noul/choice/score — the ADR-0019 neutral vocabulary) on residual items only, via the host decision-engine registry (ADR-0029).",
+      "hostEnforced": "Task-bound at call time; never a provider, model id or SDK; every call audited and budgeted under the decision funnel."
+    },
+    {
+      "id": "llm",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "Model I/O through host funnels only: the gateway and sanctioned service funnels, schema-validated outputs (ADR-0029).",
+      "hostEnforced": "Task-bound at call time by host config; audited + budgeted like every gateway call; an extension never names a provider, model id, endpoint or SDK."
+    },
+    {
+      "id": "run",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "Lifecycle of the extension's OWN runs (start, progress, cancel, resume) through the host run bridge (ADR-0029).",
+      "hostEnforced": "Checkpointed, budget pre-flight, boot reconciliation of orphaned runs; an extension can never address another extension's runs."
+    },
+    {
+      "id": "report",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "A declarative report UI rendered by the host from the closed component vocabulary (see components).",
+      "hostEnforced": "Actions are closed typed ids; raw HTML/JS from extensions is never rendered at any tier."
+    },
+    {
+      "id": "propose",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "HITL Class-B arming declarations (ADR-0015): proposal cards grouped by category, per-item escalation, fail-closed gates.",
+      "hostEnforced": "Extension-emitted proposals meet the ADR-0015 Tier 1 floor (Tier 2 per edit-in-place kind): detached cards, idempotent resolve, conflict = rebase-or-reject, resolution feedback, notification fanout. Destructive side effects arm ONLY from the user's act — never from model output."
+    },
+    {
+      "id": "notify",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "The host notification funnel (health's notification-surface precedent): the extension requests notifications; the host renders them (D20).",
+      "hostEnforced": "One funnel per host; notification content is extension data rendered by host templates; never a direct transport."
+    },
+    {
+      "id": "push",
+      "tiers": [
+        1
+      ],
+      "grants": "Outbound transport push (webhooks, push notifications) executed by the host on the extension's behalf (health's supports_push precedent) (D20).",
+      "hostEnforced": "Host-side transport with the polite-runtime perimeter; endpoints are config, x-secret where credentialed. T1-only in v1 (bundled — outside the importable set until a host demands imported pushers; append-only growth). A T3 process pushes on its own perimeter — consent-disclosed."
+    },
+    {
+      "id": "state",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "Extension-owned persistent state, host-stored, quota'd (limits.stateMaxBytes) and evictable — the T0/T1 home of the T2 state.* seam (D20). Distinct from opaque next_state sync cursors (D21), which ride instance.syncState.",
+      "hostEnforced": "Quota per instance; eviction is host policy; state never exempts an extension from revalidation on update."
+    },
+    {
+      "id": "ui:panel",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "A side-panel surface rendered from the declarative component vocabulary (D17).",
+      "hostEnforced": "Declarative surfaces are host-rendered on every surface-hosting product; theme tokens, a11y bar and in-flow growth rules ride the host."
+    },
+    {
+      "id": "ui:page",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "A routed page surface (D17).",
+      "hostEnforced": "Routing, chrome and lifecycle are host-owned; content is the declarative vocabulary only."
+    },
+    {
+      "id": "ui:window",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "A host-implemented window surface: an Electron BrowserWindow on desktop, a browser window/tab on web products, a pywebview child window on study (D17).",
+      "hostEnforced": "The host may DECLINE (window hosting is a host-profile opt-in): unhonored => degrade per surfaces.degradeRules or self-disable — the compatibility check is data (the host profile), never code. No extension markup is ever injected as HTML; window count is capped; the kill switch closes windows."
+    },
+    {
+      "id": "ui:chat-card",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "A card contribution inside chat surfaces (D17).",
+      "hostEnforced": "Cards render from the declarative vocabulary; contribution ids are namespaced <extensionId>:<id>."
+    },
+    {
+      "id": "ui:settings",
+      "tiers": [
+        0,
+        1,
+        2
+      ],
+      "grants": "A settings-section contribution rendered inside the ADR-0033 taxonomy (D17).",
+      "hostEnforced": "Every extension settings domain declares its settings-map home (tools.* / automations.*) and its secret store (INV-4); forms ride configSchema; the map's nav conformance test (INV-7) is the acceptance wall."
+    },
+    {
+      "id": "ui:custom-code",
+      "tiers": [
+        1
+      ],
+      "grants": "Full custom surfaces beyond the declarative vocabulary — a bundled-code-only (T1) privilege (ADR-0029).",
+      "hostEnforced": "Never importable: an imported manifest declaring it is rejected at the schema seam (the manifest envelope's importable set excludes it). Review-required."
+    },
+    {
+      "id": "inbound-webhook",
+      "tiers": [
+        1
+      ],
+      "grants": "A host-operated inbound webhook route — the bridge kind's machine surface (F6).",
+      "hostEnforced": "Server-class (S) hosts only; routes are platform-owned chokepoints; inbound auth mechanics (HMAC/OAuth) are host policy, not charter law. Declaring this capability is what makes a connector a bridge. T1-only in v1 (bundled — imported bridges arrive append-only when a server host demands them)."
+    },
+    {
+      "id": "inbound-api",
+      "tiers": [
+        1
+      ],
+      "grants": "A host-operated inbound two-way API route (polling/callback class) — the bridge kind's machine surface (F6).",
+      "hostEnforced": "Same chokepoint rule as inbound-webhook. T1-only in v1 (bundled)."
+    },
+    {
+      "id": "sync",
+      "tiers": [
+        0,
+        1
+      ],
+      "grants": "The extension's ingestion participates in the host's sync orchestration: declared cadence metadata, checkpointed cursors (next_state), cooldown hints.",
+      "hostEnforced": "Sync orchestration engines stay per-product (named non-goal): the charter fixes the STATUS outcome vocabulary (see status), not the scheduler. Cooldown, circuit-breaking and cadence are host-profile policy."
+    }
+  ],
+  "riskClasses": {
+    "vocabulary": [
+      "read-only",
+      "state-changing",
+      "destructive"
+    ],
+    "law": "Every chat-tools contribution declares one (ADR-0011 classes; mandatory per D20) — schema-required, gated at registration. read-only auto-runs unless user-disabled; state-changing is per-grant (allow-once default); destructive is confirmed every single call and NEVER grant-bypassable. Capability-type catalog entries stay non-executable in every funnel (ADR-0015 item 5)."
+  },
+  "errors": {
+    "model": "Every capability call fails with one typed ExtensionError { code, detail, retryable } — never a raw exception string crossing an extension boundary, including in result-envelope partial_errors (typed errors only). 'detail' is capped JSON data (limits.errorDetailMaxChars), never rendered raw as prose; host UI copy is host-localized per code. 'retryable' is a closed sub-enum; resumability is independent of retryability.",
+    "retryableVocabulary": [
+      "yes",
+      "no",
+      "after-delay",
+      "after-config-change"
+    ],
+    "codes": [
+      {
+        "code": "not-ready",
+        "retryable": "after-config-change",
+        "meaning": "Engine/model/task unassigned, extension disabled, or surface prerequisites missing."
+      },
+      {
+        "code": "needs-secret",
+        "retryable": "after-config-change",
+        "meaning": "A declared secret slot is absent or unresolved — the user must supply it; a value never flows back over the T2 seam (the host resolves it host-side)."
+      },
+      {
+        "code": "invalid",
+        "retryable": "no",
+        "meaning": "Malformed capability arguments at the boundary (defense in depth; the install-time validator should have caught it earlier)."
+      },
+      {
+        "code": "unsupported",
+        "retryable": "no",
+        "meaning": "The host does not honor this capability/kind/tier/surface — the extension self-disables with this reason rather than half-running."
+      },
+      {
+        "code": "io",
+        "retryable": "no",
+        "meaning": "OS-level fs failure on an ALLOWED path (ENOSPC, EIO, EXDEV fallback) — distinct from policy denial (path-denied); the run remains resumable."
+      },
+      {
+        "code": "not-found",
+        "retryable": "no",
+        "meaning": "Unknown run/item/extension id, or an artifact past its retention window."
+      },
+      {
+        "code": "path-denied",
+        "retryable": "no",
+        "meaning": "Outside the root allowlist, traversal/symlink/mount escape, or a refused root. Never retried with the same arguments."
+      },
+      {
+        "code": "net-denied",
+        "retryable": "no",
+        "meaning": "The polite runtime's SSRF guard blocked the request (reserved range, forbidden scheme, unallowed domain/host hop). Non-retryable config-class: logged, the instance stays live; changing config or declared domains is the remedy."
+      },
+      {
+        "code": "auth",
+        "retryable": "after-config-change",
+        "meaning": "Upstream rejected credentials (401/403 class) — the user must fix the secret slot; never retried with the same credentials."
+      },
+      {
+        "code": "rate-limited",
+        "retryable": "after-delay",
+        "meaning": "Upstream or host limiter engaged; detail carries retryAfterMs when known."
+      },
+      {
+        "code": "unreachable",
+        "retryable": "yes",
+        "meaning": "Transport-level failure reaching the endpoint (DNS, connection, timeout) before an HTTP verdict."
+      },
+      {
+        "code": "protocol",
+        "retryable": "after-config-change",
+        "meaning": "Wire-shape violation from the endpoint (malformed payload, disabled JSON output, unexpected content type) — configuration or endpoint change required."
+      },
+      {
+        "code": "provider",
+        "retryable": "yes",
+        "meaning": "Upstream server failure (5xx, malformed response after retries) — transient on the provider side."
+      },
+      {
+        "code": "budget",
+        "retryable": "after-config-change",
+        "meaning": "Run/call budget exhausted; work stops cleanly and remains resumable."
+      },
+      {
+        "code": "canceled",
+        "retryable": "no",
+        "meaning": "AbortSignal fired or the user canceled; a new run/call may be started."
+      }
+    ],
+    "legacyMappingNote": "One-time re-authoring note (D4/D18), never a runtime shim — old enums are deleted in the adopting commits: desktop's 10 PackError codes map 1:1 (identical ids); study's SearchError: missing_key→needs-secret, missing_config→invalid, unknown_type→invalid, bad_request→invalid, auth→auth, rate_limit→rate-limited, unreachable→unreachable, json_disabled→protocol; health's Auth/RateLimit/Data/Config/bridge families map to auth/rate-limited/provider-or-io/invalid-or-unsupported/protocol; career's string partial_errors become typed ExtensionErrors."
+  },
+  "lifecycle": {
+    "states": [
+      "discovered",
+      "installed",
+      "enabled",
+      "disabled",
+      "error",
+      "self-disabled",
+      "removed"
+    ],
+    "transitions": [
+      {
+        "from": "discovered",
+        "to": "installed",
+        "guard": "schema-valid manifest + host-profile compatibility (kind x tier hosted, apiVersion current major, capabilities honored) + per-extension consent (imported)."
+      },
+      {
+        "from": "installed",
+        "to": "enabled",
+        "guard": "explicit enable (imported default-off) or host-profile default-on (bundled, admin-curated) — the default is host-profile policy, not charter law."
+      },
+      {
+        "from": "enabled",
+        "to": "disabled",
+        "guard": "user or admin disable (per-extension kill switch)."
+      },
+      {
+        "from": "disabled",
+        "to": "enabled",
+        "guard": "explicit re-enable."
+      },
+      {
+        "from": "enabled",
+        "to": "error",
+        "guard": "runtime failure recorded with a typed error; surfaced with reason."
+      },
+      {
+        "from": "error",
+        "to": "enabled",
+        "guard": "retry/recover after the typed reason resolves."
+      },
+      {
+        "from": "*",
+        "to": "self-disabled",
+        "guard": "validation violation, unhonored capability/surface (with reason), apiVersion > host, digest mismatch, watchdog kill, sandbox crash — never half-runs; recovery is fix + re-validate."
+      },
+      {
+        "from": "*",
+        "to": "removed",
+        "guard": "uninstall; tombstoned: digest + origin + consent record retained, never silently re-enabled on re-import."
+      }
+    ],
+    "rules": [
+      "Digest (sha256 content) + origin pinned at install; installs are audited.",
+      "Allowlist + explicit consent required for imported code (T2/T3); the master kill switch, per-extension kill switch and armed-batch abort (where HITL applies) are always available.",
+      "One audit row per external effect; one audit row per capability call at the T2 seam.",
+      "Destructive side effects only through user-armed HITL (ADR-0015 Class-B); extension-emitted proposals meet the Tier 1 floor (Tier 2 per edit-in-place kind).",
+      "The model authors neither imports nor schedules (ADR-0011 §7 / ADR-0030 §6): GitOps desired-state is admin-authored data, never model output — see modelAuthorship.",
+      "Default-on vs default-off is host-profile policy (health server/admin-curated = default-on; desktop local/user-imported = default-off); the vocabulary is shared, the default is not."
+    ]
+  },
+  "instance": {
+    "law": "Extension != instance (D19). An instance is one configured occurrence of an extension: its own config, secret slots, sync state, enable state, status and audit rows. Instance persistence stays product-owned (named non-goal) but the vocabulary is family law.",
+    "fields": {
+      "id": "instance id (product-owned shape)",
+      "extensionId": "the extension's manifest id (+ version at bind time)",
+      "config": "instance config, validated against the extension's configSchema; invalid after an update => status condition needs-config, never silently defaulted (D21)",
+      "secretSlots": "resolved secret-slot references (values only in the settings-map-declared secret store)",
+      "syncState": "opaque host-round-tripped bytes (next_state cursor semantics, D21) — never interpreted by the host",
+      "enabled": "per-instance enable state (rides the lifecycle vocabulary)",
+      "status": "the family status vocabulary (see status)",
+      "consentRecord": "what was consented, at which digest (imported instances)"
+    }
+  },
+  "surfaces": {
+    "taxonomy": [
+      "panel",
+      "page",
+      "window",
+      "chat-card",
+      "settings-section",
+      "commands",
+      "input-mode"
+    ],
+    "notes": {
+      "panel": "A side panel (desktop sidebar, web drawer).",
+      "page": "A routed page inside the host's navigation.",
+      "window": "A host-owned OS/browser window — capability ui:window, host-implemented; a host may decline.",
+      "chat-card": "A card contribution inside chat surfaces.",
+      "settings-section": "A section inside the host's settings, per the ADR-0033 taxonomy.",
+      "commands": "Command catalog / palette entries (desktop's commands slot generalized).",
+      "input-mode": "A focused launcher input mode (desktop's input-mode slot generalized)."
+    },
+    "degradeRules": {
+      "window": [
+        "page",
+        "panel"
+      ],
+      "page": [
+        "panel"
+      ],
+      "panel": [],
+      "chat-card": [],
+      "settings-section": [],
+      "commands": [],
+      "input-mode": []
+    },
+    "degradeLaw": "A surface the host profile does not honor degrades along degradeRules (first honored target wins) or self-disables with a surfaced reason — the compatibility check is data, never code. Chat-card/settings/commands/input-mode never degrade: unhonored means self-disable. Window hosting is per-host opt-in (D17): Electron BrowserWindow (desktop), browser window/tab (web), pywebview child (study).",
+    "rules": [
+      "Declarative surfaces are available T0+ on every host that declares surface hosting; content renders ONLY from the closed component vocabulary — raw HTML/JS from extensions is never rendered at any tier (ADR-0029 clause 7 stands).",
+      "Code-driven UI (render-intents over the capability RPC) is a v2 stage gated on ADR-0030's protocol being proven (owner ruling 10).",
+      "Forms ride configSchema (schema-driven settings forms); every extension settings domain declares its settings-map home and secret store.",
+      "Theming, a11y and locale resolution ride the host; extension labels resolve through the host locale (manifest i18n) — the family string rule."
+    ]
+  },
+  "components": {
+    "vocabulary": [
+      "stat",
+      "table",
+      "cards",
+      "filter-bar",
+      "select",
+      "badge",
+      "progress",
+      "actions",
+      "evidence"
+    ],
+    "rules": "The declarative component vocabulary, seeded verbatim from mini-app-packs.json report.components (ADR-0029) — closed and append-only. evidence is MANDATORY wherever a recommendation renders (a recommendation without justification is a bug). Actions are closed typed ids (run:* / item:* per the mini-app kind refinement). The shared renderer is promoted into @neuronection/assistant-ui (two-app rule met: career + desktop)."
+  },
+  "categories": {
+    "vocabulary": [
+      "files",
+      "data",
+      "search",
+      "productivity",
+      "utilities",
+      "developer",
+      "home",
+      "learning"
+    ],
+    "rules": "Closed, append-only browse vocabulary for the one registry view (D25): manifests may declare up to limits.categoriesMax categories from this list; browse UIs group by it (health's category-browse modal is the precedent)."
+  },
+  "originClasses": {
+    "vocabulary": [
+      "bundled",
+      "imported",
+      "listed"
+    ],
+    "rules": "Display law (D25): an extension never renders as official unless bundled; provenance (author/license/repository) renders verbatim on every external card; 'listed' exists only when a source/index has been added (D16). The origin-class chip is rendered from the registry, never hand-curated."
+  },
+  "limits": {
+    "manifestMaxBytes": 524288,
+    "iconMaxBytes": 65536,
+    "localesMax": 16,
+    "i18nKeysPerLocaleMax": 400,
+    "i18nValueMaxChars": 400,
+    "summaryMaxChars": 200,
+    "descriptionMaxChars": 400,
+    "authorMaxChars": 120,
+    "licenseMaxChars": 120,
+    "repositoryMaxChars": 512,
+    "capabilitiesMax": 16,
+    "toolsMax": 24,
+    "domainsMax": 16,
+    "domainMaxChars": 253,
+    "secretsMax": 16,
+    "categoriesMax": 3,
+    "configPropertiesMax": 64,
+    "configDepthMax": 3,
+    "itemSchemaPropertiesMax": 64,
+    "errorDetailMaxChars": 500,
+    "stateMaxBytes": 262144,
+    "rpcLineMaxBytes": 1048576,
+    "sourceUrlMaxChars": 512,
+    "subpathMaxChars": 255,
+    "refNameMaxChars": 200,
+    "desiredStateSourcesMax": 16,
+    "desiredStateEntriesMax": 64,
+    "idPattern": "^[a-z][a-z0-9-]{2,39}$",
+    "versionPattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+    "reservedIdPrefixes": [
+      "host-",
+      "neuro-"
+    ],
+    "notes": "Bounds are adversarial caps on attacker-controlled manifest/descriptor content, following the mini-app-packs.json limits pattern and ADDING bounds where the seed lacked them (icon content-type pattern, categories, domains, tools, provenance field lengths, RPC line size, source URL/subpath/ref lengths). Hosts may tighten, never loosen."
+  },
+  "consent": {
+    "requirements": [
+      "Per-extension consent BEFORE an imported install: capabilities in user language, tier + import class, provenance (author, license, repository, description — rendered VERBATIM from the manifest), and the pinned content digest.",
+      "Capability growth or tier change on update RE-CONSENTS (the browser-permission model, D15).",
+      "T2 imports carry the sandbox disclosure; T3 imports carry the perimeter disclosure verbatim (below).",
+      "Consent records persist with the install (instance.consentRecord) so 'what you consented to' is verifiable against the digest. T0 declarative imports carry the declarative-data disclosure (below, verbatim); paraphrasing any disclosure away is a conformance failure."
+    ],
+    "t2SandboxDisclosure": "This extension's code runs sandboxed, not reviewed. Sandboxing limits the blast radius of this code; it is not a review of its intent. The import is pinned to this exact content digest.",
+    "t3PerimeterDisclosure": "This extension runs as a separate process outside the app's network perimeter. It opens its own network connections, with no SSRF guard, robots.txt check or rate limiting by the app. The app governs only what it returns: outputs are validated and capped.",
+    "verbatimLaw": "Consent surfaces render the disclosures above VERBATIM (D22) — paraphrasing the perimeter away is a conformance failure.",
+    "t0DeclarativeDisclosure": "This extension is declarative data only: it carries no code, and the app renders exactly what it declares — validated against a closed UI vocabulary and schema at import. Content stays inside the app's rendering and theming; nothing from this extension executes or reaches the network on its own."
+  },
+  "updates": {
+    "law": [
+      "An installed extension records source ref + content digest (sha256). Update check = ref move + digest change + manifest diff (D15).",
+      "With no signing service there is NO auto-apply path AT ALL: every T2/T3 code change is an explicit re-consent/apply (D22).",
+      "T0 data diffs auto-apply ONLY on a byte-identical manifest (capabilities and configSchema unchanged); anything else re-consents.",
+      "Hosts validate only the current charter major: pre-charter artifacts are re-authored, never converted (D15/D18 — no conversion importers, no legacy reads).",
+      "Runtimes accept apiVersion <= own and self-disable otherwise (per-kind refinement, see apiVersion)."
+    ]
+  },
+  "gitOps": {
+    "law": [
+      "An admin-owned desired-state list (config file or product settings), reconciled at boot and on schedule (D13).",
+      "Reconcile installs and moves pins ONLY for the extensions the list names; it never auto-enables and never deletes data — the schema cannot even express deletion (see extension-sources.schema.json desiredState).",
+      "Manually-installed extensions are never re-pinned or removed; drift is reported as status, not reverted (D22).",
+      "A failed fetch leaves pins untouched and marks the source failing (source status rides the family status vocabulary).",
+      "Removal (entry absent from the list) parks the extension disabled and tombstone-able.",
+      "Source descriptors reference secret slots for private-repo credentials — never inline tokens (structurally invalid at the schema seam).",
+      "The desired-state list is admin-authored data; the model never authors it (see modelAuthorship)."
+    ]
+  },
+  "modelAuthorship": {
+    "law": "The model authors neither imports nor schedules (ADR-0011 §7 / ADR-0030 §6): no model output may install, import, pin, enable or schedule an extension, and GitOps desired-state is never model output. Scheduled/automatic execution of imported code may run report-only flows at most; arming stays a user act against a visible proposal."
+  },
+  "secretLaw": {
+    "law": [
+      "Secret fields are DECLARED in the manifest: configSchema properties marked x-secret: true, and/or a manifest secrets list of slot ids (D19).",
+      "Values live only in the settings-map-declared secret store (ADR-0033 INV-4); a plaintext secret in stored config is a conformance failure and a registration-time throw.",
+      "Secrets never cross the T2 seam: secrets.need returns a resolution status or needs-secret — a value never flows back (D14).",
+      "Secret-slot ids are references (bounded, pattern-checked); no descriptor or manifest field can structurally hold a token value."
+    ]
+  },
+  "rpc": {
+    "protocol": "capability-rpc/1",
+    "spec": "contracts/capability-rpc.md",
+    "calls": [
+      "cap.net.fetch",
+      "cap.state.get",
+      "cap.state.set",
+      "cap.items.emit",
+      "cap.secrets.need"
+    ],
+    "hostCalls": [
+      "ext.invoke",
+      "ext.dispose"
+    ],
+    "events": [
+      "evt.progress",
+      "evt.log"
+    ],
+    "errors": "The typed-error envelope carries the charter error enum above — one vocabulary across manifests, envelopes and the seam."
+  },
+  "sources": {
+    "refStrategies": [
+      "release-tag",
+      "tag-pattern",
+      "branch",
+      "commit-pin"
+    ],
+    "digest": "sha256 (hex, 64 chars) over the discovered extension content — the pin-record digest and the consent-surface digest are the same value (D13/D15).",
+    "localDevVariant": "extension-sources.schema.json $defs.localSourceDescriptor is the dev/test file-path variant (local.path replaces url; structurally distinct — it NEVER validates against the production root, which stays https-only). Hosts gate it off in production boots (fail-closed) and confine paths to allowlisted roots; anything needing a credential is an https source (plan 32 Phase 3 local-source ruling).",
+    "importableSet": "The manifest schema's importable capability enum is DERIVED from this charter: ids whose tiers intersect {0, 2}. In v1 that excludes ui:custom-code, fs-write-mutate (reserved), push and the inbound-* family (T1-only) — scripts/check-extension-contract.py re-derives it and fails on drift."
+  },
+  "hostProfiles": {
+    "note": "D8 table as data — the authoritative copy. Each product publishes the kinds x tiers x surfaces it hosts; unhonored => self-disable or degrade (data, never code). Git-import profile (D13): career is the reference import host (Phase 3); desktop upgrades its local-file Tier-0 import onto the same pipeline; study imports managed MCP servers; health keeps admin-curated T1 + T3-MCP as its steady state (ruling 5 — git import deferred past this program).",
+    "profiles": [
+      {
+        "product": "health-assistant",
+        "class": "S",
+        "kinds": [
+          "connector",
+          "bridge"
+        ],
+        "tiers": [
+          "T0",
+          "T1",
+          "T3"
+        ],
+        "miniApp": "later (admin-gated)",
+        "gitImport": "deferred (ruling 5)",
+        "notes": "keeps inbound machine routes, OAuth, Celery sync; default-on bundled policy",
+        "surfaces": "opt-in (surface hosting adoption deferred past this program — recorded per the Phase-4 plan row; two-app rule already satisfied by career + desktop)"
+      },
+      {
+        "product": "desktop-assistant",
+        "class": "L",
+        "kinds": [
+          "mini-app"
+        ],
+        "tiers": [
+          "T0",
+          "T1",
+          "T2"
+        ],
+        "miniApp": "reference host",
+        "connector": "later",
+        "gitImport": "local-file import upgrades onto the git pipeline (Phase 3)",
+        "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy"
+      },
+      {
+        "product": "study-assistant",
+        "class": "D",
+        "kinds": [
+          "connector"
+        ],
+        "tiers": [
+          "T0",
+          "T1",
+          "T3"
+        ],
+        "miniApp": "later",
+        "bridge": "—",
+        "gitImport": "managed MCP servers from sources",
+        "notes": "search stays the ADR-0035 reference; T3-MCP reference",
+        "surfaces": "opt-in (surface hosting adoption deferred past this program — recorded per the Phase-4 plan row; two-app rule already satisfied by career + desktop)"
+      },
+      {
+        "product": "career-assistant",
+        "class": "D",
+        "kinds": [
+          "connector",
+          "mini-app"
+        ],
+        "tiers": [
+          "T0",
+          "T1",
+          "T3"
+        ],
+        "miniApp": "P4 — surfaces (the CV-utility class)",
+        "bridge": "—",
+        "gitImport": "reference import host (Phase 3)",
+        "notes": "transport runtime is the P0 (Phase 1); T2 later; mini-app surface host since Phase 4 — honors page + panel (window declined on the web host, degrades per degradeRules); run honored as the typed-action funnel (run:export) for surface-kind packs — the full run bridge stays with Phase 5; T0 data binds via the envelope data field",
+        "surfaces": [
+          "page",
+          "panel"
+        ]
+      }
+    ]
+  },
+  "miniAppMapping": {
+    "note": "The desktop-subset wall (Phase 0): every ADR-0029 vocabulary maps into a charter vocabulary; scripts/check-extension-contract.py proves each target exists and fails loudly on drift. Desktop's generated vocabularies (src/shared/app-pack/contract.generated.ts) are additionally verified against mini-app-packs.json when the desktop repo is present.",
+    "kinds": {
+      "assessment": "mini-app (envelope packKind assessment)",
+      "surface": "mini-app (envelope packKind surface)"
+    },
+    "apiVersion": "mini-app-packs.json apiVersion.current (integer) == the charter mini-app refinement; envelope extension/v1 covers the kind by ratification (ADR-0040 clause 5).",
+    "capabilities": {
+      "fs-read": "fs-read",
+      "fs-write-quarantine": "fs-write-quarantine",
+      "fs-write-mutate": "fs-write-mutate",
+      "net": "net",
+      "decision": "decision",
+      "llm": "llm",
+      "run": "run",
+      "report": "report",
+      "propose": "propose",
+      "ui": [
+        "ui:panel",
+        "ui:page",
+        "ui:window",
+        "ui:chat-card",
+        "ui:settings"
+      ],
+      "ui:custom-code": "ui:custom-code",
+      "ui:page": "ui:page",
+      "ui:panel": "ui:panel",
+      "ui:window": "ui:window"
+    },
+    "capabilityNote": "The pack 'ui' capability (code-tier slot contributions, T1) generalizes to the ui:* surface family — slot targets are mapped below; the beyond-slots privilege maps verbatim to ui:custom-code.",
+    "errors": {
+      "not-ready": "not-ready",
+      "needs-secret": "needs-secret",
+      "budget": "budget",
+      "rate-limited": "rate-limited",
+      "path-denied": "path-denied",
+      "canceled": "canceled",
+      "provider": "provider",
+      "io": "io",
+      "not-found": "not-found",
+      "invalid": "invalid"
+    },
+    "errorNote": "All ten map identity; retryable values must agree with the charter per code (checked).",
+    "components": "identity — the nine report components seed the charter component vocabulary verbatim.",
+    "slots": {
+      "commands": "commands",
+      "input-mode": "input-mode",
+      "settings-page": "settings-section",
+      "composer-toolbar": "panel",
+      "panel-header": "panel",
+      "status": "panel",
+      "card-actions": "chat-card",
+      "result-actions": "chat-card"
+    }
+  }
+}

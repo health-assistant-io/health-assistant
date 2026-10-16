@@ -41,16 +41,15 @@ logger = logging.getLogger(__name__)
 _MACHINE_BODY_CAP_BYTES = 40 * 1024 * 1024
 
 
-def _provider_overrides(provider: Any, hook: str) -> bool:
-    """True when the provider class actually implements ``hook`` (vs the
-    SDK base's safe default)."""
-    from app.extensions.sdk.base import BaseHealthProvider as _CoreBase
-    from app.extensions.sdk.base import BaseHealthProvider as _SdkBase
-
-    fn = getattr(type(provider), hook, None)
-    if fn is None:
+def _declared_inbound(provider: Any, capability: str) -> bool:
+    """Declared-capability gate for the machine surfaces: an instance gets
+    webhook/API provisioning exactly when the manifest declares
+    ``inbound-webhook`` / ``inbound-api`` (D3 — registration-time data,
+    never method-shape probing)."""
+    domain = getattr(provider, "domain", None)
+    if not domain:
         return False
-    return fn is not getattr(_SdkBase, hook, None) and fn is not getattr(_CoreBase, hook, None)
+    return integration_registry.has_capability(domain, capability)
 
 
 def _generate_integration_secret() -> str:
@@ -96,6 +95,61 @@ def _frontend_origin() -> str:
     return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 
+# App-side display icons per extension (the envelope's `icon` field is a
+# data-URL capability, not a component-library name — the lucide mapping is
+# product UI concern and lives here, keyed by domain alias).
+_DOMAIN_ICONS = {
+    "dev_dummy": "Bug",
+    "webhook": "Webhook",
+    "fhir_server": "Hospital",
+    "health_assistant_bridge": "Smartphone",
+    "mcp_client": "Cable",
+}
+
+
+def _render_wire_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Render a validated charter envelope as health's product wire
+    manifest (the settings UI shape). The envelope is the source of truth;
+    ``domain`` is health's product alias of the envelope id (ruling 4)."""
+    from app.extensions.registry import domain_of
+
+    domain = domain_of(str(manifest["id"]))
+    locale = (
+        (manifest.get("i18n") or {})
+        .get("locales", {})
+        .get((manifest.get("i18n") or {}).get("defaultLocale", "en"), {})
+    )
+    capabilities = set(manifest.get("capabilities") or [])
+    data_classes = set((manifest.get("itemSchema") or {}).get("properties") or {})
+    access = (
+        "hybrid"
+        if "chat-tools" in capabilities and domain == "mcp_client"
+        else (
+            "cloud"
+            if {"sync", "push", "inbound-api", "inbound-webhook"} & capabilities
+            else "local"
+        )
+    )
+    integration_type = []
+    if "sync" in capabilities or "inbound-webhook" in capabilities or data_classes:
+        integration_type.append("pull")
+    if "push" in capabilities or "inbound-webhook" in capabilities or "inbound-api" in capabilities:
+        integration_type.append("push")
+    return {
+        "domain": domain,
+        "name": locale.get("title") or domain,
+        "version": manifest.get("version"),
+        "integration_type": integration_type,
+        "description": manifest.get("description"),
+        "author": manifest.get("author"),
+        "access_type": access,
+        "categories": manifest.get("categories") or [],
+        "icon": _DOMAIN_ICONS.get(domain),
+        "kind": manifest.get("kind"),
+        "capabilities": sorted(capabilities),
+    }
+
+
 @router.get("/available", response_model=list[dict[str, Any]])
 async def list_available_integrations(
     current_user: TokenData = Depends(get_current_user),
@@ -107,10 +161,16 @@ async def list_available_integrations(
     Integrations are enabled by default; only domains a SYSTEM_ADMIN has
     explicitly disabled are hidden. Requires an authenticated user (any role).
     """
+    from app.extensions.registry import domain_of
+
     manifests = integration_registry.get_all_manifests()
     disabled_domains = await get_disabled_domains(db)
 
-    return [m for m in manifests if m.get("domain") not in disabled_domains]
+    return [
+        _render_wire_manifest(m)
+        for m in manifests
+        if domain_of(str(m.get("id", ""))) not in disabled_domains
+    ]
 
 
 @router.get("/active", response_model=list[dict[str, Any]])
@@ -155,12 +215,12 @@ async def get_integration_documentation(
     import json
     import os
 
-    from app.extensions.registry import integration_registry
-
     # We don't check if it's enabled here, so users can read docs before enabling.
     # We do check if the domain is known to the registry (discovered).
+    from app.extensions.registry import domain_of, integration_registry
+
     manifests = integration_registry.get_all_manifests()
-    if not any(m.get("domain") == domain for m in manifests):
+    if not any(domain_of(str(m.get("id", ""))) == domain for m in manifests):
         raise HTTPException(status_code=404, detail="Integration not found")
 
     base_path = integration_registry.base_dir(domain)
@@ -340,8 +400,8 @@ async def submit_config_flow(
         provider = integration_registry.get_provider(domain)
         generated: dict[str, str] = {}
         instance_uuid = uuid4()
-        wants_webhook = provider is not None and _provider_overrides(provider, "handle_webhook")
-        wants_api = provider is not None and _provider_overrides(provider, "handle_api_request")
+        wants_webhook = provider is not None and _declared_inbound(provider, "inbound-webhook")
+        wants_api = provider is not None and _declared_inbound(provider, "inbound-api")
         try:
             from app.extensions.sdk.secrets import SecretCipher
 
@@ -928,7 +988,9 @@ async def execute_notification_action(
     provider = integration_registry.get_provider(domain)
     if provider is None:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
-    if not getattr(provider, "supports_notifications", lambda: False)():
+    from app.extensions.registry import integration_registry as _registry
+
+    if not _registry.has_capability(getattr(provider, "domain", ""), "notify"):
         raise HTTPException(
             status_code=400,
             detail="Provider does not support notification actions",

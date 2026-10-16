@@ -2,7 +2,7 @@
 
 Closes the gap left by ``ConceptProvenance.INTEGRATION`` (declared in the
 enum but unwritten before workstream F). Providers opt in via
-:meth:`app.extensions.sdk.base.BaseHealthProvider.supports_catalog_proposals`
+the ``catalog_proposal`` data-class declaration
 + :meth:`pull_catalog_proposals`; the engine's ``run_sync`` calls
 :func:`apply_proposal` on each item.
 

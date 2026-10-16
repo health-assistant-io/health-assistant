@@ -402,8 +402,16 @@ async def test_supports_tools_returns_empty_when_disabled(provider: DevDummyProv
     assert tools == []
 
 
-def test_supports_tools_flag(provider: DevDummyProvider):
-    assert provider.supports_tools() is True
+def _reg():
+    from app.extensions.registry import IntegrationRegistry
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    return reg
+
+
+def test_chat_tools_declared():
+    assert _reg().has_capability("dev_dummy", "chat-tools")
 
 
 # ---------------------------------------------------------------------------
@@ -411,8 +419,8 @@ def test_supports_tools_flag(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_clinical_events_flag(provider: DevDummyProvider):
-    assert provider.supports_clinical_events() is True
+def test_clinical_events_data_class_declared():
+    assert "clinical_event" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -437,8 +445,8 @@ async def test_pull_clinical_events_respects_toggle(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_examinations_flag(provider: DevDummyProvider):
-    assert provider.supports_examinations() is True
+def test_examinations_data_class_declared():
+    assert "examination" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -463,8 +471,8 @@ async def test_pull_examinations_respects_toggle(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_catalog_proposals_flag(provider: DevDummyProvider):
-    assert provider.supports_catalog_proposals() is True
+def test_catalog_proposals_data_class_declared():
+    assert "catalog_proposal" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -487,8 +495,8 @@ async def test_pull_catalog_proposals_respects_toggle(provider: DevDummyProvider
 # ---------------------------------------------------------------------------
 
 
-def test_supports_hitl_proposals_flag(provider: DevDummyProvider):
-    assert provider.supports_hitl_proposals() is True
+def test_hitl_proposals_data_class_declared():
+    assert "hitl_proposal" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -530,8 +538,8 @@ async def test_handle_proposal_resolution_advances_cursor(provider: DevDummyProv
 # ---------------------------------------------------------------------------
 
 
-def test_supports_documents_flag(provider: DevDummyProvider):
-    assert provider.supports_documents() is True
+def test_documents_data_class_declared():
+    assert "document" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio

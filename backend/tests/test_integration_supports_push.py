@@ -1,44 +1,47 @@
-"""Tests for the ``supports_push`` capability hook and engine push gating.
+"""Tests for the ``push`` capability gate and the engine's push leg.
 
-Phase 2.1 of the integrations remediation: previously ``push_data`` was
-called unconditionally on every provider (the only capability without an
-explicit opt-in), while ``pull_data`` was ``@abstractmethod`` — forcing
-push-only providers (``webhook``, ``bridge``, ``mcp_client``) to stub a
-no-op ``pull_data``. This redresses the asymmetry:
+The charter vocabulary replaces the old hook-probing contract (D18): an
+extension pushes exactly when its manifest declares the ``push``
+capability — declared data, gated at registration, never a method-shape
+probe. Post-fix contract pinned here:
 
-* ``pull_data`` is now concrete (default ``[]``) — no more abstract-method tax.
-* ``supports_push()`` gates the engine's outbound push call, mirroring the
-  eight ``supports_*`` / ``pull_*`` opt-in families.
-
-Post-fix contract pinned here:
-
-1. ``BaseHealthProvider`` instantiates without overriding ``pull_data``
-   (no longer abstract).
-2. ``supports_push`` detects a real ``push_data`` override automatically.
-3. ``run_sync`` calls ``push_data`` only when ``supports_push`` is True.
+1. ``pull_data`` remains concrete on the SDK base (no abstract-method tax
+   for push-only extensions).
+2. The engine's push leg runs only for ``push``-declaring extensions
+   (``dev_dummy`` and ``fhir_server`` declare it; ``webhook``, the bridge
+   and ``mcp_client`` do not).
+3. ``run_sync`` calls ``push_data`` only when the capability is declared.
 """
 
-import inspect
 from unittest.mock import MagicMock
 
+from app.extensions.registry import IntegrationRegistry, domain_of
 from app.extensions.sdk.base import BaseHealthProvider
 
+
+def _loaded_registry() -> IntegrationRegistry:
+    """A registry with the bundled manifests loaded (the module singleton
+    only populates on app startup)."""
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    return reg
+
+
 # ---------------------------------------------------------------------------
-# pull_data is no longer abstract
+# pull_data is not abstract
 # ---------------------------------------------------------------------------
 
 
 def test_pull_data_is_not_abstract():
     """``pull_data`` must not carry ``__isabstractmethod__`` — push-only
-    providers instantiate without overriding it."""
+    extensions instantiate without overriding it."""
     assert getattr(BaseHealthProvider.pull_data, "__isabstractmethod__", False) is False
 
 
 def test_pull_data_default_returns_empty_list():
     """The concrete default returns ``[]`` (a cheap no-op for push-only
-    providers)."""
+    extensions)."""
 
-    # Use a minimal concrete subclass that overrides nothing.
     class _Minimal(BaseHealthProvider):
         domain = "minimal_test"
 
@@ -61,80 +64,51 @@ def test_minimal_subclass_instantiates_without_pull_data_override():
 
 
 # ---------------------------------------------------------------------------
-# supports_push override detection
+# the push capability is manifest-declared (D18 — no supports_push hook)
 # ---------------------------------------------------------------------------
 
 
-def test_supports_push_false_when_push_data_not_overridden():
-    """A provider that inherits the base ``push_data`` no-op does not push."""
-
-    class _PullOnly(BaseHealthProvider):
-        domain = "pull_only_test"
-
-    assert _PullOnly().supports_push() is False
+def test_supports_push_hook_is_gone():
+    """The ``supports_push`` probing method must not exist on the SDK base
+    — the capability gate reads the manifest."""
+    assert not hasattr(BaseHealthProvider, "supports_push")
 
 
-def test_supports_push_true_when_push_data_overridden():
-    """A provider that overrides ``push_data`` is automatically opted in."""
-
-    class _Pusher(BaseHealthProvider):
-        domain = "push_test"
-
-        async def push_data(self, integration, data):
-            return {"pushed": True}
-
-    assert _Pusher().supports_push() is True
-
-
-def test_supports_push_can_be_force_disabled():
-    """A provider may override ``supports_push`` to return False even when
-    ``push_data`` is implemented (escape hatch)."""
-
-    class _Disabled(BaseHealthProvider):
-        domain = "disabled_push_test"
-
-        async def push_data(self, integration, data):
-            return {"pushed": True}
-
-        def supports_push(self) -> bool:
-            return False
-
-    assert _Disabled().supports_push() is False
-
-
-def test_dev_dummy_and_fhir_server_are_detected_as_pushers():
-    """The two real providers that override ``push_data`` are picked up
-    automatically (regression: they must not silently stop pushing)."""
-    from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
-    from app.extensions.builtin.fhir_server.provider import FhirServerProvider
-
-    assert DevDummyProvider().supports_push() is True
-    assert FhirServerProvider().supports_push() is True
+def test_dev_dummy_and_fhir_server_declare_push():
+    """The two pushers declare the ``push`` capability in their manifests."""
+    reg = _loaded_registry()
+    for domain in ("dev_dummy", "fhir_server"):
+        manifest = reg.get_manifest(domain)
+        assert manifest is not None, domain
+        assert "push" in manifest["capabilities"], domain
 
 
 def test_webhook_bridge_mcp_are_not_pushers():
-    """The push-only / tool-only providers do not push outward."""
-    from app.extensions.builtin.health_assistant_bridge.provider import (
-        HealthAssistantBridgeProvider,
-    )
-    from app.extensions.builtin.webhook.provider import WebhookProvider
-
-    assert WebhookProvider().supports_push() is False
-    assert HealthAssistantBridgeProvider().supports_push() is False
-
-
-# ---------------------------------------------------------------------------
-# run_sync gates push_data behind supports_push
-# ---------------------------------------------------------------------------
+    """Webhook, bridge and mcp_client declare no ``push`` capability —
+    their manifests must say so honestly."""
+    reg = _loaded_registry()
+    for domain in ("webhook", "health_assistant_bridge", "mcp_client"):
+        manifest = reg.get_manifest(domain)
+        assert manifest is not None, domain
+        assert "push" not in manifest["capabilities"], domain
 
 
-def test_run_sync_calls_push_data_only_when_supports_push_true():
-    """Source-level guard: the engine's push block probes ``supports_push``
-    via ``_opt_in`` before calling ``provider.push_data``."""
+def test_run_sync_gates_push_on_the_declared_capability():
+    """Source-level guard: the engine's push block gates on the declared
+    ``push`` capability via ``_declared`` — never an unconditional call,
+    never a method probe."""
+    import inspect
+
     from app.services import integration_sync_service as svc
 
     src = inspect.getsource(svc)
-    # The push block must gate on supports_push (not call unconditionally).
-    assert '_opt_in(provider, "supports_push")' in src, (
-        "run_sync must gate push_data behind _opt_in(provider, 'supports_push')"
+    assert '_declared(provider, "supports_push")' in src, (
+        "run_sync must gate push_data behind the declared push capability"
     )
+    assert "supports_push()" not in src, "the supports_push hook probe is gone"
+
+
+def test_domain_alias_mapping():
+    """The envelope id ↔ product domain alias is mechanical (ruling 4)."""
+    assert domain_of("dev-dummy") == "dev_dummy"
+    assert domain_of("health-assistant-bridge") == "health_assistant_bridge"

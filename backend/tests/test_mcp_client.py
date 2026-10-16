@@ -503,12 +503,16 @@ class TestAggregator:
         integration.user_config = config or {}
         return integration
 
-    def _patch_registry(self, monkeypatch, providers):
-        """providers: dict {domain: provider_mock}."""
+    def _patch_registry(self, monkeypatch, providers, tool_domains=("mcp_client",)):
+        """providers: dict {domain: provider_mock}; tool_domains are the
+        domains whose manifests declare chat-tools (declaration gate)."""
         from app.extensions import registry as reg_mod
 
         fake_registry = MagicMock()
         fake_registry.get_provider.side_effect = lambda d: providers.get(d)
+        fake_registry.has_capability.side_effect = lambda domain, cap: (
+            cap == "chat-tools" and domain in tool_domains
+        )
         monkeypatch.setattr(reg_mod, "integration_registry", fake_registry)
         # Also patch the aggregator's own import site.
         from app.ai.tools import aggregator as agg_mod
@@ -550,8 +554,7 @@ class TestAggregator:
 
         mcp_provider.get_tools = fake_get_tools
 
-        webhook_provider = MagicMock()
-        webhook_provider.supports_tools.return_value = False  # not a tool provider
+        webhook_provider = MagicMock()  # webhook declares no chat-tools (manifest)
 
         self._patch_registry(
             monkeypatch,
@@ -565,8 +568,8 @@ class TestAggregator:
             integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert len(out) == 1
-        # webhook was skipped (supports_tools False), mcp was picked up
-        webhook_provider.supports_tools.assert_called_once()
+        # webhook was skipped (declares no chat-tools), mcp was picked up
+        assert all(t.name == "mcp__mcp__tool" for t in out)
 
     def test_skips_failing_instance(self, monkeypatch):
         from app.ai.tools import aggregator as integration_tool_aggregator
@@ -633,7 +636,7 @@ class TestAggregator:
         assert len(out) == 1  # capped at 1
 
     def test_domain_agnostic_picks_up_hypothetical_integration(self, monkeypatch):
-        """A non-MCP integration that implements supports_tools is picked up."""
+        """A non-MCP integration that declares chat-tools is picked up."""
         from app.ai.tools import aggregator as integration_tool_aggregator
 
         # Hypothetical future 'web_search' integration
@@ -645,7 +648,6 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         ws_provider = MagicMock()
-        ws_provider.supports_tools.return_value = True
 
         async def fake_get_tools(integration):
             t = MagicMock()
@@ -654,7 +656,7 @@ class TestAggregator:
 
         ws_provider.get_tools = fake_get_tools
 
-        self._patch_registry(monkeypatch, {"web_search": ws_provider})
+        self._patch_registry(monkeypatch, {"web_search": ws_provider}, tool_domains=("web_search",))
 
         out = asyncio.run(
             integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
@@ -748,11 +750,16 @@ class TestProvider:
         out = asyncio.run(provider.pull_data(MagicMock()))
         assert out == []
 
-    def test_supports_tools_true(self):
+    def test_chat_tools_declared(self):
+        """The chat-tools surface is manifest-declared (D18): the provider
+        hook is gone, the aggregator reads the registry."""
         from app.extensions.builtin.mcp_client.provider import McpClientProvider
+        from app.extensions.registry import IntegrationRegistry
 
-        provider = McpClientProvider()
-        assert provider.supports_tools() is True
+        assert not hasattr(McpClientProvider, "supports_tools")
+        reg = IntegrationRegistry()
+        reg._load_manifests()
+        assert reg.has_capability("mcp_client", "chat-tools")
 
     def test_get_tools_returns_empty_on_failure(self):
         """get_tools swallows errors and returns [] (SDK contract)."""

@@ -23,9 +23,6 @@ class McpClientProvider(BaseHealthProvider):
 
     # --- Tool exposure (SDK contract) ---
 
-    def supports_tools(self) -> bool:
-        return True
-
     async def get_tools(self, integration: UserIntegration) -> list[Any]:
         """Return LangChain tools for this MCP instance.
 

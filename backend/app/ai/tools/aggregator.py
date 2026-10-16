@@ -1,13 +1,14 @@
 """Aggregate tools from all integrations that expose them, for the chat.
 
 Called from :mod:`app.ai.assistance.service` when a patient context
-is active. Discovers the user's active integrations, asks each integration's
-provider (via the SDK ``supports_tools`` / ``get_tools`` contract) for its
+is active. Discovers the user's active integrations, asks each
+extension that declares the ``chat-tools`` capability (the manifest is the
+capability gate) for its
 LangChain tools, and merges them with the built-in ``ChatbotTools``.
 
 This module is **domain-agnostic**: it does not import or reference any
-specific integration. Any integration whose provider returns
-``supports_tools() == True`` and implements ``get_tools()`` is picked up
+specific integration. Any extension whose manifest declares
+``chat-tools`` and whose provider implements ``get_tools()`` is picked up
 automatically.
 
 Design goals:
@@ -75,7 +76,9 @@ async def aggregate(
             logger.info(f"Integration tool cap ({cap}) reached; skipping remaining instances.")
             break
         provider = integration_registry.get_provider(integration.provider)
-        if provider is None or not provider.supports_tools():
+        if provider is None or not integration_registry.has_capability(
+            integration.provider, "chat-tools"
+        ):
             continue
         try:
             tools = await provider.get_tools(integration)
