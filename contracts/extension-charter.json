@@ -700,8 +700,22 @@
         ],
         "miniApp": "reference host",
         "connector": "later",
-        "gitImport": "local-file import upgrades onto the git pipeline (Phase 3)",
-        "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy"
+        "gitImport": "local-file import upgraded onto the sources pipeline (Phase 8 — file source or git source, one code path)",
+        "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy",
+        "honors": [
+          "fs-read",
+          "fs-write-quarantine",
+          "decision",
+          "llm",
+          "run",
+          "report",
+          "propose",
+          "ui:window"
+        ],
+        "honorsNote": "Capabilities the desktop host implements for imported mini-app packs (T0): the full assessment pipeline (scan→classify→decide→compose→propose) + the report surface + the ui:window host surface. Anything else self-disables at the envelope-mapping seam with a reason — net is the exfiltration-class rejection (T0 never grants it); declarative page/panel surfaces are not hosted for imports yet, so packKind surface envelopes self-disable (D17 degrade law: page→panel chains to no honored target ⇒ self-disable, never half-install).",
+        "surfaces": [
+          "window"
+        ]
       },
       {
         "product": "study-assistant",
