@@ -69,7 +69,8 @@ class HealthAssistantBridgeConfigFlow(BaseConfigFlow):
     async def validate_input(self, user_input: dict) -> dict:
         if not user_input.get("instance_name"):
             raise ValueError("Instance name is required.")
-        # api_secret is optional; empty/whitespace means "UUID-only mode".
+        # api_secret is auto-provisioned at instance creation (audit 2026-08 H1/H2);
+        # a user-supplied value replaces it; empty input keeps the stored one.
         secret = user_input.get("api_secret")
         if secret is not None:
             secret = secret.strip()

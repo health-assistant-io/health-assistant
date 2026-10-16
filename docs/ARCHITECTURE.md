@@ -153,7 +153,7 @@ Beyond export/import (file-based), Health Assistant can connect to a **live exte
 
 - **Auth modes** (`auth_mode` config): `smart` (SMART-on-FHIR standalone launch + Dynamic Client Registration, for hospitals/`r4.smarthealthit.org`) or `none` (tokenless, for a local/open server like vanilla HAPI FHIR). `smart` instances start `PENDING` until the OAuth callback; `none` go straight to `ACTIVE`.
 - **Pull** (`provider.pull_data`): bounded FHIR search `Observation?_lastUpdated=gt<cursor>&_count=100&_sort=_lastUpdated[&patient][&category]` → each FHIR Observation is mapped to an `ObservationCreate` on the **local** patient (`sdk/fhir.fhir_observation_to_create`) → the existing biomarker-mapping waterfall resolves `biomarker_id` and routes telemetry.
-- The SDK auth/HTTP/FHIR helpers (`integrations/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the Stage 3 facade (see below).
+- The SDK auth/HTTP/FHIR helpers (`backend/app/extensions/sdk/{auth,http,fhir}.py`) are reusable by any cloud integration and by the Stage 3 facade (see below).
 
 ### FHIR R4 Facade
 

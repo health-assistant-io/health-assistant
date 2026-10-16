@@ -24,7 +24,7 @@ from health_assistant_bridge import HealthAssistantBridgeClient
 client = HealthAssistantBridgeClient(
     base_url="https://ha.example",
     integration_id="00000000-0000-0000-0000-000000000000",
-    api_secret="a-very-long-random-secret",  # omit for UUID-only mode
+    api_secret="a-very-long-random-secret",  # required — sign every data route
     timeout=30.0,  # default 30s per request
 )
 
@@ -62,7 +62,7 @@ The async client uses one pooled `httpx.AsyncClient` for the whole session (crea
 |---|---|---|---|
 | `base_url` | ✅ | — | Backend base URL, no trailing slash. |
 | `integration_id` | ✅ | — | The bridge instance UUID. |
-| `api_secret` | ❌ | `None` | When set, auto-signs `/map` and `/sync`. Omit for UUID-only mode. |
+| `api_secret` | ✅ | — | Auto-signs `/map`, `/sync` and the other data routes. Mandatory — the machine routes reject unsigned traffic. |
 | `timeout` | ❌ | `30.0` / `httpx.Timeout(30.0)` | Per-request timeout (sync: seconds float; async: `httpx.Timeout`). |
 | `max_retries` | ❌ | `3` (async only) | Max attempts on transient network/5xx errors. |
 
@@ -117,7 +117,7 @@ const resp    = await client.syncData(payload);  // → SyncResponse
 
 | Field | Default | Notes |
 |---|---|---|
-| `apiSecret` | `undefined` | When set, auto-signs `/map` and `/sync`. Omit for UUID-only. |
+| `apiSecret` | — | Auto-signs the data routes. Mandatory server-side — omitting it only works for the unsigned `GET /status` probe. |
 | `timeoutMs` | `30000` | Per-request timeout via `AbortController`. |
 | `maxRetries` | `3` | Max attempts on transient network errors + 429/5xx. |
 
@@ -169,7 +169,7 @@ import io.healthassistant.bridge.SyncPayload
 val client = BridgeClient(
     baseUrl = "https://ha.example",
     integrationId = "00000000-0000-0000-0000-000000000000",
-    apiSecret = "a-very-long-random-secret", // omit for UUID-only mode
+    apiSecret = "a-very-long-random-secret", // required — signs every data route
 )
 
 val status = client.getStatus()                       // signed → full payload

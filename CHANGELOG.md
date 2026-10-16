@@ -11,6 +11,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (extensions — the family instance-status surface)
+- **Instance status surfaces speak the charter vocabulary** (D7/D21):
+  `GET /integrations/active` and the instance-details response carry a
+  computed `sync_status` — `ok | degraded | failing | stale` with
+  `last_success_at`, `consecutive_failures` and the `needs-config`
+  condition (stored config no longer satisfying the manifest's required
+  configSchema fields). Persistence stays health-owned; thresholds are
+  host-profile policy (degraded after one failed sync, failing after
+  two, stale past 24 h).
+
+### Changed (docs — truth fixes + the merged authoring guide)
+- **`docs/INTEGRATIONS_SDK.md` merged into `docs/dev/extensions.md`** —
+  the gold-standard authoring guide keeps its content, gains the charter
+  vocabulary (envelope manifests, declared capabilities, the polite
+  transport runtime, the typed error model); docs-tree row updated.
+- **`INTEGRATIONS_FRAMEWORK.md` default-on truth fixed** (code is
+  authoritative: bundled extensions are available on discovery; only an
+  explicit admin disable hides them) and the `supports_*` probing prose
+  retired.
+- **Bridge `authentication.md` stale UUID-only mode removed** (the mode
+  was deleted by the 2026-08 audit — the api_secret is mandatory and
+  auto-provisioned); `client-setup.md` aligned.
+
 ### Changed (extensions — charter typed errors + the polite transport runtime)
 - **The `IntegrationError` class tree is replaced by the charter typed
   error model** (`app/extensions/errors.py`): one closed 15-code enum +

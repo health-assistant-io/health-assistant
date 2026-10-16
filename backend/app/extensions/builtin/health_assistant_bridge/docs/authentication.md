@@ -1,24 +1,21 @@
 # Authentication & Security
 
-The bridge exposes three endpoints under a unique-per-instance URL whose `integration_id` is a UUID. There are two security modes; pick one when configuring the instance in the Health Assistant UI.
+The bridge exposes its endpoints under a unique-per-instance URL whose
+`integration_id` is a UUID. **The UUID is an identifier, never a
+credential** (audit 2026-08 H1/H2): every bridge instance is provisioned
+with an HMAC `api_secret` at creation — the machine routes reject
+instances without one (fail-closed). The UUID-only mode documented here
+historically was removed with that audit.
 
-## Mode 1 — UUID-only (default)
+## HMAC api_secret (the one mode)
 
-The `integration_id` in the URL *is* the secret. No request signing is required. This is acceptable when:
-
-- Health Assistant runs on a **trusted LAN** or behind a VPN, and
-- the instance URL isn't logged or shared beyond the client.
-
-It is the simplest mode for a self-hosted box at home. Configure the bridge with just an **Instance Name** — the generated URL is ready to use.
-
-## Mode 2 — HMAC api_secret (recommended for internet-exposed instances)
-
-When the bridge is reachable from the public internet, a URL-bound UUID isn't strong enough (it can't be rotated without recreating the instance, and a captured URL can be replayed). Set an **API Secret** in the bridge config flow:
+Every data route requires a valid `X-Api-Signature` + `X-Api-Timestamp`
+pair keyed by the instance's `api_secret`:
 
 - The secret is **Fernet-encrypted at rest** (via `HA_DATA_KEY`) and masked as `"***"` on read — it never leaves the server in plaintext.
 - It must be **at least 16 characters** for adequate HMAC strength.
 - **An `api_secret` is mandatory** — every bridge instance is provisioned with one at creation (shown once in the config-flow response; the platform stores it Fernet-encrypted). All data routes require a valid `X-Api-Signature` + `X-Api-Timestamp` pair. An **unsigned** `GET /status` remains the pre-pairing connectivity probe but returns only `{status, server_time}` (use `server_time` to resync a skewed clock); the full status payload requires a signature.
-- Leave the secret empty/blank to clear it and revert to UUID-only mode.
+- Rotating: disable + re-create the instance (or ask an admin to rotate the stored secret) — a cleared secret means the machine routes refuse the instance, not that it falls back to UUID-only.
 
 ## The signed canonical form
 

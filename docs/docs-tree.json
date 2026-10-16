@@ -136,10 +136,10 @@
         "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, document pull, rate-limit backoff, and notification digests."
       },
       {
-        "id": "integrations-sdk",
-        "file": "INTEGRATIONS_SDK.md",
-        "title": "Integrations SDK",
-        "description": "Developer guide for the Health Assistant Integrations SDK — build custom health data providers for the self-hosted, open-source platform with connection pooling, rate-limit cooldown, cursor sync, OAuth2+PKCE, webhook HMAC helpers, clinical events, examinations, catalog proposals, HITL review, document pull with DB dedup, and notification digests."
+        "id": "extensions",
+        "file": "dev/extensions.md",
+        "title": "Extensions (Integrations SDK)",
+        "description": "Developer guide for Health Assistant extensions — the family extension charter surface: validated manifests with declared capabilities, the polite transport runtime, the typed error model, cursor sync, OAuth2+PKCE, webhook HMAC helpers, clinical events, examinations, catalog proposals, HITL review, document pull with DB dedup, and notification digests."
       },
       {
         "id": "mobile-sync",

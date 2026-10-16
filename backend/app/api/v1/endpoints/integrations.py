@@ -189,12 +189,33 @@ async def list_active_integrations(
     result = await db.execute(stmt)
     integrations = result.scalars().all()
 
+    from sqlalchemy import desc
+
+    from app.models.user_integration import IntegrationSyncLog
+    from app.services.instance_status import instance_status_surface
+
+    surfaces: dict[str, dict[str, Any]] = {}
+    if integrations:
+        logs_stmt = (
+            select(IntegrationSyncLog)
+            .where(
+                IntegrationSyncLog.integration_id.in_([i.id for i in integrations]),
+            )
+            .order_by(desc(IntegrationSyncLog.started_at))
+            .limit(200)
+        )
+        for log in (await db.execute(logs_stmt)).scalars().all():
+            surfaces.setdefault(str(log.integration_id), []).append(log)
+
     return [
         {
             "id": str(i.id),
             "domain": i.provider,
             "instance_name": i.instance_name,
             "status": i.status.value,
+            "sync_status": instance_status_surface(
+                i, surfaces.get(str(i.id), [])
+            ),
             "last_synced_at": i.last_synced_at,
         }
         for i in integrations
@@ -742,11 +763,14 @@ async def get_integration_details(
     # other integration that writes them). Lives under _sync_state cursors.
     sync_state = (integration.user_config or {}).get("_sync_state") or {}
 
+    from app.services.instance_status import instance_status_surface
+
     return {
         "id": str(integration.id),
         "domain": integration.provider,
         "instance_name": integration.instance_name,
         "status": integration.status.value,
+        "sync_status": instance_status_surface(integration, sync_logs),
         "user_config": returned_config,
         "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat()

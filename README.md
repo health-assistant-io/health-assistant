@@ -228,7 +228,7 @@ Deep dive — system diagram, data model, and subsystem breakdown: [ARCHITECTURE
 
 **Integrations & API**
 - [REST API Reference](docs/API.md) · [FHIR R4 Facade](docs/FHIR_R4_FACADE.md)
-- [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integrations SDK](docs/INTEGRATIONS_SDK.md)
+- [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integrations SDK](dev/extensions.md
 
 **Development & operations**
 - [Development Guide](docs/DEVELOPMENT.md) · [CI/CD Deployment](docs/CI_CD_SETUP.md)

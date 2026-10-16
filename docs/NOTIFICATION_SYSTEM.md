@@ -124,9 +124,7 @@ These replace the former `GET /integrations/notification-types` + `PUT /integrat
 **UI surfaces**:
 1. Each notification (modal + bell) carries an inline "Turn off this kind" button + "Notification settings" link — driven by `payload.preferences`.
 2. `/notifications/settings` (a Settings tab in the Notification Center) — the single preferences hub: master toggle, push setup, every source/channel kind, and every integration instance's types grouped per-instance with deep-links to `/settings/integrations/:id?tab=notifications`.
-3. Each `IntegrationDetail` page's "Notifications" tab — reads `/notifications/preferences?integration_id=...` (scoped view of the same data).
-
-Full SDK guide: [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable).
+3. Each `IntegrationDetail` page's "Notifications" tab — reads `/notifications/preferences?integration_id=...` (scoped view of the same data)dev/extensions.md#39-notifications-event-driven-rich-actionable.
 
 ## The unified emit API (`notification_service.emit`)
 
