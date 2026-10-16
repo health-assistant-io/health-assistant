@@ -20,9 +20,8 @@ Token + state storage:
 
 HTTP is performed via an injected ``httpx.AsyncClient`` (the provider's pooled
 client) so the module is decoupled from the provider and unit-testable with
-mocked responses. OAuth/DCR/token responses are validated; auth failures raise
-:class:`~app.extensions.sdk.exceptions.IntegrationAuthError`, malformed server
-responses raise :class:`~app.extensions.sdk.exceptions.IntegrationDataError`.
+mocked responses. OAuth/DCR/token responses are validated; auth failures
+raise the charter ``auth`` code, malformed server responses ``protocol``.
 """
 
 from __future__ import annotations
@@ -40,10 +39,10 @@ from urllib.parse import urlencode
 
 import httpx
 
+from app.extensions.errors import ExtensionError
+from app.extensions.runtime.http import guarded_request
 from app.models.user_integration import UserIntegration
 
-from .exceptions import IntegrationAuthError, IntegrationDataError
-from .http import _retry_request
 from .secrets import SecretCipher
 
 logger = logging.getLogger(__name__)
@@ -153,18 +152,19 @@ async def _request_json(
 ) -> dict[str, Any]:
     """OAuth / DCR / token-exchange HTTP helper.
 
-    Delegates retry / backoff / jitter / status-mapping to
-    :func:`app.extensions.sdk.http._retry_request` — the same retry contract
-    every other SDK HTTP call uses (no more single-shot OAuth requests that
-    fail loudly on a transient 429/5xx). 401/403 →
-    :class:`IntegrationAuthError`, 429-after-retries →
-    :class:`IntegrationRateLimitError`, other 4xx / non-JSON →
-    :class:`IntegrationDataError`.
+    Delegates retry / backoff / jitter / status-mapping to the polite
+    transport runtime (:func:`app.extensions.runtime.http.guarded_request`)
+    — the same contract every other extension HTTP call uses. 401/403 →
+    ``auth``, 429-after-retries → ``rate-limited`` (hint attached), other
+    4xx / non-JSON → ``protocol``.
     """
-    response = await _retry_request(
-        lambda: http.request(method, url, headers=headers, data=data, json=json_body),
-        url=url,
-        method=method,
+    response = await guarded_request(
+        http,
+        method,
+        url,
+        headers=headers,
+        json_body=json_body,
+        data=data,
         max_retries=max_retries,
     )
     if response.status_code >= 400:
@@ -173,8 +173,8 @@ async def _request_json(
         # ``invalid_client`` / ``unauthorized_client`` / ``invalid_request``)
         # is an OAuth auth failure — the token is rejected, the code expired,
         # the PKCE verifier is wrong, etc. The sync worker routes
-        # IntegrationAuthError → instance ERROR + "reconnect" prompt, which is
-        # the right action; mapping it to IntegrationDataError would leave the
+        # auth → instance ERROR + "reconnect" prompt, which is
+        # the right action; mapping it to protocol would leave the
         # instance ACTIVE and silently fail every sync.
         try:
             body = response.json()
@@ -183,17 +183,23 @@ async def _request_json(
         if isinstance(body, dict) and body.get("error"):
             err = body.get("error")
             desc = body.get("error_description") or body.get("error_uri") or ""
-            raise IntegrationAuthError(
+            raise ExtensionError(
+                "auth",
                 f"{method} {url} -> {response.status_code}: OAuth error "
-                f"{err!r}" + (f" ({desc[:200]})" if desc else "")
+                f"{err!r}" + (f" ({desc[:200]})" if desc else ""),
+                status=response.status_code,
             )
-        raise IntegrationDataError(
-            f"{method} {url} -> {response.status_code}: {response.text[:300]}"
+        raise ExtensionError(
+            "protocol",
+            f"{method} {url} -> {response.status_code}: {response.text[:300]}",
+            status=response.status_code,
         )
     try:
         return response.json()
     except ValueError as e:
-        raise IntegrationDataError(f"Non-JSON response from {url}: {response.text[:300]}") from e
+        raise ExtensionError(
+            "protocol", f"non-JSON response from {url}: {response.text[:300]}"
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -207,14 +213,15 @@ async def discover_smart(fhir_base_url: str, http: httpx.AsyncClient) -> dict[st
     Returns the SMART config dict (``authorization_endpoint``,
     ``token_endpoint``, ``registration_endpoint`` if DCR is supported,
     ``scopes_supported``, ``capabilities``). Raises
-    :class:`IntegrationDataError` if the server has no SMART metadata.
+    ``protocol`` if the server has no SMART metadata.
     """
     base = fhir_base_url.rstrip("/")
     url = f"{base}/.well-known/smart-configuration"
     config = await _request_json(http, "GET", url)
     if not config.get("authorization_endpoint") or not config.get("token_endpoint"):
-        raise IntegrationDataError(
-            f"{url} is missing authorization_endpoint/token_endpoint; not a SMART server."
+        raise ExtensionError(
+            "protocol",
+            f"{url} is missing authorization_endpoint/token_endpoint; not a SMART server.",
         )
     return config
 
@@ -232,7 +239,7 @@ async def register_client(
     Registers a **public** client (``token_endpoint_auth_method="none"``) so the
     self-hosted instance needs no client secret. Returns the registration
     response; the ``client_id`` is what's used in the authorize/token calls.
-    Raises :class:`IntegrationDataError` if no ``client_id`` comes back.
+    Raises ``protocol`` if no ``client_id`` comes back.
     """
     body = {
         "client_name": client_name,
@@ -245,7 +252,7 @@ async def register_client(
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     reg = await _request_json(http, "POST", registration_endpoint, headers=headers, json_body=body)
     if not reg.get("client_id"):
-        raise IntegrationDataError(f"DCR response missing client_id: {_redact(reg)}")
+        raise ExtensionError("protocol", f"DCR response missing client_id: {_redact(reg)}")
     return reg
 
 
@@ -294,7 +301,7 @@ async def exchange_code(
 
     Returns the raw token response plus a computed ``expires_at`` (ISO 8601) and
     the resolved ``patient`` id (SMART standalone launch returns it). Raises
-    :class:`IntegrationAuthError` on a 401/400 from the token endpoint.
+    ``auth`` on a 401/400 from the token endpoint.
     """
     form = {
         "grant_type": "authorization_code",
@@ -309,7 +316,7 @@ async def exchange_code(
         http, "POST", token_endpoint, headers={"Accept": "application/json"}, data=form
     )
     if not token.get("access_token"):
-        raise IntegrationAuthError(f"Token endpoint returned no access_token: {_redact(token)}")
+        raise ExtensionError("auth", f"token endpoint returned no access_token: {_redact(token)}")
     return _normalize_token(token)
 
 
@@ -333,7 +340,7 @@ async def refresh_token(
         http, "POST", token_endpoint, headers={"Accept": "application/json"}, data=form
     )
     if not token.get("access_token"):
-        raise IntegrationAuthError(f"Refresh returned no access_token: {_redact(token)}")
+        raise ExtensionError("auth", f"refresh returned no access_token: {_redact(token)}")
     return _normalize_token(token)
 
 
@@ -459,7 +466,7 @@ class OAuthTokenStore:
     ) -> str:
         """Return a live access token, refreshing first if expired.
 
-        Raises :class:`IntegrationAuthError` if there is no refresh token or the
+        Raises ``auth`` if there is no refresh token or the
         refresh fails.
         """
         if not self.is_expired(integration):
@@ -467,8 +474,8 @@ class OAuthTokenStore:
 
         refresh = self.get_refresh_token(integration)
         if not refresh:
-            raise IntegrationAuthError(
-                f"Integration {integration.id} token expired and no refresh_token stored."
+            raise ExtensionError(
+                "auth", f"Integration {integration.id} token expired and no refresh_token stored."
             )
         token = await refresh_token(
             token_endpoint, refresh, client_id, client_secret=client_secret, http=http
@@ -613,9 +620,10 @@ class SmartOAuth:
             client_id = reg.get("client_id")
             client_secret = reg.get("client_secret")
             if not client_id:
-                raise IntegrationAuthError(
+                raise ExtensionError(
+                    "auth",
                     f"Server advertised a registration_endpoint ({reg_endpoint}) but "
-                    "DCR returned no client_id. The SMART server may be misconfigured."
+                    "DCR returned no client_id. The SMART server may be misconfigured.",
                 )
         state = generate_state()
         verifier, challenge, _ = generate_pkce()
@@ -654,10 +662,10 @@ class SmartOAuth:
         consumes it once via :meth:`OAuthStateStore.consume` and passes it
         through). It must contain the PKCE verifier + SMART endpoints +
         ``client_id`` written by :meth:`begin_connect`. Raises
-        :class:`IntegrationAuthError` if the payload is empty/malformed.
+        ``auth`` if the payload is empty/malformed.
         """
         if not pending or "code_verifier" not in pending:
-            raise IntegrationAuthError("Unknown or expired OAuth state.")
+            raise ExtensionError("auth", "Unknown or expired OAuth state.")
         token = await exchange_code(
             pending["token_endpoint"],
             code,
@@ -682,7 +690,7 @@ class SmartOAuth:
 
         Reads the SMART endpoints/client_id from ``user_config["_oauth"]``
         (populated by :meth:`complete_connect`-adjacent persistence in the
-        endpoint). Raises :class:`IntegrationAuthError` if the token can't be
+        endpoint). Raises ``auth`` if the token can't be
         refreshed.
 
         Serializes refresh across concurrent callers via a per-integration
@@ -694,7 +702,7 @@ class SmartOAuth:
         """
         oauth = self.tokens._read(integration)
         if not oauth.get("access_token"):
-            raise IntegrationAuthError(f"Integration {integration.id} is not connected.")
+            raise ExtensionError("auth", f"Integration {integration.id} is not connected.")
         if not self.tokens.is_expired(integration):
             return oauth["access_token"]
         # Expired — coordinate refresh so we don't burn a single-use token.
@@ -718,15 +726,15 @@ class SmartOAuth:
         Used by FHIR/HTTP helpers when a request fails with 401 despite
         :meth:`get_live_token` returning a token (the server revoked/rotated it
         between the expiry check and the call). Raises
-        :class:`IntegrationAuthError` if there is no refresh token.
+        ``auth`` if there is no refresh token.
 
         Takes the same per-integration refresh lock as :meth:`get_live_token`
         so a forced refresh doesn't race a concurrent on-use refresh.
         """
         oauth = self.tokens._read(integration)
         if not oauth.get("refresh_token"):
-            raise IntegrationAuthError(
-                f"Integration {integration.id} has no refresh_token to force-refresh."
+            raise ExtensionError(
+                "auth", f"Integration {integration.id} has no refresh_token to force-refresh."
             )
         # Best-effort lock: force_refresh is the recovery path after a 401
         # proved the cached token is bad. If the lock is held, wait for the
@@ -841,15 +849,15 @@ class SmartOAuth:
         regardless. This prevents stale tokens from lingering on the remote
         server after the user disconnects.
 
-        Routes through :func:`app.extensions.sdk.http._retry_request` — the
-        shared retry / backoff / SSRF chokepoint — so a transient 429/5xx is
+        Routes through the polite transport runtime
+        (:func:`app.extensions.runtime.http.guarded_request`) — the shared
+        retry / backoff / SSRF chokepoint — so a transient 429/5xx is
         retried and a malicious ``revocation_endpoint`` (e.g. a re-purposed
         cloud-metadata URL from a compromised discovery document) is blocked
-        by ``net_guard``. ``_request_json`` is not suitable here because RFC
-        7009 responses are typically 200 with an empty body, which the JSON
-        parser would reject.
+        by the vendored guard. ``_request_json`` is not suitable here because
+        RFC 7009 responses are typically 200 with an empty body, which the
+        JSON parser would reject.
         """
-        from app.extensions.sdk.http import _retry_request
 
         try:
             oauth = self.tokens._read(integration)
@@ -869,14 +877,10 @@ class SmartOAuth:
                 form_data["client_id"] = oauth["client_id"]
             if oauth.get("client_secret"):
                 form_data["client_secret"] = oauth["client_secret"]
-            # ``_retry_request`` runs ``assert_safe_url`` (SSRF gate) once
-            # before the loop and applies full-jitter backoff on transient
-            # failures — the same contract every other SDK HTTP call uses.
-            resp = await _retry_request(
-                lambda: self.http.post(revoke_url, data=form_data),
-                url=revoke_url,
-                method="POST",
-            )
+            # The guarded runtime re-runs the SSRF gate per hop and applies
+            # full-jitter backoff on transient failures — the same contract
+            # every other extension HTTP call uses.
+            resp = await guarded_request(self.http, "POST", revoke_url)
             if resp.status_code >= 400:
                 logger.warning(
                     "Token revocation for %s returned HTTP %s — tokens may "

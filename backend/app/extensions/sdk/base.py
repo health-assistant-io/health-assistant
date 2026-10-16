@@ -79,10 +79,15 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     def __init__(self):
         super().__init__()
         self.logger = logging.getLogger(f"{__name__}.{self.domain}")
-        # Shared HTTP client for connection pooling
+        # Shared HTTP client for connection pooling. follow_redirects is
+        # OFF by design: the polite transport runtime
+        # (app/extensions/runtime/http.py) walks redirects itself so every
+        # hop is re-validated against the SSRF guard (D5 — stricter than
+        # the historical behavior, on purpose).
         self._http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, connect=5.0),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+            follow_redirects=False,
         )
 
     async def close(self):

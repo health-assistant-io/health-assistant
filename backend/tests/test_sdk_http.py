@@ -1,4 +1,4 @@
-"""Unit tests for app.extensions.sdk.http (Stage 2 Pair B).
+"""JSON-surface tests over the polite transport runtime.
 
 All HTTP is mocked via httpx.MockTransport — no network, no DB.
 """
@@ -8,12 +8,15 @@ import json
 import httpx
 import pytest
 
-from app.extensions.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationRateLimitError,
+from app.extensions.errors import ExtensionError
+from app.extensions.polite_http import (
+    backoff_delay as _backoff_delay,
 )
-from app.extensions.sdk.http import DEFAULT_MAX_PAGES, _backoff_delay, http_request, paginate_bundle
+from app.extensions.polite_http import (
+    parse_retry_after as _parse_retry_after,
+)
+from app.extensions.runtime.http import http_request
+from app.extensions.sdk.fhir import DEFAULT_MAX_PAGES, paginate_bundle
 
 
 def _client(handler):
@@ -57,15 +60,17 @@ async def test_http_request_post_json_body():
 @pytest.mark.asyncio
 async def test_http_request_401_raises_auth_error():
     async with _client(lambda r: httpx.Response(401, text="bad token")) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T")
+        assert exc_info.value.code == "auth"
 
 
 @pytest.mark.asyncio
-async def test_http_request_404_raises_data_error():
+async def test_http_request_404_raises_protocol_error():
     async with _client(lambda r: httpx.Response(404, text="not found")) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T")
+    assert exc_info.value.code == "protocol"
 
 
 @pytest.mark.asyncio
@@ -75,7 +80,7 @@ async def test_http_request_204_returns_none():
 
 
 @pytest.mark.asyncio
-async def test_http_request_retries_5xx_then_raises_data_error():
+async def test_http_request_retries_5xx_then_raises_provider():
     calls = {"n": 0}
 
     def handler(request):
@@ -83,16 +88,18 @@ async def test_http_request_retries_5xx_then_raises_data_error():
         return httpx.Response(503, text="down")
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
+    assert exc_info.value.code == "provider"
     assert calls["n"] == 2  # initial + 1 retry
 
 
 @pytest.mark.asyncio
 async def test_http_request_429_raises_rate_limit_after_retries():
     async with _client(lambda r: httpx.Response(429, headers={"Retry-After": "0"})) as http:
-        with pytest.raises(IntegrationRateLimitError):
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
+    assert exc_info.value.code == "rate-limited"
 
 
 # ---------- paginate_bundle ----------
@@ -153,10 +160,11 @@ async def test_paginate_bundle_max_pages_caps_iteration():
 @pytest.mark.asyncio
 async def test_paginate_bundle_non_bundle_raises_data_error():
     async with _client(lambda r: httpx.Response(200, json={"resourceType": "Patient"})) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError) as exc_info:
             _ = [
                 r async for r in paginate_bundle(http, "https://ehr/Observation", access_token="T")
             ]
+        assert exc_info.value.code == "protocol"
 
 
 # ---------------------------------------------------------------------------
@@ -165,9 +173,9 @@ async def test_paginate_bundle_non_bundle_raises_data_error():
 
 
 def test_backoff_delay_returns_uniform_random_in_expected_range():
-    """``_backoff_delay(attempt, base)`` must return a value in
-    ``[0, base * 2**attempt]`` (full-jitter). Cap at 60s for high attempts."""
-    # Sample many times to verify the bounds empirically.
+    """The vendored full-jitter backoff returns a value in
+    ``[0, base * 2**attempt]``, capped at 60s (fixture-walled upstream;
+    this pins the bounds health rides)."""
     for attempt in range(8):
         cap = min(1.0 * (2**attempt), 60.0)
         for _ in range(50):
@@ -207,13 +215,13 @@ async def test_http_request_applies_jitter_on_5xx_retry(monkeypatch):
     async def _capture_sleep(d):
         sleeps.append(d)
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _capture_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _capture_sleep)
 
     def handler(request):
         return httpx.Response(503, text="down")
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=4)
 
     # max_retries=4 → initial attempt + 3 retries → 3 sleeps at attempts 1, 2, 3.
@@ -234,14 +242,14 @@ async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch
     async def _capture_sleep(d):
         sleeps.append(d)
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _capture_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _capture_sleep)
 
     def handler(request):
         # Server says "wait exactly 7 seconds"; we must honor it verbatim.
         return httpx.Response(429, headers={"Retry-After": "7"})
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationRateLimitError):
+        with pytest.raises(ExtensionError):
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=3)
 
     assert sleeps == [7.0, 7.0], f"Retry-After=7 must override jitter on every retry; got {sleeps}"
@@ -250,7 +258,7 @@ async def test_http_request_429_uses_retry_after_header_when_present(monkeypatch
 @pytest.mark.asyncio
 async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
     """When the upstream sends ``Retry-After`` and retries exhaust, the
-    raised :class:`IntegrationRateLimitError` must carry ``retry_after_seconds``
+    raised typed ``rate-limited`` error must carry ``retry_after_ms``
     so the worker can write a cooldown key (item 1 of the
     integrations-sdk-improvements plan)."""
 
@@ -258,16 +266,16 @@ async def test_http_request_429_surfaces_retry_after_on_exception(monkeypatch):
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     def handler(request):
         return httpx.Response(429, headers={"Retry-After": "120"})
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationRateLimitError) as exc_info:
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
 
-    assert exc_info.value.retry_after_seconds == 120.0, (
+    assert exc_info.value.retry_after_ms == 120000, (
         "retry_after_seconds must be the last-seen Retry-After header value"
     )
 
@@ -281,17 +289,17 @@ async def test_http_request_429_without_retry_after_leaves_field_none(monkeypatc
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     def handler(request):
         # No Retry-After header at all.
         return httpx.Response(429)
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationRateLimitError) as exc_info:
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
 
-    assert exc_info.value.retry_after_seconds is None
+    assert exc_info.value.retry_after_ms is None
 
 
 @pytest.mark.asyncio
@@ -300,12 +308,11 @@ async def test_http_request_429_http_date_retry_after_is_parsed(monkeypatch):
     both forms (audit Phase 3.5) — a date in the future surfaces as a
     positive ``retry_after_seconds`` (not ``None`` as the digit-only parser
     previously left it). A date already in the past clamps to 0."""
-    from app.extensions.sdk.http import _parse_retry_after
 
     async def _no_sleep(_d):
         return
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     # Unit-test the parser directly.
     assert _parse_retry_after("Wed, 21 Oct 2099 07:28:00 GMT") is not None
@@ -322,25 +329,25 @@ async def test_http_request_429_http_date_retry_after_is_parsed(monkeypatch):
         return httpx.Response(429, headers={"Retry-After": "Wed, 21 Oct 2099 07:28:00 GMT"})
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationRateLimitError) as exc_info:
+        with pytest.raises(ExtensionError) as exc_info:
             await http_request(http, "GET", "https://ehr/x", access_token="T", max_retries=2)
-    assert exc_info.value.retry_after_seconds is not None
-    assert exc_info.value.retry_after_seconds > 0
+    assert exc_info.value.retry_after_ms is not None
+    assert exc_info.value.retry_after_ms > 0
 
 
 def test_integration_rate_limit_error_legacy_call_shape_still_works():
-    """Pre-2.1 callers raise with just a message — the new
-    ``retry_after_seconds`` field defaults to None and the attribute
-    must still exist so ``getattr(exc, "retry_after_seconds", None)``
-    is safe in the engine."""
-    exc = IntegrationRateLimitError("upstream throttled us")
-    assert str(exc) == "upstream throttled us"
-    assert exc.retry_after_seconds is None
+    """The typed rate-limited error carries the surfaced hint as
+    ``retry_after_ms`` (milliseconds — the charter payload shape)."""
+    exc = ExtensionError("rate-limited", "upstream throttled us")
+    assert str(exc) == "rate-limited: upstream throttled us"
+    assert exc.retry_after_ms is None
+    assert exc.to_dict()["code"] == "rate-limited"
 
 
-def test_integration_rate_limit_error_accepts_retry_after_kwarg():
-    exc = IntegrationRateLimitError("throttled", retry_after_seconds=42.5)
-    assert exc.retry_after_seconds == 42.5
+def test_rate_limited_error_accepts_retry_after_ms():
+    exc = ExtensionError("rate-limited", "throttled", retry_after_ms=42500)
+    assert exc.retry_after_ms == 42500
+    assert exc.to_dict()["retry_after_ms"] == 42500
 
 
 # ---------------------------------------------------------------------------

@@ -51,13 +51,14 @@ def guard_api_base(api_base: str) -> None:
 
     Raises ``ValueError`` with a client-facing message on violation.
     """
-    from app.extensions.sdk.net_guard import SSRFBlockedError, assert_safe_url
+    from app.extensions import polite_http
+    from app.extensions.runtime.http import net_guard_config
 
     if not api_base:
         return
     try:
-        assert_safe_url(api_base, allow_private=settings.DEBUG)
-    except SSRFBlockedError as exc:
+        polite_http.check_url(api_base, config=net_guard_config(allow_private=settings.DEBUG))
+    except polite_http.PoliteHttpError as exc:
         raise ValueError(
             "api_base must be an http(s) URL that does not resolve to an "
             "internal, private, or loopback address."

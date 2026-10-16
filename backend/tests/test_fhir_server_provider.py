@@ -16,7 +16,7 @@ import httpx
 import pytest
 
 from app.extensions.builtin.fhir_server.provider import FhirServerProvider
-from app.extensions.sdk.exceptions import IntegrationAuthError
+from app.extensions.errors import ExtensionError
 
 
 def _client(handler):
@@ -67,7 +67,7 @@ class _FakeSmart:
 
     async def get_live_token(self, i):
         if self._raise_on_live:
-            raise IntegrationAuthError("no token")
+            raise ExtensionError("no token")
         return self._token
 
     async def force_refresh(self, i):

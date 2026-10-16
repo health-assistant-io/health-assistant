@@ -132,13 +132,13 @@ class DevDummyConfigFlow(BaseConfigFlow):
                     "simulate_auth_error": {
                         "type": "boolean",
                         "title": "Simulate Auth Error",
-                        "description": "Raises IntegrationAuthError → status flips to ERROR.",
+                        "description": "Raises the charter auth error → status flips to ERROR.",
                         "default": False,
                     },
                     "simulate_rate_limit": {
                         "type": "boolean",
                         "title": "Simulate Rate Limit",
-                        "description": "Raises IntegrationRateLimitError → sync skipped, status unchanged.",
+                        "description": "Raises the charter rate-limited error → sync skipped, status unchanged.",
                         "default": False,
                     },
                     "simulate_sensor_glitch": {

@@ -15,7 +15,7 @@ Design:
   haven't been used recently; LRU eviction at ``MCP_MAX_TOTAL_STDIO`` — T6.
 - ``httpx.AsyncClient`` is per-connection, never the SDK shared pool — T3.
 - Auto-reconnect with backoff; failed connections raise
-  :class:`IntegrationError`-compatible errors so the chat can skip the
+  charter typed errors so the chat can skip the
   instance and continue.
 
 Security:
@@ -33,10 +33,7 @@ from collections import OrderedDict
 from typing import Any
 from uuid import UUID
 
-from app.extensions.sdk.exceptions import (
-    IntegrationDataError,
-    IntegrationError,
-)
+from app.extensions.errors import ExtensionError
 
 logger = logging.getLogger(__name__)
 
@@ -73,11 +70,11 @@ class McpConnectionManager:
     async def get_or_connect(self, integration) -> Any:
         """Return a live :class:`fastmcp.Client` for ``integration``.
 
-        Raises ``IntegrationError`` (or subclasses) on failure so callers
+        Raises :class:`ExtensionError` on failure so callers
         (e.g. the chat aggregator) can skip the instance cleanly.
         """
         if self._closing:
-            raise IntegrationError("MCP connection manager is shutting down.")
+            raise ExtensionError("not-ready", "MCP connection manager is shutting down.")
 
         integration_id = integration.id if hasattr(integration, "id") else UUID(str(integration))
         async with self._global_lock:
@@ -97,7 +94,7 @@ class McpConnectionManager:
                 conn.entered = True
             except Exception as e:
                 await self._safe_close(conn)
-                raise IntegrationError(f"Failed to connect to MCP server: {e}") from e
+                raise ExtensionError("provider", f"Failed to connect to MCP server: {e}") from e
             self._connections[integration_id] = conn
             await self._evict_if_needed()
             return conn.client
@@ -130,14 +127,14 @@ class McpConnectionManager:
                     timeout=per_call_timeout,
                 )
             except TimeoutError:
-                raise IntegrationError(
-                    f"MCP tool '{tool_name}' timed out after {per_call_timeout}s."
+                raise ExtensionError(
+                    "not-ready", f"MCP tool '{tool_name}' timed out after {per_call_timeout}s."
                 ) from None
             except Exception as e:
                 # Reconnect once on connection-level errors, then surface.
                 logger.warning(f"MCP call_tool error on {tool_name}: {e}")
                 await self._reconnect(integration_id, integration)
-                raise IntegrationDataError(f"MCP tool '{tool_name}' failed: {e}") from e
+                raise ExtensionError("provider", f"MCP tool '{tool_name}' failed: {e}") from e
         return result
 
     async def list_tools(self, integration) -> list:
@@ -155,7 +152,7 @@ class McpConnectionManager:
             except Exception as e:
                 logger.warning(f"MCP list_tools error: {e}")
                 await self._reconnect(integration_id, integration)
-                raise IntegrationDataError(f"MCP list_tools failed: {e}") from e
+                raise ExtensionError("provider", f"MCP list_tools failed: {e}") from e
 
     async def disconnect(self, integration_id: UUID) -> None:
         async with self._global_lock:
@@ -236,9 +233,9 @@ class McpConnectionManager:
         try:
             config = decrypt_fields(raw_config, ["env", "headers", "auth_token"])
         except RuntimeError as e:
-            raise IntegrationError(str(e)) from e
+            raise ExtensionError("invalid", str(e)) from e
         except Exception as e:
-            raise IntegrationDataError(f"Failed to decrypt MCP config: {e}") from e
+            raise ExtensionError("invalid", f"Failed to decrypt MCP config: {e}") from e
 
         transport = (config.get("transport") or "http").lower()
         per_call_timeout = float(config.get("request_timeout") or settings.MCP_REQUEST_TIMEOUT)
@@ -250,7 +247,7 @@ class McpConnectionManager:
             cwd = config.get("cwd")
             ok, reason = validate_stdio_command(command, args, cwd)
             if not ok:
-                raise IntegrationDataError(reason) from None
+                raise ExtensionError("invalid", reason) from None
             try:
                 client, kind = client_for_spec(
                     transport="stdio",
@@ -262,7 +259,7 @@ class McpConnectionManager:
                     timeout_seconds=per_call_timeout,
                 )
             except RuntimeError as e:
-                raise IntegrationError(str(e)) from e
+                raise ExtensionError("invalid", str(e)) from e
             logger.info(f"MCP STDIO client built for integration {integration.id}: {command}")
             return client, kind
 
@@ -270,7 +267,7 @@ class McpConnectionManager:
             url = config.get("url") or ""
             ok, reason = validate_http_url(url)
             if not ok:
-                raise IntegrationDataError(reason) from None
+                raise ExtensionError("invalid", reason) from None
 
             verify_ssl = bool(config.get("verify_ssl", True))
             ca_bundle = config.get("ca_bundle_path") or None
@@ -285,13 +282,13 @@ class McpConnectionManager:
                     timeout_seconds=per_call_timeout,
                 )
             except RuntimeError as e:
-                raise IntegrationError(str(e)) from e
+                raise ExtensionError("invalid", str(e)) from e
             logger.info(
                 f"MCP {transport.upper()} client built for integration {integration.id}: {url}"
             )
             return client, kind
 
-        raise IntegrationDataError(f"Unknown transport: {transport}") from None
+        raise ExtensionError("invalid", f"Unknown transport: {transport}") from None
 
     async def _reconnect(self, integration_id: UUID, integration) -> None:
         """Drop the current connection so the next call rebuilds it."""

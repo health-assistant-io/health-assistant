@@ -1,3 +1,6 @@
+from app.extensions.errors import BridgeError, ExtensionError
+from app.extensions.polite_http import is_blocked_ip
+from app.extensions.runtime.http import assert_safe_url, http_request
 from app.models.enums import CodingSystem
 from app.schemas.allergy import AllergyIntoleranceCreate
 
@@ -54,26 +57,13 @@ from .display import (
     text_block,
 )
 from .documents import DocumentPull
-from .exceptions import (
-    BridgeError,
-    IntegrationAuthError,
-    IntegrationConfigError,
-    IntegrationDataError,
-    IntegrationError,
-    IntegrationRateLimitError,
-)
 from .fhir import (
     fhir_conditional_update,
     fhir_create,
     fhir_observation_to_create,
     fhir_search,
+    paginate_bundle,
     parse_operation_outcome,
-)
-from .http import http_request, paginate_bundle
-from .net_guard import (
-    SSRFBlockedError,
-    assert_safe_url,
-    is_blocked_ip,
 )
 from .notifications import (
     NotificationAction,
@@ -114,13 +104,9 @@ __all__ = [
     "CodingSystem",
     "DocumentPull",
     "ExaminationCreate",
-    "IntegrationAuthError",
-    "IntegrationConfigError",
-    "IntegrationDataError",
-    "IntegrationError",
+    "ExtensionError",
     "IntegrationProposalSpec",
     "IntegrationProposalType",
-    "IntegrationRateLimitError",
     "MedicationRecordCreate",
     "NotificationAction",
     "NotificationSpec",
@@ -132,7 +118,6 @@ __all__ = [
     "ObservationCreate",
     "PatientImmunizationCreate",
     "ProposalOutcome",
-    "SSRFBlockedError",
     "SecretCipher",
     "SmartOAuth",
     "action_result",

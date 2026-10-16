@@ -25,7 +25,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from app.extensions.sdk.exceptions import IntegrationError
+from app.extensions.errors import ExtensionError
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ def adapt_tool(
             arguments = {k: v for k, v in kwargs.items() if v is not None}
         try:
             result = await connection_manager.call_tool(integration, original_name, arguments)
-        except IntegrationError as e:
+        except ExtensionError as e:
             return f"[MCP tool error] {e}"
         return _extract_text_result(result, max_bytes)
 

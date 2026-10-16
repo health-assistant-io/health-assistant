@@ -11,6 +11,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (extensions — charter typed errors + the polite transport runtime)
+- **The `IntegrationError` class tree is replaced by the charter typed
+  error model** (`app/extensions/errors.py`): one closed 15-code enum +
+  capped detail + closed `retryable` sub-enum, with `retry_after_ms`
+  carrying the surfaced 429 payload. The D4 re-authoring map (auth →
+  `auth`, rate-limit → `rate-limited`, data → split by cause into
+  `protocol`/`provider`/`unreachable`, config → `invalid`, the SSRF
+  block → `net-denied`) is recorded once in the module docstring —
+  no aliases, no shims; suites re-authored in the same commit.
+  `BridgeError` stays (the inbound API's HTTP-identity vocabulary —
+  host policy per the charter's bridge-kind note).
+- **Outbound HTTP rides the vendored family runtime**
+  (`app/extensions/runtime/http.py`): the SSRF guard
+  (resolve-then-connect, every address, injectable resolver, numeric
+  literal obfuscations) re-run on EVERY redirect hop — deliberately
+  stricter than before: a redirect chain into a private target now
+  fails loudly as `net-denied` instead of being followed; the pooled
+  per-provider client stays the injected transport (built
+  `follow_redirects=False`). Full-jitter retry, RFC 7231 Retry-After
+  in both forms and the 401/403-immediate + 429/5xx-retried +
+  others-returned policy are preserved. `sdk/http.py` and
+  `sdk/net_guard.py` are deleted; Bundle pagination + OperationOutcome
+  diagnostics live in `sdk/fhir.py`; SMART/Bearer lifecycle in
+  `sdk/auth.py`; webhook_security + atrest secrets unchanged.
+- **Escape hatches are Settings-routed** (the runtime module reads no
+  environment): `INTEGRATION_ALLOWED_HOSTS`,
+  `INTEGRATION_BLOCK_PRIVATE_RANGES`, `INTEGRATION_ALLOW_PRIVATE` —
+  the historical env names, now injectable config.
+- **Sync routing speaks codes**: `auth` → instance ERROR + reconnect,
+  `rate-limited` → cooldown with the surfaced hint, `net-denied` →
+  non-retryable config class (logged, instance stays ACTIVE — the
+  SSRFBlock semantics preserved exactly); failed sync-log rows carry
+  `[code] detail`.
+- MCP client construction stays AI-layer-only
+  (`app/ai/mcp_client_factory.py`); `validate_http_url` and the AI
+  provider `api_base` guard ride the vendored guard.
+
 ### Changed (extensions — the charter envelope, vendored contracts, declared capabilities)
 - **The family extension-contract set is vendored**: `contracts/`
   (charter vocabularies, manifest/sources schemas, capability-RPC spec +

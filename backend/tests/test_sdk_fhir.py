@@ -5,7 +5,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from app.extensions.sdk.exceptions import IntegrationAuthError, IntegrationDataError
+from app.extensions.errors import ExtensionError
 from app.extensions.sdk.fhir import (
     fhir_conditional_update,
     fhir_create,
@@ -296,7 +296,7 @@ async def test_conditional_update_tokenless_sends_no_bearer():
 @pytest.mark.asyncio
 async def test_conditional_update_401_raises_auth_error():
     async with _client(lambda r: httpx.Response(401, text="nope")) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await fhir_conditional_update(
                 http,
                 "https://ehr/fhir",
@@ -309,7 +309,7 @@ async def test_conditional_update_401_raises_auth_error():
 @pytest.mark.asyncio
 async def test_conditional_update_400_raises_data_error():
     async with _client(lambda r: httpx.Response(400, text="bad")) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await fhir_conditional_update(
                 http,
                 "https://ehr/fhir",
@@ -422,7 +422,7 @@ async def test_fhir_create_401_raises_auth_error():
         )
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await fhir_create(http, "https://ehr/fhir", "Observation", body)
 
 
@@ -450,12 +450,12 @@ async def test_fhir_create_with_token_sends_bearer():
 
 def test_fhir_helpers_route_through_shared_retry_request():
     """Source-level guard: ``fhir_create`` and ``fhir_conditional_update``
-    must delegate retry/backoff/jitter to ``http._retry_request``.
+    must delegate retry/backoff/jitter to the polite transport runtime
+    (``guarded_request``).
 
-    Before this refactor each helper inlined its own retry loop; the two
-    copies had already diverged subtly (``fhir_create`` had no logger
-    warnings, ``fhir_conditional_update`` did) and neither had jitter. If
-    a future edit re-inlines either helper, the literal ``_retry_request``
+    Before the runtime existed each helper inlined its own retry loop; the
+    two copies had already diverged subtly and neither had jitter. If a
+    future edit re-inlines either helper, the literal ``guarded_request``
     reference disappears from its source and this test fails.
     """
     import inspect
@@ -465,11 +465,11 @@ def test_fhir_helpers_route_through_shared_retry_request():
     create_src = inspect.getsource(fhir_mod.fhir_create)
     update_src = inspect.getsource(fhir_mod.fhir_conditional_update)
 
-    assert "_retry_request" in create_src, (
+    assert "guarded_request" in create_src, (
         "fhir_create must call _retry_request — re-inlining the retry loop "
         "would reintroduce the divergence / no-jitter bug"
     )
-    assert "_retry_request" in update_src, (
+    assert "guarded_request" in update_src, (
         "fhir_conditional_update must call _retry_request — re-inlining the "
         "retry loop would reintroduce the divergence / no-jitter bug"
     )
@@ -483,7 +483,7 @@ async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("app.extensions.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
 
@@ -493,7 +493,7 @@ async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
 
     body = {"resourceType": "Observation"}
     async with _client(handler) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await fhir_create(http, "https://ehr/fhir", "Observation", body, max_retries=3)
     assert calls["n"] == 3, (
         f"fhir_create should have made 3 attempts (max_retries=3); got {calls['n']}"

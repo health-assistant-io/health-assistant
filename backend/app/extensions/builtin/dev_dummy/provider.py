@@ -9,7 +9,7 @@ what the engine does for each one.
 Capabilities demonstrated (search for the §N markers in this file):
 
 §A  ``pull_data`` — pull → ``List[ObservationCreate]``
-§B  Exception mapping — ``IntegrationAuthError`` / ``IntegrationRateLimitError``
+§B  Exception mapping — the charter typed errors (``auth`` / ``rate-limited``)
 §C  Cursor-based delta sync — ``get_sync_cursor`` / ``set_sync_cursor``
 §D  Debug logging — ``log_debug_payload`` (no-op unless debug enabled)
 §E  Quantitative + categorical observations — ``set_value`` / ``set_value_string``
@@ -42,6 +42,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from app.extensions.errors import ExtensionError
 from app.extensions.sdk import (
     BaseHealthProvider,
     CatalogProposal,
@@ -58,11 +59,6 @@ from app.extensions.sdk import (
     verify_hmac_signature,
 )
 from app.extensions.sdk.display import action_result, kv_block, list_block, table_block
-from app.extensions.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationRateLimitError,
-)
 from app.models.enums import ClinicalEventStatus, CodingSystem
 from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
@@ -443,11 +439,11 @@ class DevDummyProvider(BaseHealthProvider):
             await self._verify_signature(request, secret)
 
         if not isinstance(payload, dict):
-            raise IntegrationDataError("Webhook payload must be a JSON object.")
+            raise ExtensionError("protocol", "Webhook payload must be a JSON object.")
 
         metrics = payload.get("metrics") or []
         if not isinstance(metrics, list):
-            raise IntegrationDataError("`metrics` must be a list.")
+            raise ExtensionError("protocol", "`metrics` must be a list.")
 
         builder = self.create_observation_builder(integration)
         observations: list[ObservationCreate] = []
@@ -511,7 +507,7 @@ class DevDummyProvider(BaseHealthProvider):
         """Validate the ``X-DevDummy-Signature`` header.
 
         Format: ``HMAC-SHA256(secret, raw_body)`` hex-encoded. Raises
-        :class:`IntegrationDataError` on mismatch / missing header so
+        the charter ``protocol`` error on mismatch / missing header so
         the webhook endpoint returns a 4xx.
 
         Delegates to :func:`app.extensions.sdk.webhook_security.verify_hmac_signature`
@@ -519,9 +515,10 @@ class DevDummyProvider(BaseHealthProvider):
         the platform endpoint and this provider share it.
         """
         if request is None:
-            raise IntegrationDataError(
+            raise ExtensionError(
+                "protocol",
                 "Webhook secret is configured but no request object was "
-                "supplied for signature verification."
+                "supplied for signature verification.",
             )
         # Provider-local header convention; providers SHOULD use the
         # SDK's ``DEFAULT_WEBHOOK_SIGNATURE_HEADERS`` when possible so
@@ -531,11 +528,11 @@ class DevDummyProvider(BaseHealthProvider):
             names=("X-DevDummy-Signature",),
         )
         if not signature:
-            raise IntegrationDataError("Missing X-DevDummy-Signature header.")
+            raise ExtensionError("protocol", "Missing X-DevDummy-Signature header.")
 
         body = await request.body() if hasattr(request, "body") else b""
         if not verify_hmac_signature(secret, body, signature):
-            raise IntegrationDataError("Invalid webhook signature.")
+            raise ExtensionError("protocol", "Invalid webhook signature.")
 
     # ==================================================================
     # §I — Two-way API proxy (headless clients)
@@ -1067,7 +1064,7 @@ class DevDummyProvider(BaseHealthProvider):
         """Core pull hook — return ``List[ObservationCreate]``.
 
         Demonstrates:
-        * §B — raising ``IntegrationAuthError`` / ``IntegrationRateLimitError``
+        * §B — raising the charter ``auth`` / ``rate-limited`` typed errors
           so the worker can route the sync outcome correctly.
         * §C — delta-sync cursor (5-minute increments).
         * §D — debug logging (no-op unless the toggle is on).
@@ -1076,11 +1073,11 @@ class DevDummyProvider(BaseHealthProvider):
         config = integration.user_config or {}
         # §B — exception mapping
         if config.get("simulate_auth_error"):
-            raise IntegrationAuthError(
-                "Simulated Authentication Error. Turn this off in config to resume."
+            raise ExtensionError(
+                "auth", "Simulated Authentication Error. Turn this off in config to resume."
             )
         if config.get("simulate_rate_limit"):
-            raise IntegrationRateLimitError("Simulated Rate Limit. Try again later.")
+            raise ExtensionError("rate-limited", "Simulated Rate Limit. Try again later.")
 
         now = datetime.now(UTC)
         # §C — cursor read

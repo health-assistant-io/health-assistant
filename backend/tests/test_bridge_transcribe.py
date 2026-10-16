@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 
 from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
-from app.extensions.sdk.exceptions import BridgeError
+from app.extensions.errors import BridgeError
 from app.models.chat_model import ChatMessage, ChatSession
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel

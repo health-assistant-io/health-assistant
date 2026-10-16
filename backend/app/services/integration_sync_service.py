@@ -247,7 +247,7 @@ class SyncResult:
     allergies_written: int = 0
     immunizations_pulled: int = 0
     immunizations_written: int = 0
-    # Carried from ``IntegrationRateLimitError.retry_after_seconds`` when
+    # Carried from the typed rate-limited error's retry_after_ms when
     # the upstream sent a ``Retry-After`` header. The caller (worker)
     # may use this to write a Redis cooldown key so the next beat skips
     # this integration until the cooldown expires. ``None`` when the
@@ -283,7 +283,7 @@ async def _try_acquire_lock(integration_id: UUID) -> tuple[bool, str]:
 # Rate-limit cooldown (item 1 of the integrations-sdk-improvements plan).
 #
 # When an upstream returns 429 with a ``Retry-After`` header, the SDK
-# surfaces the value on ``IntegrationRateLimitError.retry_after_seconds``.
+# surfaces the value on the typed rate-limited error's retry hint.
 # ``run_sync`` copies it onto ``SyncResult.retry_after_seconds``; the
 # worker then calls ``set_rate_limit_cooldown`` so subsequent beats
 # skip the integration until the cooldown expires (instead of
@@ -353,7 +353,7 @@ async def is_rate_limited(integration_id: UUID) -> bool:
 
     Returns ``False`` when Redis is unavailable (degrades to "not
     rate limited" so the sync proceeds; the upstream will re-raise
-    ``IntegrationRateLimitError`` if still closed, and the cooldown
+    the charter ``rate-limited`` code if still closed, and the cooldown
     will be re-set).
     """
     try:
@@ -481,17 +481,15 @@ async def run_sync(
     Pipeline: acquire lock → pull → convert → biomarker-map → telemetry-split
     → push → stamp ``last_synced_at`` → write ``IntegrationSyncLog`` → commit.
 
-    The 3-tier error contract (``IntegrationAuthError`` → status ERROR;
-    ``IntegrationRateLimitError`` → retry next cycle; other → log) is handled
+    The charter-code routing (``auth`` → status ERROR; ``rate-limited`` →
+    cooldown + retry next cycle; ``net-denied`` → non-retryable config
+    class, instance stays ACTIVE; other codes → logged failure) is handled
     uniformly here so the worker and the manual endpoint share the exact same
     behaviour.
 
     Returns a :class:`SyncResult`. The caller decides how to surface errors.
     """
-    from app.extensions.sdk.exceptions import (
-        IntegrationAuthError,
-        IntegrationRateLimitError,
-    )
+    from app.extensions.errors import ExtensionError
     from app.models.user_integration import IntegrationStatus, IntegrationSyncLog
 
     started = _now()
@@ -1230,43 +1228,91 @@ async def run_sync(
         )
         return result
 
-    except IntegrationAuthError as e:
+    except ExtensionError as e:
         await db.rollback()
-        logger.warning("Auth error for %s: %s", integration.provider, e)
-        await _debug("Auth Error", {"error": str(e), "source": source}, level="error")
-        integration.status = IntegrationStatus.ERROR
-        _write_failed_log(db, integration, started, str(e))
+        # Charter-code routing (the D4 map): ``auth`` flips the instance to
+        # ERROR (the UI shows a reconnect prompt); ``rate-limited`` leaves
+        # the instance ACTIVE and surfaces the upstream Retry-After hint as
+        # a Redis cooldown key; ``net-denied`` is NON-retryable config class
+        # (the historical SSRFBlock semantics preserved exactly: logged, a
+        # failed sync row, the instance stays ACTIVE — the remedy is config,
+        # not retry); every other code is a logged failure with the code on
+        # the sync row.
+        if e.code == "auth":
+            logger.warning("Auth error for %s: %s", integration.provider, e)
+            await _debug(
+                "Auth Error", {"code": e.code, "detail": e.detail, "source": source}, level="error"
+            )
+            integration.status = IntegrationStatus.ERROR
+            _write_failed_log(db, integration, started, e.detail, error_code=e.code)
+            await db.commit()
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+            )
+        if e.code == "rate-limited":
+            logger.warning("Rate limit for %s: %s", integration.provider, e)
+            await _debug(
+                "Rate Limit Error",
+                {"code": e.code, "detail": e.detail, "source": source},
+                level="warning",
+            )
+            _write_failed_log(
+                db,
+                integration,
+                started,
+                "Rate Limit Exceeded. Will retry later.",
+                error_code=e.code,
+            )
+            await db.commit()
+            # The worker reads ``SyncResult.retry_after_seconds`` and writes
+            # a Redis cooldown key (clamped 60s..1h inside the cooldown
+            # helper to defend against an upstream lying).
+            retry_after = e.retry_after_ms / 1000.0 if e.retry_after_ms is not None else None
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+                retry_after_seconds=retry_after,
+            )
+        if e.code == "net-denied":
+            logger.warning(
+                "Network policy denied a call for %s (non-retryable config class): %s",
+                integration.provider,
+                e.detail,
+            )
+            await _debug(
+                "Net Denied",
+                {"code": e.code, "detail": e.detail, "source": source},
+                level="warning",
+            )
+            _write_failed_log(db, integration, started, e.detail, error_code=e.code)
+            await db.commit()
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+            )
+        logger.error("Sync error for %s (%s): %s", integration.provider, e.code, e.detail)
+        await _debug(
+            "Sync Error", {"code": e.code, "detail": e.detail, "source": source}, level="error"
+        )
+        _write_failed_log(db, integration, started, e.detail, error_code=e.code)
         await db.commit()
-        result = SyncResult(
+        return SyncResult(
             status="failed",
-            error=str(e),
-            error_type="auth",
+            error=e.detail,
+            error_type=e.code,
             started_at=started,
             completed_at=_now(),
         )
-        return result
-
-    except IntegrationRateLimitError as e:
-        await db.rollback()
-        logger.warning("Rate limit for %s: %s", integration.provider, e)
-        await _debug("Rate Limit Error", {"error": str(e), "source": source}, level="warning")
-        _write_failed_log(db, integration, started, "Rate Limit Exceeded. Will retry later.")
-        await db.commit()
-        # Surface the upstream's Retry-After hint (if any) so the
-        # caller can avoid hammering the upstream on every beat. The
-        # worker reads ``SyncResult.retry_after_seconds`` and writes a
-        # Redis cooldown key. The value is clamped inside the cooldown
-        # helper (60s..1h) to defend against an upstream lying.
-        retry_after = getattr(e, "retry_after_seconds", None)
-        result = SyncResult(
-            status="failed",
-            error=str(e),
-            error_type="rate_limit",
-            started_at=started,
-            completed_at=_now(),
-            retry_after_seconds=retry_after,
-        )
-        return result
 
     except Exception as e:
         await db.rollback()
@@ -1308,8 +1354,19 @@ async def run_sync(
                 logger.exception("post_sync_notifications raised for %s", integration.id)
 
 
-def _write_failed_log(db: AsyncSession, integration: Any, started: datetime, error: str) -> None:
-    """Queue a ``failed`` IntegrationSyncLog row (caller commits)."""
+def _write_failed_log(
+    db: AsyncSession,
+    integration: Any,
+    started: datetime,
+    error: str,
+    error_code: str | None = None,
+) -> None:
+    """Queue a ``failed`` IntegrationSyncLog row (caller commits).
+
+    ``error_code`` is the charter code (``net-denied``, ``auth``, …) —
+    carried beside the capped detail as ``[code] detail`` so typed routing
+    survives into the log rows without a schema change.
+    """
     from app.models.user_integration import IntegrationSyncLog
 
     db.add(
@@ -1320,7 +1377,7 @@ def _write_failed_log(db: AsyncSession, integration: Any, started: datetime, err
             records_synced=0,
             started_at=started,
             completed_at=_now(),
-            error_message=error,
+            error_message=f"[{error_code}] {error}" if error_code else error,
         )
     )
 

@@ -657,6 +657,14 @@ class Settings(BaseSettings):
     MCP_REQUEST_TIMEOUT: float = 30.0
     MCP_TOOL_RESULT_MAX_BYTES: int = 65536
     INTEGRATION_MAX_TOOLS_PER_SESSION: int = 20
+    # Polite-runtime escape hatches (the historical env names, now routed
+    # through Settings into the vendored guard's injectable config — the
+    # runtime module itself reads no environment; D5):
+    # trusted self-hosted hostnames exempt from the private-range block,
+    # the wholesale private-range hatch, and the trusted-flow bypass.
+    INTEGRATION_ALLOWED_HOSTS: str = ""
+    INTEGRATION_BLOCK_PRIVATE_RANGES: bool = True
+    INTEGRATION_ALLOW_PRIVATE: bool = False
     MCP_CONNECTION_IDLE_TIMEOUT: int = 900
     MCP_PER_INSTANCE_CONCURRENCY: int = 4
     MCP_ALLOW_INSECURE_HTTP: bool = False

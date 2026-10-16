@@ -52,11 +52,7 @@ import pytest
 
 from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
 from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
-from app.extensions.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationRateLimitError,
-)
+from app.extensions.errors import ExtensionError
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -151,14 +147,14 @@ async def test_pull_data_emits_quantitative_and_categorical(provider: DevDummyPr
 @pytest.mark.asyncio
 async def test_pull_data_raises_auth_error(provider: DevDummyProvider):
     integration = make_integration(config={"simulate_auth_error": True})
-    with pytest.raises(IntegrationAuthError):
+    with pytest.raises(ExtensionError):
         await provider.pull_data(integration)
 
 
 @pytest.mark.asyncio
 async def test_pull_data_raises_rate_limit_error(provider: DevDummyProvider):
     integration = make_integration(config={"simulate_rate_limit": True})
-    with pytest.raises(IntegrationRateLimitError):
+    with pytest.raises(ExtensionError):
         await provider.pull_data(integration)
 
 
@@ -288,7 +284,7 @@ async def test_webhook_rejects_missing_signature_when_secret_set(
         DevDummyProvider, "_resolve_webhook_secret", staticmethod(lambda i: "topsecret")
     )
     request = FakeRequest(body_bytes=b"{}", headers={})
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, {"metrics": []}, request=request)
 
 
@@ -302,7 +298,7 @@ async def test_webhook_rejects_invalid_signature(provider: DevDummyProvider, mon
         body_bytes=b'{"metrics":[]}',
         headers={"X-DevDummy-Signature": "deadbeef"},
     )
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, {"metrics": []}, request=request)
 
 
@@ -324,7 +320,7 @@ async def test_webhook_accepts_valid_signature(provider: DevDummyProvider, monke
 @pytest.mark.asyncio
 async def test_webhook_rejects_non_dict_payload(provider: DevDummyProvider):
     integration = make_integration(config={})
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, "not-a-dict", request=FakeRequest())
 
 

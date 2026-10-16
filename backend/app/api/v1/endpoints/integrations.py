@@ -20,9 +20,9 @@ from app.core.rate_limit import (
 )
 from app.core.redis import redis_client
 from app.core.security import get_current_user
+from app.extensions.errors import BridgeError, ExtensionError
 from app.extensions.registry import integration_registry
 from app.extensions.sdk.auth import OAuthStateStore
-from app.extensions.sdk.exceptions import BridgeError, IntegrationAuthError, IntegrationDataError
 from app.models.enums import IntegrationStatus
 from app.models.fhir.patient import Patient
 from app.models.user_integration import UserIntegration
@@ -514,7 +514,7 @@ async def oauth_start(
                 "tenant_id": str(current_user.tenant_id),
             },
         )
-    except (IntegrationAuthError, IntegrationDataError) as e:
+    except ExtensionError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"authorize_url": authorize_url, "state": state}
@@ -560,7 +560,7 @@ async def oauth_callback(
 
     try:
         await provider.complete_oauth(integration, pending, code)
-    except (IntegrationAuthError, IntegrationDataError):
+    except ExtensionError:
         redirect = (
             f"{_frontend_origin()}/integrations/{domain}/connected"
             f"?integration_id={integration_id}&status=error"

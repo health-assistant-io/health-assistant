@@ -1,26 +1,101 @@
-"""FHIR R4 client helpers built on top of :mod:`app.extensions.sdk.http`.
+"""FHIR R4 client helpers — Bundle pagination, OperationOutcome
+diagnostics and the create/conditional-update verbs, on top of the
+polite transport runtime (:mod:`app.extensions.runtime.http`).
 
-Reused by the Stage 2 FHIR client provider (``integrations/fhir_server``) and,
-later, by the Stage 3 FHIR facade. Pure FHIR — no SMART/auth coupling:
-``fhir_search`` takes an ``httpx.AsyncClient`` plus an optional ``access_token``
-(tokenless for local/test servers; the caller owns token lifecycle for SMART).
+Reused by the FHIR Server extension (``app/extensions/builtin/
+fhir_server``) and the FHIR facade. Pure FHIR — no SMART/auth coupling:
+``fhir_search`` takes an ``httpx.AsyncClient`` plus an optional
+``access_token`` (tokenless for local/test servers; the caller owns token
+lifecycle for SMART). Errors are the charter typed model
+(:class:`app.extensions.errors.ExtensionError`).
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 import httpx
 
-from app.extensions.sdk.exceptions import IntegrationDataError
-from app.extensions.sdk.http import DEFAULT_MAX_PAGES, _retry_request, paginate_bundle
+from app.extensions.errors import ExtensionError
+from app.extensions.runtime.http import guarded_request, http_request
 from app.schemas.fhir.observation import ObservationCreate
 from app.services.fhir_helpers import _as_list, _flatten_interpretation
 
 logger = logging.getLogger(__name__)
+
+# Default upper bound on Bundle pagination. ``paginate_bundle`` and
+# ``fhir_search`` accept ``max_pages=None`` to opt out (truly unbounded),
+# but the default is capped so an extension that forgets the argument
+# can't walk a multi-million-entry Bundle forever.
+DEFAULT_MAX_PAGES = 100
+
+
+async def paginate_bundle(
+    http_client: httpx.AsyncClient,
+    url: str,
+    *,
+    access_token: str | None,
+    params: dict[str, Any] | None = None,
+    max_pages: int | None = DEFAULT_MAX_PAGES,
+    max_retries: int = 3,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield each ``entry[].resource`` from a FHIR searchset Bundle.
+
+    Follows ``link[rel=next].url`` (FHIR servers return absolute URLs —
+    every hop rides the guarded transport) until exhausted or
+    ``max_pages`` is reached. ``params`` apply only to the first request
+    (subsequent pages use the server-provided ``next`` URL verbatim).
+    """
+    next_url: str | None = url
+    next_params: dict[str, Any] | None = params
+    pages = 0
+    while next_url:
+        if max_pages is not None and pages >= max_pages:
+            logger.info("paginate_bundle: reached max_pages=%d, stopping.", max_pages)
+            return
+        pages += 1
+        bundle = await http_request(
+            http_client,
+            "GET",
+            next_url,
+            access_token=access_token,
+            params=next_params,
+            max_retries=max_retries,
+        )
+        if not isinstance(bundle, dict) or bundle.get("resourceType") != "Bundle":
+            raise ExtensionError(
+                "protocol",
+                f"expected a FHIR Bundle from {next_url}; got {type(bundle).__name__}.",
+            )
+        for entry in bundle.get("entry") or []:
+            resource = entry.get("resource") if isinstance(entry, dict) else None
+            if isinstance(resource, dict):
+                yield resource
+        next_url = _next_link(bundle)
+        next_params = None  # the next URL already carries the pagination offset
+
+
+def _next_link(bundle: dict[str, Any]) -> str | None:
+    for link in bundle.get("link") or []:
+        if isinstance(link, dict) and link.get("relation") == "next":
+            url = link.get("url")
+            if isinstance(url, str):
+                return url
+    return None
+
+
+def response_detail(response: httpx.Response, default: str = "no response body") -> str:
+    """Human-readable detail from an FHIR error response (H8):
+    ``OperationOutcome.issue[].diagnostics`` first, then the capped raw
+    body."""
+    try:
+        return parse_operation_outcome(response.json())
+    except (ValueError, TypeError):
+        return response.text[:300] if response.content else default
 
 
 async def fhir_search(
@@ -213,10 +288,9 @@ async def fhir_create(
     """FHIR create: ``POST /{Resource}`` with a body.
 
     Used by H3 (remote Provenance POST after a push). Same retry/error
-    contract as :func:`fhir_conditional_update` (delegated to
-    :func:`app.extensions.sdk.http._retry_request` — full-jitter exponential
-    backoff on 429/5xx/network errors, immediate raise on 401/403). Returns
-    ``(status_code, response_dict_or_None)``.
+    contract as :func:`fhir_conditional_update` (the polite transport
+    runtime: full-jitter backoff on 429/5xx/network errors, immediate
+    raise on 401/403). Returns ``(status_code, response_dict_or_None)``.
     """
     base = base_url.rstrip("/")
     url = f"{base}/{resource_type}"
@@ -227,17 +301,16 @@ async def fhir_create(
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
 
-    response = await _retry_request(
-        lambda: http_client.request("POST", url, headers=headers, json=body),
-        url=url,
-        method="POST",
-        max_retries=max_retries,
+    response = await guarded_request(
+        http_client, "POST", url, headers=headers, json_body=body, max_retries=max_retries
     )
     status = response.status_code
     if status >= 400:
-        # 401/403 already raised by _retry_request; the only remaining 4xx
+        # 401/403 already raised by the runtime; the only remaining 4xx
         # are non-retryable client errors (400/404/409/422/...).
-        raise IntegrationDataError(f"POST {url} -> {status}: {_enrich_error(response)}")
+        raise ExtensionError(
+            "protocol", f"POST {url} -> {status}: {_enrich_error(response)}", status=status
+        )
     return status, _safe_json(response)
 
 
@@ -261,8 +334,8 @@ async def fhir_conditional_update(
     sent as a Bearer header; pass ``None`` for tokenless servers. Token
     lifecycle (acquire / refresh-on-401) belongs to the caller.
 
-    Retry / error semantics are delegated to
-    :func:`app.extensions.sdk.http._retry_request` (full-jitter exponential
+    Retry / error semantics ride the polite transport runtime
+    (:func:`app.extensions.runtime.http.guarded_request` — full-jitter
     backoff on 429/5xx/network errors; immediate raise on 401/403).
 
     Conditional-update headers (FHIR R4 §2.1.1.5):
@@ -284,11 +357,10 @@ async def fhir_conditional_update(
       as "skipped" (no change needed). Response body (often an
       ``OperationOutcome``) is returned for inspection — NOT raised.
 
-    Auth failures (401/403) raise :class:`IntegrationAuthError`, rate-limiting
-    (429 after retries exhausted) raises :class:`IntegrationRateLimitError`,
-    other 4xx and unrecoverable 5xx/network errors raise
-    :class:`IntegrationDataError` — same hierarchy as
-    :func:`app.extensions.sdk.http.http_request`.
+    Auth failures (401/403) raise ``ExtensionError("auth")``,
+    rate-limiting (429 after retries) raises ``ExtensionError("rate-limited",
+    retry_after_ms=...)``, other 4xx raise ``protocol``, 5xx exhaustion
+    ``provider`` and network failure ``unreachable`` — the charter model.
     """
     base = base_url.rstrip("/")
     url = f"{base}/{resource_type}"
@@ -307,10 +379,13 @@ async def fhir_conditional_update(
         # "create only if none matches"; otherwise update the match.
         headers["If-None-Exist"] = if_none_exist
 
-    response = await _retry_request(
-        lambda: http_client.request("PUT", url, headers=headers, params=search_params, json=body),
-        url=url,
-        method="PUT",
+    response = await guarded_request(
+        http_client,
+        "PUT",
+        url,
+        headers=headers,
+        params=search_params,
+        json_body=body,
         max_retries=max_retries,
     )
     status = response.status_code
@@ -318,9 +393,11 @@ async def fhir_conditional_update(
     if status == 412:
         return 412, _safe_json(response)
     if status >= 400:
-        # 401/403 already raised by _retry_request; remaining 4xx are
+        # 401/403 already raised by the runtime; remaining 4xx are
         # non-retryable client errors.
-        raise IntegrationDataError(f"PUT {url} -> {status}: {_enrich_error(response)}")
+        raise ExtensionError(
+            "protocol", f"PUT {url} -> {status}: {_enrich_error(response)}", status=status
+        )
     # 200/201 (and any other 2xx) — success.
     return status, _safe_json(response)
 

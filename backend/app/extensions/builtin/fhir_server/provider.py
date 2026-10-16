@@ -38,6 +38,7 @@ from app.extensions.builtin.fhir_server.mappers import (
     medication_request_to_record,
     medication_statement_to_record,
 )
+from app.extensions.errors import ExtensionError
 from app.extensions.sdk import (
     BaseHealthProvider,
     DocumentPull,
@@ -51,11 +52,6 @@ from app.extensions.sdk import (
     list_block,
     table_block,
     text_block,
-)
-from app.extensions.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationError,
 )
 from app.models.enums import CodingSystem
 from app.models.user_integration import UserIntegration
@@ -100,7 +96,7 @@ class FhirServerProvider(BaseHealthProvider):
     async def begin_oauth(self, integration, redirect_uri, *, extra_state=None):
         fhir_base_url = (integration.user_config or {}).get("fhir_base_url")
         if not fhir_base_url:
-            raise IntegrationAuthError("Instance has no fhir_base_url configured.")
+            raise ExtensionError("auth", "Instance has no fhir_base_url configured.")
         # H1: request write scopes when push is enabled so the SMART consent
         # screen includes patient/*.write. The user must re-authorize if the
         # sync_direction was changed to push after initial authorization.
@@ -192,7 +188,7 @@ class FhirServerProvider(BaseHealthProvider):
                 resources = await fhir_search(
                     self._http_client, fhir_base_url, "Patient", params, max_pages=1
                 )
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             await self.log_debug_payload(
                 integration,
                 "Patient search failed",
@@ -303,7 +299,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             return await self._run_pull(integration, persist=False)
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.error("fhir_server %s pull failed: %s", integration.id, e)
             await self.log_debug_payload(
                 integration, "Pull error", {"error": str(e)}, level="error"
@@ -339,7 +335,7 @@ class FhirServerProvider(BaseHealthProvider):
                 extra_params=extra_params,
                 cursor_key="last_updated",
             )
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.error("fhir_server %s pull failed: %s", integration.id, e)
             await self.log_debug_payload(
                 integration, "Pull error", {"error": str(e)}, level="error"
@@ -427,7 +423,7 @@ class FhirServerProvider(BaseHealthProvider):
                 access_token=token,
                 max_pages=max_pages,
             )
-        except IntegrationAuthError:
+        except ExtensionError:
             logger.info(
                 "401 on %s search; force-refreshing token and retrying once.",
                 resource_type,
@@ -476,7 +472,7 @@ class FhirServerProvider(BaseHealthProvider):
 
         Returns the flat list of resource dicts (the Bundle entries are
         unwrapped by :func:`fhir_search`). Raises
-        ``IntegrationAuthError`` / ``IntegrationDataError`` on failure —
+        charter typed errors (``auth`` / ``protocol`` / …) on failure —
         callers wrap those to return ``[]`` (hook contract: never raise).
         """
         config = self._config(integration)
@@ -532,7 +528,7 @@ class FhirServerProvider(BaseHealthProvider):
                     params,
                     max_pages=max_pages,
                 )
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             await self.log_debug_payload(
                 integration,
                 f"FHIR search {resource_type} failed",
@@ -599,11 +595,12 @@ class FhirServerProvider(BaseHealthProvider):
         # integration owner points at a hostile server. Every fetch must
         # pass the SSRF net-guard (blocks loopback/link-local/RFC-1918/
         # metadata IPs) instead of bypassing it via a raw .get().
-        from app.extensions.sdk.net_guard import SSRFBlockedError, assert_safe_url
+        from app.extensions.errors import ExtensionError
+        from app.extensions.runtime.http import assert_safe_url
 
         try:
-            assert_safe_url(fetch_url)
-        except SSRFBlockedError as e:
+            await assert_safe_url(fetch_url)
+        except ExtensionError as e:
             await self.log_debug_payload(
                 integration,
                 "Attachment fetch blocked (SSRF guard)",
@@ -621,7 +618,7 @@ class FhirServerProvider(BaseHealthProvider):
             try:
                 token = access_token or await self._smart.get_live_token(integration)
                 headers["Authorization"] = f"Bearer {token}"
-            except IntegrationAuthError:
+            except ExtensionError:
                 pass
 
         try:
@@ -702,7 +699,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             resources = await self._search_resource(integration, "Condition")
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s conditions pull failed: %s", integration.id, e)
             return []
         out = []
@@ -728,7 +725,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             resources = await self._search_resource(integration, "Encounter")
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s encounters pull failed: %s", integration.id, e)
             return []
         out = []
@@ -754,7 +751,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             resources = await self._search_resource(integration, "DocumentReference")
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s docrefs pull failed: %s", integration.id, e)
             return []
 
@@ -764,7 +761,7 @@ class FhirServerProvider(BaseHealthProvider):
         if self._config(integration).get("auth_mode", "smart") == "smart":
             try:
                 token = await self._smart.get_live_token(integration)
-            except IntegrationAuthError:
+            except ExtensionError:
                 token = None
 
         out: list[DocumentPull] = []
@@ -834,7 +831,7 @@ class FhirServerProvider(BaseHealthProvider):
                 "Observation",
                 cursor_key="hitl:codes_scanned",
             )
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s hitl scan failed: %s", integration.id, e)
             return []
 
@@ -964,7 +961,7 @@ class FhirServerProvider(BaseHealthProvider):
         ):
             try:
                 resources = await self._search_resource(integration, rtype)
-            except (IntegrationAuthError, IntegrationDataError) as e:
+            except ExtensionError as e:
                 logger.warning("fhir_server %s %s pull failed: %s", integration.id, rtype, e)
                 continue
             for res in resources:
@@ -989,7 +986,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             resources = await self._search_resource(integration, "AllergyIntolerance")
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s allergies pull failed: %s", integration.id, e)
             return []
         out = []
@@ -1015,7 +1012,7 @@ class FhirServerProvider(BaseHealthProvider):
             return []
         try:
             resources = await self._search_resource(integration, "Immunization")
-        except (IntegrationAuthError, IntegrationDataError) as e:
+        except ExtensionError as e:
             logger.warning("fhir_server %s immunizations pull failed: %s", integration.id, e)
             return []
         out = []
@@ -1043,7 +1040,7 @@ class FhirServerProvider(BaseHealthProvider):
             return
         try:
             await self._run_push(integration)
-        except IntegrationAuthError:
+        except ExtensionError:
             raise  # let the engine pause the integration (re-auth needed)
         except Exception as e:
             logger.error("fhir_server %s push failed: %s", integration.id, e)
@@ -1193,7 +1190,7 @@ class FhirServerProvider(BaseHealthProvider):
         search_params = {"identifier": f"{_OBS_IDENTIFIER_SYSTEM}|{local_id}"}
         try:
             token = await self._smart.get_live_token(integration) if auth_mode == "smart" else None
-        except IntegrationAuthError:
+        except ExtensionError:
             raise
 
         try:
@@ -1205,40 +1202,41 @@ class FhirServerProvider(BaseHealthProvider):
                 search_params=search_params,
                 access_token=token,
             )
-        except IntegrationAuthError as e:
+        except ExtensionError as e:
             # H1: detect 403 insufficient_scope — the token lacks write
             # permissions. Surface an actionable signal.
             if "insufficient_scope" in str(e).lower() or (
                 "scope" in str(e).lower() and "403" in str(e)
             ):
                 return "insufficient_scope"
-            # Push resilience: 401-race retry. The token was valid when
-            # get_live_token checked, but expired between the check and the
-            # PUT (a race). Force-refresh and retry once — mirrors the pull
-            # path's _authorized_search pattern. If it still fails, count
-            # this row as an error and continue the batch (don't abort).
-            try:
-                token = await self._smart.force_refresh(integration)
-            except IntegrationAuthError:
-                return "error"
-            try:
-                status, _resp = await fhir_conditional_update(
-                    self._http_client,
-                    fhir_base_url,
-                    "Observation",
-                    body,
-                    search_params=search_params,
-                    access_token=token,
-                )
-            except IntegrationError as retry_err:
-                logger.warning(
-                    "fhir_server %s push still failing after token refresh for %s: %s",
-                    integration.id,
-                    local_id,
-                    retry_err,
-                )
-                return "error"
-        except IntegrationError as e:
+            # Push resilience: 401-race retry (charter ``auth`` code only —
+            # the historical IntegrationAuthError arm). The token was valid
+            # when get_live_token checked, but expired between the check
+            # and the PUT (a race). Force-refresh and retry once — mirrors
+            # the pull path's _authorized_search pattern. If it still
+            # fails, count this row as an error and continue the batch.
+            if e.code == "auth":
+                try:
+                    token = await self._smart.force_refresh(integration)
+                except ExtensionError:
+                    return "error"
+                try:
+                    status, _resp = await fhir_conditional_update(
+                        self._http_client,
+                        fhir_base_url,
+                        "Observation",
+                        body,
+                        search_params=search_params,
+                        access_token=token,
+                    )
+                except ExtensionError as retry_err:
+                    logger.warning(
+                        "fhir_server %s push still failing after token refresh for %s: %s",
+                        integration.id,
+                        local_id,
+                        retry_err,
+                    )
+                    return "error"
             logger.warning("fhir_server %s push failed for %s: %s", integration.id, local_id, e)
             await self.log_debug_payload(
                 integration,
@@ -1293,7 +1291,7 @@ class FhirServerProvider(BaseHealthProvider):
         counters,
     ):
         """H3: POST a Provenance resource for the just-pushed Observation."""
-        from app.extensions.sdk.exceptions import IntegrationError
+        from app.extensions.errors import ExtensionError
         from app.extensions.sdk.fhir import fhir_create
 
         instance_name = (integration.user_config or {}).get("instance_name") or integration.provider
@@ -1329,7 +1327,7 @@ class FhirServerProvider(BaseHealthProvider):
                 access_token=token,
             )
             counters["provenance_created"] = counters.get("provenance_created", 0) + 1
-        except IntegrationError as e:
+        except ExtensionError as e:
             logger.debug("Remote Provenance POST failed for %s: %s", integration.id, e)
             counters["provenance_failed"] = counters.get("provenance_failed", 0) + 1
         except Exception:
@@ -1464,7 +1462,7 @@ class FhirServerProvider(BaseHealthProvider):
                 }
             try:
                 token = await self._smart.get_live_token(integration)
-            except IntegrationAuthError as e:
+            except ExtensionError as e:
                 await self.log_debug_payload(
                     integration,
                     "Check connection — token refresh failed",
@@ -1677,10 +1675,9 @@ class FhirServerProvider(BaseHealthProvider):
             return {"message": "Instance has no fhir_base_url configured."}
         try:
             observations = await self._run_pull(integration, persist=True)
-        except IntegrationAuthError as e:
-            return {"message": f"Pull failed (auth): {e}"}
-        except IntegrationDataError as e:
-            return {"message": f"Pull failed: {e}"}
+        except ExtensionError as e:
+            label = "auth" if e.code == "auth" else e.code
+            return {"message": f"Pull failed ({label}): {e}"}
         cursor = self.get_sync_cursor(integration, "last_updated") or "—"
         return action_result(
             message=f"Pulled and stored {len(observations)} observation(s).",
@@ -1701,7 +1698,7 @@ class FhirServerProvider(BaseHealthProvider):
             return {"message": "Instance has no fhir_base_url configured."}
         try:
             result = await self._run_push(integration)
-        except IntegrationAuthError as e:
+        except ExtensionError as e:
             return {"message": f"Push failed (auth): {e}"}
         return action_result(
             message=f"Pushed {result['pushed']} observation(s) to the FHIR server.",

@@ -140,11 +140,12 @@ def validate_http_url(url: str, allow_insecure: bool | None = None) -> tuple[boo
     # https://169.254.169.254 or https://10.0.0.1:8443 validated fine and the
     # backend originated TLS connections (with user-supplied bearer headers)
     # to internal hosts.
-    from app.extensions.sdk.net_guard import SSRFBlockedError, assert_safe_url
+    from app.extensions import polite_http
+    from app.extensions.runtime.http import net_guard_config
 
     try:
-        assert_safe_url(url)
-    except SSRFBlockedError as exc:
+        polite_http.check_url(url, config=net_guard_config())
+    except polite_http.PoliteHttpError as exc:
         return False, f"URL points at a blocked (private/internal) target: {exc}"
     except Exception:
         pass
