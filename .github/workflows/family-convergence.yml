@@ -38,5 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Gate self-test (plan 23 D4)
         run: bash scripts/check-family-convergence.selftest.sh
+      - name: Extension structure probe (blocking, plan 32 Phase 9)
+        run: bash scripts/check-extensions-structure.sh --strict
       - name: Run family-convergence gate
         run: bash scripts/check-family-convergence.sh --self
