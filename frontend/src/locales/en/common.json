@@ -2609,5 +2609,59 @@
     "insurance_hint": "Free text for now; a proper FHIR Coverage resource is roadmap.",
     "add": "Add",
     "skip_finish": "Skip & finish"
+  },
+  "integrations": {
+    "subtitle": "Manage your connected health data sources.",
+    "browse": {
+      "title": "Browse & Connect",
+      "searchLabel": "Search",
+      "searchPlaceholder": "Search integrations",
+      "empty": "No integrations available.",
+      "noMatches": "No matches.",
+      "add": "Add",
+      "connected": "Connected",
+      "docs": "Docs"
+    },
+    "categories": {
+      "files": "Files",
+      "data": "Data",
+      "search": "Search",
+      "productivity": "Productivity",
+      "utilities": "Utilities",
+      "developer": "Developer",
+      "home": "Home",
+      "learning": "Learning"
+    },
+    "list": {
+      "empty": "No active integrations found.",
+      "enableAria": "Enable",
+      "remove": "Remove",
+      "details": "Details",
+      "needsConfig": "needs config",
+      "needsSecret": "needs secret",
+      "lastSynced": "Last synced",
+      "failures": "consecutive failures",
+      "statusOk": "Connected",
+      "statusDegraded": "Degraded",
+      "statusFailing": "Error — requires attention",
+      "statusStale": "Pending setup"
+    },
+    "docs": {
+      "title": "Documentation",
+      "close": "Close",
+      "tree": "Contents",
+      "empty": "No documentation provided.",
+      "loading": "Loading…",
+      "error": "Failed to load documentation."
+    },
+    "config": {
+      "loading": "Loading configuration UI...",
+      "saving": "Saving...",
+      "save": "Save Configuration",
+      "cancel": "Cancel",
+      "secretSet": "set — leave empty to keep",
+      "secretNotSet": "not set",
+      "invalidJson": "Fix invalid JSON before saving."
+    }
   }
 }

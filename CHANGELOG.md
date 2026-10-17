@@ -11,6 +11,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (integrations — the settings surfaces render through the family kit)
+- **The integrations UI swaps onto the `@neuronection/assistant-ui`
+  integrations kit** (plan 33 Phase D / ADR-0040 D25): the browse modal's
+  hand-rolled category grid is now `IntegrationCatalogGrid` (charter-category
+  groups + controlled search) inside the app modal; the active-integrations
+  list is `IntegrationInstancesList` — instances GROUPED UNDER THEIR
+  EXTENSION (G1), finally rendering the family `sync_status` vocabulary
+  (ok/degraded/failing/stale + needs-config) the backend already sent;
+  the detail page's hero is `IntegrationCard` (origin chip, tier, capability
+  chips) with connection state, sync direction and the page actions as
+  app content in the card's detail/action slots; `ConfigFlowModal` renders
+  the charter's JSON-schema-subset through `IntegrationConfigForm` with the
+  endpoint's 400 detail flowing back through the kit's validation display,
+  while health's extended config dialect (key-value maps, constrained array
+  enums, conditional visibility, JSON documents) stays app-owned below the
+  kit fields; the docs modal is the kit's `DocsDialog` with the markdown
+  fetch/render riding the app content slot. `IntegrationDocsModal` is
+  deleted; the pure wire→kit mapping lives in
+  `components/integrations/integrationViews.ts` (capabilities narrow through
+  the kit's generated vocabulary). OAuth authorize, the Bridge pairing QR,
+  custom actions and the `ActionResultModal` DisplayBlocks flow stay app
+  content (the kit's ActionResultDialog hosts the declarative
+  SurfaceRenderer contract — a different payload shape; recorded as a kit
+  gap, not forced). Pin moves to `^0.67.0` (the pending library publish
+  wave); local dev runs the kept tarball overlay until it lands.
+
 ### Added (extensions — the family instance-status surface)
 - **Instance status surfaces speak the charter vocabulary** (D7/D21):
   `GET /integrations/active` and the instance-details response carry a

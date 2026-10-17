@@ -1,2 +1,2 @@
 minimumReleaseAgeExclude:
-  - '@neuronection/assistant-ui@0.60.0 || 0.61.0 || 0.64.0 || 0.64.1 || 0.65.0'
+  - '@neuronection/assistant-ui@0.60.0 || 0.61.0 || 0.64.0 || 0.64.1 || 0.65.0 || 0.67.0'

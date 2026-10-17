@@ -11,6 +11,9 @@ export interface IntegrationManifest {
   categories?: string[];
   icon?: string;
   dependencies?: string[];
+  /** Charter envelope fields rendered by the wire manifest (ADR-0040). */
+  kind?: string;
+  capabilities?: string[];
 }
 
 export interface ActiveIntegration {
@@ -19,6 +22,13 @@ export interface ActiveIntegration {
   instance_name: string | null;
   status: string;
   last_synced_at: string | null;
+  /** Family instance-status surface (ADR-0040 D19) — computed by the backend. */
+  sync_status?: {
+    status: string;
+    last_success_at?: string | null;
+    consecutive_failures?: number | null;
+    conditions?: string[] | null;
+  } | null;
 }
 
 export interface ConfigFlowSchema {
