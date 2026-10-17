@@ -294,6 +294,40 @@ async def get_integration_documentation(
     }
 
 
+@router.get("/{domain}/schema")
+async def get_integration_api_schema(
+    domain: str,
+    current_user: TokenData = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The bridge's published sub-API schema (plan 32 D11 — schema-first SDKs).
+
+    Serves the committed, generator-extracted schema artifact for
+    schema-capable extensions (today: ``health_assistant_bridge``). Same
+    authenticated-user contract as ``/{domain}/documentation``; the schema
+    carries no secrets — it is the wire contract the SDK model layers and
+    the cross-SDK fixtures are generated from. 404 for unknown domains and
+    for extensions without a schema.
+    """
+    import json
+
+    from app.extensions.registry import domain_of
+
+    manifests = integration_registry.get_all_manifests()
+    if not any(domain_of(str(m.get("id", ""))) == domain for m in manifests):
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    schema_path = os.path.join(
+        integration_registry.base_dir(domain), "schema", "bridge-api.schema.json"
+    )
+    if not os.path.exists(schema_path):
+        raise HTTPException(status_code=404, detail="No API schema published for this integration")
+    try:
+        with open(schema_path) as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load API schema: {e}") from e
+
+
 @router.get("/{domain}/config-flow", response_model=dict[str, Any])
 async def get_config_flow(
     domain: str,

@@ -1,0 +1,880 @@
+{
+  "meta": {
+    "schemaVersion": 1,
+    "bridge": {
+      "id": "health-assistant-bridge",
+      "version": "2.0.0",
+      "kind": "bridge",
+      "apiVersion": "extension/v1",
+      "kindVersion": 1
+    },
+    "note": "The cross-SDK fixture wall (D23: implementations may differ, outputs may not) — one set, consumed by the python/ts/kotlin conformance suites. Generated from the schema; request/response examples are the component examples these entries reference."
+  },
+  "routes": {
+    "DELETE ai/sessions/{session_id}": {
+      "auth": "hmac"
+    },
+    "DELETE allergies/{allergy_id}": {
+      "auth": "hmac"
+    },
+    "DELETE clinical-events/{event_id}": {
+      "auth": "hmac"
+    },
+    "DELETE doctors/{doctor_id}": {
+      "auth": "hmac"
+    },
+    "DELETE documents/{doc_id}": {
+      "auth": "hmac"
+    },
+    "DELETE examinations/{exam_id}": {
+      "auth": "hmac"
+    },
+    "DELETE medications/{medication_id}": {
+      "auth": "hmac"
+    },
+    "DELETE notifications/register-device/{device_id}": {
+      "auth": "hmac"
+    },
+    "DELETE notifications/triggers/{trigger_id}": {
+      "auth": "hmac"
+    },
+    "DELETE vaccines/{vaccine_id}": {
+      "auth": "hmac"
+    },
+    "GET ai/sessions": {
+      "auth": "hmac"
+    },
+    "GET ai/sessions/{session_id}/messages": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET allergies": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "active",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET biomarkers": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET changes": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        },
+        {
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "name": "types",
+          "type": "string"
+        }
+      ]
+    },
+    "GET clinical-events": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    "GET clinical-events/{event_id}": {
+      "auth": "hmac"
+    },
+    "GET devices": {
+      "auth": "hmac"
+    },
+    "GET doctors": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET documents": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "examination_id",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET documents/{doc_id}": {
+      "auth": "hmac"
+    },
+    "GET documents/{doc_id}/content": {
+      "auth": "hmac"
+    },
+    "GET documents/{doc_id}/extract/status": {
+      "auth": "hmac"
+    },
+    "GET documents/{doc_id}/preview": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "page",
+          "type": "string"
+        }
+      ]
+    },
+    "GET documents/{doc_id}/text": {
+      "auth": "hmac"
+    },
+    "GET examinations": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET examinations/{exam_id}": {
+      "auth": "hmac"
+    },
+    "GET examinations/{exam_id}/documents": {
+      "auth": "hmac"
+    },
+    "GET examinations/{exam_id}/logs": {
+      "auth": "hmac"
+    },
+    "GET examinations/{exam_id}/status": {
+      "auth": "hmac"
+    },
+    "GET medications": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET notifications/inbox": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "category",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        },
+        {
+          "name": "offset",
+          "type": "string"
+        },
+        {
+          "name": "patient_id",
+          "type": "string"
+        },
+        {
+          "name": "source",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    },
+    "GET notifications/preferences": {
+      "auth": "hmac"
+    },
+    "GET notifications/triggers": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        },
+        {
+          "name": "offset",
+          "type": "string"
+        }
+      ]
+    },
+    "GET notifications/unread-count": {
+      "auth": "hmac"
+    },
+    "GET observations": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "biomarker",
+          "type": "string"
+        },
+        {
+          "name": "limit",
+          "type": "string"
+        },
+        {
+          "name": "since",
+          "type": "string"
+        },
+        {
+          "name": "until",
+          "type": "string"
+        }
+      ]
+    },
+    "GET observations/latest": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "GET status": {
+      "auth": "liveness-or-hmac"
+    },
+    "GET vaccines": {
+      "auth": "hmac",
+      "query": [
+        {
+          "name": "limit",
+          "type": "string"
+        }
+      ]
+    },
+    "PATCH ai/sessions/{session_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "title": "Sleep follow-up"
+      }
+    },
+    "PATCH notifications/{recipient_id}/{action}": {
+      "auth": "hmac"
+    },
+    "POST ai/chat": {
+      "auth": "hmac",
+      "requestExample": {
+        "message": "How did my sleep change this week?",
+        "session_id": "9c1b2c3d-4e5f-4061-8273-84a5b6c7d8e9"
+      }
+    },
+    "POST ai/sessions/{session_id}/tasks/{proposal_id}/resolve": {
+      "auth": "hmac",
+      "requestExample": {
+        "status": "confirmed",
+        "result": {
+          "dose": "500mg"
+        }
+      }
+    },
+    "POST ai/transcribe": {
+      "auth": "hmac",
+      "requestExample": {
+        "data": "T2N0ZXRlU3RyZWFt",
+        "mime": "audio/webm;codecs=opus"
+      }
+    },
+    "POST allergies": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "allergy-9",
+        "code": {
+          "text": "Penicillin"
+        },
+        "clinical_status": "ACTIVE",
+        "category": "medication",
+        "criticality": "low",
+        "onset_date": "2019-03-02T00:00:00+00:00"
+      }
+    },
+    "POST clinical-events": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "journey-11",
+        "title": "Iron-deficiency workup",
+        "status": "ACTIVE",
+        "onset_date": "2026-09-30T00:00:00+00:00"
+      }
+    },
+    "POST clinical-events/{event_id}/occurrences": {
+      "auth": "hmac",
+      "requestExample": {
+        "occurred_at": "2026-10-05T12:00:00+00:00",
+        "title": "Follow-up draw",
+        "severity": "mild"
+      }
+    },
+    "POST doctors": {
+      "auth": "hmac",
+      "requestExample": {
+        "name": "Dr. Amara Osei",
+        "specialty": "Hematology",
+        "email": "a.osei@meridian.example"
+      }
+    },
+    "POST documents/{doc_id}/extract": {
+      "auth": "hmac",
+      "requestExample": {}
+    },
+    "POST examinations": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "report-8841",
+        "date": "2026-09-30T08:15:00+00:00",
+        "lab_name": "Meridian Labs",
+        "category": "Blood Test",
+        "diagnoses": [
+          "Iron deficiency"
+        ],
+        "notes": "Fasting panel"
+      }
+    },
+    "POST examinations/{exam_id}/documents": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "report-8841",
+        "filename": "panel-2026-09-30.pdf",
+        "data": "JVBERi0xLjQK",
+        "content_type": "application/pdf",
+        "include_in_extraction": true
+      }
+    },
+    "POST map": {
+      "auth": "hmac",
+      "requestExample": {
+        "unmapped_metrics": [
+          {
+            "name": "Serum iron",
+            "code": null
+          }
+        ]
+      }
+    },
+    "POST medications": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "med-21",
+        "code": {
+          "text": "Ferrous sulfate"
+        },
+        "status": "ACTIVE",
+        "intent": "order",
+        "dosage": "1 tablet daily",
+        "frequency": {
+          "repeat": {
+            "per": 1,
+            "unit": "d"
+          }
+        },
+        "reason": "Iron deficiency",
+        "start_date": "2026-10-01T00:00:00+00:00"
+      }
+    },
+    "POST notifications/read-all": {
+      "auth": "hmac"
+    },
+    "POST notifications/register-device": {
+      "auth": "hmac",
+      "requestExample": {
+        "device_id": "install-7f2a",
+        "platform": "unifiedpush",
+        "endpoint_url": "https://push.example/endpoint/abc",
+        "app_version": "2.1.0",
+        "user_agent": "HealthAssistant-Android/2.1.0"
+      }
+    },
+    "POST notifications/triggers": {
+      "auth": "hmac",
+      "requestExample": {
+        "rule_type": "biomarker_threshold",
+        "biomarker_id": "4d5e6f70-8192-43a4-b5c6-d7e8f9a0b1c2",
+        "operator": "lt",
+        "value": 60.0,
+        "severity": "warning",
+        "cooldown_minutes": 720
+      }
+    },
+    "POST sync": {
+      "auth": "hmac",
+      "requestExample": {
+        "client_version": "2.1.0",
+        "source_system": "myhealth",
+        "cursor": "2026-09-30T08:15:00+00:00",
+        "records": [
+          {
+            "type": "quantitative",
+            "code": "2711-0",
+            "coding_system": "loinc",
+            "name": "Serum Iron",
+            "value": 62.0,
+            "unit": "ug/dL",
+            "timestamp": "2026-09-30T08:15:00+00:00",
+            "reference_range": {
+              "low": 60.0,
+              "high": 170.0
+            }
+          }
+        ],
+        "examinations": [
+          {
+            "id": "report-8841",
+            "date": "2026-09-30T08:15:00+00:00",
+            "lab_name": "Meridian Labs",
+            "category": "Blood Test",
+            "diagnoses": [
+              "Iron deficiency"
+            ],
+            "records": [
+              {
+                "type": "quantitative",
+                "code": "2711-0",
+                "coding_system": "loinc",
+                "name": "Serum Iron",
+                "value": 62.0,
+                "unit": "ug/dL",
+                "timestamp": "2026-09-30T08:15:00+00:00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "POST vaccines": {
+      "auth": "hmac",
+      "requestExample": {
+        "id": "vax-3",
+        "vaccine_code": {
+          "text": "Influenza vaccine"
+        },
+        "status": "completed",
+        "administered_at": "2025-10-05T00:00:00+00:00",
+        "dose_number": "1",
+        "manufacturer": "Generic Bio"
+      }
+    },
+    "PUT allergies/{allergy_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "clinical_status": "RESOLVED"
+      }
+    },
+    "PUT clinical-events/{event_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "status": "RESOLVED",
+        "resolved_date": "2026-10-10T00:00:00+00:00"
+      }
+    },
+    "PUT doctors/{doctor_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "office_number": "3C"
+      }
+    },
+    "PUT medications/{medication_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "dosage": "2 tablets daily"
+      }
+    },
+    "PUT notifications/preferences/{kind_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "enabled": false
+      }
+    },
+    "PUT vaccines/{vaccine_id}": {
+      "auth": "hmac",
+      "requestExample": {
+        "note": "Booster due 2026-10"
+      }
+    }
+  },
+  "componentExamples": [
+    {
+      "route": "GET status",
+      "responseComponent": "BridgeStatus"
+    },
+    {
+      "route": "POST map",
+      "responseComponent": "MapResponse",
+      "requestComponent": "MapRequest"
+    },
+    {
+      "route": "POST sync",
+      "responseComponent": "SyncResponse",
+      "requestComponent": "SyncRequest"
+    },
+    {
+      "route": "POST ai/chat",
+      "responseComponent": "ChatTurnResult",
+      "requestComponent": "ChatTurnRequest"
+    },
+    {
+      "route": "PATCH ai/sessions/{session_id}",
+      "responseComponent": "SessionRenameResult",
+      "requestComponent": "SessionRenameRequest"
+    },
+    {
+      "route": "POST ai/transcribe",
+      "responseComponent": "TranscriptionResult",
+      "requestComponent": "TranscribeRequest"
+    },
+    {
+      "route": "POST ai/sessions/{session_id}/tasks/{proposal_id}/resolve",
+      "responseComponent": "ResolveTaskResult",
+      "requestComponent": "ResolveTaskRequest"
+    },
+    {
+      "route": "GET ai/sessions/{session_id}/messages",
+      "responseComponent": "MessagesResponse"
+    },
+    {
+      "route": "GET ai/sessions",
+      "responseComponent": "SessionListResponse"
+    },
+    {
+      "route": "POST examinations",
+      "responseComponent": "ExaminationCreated",
+      "requestComponent": "ExaminationCreateRequest"
+    },
+    {
+      "route": "GET examinations",
+      "responseComponent": "ExaminationSummary"
+    },
+    {
+      "route": "GET examinations/{exam_id}",
+      "responseComponent": "ExaminationDetail"
+    },
+    {
+      "route": "GET observations",
+      "responseComponent": "ObservationPoint"
+    },
+    {
+      "route": "GET observations/latest",
+      "responseComponent": "ObservationPoint"
+    },
+    {
+      "route": "GET biomarkers",
+      "responseComponent": "BiomarkerSummary"
+    },
+    {
+      "route": "GET documents",
+      "responseComponent": "DocumentSummary"
+    },
+    {
+      "route": "GET documents/{doc_id}/text",
+      "responseComponent": "DocumentText"
+    },
+    {
+      "route": "GET medications",
+      "responseComponent": "Medication"
+    },
+    {
+      "route": "GET allergies",
+      "responseComponent": "Allergy"
+    },
+    {
+      "route": "GET vaccines",
+      "responseComponent": "Vaccine"
+    },
+    {
+      "route": "GET clinical-events",
+      "responseComponent": "ClinicalEventSummary"
+    },
+    {
+      "route": "GET doctors",
+      "responseComponent": "Doctor"
+    },
+    {
+      "route": "GET changes",
+      "responseComponent": "ChangesResponse"
+    },
+    {
+      "route": "GET notifications/inbox",
+      "responseComponent": "InboxResponse"
+    },
+    {
+      "route": "GET notifications/unread-count",
+      "responseComponent": "UnreadCount"
+    },
+    {
+      "route": "POST notifications/read-all",
+      "responseComponent": "ReadAllResult"
+    },
+    {
+      "route": "GET notifications/preferences",
+      "responseComponent": "NotificationKind"
+    },
+    {
+      "route": "PUT notifications/preferences/{kind_id}",
+      "responseComponent": "PreferenceToggleResult",
+      "requestComponent": "PreferenceToggleRequest"
+    },
+    {
+      "route": "GET notifications/triggers",
+      "responseComponent": "NotificationTrigger"
+    },
+    {
+      "route": "POST notifications/triggers",
+      "responseComponent": "TriggerCreateResult",
+      "requestComponent": "TriggerCreateRequest"
+    },
+    {
+      "route": "PATCH notifications/{recipient_id}/{action}",
+      "responseComponent": "StatusAck"
+    },
+    {
+      "route": "POST notifications/register-device",
+      "responseComponent": "MobilePushTarget",
+      "requestComponent": "DeviceRegistrationRequest"
+    },
+    {
+      "route": "GET devices",
+      "responseComponent": "MobilePushTarget"
+    },
+    {
+      "route": "DELETE medications/{medication_id}",
+      "responseComponent": "DeleteResult"
+    },
+    {
+      "route": "POST medications",
+      "responseComponent": "Medication",
+      "requestComponent": "MedicationCreateRequest"
+    },
+    {
+      "route": "PUT medications/{medication_id}",
+      "responseComponent": "Medication",
+      "requestComponent": "MedicationUpdateRequest"
+    },
+    {
+      "route": "POST doctors",
+      "responseComponent": "Doctor",
+      "requestComponent": "DoctorCreateRequest"
+    }
+  ],
+  "errors": [
+    {
+      "status": 404,
+      "typed": true,
+      "body": {
+        "detail": {
+          "code": "not_found",
+          "message": "Examination not found for this patient."
+        }
+      }
+    },
+    {
+      "status": 409,
+      "typed": true,
+      "body": {
+        "detail": {
+          "code": "turn_conflict",
+          "message": "A turn is already running for this session."
+        }
+      }
+    },
+    {
+      "status": 409,
+      "typed": true,
+      "body": {
+        "detail": {
+          "code": "hitl_conflict",
+          "message": "This task was already resolved."
+        }
+      }
+    },
+    {
+      "status": 400,
+      "typed": true,
+      "body": {
+        "detail": {
+          "code": "validation",
+          "message": "message is required"
+        }
+      }
+    },
+    {
+      "status": 502,
+      "typed": true,
+      "body": {
+        "detail": {
+          "code": "stt_failed",
+          "message": "Upstream transcription failed."
+        }
+      }
+    },
+    {
+      "status": 400,
+      "typed": false,
+      "body": {
+        "detail": "No updatable fields supplied."
+      },
+      "note": "A bare ValueError reaches the proxy → 400 with a plain-string detail (typed:false; SDKs surface code: undefined)"
+    },
+    {
+      "status": 401,
+      "typed": false,
+      "body": {
+        "detail": "Invalid or missing X-Api-Signature."
+      },
+      "note": "Fail-closed auth (also: missing X-Api-Timestamp, or no api_secret configured)"
+    },
+    {
+      "status": 400,
+      "typed": false,
+      "body": {
+        "detail": "Path 'nope' with method 'GET' is not supported by the bridge API."
+      },
+      "note": "Unmatched route (NotImplementedError → 400)"
+    }
+  ],
+  "stream": {
+    "route": "POST ai/chat/stream",
+    "resumeRoute": "POST ai/sessions/{session_id}/resume",
+    "frames": [
+      {
+        "event": "flow_started",
+        "payload": {
+          "event": "flow_started",
+          "flow": "chat",
+          "run_id": "r-1"
+        },
+        "line": "data: {\"event\":\"flow_started\",\"flow\":\"chat\",\"run_id\":\"r-1\"}"
+      },
+      {
+        "event": "node_started",
+        "payload": {
+          "event": "node_started",
+          "node": "agent"
+        },
+        "line": "data: {\"event\":\"node_started\",\"node\":\"agent\"}"
+      },
+      {
+        "event": "session",
+        "payload": {
+          "event": "session",
+          "session_id": "9c1b2c3d-4e5f-4061-8273-84a5b6c7d8e9"
+        },
+        "line": "data: {\"event\":\"session\",\"session_id\":\"9c1b2c3d-4e5f-4061-8273-84a5b6c7d8e9\"}"
+      },
+      {
+        "event": "citation",
+        "payload": {
+          "event": "citation",
+          "source": "search_observations"
+        },
+        "line": "data: {\"event\":\"citation\",\"source\":\"search_observations\"}"
+      },
+      {
+        "event": "task",
+        "payload": {
+          "event": "task",
+          "task": {
+            "id": "t1a2b3c4-5d6e-4071-8293-b4c5d6e7f8a9",
+            "kind": "confirmation",
+            "title": "Log 500mg ferrous sulfate?"
+          }
+        },
+        "line": "data: {\"event\":\"task\",\"task\":{\"id\":\"t1a2b3c4-5d6e-4071-8293-b4c5d6e7f8a9\",\"kind\":\"confirmation\",\"title\":\"Log 500mg ferrous sulfate?\"}}"
+      },
+      {
+        "event": "delta",
+        "payload": {
+          "event": "delta",
+          "text": "Your average sleep moved from 6.9h to 7.4h."
+        },
+        "line": "data: {\"event\":\"delta\",\"text\":\"Your average sleep moved from 6.9h to 7.4h.\"}"
+      },
+      {
+        "event": "tool_call",
+        "payload": {
+          "event": "tool_call",
+          "id": "t1",
+          "name": "search_observations",
+          "status": "completed",
+          "duration_ms": 412
+        },
+        "line": "data: {\"event\":\"tool_call\",\"id\":\"t1\",\"name\":\"search_observations\",\"status\":\"completed\",\"duration_ms\":412}"
+      },
+      {
+        "event": "node_finished",
+        "payload": {
+          "event": "node_finished",
+          "node": "agent",
+          "outcome": "ok"
+        },
+        "line": "data: {\"event\":\"node_finished\",\"node\":\"agent\",\"outcome\":\"ok\"}"
+      },
+      {
+        "event": "flow_finished",
+        "payload": {
+          "event": "flow_finished",
+          "run_id": "r-1",
+          "model": "local",
+          "total_ms": 2310,
+          "tool_count": 1
+        },
+        "line": "data: {\"event\":\"flow_finished\",\"run_id\":\"r-1\",\"model\":\"local\",\"total_ms\":2310,\"tool_count\":1}"
+      },
+      {
+        "event": "keep-alive",
+        "payload": null,
+        "line": ": keep-alive",
+        "note": "Mandated-ignorable SSE comment emitted after SSE_HEARTBEAT_SECONDS of silence"
+      },
+      {
+        "event": "flow_failed",
+        "payload": {
+          "event": "flow_failed",
+          "retryable": false,
+          "code": "guard",
+          "message": "message is too long (8000 char cap)"
+        },
+        "line": "data: {\"event\":\"flow_failed\",\"retryable\":false,\"code\":\"guard\",\"message\":\"message is too long (8000 char cap)\"}"
+      },
+      {
+        "event": "flow_failed",
+        "payload": {
+          "event": "flow_failed",
+          "retryable": true,
+          "code": "rate_limit",
+          "message": ""
+        },
+        "line": "data: {\"event\":\"flow_failed\",\"retryable\":true,\"code\":\"rate_limit\",\"message\":\"\"}"
+      }
+    ]
+  }
+}

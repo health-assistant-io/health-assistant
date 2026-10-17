@@ -17,6 +17,30 @@ HMAC signature; see [Authentication](authentication.md). `GET /status` alone
 also answers **unsigned**, with a minimal liveness payload (least-privilege
 by design: an unpaired client learns nothing beyond liveness + server time).
 
+## Machine-readable schema (schema-first authoring)
+
+The served surface is formalized as a published sub-API schema, extracted
+from the provider's live route table and payload models
+(`backend/scripts/export_bridge_schema.py` — the generator refuses to
+restate; routes, request/response components, the typed error vocabulary,
+the SSE stream event vocabulary and the `/status` feature-flag handshake
+are all derived from code):
+
+```
+GET {base_url}/api/v1/integrations/health_assistant_bridge/schema
+```
+
+Authenticated (any logged-in user, like the documentation endpoint); carries
+no secrets. Authoring loop (plan 32 D11): **change the provider → regenerate
+the schema (`--update`) in the same commit → regenerate the SDK model layers
+(`integrations/health-assistant-bridge/scripts/generate_{python_models.py,ts_models.mjs}`)**
+— CI runs all three with `--check` and fails on drift. The cross-SDK
+fixtures (`schema/fixtures.json`) are generated from the schema and consumed
+unchanged by the python, TypeScript and Kotlin conformance suites: the
+implementations may differ, the outputs may not. The Errors table below is
+machine-pinned by the schema's extracted `BridgeError` vocabulary — adding a
+code without the schema update fails CI.
+
 ---
 
 ## GET /status
@@ -674,7 +698,10 @@ HTTP status carried by the error and a JSON object detail:
 ```
 
 **Code vocabulary (closed set).** Adding a new code requires updating this
-table **in the same commit**:
+table **in the same commit** — and the vocabulary is machine-pinned: the
+published schema's `errors.codes` is extracted from the live
+`BridgeError(...)` sites, so a code change without the schema regeneration
+(`scripts/export_bridge_schema.py --update`) fails the CI drift gate:
 
 | Code | HTTP | Raised when |
 |---|---|---|

@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (integrations — the bridge goes schema-first, plan 32 D11 / ADR-0040 Phase-6 close)
+- **The bridge sub-API is now schema-first.** The provider's route table is
+  extracted into a machine-readable schema (66 routes, 118 payload/error/
+  stream-event components, the HMAC auth classes, the `BridgeError` code
+  vocabulary, the SSE flow-event vocabulary and the `/status`
+  feature-flag handshake — all derived from live code, never restated) and
+  published at `GET /api/v1/integrations/health_assistant_bridge/schema`
+  (authenticated, like the documentation endpoint). The official python
+  and TypeScript SDKs gain generated model layers
+  (`generated_models.py` / `generated-models.ts`: payloads, typed error
+  codes, stream event types) regenerated from the schema by committed
+  family-internal scripts — signing, retry and SSE transports are unchanged
+  hand-written code, and no existing SDK API moved. CI gains a drift gate
+  (schema + both model layers regenerate byte-identically or the build
+  fails). One cross-SDK fixture set (`schema/fixtures.json`), generated
+  from the schema, is consumed by new conformance suites in all three SDKs;
+  the Kotlin models stay hand-written against it (no family-internal Kotlin
+  codegen — recorded with its future path in the plan ledger). Zero wire
+  changes: the only provider edit hoists the `bridge_features` list into a
+  module constant the handler already returned.
+
 ### Changed (integrations — the settings surfaces render through the family kit)
 - **The integrations UI swaps onto the `@neuronection/assistant-ui`
   integrations kit** (plan 33 Phase D / ADR-0040 D25): the browse modal's

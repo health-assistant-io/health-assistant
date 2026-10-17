@@ -4,11 +4,23 @@ The Bridge ships three strictly-typed client SDKs in the repository — you don'
 
 | SDK | Location | Package | Use cases |
 |---|---|---|---|
-| Python (sync + async) | `integrations/health_assistant_bridge/python-sdk/` | `health-assistant-bridge-sdk` | backend scrapers, cron jobs, data-science notebooks |
-| TypeScript | `integrations/health_assistant_bridge/ts-sdk/` | `@health-assistant/bridge-client` | browser extensions, React Native, Node.js scripts |
-| Kotlin | `integrations/health_assistant_bridge/kotlin-sdk/` | `io.healthassistant:kotlin-sdk` | Android (and future iOS via KMP) companion apps |
+| Python (sync + async) | `integrations/health-assistant-bridge/python-sdk/` | `health-assistant-bridge-sdk` | backend scrapers, cron jobs, data-science notebooks |
+| TypeScript | `integrations/health-assistant-bridge/ts-sdk/` | `@health-assistant/bridge-client` | browser extensions, React Native, Node.js scripts |
+| Kotlin | `integrations/health-assistant-bridge/kotlin-sdk/` | `io.healthassistant:kotlin-sdk` | Android (and future iOS via KMP) companion apps |
 
 All three SDKs are versioned (`SDK_VERSION`) and the signed `/status` tier returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
+
+**Schema-first model layers (plan 32 D11).** The payload models, typed error
+codes and stream event types regenerate from the published sub-API schema
+([API Reference](api-reference.md#machine-readable-schema-schema-first-authoring)):
+`integrations/health-assistant-bridge/scripts/generate_python_models.py`
+emits `python-sdk/.../generated_models.py`, `generate_ts_models.mjs` emits
+`ts-sdk/src/generated-models.ts`; CI runs both with `--check` (drift gate)
+alongside the schema regeneration. The hand-written transports — HMAC
+signing, full-jitter retry, the SSE line readers — are the sanctioned
+hybrid (D11) and stay hand-maintained; the Kotlin models stay hand-written
+with their own schema-conformance suite
+(`SchemaConformanceTest.kt`) consuming the same cross-SDK fixtures.
 
 ## Python
 

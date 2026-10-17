@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 # Per-request document upload byte cap for the bridge's /documents path.
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
+# The closed feature-flag vocabulary the signed status handshake serves as
+# ``bridge_features`` (flags, not semver math, drive client gating). Single
+# source of truth for ``_api_status`` and the exported sub-API schema.
+BRIDGE_FEATURES: list[str] = [
+    "exam_enrichment",  # enriched exam list/detail (2026-10-10)
+    "ai_assistant",  # /ai/* chat paths (R7 P1)
+    "ai_streaming",  # POST /ai/chat/stream SSE (R7 P2)
+]
+
 
 def _flatten_reference_range(raw: Any) -> dict[str, float] | None:
     """Normalize a stored ``reference_range`` to the flat ``{low, high}`` shape.
@@ -539,11 +548,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             # Flags (not semver math) drive gating — an older server
             # simply omits `bridge_features` and the app degrades.
             "server_version": settings.VERSION,
-            "bridge_features": [
-                "exam_enrichment",  # enriched exam list/detail (2026-10-10)
-                "ai_assistant",  # /ai/* chat paths (R7 P1)
-                "ai_streaming",  # POST /ai/chat/stream SSE (R7 P2)
-            ],
+            "bridge_features": list(BRIDGE_FEATURES),
         }
 
     async def _api_map(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
