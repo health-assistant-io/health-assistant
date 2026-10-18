@@ -15,6 +15,18 @@ from app.extensions.sdk.fhir import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _synthetic_dns(monkeypatch):
+    """Synthetic hosts (``ehr``, ``portal.example``…) resolve to a fixed
+    public address: fetches fail CLOSED on resolution failure since the
+    2026-10-18 evaluation's H2 fix, so the mocked-transport suites pin
+    the name the guard checks (the transport then sees the pinned IP —
+    path/query assertions are unaffected)."""
+    from app.extensions import polite_http
+
+    monkeypatch.setattr(polite_http, "_default_resolver", lambda host: ["93.184.216.34"])
+
+
 def _client(handler):
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 

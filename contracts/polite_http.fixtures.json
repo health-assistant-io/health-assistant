@@ -153,12 +153,38 @@
     {
       "name": "ssrf-denied-userinfo-url",
       "group": "ssrf-denied",
-      "because": "Credentials in URLs are denied (no basic-auth smuggling).",
+      "because": "Credentials in URLs are denied (no basic-auth smuggling) — and the denial detail carries the URL REDACTED (userinfo masked, query dropped): details cross logs and trust seams (2026-10-18 evaluation H1b).",
       "routes": [],
       "steps": [
         {
-          "request": {"url": "https://user:pass@good.example/feed"},
-          "expect": {"error": {"code": "net-denied"}, "seenPaths": []}
+          "request": {"url": "https://user:pass@good.example/feed?tok=secret-payload"},
+          "expect": {
+            "error": {"code": "net-denied"},
+            "seenPaths": [],
+            "detailContains": "***@good.example/feed",
+            "detailNotContains": ["pass", "secret-payload", "user:"]
+          }
+        }
+      ]
+    },
+    {
+      "name": "ssrf-denied-redirect-userinfo-reflection-redacted",
+      "group": "redirects",
+      "because": "An upstream that reflects a received credential into a redirect target's userinfo is denied at the next-hop guard, and the denial detail never echoes it back (H1b: the reflection channel the seam scrub exists for).",
+      "resolver": {"good.example": ["93.184.216.34"]},
+      "routes": [
+        {"match": "/start", "status": 302, "headers": {"Location": "https://u:reflected-secret@good.example/sink"}},
+        {"match": "/sink", "status": 200, "text": "never"}
+      ],
+      "config": {"respectRobots": false},
+      "steps": [
+        {
+          "request": {"url": "https://good.example/start"},
+          "expect": {
+            "error": {"code": "net-denied"},
+            "seenPaths": ["/start"],
+            "detailNotContains": ["reflected-secret"]
+          }
         }
       ]
     },

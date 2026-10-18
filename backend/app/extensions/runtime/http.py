@@ -7,7 +7,12 @@ Everything outbound from a bundled T1 extension funnels through
 every address, reserved ranges, numeric-literal obfuscations, injectable
 resolver, off the event loop) re-run on EVERY redirect hop (stricter than
 health's history: a redirect to a private target now fails loudly as
-``net-denied`` instead of being followed), the full-jitter retry core
+``net-denied`` instead of being followed) with the guard-checked address
+PINNED into the request (``polite_http.pinned_request_parts`` — original
+Host header, TLS SNI/verification against the real hostname) so httpx
+never re-resolves at connect (the DNS-rebind TOCTOU, 2026-10-18
+evaluation H2); a resolution failure during a fetch fails CLOSED
+(``unreachable``). The full-jitter retry core
 with RFC 7231 Retry-After in both forms, the 401/403-immediate +
 429/5xx-retried + others-returned status policy, and the charter typed
 errors (:class:`app.extensions.errors.ExtensionError`).
@@ -100,35 +105,60 @@ async def guarded_request(
 ) -> httpx.Response:
     """Run an HTTP request behind the full polite pipeline.
 
-    Policy (health parity, now per-hop): the SSRF guard validates the URL
-    before the request leaves the process AND every redirect target;
-    401/403 raise ``auth`` immediately; 429/5xx retry up to
-    ``max_retries`` (Retry-After honored over computed backoff, both RFC
-    7231 forms; the 429 payload surfaces as ``retry_after_ms``); network
-    errors retry then raise ``unreachable``; every other status is
-    RETURNED to the caller (which decides — e.g. FHIR conditional-update
-    treats 412 as a non-error tuple).
+    Policy (health parity, now per-hop AND pinned): the SSRF guard
+    resolves and validates the URL before the request leaves the
+    process, and the request is sent to the PINNED guard-checked
+    address (``polite_http.pinned_request_parts`` — original Host header
+    + TLS SNI/verification against the real hostname), closing the
+    DNS-rebind TOCTOU where httpx would re-resolve at connect
+    (2026-10-18 evaluation, H2); every redirect target is re-guarded
+    and re-pinned; a resolution failure DURING A FETCH fails closed
+    (typed ``unreachable``) — the best-effort allow is a pre-check
+    semantic only; 401/403 raise ``auth`` immediately; 429/5xx retry up
+    to ``max_retries`` (Retry-After honored over computed backoff, both
+    RFC 7231 forms; the 429 payload surfaces as ``retry_after_ms``);
+    network errors retry then raise ``unreachable``; every other status
+    is RETURNED to the caller (which decides — e.g. FHIR
+    conditional-update treats 412 as a non-error tuple).
     """
     guard = net_guard_config(allow_private=allow_private)
     current = url
     hop = 0
     while True:
         try:
-            await asyncio.to_thread(polite_http.check_url, current, config=guard, resolver=resolver)
+            resolved = await asyncio.to_thread(
+                polite_http.check_url, current, config=guard, resolver=resolver
+            )
         except polite_http.PoliteHttpError as exc:
             raise ExtensionError.from_polite(exc) from exc
+        if not resolved:
+            # A FETCH fails closed on resolution failure: sending by name
+            # here is exactly the rebinding window the pin closes (a
+            # guard-time SERVFAIL answering private at connect). The
+            # documented best-effort allow stays a PRE-CHECK semantic
+            # (synthetic test hosts — see assert_safe_url).
+            host = urlparse(current).hostname or current
+            raise ExtensionError(
+                "unreachable", f"could not resolve {host} — failing closed (no pin)"
+            )
+        request_url, pin_headers, pin_extensions = polite_http.pinned_request_parts(
+            current, resolved
+        )
 
         attempt = 0
         last_retry_after: float | None = None
         while True:
+            merged_headers = {**(headers or {}), **pin_headers}
             request = client.build_request(
                 method,
-                current,
-                headers=dict(headers or {}),
+                request_url,
+                headers=merged_headers,
                 params=params,
                 json=json_body,
                 data=data,
             )
+            if pin_extensions:
+                request.extensions.update(pin_extensions)
             try:
                 response = await client.send(request)
             except (httpx.RequestError, OSError) as exc:

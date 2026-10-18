@@ -96,6 +96,7 @@ __all__ = [
     "conditional_headers",
     "merge_cache_state",
     "host_matches_domain",
+    "pinned_request_parts",
     "polite_get",
 ]
 
@@ -243,6 +244,23 @@ def _coerce_numeric_host(host: str) -> _IpAddr | None:
         return None
 
 
+def _safe_url_for_detail(url: str) -> str:
+    """URL form safe to embed in error details: userinfo masked to
+    ``***``, query and fragment dropped. Details cross logs and trust
+    seams (a T2 pack reads them back over the capability seam), and URLs
+    are exactly where credentials and tokens ride — including upstream
+    redirect targets the caller never authored (2026-10-18 evaluation,
+    H1b). Host and path stay visible for debugging."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    netloc = host
+    if host and parsed.port:
+        netloc = f"{host}:{parsed.port}"
+    if host and (parsed.username or parsed.password):
+        netloc = f"***@{netloc}"
+    return parsed._replace(netloc=netloc, query="", fragment="").geturl()
+
+
 def check_url(
     url: str,
     *,
@@ -253,23 +271,31 @@ def check_url(
 
     Raises :class:`PoliteHttpError` ``net-denied`` (non-retryable
     config-class) when the scheme is not http/https, the URL has no
-    host, or the host is (or resolves to) a blocked address. A DNS name
-    that fails to resolve is ALLOWED best-effort — blocking there would
-    break air-gapped runs and synthetic test hostnames, and the request
-    itself fails loudly if the host is genuinely unreachable (health's
-    documented rationale, preserved).
+    host, the URL carries userinfo credentials, or the host is (or
+    resolves to) a blocked address. A DNS name that fails to resolve is
+    ALLOWED best-effort — blocking there would break air-gapped runs and
+    synthetic test hostnames, and the request itself fails loudly if the
+    host is genuinely unreachable (health's documented rationale,
+    preserved).
+
+    Guard-denial details embed the URL only through
+    :func:`_safe_url_for_detail` (userinfo masked, query and fragment
+    dropped): details cross logs and trust seams, and URLs are where
+    credentials and tokens ride (2026-10-18 evaluation, H1b).
     """
     cfg = config or NetGuardConfig()
     parsed = urlparse(url)
     if parsed.scheme not in _SCHEME_ALLOWLIST:
         raise PoliteHttpError(
-            "net-denied", f"unsupported scheme {parsed.scheme!r} in {url!r}"
+            "net-denied", f"unsupported scheme {parsed.scheme!r} in {_safe_url_for_detail(url)}"
         )
     host = parsed.hostname or ""
     if not host:
-        raise PoliteHttpError("net-denied", f"no host in {url!r}")
+        raise PoliteHttpError("net-denied", f"no host in {_safe_url_for_detail(url)}")
     if parsed.username or parsed.password:
-        raise PoliteHttpError("net-denied", f"credentials in URL are not allowed: {url!r}")
+        raise PoliteHttpError(
+            "net-denied", f"credentials in URL are not allowed: {_safe_url_for_detail(url)}"
+        )
     host_lower = host.lower()
 
     bypass = (
@@ -589,11 +615,15 @@ async def _read_capped(response, max_bytes: int) -> tuple[str, bool]:
     return raw.decode(encoding, errors="replace"), truncated
 
 
-def _pinned_request_parts(url: str, resolved: list[str]) -> tuple[str, dict[str, str], dict[str, object]]:
+def pinned_request_parts(url: str, resolved: list[str]) -> tuple[str, dict[str, str], dict[str, object]]:
     """Pin the connect target to the guard-checked address (DNS-rebinding
     TOCTOU mitigation): URL host → checked IP, ``Host`` header keeps the
     original name (virtual-host CDNs), ``sni_hostname`` extension keeps
-    TLS certificate validation against the real hostname."""
+    TLS certificate validation against the real hostname. Hosts wire
+    their guarded transports onto this (health's ``guarded_request`` —
+    the 2026-10-18 evaluation's H2); an empty resolution list or an
+    IP-literal host pins nothing (the caller decides fail-closed
+    semantics for the former)."""
     parsed = urlparse(url)
     host = parsed.hostname or ""
     if not resolved:
@@ -609,6 +639,9 @@ def _pinned_request_parts(url: str, resolved: list[str]) -> tuple[str, dict[str,
         netloc = f"{netloc}:{parsed.port}"
     rewritten = parsed._replace(netloc=netloc).geturl()
     return rewritten, {"host": host}, {"sni_hostname": host}
+
+
+_pinned_request_parts = pinned_request_parts
 
 
 async def polite_get(
@@ -719,7 +752,7 @@ async def polite_get(
         extra_headers: dict[str, str] = {}
         extensions: dict[str, object] = {}
         if cfg.pin_resolved_address:
-            request_url, extra_headers, extensions = _pinned_request_parts(current, resolved)
+            request_url, extra_headers, extensions = pinned_request_parts(current, resolved)
 
         import httpx as _httpx  # runtime-only: keeps module import stdlib-clean
 

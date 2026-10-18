@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (security — the outbound transport actually pins what the guard checked)
+- **`guarded_request` now sends to the PINNED guard-checked address, and
+  a fetch fails closed when resolution fails.** The guard ran, then
+  discarded its resolution — httpx re-resolved at connect, so the
+  DNS-rebinding TOCTOU was open on every FHIR/OAuth egress (a name
+  answering public-at-check / private-at-connect connected unchecked),
+  and a guard-time resolution failure fell through best-effort to an
+  unchecked by-name connect (an external security evaluation,
+  2026-10-18). The request now goes to the checked IP with the original
+  `Host` header and TLS SNI/certificate validation against the real
+  hostname (`polite_http.pinned_request_parts`, now public in the
+  vendored runtime), every redirect hop re-guards AND re-pins, and a
+  resolution failure during a fetch raises typed `unreachable` — the
+  documented best-effort allow stays a pre-check semantic only. New
+  walls execute this host's adapter (the vendored fixture wall never
+  did): the rebind scenario (public-at-check/private-at-connect) pins to
+  the checked IP, Host/SNI correctness is asserted on the wire, redirect
+  hops re-pin, and NXDOMAIN sends nothing.
+
 ### Fixed (integrations)
 - **`GET /integrations/instance/{id}/details` no longer echoes the
   `api_secret` ciphertext wrapper.** Instances of inbound-capable
@@ -31,6 +50,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   apply): pushed wearable data landed with a NULL relational patient
   and was invisible to the patient-scoped reads in multi-patient
   tenants. All three persist paths now share one coercion helper.
+
+### Changed (docs — README raw HTML removed for the safe website pipeline)
+- **`README.md` no longer uses raw HTML** (centered div wrappers,
+  `<picture>` logo blocks, hand-rolled tables, `<br>` spacing): the
+  website renders this README as the "Getting started" docs page, and
+  its markdown pipeline now renders raw HTML as escaped text by design
+  (an external security evaluation, 2026-10-18 — a committed `<script>`
+  used to serialize into executable static HTML). Everything converts to
+  standard markdown (GFM tables, markdown images/links) — GitHub
+  rendering is preserved; dark-mode `<picture>` logo variants collapse
+  to the light variants.
 
 ### Changed (docs — the integration SDK re-chaptered into the ten-chapter set + bridge quickstarts)
 - **`docs/dev/extensions.md` is now the chaptered integration-SDK doc set

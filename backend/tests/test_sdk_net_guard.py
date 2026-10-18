@@ -134,7 +134,7 @@ async def test_401_raises_auth_immediately(monkeypatch):
 
     async with _client(handler) as client:
         with pytest.raises(ExtensionError) as exc_info:
-            await guarded_request(client, "GET", "https://api.example.com/token")
+            await guarded_request(client, "GET", "https://api.example.com/token", resolver=RESOLVER)
     assert exc_info.value.code == "auth"
     assert len(calls) == 1  # never retried
 
@@ -155,7 +155,9 @@ async def test_429_exhaustion_raises_rate_limited_with_hint(monkeypatch):
 
     async with _client(handler) as client:
         with pytest.raises(ExtensionError) as exc_info:
-            await guarded_request(client, "GET", "https://api.example.com/fhir", max_retries=2)
+            await guarded_request(
+                client, "GET", "https://api.example.com/fhir", max_retries=2, resolver=RESOLVER
+            )
     assert exc_info.value.code == "rate-limited"
     assert exc_info.value.retry_after_ms == 30000
     assert exc_info.value.retryable == "after-delay"
@@ -177,7 +179,9 @@ async def test_5xx_exhaustion_raises_provider(monkeypatch):
 
     async with _client(handler) as client:
         with pytest.raises(ExtensionError) as exc_info:
-            await guarded_request(client, "GET", "https://api.example.com/fhir", max_retries=2)
+            await guarded_request(
+                client, "GET", "https://api.example.com/fhir", max_retries=2, resolver=RESOLVER
+            )
     assert exc_info.value.code == "provider"
 
 
@@ -197,7 +201,9 @@ async def test_network_errors_exhaust_to_unreachable(monkeypatch):
 
     async with _client(handler) as client:
         with pytest.raises(ExtensionError) as exc_info:
-            await guarded_request(client, "GET", "https://api.example.com/fhir", max_retries=2)
+            await guarded_request(
+                client, "GET", "https://api.example.com/fhir", max_retries=2, resolver=RESOLVER
+            )
     assert exc_info.value.code == "unreachable"
     assert exc_info.value.retryable == "yes"
 
@@ -216,7 +222,9 @@ async def test_other_statuses_returned_to_caller(monkeypatch):
         return httpx.Response(412, json={"resourceType": "OperationOutcome"})
 
     async with _client(handler) as client:
-        response = await guarded_request(client, "PUT", "https://api.example.com/Observation")
+        response = await guarded_request(
+            client, "PUT", "https://api.example.com/Observation", resolver=RESOLVER
+        )
     assert response.status_code == 412
 
 
@@ -239,7 +247,7 @@ async def test_redirect_to_private_target_is_net_denied(monkeypatch):
     monkeypatch.setattr(runtime_http, "get_settings", lambda: _S)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "api.example.com":
+        if request.headers.get("host") == "api.example.com":
             return httpx.Response(302, headers={"Location": "http://169.254.169.254/meta-data/"})
         return httpx.Response(200, text="should never be reached")
 
@@ -277,3 +285,119 @@ async def test_public_redirect_is_followed_and_guarded_per_hop(monkeypatch):
 
 async def _instant_sleep(_seconds: float) -> None:
     return None
+
+
+# ---------------------------------------------------------------------------
+# resolve-then-connect pinning + fetch fail-closed (2026-10-18 evaluation H2)
+#
+# The guard's resolution used to be DISCARDED — httpx re-resolved at
+# connect, so the DNS-rebind TOCTOU the vendored pin exists to close was
+# open on every FHIR/OAuth egress, and a guard-time resolution failure
+# fell through best-effort to an unchecked by-name connect. These walls
+# execute HEALTH'S adapter (the vendored 49 cases never did).
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_pins_the_guard_checked_address(monkeypatch):
+    """The DNS-rebind TOCTOU is closed: the transport sees the address
+    the GUARD checked, never a fresh resolution — a name answering
+    public-at-check / private-at-connect is never re-consulted. Host
+    header and TLS SNI keep the original hostname (virtual-host CDNs,
+    certificate validation)."""
+    from app.extensions.runtime import http as runtime_http
+
+    class _S:
+        INTEGRATION_ALLOWED_HOSTS = ""
+        INTEGRATION_BLOCK_PRIVATE_RANGES = True
+        INTEGRATION_ALLOW_PRIVATE = False
+
+    monkeypatch.setattr(runtime_http, "get_settings", lambda: _S)
+    calls = {"resolve": 0, "connects": []}
+
+    def rebind_resolver(host: str) -> list[str]:
+        calls["resolve"] += 1
+        # public at guard time; a rebinding DNS answers PRIVATE afterwards
+        return ["169.254.169.254"] if calls["resolve"] > 1 else ["93.184.216.34"]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["connects"].append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    async with _client(handler) as client:
+        response = await guarded_request(
+            client, "GET", "https://api.example.com/fhir", resolver=rebind_resolver
+        )
+    assert response.status_code == 200
+    assert calls["resolve"] == 1, "exactly one resolution — the guard's"
+    [connect] = calls["connects"]
+    assert str(connect.url.host) == "93.184.216.34", "connect target is the pinned checked IP"
+    assert connect.headers["host"] == "api.example.com", "Host header keeps the original name"
+    assert connect.extensions.get("sni_hostname") == "api.example.com", (
+        "TLS SNI/certificate validation against the original hostname"
+    )
+
+
+async def test_fetch_fails_closed_when_resolution_fails(monkeypatch):
+    """A FETCH fails closed on resolution failure (typed unreachable):
+    a guard-time SERVFAIL must not fall through to an unchecked by-name
+    connect. The documented best-effort allow survives only on the
+    pre-check (synthetic test hosts — pinned by the tests above)."""
+    from app.extensions.runtime import http as runtime_http
+
+    class _S:
+        INTEGRATION_ALLOWED_HOSTS = ""
+        INTEGRATION_BLOCK_PRIVATE_RANGES = True
+        INTEGRATION_ALLOW_PRIVATE = False
+
+    monkeypatch.setattr(runtime_http, "get_settings", lambda: _S)
+    left = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        left.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    def nxdomain(host: str) -> list[str]:
+        raise OSError(f"NXDOMAIN: {host}")
+
+    async with _client(handler) as client:
+        with pytest.raises(ExtensionError) as exc_info:
+            await guarded_request(client, "GET", "https://api.example.com/fhir", resolver=nxdomain)
+    assert exc_info.value.code == "unreachable"
+    assert exc_info.value.retryable == "yes"
+    assert left == [], "nothing left the process on a failed resolution"
+
+
+async def test_redirect_hop_repins_to_the_new_guard_checked_address(monkeypatch):
+    """Every redirect hop re-runs the guard AND re-pins: the second
+    connect targets the redirect host's checked address with its own
+    Host/SNI, so a redirect cannot smuggle a second rebind window."""
+    from app.extensions.runtime import http as runtime_http
+
+    class _S:
+        INTEGRATION_ALLOWED_HOSTS = ""
+        INTEGRATION_BLOCK_PRIVATE_RANGES = True
+        INTEGRATION_ALLOW_PRIVATE = False
+
+    monkeypatch.setattr(runtime_http, "get_settings", lambda: _S)
+    connects = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        connects.append(request)
+        if request.headers.get("host") == "api.example.com":
+            return httpx.Response(302, headers={"Location": "https://cdn.example.com/final"})
+        return httpx.Response(200, json={"ok": True})
+
+    resolver = _resolver(
+        {"api.example.com": ["93.184.216.34"], "cdn.example.com": ["93.184.216.35"]}
+    )
+    async with _client(handler) as client:
+        response = await guarded_request(
+            client, "GET", "https://api.example.com/start", resolver=resolver
+        )
+    assert response.status_code == 200
+    assert [str(r.url.host) for r in connects] == ["93.184.216.34", "93.184.216.35"]
+    assert [r.headers["host"] for r in connects] == ["api.example.com", "cdn.example.com"]
+    assert [r.extensions.get("sni_hostname") for r in connects] == [
+        "api.example.com",
+        "cdn.example.com",
+    ]
