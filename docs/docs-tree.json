@@ -136,16 +136,94 @@
         "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, document pull, rate-limit backoff, and notification digests."
       },
       {
-        "id": "extensions",
-        "file": "dev/extensions.md",
-        "title": "Extensions (Integrations SDK)",
-        "description": "Developer guide for Health Assistant extensions — the family extension charter surface: validated manifests with declared capabilities, the polite transport runtime, the typed error model, cursor sync, OAuth2+PKCE, webhook HMAC helpers, clinical events, examinations, catalog proposals, HITL review, document pull with DB dedup, and notification digests."
+        "id": "connect-integrations",
+        "file": "user/connect-integrations.md",
+        "title": "Connecting an integration",
+        "description": "The integrations catalog, instances, the config flow, OAuth authorize, and sync — how connections work in the app."
+      },
+      {
+        "id": "integration-security",
+        "file": "user/integration-security.md",
+        "title": "What you grant when you connect",
+        "description": "What an integration can and cannot do: declared capabilities, patient binding, encrypted secrets, the signed machine routes, and the audit trail."
+      },
+      {
+        "id": "integration-troubleshooting",
+        "file": "user/integration-troubleshooting.md",
+        "title": "Integration troubleshooting",
+        "description": "Connection, status, bridge pairing, signature and data-routing problems decoded — symptom, cause, fix."
       },
       {
         "id": "mobile-sync",
         "file": "MOBILE_SYNC.md",
         "title": "Mobile Sync (Android)",
         "description": "How the self-hosted, open-source Health Assistant Android app reads Health Connect data (heart rate, steps, weight, SpO2, sleep) and pushes it through the Bridge integration to your server — offline-first, privacy-first, no third-party cloud."
+      }
+    ]
+  },
+  {
+    "category": "Extension SDK",
+    "icon": "Puzzle",
+    "items": [
+      {
+        "id": "sdk-overview",
+        "file": "dev/sdk/overview.md",
+        "title": "Integration SDK: overview",
+        "description": "What the integration SDK is, the five bundled extensions, and when to write an extension instead of a core feature — the entry of the ten-chapter SDK doc set."
+      },
+      {
+        "id": "sdk-quickstart",
+        "file": "dev/sdk/quickstart.md",
+        "title": "Integration SDK: quickstart",
+        "description": "A scratch database, a dev server, the dev-dummy reference extension synced, and the observation lands — with a real transcript."
+      },
+      {
+        "id": "sdk-core-concepts",
+        "file": "dev/sdk/core-concepts.md",
+        "title": "Integration SDK: core concepts",
+        "description": "Extension, kind, capability, data class, instance, provider, config flow, sync — the load-bearing nouns and how they connect."
+      },
+      {
+        "id": "sdk-installation",
+        "file": "dev/sdk/installation-and-modes.md",
+        "title": "Integration SDK: install lifecycle internals",
+        "description": "Bundled-only steady state, the registry, admin gating, server/desktop modes and the on-disk layout."
+      },
+      {
+        "id": "sdk-authoring",
+        "file": "dev/sdk/authoring-and-configuration.md",
+        "title": "Integration SDK: authoring & configuration",
+        "description": "The manifest reference, config flows + x-secret, every capability hook, OAuth/SMART, webhook signatures, the two-way API, and building FHIR observations."
+      },
+      {
+        "id": "sdk-examples",
+        "file": "dev/sdk/examples-and-use-cases.md",
+        "title": "Integration SDK: examples & use cases",
+        "description": "Five complete recipes: the dev-dummy walkthrough, an HMAC webhook receiver, a SMART-on-FHIR sync, an MCP client connection, the bridge as mobile/headless transport."
+      },
+      {
+        "id": "sdk-security",
+        "file": "dev/sdk/security-and-gotchas.md",
+        "title": "Integration SDK: security & gotchas",
+        "description": "The trust posture, the secrets law, politeness and SSRF, the inbound chokepoint rules, and the gotchas authors actually hit."
+      },
+      {
+        "id": "sdk-reference",
+        "file": "dev/sdk/reference.md",
+        "title": "Integration SDK: reference",
+        "description": "The 15 extension error codes, the bridge error vocabulary, every endpoint, the admin API, status vocabularies, and the settings knobs."
+      },
+      {
+        "id": "sdk-versioning",
+        "file": "dev/sdk/versioning-and-migration.md",
+        "title": "Integration SDK: versioning & migration",
+        "description": "extension/v1 policy, append-only vocabularies, the no-shims doctrine, and what happens to an installed instance on a release."
+      },
+      {
+        "id": "sdk-troubleshooting",
+        "file": "dev/sdk/troubleshooting-and-faq.md",
+        "title": "Integration SDK: developer diagnostics & FAQ",
+        "description": "Every wall-tested failure mode decoded — pull hooks, the HMAC gate, the bridge SDKs, the /map loop — plus the real FAQ."
       }
     ]
   },

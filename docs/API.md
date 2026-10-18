@@ -611,7 +611,7 @@ Multi-layout dashboard persistence per `(patient_id, user_id)`. All routes pass
 
 The clinical-visit container. Holds documents, observations, medications, doctors,
 category concept, organization, and event links. Patient-access is enforced via
-`check_examination_access` (chains through `check_patient_access`](dev/extensions.md#310-clinical-events--examinations-opt-in-write-hooks).
+`check_examination_access` (chains through `check_patient_access`; see [write hooks](dev/sdk/authoring-and-configuration.md#clinical-events--examinations-write-hooks)).
 Responses include two optional integration-provenance fields
 (`source_integration_id`, `external_id`) populated only on rows written by an
 integration sync.
@@ -664,7 +664,7 @@ integration sync.
 | `POST` | `/clinical-events/types/{type_id}/biomarkers` | `get_current_user` | `BiomarkerCorrelationCreate` | — | Bind a biomarker (idempotent on pair). |
 | `DELETE` | `/clinical-events/types/{type_id}/biomarkers/{biomarker_id}` | `get_current_user` | — | `{message}` | Remove a correlation. |
 
-**Event instances** (the journey)dev/extensions.md#310-clinical-events--examinations-opt-in-write-hooks).
+**Event instances** (the journey); see [write hooks](dev/sdk/authoring-and-configuration.md#clinical-events--examinations-write-hooks)).
 Responses include two optional integration-provenance fields
 (`source_integration_id`, `external_id`) populated only on rows written by an
 integration sync.
@@ -1005,7 +1005,7 @@ telemetry split + OHLC aggregation are documented in
 ## Integrations
 
 The integrations surface lives at `/api/v1/integrations/*` (see
-[INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md)dev/extensions.md for building
+[INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) and the [integration SDK](dev/sdk/overview.md) for building
 custom providers). Two **tokenless** inbound routes are exposed for external
 systems that don't carry the platform JWT.
 
@@ -1035,9 +1035,11 @@ systems that don't carry the platform JWT.
 | `POST` | `/integrations/instance/{integration_id}/toggle-debug` | any | `patient_id` * | `{message, is_debug_enabled}` |  |
 | `DELETE` | `/integrations/instance/{integration_id}` | any | `patient_id` * | `{message}` | Best-effort revokes OAuth tokens (RFC 7009). |
 | `POST` | `/integrations/instance/{integration_id}/action/{action_id}` | any | `patient_id` * | provider ActionResult | 400 if the provider doesn't implement `execute_custom_action`. |
-| `POST` | `/integrations/instance/{integration_id}/rotate-secret` | any | — | `{secret}` | Regenerates the HMAC `api_secret` (shown once; stored Fernet-encrypted)dev/extensions.md#33-managed-exceptions--ui-feedback); 500 on other failures. Runs every opt-in hook the provider supports (events / exams / catalog-proposals / HITL-proposals / documents). |
+| `POST` | `/integrations/instance/{integration_id}/rotate-secret` | any | — | `{secret}` | Regenerates the HMAC `api_secret` (shown once; stored Fernet-encrypted); 500 on other failures. Runs every opt-in hook the provider supports (events / exams / catalog-proposals / HITL-proposals / documents). |
 
-### HITL proposals (review + resolve)dev/extensions.md#312-hitl-proposals-human-in-the-loop-catalog-review). Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook (§3.11) uses.
+### HITL proposals (review + resolve)
+
+Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook uses. See [HITL proposals](dev/sdk/authoring-and-configuration.md#hitl-proposals-human-review).
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
@@ -1064,7 +1066,7 @@ rejected with 401 (fail-closed). Bodies are capped at 40 MiB.
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `POST` | `/integrations/{domain}/webhook/{integration_id}` | **mandatory** HMAC via `webhook_secret` | raw Request body (≤40 MiB) | `{message, metrics_synced}` | Signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` tolerated). **Replay protection:** with `X-Webhook-Timestamp` the canonical timestamped scheme applies (±5-min skew); bare body-MACs are deduplicated via a 10-minute Redis replay guard. Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
-| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | **mandatory** HMAC via `api_secret` | raw Request body (≤40 MiB) | provider-defined | Two-way API proxy. Requires `X-Api-Signature` = HMAC-SHA256 of `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` **and** a mandatory `X-Api-Timestamp` (±5-min skew; no timestamp → 401). The MAC covers the **query string**, so query params can't be tampered on a captured request. `GET /status` without a signature returns only `{status, server_time}` (pairing probe + clock resync)dev/extensions.md#39-notifications-event-driven-rich-actionable
+| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | **mandatory** HMAC via `api_secret` | raw Request body (≤40 MiB) | provider-defined | Two-way API proxy. Requires `X-Api-Signature` = HMAC-SHA256 of `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` **and** a mandatory `X-Api-Timestamp` (±5-min skew; no timestamp → 401). The MAC covers the **query string**, so query params can't be tampered on a captured request. `GET /status` without a signature returns only `{status, server_time}` (pairing probe + clock resync); see [the typed errors](dev/sdk/reference.md#the-bridge-error-vocabulary-bridgeerror)
 for the notification-action contract.
 
 ---
@@ -1224,7 +1226,7 @@ text for easier debugging.
 - [TELEMETRY_AND_AGGREGATION.md](TELEMETRY_AND_AGGREGATION.md) — TimescaleDB telemetry split + OHLC aggregation
 - [TAXONOMY.md](TAXONOMY.md) — unified taxonomy / knowledge graph
 - [AI_SYSTEM.md](AI_SYSTEM.md) — AI provider factory, agentic chat, HITL wall
-- [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md)dev/extensions.md — integrations discovery + SDK
+- [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) — integrations discovery; the [integration SDK doc set](dev/sdk/overview.md) covers the SDK
 - [EXPORT_IMPORT.md](EXPORT_IMPORT.md) — backup format / scopes / restore
 
 When running locally, visit **http://localhost:8000/docs** (Swagger UI) or

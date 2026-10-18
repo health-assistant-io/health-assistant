@@ -165,6 +165,6 @@ doing:
 
 ## See also
 
-- [Integrations Framework](INTEGRATIONS_FRAMEWORK.md)dev/extensions.md — build a custom provider (the SDK the Bridge uses).
+- [Integrations Framework](INTEGRATIONS_FRAMEWORK.md) · [integration SDK](dev/sdk/overview.md) — the SDK the Bridge uses.
 - [API Access Layers](API_LAYERS.md) — the three API surfaces, incl. the bridge proxy.
 - [`integrations/health_assistant_bridge/docs/`](../integrations/health_assistant_bridge/docs/) — the bridge wire contract.

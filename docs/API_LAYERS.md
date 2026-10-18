@@ -59,7 +59,7 @@ can evolve without breaking the others.
 - **Connecting a wearable, a push-based service, or a platform with its own
   OAuth or polling model?** → Layer 3. Write an integration module under
   `backend/app/extensions/builtin/` using the SDK. See
-  [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md)dev/extensions.md.
+  [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md).
 - **A non-FHIR partner with no provider-specific sync model?** → Today, use
   Layer 2 (the facade is the only public REST surface). A curated non-FHIR
   REST subset exists only if/when a concrete partner requires it; it is not
@@ -150,6 +150,6 @@ an HMAC-shared-secret webhook. See
   (frontend / mobile).
 - [FHIR R4 Facade](FHIR_R4_FACADE.md) — the Layer 2 public interop surface,
   SMART scopes, and CapabilityStatement.
-- [Integrations Framework](INTEGRATIONS_FRAMEWORK.md)dev/extensions.md — building an integration module.
+- [Integrations Framework](INTEGRATIONS_FRAMEWORK.md) · [integration SDK](dev/sdk/overview.md) — building an integration module.
 - [Users, Tenants & Roles](TENANCY_AND_USER_MANAGEMENT.md) — the tenant +
   role model that underpins all three layers.

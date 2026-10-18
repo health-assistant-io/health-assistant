@@ -253,7 +253,7 @@ selected in the header.
   records.
 
 You can also receive data from any custom script via the **webhook**
-integration (HMAC-verified)dev/extensions.md.
+integration (HMAC-verified).
 
 ---
 

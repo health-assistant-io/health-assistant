@@ -1,0 +1,306 @@
+{
+  "schema": 1,
+  "contract": "docs-tree",
+  "valid": [
+    {
+      "name": "minimal-chaptered",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "The minimal conforming chaptered tree: no chapters marker, one root leaf node with its file.",
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "audience": "dev",
+            "file": "overview.md"
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-ten-chapter-with-i18n",
+      "doc": {
+        "version": 1,
+        "project": "example-connector-sdk",
+        "title": "Example Connector SDK",
+        "description": "The full chapter-conformance form: the ten slugs declared, one node per chapter, a grouped chapter with children, and the manifest-convention i18n label map.",
+        "chapters": [
+          "overview",
+          "quickstart",
+          "core-concepts",
+          "installation-and-modes",
+          "authoring-and-configuration",
+          "examples-and-use-cases",
+          "security-and-gotchas",
+          "reference",
+          "versioning-and-migration",
+          "troubleshooting-and-faq"
+        ],
+        "i18n": {
+          "defaultLocale": "en",
+          "locales": {
+            "en": {
+              "nav.overview": "Overview",
+              "nav.quickstart": "Quickstart"
+            },
+            "de": {
+              "nav.overview": "Überblick",
+              "nav.quickstart": "Schnellstart"
+            }
+          }
+        },
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "description": "What the SDK is and when to use it.",
+            "audience": "dev",
+            "file": "overview.md"
+          },
+          {
+            "id": "quickstart",
+            "title": "Quickstart",
+            "description": "One 10-minute runnable path from zero to a working result.",
+            "audience": "dev",
+            "file": "quickstart.md"
+          },
+          {
+            "id": "core-concepts",
+            "title": "Core Concepts",
+            "description": "The nouns the rest of the set uses.",
+            "audience": "dev",
+            "file": "core-concepts.md"
+          },
+          {
+            "id": "installation-and-modes",
+            "title": "Installation & Modes",
+            "description": "Bundled vs imported, per-product modes, where artifacts live.",
+            "audience": "user",
+            "file": "installation-and-modes.md"
+          },
+          {
+            "id": "authoring-and-configuration",
+            "title": "Authoring & Configuration",
+            "description": "Manifest, configSchema, capabilities, tier rules.",
+            "audience": "dev",
+            "file": "authoring-and-configuration.md"
+          },
+          {
+            "id": "examples-and-use-cases",
+            "title": "Examples & Use Cases",
+            "description": "Recipes, each with when to use / when NOT / complete code / what to be careful at.",
+            "audience": "dev",
+            "children": [
+              {
+                "id": "recipe-fetch-and-store",
+                "title": "Recipe: fetch and store",
+                "audience": "dev",
+                "file": "recipes/fetch-and-store.md"
+              },
+              {
+                "id": "recipe-streaming",
+                "title": "Recipe: streaming",
+                "audience": "dev",
+                "file": "recipes/streaming.md"
+              }
+            ]
+          },
+          {
+            "id": "security-and-gotchas",
+            "title": "Security & Gotchas",
+            "description": "Trust tiers, denials, disclosed residuals, the consent model.",
+            "audience": "user",
+            "file": "security-and-gotchas.md"
+          },
+          {
+            "id": "reference",
+            "title": "Reference",
+            "description": "Error codes, RPC protocol, CLI, status vocabulary, host profiles.",
+            "audience": "dev",
+            "file": "reference.md"
+          },
+          {
+            "id": "versioning-and-migration",
+            "title": "Versioning & Migration",
+            "description": "apiVersion policy, append-only vocabularies, no shims.",
+            "audience": "dev",
+            "file": "versioning-and-migration.md"
+          },
+          {
+            "id": "troubleshooting-and-faq",
+            "title": "Troubleshooting & FAQ",
+            "description": "Symptom, cause, fix — and the real questions.",
+            "audience": "user",
+            "file": "troubleshooting-and-faq.md"
+          }
+        ]
+      }
+    },
+    {
+      "name": "minimal-legacy-category-list",
+      "doc": [
+        {
+          "category": "Getting Started",
+          "items": [
+            {
+              "id": "overview",
+              "file": "overview.md",
+              "title": "Overview",
+              "description": "One category, one page — the as-landed health builtin form."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "legacy-category-list-with-icon",
+      "doc": [
+        {
+          "category": "Getting Started",
+          "icon": "Play",
+          "items": [
+            {
+              "id": "overview",
+              "file": "overview.md",
+              "title": "Overview",
+              "description": "The lucide icon variant (health core's product tree shape)."
+            },
+            {
+              "id": "troubleshooting",
+              "file": "troubleshooting.md",
+              "title": "Troubleshooting",
+              "description": "A second page in the same category."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown-audience",
+      "because": "audience is a closed user|dev vocabulary mirroring docs.md — no third audience exists",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "A tree claiming an audience the family does not have.",
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "audience": "admin",
+            "file": "overview.md"
+          }
+        ]
+      }
+    },
+    {
+      "name": "open-chapter-slug",
+      "because": "the chapter taxonomy is closed — 'recipes' is not one of the ten slugs",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "A chapters marker inventing an eleventh chapter.",
+        "chapters": [
+          "overview",
+          "quickstart",
+          "core-concepts",
+          "installation-and-modes",
+          "authoring-and-configuration",
+          "examples-and-use-cases",
+          "recipes",
+          "reference",
+          "versioning-and-migration",
+          "troubleshooting-and-faq"
+        ],
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "audience": "dev",
+            "file": "overview.md"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-chapter",
+      "because": "chapters, when declared, is exactly the ten — never missing chapters",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "A chapters marker with only nine of the ten slugs.",
+        "chapters": [
+          "overview",
+          "quickstart",
+          "core-concepts",
+          "installation-and-modes",
+          "authoring-and-configuration",
+          "examples-and-use-cases",
+          "security-and-gotchas",
+          "reference",
+          "troubleshooting-and-faq"
+        ],
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "audience": "dev",
+            "file": "overview.md"
+          }
+        ]
+      }
+    },
+    {
+      "name": "leaf-without-file",
+      "because": "a leaf node with no children and no file points at nothing",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "A leaf that renders to a void.",
+        "roots": [
+          {
+            "id": "overview",
+            "title": "Overview",
+            "audience": "dev"
+          }
+        ]
+      }
+    },
+    {
+      "name": "legacy-unknown-field",
+      "because": "closed object: the legacy form has no 'href' — additional properties are rejected, not ignored",
+      "doc": [
+        {
+          "category": "Getting Started",
+          "href": "https://example.com",
+          "items": [
+            {
+              "id": "overview",
+              "file": "overview.md",
+              "title": "Overview",
+              "description": "A page entry smuggling a URL."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "empty-chaptered-roots",
+      "because": "a doc set with no nodes is not a doc set",
+      "doc": {
+        "version": 1,
+        "project": "example-sdk",
+        "title": "Example SDK",
+        "description": "The empty set.",
+        "roots": []
+      }
+    }
+  ]
+}

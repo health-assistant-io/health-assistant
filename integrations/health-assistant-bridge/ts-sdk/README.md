@@ -1,115 +1,154 @@
-# Health Assistant Bridge Client SDK
+# Health Assistant Bridge — TypeScript SDK
 
-A lightweight TypeScript SDK for building browser extensions or mobile applications that securely push medical data into a self-hosted [Health Assistant](https://github.com/health-assistant-io/health-assistant) instance via the Universal Bridge integration.
+A lightweight TypeScript SDK for building browser extensions, Node
+scripts and React Native apps that securely push medical data into a
+self-hosted Health Assistant instance via the **Health Assistant Bridge**
+integration — the signed two-way API (`HMAC-SHA256`), including typed
+chat + SSE stream helpers.
 
-## Installation
+## Install
 
 ```bash
 npm install @health-assistant/bridge-client
+# or, from this repo's checkout (the source of truth — builds with tsc):
+cd integrations/health-assistant-bridge/ts-sdk && npm run build
 ```
-*(Note: Since this SDK might not be published to npm yet, you can also copy the `src/index.ts` file directly into your project, or install it via a local path/git submodule.)*
 
-## Overview
+Targets Node 18+ at runtime (global `fetch`, `Buffer`, `AbortController`;
+the package's `engines` floor is higher — builds use Node 24 tooling).
+HMAC uses Node's `crypto` — polyfill it in a pure-browser build.
 
-The Bridge Client handles the three-step workflow required to sync unstructured external health portal data into standard FHIR records in Health Assistant:
+## Configure the three credentials
 
-1. **Get Status**: Retrieve the current connection status and the timestamp of the last successful sync.
-2. **AI Ontology Mapping**: Ask the Health Assistant backend LLM to map unrecognized clinical metric names (e.g. localized strings like `"Νάτριο Ορού"`) to standardized English FHIR catalog entries (e.g. `"Sodium"`).
-3. **Sync Data**: Push a strictly typed payload containing quantitative or categorical results.
+From your server's Bridge card (**Integrations → Health Assistant
+Bridge** → "Show pairing code" → `base_url|integration_id|api_secret`):
 
-## Usage Example
+| Value | What it is |
+|---|---|
+| `baseUrl` | Your server's base URL (no trailing slash) |
+| `integrationId` | The bridge **instance** UUID — bound to one patient |
+| `apiSecret` | The per-instance HMAC secret, shown **once** at creation; mandatory on every data route (unsigned traffic is rejected) |
+
+## Signed first call
 
 ```typescript
-import { HealthAssistantBridgeClient } from '@health-assistant/bridge-client';
+import { HealthAssistantBridgeClient } from "@health-assistant/bridge-client";
 
-// 1. Initialize the client using the User's credentials
-// The user gets the Integration ID after setting up the bridge in their Health Assistant Dashboard
 const client = new HealthAssistantBridgeClient(
-  "https://my-health-assistant.local", // The backend URL
-  "550e8400-e29b-41d4-a716-446655440000" // The unique integration ID
+  "http://127.0.0.1:8000",
+  "27f13fd9-a577-40a1-a8ee-f0e096162c4d",
+  { apiSecret: "a-very-long-random-secret" },
 );
 
-async function syncMyData() {
-  // 2. Check Status
-  const status = await client.getStatus();
-  console.log(`Last synced at: ${status.cursor}`);
-  
-  // (Your code: Scrape data newer than the cursor from the hospital portal)
-  const scrapedMetrics = [
-    { rawName: "Natrium (Na)", value: 145, unit: "mmol/L" },
-    { rawName: "Blood Type", stringValue: "A+" }
-  ];
-
-  // 3. Optional: Ask AI to map unknown metric names
-  const mappingRequest = [
-    { name: "Natrium (Na)" },
-    { name: "Blood Type" }
-  ];
-  const mappings = await client.requestMapping(mappingRequest);
-  
-  // (Your code: Cache the mappings. Present them to the user for confirmation if desired.)
-  const sodiumMapping = mappings.mappings.find(m => m.original_name === "Natrium (Na)");
-  
-  // 4. Push Data Using the Universal Contract
-  const response = await client.syncData({
-    client_version: "1.2.0",
-    source_system: "my_hospital_extension",
-    cursor: new Date().toISOString(),
-    examinations: [
-      {
-        id: "unique-report-123", // Essential for deduplication
-        date: "2024-08-10T00:00:00Z",
-        lab_name: "City General Hospital",
-        category: "Biochemistry",
-        records: [
-          {
-            type: "quantitative",
-            name: sodiumMapping?.new_biomarker_name || "Sodium",
-            biomarker_id: sodiumMapping?.existing_biomarker_id,
-            code: sodiumMapping?.new_biomarker_code || "2951-2",
-            coding_system: sodiumMapping?.new_biomarker_coding_system || "loinc",
-            value: 145.0,
-            unit: "mmol/L",
-            timestamp: "2024-08-10T00:00:00Z"
-          },
-          {
-             type: "categorical",
-             name: "Blood Type",
-             value_string: "A+",
-             timestamp: "2024-06-16T10:00:00Z"
-          }
-        ]
-      }
-    ]
-  });
-
-  console.log(`Successfully synced ${response.metrics_synced} records!`);
-}
-
-syncMyData();
+const status = await client.getStatus();
+console.log(status.status, status.cursor, status.bridge_features);
 ```
 
-## API
+Signed `/status` returns the **full discovery payload** (cursor,
+`latest_sdks`, `server_version`, `bridge_features`); unsigned it is the
+minimal `{status, server_time}` probe. Real transcript against a live dev
+server:
 
-### `new HealthAssistantBridgeClient(baseUrl, integrationId)`
-Instantiates the client.
-- `baseUrl`: The root URL of the Health Assistant backend (e.g. `http://localhost:8000`).
-- `integrationId`: The UUID of the specific bridge instance, found in the Health Assistant Integrations UI.
+```text
+status: active | cursor: null | features: [ 'exam_enrichment', 'ai_assistant', 'ai_streaming' ]
+```
 
-### `client.getStatus()`
-Returns a promise resolving to `BridgeStatus`. Use this to check connection validity and get the `cursor` timestamp.
+## First push — the Universal Data Contract
 
-### `client.requestMapping(metrics: MetricMappingRequest[])`
-Pass an array of metric names. Returns an AI-generated array of `MappedMetric` objects suggesting how they align with the user's standardized FHIR catalog.
+```typescript
+const resp = await client.syncData({
+  client_version: "1.4.0",
+  source_system: "ts_quickstart",
+  records: [{
+    type: "quantitative", code: "55258-4", coding_system: "loinc",
+    name: "Sleep Duration", value: 7.4, unit: "h",
+    timestamp: new Date().toISOString(), performer: "Demo Ring",
+  }],
+});
+// real: resp.success === true, resp.metrics_synced === 1
+```
 
-### `client.syncData(payload: SyncPayload)`
-Pushes data into the backend. The payload must strictly conform to the `ClientRecord` types (Quantitative or Categorical).
+Group lab reports as `examinations=[{ id, ..., records }]` — the
+upstream's stable `id` is the dedup key, so a re-push is a no-op.
 
-### `client.requestLines(method, path, body?)`
-Line-by-line reading of a **signed streaming response body** (SSE): a fetch-based reader (`response.body.getReader()` + `TextDecoder`) that yields each raw line without its newline — including empty separator lines and `:` comment frames, matching the Kotlin SDK's `requestLines` contract — so the caller parses the SSE framing itself. Requires Node >= 18 (a global `fetch` with streamable response bodies; the SDK's `engines` floor of >= 24 already guarantees it). Deliberately **never retries** — replaying a non-idempotent POST mid-turn would duplicate it — and applies no whole-request timeout (an SSE stream legitimately idles between deltas). A non-2xx response throws `BridgeException` before the first emission.
+## One streaming chat call
 
-### `client.chatStream(message, sessionId?)`
-`POST /ai/chat/stream` — one streaming chat turn. Builds and signs the `{message, session_id?}` body; yields the raw SSE lines via `requestLines`.
+```typescript
+for await (const line of client.chatStream("Summarize my latest lab results.")) {
+  if (line.startsWith("data: ")) {
+    const frame = JSON.parse(line.slice("data: ".length));
+    if (frame.event === "delta") process.stdout.write(frame.text ?? "");
+  }
+}
+```
 
-### `client.resumeChatStream(sessionId, messageId?)`
-`POST /ai/sessions/{id}/resume` — the HITL continuation turn after the user resolved task cards. `messageId` selects which assistant message's resolved tasks are summarized; omit it and the server picks the most recent task-bearing message. Yields the raw SSE lines via `requestLines`.
+`chatStream` signs `POST /ai/chat/stream` and yields raw SSE lines
+(`requestLines` — never retried; errors throw `BridgeException` before
+the first emission). The non-streaming twin is `chat(message, sessionId?)`
+(→ `ChatTurnResult`, incl. HITL `tasks` cards); the HITL continuation is
+`resumeChatStream(sessionId, messageId?)`. Never replay a failed turn —
+start a new one.
+
+## Error handling — the typed `BridgeError` codes
+
+Throws are typed: `BridgeException` (from `request` / `requestLines` /
+`chat`-family calls). **Branch on `code`, never on messages** — the
+closed vocabulary (machine-pinned by the published schema):
+
+| code | HTTP | Meaning |
+|---|---|---|
+| `not_found` | 404 | Missing or foreign row ("someone else's" and "doesn't exist" are indistinguishable) |
+| `turn_conflict` | 409 | The session's single-flight turn lock is held |
+| `hitl_conflict` | 409 | The HITL proposal was already resolved |
+| `validation` | 400 | Malformed input / failed guard |
+| `stt_failed` | 502 | Upstream speech-to-text failed on `/ai/transcribe` |
+
+```typescript
+try {
+  await client.chat("Hello");
+} catch (e) {
+  if (e instanceof BridgeException) switch (e.code) {
+    case "turn_conflict": break;        // wait out the running turn
+    case "not_found":     break;        // session gone — create a new one
+    default:              throw e;
+  } else throw e;
+}
+```
+
+Reads, `/sync` and idempotent mutations retry with full-jitter backoff on
+429/5xx + transient network errors; the AI turn POSTs never retry.
+
+## Options
+
+| Field | Default | Notes |
+|---|---|---|
+| `apiSecret` | — | Auto-signs the data routes (mandatory server-side). |
+| `timeoutMs` | `30000` | Per-request timeout via `AbortController` (streams: unbounded). |
+| `maxRetries` | `3` | Max attempts on transient failures (idempotent calls only). |
+
+## Pinned by tests
+
+Run the suite from this package: `npm test` (node `--test`) — 27 tests
+green, pinning the signing helper (parity with the server verifier),
+`/status`, streaming, transcription and the typed-error decode. The
+cross-SDK fixtures (`fixtures.test.mts`) are generated from the published
+schema, so the docs cannot drift from the wire.
+
+## Signing, if you go raw
+
+```typescript
+import { signRequest } from "@health-assistant/bridge-client";
+
+const headers = signRequest(apiSecret, "POST", "/ai/chat", Buffer.from(JSON.stringify(body)));
+// → { "X-Api-Signature": "<hex>", "X-Api-Timestamp": "<epoch>" }
+```
+
+The canonical form is `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>`
+(`path` after the integration id, leading `/`); send the exact bytes you
+signed.
+
+## See also
+
+- The integration-SDK doc set (background): `docs/dev/sdk/overview.md`.
+- The bridge's per-extension docs (the wire contract):
+  `backend/app/extensions/builtin/health_assistant_bridge/docs/api-reference.md`.

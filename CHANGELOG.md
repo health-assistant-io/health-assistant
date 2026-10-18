@@ -11,6 +11,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (docs — the integration SDK re-chaptered into the ten-chapter set + bridge quickstarts)
+- **`docs/dev/extensions.md` is now the chaptered integration-SDK doc set
+  at `docs/dev/sdk/`** — the ten-chapter taxonomy (overview, quickstart,
+  core concepts, installation & modes, authoring & configuration,
+  examples & use cases, security & gotchas, reference, versioning &
+  migration, troubleshooting & FAQ) with a validating `docs-tree.json`
+  (the chaptered form of the family docs-tree contract; content
+  re-chaptered, not rewritten). The quickstart's transcript is real
+  output from a scratch Postgres + Redis run (scratch server boot,
+  config-flow connect, manual sync, the 4-FHIR-observation + 1-telemetry
+  split, exam/event/document/proposal side effects) and is additionally
+  pinned by `tests/test_dev_dummy_provider.py`. The set's tree validates
+  in-repo against the vendored docs-tree schema + fixtures via the new
+  `tests/test_extension_docs_tree.py` (fixtures + unique ids + file
+  resolution + audience routing).
+- **Bridge client-SDK quickstarts** refreshed in place (python / ts /
+  kotlin READMEs): install → configure (`base_url` + `integration_id` +
+  `api_secret`) → signed first call → first push → one streaming chat
+  call (ts typed `chatStream`; python via the exported `sign_request`
+  raw SSE path; kotlin `chat`/`requestLines`) → typed error handling
+  (`BridgeException` codes / typed kotlin subclasses; the python thin
+  client's `detail.code` decode). HMAC examples verified against
+  `signing.py` / `Signing.kt`; transcripts from live signed runs
+  against a dev server (python + ts); every path pinned by the existing
+  suites (`test_bridge_sdk_signing.py`, `test_bridge_sdk_sync_client.py`,
+  the ts `npm test` set, the kotlin schema-conformance + parity suites).
+- **User-facing integration pages** added under `docs/user/` (the
+  audience-split set nodes): connecting an integration, what you grant
+  when you connect, integration troubleshooting. The product
+  `docs/docs-tree.json` gains the "Extension SDK" category (prefixed
+  ids) and swaps the old `extensions` row for the three user pages.
+- **`docs/dev/extensions.md` deleted** — every in-repo reference
+  re-pointed to the set's chapters (README, INTEGRATIONS_FRAMEWORK,
+  API, API_LAYERS, MOBILE_SYNC, NOTIFICATION_SYSTEM,
+  GETTING_STARTED_GUIDE, docs-tree), including repairs to the
+  pre-existing malformed link fragments. The vendored docs-tree schema +
+  fixtures land at `contracts/` through the family extension-contract
+  sync (ledgered; `--check` clean).
+
 ### Added (integrations — the bridge goes schema-first, plan 32 D11 / ADR-0040 Phase-6 close)
 - **The bridge sub-API is now schema-first.** The provider's route table is
   extracted into a machine-readable schema (66 routes, 118 payload/error/
