@@ -1,6 +1,5 @@
-<div align="center">
+![Health Assistant logo](frontend/public/icon.svg)
 
-<img src="frontend/public/icon.svg" width="120" height="120" alt="Health Assistant logo">
 
 # Health Assistant
 ### Self-hosted, privacy-first health records
@@ -13,28 +12,12 @@
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 
-<br>
 
-<a href="docs/SCREENSHOTS.md">
-  <img src="docs/images/visual-tour.gif" width="800" alt="Health Assistant visual tour">
-</a>
+[![Health Assistant visual tour](docs/images/visual-tour.gif)](docs/SCREENSHOTS.md)
 
-<br>
-
-  <p>
-    <small>Part of</small><br>
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/neuronection-dark.svg">
-      <img src="https://neuronection.com/logos/neuronection.svg" height="30" alt="">
-    </picture>&nbsp;&nbsp;&nbsp;<picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/neuronection-wordmark-dark.svg">
-      <img src="https://neuronection.com/logos/neuronection-wordmark.svg" height="30" alt="Neuronection — one ecosystem, four guides">
-    </picture>
-  </p>
+*Part of the [Neuronection](https://neuronection.com) family — one ecosystem, four guides.*
 
 **Website**: [health-assistant.io](https://health-assistant.io) · **Repository**: [health-assistant-io/health-assistant](https://github.com/health-assistant-io/health-assistant)
-
-</div>
 
 > **Independent project.** Health Assistant is inspired by the privacy-first, local-control philosophy of Home Assistant. It is not affiliated with, endorsed by, or connected to Home Assistant or Nabu Casa.
 
@@ -154,16 +137,10 @@ External terminology code sets (LOINC, SNOMED CT, ICD-10, ATC, CVX) are used in 
 
 Reproducible screenshots captured against a seeded clinical dataset — see the [full visual tour](docs/SCREENSHOTS.md).
 
-<table>
-  <tr>
-    <td width="50%" align="center"><a href="docs/images/dashboard-desktop.png"><img src="docs/images/dashboard-desktop.png" alt="Patient dashboard"/><br/><sub>Draggable dashboard</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/ai-chat-desktop.png"><img src="docs/images/ai-chat-desktop.png" alt="AI assistant"/><br/><sub>AI chat with review cards</sub></a></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center"><a href="docs/images/biomarker-detail-desktop.png"><img src="docs/images/biomarker-detail-desktop.png" alt="Biomarker detail"/><br/><sub>Longitudinal biomarker trends</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/examination-detail-desktop.png"><img src="docs/images/examination-detail-desktop.png" alt="Examination detail"/><br/><sub>Examination with linked journeys</sub></a></td>
-  </tr>
-</table>
+| | |
+| --- | --- |
+| [![Patient dashboard](docs/images/dashboard-desktop.png)](docs/images/dashboard-desktop.png) — *Draggable dashboard* | [![AI assistant](docs/images/ai-chat-desktop.png)](docs/images/ai-chat-desktop.png) — *AI chat with review cards* |
+| [![Biomarker detail](docs/images/biomarker-detail-desktop.png)](docs/images/biomarker-detail-desktop.png) — *Longitudinal biomarker trends* | [![Examination detail](docs/images/examination-detail-desktop.png)](docs/images/examination-detail-desktop.png) — *Examination with linked journeys* |
 
 ## Quick start
 
@@ -295,10 +272,7 @@ Found a vulnerability? Do not open a public issue — use GitHub's
 [private vulnerability reporting](https://github.com/health-assistant-io/health-assistant/security/advisories/new)
 to disclose it responsibly.
 
-<!-- NEURONECTION:ECOSYSTEM:START -->
 ---
-
-<div align="center">
 
 ### Part of the Neuronection family
 
@@ -306,46 +280,24 @@ to disclose it responsibly.
 for life's big decisions — structured data instead of text dumps, AI that explains
 its reasoning, and you in control of your information.
 
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/health-light.svg">
-        <img src="https://neuronection.com/logos/health.svg" height="34" alt="Health Assistant">
-      </picture>
-      <br>
-      <a href="https://neuronection.com/en/health/"><strong>Health Assistant</strong> <sub>· this repo</sub></a>
-      <br><sub>Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data.</sub>
-      <br><sub><a href="https://github.com/health-assistant-io/health-assistant">GitHub</a> · <a href="https://health-assistant.io">health-assistant.io</a></sub>
-    </td>
-    <td width="50%" align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/career-light.svg">
-        <img src="https://neuronection.com/logos/career.svg" height="34" alt="Career Assistant">
-      </picture>
-      <br>
-      <a href="https://neuronection.com/en/career/"><strong>Career Assistant</strong></a>
-      <br><sub>A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future.</sub>
-      <br><sub><a href="https://github.com/neuronection/career-assistant">GitHub</a> · <a href="https://github.com/neuronection/career-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <img src="https://neuronection.com/logos/study.svg" height="34" alt="Study Assistant">
-      <br>
-      <a href="https://neuronection.com/en/study/"><strong>Study Assistant</strong></a>
-      <br><sub>A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic.</sub>
-      <br><sub><a href="https://github.com/neuronection/study-assistant">GitHub</a> · <a href="https://github.com/neuronection/study-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-    <td width="50%" align="center" valign="top">
-      <img src="https://neuronection.com/logos/desktop.svg" height="34" alt="Desktop Assistant">
-      <br>
-      <a href="https://neuronection.com/en/desktop/"><strong>Desktop Assistant</strong></a>
-      <br><sub>A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history.</sub>
-      <br><sub><a href="https://github.com/neuronection/desktop-assistant">GitHub</a> · <a href="https://github.com/neuronection/desktop-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-  </tr>
-</table>
+| | |
+| --- | --- |
+| [![Health Assistant](https://neuronection.com/logos/health.svg)](https://neuronection.com/en/health/) — **Health Assistant** · this repo — Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. — [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg)](https://neuronection.com/en/career/) — **Career Assistant** — A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. — [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
+| [![Study Assistant](https://neuronection.com/logos/study.svg)](https://neuronection.com/en/study/) — **Study Assistant** — A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. — [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg)](https://neuronection.com/en/desktop/) — **Desktop Assistant** — A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. — [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
+
+<!-- NEURONECTION:ECOSYSTEM:START -->
+---
+
+### Part of the Neuronection family
+
+**Health Assistant** is one of four connected, open-source (Apache-2.0) AI assistants
+for life's big decisions — structured data instead of text dumps, AI that explains
+its reasoning, and you in control of your information.
+
+| | |
+| --- | --- |
+| [![Health Assistant](https://neuronection.com/logos/health.svg)](https://neuronection.com/en/health/) — **Health Assistant** · Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. · [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg)](https://neuronection.com/en/career/) — **Career Assistant** · A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. · [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
+| [![Study Assistant](https://neuronection.com/logos/study.svg)](https://neuronection.com/en/study/) — **Study Assistant** · A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. · [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg)](https://neuronection.com/en/desktop/) — **Desktop Assistant** · A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. · [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
 
 Created and maintained by [Ilias Chatzopoulos](https://github.com/constLiakos)
 · [LinkedIn](https://www.linkedin.com/in/ilias-chatzopoulos-aabb22163/)
@@ -353,8 +305,6 @@ Created and maintained by [Ilias Chatzopoulos](https://github.com/constLiakos)
 
 [neuronection.com](https://neuronection.com) — one ecosystem, four guides
 · [♥ Support development](https://buymeacoffee.com/neuronection) · star what you use
-
-</div>
 <!-- NEURONECTION:ECOSYSTEM:END -->
 
 ## License
