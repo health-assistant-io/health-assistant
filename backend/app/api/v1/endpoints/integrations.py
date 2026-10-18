@@ -213,9 +213,7 @@ async def list_active_integrations(
             "domain": i.provider,
             "instance_name": i.instance_name,
             "status": i.status.value,
-            "sync_status": instance_status_surface(
-                i, surfaces.get(str(i.id), [])
-            ),
+            "sync_status": instance_status_surface(i, surfaces.get(str(i.id), [])),
             "last_synced_at": i.last_synced_at,
         }
         for i in integrations
@@ -792,6 +790,15 @@ async def get_integration_details(
         returned_config = config_flow.prepare_for_read(integration.user_config or {})
     else:
         returned_config = integration.user_config
+
+    # Read-side twin of ``_resolve_secret_field``'s undeclared-wrapper
+    # handling: platform-provisioned machine secrets (audit 2026-08 H1/H2)
+    # are stored encrypted even when the flow doesn't declare them, and the
+    # plaintext is show-once at creation/rotation — details must never echo
+    # the ciphertext wrapper.
+    from app.extensions.sdk.secrets import mask_wrapped_secrets
+
+    returned_config = mask_wrapped_secrets(returned_config or {}, ("api_secret", "webhook_secret"))
 
     # Surface the last push result + sync direction for the FHIR server (and any
     # other integration that writes them). Lives under _sync_state cursors.
@@ -1673,13 +1680,13 @@ async def integration_webhook(
                     if hasattr(obs_data, "dict")
                     else obs_data
                 )
-                obs = Observation(**obs_dict)
-                # audit B3: sync relational patient_id with the FHIR subject ref
-                # (the SDK ObservationCreate carries only ``subject``).
-                from app.services.fhir_helpers import coerce_patient_id
+                observations.append(Observation(**obs_dict))
 
-                obs.patient_id = coerce_patient_id(obs.patient_id, obs.subject)
-                observations.append(obs)
+            # audit B3: sync relational patient_id with the FHIR subject ref
+            # (the SDK ObservationCreate carries only ``subject``).
+            from app.services.fhir_helpers import coerce_observation_patient_ids
+
+            coerce_observation_patient_ids(observations)
 
             from app.services.fhir_service import map_observations_to_biomarkers
 

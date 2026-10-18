@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
@@ -654,3 +654,173 @@ async def test_latest_dedups_across_sources(bridge_with_telemetry):
     assert len(hr_rows) == 1, "deduped across FHIR + telemetry, no double-count"
     # The FHIR row (Aug 5, value 80) is newer than the telemetry latest (Aug 3, 95).
     assert hr_rows[0]["raw_value"] == 80
+
+
+# =========================================================================
+# Audit B3 on the push path — pushed telemetry must carry patient_id
+# =========================================================================
+
+
+@pytest_asyncio.fixture
+async def bridge_push_target():
+    """Multi-patient tenant + telemetry def + bridge bound to PatientA.
+
+    Multi-patient ON PURPOSE: the read path's single-patient fallback for
+    legacy NULL-patient rows must not mask a missing ``patient_id`` — in a
+    multi-patient tenant a NULL row is invisible, which is exactly how the
+    skipped audit-B3 coercion on the push path presented.
+    """
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    patient_a = uuid.uuid4()
+    patient_b = uuid.uuid4()
+    integration_id = uuid.uuid4()
+    hr_def_id = uuid.uuid4()
+
+    async with AsyncSessionLocal() as db:
+        db.add(TenantModel(id=tenant_id, name="Bridge Push T.", slug=f"bps-{tenant_id.hex[:8]}"))
+        await db.flush()
+        db.add(
+            UserModel(
+                id=user_id,
+                email=f"bps-{user_id.hex[:6]}@test.local",
+                tenant_id=tenant_id,
+                role="ADMIN",
+            )
+        )
+        await db.flush()
+        db.add(
+            Patient(
+                id=patient_a,
+                tenant_id=tenant_id,
+                name={"family": "A", "given": ["Bound"]},
+                gender="UNKNOWN",
+            )
+        )
+        db.add(
+            Patient(
+                id=patient_b,
+                tenant_id=tenant_id,
+                name={"family": "B", "given": ["Other"]},
+                gender="UNKNOWN",
+            )
+        )
+        await db.flush()
+        db.add(
+            UserIntegration(
+                id=integration_id,
+                tenant_id=tenant_id,
+                user_id=user_id,
+                patient_id=patient_a,
+                provider="health_assistant_bridge",
+                status="ACTIVE",
+                user_config={},
+            )
+        )
+        db.add(
+            BiomarkerDefinition(
+                id=hr_def_id,
+                tenant_id=tenant_id,
+                slug="heart-rate",
+                name="Heart Rate",
+                coding_system="loinc",
+                code="8867-4",
+                is_telemetry=True,
+                reference_range_min=60,
+                reference_range_max=100,
+            )
+        )
+        await db.commit()
+
+    try:
+        yield {
+            "tenant_id": tenant_id,
+            "integration_id": integration_id,
+            "patient_a": patient_a,
+            "patient_b": patient_b,
+            "hr_def_id": hr_def_id,
+        }
+    finally:
+        await _purge_tenant_data(tenant_id)
+
+
+def _post_request(payload: dict):
+    from unittest.mock import AsyncMock
+
+    req = AsyncMock()
+    req.json = AsyncMock(return_value=payload)
+    req.query_params = {}
+    return req
+
+
+@pytest.mark.asyncio
+async def test_sync_push_persists_telemetry_with_patient_id(bridge_push_target):
+    """A bridge ``POST /sync`` push lands telemetry rows WITH the relational
+    patient_id (audit B3, the third persist path): the SDK builder emits only
+    the FHIR ``subject``, and this path used to skip the re-coercion that
+    ``run_sync`` and the webhook endpoint apply — pushed wearable data went
+    patient-NULL and the patient-scoped reads never saw it again."""
+    ctx = bridge_push_target
+    integration = await _load_integration(ctx["integration_id"])
+    provider = HealthAssistantBridgeProvider()
+
+    ts = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=2)).isoformat()
+    payload = {
+        "client_version": "test-suite",
+        "source_system": "watch",
+        "records": [
+            {
+                "type": "quantitative",
+                "code": "8867-4",
+                "coding_system": "loinc",
+                "name": "Heart Rate",
+                "value": 77,
+                "unit": "bpm",
+                "timestamp": ts,
+            }
+        ],
+    }
+
+    result = await provider.handle_api_request(
+        integration=integration,
+        path="sync",
+        method="POST",
+        request=_post_request(payload),
+    )
+    assert result["success"] is True, result
+    assert result["metrics_synced"] >= 1
+
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(
+            select(TelemetryDataModel).where(
+                TelemetryDataModel.tenant_id == ctx["tenant_id"],
+                TelemetryDataModel.slug == "heart-rate",
+            )
+        )
+        rows = res.scalars().all()
+    assert len(rows) == 1, "one telemetry row from the push"
+    assert rows[0].patient_id == ctx["patient_a"], (
+        "pushed telemetry must carry the bound patient's id (audit B3)"
+    )
+
+    # Read path unaffected but now sees the row: the patient-scoped series
+    # (``_bound_patient_id`` filtering) and the merged latest-values view.
+    series = await provider.handle_api_request(
+        integration=integration,
+        path="observations",
+        method="GET",
+        request=_get_request({"biomarker": "heart-rate"}),
+    )
+    assert [r["raw_value"] for r in series["data"]] == [77]
+    assert series["data"][0]["patient_id"] == str(ctx["patient_a"])
+
+    latest = await provider.handle_api_request(
+        integration=integration,
+        path="observations/latest",
+        method="GET",
+        request=_get_request({"limit": "50"}),
+    )
+    hr_rows = [r for r in latest["data"] if r["biomarker_slug"] == "heart-rate"]
+    assert len(hr_rows) == 1
+    assert hr_rows[0]["raw_value"] == 77
+    assert hr_rows[0]["patient_id"] == str(ctx["patient_a"])

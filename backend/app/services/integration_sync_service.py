@@ -35,7 +35,7 @@ from app.extensions.registry import integration_registry
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
-from app.services.fhir_helpers import coerce_patient_id
+from app.services.fhir_helpers import coerce_observation_patient_ids
 
 logger = logging.getLogger(__name__)
 
@@ -544,8 +544,7 @@ async def run_sync(
         # audit B3: keep the relational patient_id in sync with the FHIR subject
         # reference on integration-sourced observations (the SDK builder only
         # sets ``subject``).
-        for _obs in observations:
-            _obs.patient_id = coerce_patient_id(_obs.patient_id, _obs.subject)
+        coerce_observation_patient_ids(observations)
 
         # Map once for the whole batch (was previously indented inside the
         # per-observation loop above and ran N times — wasted work, since

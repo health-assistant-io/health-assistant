@@ -2883,6 +2883,17 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     obs = Observation(**obs_dict)
                     observations.append(obs)
 
+                # audit B3 (the third persist path): the SDK builder emits
+                # only the FHIR ``subject``, so the relational patient_id must
+                # be re-derived before the split — telemetry rows copy
+                # ``obs.patient_id`` and would land NULL otherwise (run_sync
+                # and the webhook endpoint already coerce; this path skipped
+                # it, so bridge-pushed wearable data was patient-invisible in
+                # multi-patient tenants).
+                from app.services.fhir_helpers import coerce_observation_patient_ids
+
+                coerce_observation_patient_ids(observations)
+
                 if observations:
                     await map_observations_to_biomarkers(db, observations)
 

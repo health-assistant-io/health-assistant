@@ -512,3 +512,87 @@ def _rotate_plain() -> str:
     import secrets as _s
 
     return _s.token_urlsafe(32)
+
+
+# ---------------------------------------------------------------------------
+# H1/H2 read side — details must never echo the ciphertext wrapper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_details_masks_platform_provisioned_secret_wrappers():
+    """``GET /instance/{id}/details`` must mask BOTH machine secrets. The
+    platform provisions ``api_secret`` for inbound-api instances whether or
+    not the flow declares it (dev_dummy declares only ``webhook_secret``),
+    and the plaintext is show-once at creation/rotation — the read side used
+    to echo the undeclared field's ``{"_encrypted": ...}`` wrapper verbatim."""
+    import json
+    import uuid as _uuid
+
+    from app.api.v1.endpoints import integrations as integ
+    from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
+
+    integration_id = _uuid.uuid4()
+
+    def _row():
+        row = MagicMock()
+        row.id = integration_id
+        row.provider = "dev_dummy"
+        row.instance_name = "Dummy"
+        row.status.value = "active"
+        row.tenant_id = _uuid.uuid4()
+        row.user_config = {
+            "api_secret": {"_encrypted": "tok-api", "_kid": "k1"},
+            "webhook_secret": {"_encrypted": "tok-hook", "_kid": "k1"},
+        }
+        row.is_debug_enabled = False
+        row.last_synced_at = None
+        return row
+
+    def _db(row):
+        res_integration = MagicMock()
+        res_integration.scalar_one_or_none.return_value = row
+        res_logs = MagicMock()
+        res_logs.scalars().all.return_value = []
+        res_rows = MagicMock()
+        res_rows.all.return_value = []
+        res_scalars = MagicMock()
+        res_scalars.scalars().all.return_value = []
+        db = MagicMock()
+        db.execute = AsyncMock(
+            side_effect=[res_integration, res_logs, res_rows, res_scalars, res_scalars]
+        )
+        return db
+
+    async def _details(db):
+        return await integ.get_integration_details(
+            str(integration_id),
+            patient_id=str(_uuid.uuid4()),
+            current_user=MagicMock(user_id="u", tenant_id="t"),
+            db=db,
+        )
+
+    with (
+        patch.object(
+            integ.integration_registry, "get_config_flow", return_value=DevDummyConfigFlow()
+        ),
+        patch.object(integ.integration_registry, "get_provider", return_value=None),
+    ):
+        result = await _details(_db(_row()))
+    cfg = result["user_config"]
+    assert cfg["webhook_secret"] == "***", "declared secret field masks via the flow"
+    assert cfg["api_secret"] == "***", "undeclared platform-provisioned wrapper masks too"
+    assert "_encrypted" not in json.dumps(result, default=str)
+
+    # No-flow branch (registry miss / domain without a config flow): the
+    # raw config used to be returned verbatim — wrapper detection must
+    # cover it there as well.
+    with (
+        patch.object(integ.integration_registry, "get_config_flow", return_value=None),
+        patch.object(integ.integration_registry, "get_provider", return_value=None),
+    ):
+        result = await _details(_db(_row()))
+    cfg = result["user_config"]
+    assert cfg["webhook_secret"] == "***"
+    assert cfg["api_secret"] == "***"
+    assert "_encrypted" not in json.dumps(result, default=str)

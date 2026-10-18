@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (integrations)
+- **`GET /integrations/instance/{id}/details` no longer echoes the
+  `api_secret` ciphertext wrapper.** Instances of inbound-capable
+  extensions carry a platform-provisioned machine secret whether or not
+  the extension's config form declares it (the reference extension
+  declares only `webhook_secret`, so its auto-provisioned `api_secret`
+  was returned as the raw encrypted wrapper while `webhook_secret`
+  showed `***`). Both machine-secret fields now mask as `***` on every
+  details read — the plaintext remains show-once at creation and
+  rotation (`POST /instance/{id}/rotate-secret`). No client consumed the
+  ciphertext: the bridge client SDKs (python/ts/kotlin) and the Android
+  app receive the secret only through the show-once flow (creation
+  response / rotation / onboarding QR + manual entry), and the web
+  config form already treats `***` as "set — not re-sent".
+- **Bridge `POST /api/{id}/sync` now persists telemetry rows with the
+  bound patient's id** (the third persist path had skipped the
+  subject→`patient_id` re-coercion the manual-sync and webhook paths
+  apply): pushed wearable data landed with a NULL relational patient
+  and was invisible to the patient-scoped reads in multi-patient
+  tenants. All three persist paths now share one coercion helper.
+
 ### Changed (docs — the integration SDK re-chaptered into the ten-chapter set + bridge quickstarts)
 - **`docs/dev/extensions.md` is now the chaptered integration-SDK doc set
   at `docs/dev/sdk/`** — the ten-chapter taxonomy (overview, quickstart,
@@ -50,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fixtures land at `contracts/` through the family extension-contract
   sync (ledgered; `--check` clean).
 
-### Added (integrations — the bridge goes schema-first, plan 32 D11 / ADR-0040 Phase-6 close)
+### Added (integrations — the bridge goes schema-first)
 - **The bridge sub-API is now schema-first.** The provider's route table is
   extracted into a machine-readable schema (66 routes, 118 payload/error/
   stream-event components, the HMAC auth classes, the `BridgeError` code
@@ -73,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (integrations — the settings surfaces render through the family kit)
 - **The integrations UI swaps onto the `@neuronection/assistant-ui`
-  integrations kit** (plan 33 Phase D / ADR-0040 D25): the browse modal's
+  integrations kit**): the browse modal's
   hand-rolled category grid is now `IntegrationCatalogGrid` (charter-category
   groups + controlled search) inside the app modal; the active-integrations
   list is `IntegrationInstancesList` — instances GROUPED UNDER THEIR
@@ -287,7 +308,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `decision_default`, a muted "Suggested: <model>" line appears under the
   picker (en + el). Display-only — nothing is ever auto-assigned.
 
-### Added (plan 26 follow-up wave B — capability chips on the setup tiles, 2026-10-13)
+### Added (settings follow-up wave B — capability chips on the setup tiles, 2026-10-13)
 - **The preset grid is self-explanatory:** the setup wizard derives
   per-tile capability chips from the API preset data — chat type → Chat
   (+ Vision where the preferred model carries it, + Speech-to-text where
@@ -298,7 +319,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disabled) · openrouter [Chat, Decision] · typesafe [Decision] ·
   groq/mistral/deepseek [Chat] · ollama [Chat, Decision, Local].
 
-### Changed (plan 26 §13.3 follow-up — decision presets exposed, 2026-10-13)
+### Changed (settings follow-up — decision presets exposed, 2026-10-13)
 - **Three decision providers, one transport, docs-verified:** the
   `typesafe` preset flips into `presetOrder` (a decision-only tile after
   OpenRouter; keyUrl → docs.typesafe.ai/api with console-worded steps —
@@ -321,7 +342,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tile surface, openrouter ids + override pinned, ollama decision data
   pinned).
 
-### Changed (plan 26 §13.8/§15 single-source sweep, 2026-10-13)
+### Changed (settings follow-up — single-source sweep, 2026-10-13)
 - **No canonical model ids as code literals:** the decision probe's
   model id derives from the synced preset data via
   `decision_probe_model_id()` (specs → `decision_default`, raising on a
@@ -333,7 +354,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (env still overrides). Contract matrix gains the derivation pin
   (case 23b).
 
-### Changed (plan 26 Phase 6 closeout)
+### Changed (settings — closeout sweep)
 - **Ruff: the generated presets module is excluded from the formatter**
   (`[tool.ruff.format]` exclude; the lint E501 per-file-ignore stays) —
   the scoped family accommodation; `ruff format --check .` is now
@@ -345,7 +366,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when invoked from the parent directory).
 
 ### Added
-- **Decision models (plan 26 Phase 5 / ADR-0032):** the §15 family
+- **Decision models:** the §15 family
   `decision` capability and its four slots land in health — stored as
   `decision_tool_dispatch` / `decision_boolean_gate` / `decision_choice` /
   `decision_score` task assignments (scope-aware, USER default; admins
@@ -372,7 +393,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rows in the setup success panel, and the five-bind re-run review.
 
 ### Changed
-- **BYOK setup UI swaps to the library kit (plan 26 Phase 2):** the
+- **BYOK setup UI swaps to the library kit:** the
   byok port's tiles, guided form and re-run review now render
   `@neuronection/assistant-ui` components (`provider-setup-tiles` with the
   Custom tile, `provider-setup-form` with the hosting toggle + country
@@ -406,7 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `app/ai/assistance/stt.py` (moved out of the PWA endpoint module — one
   list, never duplicated) and capped at `AI_STT_MAX_AUDIO_BYTES`. The STT
   target is resolved for the integration's owner through the same gateway
-  service layer the PWA endpoint uses (ADR-0018 family-ai rule — no
+  service layer the PWA endpoint uses (the one-gateway rule — no
   provider SDK imports outside `app/ai/`). **Audio is ephemeral:** decoded
   in memory, streamed to the tenant's STT model, and discarded — no DB
   rows, no files, no object storage (pinned by test); the `/ai/*`
@@ -453,7 +474,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request; a retrying read still retries).
 - **Bridge HITL resume streaming (R7 WS4):** `POST /ai/sessions/{id}/resume`
   streams the agent's continuation turn after the mobile client resolves
-  task cards — the same SSE family vocabulary as `/ai/chat/stream` (an
+  task cards — the same SSE event vocabulary as `/ai/chat/stream` (an
   `interrupt` card can pause the flow again), body `{message_id?}` (the
   PWA `HitlResumeRequest` semantics), ownership isolation first, the
   shared single-flight turn lock always taken (a concurrent turn → HTTP
@@ -531,7 +552,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not-found/conflict errors) and the `/ai-assistance` endpoint now delegates
   to it — behavior identical (404/409/400 mappings kept).
 - **Bridge AI chat streaming (R7 Phase 2):** `POST /ai/chat/stream` returns
-  the PWA-identical SSE stream (family vocabulary + `session`/`task`/
+  the PWA-identical SSE stream (shared vocabulary + `session`/`task`/
   `citation`/`interrupt` payload events) through the integration proxy,
   which now passes provider `StreamingResponse`s through untouched. The
   chat turn single-flight lock + SSE error-frame classification moved to
@@ -615,7 +636,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   harness (`npm test`) covering signed/unsigned status and both payload
   decodes.
 
-### Security (plan 21)
+### Security
 - **Rate limiting + security headers move onto the auth-kit counter
   (v0.4.0, re-pinned `eb3499103ce91cb52e3282c72129f72ed419f3bb`) —
   module import only.** `app/core/rate_limit.py` keeps every dependency
@@ -631,7 +652,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract marks (§18.19/20/22) on the R/H matrix rows.
 
 ### Added
-- **Chat branching (plan 13 H2, family contract):** chat messages form a
+- **Chat branching:** chat messages form a
   branch tree per session — `parent_id` + per-node `active_child_id` on
   messages, `active_root_id` on sessions (service-enforced pointers); the
   visible conversation is the active-path walk, and legacy rows were
@@ -701,7 +722,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   types).
 
 ### Changed
-- **Chat UI now composes the family library core (plan 13 H1):** the local
+- **Chat UI now composes the library core:** the local
   1,364-line `AIChatInterface` tree decomposed onto
   `@neuronection/assistant-ui` pieces — `ChatPanel` (page/sidebar variants),
   `ChatTranscript` + `ChatMessage` + `MarkdownSurface` (GFM tables, safe
@@ -778,7 +799,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`DATABASE_URL` → `HA_DATABASE_URL`, `UPLOAD_DIR` → `HA_UPLOAD_DIR`
-  (audit item e, plan 20 D2 prefixed-only doctrine):** the last two
+  (audit item e — the prefixed-only env doctrine):** the last two
   unprefixed env names Health's config owns are renamed, prefixed-only —
   no compat aliases, so a stale `DATABASE_URL`/`UPLOAD_DIR` in a `.env` or
   compose file is now ignored (and flagged at boot by the env-name
@@ -840,7 +861,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[release] docs` no longer stages it; README/docs cross-links updated.
   Public contributors: the changelog rule and push policy remain summarized
   in `docs/DEVELOPMENT.md` § "Project Versioning".
-- **uv + pyproject packaging (plan 20 Phase 5):** `requirements*.txt` /
+- **uv + pyproject packaging:** `requirements*.txt` /
   `pytest.ini` / `generate-requirements.sh` are gone — workspace
   `pyproject.toml` + `uv.lock` (version regex from `config.py`), `dev`
   dependency group, `local-ai` extra (scispacy excluded with the
@@ -875,7 +896,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing. Both backend images now COPY `backend/data`; on the next deploy
   the idempotent seed stages populate the clinical catalogs. Guarded by
   `tests/test_docker_packaging.py`.
-- **Docker images (plan 20 Phase 7 boot smoke):** the consolidated
+- **Docker images (boot smoke):** the consolidated
   multi-source COPY flattened `alembic/` so migrations could never run
   in-image (explicit COPY lines now); the default upload root
   (`/var/healthassistant/uploads`) was never created for the non-root
@@ -892,12 +913,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 
 ### Changed
-- **Family datastore naming amended (ADR-0022 revision): `neuro_` →
+- **Family datastore naming amended: `neuro_` →
   `neuronection_` prefix.** The truncated prefix read as meaningless to
   users; the pattern shape is unchanged — health's database is now
   `neuronection_health` (+ `neuronection_health_test` /
   `neuronection_health_demo`) with roles `neuronection_health_owner` /
-  `neuronection_health_app`. Family law (ADR-0022 clause 5 +
+  `neuronection_health_app`. The family naming law (clause 5 +
   `guidelines/deployment.md` in the family repo) was amended first; health
   adopts it here — compose defaults, `init-roles.sh`, backup/restore and
   reset scripts, CI test databases (also dragged out of the ancient
@@ -933,7 +954,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker/README.md` → "Compose project name & volumes". Container names,
   services and ports are unchanged; running stacks stay untouched until
   their next `up`.
-- **Shared country/language catalogs adopted (family ADR-0024):** the
+- **Shared country/language catalogs adopted:** the
   112-entry local `frontend/src/utils/countryUtils.ts` copy is deleted —
   provider country pickers (`ProviderManager`, `ProviderSetupModal`) and
   the AI-provider flag badge now import the full ISO 3166-1 alpha-2
@@ -948,14 +969,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Backend: `company_country` on the AI provider schemas is now validated
   as `^[A-Z]{2}$` (create/update/responses) — free-text country names
   are rejected at the API boundary.
-- **OMB seed language membership test (ADR-0024 §3.4):** the family
+- **OMB seed language membership test:** the family
   language catalog ships as `backend/data/catalogs/languages.json`
   (synced-data channel); a new test asserts every seed language code in
   `data/seeds/omb_race_ethnicity.json` (the curated
   `preferred_language` picklist) resolves in that catalog.
 
 ### Added
-- **SECURITY.md — §20 threat model filled (plan 16 H8):** all
+- **SECURITY.md — §20 threat model filled:** all
   nine surfaces answered concretely (auth surface with rate-limit
   numbers, DB-authoritative instance state, §10 cookie/CSRF/revocation
   semantics, trust boundaries incl. the codified machine/device class —
@@ -966,8 +987,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what the code does not do (init-only instance modes, per-endpoint
   auth without a route-scan guard, list-reads unaudited, no self-serve
   password change/reset, bridge doc drift on 'UUID-only' mode).
-- **TOTP two-factor authentication (family plan 16 H5, identity-auth
-  §5.14/§20 kit extension, implemented health-direct per §5.10):**
+- **TOTP two-factor authentication (the shared identity
+  kit's MFA extension, implemented health-direct):**
   optional per-account MFA, admin-forceable (promoted for institute
   use). RFC 6238 TOTP (SHA1, 6 digits, 30 s step, ±1 drift window) with
   the standard `otpauth://` provisioning URI + QR rendered in the
@@ -1002,8 +1023,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and §9 Bearer clients (Android, OAuth facade) are unaffected; the
   bridge is untouched. `/auth/mfa/*` joins the CSRF-exempt bootstrap
   prefixes (pre-session, like login).
-- **Demo hygiene: full §13 verifier sweep + seeder guard rails (family
-  plan 16 H7, identity-auth §13 — closes the S-7 residual):** every
+- **Demo hygiene: full verifier sweep + seeder guard rails (closes
+  the demo-residual):** every
   session-class surface now rejects `auth_mode="demo"` tokens unless the
   live DB fact `instance_settings.demo_mode` is true. `POST /auth/refresh`
   re-checks the fact on **every rotation** — a demo refresh family minted
@@ -1020,7 +1041,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gated via `authenticate_session_token` (H1) — H7 adds regression
   tests for each (§18.11-style), plus env-flip immunity and fail-closed
   unset-state tests for `demo_mode`.
-- **Demo seeder §13 refusal matrix (plan 16 H7):** `scripts/seed_demo.py`
+- **Demo seeder refusal matrix:** `scripts/seed_demo.py`
   now refuses — loudly, exit code 2, before writing anything — any target
   that is not a provable demo: a PostgreSQL database not named `*_demo`
   (deployment.md: `neuro_health_demo`), an instance whose
@@ -1036,8 +1057,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HA_DEMO_MODE=true` set on first boot (e.g. a scratch
   `health_capture_demo`), or reuse the demo compose — seeding a plain
   dev database is refused by design (docs/SEEDING_AND_DEMOS.md §8).
-- **Cookie sessions for browsers + CSRF + WS Origin gate (family plan 16
-  H3, identity-auth §10):** browsers now authenticate with the §10 cookie
+- **Cookie sessions for browsers + CSRF + WS Origin gate (the
+  shared cookie-session model):** browsers now authenticate with the cookie
   triple — `nx_access` (HttpOnly, SameSite=Lax, Secure, Path=/`;
   `__Host-nx_access` when `HA_COOKIE_SECURE=true`), `nx_refresh`
   (HttpOnly, Path=/api/v1/auth) and the JS-readable `nx_csrf` — set by
@@ -1062,7 +1083,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Android/integrations HMAC bridge is behaviorally frozen — untouched.
   New knobs: `HA_COOKIE_SECURE` (default false), `HA_COOKIE_SAMESITE`
   (default lax), `HA_WS_ALLOWED_ORIGINS`.
-- **Frontend off localStorage tokens (plan 16 H3):** the SPA no longer
+- **Frontend off localStorage tokens:** the SPA no longer
   stores `accessToken` / `refreshToken` / tenant-switch originals in
   localStorage (a boot-time purge sweeps legacy keys) — the axios client
   rides the cookie session (`withCredentials`), echoes `nx_csrf` on
@@ -1074,7 +1095,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subprotocol token); logout now calls `POST /auth/logout` so the
   HttpOnly cookies are actually revoked; the demo auto-login flow is
   cookie-based.
-- **Ops hardening (family plan 16 H6, deployment.md):** compose stacks
+- **Ops hardening:** compose stacks
   move to `timescale/timescaledb:latest-pg16` (TimescaleDB 2.30.1
   verified on-image; the extension is optional via init-db.sql) with
   the naming law (`neuro_health` default DB, `neuro_health_test`
@@ -1084,7 +1105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone + prod, Flower basic-auth on every flavor, host-side
   `scripts/backup.sh`/`restore.sh`, and a live-run restore drill +
   sizing/exposure guidance in docker/README.md.
-- **Audit stream (family plan 16 H2, identity-auth §17 — the
+- **Audit stream (the
   small-institute must be able to answer "who touched what"):** the
   audit trail now records **record reads** (sensitive clinical GETs —
   observation/patient/examination/document/medication/allergy/
@@ -1110,8 +1131,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `task_logs`, `integration_sync_logs`) are unchanged.
 
 ### Changed
-- **Key separation for health-assistant (family plan 16 H4, identity-auth
-  §8): the per-purpose key ring replaces the single all-purpose
+- **Key separation for health-assistant: the per-purpose key ring
+  replaces the single all-purpose
   `SECRET`.** Three independent per-instance secrets (each 32+ random
   bytes, none derived from another, no value serving two purposes):
   `HA_SESSION_KEY` signs session JWTs **and the session-family product
@@ -1155,14 +1176,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `INTEGRATION_SECRET_KEY` fallback), `docs/INSTALL.md` security
   checklist + key-separation note, `docs/CI_CD_SETUP.md` secret table.
 - **`audit_logs` → `audit_events` (model `AuditLog` → `AuditEvent`) +
-  normative `outcome` column** (identity-auth §5/§17; migration
+  normative `outcome` column** (migration
   `a1u2d3i4t5e6` on top of `h1c2o3n4t5r6` — destructive-OK per H1
   policy, existing rows kept). `outcome` is `TEXT(20) NOT NULL
   DEFAULT 'ok'` (`ok` / `denied` / `error`), indexed; the §5-allowed
   product columns (`old_value`/`new_value` diffs) are unchanged.
-- **Identity contract alignment (family plan 16 H1, ADR-0013 — token/
+- **Identity contract alignment (token/
   claim/dependency surface, no behavior change to the Class S
-  extensions):** JWT claims per identity-auth §8 — `sub` is now the
+  extensions):** JWT claims — `sub` is now the
   **user id** (was the email), `iss` on every kind, a uniform
   `token_kind` (session/refresh/api/invite/download — the old
   `type="refresh"` and `sub`-sentinel discriminators are gone),
@@ -1193,7 +1214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test); now reads the `email` claim.
 
 ### Changed
-- **frontend(auth): adopt the shared assistant-ui `AuthGate` (plan 16 Phase 5 closeout)** — the
+- **frontend(auth): adopt the shared assistant-ui `AuthGate`** — the
   `checking → authenticated | anonymous` session machine moves to the library (`@neuronection/assistant-ui/auth-gate`,
   consumed via the documented tarball flow, no manifest change); health composes `SessionGate` over it and
   deletes the local `useProtectedRoute` gate and the anonymous route set in the same change. The login node

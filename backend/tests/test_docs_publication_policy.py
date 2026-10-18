@@ -57,11 +57,20 @@ def _public_surfaces() -> list[Path]:
     return [p for p in surfaces if p.is_file()]
 
 
-def _unreleased_slice() -> tuple[str, int]:
-    changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    start = changelog.find("## [Unreleased]")
-    if start == -1:
+def _unreleased_slice(changelog: str | None = None) -> tuple[str, int]:
+    """The unreleased CHANGELOG slice (text, char offset of its heading).
+
+    Anchored to a real ``## [Unreleased]`` heading line — never to the
+    backticked mention in the preamble workflow note (a plain ``str.find``
+    used to match that mention, so the scanned "slice" was the preamble
+    and the actual unreleased section was never scanned).
+    """
+    if changelog is None:
+        changelog = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    match = re.search(r"^## \[Unreleased\][ \t]*$", changelog, re.MULTILINE)
+    if match is None:
         return "", 0
+    start = match.start()
     rest = changelog[start:]
     nxt = rest.find("\n## [", 1)
     return (rest if nxt == -1 else rest[:nxt]), start
@@ -112,3 +121,49 @@ def test_every_doc_is_in_nav_or_repo_only_allowlist():
         assert path.name in nav or path.name in REPO_ONLY_DOCS, (
             f"{path.name} is neither in docs-tree.json nor on the repo-only allowlist"
         )
+
+
+CHANGELOG_WITH_PREAMBLE_MENTION = (
+    "# Changelog\n\n"
+    "All notable changes are documented here.\n\n"
+    "> **Workflow:** every user-facing change adds a line under `## [Unreleased]` at\n"
+    "> commit time. At release time, `## [Unreleased]` is renamed to\n"
+    "> `## [vX.Y.Z] - YYYY-MM-DD`.\n\n"
+    "## [Unreleased]\n\n"
+    "### Fixed\n"
+    "- repaired the widget\n\n"
+    "## [1.2.3] - 2026-10-17\n\n"
+    "- historical entry mentioning dev/plans/9 (append-only, exempt)\n"
+)
+
+
+def test_unreleased_slice_anchors_to_heading_not_preamble():
+    """A violating unreleased entry must be caught even when the preamble
+    prose mentions ``## [Unreleased]`` in backticks before the heading —
+    the pre-fix ``str.find`` anchor matched the mention and the scan only
+    ever covered the preamble."""
+    violating = CHANGELOG_WITH_PREAMBLE_MENTION.replace(
+        "- repaired the widget", "- repaired the widget (ADR-0099 follow-up)"
+    )
+    slice_, start = _unreleased_slice(violating)
+    assert slice_.startswith("## [Unreleased]\n")
+    assert violating.index("## [Unreleased]\n") == start
+    caught = [pattern for pattern in BANNED_PATTERNS if re.search(pattern, slice_, re.IGNORECASE)]
+    assert caught, "the violating unreleased entry must be inside the scanned slice"
+
+
+def test_unreleased_slice_clean_section_passes():
+    slice_, _ = _unreleased_slice(CHANGELOG_WITH_PREAMBLE_MENTION)
+    for pattern in BANNED_PATTERNS:
+        assert not re.search(pattern, slice_, re.IGNORECASE)
+
+
+def test_unreleased_slice_excludes_released_sections():
+    slice_ = _unreleased_slice(CHANGELOG_WITH_PREAMBLE_MENTION)[0]
+    assert "1.2.3" not in slice_
+    assert "dev/plans/9" not in slice_, "released history is append-only and exempt"
+
+
+def test_unreleased_slice_without_heading_returns_empty():
+    prose_only = "# Changelog\n\n> mentions `## [Unreleased]` in prose only\n"
+    assert _unreleased_slice(prose_only) == ("", 0)

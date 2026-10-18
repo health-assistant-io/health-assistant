@@ -300,6 +300,19 @@ def coerce_patient_id(explicit: Any, subject: dict[str, Any] | None) -> UUID | N
         return None
 
 
+def coerce_observation_patient_ids(observations: list[Any]) -> None:
+    """Sync each observation's relational ``patient_id`` with its FHIR subject.
+
+    Audit B3, batch form: the SDK ``ObservationBuilder`` emits only the
+    ``subject`` reference, so every persist path (manual and background
+    sync, inbound webhook, bridge push) runs this over its batch before
+    biomarker mapping and the FHIR/telemetry split — telemetry rows copy
+    ``obs.patient_id``, which would otherwise stay NULL.
+    """
+    for obs in observations:
+        obs.patient_id = coerce_patient_id(obs.patient_id, obs.subject)
+
+
 def _flatten_interpretation(interpretation: Any) -> str | None:
     """Flatten a FHIR interpretation value into a single display string.
 

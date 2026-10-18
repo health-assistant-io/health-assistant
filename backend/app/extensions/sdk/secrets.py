@@ -53,6 +53,7 @@ __all__ = [
     "decrypt_fields",
     "encrypt_fields",
     "mask_fields",
+    "mask_wrapped_secrets",
 ]
 
 
@@ -146,4 +147,27 @@ def mask_fields(config: dict[str, Any], fields: list[str]) -> dict[str, Any]:
         if val in (None, "", {}, []):
             continue
         out[field] = "***"
+    return out
+
+
+def mask_wrapped_secrets(config: dict[str, Any], fields: Sequence[str]) -> dict[str, Any]:
+    """Mask ``fields`` whose values are still at-rest ciphertext wrappers.
+
+    The platform auto-provisions machine secrets (``api_secret`` /
+    ``webhook_secret``) for inbound-capable instances (audit 2026-08 H1/H2)
+    whether or not the domain's config flow declares them in
+    ``get_secret_fields()`` — the resolve side already decrypts that
+    undeclared-wrapper shape. This is the read-side twin: after the flow's
+    own masking, any listed field still holding a
+    ``{"_encrypted": ...}`` wrapper is replaced by ``"***"`` so read
+    endpoints never echo ciphertext. Absent, plaintext and already-masked
+    values pass through unchanged.
+    """
+    if not config:
+        return {}
+    out = dict(config)
+    for field in fields:
+        val = out.get(field)
+        if isinstance(val, dict) and SECRET_MARKER in val:
+            out[field] = "***"
     return out
