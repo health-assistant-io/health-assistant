@@ -38,6 +38,7 @@ from app.models.system_integration import SystemIntegration
 logger = logging.getLogger(__name__)
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "extension-manifest.schema.json"
+_DOCS_TREE_SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "docs-tree.schema.json"
 
 
 def domain_of(extension_id: str) -> str:
@@ -96,6 +97,15 @@ class IntegrationRegistry:
                 f"extension manifest schema unavailable at {_SCHEMA_PATH}: {e} — "
                 "registration fails closed (vendored contract set incomplete)"
             ) from e
+        try:
+            docs_tree_schema = json.loads(_DOCS_TREE_SCHEMA_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise RuntimeError(
+                f"docs-tree schema unavailable at {_DOCS_TREE_SCHEMA_PATH}: {e} — "
+                "registration fails closed (vendored contract set incomplete)"
+            ) from e
+
+        from app.extensions import docs as ext_docs
 
         for item in sorted(os.listdir(self._base_path)):
             item_path = os.path.join(self._base_path, item)
@@ -117,6 +127,29 @@ class IntegrationRegistry:
                     raise ValueError(f"manifest invalid: {err}")
                 if str(ext_id).startswith(contract.RESERVED_ID_PREFIXES):
                     raise ValueError(f"id {ext_id!r} uses a reserved prefix")
+                # Per-extension docs binding (plan 34 §10.5): a manifest
+                # carrying the `docs` pointer promises a tree that exists
+                # and validates — a broken promise self-disables exactly
+                # like an invalid manifest.
+                pointer = manifest.get("docs")
+                if pointer is not None:
+                    if pointer != ext_docs.DOCS_POINTER:
+                        raise ValueError(
+                            f"docs pointer must be {ext_docs.DOCS_POINTER!r}, got {pointer!r}"
+                        )
+                    docs_dir = Path(item_path) / "docs"
+                    try:
+                        tree = ext_docs.load_tree(docs_dir)
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"docs tree invalid JSON: {e}") from e
+                    if tree is None:
+                        raise ValueError(
+                            f"manifest points at {ext_docs.DOCS_POINTER} "
+                            "but the tree does not exist"
+                        )
+                    tree_err = ext_docs.validate_tree(tree, docs_dir, docs_tree_schema)
+                    if tree_err is not None:
+                        raise ValueError(f"docs tree invalid: {tree_err}")
                 self._manifests[domain_of(str(ext_id))] = manifest
             except Exception as e:
                 logger.error(f"Failed to load manifest for {item}: {e}")

@@ -139,43 +139,97 @@
       }
     },
     {
-      "name": "minimal-legacy-category-list",
-      "doc": [
-        {
-          "category": "Getting Started",
-          "items": [
-            {
-              "id": "overview",
-              "file": "overview.md",
-              "title": "Overview",
-              "description": "One category, one page — the as-landed health builtin form."
-            }
-          ]
-        }
-      ]
+      "name": "minimal-extension-docs",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "One closed-vocabulary category, one page — the minimal per-extension tree."
+              }
+            ]
+          }
+        ]
+      }
     },
     {
-      "name": "legacy-category-list-with-icon",
-      "doc": [
-        {
-          "category": "Getting Started",
-          "icon": "Play",
-          "items": [
-            {
-              "id": "overview",
-              "file": "overview.md",
-              "title": "Overview",
-              "description": "The lucide icon variant (health core's product tree shape)."
+      "name": "extension-docs-i18n",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "title": "Getting Started",
+            "icon": "Play",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "What this extension is and when to use it; the landing page by array order (first item of the first category).",
+                "audience": "user"
+              },
+              {
+                "id": "connection",
+                "file": "connection.md",
+                "title": "Connect the server",
+                "description": "Authorize and connect — a setup page.",
+                "audience": "user"
+              }
+            ]
+          },
+          {
+            "category": "usage",
+            "items": [
+              {
+                "id": "pull",
+                "file": "pull.md",
+                "title": "Pull data in",
+                "description": "How sync pulls items — a usage page.",
+                "audience": "user"
+              },
+              {
+                "id": "tricks",
+                "file": "tricks.md",
+                "title": "Hacking on the extension",
+                "description": "A dev-audience page inside a usage category; the tag routes the reader, the category files the page.",
+                "audience": "dev",
+                "index": true
+              }
+            ]
+          },
+          {
+            "category": "troubleshooting",
+            "items": [
+              {
+                "id": "troubleshooting",
+                "file": "troubleshooting.md",
+                "title": "Troubleshooting",
+                "description": "Symptom → cause → fix rows.",
+                "audience": "user"
+              }
+            ]
+          }
+        ],
+        "i18n": {
+          "defaultLocale": "en",
+          "locales": {
+            "en": {
+              "category.overview": "Getting Started",
+              "item.connection": "Connect the server"
             },
-            {
-              "id": "troubleshooting",
-              "file": "troubleshooting.md",
-              "title": "Troubleshooting",
-              "description": "A second page in the same category."
+            "de": {
+              "category.overview": "Erste Schritte",
+              "item.connection": "Server verbinden"
             }
-          ]
+          }
         }
-      ]
+      }
     }
   ],
   "invalid": [
@@ -274,24 +328,6 @@
       }
     },
     {
-      "name": "legacy-unknown-field",
-      "because": "closed object: the legacy form has no 'href' — additional properties are rejected, not ignored",
-      "doc": [
-        {
-          "category": "Getting Started",
-          "href": "https://example.com",
-          "items": [
-            {
-              "id": "overview",
-              "file": "overview.md",
-              "title": "Overview",
-              "description": "A page entry smuggling a URL."
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "empty-chaptered-roots",
       "because": "a doc set with no nodes is not a doc set",
       "doc": {
@@ -300,6 +336,157 @@
         "title": "Example SDK",
         "description": "The empty set.",
         "roots": []
+      }
+    },
+    {
+      "name": "free-form-category",
+      "because": "the per-extension category vocabulary is closed — 'Getting Started' mapped to overview/setup when the form was designated; free-form category strings are rejected, not mapped on the fly",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "Getting Started",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "The as-landed health builtin shape this form replaces."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "bare-legacy-array",
+      "because": "the pre-contract array root is history: the extensionDocsTree form is an object (version + categories) — the free-form array is rejected so nobody re-lands it",
+      "doc": [
+        {
+          "category": "Getting Started",
+          "items": [
+            {
+              "id": "overview",
+              "file": "overview.md",
+              "title": "Overview",
+              "description": "The old root shape."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "extension-item-unknown-audience",
+      "because": "the audience enum is closed on the extension form exactly as on the chaptered one — user|dev, no third audience",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "A page claiming an audience the family does not have.",
+                "audience": "admin"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "extension-item-unknown-field",
+      "because": "closed object: the extension form has no 'href' — additional properties are rejected, not ignored",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "A page entry smuggling a URL.",
+                "href": "https://example.com"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-extension-categories",
+      "because": "a per-extension tree with no categories is not a doc set",
+      "doc": {
+        "version": 1,
+        "categories": []
+      }
+    },
+    {
+      "name": "duplicate-index",
+      "because": "the landing rule allows index: true on EXACTLY ONE item across the whole tree — two landing pages is a contradiction (wall/validator-owned count: the schema cannot express it, the fixture runner and every host validator enforce it)",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "One landing claim.",
+                "index": true
+              }
+            ]
+          },
+          {
+            "category": "usage",
+            "items": [
+              {
+                "id": "pull",
+                "file": "pull.md",
+                "title": "Pull",
+                "description": "A second, contradictory landing claim.",
+                "index": true
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-category-slug",
+      "because": "each closed category appears at most once per tree — two 'usage' categories split render order (wall/validator-owned: uniqueItems cannot express it over objects)",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "usage",
+            "items": [
+              {
+                "id": "pull",
+                "file": "pull.md",
+                "title": "Pull",
+                "description": "The first usage category."
+              }
+            ]
+          },
+          {
+            "category": "usage",
+            "items": [
+              {
+                "id": "push",
+                "file": "push.md",
+                "title": "Push",
+                "description": "The second, split usage category."
+              }
+            ]
+          }
+        ]
       }
     }
   ]

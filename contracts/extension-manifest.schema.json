@@ -43,6 +43,10 @@
       "type": "string",
       "maxLength": 400
     },
+    "docs": {
+      "const": "docs/docs-tree.json",
+      "$comment": "Per-extension documentation pointer (plan 34 / guidelines/extension-docs.md): optional; when present, docs/docs-tree.json MUST exist in the bundle and validate against docs-tree.schema.json's extensionDocsTree form — enforced wherever manifests validate (host registration/import, build walls; an invalid tree is a self-disable reason like an invalid manifest). The directory/naming contract is fixed: docs/ at the bundle root, docs-tree.json + the markdown pages beside it; the docs' versioning rides the manifest version, never separate."
+    },
     "author": {
       "type": "string",
       "minLength": 1,
@@ -681,6 +685,10 @@
         "description": {
           "type": "string",
           "maxLength": 400
+        },
+        "docs": {
+          "const": "docs/docs-tree.json",
+          "$comment": "Per-extension documentation pointer — same law as the root envelope: when present the tree must exist beside the manifest and validate (registration/build-enforced)."
         },
         "author": {
           "type": "string",

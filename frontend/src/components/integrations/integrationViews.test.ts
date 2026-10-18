@@ -8,6 +8,8 @@ import {
   detailExtension,
   docsNodes,
   firstDocFile,
+  landingDocFile,
+  audienceOfFile,
   instanceGroups,
   kindOf,
   statusOf,
@@ -145,27 +147,108 @@ describe('integrationViews (wire → kit mapping)', () => {
     expect(detailExtension({ domain: 'webhook' }, undefined).name).toBe('webhook');
   });
 
-  it('maps the per-extension docs tree into kit nodes keyed by file', () => {
-    const nodes = docsNodes([
-      {
-        category: 'Guides',
-        items: [
-          { id: 'a', file: 'docs/setup.md', title: 'Setup' },
-          { id: 'b', file: 'docs/usage.md', title: 'Usage' },
-        ],
-      },
-    ]);
+  it('maps the per-extension docs tree (extensionDocsTree form) into kit nodes keyed by file', () => {
+    const tree = {
+      version: 1,
+      categories: [
+        {
+          category: 'overview',
+          items: [{ id: 'a', file: 'docs/setup.md', title: 'Setup' }],
+        },
+        {
+          category: 'usage',
+          items: [{ id: 'b', file: 'docs/usage.md', title: 'Usage' }],
+        },
+      ],
+    };
+    const nodes = docsNodes(tree);
     expect(nodes).toEqual([
       {
-        id: 'category:Guides',
-        title: 'Guides',
-        children: [
-          { id: 'docs/setup.md', title: 'Setup' },
-          { id: 'docs/usage.md', title: 'Usage' },
-        ],
+        id: 'category:overview',
+        title: 'Overview',
+        children: [{ id: 'docs/setup.md', title: 'Setup' }],
+      },
+      {
+        id: 'category:usage',
+        title: 'Usage',
+        children: [{ id: 'docs/usage.md', title: 'Usage' }],
       },
     ]);
     expect(firstDocFile(nodes)).toBe('docs/setup.md');
-    expect(firstDocFile(docsNodes([]))).toBeNull();
+    expect(firstDocFile(docsNodes(undefined))).toBeNull();
+  });
+
+  it('resolves category/item labels through the tree i18n map, then inline titles, then slugs', () => {
+    const tree = {
+      version: 1,
+      categories: [
+        {
+          category: 'overview',
+          title: 'Inline Override',
+          items: [{ id: 'connection', file: 'connection.md', title: 'Connect' }],
+        },
+        { category: 'usage', items: [{ id: 'pull', file: 'pull.md', title: 'Pull' }] },
+      ],
+      i18n: {
+        defaultLocale: 'en',
+        locales: {
+          en: { 'category.overview': 'Getting Started' },
+          de: { 'category.overview': 'Erste Schritte', 'item.connection': 'Server verbinden' },
+        },
+      },
+    };
+    expect(docsNodes(tree, 'de')[0].title).toBe('Erste Schritte');
+    expect(docsNodes(tree, 'de')[0].children[0].title).toBe('Server verbinden');
+    expect(docsNodes(tree, 'fr')[0].title).toBe('Getting Started'); // defaultLocale fallback
+    // a category without any i18n/title falls back to the inline title,
+    // and one without either to the title-cased slug
+    expect(docsNodes(tree, 'de')[1].title).toBe('usage'.replace(/^./, (c) => c.toUpperCase()));
+    const noInline = { ...tree, categories: [{ category: 'security', items: tree.categories[1].items }] };
+    expect(docsNodes(noInline, 'de')[0].title).toBe('Security');
+  });
+
+  it('applies the landing rule: index flag wins, else first item of first category', () => {
+    const tree = {
+      version: 1,
+      categories: [
+        { category: 'overview', items: [{ id: 'a', file: 'overview.md', title: 'Overview' }] },
+        {
+          category: 'usage',
+          items: [
+            { id: 'b', file: 'tricks.md', title: 'Tricks', index: true },
+            { id: 'c', file: 'pull.md', title: 'Pull' },
+          ],
+        },
+      ],
+    };
+    expect(landingDocFile(tree)).toBe('tricks.md');
+    const unflagged = {
+      version: 1,
+      categories: [
+        { category: 'overview', items: [{ id: 'a', file: 'overview.md', title: 'Overview' }] },
+      ],
+    };
+    expect(landingDocFile(unflagged)).toBe('overview.md');
+    expect(landingDocFile(undefined)).toBeNull();
+  });
+
+  it('finds the audience tag of the current file, absent when untagged', () => {
+    const tree = {
+      version: 1,
+      categories: [
+        {
+          category: 'overview',
+          items: [
+            { id: 'a', file: 'overview.md', title: 'Overview', audience: 'user' as const },
+            { id: 'b', file: 'hacking.md', title: 'Hacking', audience: 'dev' as const },
+            { id: 'c', file: 'plain.md', title: 'Plain' },
+          ],
+        },
+      ],
+    };
+    expect(audienceOfFile(tree, 'overview.md')).toBe('user');
+    expect(audienceOfFile(tree, 'hacking.md')).toBe('dev');
+    expect(audienceOfFile(tree, 'plain.md')).toBeNull();
+    expect(audienceOfFile(tree, null)).toBeNull();
   });
 });

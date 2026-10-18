@@ -184,6 +184,40 @@
             }
           }
         }
+      },
+      {
+        "name": "connector-with-docs-pointer",
+        "note": "The per-extension docs binding (plan 34 / guidelines/extension-docs.md): the pointer is the one fixed relative path; whether the referenced tree EXISTS and validates is host/wall-owned (registration, import, build gates) — structure here only pins the shape.",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "docced-connector",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "docs": "docs/docs-tree.json",
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Docced connector"
+              }
+            }
+          }
+        }
       }
     ],
     "invalid": [
@@ -331,6 +365,74 @@
             "sync"
           ],
           "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==",
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "docs-pointer-escape",
+        "because": "the docs pointer is the one fixed relative path 'docs/docs-tree.json' — escapes/renames are rejected structurally (the tree MUST exist at the contract location; the host's existence+validation check rides this shape)",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "escaping-docs",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "docs": "docs/../docs/docs-tree.json",
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": false,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "docs-pointer-url",
+        "because": "the docs pointer is a bundle-relative path, never a URL — remote doc trees are out of contract",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "remote-docs",
+          "version": "1.0.0",
+          "author": "X",
+          "license": "MIT",
+          "capabilities": [
+            "sync"
+          ],
+          "docs": "https://example.com/docs/docs-tree.json",
           "itemSchema": {
             "type": "object",
             "properties": {

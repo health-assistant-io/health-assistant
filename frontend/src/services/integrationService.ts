@@ -109,16 +109,38 @@ export interface IntegrationDocsTreeItem {
   id: string;
   file: string;
   title: string;
+  description?: string;
+  /** Optional audience tag (plan 34 §10.6): 'user' | 'dev' — routes the
+   * reader; never gates access. */
+  audience?: 'user' | 'dev';
+  /** Landing override (plan 34 §10.4): at most one item per tree. */
+  index?: boolean;
 }
 
 export interface IntegrationDocsTreeCategory {
+  /** Closed vocabulary slug (plan 34 §10.1): overview | setup | usage |
+   * reference | security | changelog | troubleshooting. */
   category: string;
+  /** Optional display override; absent = title-cased slug or the i18n map. */
+  title?: string;
+  icon?: string;
   items: IntegrationDocsTreeItem[];
+}
+
+/** The extensionDocsTree form (plan 34 §10): version + categories,
+ * optional i18n label map mirroring the manifest conventions. */
+export interface IntegrationDocsTree {
+  version: number;
+  categories: IntegrationDocsTreeCategory[];
+  i18n?: {
+    defaultLocale: string;
+    locales: Record<string, Record<string, string>>;
+  };
 }
 
 export interface IntegrationDocumentation {
   markdown: string;
-  tree?: IntegrationDocsTreeCategory[];
+  tree?: IntegrationDocsTree;
 }
 
 // Per-integration notification preferences now live in notificationService

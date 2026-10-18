@@ -4,7 +4,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { integrationService } from '../../services/integrationService';
 import { DocsDialog } from '../ui/integrations';
-import { docsNodes, firstDocFile } from './integrationViews';
+import {
+  audienceOfFile,
+  docsNodes,
+  landingDocFile,
+} from './integrationViews';
 
 interface Props {
   domain: string;
@@ -15,10 +19,12 @@ interface Props {
  * Integration documentation (plan 33 Phase D): the kit's DocsDialog owns the
  * tree chrome; the markdown fetch + render ride the app-owned content slot
  * (health's per-extension docs-tree.json is the precedent the component was
- * designed from).
+ * designed from). The tree is the extensionDocsTree form (plan 34 §10): the
+ * landing rule picks the opening page and the audience tag (when present)
+ * renders as a badge above the content.
  */
 const IntegrationDocsDialog: React.FC<Props> = ({ domain, onClose }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tree, setTree] = useState<Awaited<ReturnType<typeof integrationService.getDocumentation>>['tree']>(undefined);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>('');
@@ -32,7 +38,9 @@ const IntegrationDocsDialog: React.FC<Props> = ({ domain, onClose }) => {
       .then((data) => {
         if (cancelled) return;
         setTree(data.tree);
-        const first = firstDocFile(docsNodes(data.tree)) ?? 'README.md';
+        // The landing rule (plan 34 §10.4): index-flagged item, else the
+        // first item of the first category.
+        const first = landingDocFile(data.tree) ?? 'README.md';
         setCurrentFile(first);
       })
       .catch((err) => {
@@ -66,7 +74,8 @@ const IntegrationDocsDialog: React.FC<Props> = ({ domain, onClose }) => {
     };
   }, [domain, currentFile]);
 
-  const nodes = docsNodes(tree);
+  const nodes = docsNodes(tree, i18n.language);
+  const audience = audienceOfFile(tree, currentFile);
 
   return (
     <DocsDialog
@@ -81,6 +90,14 @@ const IntegrationDocsDialog: React.FC<Props> = ({ domain, onClose }) => {
       errorDetail={errorDetail}
       renderContent={() => (
         <div className="prose prose-sm dark:prose-invert max-w-none">
+          {audience ? (
+            <span
+              data-testid="integration-docs-audience"
+              className="mb-3 inline-block rounded-full border border-[var(--as-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--as-muted-fg)]"
+            >
+              {t(`integrations.docs.audience.${audience}`, audience)}
+            </span>
+          ) : null}
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
         </div>
       )}

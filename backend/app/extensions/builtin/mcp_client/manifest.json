@@ -5,6 +5,7 @@
   "id": "mcp-client",
   "version": "2.0.0",
   "description": "Connect to Model Context Protocol servers (STDIO / HTTP / SSE) and expose their tools to the Health Assistant chat. Server processes run out-of-band (T3): they open their own network connections outside this app's SSRF perimeter; the app governs what they return (per-tool allowlist, result caps, audited calls).",
+  "docs": "docs/docs-tree.json",
   "author": "Health Assistant Core",
   "license": "Apache-2.0",
   "categories": ["developer", "productivity"],

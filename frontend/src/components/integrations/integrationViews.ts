@@ -18,7 +18,7 @@ import {
 } from '../ui/integrations';
 import type {
   ActiveIntegration,
-  IntegrationDocsTreeCategory,
+  IntegrationDocsTree,
   IntegrationManifest,
 } from '../../services/integrationService';
 
@@ -159,15 +159,36 @@ export function detailExtension(
   };
 }
 
-/** Health's per-extension docs tree (`{category, items[]}`) as the kit's
- * generic node tree; file nodes carry the file path as their id. */
+/** Health's per-extension docs tree (the extensionDocsTree form, plan 34
+ * §10) as the kit's generic node tree; file nodes carry the file path as
+ * their id. Category/item labels resolve through the tree's own i18n map
+ * when present (requested locale, then defaultLocale), else the inline
+ * title override, else the title-cased slug — the family string rule,
+ * minimal form. */
 export function docsNodes(
-  tree: IntegrationDocsTreeCategory[] | undefined | null,
+  tree: IntegrationDocsTree | undefined | null,
+  locale?: string | null,
 ): IntegrationDocsNode[] {
-  return (tree ?? []).map((category) => ({
+  const i18n = tree?.i18n;
+  const label = (key: string, inline: string | undefined, slug: string): string => {
+    const localeMap = (code?: string | null) =>
+      code ? i18n?.locales?.[code]?.[key] : undefined;
+    return (
+      localeMap(locale) ??
+      localeMap(i18n?.defaultLocale) ??
+      inline ??
+      slug.replace(/(^|-)([a-z])/g, (_, sep: string, ch: string) =>
+        sep ? ` ${ch.toUpperCase()}` : ch.toUpperCase(),
+      )
+    );
+  };
+  return (tree?.categories ?? []).map((category) => ({
     id: `category:${category.category}`,
-    title: category.category,
-    children: category.items.map((item) => ({ id: item.file, title: item.title })),
+    title: label(`category.${category.category}`, category.title, category.category),
+    children: category.items.map((item) => ({
+      id: item.file,
+      title: label(`item.${item.id}`, item.title, item.id),
+    })),
   }));
 }
 
@@ -175,6 +196,32 @@ export function firstDocFile(nodes: IntegrationDocsNode[]): string | null {
   for (const node of nodes) {
     for (const child of node.children ?? []) {
       if (!child.id.startsWith('category:')) return child.id;
+    }
+  }
+  return null;
+}
+
+/** The landing rule (plan 34 §10.4): the item carrying `index: true`, else
+ * the first item of the first category. Applied to the raw tree (the kit
+ * node list carries no index flag). */
+export function landingDocFile(
+  tree: IntegrationDocsTree | undefined | null,
+): string | null {
+  const items = (tree?.categories ?? []).flatMap((category) => category.items);
+  const flagged = items.find((item) => item.index);
+  return (flagged ?? items[0])?.file ?? null;
+}
+
+/** The audience tag of the item owning `file` (plan 34 §10.6) — shown by
+ * the dialog as a badge when present; never gates access. */
+export function audienceOfFile(
+  tree: IntegrationDocsTree | undefined | null,
+  file: string | null,
+): 'user' | 'dev' | null {
+  if (!file) return null;
+  for (const category of tree?.categories ?? []) {
+    for (const item of category.items) {
+      if (item.file === file) return item.audience ?? null;
     }
   }
   return null;

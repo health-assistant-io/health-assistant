@@ -5,6 +5,7 @@
   "id": "health-assistant-bridge",
   "version": "2.0.0",
   "description": "Connect mobile apps and custom clients to this Health Assistant instance through a signed two-way API (HMAC-SHA256). Ships the official Python, TypeScript and Kotlin client SDKs as satellites under integrations/health-assistant-bridge/.",
+  "docs": "docs/docs-tree.json",
   "author": "Health Assistant Core",
   "license": "Apache-2.0",
   "categories": ["data", "productivity"],

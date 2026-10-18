@@ -11,6 +11,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (extensions — per-extension documentation is a validated contract)
+- **The four builtin doc trees migrated to the family `extensionDocsTree`
+  form (the extension-docs contract's 'Per-extension documentation'
+  section).** The
+  as-landed free-form category lists ("Getting Started", "Sync",
+  "Advanced", "Using the Bridge", "Help", "Security") map into the CLOSED
+  seven-category vocabulary (`overview | setup | usage | reference |
+  security | changelog | troubleshooting` — evidence-derived; every real
+  tree carried a troubleshooting page, so it is a category of its own);
+  trees gain optional manifest-convention i18n label maps (en carried
+  today, structure only) and per-item `audience: user|dev` tags; items
+  may flag `index: true` (at most one) as the landing-page override of
+  the first-item-of-first-category default. The manifests bind their
+  docs with the new optional `"docs": "docs/docs-tree.json"` pointer
+  (webhook ships none — README-only, honest absence).
+- **Registration validates the tree when the pointer is present: an
+  invalid tree self-disables the extension with a reason, exactly like
+  an invalid manifest** (`registry._load_manifests` →
+  `app/extensions/docs.py`: schema + wall semantics — unique ids, each
+  category once, at-most-one index, every file resolving beside the
+  tree, no escapes).
+- **`GET /{domain}/documentation` applies the landing rule and the
+  markdown law.** The dialog opens on the landing page (index flag or
+  first item of the first category), and page markdown crosses with raw
+  HTML neutralized to escaped text fence-aware — the post-H3 shape
+  (the H3 website lesson: a committed `<script>` once rendered
+  executable on the website; extension-doc surfaces never make that
+  mistake).
+- **The frontend dialog resolves tree labels through the tree's i18n map
+  (host locale, defaultLocale fallback, title-cased slug last) and
+  shows the audience tag as a badge when present** (minimal §10.6
+  surface; the tag routes readers, it never gates access).
+- Tests: `tests/test_extension_docs_binding.py` (helpers, registration
+  both directions — valid pointer+tree registers, invalid tree
+  self-disables red-check —, endpoint landing+stripping, the four
+  shipped trees + pointer-iff-tree) + the vendored fixture suite now
+  rejects by schema OR wall semantics; `integrationViews` tests cover
+  the new tree shape, label resolution, the landing rule and audience
+  lookup. Rider (same-commit duty): the website's ingestion reader,
+  validator semantics, vendored schema+fixtures and gates moved to the
+  new form same-wave (product docs-tree stays docs.md's own law — the
+  website gate scope-splits it out of the extension contract).
+
 ### Fixed (security — the outbound transport actually pins what the guard checked)
 - **`guarded_request` now sends to the PINNED guard-checked address, and
   a fetch fails closed when resolution fails.** The guard ran, then

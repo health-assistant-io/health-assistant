@@ -8,9 +8,11 @@ validator.
 
 The product-level ``docs/docs-tree.json`` (guidelines/docs.md
 audiences form) is deliberately NOT this contract's scope; a file named
-``docs-tree.json`` is governed by its scope — and health's per-extension
-builtin trees (``backend/app/extensions/builtin/*/docs/) stay the legacy
-category-list form until the in-app reader learns the chaptered one.
+``docs-tree.json`` is governed by its scope. Health's per-extension
+builtin trees (``backend/app/extensions/builtin/*/docs/``) migrated to
+the ``extensionDocsTree`` form in plan 34 wave 7 — their binding,
+registration validation and endpoint behavior are covered by
+``test_extension_docs_binding.py``.
 """
 
 from __future__ import annotations
@@ -67,8 +69,13 @@ def test_docs_tree_fixtures_accept(case: dict) -> None:
     "case", DOCS_TREE_FIXTURES.get("invalid", []), ids=lambda case: case["name"]
 )
 def test_docs_tree_fixtures_reject(case: dict) -> None:
+    """Mirrors dev wall 14's fixture runner: an invalid case is rejected
+    by the schema OR by the wall semantics (unique ids, at-most-one
+    index, category slugs once — the checks JSON Schema cannot express;
+    the vendored contract module carries them)."""
     err = contract.validate(DOCS_TREE_SCHEMA, case["doc"], DOCS_TREE_SCHEMA)
-    assert err is not None, f"invalid case {case['name']} was accepted"
+    sem = contract.docs_tree_semantics(case["doc"])
+    assert err is not None or sem, f"invalid case {case['name']} was accepted"
 
 
 # ------------------------------------------------------- health's real tree

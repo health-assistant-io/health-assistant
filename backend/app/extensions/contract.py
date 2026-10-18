@@ -27,7 +27,9 @@ __all__ = [
     "ENVELOPE_API_VERSION",
     "KINDS",
     "CONNECTOR_KIND_VERSION",
+    "DOCS_POINTER",
     "RESERVED_ID_PREFIXES",
+    "docs_tree_semantics",
     "secret_fields",
     "validate",
     "validate_manifest",
@@ -37,6 +39,9 @@ ENVELOPE_API_VERSION = "extension/v1"
 KINDS = ("connector", "mini-app", "bridge")
 CONNECTOR_KIND_VERSION = 1
 RESERVED_ID_PREFIXES = ("host-", "neuro-")
+#: plan 34 §10.3 — the manifest's optional per-extension docs pointer;
+#: the one fixed value the envelope schema admits.
+DOCS_POINTER = "docs/docs-tree.json"
 
 _SUPPORTED_KEYWORDS = frozenset(
     {
@@ -245,3 +250,73 @@ def secret_fields(config_schema: Mapping[str, Any] | None) -> list[str]:
         if isinstance(field_schema, dict) and field_schema.get("x-secret") is True:
             fields.append(name)
     return fields
+
+
+def docs_tree_semantics(
+    tree: Any,
+    exists: Any = None,
+) -> list[str]:
+    """Wall-equivalent semantics for a docs-tree document beyond its
+    schema (plan 34 — dev wall 14's job; every host validating a tree
+    runs these beside the schema):
+
+    - node/item ids unique across the whole tree;
+    - declared ``chapters`` have matching root node ids (chaptered form);
+    - each closed category slug at most once per tree, and ``index:
+      true`` on at most one item — the landing rule's override
+      (extensionDocsTree form);
+    - every ``file`` reference exists (when ``exists`` — a callable
+      taking the ref — is provided).
+
+    Returns a list of problems (empty = clean). A tree that is neither
+    form (no ``roots`` and no ``categories``) is itself a problem — the
+    schema already rejected it by then.
+    """
+    problems: list[str] = []
+    if not isinstance(tree, dict):
+        return ["tree is not an object"]
+    if "roots" in tree:
+        ids: list[str] = []
+        stack = list(tree.get("roots") or [])
+        while stack:
+            node = stack.pop(0)
+            if not isinstance(node, dict):
+                continue
+            ids.append(node.get("id"))
+            if exists is not None and node.get("file") and not exists(node["file"]):
+                problems.append(f"node {node.get('id')!r}: file {node['file']!r} does not resolve")
+            stack.extend(node.get("children") or [])
+        for chapter in tree.get("chapters") or []:
+            if chapter not in ids:
+                problems.append(f"declared chapter {chapter!r} has no matching node id")
+    else:
+        ids = []
+        slugs: list[str] = []
+        index_claims: list[str] = []
+        for category in tree.get("categories") or []:
+            if not isinstance(category, dict):
+                continue
+            slugs.append(category.get("category"))
+            for item in category.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                ids.append(item.get("id"))
+                if item.get("index"):
+                    index_claims.append(str(item.get("id")))
+                if exists is not None and item.get("file") and not exists(item["file"]):
+                    problems.append(f"item {item.get('id')!r}: file {item['file']!r} does not resolve")
+        dup_slugs = sorted({s for s in slugs if slugs.count(s) > 1})
+        if dup_slugs:
+            problems.append(
+                f"duplicate category slugs {dup_slugs} "
+                "(each closed category appears at most once)"
+            )
+        if len(index_claims) > 1:
+            problems.append(
+                f"index: true on more than one item {index_claims} "
+                "(the landing rule allows exactly one)"
+            )
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        problems.append(f"duplicate node ids {dupes}")
+    return problems

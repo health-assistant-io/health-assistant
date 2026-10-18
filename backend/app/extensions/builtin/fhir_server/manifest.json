@@ -5,6 +5,7 @@
   "id": "fhir-server",
   "version": "1.0.0",
   "description": "Two-way FHIR R4 sync with an external server (hospital, personal health record) via SMART-on-FHIR. Pulls remote Observations, encounters, documents, medications, allergies and immunizations into the Biomarker Engine and pushes local Observations out. The base URL is instance-configured; outbound calls ride the polite runtime's SSRF guard (per-hop revalidation) without a manifest-declared domain scope.",
+  "docs": "docs/docs-tree.json",
   "author": "Health Assistant Core",
   "license": "Apache-2.0",
   "categories": ["data"],

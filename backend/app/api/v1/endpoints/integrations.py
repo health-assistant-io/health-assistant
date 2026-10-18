@@ -244,19 +244,21 @@ async def get_integration_documentation(
 
     base_path = integration_registry.base_dir(domain)
 
-    # 1. Check for structured docs (docs-tree.json)
+    # 1. Check for structured docs (docs-tree.json) — the extensionDocsTree
+    #    form (plan 34 §10): {version, categories: [{category, items}]},
+    #    validated at registration when the manifest carries the pointer.
     docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
     if os.path.exists(docs_tree_path):
         try:
             with open(docs_tree_path) as f:
                 tree = json.load(f)
 
-            target_file = file
-            if not target_file:
-                for category in tree:
-                    if category.get("items") and len(category["items"]) > 0:
-                        target_file = category["items"][0].get("file")
-                        break
+            # The landing rule (plan 34 §10.4): array order is render
+            # order; the first item of the first category lands unless
+            # exactly one item carries index: true.
+            from app.extensions.docs import landing_file, strip_raw_html
+
+            target_file = file or landing_file(tree)
 
             markdown_content = ""
             if target_file:
@@ -265,7 +267,11 @@ async def get_integration_documentation(
                 target_file_path = os.path.join(base_path, "docs", target_file)
                 if os.path.exists(target_file_path):
                     with open(target_file_path) as f:
-                        markdown_content = f.read()
+                        raw_markdown = f.read()
+                    # The markdown law (plan 34 §10.7): no raw HTML on
+                    # extension-doc surfaces — neutralized fence-aware,
+                    # the post-H3 shape (app/extensions/docs.py cites it).
+                    markdown_content = strip_raw_html(raw_markdown)
                 else:
                     markdown_content = (
                         f"# Error\n\nCould not find file {target_file} in docs folder."

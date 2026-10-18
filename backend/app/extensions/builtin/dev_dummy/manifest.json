@@ -5,6 +5,7 @@
   "id": "dev-dummy",
   "version": "3.0.0",
   "description": "Reference extension that exercises every SDK capability — pull/push, inbound webhook, two-way API, chat tools, notifications, clinical events, examinations, catalog/HITL proposals, documents. The contract test-bed for the whole extension surface.",
+  "docs": "docs/docs-tree.json",
   "author": "Health Assistant Core",
   "license": "Apache-2.0",
   "categories": ["developer", "data"],
