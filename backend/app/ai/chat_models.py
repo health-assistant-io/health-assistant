@@ -83,13 +83,13 @@ def build_openai(
     chat model, old and new — model ids are the wrong signal), every other
     base URL keeps ``max_tokens`` via :class:`CompatibleChatOpenAI`.
     """
-    kwargs: dict[str, Any] = dict(
-        api_key=api_key,
-        base_url=base_url,
-        model=model_name,
-        max_tokens=max_tokens,
-        reasoning_effort=reasoning_effort,
-    )
+    kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model_name,
+        "max_tokens": max_tokens,
+        "reasoning_effort": reasoning_effort,
+    }
     if temperature is not None:
         kwargs["temperature"] = temperature
     if resolve_chat_transport("openai", base_url, chat_transport) == "responses":

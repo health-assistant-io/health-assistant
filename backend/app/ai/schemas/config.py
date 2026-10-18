@@ -145,7 +145,10 @@ class AIModelCreate(BaseModel):
         None,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature; null sends nothing (provider default — required for reasoning families)",
+        description=(
+            "Sampling temperature; null sends nothing "
+            "(provider default — required for reasoning families)"
+        ),
     )
     is_local: bool | None = Field(None, description="Override provider's is_local setting")
     settings: dict[str, Any] | None = Field(
