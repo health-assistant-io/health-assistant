@@ -122,7 +122,10 @@ class IntegrationRegistry:
                 # here): the envelope must validate against the vendored
                 # schema or the extension self-disables with a reason —
                 # it never half-runs (charter lifecycle law).
-                err = contract.validate(manifest, schema["$defs"]["bundledManifest"], schema)
+                # (Argument order is schema-first — contract.validate(schema, inst);
+                # the pre-2026-10-19 call passed (manifest, subschema) and the
+                # gate was inert — the same swap career's registry carried.)
+                err = contract.validate(schema["$defs"]["bundledManifest"], manifest, schema)
                 if err is not None:
                     raise ValueError(f"manifest invalid: {err}")
                 if str(ext_id).startswith(contract.RESERVED_ID_PREFIXES):

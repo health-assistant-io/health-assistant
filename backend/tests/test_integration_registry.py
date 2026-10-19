@@ -69,6 +69,46 @@ def test_registry_rejects_invalid_manifests():
     assert registry.get_provider("broken_ext") is None
 
 
+def test_registry_schema_gate_rejects_envelope_violations():
+    """The GATE itself (not the id check): a manifest carrying a valid id
+    but violating the envelope (unknown capability id) must be rejected —
+    the pre-2026-10-19 swapped validate() call made this gate inert (the
+    manifest was passed as the schema), and only the missing-id path was
+    covered. Red-checked against the swapped call."""
+    import json
+
+    registry = IntegrationRegistry()
+
+    sneaky = json.dumps(
+        {
+            "apiVersion": "extension/v1",
+            "kindVersion": 1,
+            "kind": "connector",
+            "id": "sneaky_ext",
+            "version": "1.0.0",
+            "name": "Sneaky",
+            "capabilities": ["definitely-not-a-capability"],
+            "i18n": {"defaultLocale": "en", "locales": {"en": {"title": "Sneaky"}}},
+            "author": "test",
+            "license": "MIT",
+        }
+    )
+    with (
+        patch("os.listdir", return_value=["sneaky_ext"]),
+        patch("os.path.isdir", return_value=True),
+        patch("os.path.exists", return_value=True),
+        patch("builtins.open", new_callable=MagicMock) as mock_open,
+    ):
+        file_mock = MagicMock()
+        file_mock.read.return_value = sneaky
+        mock_open.return_value.__enter__.return_value = file_mock
+
+        registry._load_manifests()
+
+    assert registry.get_all_manifests() == [], "an envelope-violating manifest registered"
+    assert registry.get_provider("sneaky_ext") is None
+
+
 def test_bundled_manifests_validate_against_the_envelope():
     """Every shipped builtin manifest validates against the vendored
     family schema (bundled form) — no bundled extension may bypass the
@@ -88,7 +128,9 @@ def test_bundled_manifests_validate_against_the_envelope():
     assert len(shipped) == 5
     for d in sorted(shipped):
         doc = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
-        err = contract.validate(doc, schema["$defs"]["bundledManifest"], schema)
+        # schema-first — the same order the registry gate uses (the
+        # pre-2026-10-19 swapped idiom made this test inert too)
+        err = contract.validate(schema["$defs"]["bundledManifest"], doc, schema)
         assert err is None, f"{d.name}: {err}"
 
 
