@@ -564,6 +564,7 @@
     "i18nKeysPerLocaleMax": 400,
     "i18nValueMaxChars": 400,
     "summaryMaxChars": 200,
+    "titleMaxChars": 80,
     "descriptionMaxChars": 400,
     "authorMaxChars": 120,
     "licenseMaxChars": 120,

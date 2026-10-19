@@ -230,6 +230,28 @@
           }
         }
       }
+    },
+    {
+      "name": "extension-docs-page-locales",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "One closed-vocabulary category, one page — the minimal per-extension tree. Notes its de sibling per the page-locale convention.",
+                "locales": [
+                  "de"
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "invalid": [
@@ -488,6 +510,29 @@
           }
         ]
       }
+    },
+    {
+      "name": "extension-item-locale-not-a-locale",
+      "doc": {
+        "version": 1,
+        "categories": [
+          {
+            "category": "overview",
+            "items": [
+              {
+                "id": "overview",
+                "file": "overview.md",
+                "title": "Overview",
+                "description": "One closed-vocabulary category, one page — the minimal per-extension tree.",
+                "locales": [
+                  "german"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "because": "the item's `locales` notes are locale tags (^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$) — prose strings are rejected"
     }
   ]
 }

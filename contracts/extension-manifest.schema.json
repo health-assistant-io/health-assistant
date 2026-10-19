@@ -176,8 +176,7 @@
       "maxLength": 65536,
       "pattern": "^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$",
       "$comment": "Inline raster-only data-URL (png/jpeg/webp) — SVG/XPM are structurally rejected at this seam (script-vector risk, desktop precedent); the byte cap is the real limit, char count a cheap proxy; absent = deterministic monogram fallback."
-    },
-    "itemSchema": {
+    },    "itemSchema": {
       "$ref": "#/$defs/configSchema",
       "$comment": "connector refinement: the item contract for emitted items (the per-kind payload schema — RawPosting etc. are domain contracts instantiated through this shape)."
     },
@@ -631,6 +630,17 @@
           "additionalProperties": {
             "type": "object",
             "maxProperties": 400,
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
             "additionalProperties": {
               "type": "string",
               "maxLength": 400
@@ -643,7 +653,7 @@
         "locales"
       ],
       "additionalProperties": false,
-      "$comment": "UI labels only; 'title' key required in every locale (validator-owned completeness lint, ADR-0029); 'summary' is the per-locale one-line display string (D25, <= limits.summaryMaxChars). Extension labels never render outside i18n resolution — the family string rule."
+      "$comment": "UI labels only — the family string rule: extension labels never render outside i18n resolution. The per-locale map stays a free string map (mirrors limits.i18nKeysPerLocaleMax/i18nValueMaxChars) with TWO DECLARED properties (owner decision 2026-10-19, wave B): 'title' (1..limits.titleMaxChars — REQUIRED in the defaultLocale entry, optional in others; the cross-key rule JSON Schema cannot express is validator/wall-owned, contract.manifest_i18n_semantics) and 'summary' (<= limits.summaryMaxChars, optional — the per-locale one-line display string rendered VERBATIM by every hub brochure card, D25). The default-locale title requirement is what makes the hub's title-fallback-to-id unreachable for valid manifests."
     },
     "bundledManifest": {
       "title": "Extension manifest — bundled (T1 code shipped with the product)",

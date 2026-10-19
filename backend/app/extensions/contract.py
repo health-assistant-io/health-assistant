@@ -30,6 +30,7 @@ __all__ = [
     "DOCS_POINTER",
     "RESERVED_ID_PREFIXES",
     "docs_tree_semantics",
+    "manifest_i18n_semantics",
     "secret_fields",
     "validate",
     "validate_manifest",
@@ -252,8 +253,7 @@ def secret_fields(config_schema: Mapping[str, Any] | None) -> list[str]:
     return fields
 
 
-def docs_tree_semantics(
-    tree: Any,
+def docs_tree_semantics(    tree: Any,
     exists: Any = None,
 ) -> list[str]:
     """Wall-equivalent semantics for a docs-tree document beyond its
@@ -266,7 +266,11 @@ def docs_tree_semantics(
       true`` on at most one item — the landing rule's override
       (extensionDocsTree form);
     - every ``file`` reference exists (when ``exists`` — a callable
-      taking the ref — is provided).
+      taking the ref — is provided);
+    - every item-noted ``locales`` entry (§10.9 page-locale convention,
+      plan 35 wave B) has its ``<page>.<locale>.md`` sibling beside the
+      tree (same ``exists`` discipline — a noted locale without its
+      sibling is a broken promise, exactly like a missing ``file``).
 
     Returns a list of problems (empty = clean). A tree that is neither
     form (no ``roots`` and no ``categories``) is itself a problem — the
@@ -305,6 +309,16 @@ def docs_tree_semantics(
                     index_claims.append(str(item.get("id")))
                 if exists is not None and item.get("file") and not exists(item["file"]):
                     problems.append(f"item {item.get('id')!r}: file {item['file']!r} does not resolve")
+                # §10.9 (plan 35 wave B): a noted locale needs its sibling
+                if exists is not None and isinstance(item.get("locales"), list) and isinstance(item.get("file"), str):
+                    base = item["file"][:-3] if item["file"].endswith(".md") else item["file"]
+                    for locale in item["locales"]:
+                        sibling = f"{base}.{locale}.md"
+                        if not exists(sibling):
+                            problems.append(
+                                f"item {item.get('id')!r}: notes locale {locale!r} "
+                                f"but the sibling {sibling!r} does not resolve"
+                            )
         dup_slugs = sorted({s for s in slugs if slugs.count(s) > 1})
         if dup_slugs:
             problems.append(
@@ -319,4 +333,71 @@ def docs_tree_semantics(
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     if dupes:
         problems.append(f"duplicate node ids {dupes}")
+    return problems
+
+
+#: The i18n field caps the envelope schema declares structurally
+#: (mirrors extension-charter.json limits — hosts may tighten, never
+#: loosen). The default-locale title REQUIREMENT is cross-key and lives
+#: in the semantics below, not in JSON Schema.
+I18N_TITLE_MAX_CHARS = 80
+I18N_SUMMARY_MAX_CHARS = 200
+
+
+def manifest_i18n_semantics(
+    manifest: Mapping[str, Any],
+) -> list[str]:
+    """Wall-equivalent semantics for a manifest's ``i18n`` block beyond
+    its schema (owner decision 2026-10-19, plan 35 wave B — every host
+    validating a manifest runs these beside the schema):
+
+    - the DEFAULT-LOCALE entry carries a ``title`` (1..80 chars) — the
+      rule that makes a hub's title-fallback-to-id unreachable for
+      valid manifests; other locales may omit it;
+    - a ``title`` present in ANY entry is 1..80 chars;
+    - a ``summary`` present in any entry is <= 200 chars (the schema's
+      structural cap, mirrored here so a semantics-only caller stays
+      exact).
+
+    Returns a list of problems (empty = clean). Structure (types,
+    lengths of undeclared keys, locale syntax) is the schema's job —
+    this check is only the cross-key rule plus the declared caps.
+    """
+    problems: list[str] = []
+    i18n = manifest.get("i18n")
+    if not isinstance(i18n, dict):
+        return ["i18n is not an object (the schema rejects it before semantics)"]
+    default_locale = i18n.get("defaultLocale")
+    locales = i18n.get("locales")
+    if not isinstance(default_locale, str) or not isinstance(locales, dict):
+        return ["i18n.defaultLocale/locales malformed (the schema rejects it before semantics)"]
+    default_entry = locales.get(default_locale)
+    if not isinstance(default_entry, dict):
+        problems.append(f"i18n.locales carries no entry for the default locale {default_locale!r}")
+        return problems
+    title = default_entry.get("title")
+    if title is None:
+        problems.append(
+            f"i18n.locales[{default_locale!r}]: missing 'title' — the default-locale "
+            "title is REQUIRED (cards render it verbatim; there is no honest id fallback)"
+        )
+    elif not isinstance(title, str):
+        problems.append(f"i18n.locales[{default_locale!r}].title: not a string")
+    elif not 1 <= len(title) <= I18N_TITLE_MAX_CHARS:
+        problems.append(
+            f"i18n.locales[{default_locale!r}].title: length {len(title)} outside 1..{I18N_TITLE_MAX_CHARS}"
+        )
+    for locale, entry in sorted(locales.items()):
+        if not isinstance(entry, dict):
+            continue
+        loc_title = entry.get("title")
+        if isinstance(loc_title, str) and not 1 <= len(loc_title) <= I18N_TITLE_MAX_CHARS:
+            problems.append(
+                f"i18n.locales[{locale!r}].title: length {len(loc_title)} outside 1..{I18N_TITLE_MAX_CHARS}"
+            )
+        summary = entry.get("summary")
+        if isinstance(summary, str) and len(summary) > I18N_SUMMARY_MAX_CHARS:
+            problems.append(
+                f"i18n.locales[{locale!r}].summary: length {len(summary)} > {I18N_SUMMARY_MAX_CHARS}"
+            )
     return problems

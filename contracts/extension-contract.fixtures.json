@@ -218,6 +218,76 @@
             }
           }
         }
+      },
+      {
+        "name": "i18n-title-required-in-default-summary-capped",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token"
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              },
+              "max-items": {
+                "type": "number",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 300
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Greenhouse jobs",
+                "summary": "Job postings from Greenhouse boards"
+              },
+              "de": {
+                "title": "Greenhouse-Stellen"
+              }
+            }
+          }
+        }
       }
     ],
     "invalid": [
@@ -703,6 +773,211 @@
             "locales": {
               "en": {
                 "title": "Bad"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "i18n-default-locale-titleless",
+        "because": "the default-locale entry MUST carry a title (owner tightening 2026-10-19) — the hub renders it verbatim and its id fallback must stay unreachable; the cross-key rule is validator/wall-owned (contract.manifest_i18n_semantics)",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token"
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              },
+              "max-items": {
+                "type": "number",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 300
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "summary": "No title anywhere in the default entry"
+              },
+              "de": {
+                "title": "Titel"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "i18n-title-over-eighty",
+        "because": "titles are declared 1..80 (limits.titleMaxChars) — an 81-char card title is rejected structurally",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token"
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              },
+              "max-items": {
+                "type": "number",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 300
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "i18n-summary-over-two-hundred",
+        "because": "summaries are declared <= limits.summaryMaxChars (200) — the one-line card display string is capped structurally",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token"
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              },
+              "max-items": {
+                "type": "number",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 300
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Greenhouse jobs",
+                "summary": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
               }
             }
           }
