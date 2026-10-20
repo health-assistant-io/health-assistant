@@ -194,6 +194,12 @@
       "maxLength": 65536,
       "pattern": "^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$",
       "$comment": "Inline raster-only data-URL (png/jpeg/webp) — SVG/XPM are structurally rejected at this seam (script-vector risk, desktop precedent); the byte cap is the real limit, char count a cheap proxy; absent = deterministic monogram fallback."
+    },
+    "contributions": {
+      "type": "object",
+      "maxProperties": 8,
+      "additionalProperties": true,
+      "$comment": "Slot contributions (mini-app kind) — imported T2 packs map them to sandboxed ops; T0/T1 hosts render/execute according to their profile. This is declarative metadata, never code."
     },    "itemSchema": {
       "$ref": "#/$defs/configSchema",
       "$comment": "connector refinement: the item contract for emitted items (the per-kind payload schema — RawPosting etc. are domain contracts instantiated through this shape)."
@@ -901,22 +907,7 @@
           "type": "object",
           "maxProperties": 8,
           "additionalProperties": true,
-          "$comment": "Slot contributions (mini-app kind) — bundled/code-tier only."
-        },
-        "code": {
-          "type": "object",
-          "properties": {
-            "entry": {
-              "type": "string",
-              "maxLength": 255,
-              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]{0,254}$"
-            }
-          },
-          "required": [
-            "entry"
-          ],
-          "additionalProperties": false,
-          "$comment": "T1 bundled entry point relative to the extension dir. An IMPORTED manifest carrying code/entry is rejected by the root schema (additionalProperties: false) — the ADR-0029 rule, structural here."
+          "$comment": "Slot contributions (mini-app kind) — declarative metadata, never code; hosts render/execute according to their profile."
         },
         "surfaces": {
           "type": "object",

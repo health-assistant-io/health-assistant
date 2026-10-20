@@ -485,16 +485,48 @@ def validate_registration(
 
     kind = document.get("kind")
     entry = document.get("entry")
-    if isinstance(entry, str) and docs_root is not None:
-        bundle_root = Path(docs_root).resolve()
-        entry_path = (bundle_root / entry).resolve()
-        try:
-            entry_path.relative_to(bundle_root)
-        except ValueError:
-            problems.append(f"$.entry: {entry!r} escapes the bundle root")
+    if isinstance(entry, str):
+        if docs_root is None:
+            problems.append(
+                "$.entry: a bundle root is required to validate the entry path"
+            )
         else:
-            if not entry_path.is_file():
-                problems.append(f"$.entry: {entry!r} is not a regular file in the bundle")
+            bundle_root = Path(docs_root).resolve()
+            candidate = bundle_root / entry
+            symlink_component: str | None = None
+            cursor = bundle_root
+            for part in Path(entry).parts:
+                cursor = cursor / part
+                if cursor.is_symlink():
+                    symlink_component = part
+                    break
+            if symlink_component is not None:
+                problems.append(
+                    f"$.entry: {entry!r} contains a symlink component "
+                    f"({symlink_component!r}); entries are regular files only"
+                )
+            else:
+                try:
+                    resolved = candidate.resolve()
+                    resolved.relative_to(bundle_root)
+                except (OSError, ValueError):
+                    problems.append(f"$.entry: {entry!r} escapes the bundle root")
+                else:
+                    if not resolved.is_file():
+                        problems.append(
+                            f"$.entry: {entry!r} is not a regular file in the bundle"
+                        )
+            allowed_ext = (
+                profile.get("entryExtensions") if isinstance(profile, Mapping) else None
+            )
+            if isinstance(allowed_ext, list) and allowed_ext:
+                suffix = Path(entry).suffix.lstrip(".")
+                allowed = {str(item).lstrip(".") for item in allowed_ext}
+                if suffix not in allowed:
+                    problems.append(
+                        f"$.entry: {entry!r} has extension {suffix!r}; this host "
+                        f"accepts {sorted(allowed)}"
+                    )
     if kind == "mini-app":
         api_version = document.get("apiVersion")
         if not isinstance(api_version, int) or api_version > 1:
@@ -576,8 +608,18 @@ def validate_registration(
             problems.append(
                 f"tier {tier!r} is not hosted by this profile (tiers: {', '.join(tiers)})"
             )
-        honors = profile.get("honors")
-        if isinstance(honors, list):
+        honors: list[str] | None = None
+        by_tier = profile.get("honorsByTier")
+        if tier and isinstance(by_tier, Mapping) and isinstance(by_tier.get(tier), list):
+            honors = list(by_tier[tier])
+        if honors is None:
+            by_kind = profile.get("honorsByKind")
+            if isinstance(by_kind, Mapping) and isinstance(by_kind.get(kind), list):
+                honors = list(by_kind[kind])
+        if honors is None:
+            raw_honors = profile.get("honors")
+            honors = list(raw_honors) if isinstance(raw_honors, list) else None
+        if honors is not None:
             unhonored = sorted(c for c in capabilities if c not in honors)
             if unhonored:
                 problems.append(

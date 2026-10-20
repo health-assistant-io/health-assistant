@@ -990,7 +990,7 @@
     "against": "extension-manifest.schema.json $defs.bundledManifest",
     "valid": [
       {
-        "name": "bundled-miniapp-with-code",
+        "name": "bundled-miniapp-with-entry",
         "doc": {
           "apiVersion": 1,
           "kind": "mini-app",
@@ -1011,9 +1011,7 @@
               }
             ]
           },
-          "code": {
-            "entry": "src/main.ts"
-          },
+          "entry": "src/main.ts",
           "i18n": {
             "defaultLocale": "en",
             "locales": {
