@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "contract": "sandbox-isolation-fixtures",
+  "purpose": "The escape matrix (plan 39 v2 / sandbox-isolation.md §5): one probe set, every backend, every platform. Cases name the probe and the expected outcome PER GRADE: denied (the boundary holds), contained (watchdog/kill limits the blast), disclosed (this grade does not claim it — allowed inside the sandbox but the consent surface must say so). A backend claims 'kernel' only when every kernel-column expectation passes against it; the fixtures are the wall, implementations are replaceable.",
+  "grades": ["kernel", "process", "none"],
+  "outcomes": ["denied", "contained", "disclosed", "self-disabled"],
+  "requiredGroups": [
+    "fs-read-outside",
+    "fs-write-outside",
+    "net-connect",
+    "net-dns",
+    "proc-spawn",
+    "env-read",
+    "watchdog-kill",
+    "orphan-after-parent-death",
+    "memory-bomb",
+    "cpu-loop"
+  ],
+  "cases": [
+    {
+      "name": "fs-read-etc-passwd",
+      "group": "fs-read-outside",
+      "because": "the content dir is the only readable extension path; host files are outside the boundary",
+      "probe": "read /etc/passwd from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "fs-read-keyring-path",
+      "group": "fs-read-outside",
+      "because": "credential stores (keyring/ssh/tokens) are the theft target — never readable",
+      "probe": "read the user's ssh directory from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "fs-write-outside-workdir",
+      "group": "fs-write-outside",
+      "because": "the tmpfs workdir is the only writable path",
+      "probe": "create a file under the user's home from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "fs-write-content-dir",
+      "group": "fs-write-outside",
+      "because": "the digest-pinned content is read-only even for the running code",
+      "probe": "overwrite a file in /ext from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "net-connect-arbitrary",
+      "group": "net-connect",
+      "because": "the seam denies net at the API level; the kernel denies it below the seam — process grade cannot and must disclose that",
+      "probe": "open a raw socket to a public host from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "net-dns-exfil",
+      "group": "net-dns",
+      "because": "DNS is a covert exfiltration channel (the 'no net' rule includes the resolver)",
+      "probe": "resolve an attacker-controlled name from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "disclosed", "none": "self-disabled" }
+    },
+    {
+      "name": "proc-spawn-shell",
+      "group": "proc-spawn",
+      "because": "no process may be spawned beyond the child itself",
+      "probe": "spawn /bin/sh from inside the sandbox",
+      "expect": { "kernel": "denied", "process": "contained", "none": "self-disabled" }
+    },
+    {
+      "name": "env-read-host",
+      "group": "env-read",
+      "because": "the host environment is never inherited — secrets travel in env on real machines",
+      "probe": "enumerate environment variables inside the sandbox",
+      "expect": { "kernel": "denied", "process": "denied", "none": "self-disabled" }
+    },
+    {
+      "name": "watchdog-kill-cpu-loop",
+      "group": "watchdog-kill",
+      "because": "an infinite loop must kill the session, never hang the host",
+      "probe": "spin the CPU past the call timeout",
+      "expect": { "kernel": "contained", "process": "contained", "none": "self-disabled" }
+    },
+    {
+      "name": "orphan-dies-with-parent",
+      "group": "orphan-after-parent-death",
+      "because": "no immortal child after a host crash",
+      "probe": "kill the host while the child runs",
+      "expect": { "kernel": "contained", "process": "contained", "none": "self-disabled" }
+    },
+    {
+      "name": "memory-bomb",
+      "group": "memory-bomb",
+      "because": "allocation past the cap kills the child, never the host",
+      "probe": "allocate past the memory limit",
+      "expect": { "kernel": "contained", "process": "contained", "none": "self-disabled" }
+    },
+    {
+      "name": "cpu-loop-past-limit",
+      "group": "cpu-loop",
+      "because": "CPU quota/watchdog bounds the burn",
+      "probe": "burn CPU past the per-call CPU budget",
+      "expect": { "kernel": "contained", "process": "contained", "none": "self-disabled" }
+    }
+  ]
+}
