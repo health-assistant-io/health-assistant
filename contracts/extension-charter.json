@@ -321,7 +321,7 @@
     "law": "Every chat-tools contribution declares one (ADR-0011 classes; mandatory per D20) — schema-required, gated at registration. read-only auto-runs unless user-disabled; state-changing is per-grant (allow-once default); destructive is confirmed every single call and NEVER grant-bypassable. Capability-type catalog entries stay non-executable in every funnel (ADR-0015 item 5)."
   },
   "errors": {
-    "model": "Every capability call fails with one typed ExtensionError { code, detail, retryable } — never a raw exception string crossing an extension boundary, including in result-envelope partial_errors (typed errors only). 'detail' is capped JSON data (limits.errorDetailMaxChars), never rendered raw as prose; host UI copy is host-localized per code. 'retryable' is a closed sub-enum; resumability is independent of retryability.",
+    "model": "Every capability call fails with one typed ExtensionError { code, detail, retryable } — never a raw exception string crossing an extension boundary, including in result-envelope partial_errors (typed errors only). 'detail' is a bounded object (7E — declared keys, capped at limits.errorDetailMaxChars serialized; `message` is the capped diagnostic, never rendered raw as prose); host UI copy is host-localized per code and may interpolate detail's data keys. 'retryable' is a closed sub-enum; resumability is independent of retryability.",
     "retryableVocabulary": [
       "yes",
       "no",
@@ -377,7 +377,7 @@
       {
         "code": "rate-limited",
         "retryable": "after-delay",
-        "meaning": "Upstream or host limiter engaged; detail carries retryAfterMs when known."
+        "meaning": "Upstream or host limiter engaged; the envelope carries retryAfterMs when known."
       },
       {
         "code": "unreachable",
@@ -712,6 +712,7 @@
           "T2"
         ],
         "miniApp": "reference host",
+        "miniAppRendering": "pack-report",
         "connector": "later",
         "gitImport": "local-file import upgraded onto the sources pipeline (Phase 8 — file source or git source, one code path)",
         "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy",
@@ -808,6 +809,7 @@
           "T3"
         ],
         "miniApp": "P4 — surfaces (the CV-utility class)",
+        "miniAppRendering": "surfaces",
         "bridge": "—",
         "gitImport": "reference import host (Phase 3)",
         "notes": "T2 connector sandbox is live (Phase 5); mini-app surface host since Phase 4 — honors page + panel (window declined on the web host, degrades per degradeRules); run honored as the typed-action funnel (run:export) for surface-kind packs; T0 data binds via the envelope data field",

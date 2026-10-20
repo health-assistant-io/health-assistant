@@ -20,7 +20,9 @@ are the host validator's job — see the schema's ``$comment``.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,7 @@ __all__ = [
     "CONNECTOR_KIND_VERSION",
     "DOCS_POINTER",
     "RESERVED_ID_PREFIXES",
+    "cap_error_detail",
     "docs_tree_semantics",
     "is_timeout_safe_pattern",
     "manifest_i18n_semantics",
@@ -48,6 +51,65 @@ RESERVED_ID_PREFIXES = ("host-", "neuro-")
 #: plan 34 §10.3 — the manifest's optional per-extension docs pointer;
 #: the one fixed value the envelope schema admits.
 DOCS_POINTER = "docs/docs-tree.json"
+
+#: The closed error-detail vocabulary (plan 37 7E / D3 — bounded object):
+#: mirrored verbatim in `capability-rpc.schema.json` $defs.errorDetail and
+#: the TS seam (`protocol.ts` capErrorDetail); the fixture wall pins both.
+#: `message` is the ONE diagnostic slot (logs/typed machine surfaces) —
+#: product UI copy is keyed by `code` and may interpolate the data keys.
+ERROR_DETAIL_KEYS = (
+    "message", "path", "field", "id", "packId", "runId", "slot", "host",
+    "hop", "method", "op", "stage", "engine", "expected", "actual",
+    "limit", "used",
+)
+_ERROR_DETAIL_CAPS = {
+    "message": 400, "path": 256, "field": 64, "id": 128, "packId": 128,
+    "runId": 128, "slot": 128, "host": 253, "method": 128, "op": 64,
+    "stage": 64, "engine": 64, "expected": 128, "actual": 128,
+}
+_ERROR_DETAIL_INTS = ("hop", "limit", "used")
+#: Serialized cap — `limits.errorDetailMaxChars` in the charter.
+ERROR_DETAIL_MAX_CHARS = 500
+
+
+def cap_error_detail(detail: Any, *, total_max: int = ERROR_DETAIL_MAX_CHARS) -> dict[str, Any]:
+    """The bounded error-detail object (plan 37 7E): declared keys only,
+    per-key caps, serialized size capped at ``total_max`` (truncate
+    ``message`` first, then drop non-``message`` keys). A plain string is
+    encoded as ``{"message": ...}`` at CONSTRUCTION sites only — the wire
+    never carries the string form (the schema rejects it)."""
+    if isinstance(detail, str):
+        detail = {"message": detail}
+    if not isinstance(detail, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ERROR_DETAIL_KEYS:
+        if key not in detail:
+            continue
+        value = detail[key]
+        if key in _ERROR_DETAIL_INTS:
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                out[key] = value
+        elif isinstance(value, str):
+            out[key] = value[: _ERROR_DETAIL_CAPS[key]]
+
+    def _size() -> int:
+        return len(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
+
+    while _size() > total_max:
+        message = out.get("message")
+        if isinstance(message, str) and message:
+            out["message"] = message[: max(0, len(message) - (_size() - total_max))]
+            continue
+        dropped = False
+        for key in list(out):
+            if key != "message":
+                out.pop(key)
+                dropped = True
+                break
+        if not dropped:
+            break
+    return out
 
 _SUPPORTED_KEYWORDS = frozenset(
     {
@@ -485,7 +547,19 @@ def validate_registration(
 
     kind = document.get("kind")
     entry = document.get("entry")
+    derived_tier: str | None = None
     if isinstance(entry, str):
+        # Tier is provenance from the entry path (plan 38 W3): imported +
+        # entry = T2 (sandboxed), bundled + entry = T1 (reviewed, in-process).
+        # A caller-claimed tier that contradicts the derivation is a
+        # registration problem — no host may re-tier code-carrying content
+        # as declarative T0.
+        derived_tier = "T1" if bundled else "T2"
+        if tier is not None and tier != derived_tier:
+            problems.append(
+                f"$.entry: provenance derives tier {derived_tier} from the entry path, "
+                f"but the caller claims tier {tier!r} — tier is provenance, never caller-claimed"
+            )
         if docs_root is None:
             problems.append(
                 "$.entry: a bundle root is required to validate the entry path"
@@ -527,6 +601,10 @@ def validate_registration(
                         f"$.entry: {entry!r} has extension {suffix!r}; this host "
                         f"accepts {sorted(allowed)}"
                     )
+    # The tier that governs tier-keyed rules (H1c): provenance-derived from
+    # `entry` when present, else the caller's provenance tier. Never a
+    # caller claim about code-carrying content (the cross-check above).
+    effective_tier = derived_tier if derived_tier is not None else tier
     if kind == "mini-app":
         api_version = document.get("apiVersion")
         if not isinstance(api_version, int) or api_version > 1:
@@ -558,7 +636,7 @@ def validate_registration(
     domains = document.get("domains") or []
     if "net" in capabilities and not domains:
         problems.append("$.domains: the net capability requires declared domains")
-    if not bundled and tier == "T2" and "net" in capabilities and "secrets" in capabilities:
+    if not bundled and effective_tier == "T2" and "net" in capabilities and "secrets" in capabilities:
         secrets = document.get("secrets") or []
         for slot in secrets:
             if not isinstance(slot, dict) or not slot.get("domains"):
@@ -688,6 +766,49 @@ def run_manifest_fixtures(
                     failures.append(f"{group}:{name}: accepted by the schema channel")
             else:
                 failures.append(f"{group}:{name}: unknown reject channel {channel!r}")
+    failures.extend(_run_entry_fixtures(fixtures.get("entry") or {}, schema))
+    return failures
+
+
+def _run_entry_fixtures(group: Mapping[str, Any], schema: Mapping[str, Any]) -> list[str]:
+    """The entry channel (plan 38 W4): each case materializes a temp bundle
+    (``bundle.files`` regular files, ``bundle.symlinks`` link→target) and
+    runs the ONE registration decision against it. ``expect.problems`` lists
+    substrings that must appear in the returned problems; a valid case must
+    register clean. Schema-level rejections (absolute path, ``..``, >255
+    chars) surface through the same call — the entry rules are one gate."""
+    failures: list[str] = []
+    for expect_ok, cases in ((True, group.get("valid", [])), (False, group.get("invalid", []))):
+        for case in cases or []:
+            name = case.get("name")
+            with tempfile.TemporaryDirectory() as bundle:
+                root = Path(bundle)
+                for rel, content in ((case.get("bundle") or {}).get("files") or {}).items():
+                    target = root / str(rel)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(str(content), encoding="utf-8")
+                for rel, link in ((case.get("bundle") or {}).get("symlinks") or {}).items():
+                    target = root / str(rel)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.symlink(str(link), target)
+                problems = validate_registration(
+                    dict(case.get("doc") or {}),
+                    schema=schema,
+                    bundled=bool(case.get("bundled", False)),
+                    tier=case.get("tier"),
+                    docs_root=root,
+                )
+            if expect_ok:
+                if problems:
+                    failures.append(f"entry:{name}: valid case rejected: {problems[0]}")
+                continue
+            want = (case.get("expect") or {}).get("problems") or []
+            if not problems:
+                failures.append(f"entry:{name}: accepted — expected a problem matching {want}")
+            elif want and not any(any(w in p for p in problems) for w in want):
+                failures.append(
+                    f"entry:{name}: problems {problems[:2]} match none of the expected {want}"
+                )
     return failures
 
 

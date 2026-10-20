@@ -166,11 +166,14 @@ class PoliteHttpError(Exception):
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
             "code": self.code,
-            "detail": self.detail,
+            # 7E wire truth: the serialized detail is the bounded object
+            # (`{"message": ...}` for this prose-carrying error); the
+            # in-process `.detail` stays the capped diagnostic string.
+            "detail": {"message": self.detail[:400]},
             "retryable": self.retryable,
         }
         if self.retry_after_ms is not None:
-            payload["retry_after_ms"] = self.retry_after_ms
+            payload["retryAfterMs"] = self.retry_after_ms
         return payload
 
 

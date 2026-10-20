@@ -1368,7 +1368,10 @@
           "method": "cap.net.fetch",
           "error": {
             "code": "net-denied",
-            "detail": "{\"hop\":1,\"host\":\"10.0.0.1\"}",
+            "detail": {
+              "hop": 1,
+              "host": "10.0.0.1"
+            },
             "retryable": "no"
           }
         }
@@ -1422,7 +1425,57 @@
           "method": "cap.state.get",
           "error": {
             "code": "kaboom",
-            "detail": "{}",
+            "detail": {},
+            "retryable": "no"
+          }
+        }
+      },
+      {
+        "name": "error-detail-string-form",
+        "because": "7E deletes the JSON-encoded-string detail — detail is a bounded object, never a string",
+        "reject": "schema",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 8,
+          "method": "cap.net.fetch",
+          "error": {
+            "code": "net-denied",
+            "detail": "{\"hop\":1,\"host\":\"10.0.0.1\"}",
+            "retryable": "no"
+          }
+        }
+      },
+      {
+        "name": "error-detail-unknown-key",
+        "because": "the detail vocabulary is closed — hosts stop inventing detail formats",
+        "reject": "schema",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 8,
+          "method": "cap.state.set",
+          "error": {
+            "code": "invalid",
+            "detail": {
+              "sqlState": "23505"
+            },
+            "retryable": "no"
+          }
+        }
+      },
+      {
+        "name": "error-detail-non-object",
+        "because": "detail is always a bounded object",
+        "reject": "schema",
+        "doc": {
+          "v": 1,
+          "type": "error",
+          "id": 8,
+          "method": "cap.state.get",
+          "error": {
+            "code": "io",
+            "detail": 42,
             "retryable": "no"
           }
         }
@@ -1449,8 +1502,9 @@
         }
       },
       {
-        "name": "raw-exception-detail-over-cap",
-        "because": "detail is capped (limits.errorDetailMaxChars) — raw exception strings never cross",
+        "name": "error-detail-message-over-cap",
+        "because": "the message diagnostic is capped — a raw exception string in message over the cap never crosses",
+        "reject": "schema",
         "doc": {
           "v": 1,
           "type": "error",
@@ -1458,10 +1512,224 @@
           "method": "cap.items.emit",
           "error": {
             "code": "io",
-            "detail": "Traceback (most recent call last): File \"x.py\", line 1, in <module> RuntimeError: Unhandled exception with a very long message that exceeds the five hundred character cap by a wide margin, padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded overflow overflow overflow overflow overflow overflow overflow overflow overflow",
+            "detail": {
+              "message": "Traceback (most recent call last): File \"x.py\", line 1, in <module> RuntimeError: Unhandled exception with a very long message that exceeds the four hundred character cap by a wide margin, padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded padded overflow overflow overflow overflow overflow overflow overflow overflow overflow"
+            },
             "retryable": "no"
           }
         }
+      }
+    ]
+  },
+  "entry": {
+    "against": "contract.validate_registration — the entry channel (plan 38 W4): bundle.files/bundle.symlinks materialize a temp bundle and the ONE registration decision runs against it (schema + entry path + tier provenance in one gate). expect.problems are substrings of the typed problems; a valid case must register clean. The desktop stack runs the same cases through discoverManifests (app-pack-entry-fixtures.test.ts).",
+    "valid": [
+      {
+        "name": "entry-valid-file",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": { "code/entry.js": "handlers = {};" } }
+      },
+      {
+        "name": "entry-bundled-is-t1",
+        "bundled": true,
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "extension.js"
+        },
+        "bundle": { "files": { "extension.js": "export default {};" } }
+      }
+    ],
+    "invalid": [
+      {
+        "name": "entry-missing-file",
+        "reject": "entry",
+        "because": "the entry must resolve to a regular file in the bundle — a missing entry rejects at registration, never at first spawn",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": {} },
+        "expect": { "problems": ["is not a regular file"] }
+      },
+      {
+        "name": "entry-is-directory",
+        "reject": "entry",
+        "because": "a directory is not an entry",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": { "code/entry.js/keep.txt": "x" } },
+        "expect": { "problems": ["is not a regular file"] }
+      },
+      {
+        "name": "entry-symlink-in-bundle",
+        "reject": "entry",
+        "because": "entries are lstat-regular only — an in-bundle symlink is refused before any resolution",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": { "other.js": "handlers = {};" }, "symlinks": { "code/entry.js": "other.js" } },
+        "expect": { "problems": ["symlink component"] }
+      },
+      {
+        "name": "entry-symlink-escape",
+        "reject": "entry",
+        "because": "a symlink out of the bundle is refused by the component walk — never followed",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": {}, "symlinks": { "code/entry.js": "../../../etc/passwd" } },
+        "expect": { "problems": ["symlink component"] }
+      },
+      {
+        "name": "entry-symlinked-parent",
+        "reject": "entry",
+        "because": "a symlinked parent directory is refused too — the walk checks every component",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": { "real/entry.js": "handlers = {};" }, "symlinks": { "code": "real" } },
+        "expect": { "problems": ["symlink component"] }
+      },
+      {
+        "name": "entry-absolute-path",
+        "reject": "schema",
+        "because": "relative paths only — absolute entry is rejected structurally",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "/etc/passwd"
+        },
+        "bundle": { "files": {} },
+        "expect": { "problems": ["entry"] }
+      },
+      {
+        "name": "entry-traversal",
+        "reject": "schema",
+        "because": "no .. segments — traversal is rejected structurally",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/../entry.js"
+        },
+        "bundle": { "files": {} },
+        "expect": { "problems": ["entry"] }
+      },
+      {
+        "name": "entry-oversize-path",
+        "reject": "schema",
+        "because": "the 255-char cap is structural",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.js"
+        },
+        "bundle": { "files": {} },
+        "expect": { "problems": ["entry"] }
+      },
+      {
+        "name": "tier-contradiction-t0",
+        "reject": "entry",
+        "because": "tier is provenance from entry — a caller claim of T0 over a code-carrying bundle is a registration problem (H4)",
+        "tier": "T0",
+        "doc": {
+          "apiVersion": 1,
+          "kind": "mini-app",
+          "packKind": "surface",
+          "id": "refpack",
+          "version": "1.0.0",
+          "author": "Neuronection",
+          "license": "Apache-2.0",
+          "capabilities": ["state"],
+          "i18n": { "defaultLocale": "en", "locales": { "en": { "title": "RefPack" } } },
+          "entry": "code/entry.js"
+        },
+        "bundle": { "files": { "code/entry.js": "handlers = {};" } },
+        "expect": { "problems": ["provenance derives tier"] }
       }
     ]
   },

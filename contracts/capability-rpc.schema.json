@@ -127,9 +127,8 @@
           "$comment": "The charter error enum, verbatim (extension-charter.json errors) — one typed vocabulary across manifests, envelopes and the seam."
         },
         "detail": {
-          "type": "string",
-          "maxLength": 500,
-          "$comment": "Capped JSON data, never a raw exception string, never rendered as prose."
+          "$ref": "#/$defs/errorDetail",
+          "$comment": "A bounded object, never a string (7E wire truth): JSON-encoded-string details are deleted. Declared keys only; `message` is the capped host diagnostic for logs/typed machine surfaces — product UI copy is keyed by `code` and may interpolate the data keys, never `message` raw."
         },
         "retryable": {
           "enum": ["yes", "no", "after-delay", "after-config-change"]
@@ -141,6 +140,31 @@
       },
       "required": ["code", "detail", "retryable"],
       "additionalProperties": false
+    },
+    "errorDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 0,
+      "properties": {
+        "message": { "type": "string", "maxLength": 400 },
+        "path": { "type": "string", "maxLength": 256 },
+        "field": { "type": "string", "maxLength": 64 },
+        "id": { "type": "string", "maxLength": 128 },
+        "packId": { "type": "string", "maxLength": 128 },
+        "runId": { "type": "string", "maxLength": 128 },
+        "slot": { "type": "string", "maxLength": 128 },
+        "host": { "type": "string", "maxLength": 253 },
+        "hop": { "type": "integer", "minimum": 0 },
+        "method": { "type": "string", "maxLength": 128 },
+        "op": { "type": "string", "maxLength": 64 },
+        "stage": { "type": "string", "maxLength": 64 },
+        "engine": { "type": "string", "maxLength": 64 },
+        "expected": { "type": "string", "maxLength": 128 },
+        "actual": { "type": "string", "maxLength": 128 },
+        "limit": { "type": "integer", "minimum": 0 },
+        "used": { "type": "integer", "minimum": 0 }
+      },
+      "$comment": "The closed detail vocabulary (plan 37 7E / D3, bounded object): paths, field names, ids, engine kind, hop/host, caps — data, never prose. `message` is the one capped diagnostic slot (logs/typed machine surfaces); product copy is keyed by `code`. Construction rules (validator-owned, mirrored at both seams): only declared keys survive; `message` truncates at 400 chars; the SERIALIZED object is capped at limits.errorDetailMaxChars (truncate `message` first, then drop non-message keys)."
     }
   },
   "$comment": "STRUCTURAL GATE for one framed line. The protocol's behavioral law lives in contracts/capability-rpc.md: one process per extension, frozen module surface, wall-clock + memory watchdogs per call, per-extension quotas, one audit row per capability call, secrets never crossing the seam, net only via the host-side polite runtime scoped to declared domains (all hops)."

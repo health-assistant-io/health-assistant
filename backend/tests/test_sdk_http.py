@@ -359,7 +359,9 @@ def test_integration_rate_limit_error_legacy_call_shape_still_works():
 def test_rate_limited_error_accepts_retry_after_ms():
     exc = ExtensionError("rate-limited", "throttled", retry_after_ms=42500)
     assert exc.retry_after_ms == 42500
-    assert exc.to_dict()["retry_after_ms"] == 42500
+    assert exc.to_dict()["retryAfterMs"] == 42500
+    # 7E: the serialized detail is the bounded object, never a string.
+    assert exc.to_dict()["detail"] == {"message": "throttled"}
 
 
 # ---------------------------------------------------------------------------

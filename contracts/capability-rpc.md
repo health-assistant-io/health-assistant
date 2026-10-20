@@ -182,9 +182,19 @@ discipline).
 ## 8. Error envelope (the charter enum)
 
 Every failure is `{ code, detail, retryable, retryAfterMs? }` — `code`
-from the charter's 15-code enum, `detail` capped at
-`limits.errorDetailMaxChars` (JSON data, never a raw exception string),
-`retryable` from the closed sub-enum. Mapping is identity: the seam, the
+from the charter's 15-code enum, `retryable` from the closed sub-enum,
+`retryAfterMs` at the envelope (the one retry-hint slot). `detail` is a
+**bounded object** (7E wire truth; D3 — no string form, and the old
+JSON-encoded-string detail is deleted): declared keys only —
+`message` (≤ 400, the host diagnostic for logs/typed machine surfaces),
+`path`, `field`, `id`, `packId`, `runId`, `slot`, `host`, `hop`, `method`,
+`op`, `stage`, `engine`, `expected`, `actual`, `limit`, `used` — each
+capped, the serialized object capped at `limits.errorDetailMaxChars`.
+Construction
+keeps only declared keys, truncates `message` first to fit the total cap,
+then drops non-`message` keys. **Product UI copy is keyed by `code`**
+(host-localized TEXT) and may interpolate the data keys; `message` is
+never rendered raw as product copy. Mapping is identity: the seam, the
 result envelope's `partial_errors` and every product surface share one
 vocabulary (ADR-0040 clause 4). No raw exception strings cross an
 extension boundary anywhere.
