@@ -684,8 +684,8 @@
         }
       },
       {
-        "name": "code-entry-in-imported",
-        "because": "imported manifests never carry code — an imported manifest with code.entry is rejected (ADR-0029 rule, structural)",
+        "name": "legacy-code-field-imported",
+        "because": "imported manifests never carry the deleted code field — rejected structurally (ADR-0029 rule)",
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,

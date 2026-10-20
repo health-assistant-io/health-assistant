@@ -724,7 +724,7 @@
           "type": "string",
           "maxLength": 255,
           "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
-          "$comment": "Same path-only rule as the root envelope. Bundled T1 reviewed code may use entry (code.entry is deleted in the 7A wave); an imported T2 bundle uses the same field. No inline code exists in any envelope."
+          "$comment": "Same path-only rule as the root envelope. The legacy code field is deleted; bundled host-integrated packs carry contributions, imported T2 bundles use this entry path, and no inline code exists in any envelope."
         },
         "docs": {
           "const": "docs/docs-tree.json",
