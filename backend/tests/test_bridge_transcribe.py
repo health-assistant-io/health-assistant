@@ -365,13 +365,17 @@ class TestTranscribeHandler:
             )
         assert exc.value.status_code == 400
         assert exc.value.code == "validation"
-        assert "No API key configured" in str(exc.value)
+        # F22: stable client text, not the upstream resolution error.
+        assert "not configured" in str(exc.value)
+        assert "No API key" not in str(exc.value)
         fake_stt["transcribe"].assert_not_called()
 
     async def test_provider_failure_is_typed_502(self, stt_ctx, fake_stt):
         from app.ai.assistance.stt import TranscriptionError
 
-        fake_stt["transcribe"].side_effect = TranscriptionError("Speech-to-text timed out.")
+        fake_stt["transcribe"].side_effect = TranscriptionError(
+            "Speech-to-text timed out for vendor host internal.example:8443."
+        )
         integration = await _load_integration(stt_ctx["integration_id"])
         provider = HealthAssistantBridgeProvider()
 
@@ -384,7 +388,10 @@ class TestTranscribeHandler:
             )
         assert exc.value.status_code == 502
         assert exc.value.code == "stt_failed"
-        assert "timed out" in str(exc.value)
+        # F22: 502s carry a stable message — never the upstream error text.
+        assert "failed upstream" in str(exc.value)
+        assert "internal.example" not in str(exc.value)
+        assert "timed out" not in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

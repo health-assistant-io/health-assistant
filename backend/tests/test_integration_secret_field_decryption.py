@@ -52,7 +52,7 @@ class _FakeFlow:
     def get_secret_fields(self) -> list[str]:
         return list(self._secret_fields)
 
-    def decrypt_for_use(self, config: dict) -> dict:
+    def decrypt_for_use(self, config: dict, *, context: str | None = None) -> dict:
         self.decrypt_calls += 1
         out = dict(config)
         for f in self._secret_fields:
@@ -105,7 +105,7 @@ def test_resolve_secret_field_returns_none_on_decrypt_failure():
     cfg = {"api_secret": {"_encrypted": "bad-token", "_kid": "old"}}
     flow = _FakeFlow(["api_secret"], cfg)
 
-    def _fail(config):
+    def _fail(config, *, context=None):
         raise ValueError("Encrypted config value could not be decrypted")
 
     flow.decrypt_for_use = _fail  # type: ignore[method-assign]

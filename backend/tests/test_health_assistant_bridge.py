@@ -101,6 +101,35 @@ async def test_handle_api_request_sync(mock_save, provider, integration_mock):
 
 @pytest.mark.asyncio
 @patch(
+    "app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data",
+    side_effect=RuntimeError("db password=super-secret DSN /srv/private"),
+)
+async def test_handle_api_request_sync_failure_is_typed(mock_save, provider, integration_mock):
+    """F22: ``POST /sync`` is a machine surface. A failure answers a typed
+    code + stable detail instead of echoing the raw exception string."""
+    request_mock = AsyncMock()
+    request_mock.json.return_value = {
+        "client_version": "1.0",
+        "source_system": "test",
+        "records": [
+            {"type": "quantitative", "name": "Test Metric", "value": 100.0, "unit": "mg/dL"}
+        ],
+    }
+
+    result = await provider.handle_api_request(
+        integration=integration_mock, path="sync", method="POST", request=request_mock
+    )
+
+    assert result == {
+        "success": False,
+        "error_code": "io",
+        "error": "Internal processing error.",
+    }
+    assert "super-secret" not in str(result)
+
+
+@pytest.mark.asyncio
+@patch(
     "app.extensions.builtin.health_assistant_bridge.provider.HealthAssistantBridgeProvider._process_and_save_sync_data"
 )
 async def test_handle_api_request_sync_examinations(mock_save, provider, integration_mock):

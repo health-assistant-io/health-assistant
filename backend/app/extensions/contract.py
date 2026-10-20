@@ -484,6 +484,17 @@ def validate_registration(
                 )
 
     kind = document.get("kind")
+    entry = document.get("entry")
+    if isinstance(entry, str) and docs_root is not None:
+        bundle_root = Path(docs_root).resolve()
+        entry_path = (bundle_root / entry).resolve()
+        try:
+            entry_path.relative_to(bundle_root)
+        except ValueError:
+            problems.append(f"$.entry: {entry!r} escapes the bundle root")
+        else:
+            if not entry_path.is_file():
+                problems.append(f"$.entry: {entry!r} is not a regular file in the bundle")
     if kind == "mini-app":
         api_version = document.get("apiVersion")
         if not isinstance(api_version, int) or api_version > 1:
@@ -515,6 +526,15 @@ def validate_registration(
     domains = document.get("domains") or []
     if "net" in capabilities and not domains:
         problems.append("$.domains: the net capability requires declared domains")
+    if not bundled and tier == "T2" and "net" in capabilities and "secrets" in capabilities:
+        secrets = document.get("secrets") or []
+        for slot in secrets:
+            if not isinstance(slot, dict) or not slot.get("domains"):
+                slot_id = slot.get("id") if isinstance(slot, dict) else "?"
+                problems.append(
+                    f"$.secrets[{slot_id!r}]: an imported T2 net extension must bind "
+                    "each secret slot to domains (H1c)"
+                )
     tools = document.get("tools") or []
     if "chat-tools" in capabilities and not tools:
         problems.append("$.tools: the chat-tools capability requires tool contributions")

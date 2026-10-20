@@ -106,17 +106,25 @@ def test_decrypt_with_wrong_key_raises(monkeypatch):
         enc.decrypt_secret(encrypted)
 
 
-def test_mask_secret_reveals_only_last_four(monkeypatch):
+def test_mask_secret_is_presence_only(monkeypatch):
+    """F18: no last-4 hint, and masking never touches the cipher."""
     _set_fernet_key(monkeypatch)
-    from app.core.encryption import encrypt_secret, mask_secret
+    from app.core import encryption as enc
 
-    encrypted = encrypt_secret("sk-live-XX-1234567890-secret")
-    masked = mask_secret(encrypted)
-    assert masked is not None
-    assert masked.startswith("***")
-    assert masked.endswith("cret")  # last 4 chars
-    assert "secret" not in masked[:-4]
-    assert "sk-live" not in masked
+    encrypted = enc.encrypt_secret("sk-live-XX-1234567890-secret")
+    assert enc.mask_secret(encrypted) == "***"
+    assert "cret" not in enc.mask_secret(encrypted)
+
+
+def test_mask_secret_does_not_decrypt(monkeypatch):
+    """The response mask must not be a decryption oracle (F18)."""
+    from app.core import encryption as enc
+
+    def _boom(*_a, **_kw):  # pragma: no cover - must never run
+        raise AssertionError("mask_secret decrypted the stored value")
+
+    monkeypatch.setattr(enc, "decrypt_secret", _boom)
+    assert enc.mask_secret("enc::opaque-token") == "***"
 
 
 def test_mask_secret_handles_plaintext_input(monkeypatch):
@@ -124,7 +132,7 @@ def test_mask_secret_handles_plaintext_input(monkeypatch):
     from app.core.encryption import mask_secret
 
     masked = mask_secret("sk-legacy-abcdef")
-    assert masked == "***cdef"
+    assert masked == "***"
 
 
 def test_mask_secret_none(monkeypatch):
@@ -173,13 +181,43 @@ def test_response_masks_encrypted_api_key(monkeypatch):
         settings={},
     )
     assert resp.has_api_key is True
-    # Must not contain the plaintext
+    # Must not contain the plaintext or any fragment of it (F18)
     assert "sk-prod-DEADBEEF" not in (resp.api_key or "")
     assert "DEADBEEF" not in (resp.api_key or "")
-    # Masked form reveals only last 4 of the plaintext
-    assert resp.api_key is not None
-    assert resp.api_key.startswith("***")
-    assert resp.api_key.endswith("BEEF")  # last 4 chars of plaintext "DEADBEEF"
+    assert resp.api_key == "***"
+
+
+def test_response_never_decrypts_the_stored_key(monkeypatch):
+    """F18: building a provider response must not run the cipher.
+
+    The list/detail schemas used to call ``mask_secret`` → ``decrypt_secret``
+    per row. A response-model test that patches the decryptor to explode pins
+    the no-decryption rule for every schema that embeds ``api_key``.
+    """
+    from app.ai.schemas.config import AIProviderResponse, AIProviderWithModelsResponse
+    from app.core import encryption as enc
+
+    def _boom(*_a, **_kw):  # pragma: no cover - must never run
+        raise AssertionError("response schema decrypted a stored secret")
+
+    monkeypatch.setattr(enc, "decrypt_secret", _boom)
+    kwargs = {
+        "id": uuid4(),
+        "name": "p",
+        "scope": "SYSTEM",
+        "provider_type": "openai",
+        "api_base": "https://api.openai.com",
+        "api_key": "enc::opaque-token",
+        "is_active": True,
+        "settings": {},
+    }
+    resp = AIProviderResponse(**kwargs)
+    assert resp.has_api_key is True
+    assert resp.api_key == "***"
+
+    with_models = AIProviderWithModelsResponse(**kwargs, models=[])
+    assert with_models.has_api_key is True
+    assert with_models.api_key == "***"
 
 
 def test_response_masks_plaintext_api_key(monkeypatch):
@@ -198,8 +236,9 @@ def test_response_masks_plaintext_api_key(monkeypatch):
         settings={},
     )
     assert resp.has_api_key is True
-    assert resp.api_key == "***3456"
+    assert resp.api_key == "***"
     assert "sk-legacy" not in resp.api_key
+    assert "3456" not in resp.api_key
 
 
 def test_response_none_api_key(monkeypatch):

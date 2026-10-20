@@ -376,8 +376,10 @@ class OAuthTokenStore:
     """Read/write the OAuth token blob from ``integration.user_config["_oauth"]``.
 
     ``access_token`` and ``refresh_token`` are Fernet-encrypted at rest (the
-    cipher comes from ``HA_DATA_KEY``). Other fields (``expires_at``,
-    ``patient``, ``scope``, ``client_id``) are stored in plaintext. The caller is
+    cipher comes from ``HA_DATA_KEY``) with the owning instance id as cipher
+    ``context`` — a copied ``_oauth`` blob fails to decrypt in another row
+    (audit 2026-10-18 F21). Other fields (``expires_at``, ``patient``,
+    ``scope``, ``client_id``) are stored in plaintext. The caller is
     responsible for persisting the ``user_config`` mutation (the SDK's
     ``set_sync_cursor`` / the endpoint's ``flag_modified`` + commit).
     """
@@ -404,31 +406,39 @@ class OAuthTokenStore:
         for k in _CONNECTION_FIELDS:
             if k in token:
                 oauth[k] = token[k]
-        oauth = self._encrypt_secrets(oauth)
+        # Bind the token blob to the owning row (audit 2026-10-18 F21): the
+        # machine-secret path already encrypts with ``context=str(instance
+        # id)``; the OAuth blob must do the same or a copied ``_oauth``
+        # object authenticates as another instance.
+        oauth = self._encrypt_secrets(oauth, context=str(integration.id))
 
         existing[OAUTH_CONFIG_KEY] = oauth
         integration.user_config = existing
 
-    def _encrypt_secrets(self, oauth: dict[str, Any]) -> dict[str, Any]:
+    def _encrypt_secrets(
+        self, oauth: dict[str, Any], *, context: str | None = None
+    ) -> dict[str, Any]:
         cipher = self._get_cipher()
         out = dict(oauth)
         for field in _TOKEN_SECRET_FIELDS:
             val = out.get(field)
             if val not in (None, "", {}, []):
-                out[field] = cipher.encrypt_value(val)
+                out[field] = cipher.encrypt_value(val, context=context)
         return out
 
-    def _decrypt_secrets(self, oauth: dict[str, Any]) -> dict[str, Any]:
+    def _decrypt_secrets(
+        self, oauth: dict[str, Any], *, context: str | None = None
+    ) -> dict[str, Any]:
         cipher = self._get_cipher()
         out = dict(oauth)
         for field in _TOKEN_SECRET_FIELDS:
             if field in out:
-                out[field] = cipher.decrypt_value(out[field])
+                out[field] = cipher.decrypt_value(out[field], context=context)
         return out
 
     def _read(self, integration: UserIntegration) -> dict[str, Any]:
         oauth = (integration.user_config or {}).get(OAUTH_CONFIG_KEY) or {}
-        return self._decrypt_secrets(oauth)
+        return self._decrypt_secrets(oauth, context=str(integration.id))
 
     def get_access_token(self, integration: UserIntegration) -> str | None:
         return self._read(integration).get("access_token")

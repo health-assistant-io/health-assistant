@@ -154,7 +154,10 @@ Ask the Health Assistant AI to resolve raw metric names to standardized biomarke
 | `map_to_existing` | The LLM found a matching `BiomarkerDefinition` in the patient's catalog. | Use `existing_biomarker_id` on subsequent `/sync` records for this metric. |
 | `create_new` | No existing match — the LLM proposes a new definition with a LOINC/SNOMED code. | Show the proposal to the user; on confirm, record `new_biomarker_*` and (optionally) have the backend create it via a `/sync` record carrying those fields. |
 
-**Errors:** `400` when the AI service is unavailable or the payload is malformed; `422` on a Pydantic validation failure.
+**Errors:** `400` with the typed `validation` envelope when the AI service is
+unavailable or the payload is malformed; `422` on a Pydantic validation
+failure. `/map` runs an LLM, so it draws from the same per-instance AI budget
+as `/ai/*` (`HA_RATELIMIT_AI`, 30 requests / 5 minutes by default).
 
 ---
 
@@ -234,7 +237,7 @@ Push observations and/or examinations into Health Assistant. The endpoint is **i
 | `metrics_synced` | int | Count of observations + telemetry records actually written. |
 | `message` | string | Human-readable summary. |
 
-**Errors:** `400` on a malformed payload, a bad/missing HMAC signature (when `api_secret` is set), or a validation failure. The error body carries `success: false` + a human-readable `error` string.
+**Errors:** `400` on a malformed payload, a bad/missing HMAC signature (when `api_secret` is set), or a validation failure. The error body carries `success: false` + a stable `error` string + the charter `error_code` class (for example `io`); raw exception text is never returned.
 
 ### The Universal Data Contract
 
@@ -711,10 +714,20 @@ published schema's `errors.codes` is extracted from the live
 | `validation` | 400 | Malformed input or a failed guard: blank/oversized `message`/`title`, malformed ids, invalid base64, the upload size cap, unknown `/changes` types, bad enum values, and the `/ai/transcribe` input guards (empty audio, a MIME outside the shared audio allowlist, audio beyond `AI_STT_MAX_AUDIO_BYTES`, an unresolvable STT target). |
 | `stt_failed` | 502 | The upstream speech-to-text provider failed on `POST /ai/transcribe` (timeout, auth, non-2xx). The audio was not persisted — retry with a fresh recording. |
 
-**Legacy shape (untyped 400s).** A handful of server-side processing
-failures (e.g. preview-image rendering, the AI mapping service being
-unavailable) and responses from **older servers** use the historical
-plain-string detail:
+Unexpected server-side failures answer `500` with the same envelope and the
+charter `io` class; the raw exception text stays in the server log:
+
+```json
+{ "detail": { "code": "io", "message": "Internal processing error." } }
+```
+
+`io` is not a `BridgeError` site, so it is not part of the machine-extracted
+schema vocabulary above.
+
+**Legacy shape (older servers only).** This server no longer emits plain-string
+details — an untyped provider `ValueError` now answers the typed `validation`
+envelope with a stable message. Responses from **older servers** may still use
+the historical plain-string detail:
 
 ```json
 { "detail": "Failed to generate preview image." }

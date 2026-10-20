@@ -450,6 +450,11 @@ _ROUTES: list[tuple[str, str | re.Pattern[str], str]] = [
 class HealthAssistantBridgeProvider(BaseHealthProvider):
     domain = "health_assistant_bridge"
 
+    #: ``POST /map`` runs an LLM extraction call but has no ``ai/`` prefix.
+    #: Audit 2026-10-18 F19: charge it to the same per-instance AI bucket as
+    #: the chat paths (30/5min) instead of the generic proxy budget.
+    ai_api_paths = ("map",)
+
     async def handle_api_request(
         self, integration: UserIntegration, path: str, method: str, request: Any
     ) -> dict[str, Any]:
@@ -558,7 +563,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             payload_data = await request.json()
             map_request = MapRequestPayload(**payload_data)
         except (TypeError, ValueError, RuntimeError) as e:
-            raise BridgeError(400, "validation", f"Invalid payload format: {e}") from e
+            raise BridgeError(400, "validation", "Invalid payload format.") from e
 
         return await self._handle_map_request(integration, map_request)
 
@@ -569,7 +574,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             payload_data = await request.json()
             sync_payload = SyncPayload(**payload_data)
         except (TypeError, ValueError, RuntimeError) as e:
-            raise BridgeError(400, "validation", f"Invalid Sync payload format: {e}") from e
+            raise BridgeError(400, "validation", "Invalid Sync payload format.") from e
 
         await self.log_debug_payload(
             integration,
@@ -595,8 +600,18 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 "message": "Data synchronized successfully",
             }
         except Exception as e:
+            # Machine surface: typed code + capped, authored detail — never
+            # the raw exception string (audit 2026-10-18 F22). The full
+            # traceback is in the log line above.
+            from app.extensions.errors import machine_error_detail
+
             logger.exception("[%s] Sync failed", self.domain)
-            return {"success": False, "error": str(e)}
+            failure = machine_error_detail(e)
+            return {
+                "success": False,
+                "error_code": failure["code"],
+                "error": failure["detail"],
+            }
 
     def _bound_patient_id(self, integration: UserIntegration):
         """The one patient this instance can act on. Every read/create MUST
@@ -2034,7 +2049,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     tenant_id=actor.tenant_id, user_id=actor.user_id
                 )
             except TranscriptionError as e:
-                raise BridgeError(400, "validation", str(e)) from e
+                logger.warning("STT target resolution failed: %s", e)
+                raise BridgeError(
+                    400,
+                    "validation",
+                    "Speech-to-text is not configured for this account.",
+                ) from e
 
         try:
             text = await transcribe_audio(
@@ -2044,7 +2064,14 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 target=target,
             )
         except TranscriptionError as e:
-            raise BridgeError(502, "stt_failed", str(e)) from e
+            # 502 class (audit 2026-10-18 F22): a stable client message, not
+            # the upstream/provider exception text.
+            logger.warning("STT upstream failed: %s", e)
+            raise BridgeError(
+                502,
+                "stt_failed",
+                "Speech-to-text failed upstream. Try again later.",
+            ) from e
 
         if text:
             check_user_input_safety(text, context="bridge_transcription")
@@ -3234,7 +3261,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = MedicationRecordCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid medication payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid medication payload.") from e
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             m = await add_patient_medication(
@@ -3257,7 +3284,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = MedicationRecordUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid medication payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid medication payload.") from e
         async with AsyncSessionLocal() as db:
             m = await self._bound_medication(db, integration, medication_id)
             updated = await update_patient_medication(db, m.id, integration.tenant_id, data)
@@ -3289,7 +3316,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = AllergyIntoleranceCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid allergy payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid allergy payload.") from e
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             a = await add_patient_allergy(
@@ -3312,7 +3339,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = AllergyIntoleranceUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid allergy payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid allergy payload.") from e
         async with AsyncSessionLocal() as db:
             a = await self._bound_allergy(db, integration, allergy_id)
             updated = await update_patient_allergy(db, a.id, integration.tenant_id, data)
@@ -3344,7 +3371,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = PatientImmunizationCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid vaccine payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid vaccine payload.") from e
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             v = await add_patient_immunization(
@@ -3367,7 +3394,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = PatientImmunizationUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid vaccine payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid vaccine payload.") from e
         async with AsyncSessionLocal() as db:
             v = await self._bound_vaccine(db, integration, vaccine_id)
             updated = await update_patient_immunization(db, v.id, integration.tenant_id, data)
@@ -3404,7 +3431,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid clinical event payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid clinical event payload.") from e
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
             result = await create_event(
@@ -3428,7 +3455,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventUpdate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid clinical event payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid clinical event payload.") from e
         async with AsyncSessionLocal() as db:
             await self._bound_clinical_event(db, integration, event_id)
             actor = await resolve_integration_actor(db, integration)
@@ -3465,7 +3492,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         try:
             data = ClinicalEventOccurrenceCreate(**payload)
         except (TypeError, ValueError) as e:
-            raise BridgeError(400, "validation", f"Invalid occurrence payload: {e}") from e
+            raise BridgeError(400, "validation", "Invalid occurrence payload.") from e
         async with AsyncSessionLocal() as db:
             await self._bound_clinical_event(db, integration, event_id)
             actor = await resolve_integration_actor(db, integration)

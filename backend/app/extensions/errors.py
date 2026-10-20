@@ -55,10 +55,21 @@ from app.extensions.polite_http import (
 __all__ = [
     "DEFAULT_RETRYABLE",
     "ERROR_CODES",
+    "MACHINE_DETAIL_CAP",
     "RETRYABLE_VOCABULARY",
     "BridgeError",
     "ExtensionError",
+    "machine_error_detail",
 ]
+
+#: Cap for a typed detail that crosses an untrusted/machine boundary.
+#: Mirrors the charter's 500-char detail bound but is tighter because the
+#: inbound webhook/API surfaces are machine-to-machine (audit 2026-10-18 F22).
+MACHINE_DETAIL_CAP = 300
+
+#: Stable fallback detail for an untyped exception. Raw exception text never
+#: crosses the boundary — the full traceback goes to the server log instead.
+_INTERNAL_MACHINE_DETAIL = "Internal processing error."
 
 
 class ExtensionError(Exception):
@@ -135,6 +146,27 @@ class BridgeError(ValueError):
     """
 
     def __init__(self, status_code: int, code: str, message: str) -> None:
-        super().__init__(message)
+        super().__init__(message[:MACHINE_DETAIL_CAP])
         self.status_code = status_code
         self.code = code
+
+
+def machine_error_detail(exc: BaseException, *, default_code: str = "io") -> dict[str, str]:
+    """Typed ``{code, detail}`` for an exception crossing a machine surface.
+
+    Audit 2026-10-18 F22: inbound paths (webhook, two-way API proxy, bridge
+    ``/sync``) used to persist/echo ``str(exc)`` — uncapped, and sometimes
+    containing internal paths, upstream URLs or provider text. Only the
+    charter-typed families carry a safe detail; any other exception becomes
+    the stable ``io`` class with a generic detail. The real exception is
+    logged by the caller, never returned.
+
+    Callers render the dict as their surface's wire shape (HTTP ``detail``
+    or the bridge's ``error`` field) and may add the code prefix to a sync
+    log row.
+    """
+    if isinstance(exc, ExtensionError):
+        return {"code": exc.code, "detail": exc.detail[:MACHINE_DETAIL_CAP]}
+    if isinstance(exc, BridgeError):
+        return {"code": exc.code, "detail": str(exc)[:MACHINE_DETAIL_CAP]}
+    return {"code": default_code, "detail": _INTERNAL_MACHINE_DETAIL}

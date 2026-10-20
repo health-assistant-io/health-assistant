@@ -23,6 +23,12 @@ class _CoreBaseHealthProvider(ABC):
 
     domain: str
 
+    #: Provider-relative two-way API paths that spend AI budget but do not
+    #: live under the conventional ``ai/`` prefix (audit 2026-10-18 F19).
+    #: The proxy charges these to the same per-instance AI bucket as
+    #: ``ai/*``, so a signed client cannot get cheap unthrottled LLM spend.
+    ai_api_paths: tuple[str, ...] = ()
+
     async def setup(self, config: dict | None = None) -> None:  # noqa: B027 -- documented default hook, not a forgotten abstract
         """Called once when the integration is loaded by the registry.
 
@@ -660,14 +666,18 @@ class BaseConfigFlow(_CoreBaseConfigFlow, ABC):
         """
         return []
 
-    async def prepare_for_storage(self, config: dict) -> dict:
+    async def prepare_for_storage(self, config: dict, *, context: str | None = None) -> dict:
         """Hook called by the endpoint before persisting ``user_config``.
 
         Default: encrypts :meth:`get_secret_fields` via the platform Fernet
-        key (``HA_DATA_KEY``). Override to add custom transforms
-        (e.g. strip read-only fields), then call super() to keep encryption.
+        key (``HA_DATA_KEY``). ``context`` is the owning instance id — the
+        endpoint always passes it so user-entered secrets are row-bound
+        exactly like platform-provisioned machine secrets (audit
+        2026-10-18 F21); a ciphertext copied into another row fails to
+        decrypt. Override to add custom transforms (e.g. strip read-only
+        fields), then call super() to keep encryption.
         """
-        return encrypt_fields(config, self.get_secret_fields())
+        return encrypt_fields(config, self.get_secret_fields(), context=context)
 
     def prepare_for_read(self, config: dict) -> dict:
         """Hook called by the endpoint before returning config to the UI.
@@ -678,11 +688,13 @@ class BaseConfigFlow(_CoreBaseConfigFlow, ABC):
         """
         return mask_fields(config, self.get_secret_fields())
 
-    def decrypt_for_use(self, config: dict) -> dict:
+    def decrypt_for_use(self, config: dict, *, context: str | None = None) -> dict:
         """Hook called by the integration's own provider when it needs the
         plaintext config (e.g. to build an MCP client).
 
-        Default: decrypts :meth:`get_secret_fields`. Not called by the
-        platform endpoint — only by the integration itself.
+        Default: decrypts :meth:`get_secret_fields`. Pass the owning
+        instance id as ``context`` so a ciphertext copied from another row
+        is rejected (audit 2026-10-18 F21). Not called by the platform
+        endpoint — only by the integration itself.
         """
-        return decrypt_fields(config, self.get_secret_fields())
+        return decrypt_fields(config, self.get_secret_fields(), context=context)

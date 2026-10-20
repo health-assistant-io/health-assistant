@@ -344,6 +344,20 @@ async def test_token_store_encrypts_and_roundtrips():
     assert not store.is_expired(integ)
 
 
+def test_token_store_blob_is_bound_to_the_instance():
+    """F21: the OAuth blob is encrypted with the instance id as context; a
+    blob copied onto another row's ``user_config`` must not authenticate."""
+    store = OAuthTokenStore(cipher=_cipher())
+    integ = _integration()
+    store.store(integ, {"access_token": "AT", "refresh_token": "RT"})
+    assert store.get_access_token(integ) == "AT"
+
+    # Same blob, different row id → context mismatch.
+    other = SimpleNamespace(id="int-2", user_config=integ.user_config)
+    with pytest.raises(ValueError, match="different context"):
+        store.get_access_token(other)
+
+
 def test_token_store_expired_when_no_expires_at():
     store = OAuthTokenStore(cipher=_cipher())
     integ = _integration()

@@ -43,6 +43,12 @@
       "type": "string",
       "maxLength": 400
     },
+    "entry": {
+      "type": "string",
+      "maxLength": 255,
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+      "$comment": "Code is allowed at T1/T2 only as a PATH pointer to a file in the bundle — inline code, blobs, base64 and eval are structurally impossible. Tier is provenance, never manifest data: bundled+entry = T1 (reviewed, in-process); imported+entry = T2 (sandboxed, never imported); no entry = T0. The host validates the path resolves to a regular file inside the digest-pinned content root; the pack schema remains the deep validator. Pre-release D18 re-authoring: the shape lands under unchanged majors because no artifact exists outside the workspace."
+    },
     "docs": {
       "const": "docs/docs-tree.json",
       "$comment": "Per-extension documentation pointer (plan 34 / guidelines/extension-docs.md): optional; when present, docs/docs-tree.json MUST exist in the bundle and validate against docs-tree.schema.json's extensionDocsTree form — enforced wherever manifests validate (host registration/import, build walls; an invalid tree is a self-disable reason like an invalid manifest). The directory/naming contract is fixed: docs/ at the bundle root, docs-tree.json + the markdown pages beside it; the docs' versioning rides the manifest version, never separate."
@@ -157,6 +163,18 @@
           "purpose": {
             "type": "string",
             "maxLength": 200
+          },
+          "domains": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 253,
+              "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+            },
+            "$comment": "Secret destinations (plan 37 Phase 4 / H1c): the only hosts this slot may be injected toward. Required by the validator for imported T2 manifests that declare net; bundled manifests may omit (reviewed code, no host-side injection). Every hop is checked; a cross-host redirect strips secret-bearing headers or refuses."
           }
         },
         "required": [
@@ -696,6 +714,12 @@
           "type": "string",
           "maxLength": 400
         },
+        "entry": {
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+          "$comment": "Same path-only rule as the root envelope. Bundled T1 reviewed code may use entry (code.entry is deleted in the 7A wave); an imported T2 bundle uses the same field. No inline code exists in any envelope."
+        },
         "docs": {
           "const": "docs/docs-tree.json",
           "$comment": "Per-extension documentation pointer — same law as the root envelope: when present the tree must exist beside the manifest and validate (registration/build-enforced)."
@@ -806,6 +830,18 @@
               "purpose": {
                 "type": "string",
                 "maxLength": 200
+              },
+              "domains": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "maxLength": 253,
+                  "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+                },
+                "$comment": "Optional for bundled T1 (reviewed code; no host-side injection). Imported T2 with net requires it; the host strips or refuses secret-bearing headers on a cross-host hop."
               }
             },
             "required": [

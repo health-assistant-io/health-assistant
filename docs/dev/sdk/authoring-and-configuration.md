@@ -654,11 +654,15 @@ Integrations with secret config fields declare them via
 `get_secret_fields()` + `x-secret` marks. The SDK handles the rest:
 
 - **On save:** `submit_config_flow` → `config_flow.prepare_for_storage()`
-  → encrypts secret fields with Fernet (`HA_DATA_KEY`).
+  → encrypts secret fields with Fernet (`HA_DATA_KEY`) and the owning
+  instance id as cipher `context` — the same row binding platform
+  machine secrets use, so a ciphertext copied into another instance fails
+  to decrypt (audit 2026-10-18 F21).
 - **On read:** `get_integration_details` → `prepare_for_read()` → masks
-  secret fields as `"***"`.
-- **On use:** the provider calls `config_flow.decrypt_for_use()` or
-  `decrypt_fields()` to get plaintext.
+  secret fields as `"***"`; no read path decrypts a secret.
+- **On use:** the provider calls
+  `config_flow.decrypt_for_use(..., context=str(integration.id))` or
+  `decrypt_fields(..., context=str(integration.id))` to get plaintext.
 
 The cipher is not SDK-local: `app.extensions.sdk.secrets` re-exports
 `SecretCipher` from the shared `neuronection-auth-kit` package

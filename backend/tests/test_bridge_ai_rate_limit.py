@@ -121,13 +121,24 @@ class TestEnforceIntegrationRateLimitUnit:
 
 def test_api_proxy_wires_the_ai_bucket():
     """Static guard: the proxy enforces the AI bucket after signature
-    verification (WS2 wiring — the knob is useless if unplugged)."""
+    verification (WS2 wiring — the knob is useless if unplugged). It also
+    covers provider-declared off-prefix AI paths (F19 — bridge ``/map``)."""
     from app.api.v1.endpoints import integrations as ep
 
     src = inspect.getsource(ep.integration_api_proxy)
     assert 'path.startswith("ai/")' in src
+    assert 'getattr(provider, "ai_api_paths", ())' in src
     assert "enforce_integration_rate_limit" in src
     assert 'bucket="ai"' in src
+
+
+def test_bridge_map_path_is_declared_ai():
+    """F19: ``POST /map`` runs an LLM and must draw from the AI bucket."""
+    from app.extensions.builtin.health_assistant_bridge.provider import (
+        HealthAssistantBridgeProvider,
+    )
+
+    assert "map" in HealthAssistantBridgeProvider.ai_api_paths
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +268,25 @@ async def _proxy_ai_chat(db, integration_id: str, api_secret: str):
     )
 
 
+async def _proxy_map(db, integration_id: str, api_secret: str):
+    from app.api.v1.endpoints import integrations as ep
+
+    body = b'{"unmapped_metrics": []}'
+    return await ep.integration_api_proxy(
+        domain="health_assistant_bridge",
+        integration_id=str(integration_id),
+        path="map",
+        request=_signed_request(
+            api_secret,
+            "POST",
+            "map",
+            body=body,
+            json_payload={"unmapped_metrics": []},
+        ),
+        db=db,
+    )
+
+
 async def _proxy_observations(db, integration_id: str, api_secret: str):
     from app.api.v1.endpoints import integrations as ep
 
@@ -335,6 +365,41 @@ class TestAiBucketThroughTheProxy:
                         db, ai_rl_ctx["integration_id"], ai_rl_ctx["api_secret"]
                     )
                     assert isinstance(result, dict)
+
+    async def test_map_path_counts_toward_the_ai_bucket(self, ai_rl_ctx, fake_redis):
+        """F19: ``POST /map`` is LLM-backed but has no ``ai/`` prefix. It
+        must draw from the same 30/5-min per-instance AI budget, not the
+        generic proxy budget (30 maps stream through, the 31st is 429)."""
+        from app.api.v1.endpoints import integrations as ep
+        from app.core.database import AsyncSessionLocal
+        from app.extensions.builtin.health_assistant_bridge.provider import (
+            HealthAssistantBridgeProvider,
+        )
+
+        async def _fake_map(self, integration, map_request):
+            return {"mappings": []}
+
+        with (
+            patch.object(HealthAssistantBridgeProvider, "_handle_map_request", new=_fake_map),
+            patch.object(ep.integration_registry, "get_provider") as gp,
+        ):
+            gp.return_value = HealthAssistantBridgeProvider()
+            async with AsyncSessionLocal() as db:
+                for _ in range(30):
+                    result = await _proxy_map(
+                        db, ai_rl_ctx["integration_id"], ai_rl_ctx["api_secret"]
+                    )
+                    assert result == {"mappings": []}
+                with pytest.raises(HTTPException) as exc:
+                    await _proxy_map(db, ai_rl_ctx["integration_id"], ai_rl_ctx["api_secret"])
+        assert exc.value.status_code == 429
+        assert "Retry-After" in exc.value.headers
+        assert any(
+            key.startswith(
+                f"rl:integration_api_proxy_ai:integration:{ai_rl_ctx['integration_id']}:"
+            )
+            for key in fake_redis.store
+        )
 
     async def test_resume_path_counts_toward_the_ai_bucket(self, ai_rl_ctx, fake_redis, turn_redis):
         """WS4: `POST /ai/sessions/{id}/resume` is an `ai/*` path — it draws

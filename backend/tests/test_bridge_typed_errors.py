@@ -290,15 +290,15 @@ class TestTypedErrorsThroughTheProxy:
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "hitl_conflict"
 
-    async def test_bare_value_error_keeps_the_plain_400_shape(self, typed_err_ctx, ai_rate_redis):
-        """The legacy path is byte-identical: a provider raise of a bare
-        ValueError (e.g. an untyped processing failure) still answers 400
-        with a plain-string detail — never an object, never a 500."""
+    async def test_bare_value_error_is_typed_without_raw_text(self, typed_err_ctx, ai_rate_redis):
+        """F22: a bare ValueError still maps to the 400 ``validation`` class,
+        but the detail is the stable typed envelope — the exception text
+        (which may carry internal/provider detail) never reaches the client."""
         ctx = typed_err_ctx
         from app.core.database import AsyncSessionLocal
 
         async def _boom(self, **kwargs):
-            raise ValueError("boom")
+            raise ValueError("internal detail: /srv/secret/path?token=abc")
 
         with patch(
             "app.extensions.builtin.health_assistant_bridge.provider"
@@ -309,8 +309,32 @@ class TestTypedErrorsThroughTheProxy:
                 with pytest.raises(HTTPException) as exc:
                     await _proxy(db, ctx, "observations", "GET")
         assert exc.value.status_code == 400
-        assert exc.value.detail == "boom"
-        assert not isinstance(exc.value.detail, dict)
+        assert exc.value.detail == {"code": "validation", "message": "Invalid request."}
+        assert "token=abc" not in str(exc.value.detail)
+
+    async def test_untyped_500_is_typed_and_capped(self, typed_err_ctx, ai_rate_redis):
+        """F22: an unexpected exception answers ``{code: io, message: …}`` and
+        the raw text stays in the log, never in the machine response."""
+        ctx = typed_err_ctx
+        from app.core.database import AsyncSessionLocal
+
+        async def _boom(self, **kwargs):
+            raise RuntimeError("db password=super-secret DSN")
+
+        with patch(
+            "app.extensions.builtin.health_assistant_bridge.provider"
+            ".HealthAssistantBridgeProvider.handle_api_request",
+            new=_boom,
+        ):
+            async with AsyncSessionLocal() as db:
+                with pytest.raises(HTTPException) as exc:
+                    await _proxy(db, ctx, "observations", "GET")
+        assert exc.value.status_code == 500
+        assert exc.value.detail == {
+            "code": "io",
+            "message": "Internal processing error.",
+        }
+        assert "super-secret" not in str(exc.value.detail)
 
     async def test_bridge_error_subclasses_value_error(self):
         """Direct provider callers' `pytest.raises(ValueError)` keeps passing."""

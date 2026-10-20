@@ -655,7 +655,14 @@ async def transcribe(
             target=target,
         )
     except TranscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        # No raw upstream exception text on a 502 (audit 2026-10-18 F22).
+        import logging
+
+        logging.getLogger(__name__).warning("Speech-to-text upstream failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speech-to-text failed upstream. Try again later.",
+        ) from e
 
     # Run the transcribed text through the prompt-injection guard for audit
     # correlation (non-blocking) — consistent with every other user input path.

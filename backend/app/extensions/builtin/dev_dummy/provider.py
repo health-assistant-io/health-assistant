@@ -494,7 +494,9 @@ class DevDummyProvider(BaseHealthProvider):
         try:
             from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
 
-            decrypted = DevDummyConfigFlow().decrypt_for_use({"webhook_secret": wrapped})
+            decrypted = DevDummyConfigFlow().decrypt_for_use(
+                {"webhook_secret": wrapped}, context=str(integration.id)
+            )
             value = decrypted.get("webhook_secret")
             return str(value) if value else None
         except Exception:

@@ -148,7 +148,12 @@ def validate_http_url(url: str, allow_insecure: bool | None = None) -> tuple[boo
     except polite_http.PoliteHttpError as exc:
         return False, f"URL points at a blocked (private/internal) target: {exc}"
     except Exception:
-        pass
+        # Fail closed (audit 2026-10-18 F20): a guard failure is not a
+        # permission to connect. The net-guard runs before any outbound
+        # socket, so an unexpected error here means we cannot prove the URL
+        # is safe — reject with a typed reason instead of `pass`-ing.
+        logger.warning("MCP URL guard failed for %s; rejecting (fail closed)", url, exc_info=True)
+        return False, "URL could not be validated against the outbound network policy."
 
     return True, ""
 

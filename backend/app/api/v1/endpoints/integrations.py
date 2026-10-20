@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import hashlib
+import json
 import logging
 import os
 import secrets as _py_secrets
@@ -20,7 +21,7 @@ from app.core.rate_limit import (
 )
 from app.core.redis import redis_client
 from app.core.security import get_current_user
-from app.extensions.errors import BridgeError, ExtensionError
+from app.extensions.errors import BridgeError, ExtensionError, machine_error_detail
 from app.extensions.registry import integration_registry
 from app.extensions.sdk.auth import OAuthStateStore
 from app.models.enums import IntegrationStatus
@@ -298,10 +299,31 @@ async def get_integration_documentation(
     }
 
 
+#: Published-schema document cache (audit 2026-10-18 F36). The bridge schema
+#: is ~212 KB; parsing it from disk on every authenticated read made this the
+#: heaviest unthrottled GET in the file. Keyed by path + (mtime_ns, size) so
+#: a republished artifact invalidates without a restart; the parsed document
+#: is immutable by contract (no request mutates it).
+_PUBLISHED_SCHEMA_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
+
+
+def _load_published_schema(path: str) -> dict[str, Any]:
+    """Return the parsed published schema, re-reading only when the file changed."""
+    stat = os.stat(path)
+    cached = _PUBLISHED_SCHEMA_CACHE.get(path)
+    if cached and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+        return cached[2]
+    with open(path) as f:
+        document = json.load(f)
+    _PUBLISHED_SCHEMA_CACHE[path] = (stat.st_mtime_ns, stat.st_size, document)
+    return document
+
+
 @router.get("/{domain}/schema")
 async def get_integration_api_schema(
     domain: str,
     current_user: TokenData = Depends(get_current_user),
+    _rl=Depends(rate_limit("integration_schema", max_requests=120, window=60)),
 ) -> dict[str, Any]:
     """The bridge's published sub-API schema (plan 32 D11 — schema-first SDKs).
 
@@ -311,9 +333,12 @@ async def get_integration_api_schema(
     carries no secrets — it is the wire contract the SDK model layers and
     the cross-SDK fixtures are generated from. 404 for unknown domains and
     for extensions without a schema.
-    """
-    import json
 
+    Cached + rate limited (audit 2026-10-18 F36): the parsed document is
+    reused until the artifact changes, and the route shares the default
+    per-IP bucket so an authenticated caller cannot stream the 212 KB
+    artifact at will.
+    """
     from app.extensions.registry import domain_of
 
     manifests = integration_registry.get_all_manifests()
@@ -326,10 +351,11 @@ async def get_integration_api_schema(
     if not os.path.exists(schema_path):
         raise HTTPException(status_code=404, detail="No API schema published for this integration")
     try:
-        with open(schema_path) as f:
-            return json.load(f)
+        return _load_published_schema(schema_path)
     except (OSError, ValueError) as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load API schema: {e}") from e
+        # No raw exception text on this surface.
+        logger.error("Failed to load published schema for %s: %s", domain, e)
+        raise HTTPException(status_code=500, detail="Failed to load API schema") from e
 
 
 @router.get("/{domain}/config-flow", response_model=dict[str, Any])
@@ -380,10 +406,36 @@ async def submit_config_flow(
     # Extract instance_name if provided, otherwise default to domain
     instance_name = validated_config.pop("instance_name", domain.capitalize())
 
+    # Resolve the target instance BEFORE encrypting. User-entered secrets are
+    # row-bound exactly like platform-provisioned machine secrets (audit
+    # 2026-10-18 F21): the instance id is the cipher context, so a ciphertext
+    # copied into another instance fails to decrypt. For a create we mint the
+    # id here and reuse it for the row.
+    existing: UserIntegration | None = None
+    if integration_id:
+        try:
+            integration_uuid = UUID(integration_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid integration ID format")
+
+        stmt = select(UserIntegration).where(
+            UserIntegration.id == integration_uuid,
+            UserIntegration.user_id == current_user.user_id,
+            UserIntegration.patient_id == patient_id,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Integration instance not found")
+        instance_uuid = existing.id
+    else:
+        instance_uuid = uuid4()
+
     # Generic: let the config flow encrypt any secret fields it declared.
     # No-op for integrations with no secret fields (no key required).
     try:
-        validated_config = await config_flow.prepare_for_storage(validated_config)
+        validated_config = await config_flow.prepare_for_storage(
+            validated_config, context=str(instance_uuid)
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -411,24 +463,9 @@ async def submit_config_flow(
                 ),
             )
 
+    generated: dict[str, str] = {}
     # Check if this is an update to an existing instance
-    if integration_id:
-        try:
-            integration_uuid = UUID(integration_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid integration ID format")
-
-        stmt = select(UserIntegration).where(
-            UserIntegration.id == integration_uuid,
-            UserIntegration.user_id == current_user.user_id,
-            UserIntegration.patient_id == patient_id,
-        )
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
-
-        if not existing:
-            raise HTTPException(status_code=404, detail="Integration instance not found")
-
+    if existing is not None:
         existing.user_config = validated_config
         existing.instance_name = instance_name
     else:
@@ -457,8 +494,6 @@ async def submit_config_flow(
         # the instance id as context binding. The machine routes below
         # reject instances without a configured secret.
         provider = integration_registry.get_provider(domain)
-        generated: dict[str, str] = {}
-        instance_uuid = uuid4()
         wants_webhook = provider is not None and _declared_inbound(provider, "inbound-webhook")
         wants_api = provider is not None and _declared_inbound(provider, "inbound-api")
         try:
@@ -1473,7 +1508,7 @@ def _resolve_secret_field(
         # Not declared secret — return as-is (already plaintext).
         return raw if isinstance(raw, str) else None
     try:
-        decrypted = flow.decrypt_for_use(config)
+        decrypted = flow.decrypt_for_use(config, context=context)
         val = decrypted.get(field_name)
         if val == "***" or not val:
             return None
@@ -1760,11 +1795,15 @@ async def integration_webhook(
     except Exception as e:
         await db.rollback()
         logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
+        # Audit 2026-10-18 F22: this is a machine surface. Persist/echo a
+        # typed code + capped detail, never the raw exception string. The
+        # full traceback stays in the server log above.
+        failure = machine_error_detail(e)
 
         if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
             with contextlib.suppress(Exception):
                 await provider.log_debug_payload(
-                    integration, "Webhook Error", {"error": str(e)}, level="error"
+                    integration, "Webhook Error", failure, level="error"
                 )
 
         # Log failure
@@ -1776,7 +1815,7 @@ async def integration_webhook(
             records_synced=0,
             started_at=start_time,
             completed_at=failure_completed,
-            error_message=str(e),
+            error_message=f"[{failure['code']}] {failure['detail']}",
         )
         db.add(sync_log)
         await db.commit()
@@ -1794,8 +1833,10 @@ async def integration_webhook(
                 status="failed",
                 started_at=start_time,
                 completed_at=failure_completed,
-                error=str(e),
-                error_type="data",
+                # ``error_type`` keeps the notification service's failure
+                # routing (auth/data); the typed charter code rides the text.
+                error=f"[{failure['code']}] {failure['detail']}",
+                error_type="auth" if failure["code"] == "auth" else "data",
                 observations=[],
             )
         except Exception as webhook_notif_err:
@@ -1804,7 +1845,10 @@ async def integration_webhook(
                 domain,
                 webhook_notif_err,
             )
-        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {e!s}")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": failure["code"], "message": failure["detail"]},
+        )
 
 
 @router.api_route(
@@ -1904,7 +1948,11 @@ async def integration_api_proxy(
             detail="Invalid or missing X-Api-Signature.",
         )
 
-    if path.startswith("ai/"):
+    # AI budget: every ``ai/*`` path plus the provider-declared AI paths that
+    # lack the prefix (the bridge's ``/map`` — audit 2026-10-18 F19) draws
+    # from one per-instance bucket, so a signed client cannot bypass the
+    # 30/5-min AI ceiling by calling an LLM-backed route off-prefix.
+    if path.startswith("ai/") or path in getattr(provider, "ai_api_paths", ()):
         await enforce_integration_rate_limit(
             "integration_api_proxy_ai",
             str(integration.id),
@@ -1930,16 +1978,37 @@ async def integration_api_proxy(
         flag_modified(integration, "user_config")
         await db.commit()
         return response_data
-    except NotImplementedError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except NotImplementedError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "validation",
+                "message": "This path is not supported by the integration.",
+            },
+        )
     except BridgeError as e:
-        raise HTTPException(status_code=e.status_code, detail={"code": e.code, "message": str(e)})
-    except ValueError as e:
-        # Pass ValueErrors (like validation or user errors) as 400 Bad Request
-        raise HTTPException(status_code=400, detail=str(e))
+        # Bridge errors are already the client-facing typed vocabulary; the
+        # message is authored/capped, never a raw exception string (F22).
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"code": e.code, "message": str(e)},
+        )
+    except ValueError:
+        # Bare ValueErrors are the legacy validation class. Answer the typed
+        # envelope with a stable message — the raw text may carry internal
+        # detail (audit 2026-10-18 F22). Providers that need a specific
+        # client message raise BridgeError.
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "validation", "message": "Invalid request."},
+        )
     except Exception as e:
         logger.error(
             f"API request failed for {domain} (Integration: {integration_id}): {e}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=f"API request failed: {e!s}")
+        failure = machine_error_detail(e)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": failure["code"], "message": failure["detail"]},
+        )

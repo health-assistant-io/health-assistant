@@ -8,16 +8,20 @@ from app.models.enums import AIModelCapability, AIScope
 
 
 def _mask_api_key_for_response(value: str | None) -> str | None:
-    """Never return a plaintext api_key in any response shape.
+    """Never return a plaintext api_key (or any fragment of it) in a response.
 
-    Accepts either the encrypted at-rest form or legacy plaintext and
-    returns a ``***<last4>`` mask. Returns None if the input is None/empty.
+    Audit 2026-10-18 F18: the previous ``***<last4>`` mask decrypted every
+    stored key on every list/detail read and revealed the last four plaintext
+    bytes — for structured tokens (``sk-…``, ``ghp_…``) that is key material
+    and a decryption oracle. Read paths now return presence (``has_api_key``)
+    plus a bare ``***`` marker, and never decrypt: the ciphertext wrapper is
+    opaque, so no plaintext leaves the server. ``None``/empty stay ``None``.
     """
     if value is None or value == "":
         return None
-    from app.core.encryption import mask_secret
+    from app.core.encryption import MASK_MARKER
 
-    return mask_secret(value)
+    return MASK_MARKER
 
 
 def _compute_has_api_key(value: str | None) -> bool:
@@ -70,8 +74,8 @@ class AIProviderUpdate(BaseModel):
 class AIProviderResponse(BaseModel):
     """Schema for AI provider response.
 
-    ``api_key`` is masked in every response (``***<last4>``) regardless of
-    whether the stored form is encrypted or legacy plaintext. The companion
+    ``api_key`` is masked in every response as a bare ``***`` (never
+    decrypted, never a last-4 hint — audit 2026-10-18 F18). The companion
     ``has_api_key`` field lets the UI indicate a key is configured without
     exposing it.
     """

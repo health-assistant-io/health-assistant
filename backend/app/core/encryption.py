@@ -173,24 +173,19 @@ def decrypt_secret(stored: str | None) -> str | None:
         raise ValueError("Encrypted secret could not be decrypted") from e
 
 
-def mask_secret(stored_or_plain: str | None, visible_tail: int = 4) -> str | None:
-    """Mask a secret for display: returns ``***<last N chars>`` or ``None``.
+def mask_secret(stored_or_plain: str | None) -> str | None:
+    """Mask a secret for display: a bare ``***`` or ``None``.
 
-    Accepts either an encrypted value (decrypts first) or a plaintext value.
-    On any error (no key, bad token), returns ``***`` so the UI never leaks
-    the encrypted token or partial bytes.
+    Audit 2026-10-18 F18: this used to decrypt the stored value and append
+    the last four plaintext characters (``***<last4>``). For structured
+    tokens that is key material, and it turned every response-model read
+    into a decryption oracle. Masking is now presence-only and never
+    touches the cipher: any non-empty value (ciphertext wrapper or legacy
+    plaintext) answers ``***``.
     """
     if stored_or_plain is None or stored_or_plain == "":
         return None
-    try:
-        plain = decrypt_secret(stored_or_plain)
-    except ValueError:
-        return MASK_MARKER
-    if plain is None or plain == "":
-        return None
-    if len(plain) <= visible_tail:
-        return MASK_MARKER
-    return f"{MASK_MARKER}{plain[-visible_tail:]}"
+    return MASK_MARKER
 
 
 def looks_masked(value: str | None) -> bool:

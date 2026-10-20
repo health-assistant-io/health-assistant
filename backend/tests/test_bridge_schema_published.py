@@ -163,6 +163,66 @@ async def test_schema_route_serves_committed_schema(async_client: AsyncClient):
     assert response.headers["content-type"].startswith("application/json")
 
 
+def test_schema_document_is_cached_until_the_artifact_changes(tmp_path, monkeypatch):
+    """F36: the parsed schema is reused across reads; a changed artifact
+    (size or mtime) invalidates the cache without a restart."""
+    import app.api.v1.endpoints.integrations as ep
+
+    path = tmp_path / "bridge-api.schema.json"
+    path.write_text('{"schemaVersion": 1}')
+    key = str(path)
+    ep._PUBLISHED_SCHEMA_CACHE.pop(key, None)
+
+    calls = {"n": 0}
+    real_load = json.load
+
+    def _counting(file_obj):
+        calls["n"] += 1
+        return real_load(file_obj)
+
+    monkeypatch.setattr(json, "load", _counting)
+    try:
+        assert ep._load_published_schema(key) == {"schemaVersion": 1}
+        assert ep._load_published_schema(key) == {"schemaVersion": 1}
+        assert calls["n"] == 1
+
+        path.write_text('{"schemaVersion": 2, "extra": true}')
+        assert ep._load_published_schema(key) == {"schemaVersion": 2, "extra": True}
+        assert calls["n"] == 2
+    finally:
+        ep._PUBLISHED_SCHEMA_CACHE.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_schema_route_is_rate_limited(monkeypatch):
+    """F36: the heaviest authenticated GET shares a fixed per-IP bucket."""
+    import inspect
+    import types
+
+    from fastapi import HTTPException
+
+    from app.api.v1.endpoints import integrations as ep
+    from app.core import rate_limit as rl_mod
+    from tests.settings_factory import settings_stub
+    from tests.test_audit_a2_rate_limit import FakeRedis
+
+    fake = FakeRedis()
+    monkeypatch.setattr(rl_mod, "redis_client", fake)
+    monkeypatch.setattr(
+        rl_mod,
+        "get_settings",
+        lambda: settings_stub(HA_RATELIMIT_ENABLED=True, HA_TRUSTED_PROXY_COUNT=0),
+    )
+    dep = inspect.signature(ep.get_integration_api_schema).parameters["_rl"].default.dependency
+    request = types.SimpleNamespace(client=types.SimpleNamespace(host="1.2.3.4"), headers={})
+    for _ in range(120):
+        await dep(request)
+    with pytest.raises(HTTPException) as exc:
+        await dep(request)
+    assert exc.value.status_code == 429
+    assert any(key.startswith("rl:integration_schema:") for key in fake.store)
+
+
 @pytest.mark.asyncio
 async def test_schema_route_requires_auth(async_client: AsyncClient):
     response = await async_client.get("/api/v1/integrations/health_assistant_bridge/schema")

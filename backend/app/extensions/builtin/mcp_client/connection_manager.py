@@ -231,7 +231,12 @@ class McpConnectionManager:
         # connection manager needs the plaintext regardless of which config
         # flow class is active. This stays MCP-specific.
         try:
-            config = decrypt_fields(raw_config, ["env", "headers", "auth_token"])
+            # Row-bound ciphertext (audit 2026-10-18 F21): user-entered
+            # secrets are encrypted with the instance id as context, so a
+            # config copied between rows fails to decrypt here.
+            config = decrypt_fields(
+                raw_config, ["env", "headers", "auth_token"], context=str(integration.id)
+            )
         except RuntimeError as e:
             raise ExtensionError("invalid", str(e)) from e
         except Exception as e:

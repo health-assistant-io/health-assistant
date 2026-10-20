@@ -6,7 +6,7 @@ export interface AIProvider {
   scope: 'SYSTEM' | 'TENANT' | 'USER';
   provider_type: string;
   api_base: string;
-  /** Masked form (***<last4>) in every API response; never the real key. */
+  /** Presence mask (`***`) in every API response; never the real key. */
   api_key?: string;
   /** True when a key is configured (the stored key itself is write-only). */
   has_api_key?: boolean;

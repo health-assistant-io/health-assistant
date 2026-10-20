@@ -125,7 +125,7 @@ async def test_webhook_route_accepts_valid_signature():
     # a passthrough config-flow stub keeps _resolve_secret_field transparent.
     flow = MagicMock()
     flow.get_secret_fields.return_value = []  # treat as already-plaintext
-    flow.decrypt_for_use = lambda cfg: dict(cfg)
+    flow.decrypt_for_use = lambda cfg, *, context=None: dict(cfg)
 
     with (
         patch.object(endpoint.integration_registry, "get_provider", return_value=provider),
@@ -139,6 +139,73 @@ async def test_webhook_route_accepts_valid_signature():
         )
 
     provider.handle_webhook.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_webhook_failure_is_typed_and_never_echoes_the_exception():
+    """F22: the inbound webhook surface persists/echoes a typed code + capped
+    detail. Raw exception text (paths, DSNs, provider messages) stays in the
+    server log only."""
+    from uuid import uuid4
+
+    from fastapi import HTTPException
+
+    from app.api.v1.endpoints import integrations as endpoint
+
+    secret = "a-very-strong-secret-1234"
+    integration_id = uuid4()
+    integration = MagicMock()
+    integration.id = integration_id
+    integration.provider = "webhook"
+    integration.tenant_id = uuid4()
+    integration.user_config = {"webhook_secret": secret}
+    integration.is_debug_enabled = False
+
+    body = b'{"type":"heart_rate","value":72}'
+    request = MagicMock()
+    request.headers = {"X-Webhook-Signature": _hmac(secret, body)}
+    request.body = AsyncMock(return_value=body)
+
+    db = MagicMock()
+    db.execute = AsyncMock(
+        return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=integration))
+    )
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+
+    provider = MagicMock()
+    provider.handle_webhook = AsyncMock(
+        side_effect=RuntimeError("db password=super-secret DSN /srv/private")
+    )
+
+    flow = MagicMock()
+    flow.get_secret_fields.return_value = []
+    flow.decrypt_for_use = lambda cfg, *, context=None: dict(cfg)
+
+    with (
+        patch.object(endpoint.integration_registry, "get_provider", return_value=provider),
+        patch.object(endpoint.integration_registry, "get_config_flow", return_value=flow),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await endpoint.integration_webhook(
+            domain="webhook",
+            integration_id=str(integration_id),
+            request=request,
+            db=db,
+        )
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == {"code": "io", "message": "Internal processing error."}
+    assert "super-secret" not in str(exc.value.detail)
+
+    # The persisted failed row carries the typed code prefix, not the raw text.
+    from app.models.user_integration import IntegrationSyncLog
+
+    added = [call.args[0] for call in db.add.call_args_list]
+    failed = [row for row in added if isinstance(row, IntegrationSyncLog)]
+    assert failed, "expected a failed sync log row"
+    assert failed[0].error_message == "[io] Internal processing error."
+    assert "super-secret" not in failed[0].error_message
 
 
 @pytest.mark.asyncio
@@ -175,7 +242,7 @@ async def test_webhook_route_rejects_tampered_signature():
 
     flow = MagicMock()
     flow.get_secret_fields.return_value = []
-    flow.decrypt_for_use = lambda cfg: dict(cfg)
+    flow.decrypt_for_use = lambda cfg, *, context=None: dict(cfg)
 
     with (  # noqa: SIM117 -- nested context managers; merge when touched
         patch.object(endpoint.integration_registry, "get_provider", return_value=provider),

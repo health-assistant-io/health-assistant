@@ -117,6 +117,30 @@ class TestHttpUrlValidation:
     def test_empty_rejected(self):
         assert not validate_http_url("")[0]
 
+    def test_guard_failure_fails_closed(self, monkeypatch):
+        """F20: an unexpected guard error is a typed rejection, never `pass`."""
+        from app.extensions import polite_http
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("guard backend exploded")
+
+        monkeypatch.setattr(polite_http, "check_url", _boom)
+        ok, reason = validate_http_url("https://example.com/mcp")
+        assert not ok
+        assert "could not be validated" in reason.lower()
+
+    def test_net_guard_config_failure_fails_closed(self, monkeypatch):
+        """F20: failure while building the guard config is also a rejection."""
+        from app.extensions.runtime import http as runtime_http
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("settings unavailable")
+
+        monkeypatch.setattr(runtime_http, "net_guard_config", _boom)
+        ok, reason = validate_http_url("https://example.com/mcp")
+        assert not ok
+        assert "could not be validated" in reason.lower()
+
 
 class TestAllowedCommands:
     def test_parses_comma_separated(self):
