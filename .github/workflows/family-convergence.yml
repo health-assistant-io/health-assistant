@@ -42,3 +42,17 @@ jobs:
         run: bash scripts/check-extensions-structure.sh --strict
       - name: Run family-convergence gate
         run: bash scripts/check-family-convergence.sh --self
+
+  extension-conformance:
+    name: Extension conformance wall (ADR-0040)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install backend dependencies
+        run: uv sync --frozen
+      - name: Run the vendored contract fixtures + semantics
+        working-directory: backend
+        run: uv run --frozen pytest tests/test_extensions_contract.py -q

@@ -128,6 +128,9 @@ class IntegrationRegistry:
                 err = contract.validate(schema["$defs"]["bundledManifest"], manifest, schema)
                 if err is not None:
                     raise ValueError(f"manifest invalid: {err}")
+                problems = contract.manifest_i18n_semantics(manifest)
+                if problems:
+                    raise ValueError(f"manifest invalid: {'; '.join(problems)}")
                 if str(ext_id).startswith(contract.RESERVED_ID_PREFIXES):
                     raise ValueError(f"id {ext_id!r} uses a reserved prefix")
                 # Per-extension docs binding (plan 34 §10.5): a manifest

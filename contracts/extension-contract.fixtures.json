@@ -780,6 +780,7 @@
       },
       {
         "name": "i18n-default-locale-titleless",
+        "reject": "semantics",
         "because": "the default-locale entry MUST carry a title (owner tightening 2026-10-19) — the hub renders it verbatim and its id fallback must stay unreachable; the cross-key rule is validator/wall-owned (contract.manifest_i18n_semantics)",
         "doc": {
           "apiVersion": "extension/v1",
