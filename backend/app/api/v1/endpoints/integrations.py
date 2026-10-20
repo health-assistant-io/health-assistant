@@ -151,6 +151,32 @@ def _render_wire_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@router.get("/host-profile")
+async def extension_host_profile(
+    current_user: TokenData = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The author-visible host profile (plan 37 §6.2.4): what this host
+    hosts/honors, its apiVersion ceilings, degrade rules and T2 posture —
+    no secrets, no mutable state."""
+    from app.extensions.registry import _charter, _profile
+
+    profile = _profile()
+    return {
+        "product": profile.get("product"),
+        "class": profile.get("class"),
+        "kinds": profile.get("kinds", []),
+        "tiers": profile.get("tiers", []),
+        "honors": profile.get("honors", []),
+        "honorsByTier": profile.get("honorsByTier", {}),
+        "honorsByKind": profile.get("honorsByKind", {}),
+        "surfaces": profile.get("surfaces"),
+        "apiVersion": {"envelope": "extension/v1", "connectorKindVersion": 1},
+        "degradeRules": _charter()["surfaces"]["degradeRules"],
+        "t2Isolation": "none",
+        "disclosures": ["t3PerimeterDisclosure"],
+    }
+
+
 @router.get("/available", response_model=list[dict[str, Any]])
 async def list_available_integrations(
     current_user: TokenData = Depends(get_current_user),
