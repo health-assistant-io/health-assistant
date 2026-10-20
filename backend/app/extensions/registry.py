@@ -77,6 +77,7 @@ class IntegrationRegistry:
         self._providers: dict[str, BaseHealthProvider] = {}
         self._config_flows: dict[str, BaseConfigFlow] = {}
         self._manifests: dict[str, dict] = {}
+        self._rejected: dict[str, str] = {}
         self._base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin")
 
     async def initialize(self, db: AsyncSession):
@@ -151,7 +152,9 @@ class IntegrationRegistry:
                 if problems:
                     raise ValueError(f"manifest invalid: {'; '.join(problems)}")
                 self._manifests[domain_of(str(ext_id))] = manifest
+                self._rejected.pop(item, None)
             except Exception as e:
+                self._rejected[item] = f"registration: {e}"
                 logger.error(f"Failed to load manifest for {item}: {e}")
 
     async def _load_integration(self, domain: str, *, system_config: dict | None = None):
@@ -177,12 +180,20 @@ class IntegrationRegistry:
 
                 self._providers[domain] = provider_instance
                 self._config_flows[domain] = config_flow_instance
+                self._rejected.pop(domain, None)
                 logger.info(f"Successfully loaded extension: {domain}")
             else:
                 logger.warning(f"Could not find required classes in {domain}")
 
         except Exception as e:
+            self._rejected[domain] = f"load: {e}"
             logger.error(f"Error loading extension {domain}: {e}")
+
+    def get_rejected(self) -> dict[str, str]:
+        """Surfaced registration/load failures (plan 37 6.1): a bundled
+        extension that cannot register self-disables with this reason;
+        it never vanishes into a log line. Empty = all admitted."""
+        return dict(self._rejected)
 
     def _gate_secrets(self, domain: str, config_flow: BaseConfigFlow) -> None:
         """D19 honesty gate: every flow-declared secret field must be
