@@ -19,8 +19,10 @@ are the host validator's job — see the schema's ``$comment``.
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 __all__ = [
@@ -30,10 +32,13 @@ __all__ = [
     "DOCS_POINTER",
     "RESERVED_ID_PREFIXES",
     "docs_tree_semantics",
+    "is_timeout_safe_pattern",
     "manifest_i18n_semantics",
+    "run_manifest_fixtures",
     "secret_fields",
     "validate",
     "validate_manifest",
+    "validate_registration",
 ]
 
 ENVELOPE_API_VERSION = "extension/v1"
@@ -235,6 +240,410 @@ def validate_manifest(manifest: Mapping[str, Any], schema: Mapping[str, Any]) ->
             "(host-/neuro- are family-internal)"
         )
     return None
+
+
+#: Static pattern-safety bounds (mirror desktop safePattern.ts / audit F9).
+MAX_SINGLE_REPETITION = 1000
+MAX_REPETITION_PRODUCT = 100_000
+
+
+def is_timeout_safe_pattern(source: str) -> str | None:
+    """Return None when a manifest-supplied regex is timeout-safe, else a
+    precise reason (audit 2026-10-18 F9; desktop's ``safePattern.ts`` port).
+
+    Refuses the ambiguous backtracking classes at registration: a
+    quantifier iterating more than once over a group that already contains
+    a quantifier (star height >= 2), backreferences, quantifiers inside
+    lookarounds, counted repetitions > 1000, and nested counted products
+    > 100000. Fail-closed: a false positive is an authoring inconvenience,
+    never a security risk; the host also caps the subject length.
+    """
+    if not isinstance(source, str):
+        return "pattern must be a string"
+    frames: list[dict[str, Any]] = [
+        {"contains": False, "lookaround": False, "product": 1, "alternation": False}
+    ]
+    last_atom: dict[str, bool] | None = None
+    index = 0
+    length = len(source)
+
+    def quantify(max_repeat: float, min_repeat: int, counted: bool) -> str | None:
+        nonlocal last_atom
+        if last_atom is None:
+            return "quantifier with nothing to repeat"
+        if counted and max_repeat > MAX_SINGLE_REPETITION:
+            return f"a counted repetition exceeds {MAX_SINGLE_REPETITION}"
+        if last_atom["group"] and last_atom.get("alternation") and max_repeat > 1:
+            return (
+                "a quantifier iterating more than once applies to a group with "
+                "alternation (ambiguous backtracking)"
+            )
+        if last_atom["group"] and last_atom["contains"] and max_repeat > 1:
+            return (
+                "a quantifier iterating more than once applies to a group that "
+                "already contains one (star height >= 2)"
+            )
+        frame = frames[-1]
+        if max_repeat > 1 or min_repeat > 1:
+            frame["contains"] = True
+        if counted:
+            frame["product"] *= min(max_repeat, MAX_REPETITION_PRODUCT)
+            if frame["product"] > MAX_REPETITION_PRODUCT:
+                return (
+                    f"nested counted repetitions exceed the "
+                    f"{MAX_REPETITION_PRODUCT} product cap"
+                )
+        return None
+
+    while index < length:
+        char = source[index]
+        if char == "\\":
+            escaped = source[index + 1] if index + 1 < length else ""
+            if escaped.isdigit() and escaped != "0":
+                return "backreferences are refused"
+            index += 2
+            last_atom = {"group": False, "contains": False}
+            continue
+        if char == "[":
+            cursor = index + 1
+            if cursor < length and source[cursor] == "^":
+                cursor += 1
+            if cursor < length and source[cursor] == "]":
+                cursor += 1
+            while cursor < length and source[cursor] != "]":
+                cursor += 2 if source[cursor] == "\\" else 1
+            index = cursor + 1
+            last_atom = {"group": False, "contains": False}
+            continue
+        if char == "(":
+            frame: dict[str, Any] = {
+                "contains": False,
+                "lookaround": False,
+                "product": 1,
+                "alternation": False,
+            }
+            cursor = index + 1
+            if cursor < length and source[cursor] == "?":
+                kind = source[cursor + 1] if cursor + 1 < length else ""
+                if kind in ("=", "!"):
+                    frame["lookaround"] = True
+                    cursor += 2
+                elif kind == "<":
+                    after = source[cursor + 2] if cursor + 2 < length else ""
+                    if after in ("=", "!"):
+                        frame["lookaround"] = True
+                        cursor += 3
+                    else:
+                        cursor += 2
+                        while cursor < length and source[cursor] != ">":
+                            cursor += 1
+                        cursor += 1
+                elif kind == ":":
+                    cursor += 2
+            frames.append(frame)
+            index = cursor
+            last_atom = None
+            continue
+        if char == ")":
+            if len(frames) <= 1:
+                return "unbalanced group"
+            frame = frames.pop()
+            if frame["lookaround"] and frame["contains"]:
+                return "quantifiers inside lookarounds are refused"
+            index += 1
+            last_atom = {
+                "group": True,
+                "contains": frame["contains"],
+                "alternation": frame["alternation"],
+            }
+            continue
+        if char == "|":
+            frames[-1]["alternation"] = True
+            index += 1
+            last_atom = None
+            continue
+        if char in ("*", "+"):
+            reason = quantify(float("inf"), 1, False)
+            if reason:
+                return reason
+            index += 1
+            if index < length and source[index] == "?":
+                index += 1
+            last_atom = None
+            continue
+        if char == "?":
+            reason = quantify(1, 1, False)
+            if reason:
+                return reason
+            index += 2 if index + 1 < length and source[index + 1] == "?" else 1
+            last_atom = None
+            continue
+        if char == "{":
+            cursor = index + 1
+            min_text = ""
+            while cursor < length and source[cursor].isdigit():
+                min_text += source[cursor]
+                cursor += 1
+            if min_text:
+                max_text = min_text
+                if cursor < length and source[cursor] == ",":
+                    cursor += 1
+                    max_text = ""
+                    while cursor < length and source[cursor].isdigit():
+                        max_text += source[cursor]
+                        cursor += 1
+                if cursor < length and source[cursor] == "}":
+                    max_repeat = (
+                        float("inf") if max_text == "" else int(max_text)
+                    )
+                    reason = quantify(max_repeat, int(min_text), True)
+                    if reason:
+                        return reason
+                    index = cursor + 1
+                    if index < length and source[index] == "?":
+                        index += 1
+                    last_atom = None
+                    continue
+        index += 1
+        last_atom = {"group": False, "contains": False}
+    if len(frames) != 1:
+        return "unbalanced group"
+    return None
+
+
+def validate_registration(
+    manifest: Mapping[str, Any],
+    *,
+    schema: Mapping[str, Any],
+    bundled: bool,
+    profile: Mapping[str, Any] | None = None,
+    tier: str | None = None,
+    docs_root: str | Path | None = None,
+    docs_schema: Mapping[str, Any] | None = None,
+    charter: Mapping[str, Any] | None = None,
+    byte_size: int | None = None,
+    kind_validator: Callable[[Mapping[str, Any]], list[str]] | None = None,
+) -> list[str]:
+    """The one registration decision every host runs (plan 37 Phase 1).
+
+    Returns every problem (empty = registered). Composes structure, the
+    reserved-id rule, the cross-key i18n and docs semantics, the host
+    profile check, capability cross-references, defaults validation and
+    the timeout-safe pattern guard. Host-specific deep validation rides
+    ``kind_validator`` (for example the mini-app pack schema).
+    """
+    document = dict(manifest)
+    problems: list[str] = []
+    target = schema["$defs"]["bundledManifest"] if bundled else schema
+    err = validate(target, document, schema)
+    if err is not None:
+        problems.append(err)
+        # Structure is the gate; semantics on malformed documents only add
+        # noise. Return the structural reason(s) alone.
+        return problems
+    ext_id = document.get("id")
+    if isinstance(ext_id, str) and ext_id.startswith(RESERVED_ID_PREFIXES):
+        problems.append(
+            f"$.id: {ext_id!r} uses a reserved prefix {RESERVED_ID_PREFIXES} "
+            "(host-/neuro- are family-internal)"
+        )
+
+    problems.extend(manifest_i18n_semantics(document))
+
+    limits = (charter or {}).get("limits") or {}
+    max_bytes = limits.get("manifestMaxBytes")
+    if isinstance(max_bytes, int) and byte_size is not None and byte_size > max_bytes:
+        problems.append(f"manifest exceeds {max_bytes} bytes ({byte_size})")
+
+    pointer = document.get("docs")
+    if pointer is not None:
+        if pointer != DOCS_POINTER:
+            problems.append(
+                f"$.docs: must be {DOCS_POINTER!r}, got {pointer!r}"
+            )
+        elif docs_root is None:
+            problems.append("$.docs: the bundle root is required to resolve the docs tree")
+        else:
+            docs_dir = Path(docs_root) / "docs"
+            tree_path = docs_dir / "docs-tree.json"
+            try:
+                tree = json.loads(tree_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                problems.append(f"$.docs: tree is unreadable ({exc})")
+            else:
+                if docs_schema is not None:
+                    tree_err = validate(docs_schema, tree, docs_schema)
+                    if tree_err is not None:
+                        problems.append(f"$.docs: {tree_err}")
+                problems.extend(
+                    f"$.docs: {p}"
+                    for p in docs_tree_semantics(
+                        tree,
+                        exists=lambda ref: (docs_dir / ref).is_file(),
+                    )
+                )
+
+    kind = document.get("kind")
+    if kind == "mini-app":
+        api_version = document.get("apiVersion")
+        if not isinstance(api_version, int) or api_version > 1:
+            problems.append(
+                f"$.apiVersion: mini-app uses the integer refinement (<= 1), got {api_version!r}"
+            )
+    else:
+        if document.get("apiVersion") != ENVELOPE_API_VERSION:
+            problems.append(
+                f"$.apiVersion: must be {ENVELOPE_API_VERSION!r}, got {document.get('apiVersion')!r}"
+            )
+        kind_version = document.get("kindVersion")
+        if not isinstance(kind_version, int) or kind_version > CONNECTOR_KIND_VERSION:
+            problems.append(
+                f"$.kindVersion: host supports <= {CONNECTOR_KIND_VERSION}, got {kind_version!r}"
+            )
+
+    capabilities = [str(c) for c in (document.get("capabilities") or [])]
+    if "fs-write-mutate" in capabilities:
+        problems.append(
+            "$.capabilities: fs-write-mutate is reserved for refinement >= 2 "
+            "(ADR-0029 apiVersion >= 2 lineage) and is rejected in v1"
+        )
+    if "ui:custom-code" in capabilities and not bundled:
+        problems.append(
+            "$.capabilities: ui:custom-code is bundled-only (T1 reviewed code); "
+            "an imported manifest can never declare it"
+        )
+    domains = document.get("domains") or []
+    if "net" in capabilities and not domains:
+        problems.append("$.domains: the net capability requires declared domains")
+    tools = document.get("tools") or []
+    if "chat-tools" in capabilities and not tools:
+        problems.append("$.tools: the chat-tools capability requires tool contributions")
+
+    defaults = document.get("defaults")
+    config_schema = document.get("configSchema")
+    if isinstance(defaults, dict) and isinstance(config_schema, dict):
+        default_err = validate(config_schema, defaults, config_schema)
+        if default_err is not None:
+            problems.append(f"$.defaults: {default_err}")
+
+    def _pattern_problems(node: Any, path: str) -> list[str]:
+        found: list[str] = []
+        if not isinstance(node, dict):
+            return found
+        props = node.get("properties")
+        if isinstance(props, dict):
+            for name, field in props.items():
+                if not isinstance(field, dict):
+                    continue
+                pattern = field.get("pattern")
+                if isinstance(pattern, str):
+                    reason = is_timeout_safe_pattern(pattern)
+                    if reason is not None:
+                        found.append(f"{path}.{name}.pattern: {reason}")
+        return found
+
+    problems.extend(_pattern_problems(config_schema, "$.configSchema"))
+    problems.extend(_pattern_problems(document.get("itemSchema"), "$.itemSchema"))
+
+    if profile is not None:
+        kinds = profile.get("kinds")
+        if isinstance(kinds, list) and kind not in kinds:
+            problems.append(
+                f"$.kind: {kind!r} is not hosted by this profile (hosts: {', '.join(kinds)})"
+            )
+        tiers = profile.get("tiers")
+        if tier is not None and isinstance(tiers, list) and tier not in tiers:
+            problems.append(
+                f"tier {tier!r} is not hosted by this profile (tiers: {', '.join(tiers)})"
+            )
+        honors = profile.get("honors")
+        if isinstance(honors, list):
+            unhonored = sorted(c for c in capabilities if c not in honors)
+            if unhonored:
+                problems.append(
+                    "capabilities not honored by this host profile: "
+                    + ", ".join(unhonored)
+                )
+
+    if kind_validator is not None:
+        problems.extend(kind_validator(document))
+
+    # Stable, de-duplicated order.
+    seen: set[str] = set()
+    unique: list[str] = []
+    for problem in problems:
+        if problem not in seen:
+            seen.add(problem)
+            unique.append(problem)
+    return unique
+
+
+def run_manifest_fixtures(
+    fixtures: Mapping[str, Any],
+    schema: Mapping[str, Any],
+    sources_schema: Mapping[str, Any],
+) -> list[str]:
+    """Run the canonical manifest/bundled/source fixture wall (plan 37
+    Phase 0.3). Hosts call this from their contract test instead of
+    re-writing the valid/invalid loop; returns every failure (empty =
+    green). The ``reject`` channel is enforced: a ``semantics`` case must
+    pass the schema and fail the semantic rules; a ``schema`` case must be
+    rejected structurally."""
+    failures: list[str] = []
+    for group in ("manifest", "bundled", "sources"):
+        cases = fixtures.get(group) or {}
+        for case in cases.get("valid", []):
+            name = case.get("name")
+            target, root = _fixture_target(group, case, schema, sources_schema)
+            err = validate(target, case.get("doc"), root)
+            if err is not None:
+                failures.append(f"{group}:{name}: valid case rejected: {err}")
+                continue
+            if group in ("manifest", "bundled"):
+                sem = manifest_i18n_semantics(case.get("doc") or {})
+                if sem:
+                    failures.append(
+                        f"{group}:{name}: valid case rejected by semantics: {sem[0]}"
+                    )
+        for case in cases.get("invalid", []):
+            name = case.get("name")
+            target, root = _fixture_target(group, case, schema, sources_schema)
+            err = validate(target, case.get("doc"), root)
+            channel = case.get("reject", "schema")
+            if channel == "semantics":
+                if group not in ("manifest", "bundled"):
+                    failures.append(
+                        f"{group}:{name}: semantics channel outside a manifest group"
+                    )
+                elif err is not None:
+                    failures.append(
+                        f"{group}:{name}: semantics channel but the schema rejected it: {err}"
+                    )
+                elif not manifest_i18n_semantics(case.get("doc") or {}):
+                    failures.append(f"{group}:{name}: accepted by the semantics channel")
+            elif channel == "schema":
+                if err is None:
+                    failures.append(f"{group}:{name}: accepted by the schema channel")
+            else:
+                failures.append(f"{group}:{name}: unknown reject channel {channel!r}")
+    return failures
+
+
+def _fixture_target(
+    group: str,
+    case: Mapping[str, Any],
+    schema: Mapping[str, Any],
+    sources_schema: Mapping[str, Any],
+) -> tuple[Any, Mapping[str, Any]]:
+    if group == "sources" and case.get("against") == "desiredState":
+        return sources_schema["$defs"]["desiredStateDocument"], sources_schema
+    if group == "sources" and case.get("against") == "localSource":
+        return sources_schema["$defs"]["localSourceDescriptor"], sources_schema
+    if group == "bundled":
+        return schema["$defs"]["bundledManifest"], schema
+    if group == "sources":
+        return sources_schema, sources_schema
+    return schema, schema
 
 
 def secret_fields(config_schema: Mapping[str, Any] | None) -> list[str]:

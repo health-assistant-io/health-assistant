@@ -39,6 +39,27 @@ logger = logging.getLogger(__name__)
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "extension-manifest.schema.json"
 _DOCS_TREE_SCHEMA_PATH = Path(__file__).resolve().parents[3] / "contracts" / "docs-tree.schema.json"
+_CHARTER_PATH = Path(__file__).resolve().parents[3] / "contracts" / "extension-charter.json"
+
+
+def _charter() -> dict:
+    try:
+        return json.loads(_CHARTER_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise RuntimeError(
+            f"extension charter unavailable at {_CHARTER_PATH}: {e} — "
+            "registration fails closed (vendored contract set incomplete)"
+        ) from e
+
+
+def _profile() -> dict:
+    for profile in _charter()["hostProfiles"]["profiles"]:
+        if profile.get("product") == "health-assistant":
+            return profile
+    raise RuntimeError(
+        "no health-assistant host profile in the vendored charter — "
+        "registration fails closed"
+    )
 
 
 def domain_of(extension_id: str) -> str:
@@ -105,8 +126,8 @@ class IntegrationRegistry:
                 "registration fails closed (vendored contract set incomplete)"
             ) from e
 
-        from app.extensions import docs as ext_docs
-
+        charter = _charter()
+        profile = _profile()
         for item in sorted(os.listdir(self._base_path)):
             item_path = os.path.join(self._base_path, item)
             manifest_path = os.path.join(item_path, "manifest.json")
@@ -118,44 +139,17 @@ class IntegrationRegistry:
                 ext_id = manifest.get("id")
                 if not ext_id:
                     raise ValueError("manifest has no id")
-                # Registration-time validation (the loose-read era ends
-                # here): the envelope must validate against the vendored
-                # schema or the extension self-disables with a reason —
-                # it never half-runs (charter lifecycle law).
-                # (Argument order is schema-first — contract.validate(schema, inst);
-                # the pre-2026-10-19 call passed (manifest, subschema) and the
-                # gate was inert — the same swap career's registry carried.)
-                err = contract.validate(schema["$defs"]["bundledManifest"], manifest, schema)
-                if err is not None:
-                    raise ValueError(f"manifest invalid: {err}")
-                problems = contract.manifest_i18n_semantics(manifest)
+                problems = contract.validate_registration(
+                    manifest,
+                    schema=schema,
+                    bundled=True,
+                    profile=profile,
+                    docs_root=item_path,
+                    docs_schema=docs_tree_schema,
+                    charter=charter,
+                )
                 if problems:
                     raise ValueError(f"manifest invalid: {'; '.join(problems)}")
-                if str(ext_id).startswith(contract.RESERVED_ID_PREFIXES):
-                    raise ValueError(f"id {ext_id!r} uses a reserved prefix")
-                # Per-extension docs binding (plan 34 §10.5): a manifest
-                # carrying the `docs` pointer promises a tree that exists
-                # and validates — a broken promise self-disables exactly
-                # like an invalid manifest.
-                pointer = manifest.get("docs")
-                if pointer is not None:
-                    if pointer != ext_docs.DOCS_POINTER:
-                        raise ValueError(
-                            f"docs pointer must be {ext_docs.DOCS_POINTER!r}, got {pointer!r}"
-                        )
-                    docs_dir = Path(item_path) / "docs"
-                    try:
-                        tree = ext_docs.load_tree(docs_dir)
-                    except json.JSONDecodeError as e:
-                        raise ValueError(f"docs tree invalid JSON: {e}") from e
-                    if tree is None:
-                        raise ValueError(
-                            f"manifest points at {ext_docs.DOCS_POINTER} "
-                            "but the tree does not exist"
-                        )
-                    tree_err = ext_docs.validate_tree(tree, docs_dir, docs_tree_schema)
-                    if tree_err is not None:
-                        raise ValueError(f"docs tree invalid: {tree_err}")
                 self._manifests[domain_of(str(ext_id))] = manifest
             except Exception as e:
                 logger.error(f"Failed to load manifest for {item}: {e}")

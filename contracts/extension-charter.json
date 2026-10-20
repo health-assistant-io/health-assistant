@@ -686,6 +686,18 @@
         "miniApp": "later (admin-gated)",
         "gitImport": "deferred (ruling 5)",
         "notes": "keeps inbound machine routes, OAuth, Celery sync; default-on bundled policy",
+        "honors": [
+          "net",
+          "sync",
+          "secrets",
+          "push",
+          "notify",
+          "chat-tools",
+          "state",
+          "inbound-webhook",
+          "inbound-api"
+        ],
+        "honorsNote": "What the health host implements for bundled connectors/bridges today: guarded outbound HTTP, pull sync, push, the notification funnel, chat tools, extension state, and both inbound families. Surfaces are deferred; a manifest declaring anything outside this set self-disables at registration.",
         "surfaces": "opt-in (surface hosting adoption deferred past this program — recorded per the Phase-4 plan row; two-app rule already satisfied by career + desktop)"
       },
       {
@@ -746,14 +758,9 @@
           "run",
           "report",
           "propose",
-          "notify",
-          "ui:panel",
-          "ui:page",
-          "ui:window",
-          "ui:chat-card",
-          "ui:settings"
+          "notify"
         ],
-        "honorsNote": "Capabilities the study host implements today; a bundled manifest declaring anything else self-disables at registration. Window hosting (ui:window) is honored-shaped per D17 but opt-in per surface kind.",
+        "honorsNote": "Capabilities the study host implements today; a bundled manifest declaring anything else self-disables at registration. Surface hosting (ui:*) is DEFERRED, so the ui:* ids are deliberately absent — they return when the host actually renders surfaces (plan 37 Phase 2; no overclaiming).",
         "connectorProfile": {
           "note": "The connector kind's study profile (plan 32 Phase 7): the discovery/parse adapter shapes are ratified as-is — they keep their shapes while living in the D24 subsystem home (backend/app/extensions/).",
           "search": "The ADR-0035 vendored trio providers over injectable httpx transports (perform_search/perform_fetch, normalized {title,url,content} hits); its 9-kind SearchError taxonomy maps mechanically to the charter codes via the D4 note (legacyMappingNote) — the study host projects it app-side and the trio stays byte-identical.",
@@ -774,12 +781,53 @@
         "tiers": [
           "T0",
           "T1",
+          "T2",
           "T3"
         ],
         "miniApp": "P4 — surfaces (the CV-utility class)",
         "bridge": "—",
         "gitImport": "reference import host (Phase 3)",
-        "notes": "transport runtime is the P0 (Phase 1); T2 later; mini-app surface host since Phase 4 — honors page + panel (window declined on the web host, degrades per degradeRules); run honored as the typed-action funnel (run:export) for surface-kind packs — the full run bridge stays with Phase 5; T0 data binds via the envelope data field",
+        "notes": "T2 connector sandbox is live (Phase 5); mini-app surface host since Phase 4 — honors page + panel (window declined on the web host, degrades per degradeRules); run honored as the typed-action funnel (run:export) for surface-kind packs; T0 data binds via the envelope data field",
+        "honors": [
+          "net",
+          "sync",
+          "secrets",
+          "state",
+          "chat-tools",
+          "report",
+          "run",
+          "ui:page",
+          "ui:panel",
+          "ui:window"
+        ],
+        "honorsByTier": {
+          "T1": [
+            "net",
+            "sync",
+            "secrets",
+            "chat-tools"
+          ],
+          "T2": [
+            "net",
+            "sync",
+            "secrets",
+            "state"
+          ],
+          "T3": [
+            "sync",
+            "secrets"
+          ]
+        },
+        "honorsByKind": {
+          "mini-app": [
+            "report",
+            "run",
+            "ui:page",
+            "ui:panel",
+            "ui:window"
+          ]
+        },
+        "honorsNote": "One union for generic compatibility plus per-tier and per-kind precision: an imported connector is checked against honorsByTier[tier], a mini-app against honorsByKind[\"mini-app\"]. Window degrades to page on the web host; the union includes it so the degrade is data, never a code branch.",
         "surfaces": [
           "page",
           "panel"

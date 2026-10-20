@@ -45,66 +45,12 @@ SOURCES_SCHEMA = json.loads(
 # ------------------------------------------------ structural: the Phase 0 wall
 
 
-def _schema_for(group: str, case: dict[str, Any]) -> Any:
-    if group == "sources" and case.get("against") == "desiredState":
-        return SOURCES_SCHEMA["$defs"]["desiredStateDocument"], SOURCES_SCHEMA
-    if group == "sources" and case.get("against") == "localSource":
-        return SOURCES_SCHEMA["$defs"]["localSourceDescriptor"], SOURCES_SCHEMA
-    if group == "bundled":
-        return MANIFEST_SCHEMA["$defs"]["bundledManifest"], MANIFEST_SCHEMA
-    if group == "sources":
-        return SOURCES_SCHEMA, SOURCES_SCHEMA
-    return MANIFEST_SCHEMA, MANIFEST_SCHEMA
-
-
-def _is_manifest_group(group: str) -> bool:
-    return group in ("manifest", "bundled")
-
-
-def _semantics(case: dict[str, Any]) -> list[str]:
-    """The canonical cross-key rules the schema cannot express (plan 35
-    wave B). A fixture carrying ``reject: "semantics"`` is structurally
-    valid by definition; a fixture with no channel is structural."""
-    if case.get("reject") == "schema":
-        return []
-    return contract.manifest_i18n_semantics(case["doc"])
-
-
-@pytest.mark.parametrize(
-    "group,case",
-    [
-        pytest.param(group, case, id=f"{group}:{case['name']}")
-        for group in ("manifest", "bundled", "sources")
-        for case in MANIFEST_FIXTURES.get(group, {}).get("valid", [])
-    ],
-)
-def test_structural_fixtures_accept(group: str, case: dict[str, Any]) -> None:
-    target, root = _schema_for(group, case)
-    assert contract.validate(target, case["doc"], root) is None, case["name"]
-    if _is_manifest_group(group):
-        assert _semantics(case) == [], case["name"]
-
-
-@pytest.mark.parametrize(
-    "group,case",
-    [
-        pytest.param(group, case, id=f"{group}:{case['name']}")
-        for group in ("manifest", "bundled", "sources")
-        for case in MANIFEST_FIXTURES.get(group, {}).get("invalid", [])
-    ],
-)
-def test_structural_fixtures_reject(group: str, case: dict[str, Any]) -> None:
-    target, root = _schema_for(group, case)
-    err = contract.validate(target, case["doc"], root)
-    channel = case.get("reject", "schema")
-    if channel == "semantics":
-        assert _is_manifest_group(group), f"{case['name']}: semantics channel outside a manifest group"
-        assert err is None, f"{case['name']}: semantics channel but schema rejected ({err})"
-        assert _semantics(case), f"{case['name']}: accepted by the semantic channel"
-    elif channel == "schema":
-        assert err is not None, f"invalid case {case['name']} was accepted by the schema channel"
-    else:
-        raise AssertionError(f"{case['name']}: unknown reject channel {channel!r}")
+def test_structural_fixture_wall() -> None:
+    """One canonical runner: schema + semantics + the reject channel."""
+    failures = contract.run_manifest_fixtures(
+        MANIFEST_FIXTURES, MANIFEST_SCHEMA, SOURCES_SCHEMA
+    )
+    assert failures == [], "\n".join(failures)
 
 
 # ------------------------------------------------ behavioral: the D23 wall
