@@ -34,6 +34,7 @@ __all__ = [
     "DOCS_POINTER",
     "RESERVED_ID_PREFIXES",
     "cap_error_detail",
+    "derive_tier",
     "docs_tree_semantics",
     "is_timeout_safe_pattern",
     "manifest_i18n_semantics",
@@ -70,6 +71,25 @@ _ERROR_DETAIL_CAPS = {
 _ERROR_DETAIL_INTS = ("hop", "limit", "used")
 #: Serialized cap — `limits.errorDetailMaxChars` in the charter.
 ERROR_DETAIL_MAX_CHARS = 500
+
+
+def derive_tier(manifest: Mapping[str, Any], *, bundled: bool = False) -> str:
+    """Tier is provenance (ADR-0030; plan 38 W3 + plan-38 D1): the artifact
+    shape decides, never a caller claim.
+
+    - bundled ⇒ T1 (reviewed, host-integrated code);
+    - imported + ``entry`` + ``mcp`` ⇒ T3 (external MCP stdio process);
+    - imported + ``entry`` ⇒ T2 (sandboxed capability-RPC);
+    - imported, no ``entry`` ⇒ T0 (declarative only).
+
+    ``entry`` is the code declaration and ``mcp`` is the external-process
+    declaration; the fixed-filename convention (extension.py/server.py) is
+    retired — a bundle names its entry in the manifest."""
+    if bundled:
+        return "T1"
+    if not isinstance(manifest, Mapping) or not isinstance(manifest.get("entry"), str):
+        return "T0"
+    return "T3" if isinstance(manifest.get("mcp"), Mapping) else "T2"
 
 
 def cap_error_detail(detail: Any, *, total_max: int = ERROR_DETAIL_MAX_CHARS) -> dict[str, Any]:
@@ -547,19 +567,28 @@ def validate_registration(
 
     kind = document.get("kind")
     entry = document.get("entry")
-    derived_tier: str | None = None
+    mcp = document.get("mcp")
+    # Tier is provenance (ADR-0030; plan 38 W3 + D1): `entry` declares
+    # code, `mcp` declares the external MCP process (T3). A caller claim
+    # that contradicts the derivation is a registration problem — no host
+    # may re-tier code-carrying content as declarative T0, and the
+    # fixed-filename convention (extension.py/server.py) is retired.
+    derived_tier = derive_tier(document, bundled=bundled)
+    if tier is not None and tier != derived_tier:
+        problems.append(
+            f"$.entry: provenance derives tier {derived_tier}, but the caller "
+            f"claims tier {tier!r} — tier is provenance, never caller-claimed"
+        )
+    if mcp is not None and not isinstance(entry, str):
+        problems.append(
+            "$.mcp: an MCP declaration requires the 'entry' path it describes (T3)"
+        )
+    if not bundled and kind == "connector" and not isinstance(entry, str):
+        problems.append(
+            "$.entry: an imported connector must declare its entry path "
+            "(D1 — the filename convention is retired)"
+        )
     if isinstance(entry, str):
-        # Tier is provenance from the entry path (plan 38 W3): imported +
-        # entry = T2 (sandboxed), bundled + entry = T1 (reviewed, in-process).
-        # A caller-claimed tier that contradicts the derivation is a
-        # registration problem — no host may re-tier code-carrying content
-        # as declarative T0.
-        derived_tier = "T1" if bundled else "T2"
-        if tier is not None and tier != derived_tier:
-            problems.append(
-                f"$.entry: provenance derives tier {derived_tier} from the entry path, "
-                f"but the caller claims tier {tier!r} — tier is provenance, never caller-claimed"
-            )
         if docs_root is None:
             problems.append(
                 "$.entry: a bundle root is required to validate the entry path"

@@ -10,6 +10,7 @@
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,
+          "entry": "extension.py",
           "kind": "connector",
           "id": "greenhouse-jobs",
           "version": "1.0.0",
@@ -27,7 +28,8 @@
           "secrets": [
             {
               "id": "api-token",
-              "purpose": "Greenhouse API token"
+              "purpose": "Greenhouse API token",
+              "domains": ["boards-api.greenhouse.io"]
             }
           ],
           "configSchema": {
@@ -78,6 +80,7 @@
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,
+          "entry": "extension.py",
           "kind": "connector",
           "id": "neuro-impersonator",
           "version": "1.0.0",
@@ -141,6 +144,7 @@
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,
+          "entry": "extension.py",
           "kind": "connector",
           "id": "board-tools",
           "version": "1.0.0",
@@ -191,6 +195,7 @@
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,
+          "entry": "extension.py",
           "kind": "connector",
           "id": "docced-connector",
           "version": "1.0.0",
@@ -224,6 +229,7 @@
         "doc": {
           "apiVersion": "extension/v1",
           "kindVersion": 1,
+          "entry": "extension.py",
           "kind": "connector",
           "id": "greenhouse-jobs",
           "version": "1.0.0",

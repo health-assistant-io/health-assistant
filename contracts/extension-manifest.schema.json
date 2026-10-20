@@ -47,7 +47,22 @@
       "type": "string",
       "maxLength": 255,
       "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
-      "$comment": "Code is allowed at T1/T2 only as a PATH pointer to a file in the bundle — inline code, blobs, base64 and eval are structurally impossible. Tier is provenance, never manifest data: bundled+entry = T1 (reviewed, in-process); imported+entry = T2 (sandboxed, never imported); no entry = T0. The host validates the path resolves to a regular file inside the digest-pinned content root; the pack schema remains the deep validator. Pre-release D18 re-authoring: the shape lands under unchanged majors because no artifact exists outside the workspace."
+      "$comment": "Code is allowed at T1/T2/T3 only as a PATH pointer to a file in the bundle — inline code, blobs, base64 and eval are structurally impossible. Tier is provenance, never manifest data (D1): bundled+entry = T1 (reviewed, in-process); imported+entry = T2 (sandboxed); imported+entry+mcp = T3 (external MCP process); no entry = T0. The host validates the path resolves to a regular file inside the digest-pinned content root; the pack schema remains the deep validator. The fixed-filename convention (extension.py/server.py) is retired — a bundle names its entry here. Pre-release D18 re-authoring: the shape lands under unchanged majors because no artifact exists outside the workspace."
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport"
+      ],
+      "properties": {
+        "transport": {
+          "enum": [
+            "stdio"
+          ]
+        }
+      },
+      "$comment": "The external-process declaration (D1): present iff the bundle's entry is an external MCP stdio server (tier T3). The spawn command stays host-owned (allowlisted argv, no shell — ADR-0040 T3 policy); the declaration marks the artifact shape so tier is derivable from the manifest, never from a filename."
     },
     "docs": {
       "const": "docs/docs-tree.json",
@@ -401,6 +416,27 @@
           "if": {
             "properties": {
               "kind": {
+                "enum": [
+                  "mini-app",
+                  "bridge"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mcp": false
+            },
+            "$comment": "The mcp declaration is connector-only (D1): mini-app code runs sandboxed (T2) or host-integrated (T1); bridges are bundled inbound endpoints."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
                 "const": "mini-app"
               }
             },
@@ -724,7 +760,22 @@
           "type": "string",
           "maxLength": 255,
           "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
-          "$comment": "Same path-only rule as the root envelope. The legacy code field is deleted; bundled host-integrated packs carry contributions, imported T2 bundles use this entry path, and no inline code exists in any envelope."
+          "$comment": "Same path-only rule as the root envelope. The legacy code field is deleted; bundled host-integrated packs carry contributions, imported T2/T3 bundles use this entry path (mcp marks T3), and no inline code exists in any envelope."
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "transport"
+          ],
+          "properties": {
+            "transport": {
+              "enum": [
+                "stdio"
+              ]
+            }
+          },
+          "$comment": "Same declaration as the root envelope (D1): present iff the entry is an external MCP stdio server (T3)."
         },
         "docs": {
           "const": "docs/docs-tree.json",
