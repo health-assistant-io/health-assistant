@@ -410,11 +410,15 @@ async def submit_config_flow(
     patient_id: str,
     payload: dict[str, Any],
     integration_id: str | None = None,
+    dry_run: bool = False,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
     Submit configuration data and setup the integration.
+
+    ``dry_run=true`` validates only: no instance is created or mutated and
+    no secret is persisted (plan 37 §8C / the kit G2 validate-only channel).
     """
     # Integrations are enabled by default — only an explicit admin disable blocks this.
     if await is_domain_disabled(db, domain):
@@ -428,6 +432,14 @@ async def submit_config_flow(
         validated_config = await config_flow.validate_input(payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    if dry_run:
+        # Validate-only: no instance, no secret, no side effect.
+        return {
+            "ok": True,
+            "dryRun": True,
+            "fields": sorted(str(key) for key in validated_config),
+        }
 
     # Extract instance_name if provided, otherwise default to domain
     instance_name = validated_config.pop("instance_name", domain.capitalize())
