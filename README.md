@@ -272,19 +272,6 @@ Found a vulnerability? Do not open a public issue — use GitHub's
 [private vulnerability reporting](https://github.com/health-assistant-io/health-assistant/security/advisories/new)
 to disclose it responsibly.
 
----
-
-### Part of the Neuronection family
-
-**Health Assistant** is one of four connected, open-source (Apache-2.0) AI assistants
-for life's big decisions — structured data instead of text dumps, AI that explains
-its reasoning, and you in control of your information.
-
-| | |
-| --- | --- |
-| [![Health Assistant](https://neuronection.com/logos/health.svg)](https://neuronection.com/en/health/) — **Health Assistant** · this repo — Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. — [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg)](https://neuronection.com/en/career/) — **Career Assistant** — A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. — [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
-| [![Study Assistant](https://neuronection.com/logos/study.svg)](https://neuronection.com/en/study/) — **Study Assistant** — A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. — [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg)](https://neuronection.com/en/desktop/) — **Desktop Assistant** — A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. — [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
-
 <!-- NEURONECTION:ECOSYSTEM:START -->
 ---
 
@@ -296,8 +283,8 @@ its reasoning, and you in control of your information.
 
 | | |
 | --- | --- |
-| [![Health Assistant](https://neuronection.com/logos/health.svg)](https://neuronection.com/en/health/) — **Health Assistant** · Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. · [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg)](https://neuronection.com/en/career/) — **Career Assistant** · A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. · [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
-| [![Study Assistant](https://neuronection.com/logos/study.svg)](https://neuronection.com/en/study/) — **Study Assistant** · A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. · [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg)](https://neuronection.com/en/desktop/) — **Desktop Assistant** · A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. · [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
+| [![Health Assistant](https://neuronection.com/logos/health.svg?v=2)](https://neuronection.com/en/health/) — **Health Assistant** · Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. · [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg?v=2)](https://neuronection.com/en/career/) — **Career Assistant** · A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. · [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
+| [![Study Assistant](https://neuronection.com/logos/study.svg?v=2)](https://neuronection.com/en/study/) — **Study Assistant** · A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. · [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg?v=2)](https://neuronection.com/en/desktop/) — **Desktop Assistant** · A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. · [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
 
 Created and maintained by [Ilias Chatzopoulos](https://github.com/constLiakos)
 · [LinkedIn](https://www.linkedin.com/in/ilias-chatzopoulos-aabb22163/)
