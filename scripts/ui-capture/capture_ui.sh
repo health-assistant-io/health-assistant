@@ -157,78 +157,105 @@ fi
 if command -v ffmpeg >/dev/null 2>&1; then
   GIF_OUT="$(print_val gifOut)"
   GIF_WIDTH="$(print_val gifWidth)"
+  GIF_STAGE_HEIGHT="$(print_val gifStageHeight)"
   FRAME_SECONDS="$(print_val frameSeconds)"
   HOLD_LAST="$(print_val holdLast)"
+  TRANSPARENT_BG="$(print_val transparentBackground)"
   echo "→ Generating animated tour GIF…"
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
 
-  # Frames come from the manifest (scene → exact file, story-ordered).
-  # Filename guessing breaks the moment viewports differ per scene
-  # (`launcher` vs `launcher-calc-launcher-calc.png` prefixes collide).
-  i=0
-  last_img=""
-  while IFS=$'\t' read -r scene file; do
-    [[ -z "$scene" || -z "$file" ]] && continue
-    img="$OUT_DIR/$file"
-    if [[ -f "$img" ]]; then
-      cp "$img" "$TMP_DIR/$(printf "%02d" "$i").png"
-      last_img="$img"
-      i=$((i + 1))
-    else
-      echo "  ⚠ gif frame missing: $file"
-    fi
-  done < <(print_val gifFiles)
-
-  # Hold the final frame a little longer so the loop doesn't feel abrupt.
-  if [[ -n "$last_img" ]]; then
-    for ((h = 0; h < HOLD_LAST; h++)); do
-      cp "$last_img" "$TMP_DIR/$(printf "%02d" "$i").png"
-      i=$((i + 1))
-    done
+  # Frames come from the manifest in story order with per-frame hold times
+  # (`file<TAB>holdMs`). Manifests without frames (older captures) fall back
+  # to the scene stills at the configured seconds-per-frame.
+  FRAME_ROWS="$(print_val gifFrames)"
+  if [[ -z "$FRAME_ROWS" ]]; then
+    FRAME_ROWS="$(
+      while IFS=$'\t' read -r _scene file; do
+        [[ -n "$file" ]] && printf '%s\t%s\n' "$file" "$((FRAME_SECONDS * 1000))"
+      done < <(print_val gifFiles)
+    )"
   fi
 
-  if [[ "$i" -eq 0 ]]; then
+  frame_files=()
+  frame_holds=()
+  while IFS=$'\t' read -r file hold; do
+    [[ -z "$file" ]] && continue
+    if [[ ! -f "$OUT_DIR/$file" ]]; then
+      echo "  ⚠ gif frame missing: $file"
+      continue
+    fi
+    [[ "$hold" =~ ^[0-9]+$ ]] || hold=$((FRAME_SECONDS * 1000))
+    frame_files+=("$file")
+    frame_holds+=("$hold")
+  done <<< "$FRAME_ROWS"
+
+  if [[ "${#frame_files[@]}" -eq 0 ]]; then
     echo "ℹ No scene PNGs found for the GIF — skipping (run without --gallery-only first)."
   else
     # GIF frames must share one canvas, but full-page screenshots differ in
     # height (content-driven). Scale to width and pad every frame to the
-    # tallest scaled height on a DARK canvas — a white canvas makes the
-    # compact launcher/toolbar frames read as blank. The mismatched-size
-    # chain otherwise silently collapses the palette filter to one frame.
-    # Ordered frame list first — then normalize into a SEPARATE dir with
-    # -nostdin (ffmpeg eats stdin, corrupting paths streamed into the loop;
-    # and writing into the scanned dir would cascade re-normalization).
-    find "$TMP_DIR" -name "*.png" | sort > "$TMP_DIR/list.txt"
+    # tallest scaled height. The mismatched-size chain otherwise silently
+    # collapses the palette filter to one frame.
     MAX_H=0
-    while IFS= read -r f; do
-      dims="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$f")"
+    for file in "${frame_files[@]}"; do
+      dims="$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$OUT_DIR/$file")"
       fw="${dims%,*}"; fh="${dims#*,}"
       [[ -n "$fw" && -n "$fh" && "$fw" -gt 0 ]] || continue
       scaled=$(( (fh * GIF_WIDTH + fw / 2) / fw ))
       (( scaled > MAX_H )) && MAX_H=$scaled
-    done < "$TMP_DIR/list.txt"
+    done
     [[ "$MAX_H" -eq 0 ]] && MAX_H=$GIF_WIDTH
+    # A configured stage height gives every GIF a predictable 16:9-ish
+    # frame instead of the tallest screenshot's height: tall app windows
+    # scale down inside the stage, short launcher bars stay centred with
+    # transparent padding. 0 = legacy content-height canvas.
+    if [[ "$GIF_STAGE_HEIGHT" =~ ^[0-9]+$ ]] && (( GIF_STAGE_HEIGHT > 0 )); then
+      MAX_H=$GIF_STAGE_HEIGHT
+    fi
+
+    # Canvas fill: opaque captures get a DARK fill — a white canvas makes the
+    # compact launcher/toolbar frames read as blank. Transparent captures
+    # (`capture.transparentBackground`) keep their alpha, so the canvas stays
+    # transparent (one GIF composites onto light and dark surfaces) with a
+    # palette that reserves a transparent entry.
+    PAD_FILTER="pad=${GIF_WIDTH}:${MAX_H}:(ow-iw)/2:(oh-ih)/2:color=0x111827"
+    PALETTE_FILTER="split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"
+    if [[ "$TRANSPARENT_BG" == "1" ]]; then
+      PAD_FILTER="pad=${GIF_WIDTH}:${MAX_H}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba"
+      PALETTE_FILTER="split[s0][s1];[s0]palettegen=reserve_transparent=1[p];[s1][p]paletteuse=alpha_threshold=128"
+    fi
 
     # Normalize every frame onto the shared canvas FIRST (one ffmpeg call
     # per file) — a single-pass chain over a stream of mixed-size frames
     # collapses to a fraction of the frames. Uniform inputs then assemble
-    # with the plain palette pass. Dark canvas: the compact launcher bars
-    # must stay visible next to tall bright pages.
+    # through the concat demuxer with explicit durations.
     mkdir -p "$TMP_DIR/n"
-    n=0
-    while IFS= read -r f; do
-      ffmpeg -nostdin -y -v error -i "$f" -vf "scale=${GIF_WIDTH}:${MAX_H}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${GIF_WIDTH}:${MAX_H}:(ow-iw)/2:(oh-ih)/2:color=0x111827" \
-        "$TMP_DIR/n/$(printf "%02d" "$n").png"
-      n=$((n + 1))
-    done < "$TMP_DIR/list.txt"
+    for idx in "${!frame_files[@]}"; do
+      ffmpeg -nostdin -y -v error -i "$OUT_DIR/${frame_files[$idx]}" -vf "scale=${GIF_WIDTH}:${MAX_H}:force_original_aspect_ratio=decrease:flags=lanczos,${PAD_FILTER}" \
+        "$TMP_DIR/n/$(printf "%02d" "$idx").png"
+    done
 
-    # 1/N fps = FRAME_SECONDS seconds per frame; palettegen/paletteuse keeps
-    # the GIF small and colors accurate.
-    ffmpeg -nostdin -y -framerate "1/$FRAME_SECONDS" -pattern_type glob -i "$TMP_DIR/n/*.png" \
-      -vf "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" \
+    # Per-frame delays: concat uses each entry's duration until the next
+    # `file`. The final entry's duration is ignored, so the last frame is
+    # repeated HOLD_LAST + 1 times (the loop's final flash is one tick).
+    : > "$TMP_DIR/concat.txt"
+    last_idx=$(( ${#frame_files[@]} - 1 ))
+    for idx in "${!frame_files[@]}"; do
+      hold_ms="${frame_holds[$idx]}"
+      printf "file '%s'\nduration %d.%03d\n" \
+        "$TMP_DIR/n/$(printf "%02d" "$idx").png" "$((hold_ms / 1000))" "$((hold_ms % 1000))" >> "$TMP_DIR/concat.txt"
+    done
+    last_hold="${frame_holds[$last_idx]}"
+    for ((h = 0; h <= HOLD_LAST; h++)); do
+      printf "file '%s'\nduration %d.%03d\n" \
+        "$TMP_DIR/n/$(printf "%02d" "$last_idx").png" "$((last_hold / 1000))" "$((last_hold % 1000))" >> "$TMP_DIR/concat.txt"
+    done
+
+    ffmpeg -nostdin -y -f concat -safe 0 -i "$TMP_DIR/concat.txt" \
+      -vf "$PALETTE_FILTER" \
       -loop 0 "$GIF_OUT" -hide_banner -loglevel error
-    echo "✅ GIF generated at ${GIF_OUT#"$ROOT"/} (${i} frames, ${GIF_WIDTH}x${MAX_H})"
+    echo "✅ GIF generated at ${GIF_OUT#"$ROOT"/} (${#frame_files[@]} frames, ${GIF_WIDTH}x${MAX_H})"
 
     if command -v gifsicle >/dev/null 2>&1; then
       echo "→ Compressing GIF with gifsicle…"
