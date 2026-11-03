@@ -8,6 +8,7 @@ from sqlalchemy import delete, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai import chat_models
+from app.ai.decide.registry import resolve_decision_candidates
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.registry import get_llm_builder
 from app.ai.providers.resolution import resolve_active_assignment
@@ -50,13 +51,14 @@ def guard_api_base(api_base: str) -> None:
 
     Raises ``ValueError`` with a client-facing message on violation.
     """
-    from integrations.sdk.net_guard import SSRFBlockedError, assert_safe_url
+    from app.extensions import polite_http
+    from app.extensions.runtime.http import net_guard_config
 
     if not api_base:
         return
     try:
-        assert_safe_url(api_base, allow_private=settings.DEBUG)
-    except SSRFBlockedError as exc:
+        polite_http.check_url(api_base, config=net_guard_config(allow_private=settings.DEBUG))
+    except polite_http.PoliteHttpError as exc:
         raise ValueError(
             "api_base must be an http(s) URL that does not resolve to an "
             "internal, private, or loopback address."
@@ -406,7 +408,18 @@ class AIProviderService:
         task_assignments = {}
 
         for task_type in task_types:
-            assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
+            if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
+                # D4 slot separation: decision slots + the decision default
+                # resolve their own rows only — NEVER the "default" chat
+                # fallback.
+                decision_rows = await resolve_decision_candidates(
+                    self.db, task_type, tenant_id, user_id
+                )
+                assignment = decision_rows[0] if decision_rows else None
+            else:
+                assignment = await self.get_active_assignment_for_task(
+                    task_type, tenant_id, user_id
+                )
             if assignment:
                 provider = (
                     await self.get_provider(assignment.provider_id)
@@ -459,6 +472,13 @@ class AIProviderService:
             generate_category_icon=task_assignments.get("generate_category_icon"),
             chat=task_assignments.get("chat"),
             transcription=task_assignments.get("transcription"),
+            embed=task_assignments.get("embed"),
+            decision_tool_dispatch=task_assignments.get("decision_tool_dispatch"),
+            decision_boolean_gate=task_assignments.get("decision_boolean_gate"),
+            decision_choice=task_assignments.get("decision_choice"),
+            decision_score=task_assignments.get("decision_score"),
+            # ADR-0036: the decision default row rides the summary.
+            decision=task_assignments.get("decision"),
             workflows=workflows,
             ai_agent_max_iterations=max_iterations,
         )
@@ -532,6 +552,11 @@ class AIProviderService:
         user_id: UUID | None = None,
     ) -> BaseChatModel:
         """Get an initialized LangChain chat model for a specific task"""
+        if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
+            raise ValueError(
+                f"task '{task_type}' is a decision slot — it resolves through "
+                "the decide funnel, never an LLM builder (D4/D13)"
+            )
         assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
 
         provider = None
@@ -550,6 +575,14 @@ class AIProviderService:
             )
 
             if provider:
+                if provider.provider_type == ProviderType.DECISION.value:
+                    # D13: routing a decision-only provider at chat is a
+                    # config error the resolver rejects — never fall through
+                    # to the OpenAI-compatible builder.
+                    raise ValueError(
+                        f"provider '{provider.name}' is decision-only — assign a "
+                        "chat-capable provider for this task"
+                    )
                 # Resolve the LLM builder for this provider_type via the registry.
                 # Unknown/unwired provider types fall back to the OpenAI-compatible
                 # builder (with a logged warning) instead of 500ing.
@@ -558,9 +591,10 @@ class AIProviderService:
                     api_key=provider.get_api_key_plaintext(),
                     base_url=provider.api_base or "https://api.openai.com/v1",
                     model_name=model.model_name if model else "gpt-4o-mini",
-                    temperature=model.temperature if model else 0.7,
+                    temperature=model.temperature if model else None,
                     max_tokens=model.max_tokens if model else 65536,
                     reasoning_effort=_model_reasoning_effort(model),
+                    chat_transport=model.chat_transport if model else None,
                 )
 
         # Fallback to environment variables
@@ -572,8 +606,10 @@ class AIProviderService:
             api_key=settings.OPENAI_API_KEY,
             base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
             model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
-            temperature=0.7,
+            # Unset: the provider default applies (ADR-0038 addendum).
+            temperature=None,
             max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
+            chat_transport=None,
         )
 
     async def get_ocr_processor(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
@@ -606,9 +642,10 @@ class AIProviderService:
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o",
-                        temperature=model.temperature if model else 0.0,
+                        temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
+                        chat_transport=model.chat_transport if model else None,
                     )
 
                 return get_ocr_processor(
@@ -617,7 +654,7 @@ class AIProviderService:
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o",
                     max_tokens=model.max_tokens if model else 65536,
-                    temperature=model.temperature if model else 0.0,
+                    temperature=model.temperature if model else None,
                     llm=llm,
                 )
 
@@ -662,9 +699,10 @@ class AIProviderService:
                         api_key=provider.get_api_key_plaintext(),
                         base_url=provider.api_base or "https://api.openai.com/v1",
                         model_name=model.model_name if model else "gpt-4o-mini",
-                        temperature=model.temperature if model else 0.7,
+                        temperature=model.temperature if model else None,
                         max_tokens=model.max_tokens if model else 65536,
                         reasoning_effort=_model_reasoning_effort(model),
+                        chat_transport=model.chat_transport if model else None,
                     )
 
                 return get_nlp_extractor(
@@ -672,7 +710,7 @@ class AIProviderService:
                     api_key=provider.get_api_key_plaintext(),
                     api_base=provider.api_base,
                     model=model.model_name if model else "gpt-4o-mini",
-                    temperature=model.temperature if model else 0.7,
+                    temperature=model.temperature if model else None,
                     llm=llm,
                 )
 
@@ -686,7 +724,7 @@ class AIProviderService:
                 api_key=settings.OPENAI_API_KEY,
                 api_base=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
                 model=settings.OPENAI_MODEL or "gpt-4o-mini",
-                temperature=0.7,
+                temperature=None,
             )
 
         logger.warning(

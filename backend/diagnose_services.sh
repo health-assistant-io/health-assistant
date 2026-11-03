@@ -69,7 +69,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 async def check():
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with engine.connect() as conn:
             await conn.execute(text('SELECT 1'))
         print('OK')

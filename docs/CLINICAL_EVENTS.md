@@ -11,7 +11,7 @@ Clinical events are FHIR `Condition` resources under the hood (exposed via the `
 | **Type blueprint** | `clinical_event_types` | The *kind* of journey — name, rendering hint, dynamic field schema, journey template. Tenant-agnostic; seeded at startup. | "Pregnancy", "Pain Episode", "Surgical Recovery" |
 | **Instance** | `clinical_events` | One patient's specific journey — title, onset/resolved dates, status, the populated dynamic fields, related exam/observation links. Tenant- + patient-scoped. | "Third Pregnancy (2026)", "Chronic Lower Back Pain" |
 
-A type declares the contract; an instance fills it in. The type's `metadata_schema` drives the form fields the user fills out when creating an instance of that type (Phase 4a).
+A type declares the contract; an instance fills it in. The type's `metadata_schema` drives the form fields the user fills out when creating an instance of that type.
 
 ## 2. Seed JSON — envelope and example
 
@@ -53,9 +53,9 @@ The seed loader is **idempotent** — re-runs upsert by `slug`. Editing a field 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `slug` | string | yes | Kebab-case stable identifier (`pregnancy`, `pain-episode`). Globally unique. Used as the i18n key suffix. |
-| `name` | string | yes | Display name. The English source — localizations live in the frontend (§9). |
-| `category_slug` | string | yes | Slug of the parent `event_category` concept (§8). Falls back to `general-event` if omitted; every type must belong to a category. |
-| `description` | string | no | English source description. Shown in the type picker + the selected-type bar. Localizations live in the frontend (§9). |
+| `name` | string | yes | Display name. The English source — localizations live in the frontend (see *Localization*). |
+| `category_slug` | string | yes | Slug of the parent `event_category` concept (see *Category system*). Falls back to `general-event` if omitted; every type must belong to a category. |
+| `description` | string | no | English source description. Shown in the type picker + the selected-type bar. Localizations live in the frontend (see *Localization*). |
 | `icon` | object | no | `{type: "lucide", value: "<IconName>"}`. The frontend maps known slugs to specific icons in `EventTypeCard.tsx` — adding a new icon requires a `case` in that switch. |
 | `color` | string | no | Hex color (`#ec4899`) used for the type's accent in cards, chips, and the selected-type bar. |
 | `schedule_kind` | enum | yes | How the event renders on the calendar (§4). |
@@ -69,7 +69,7 @@ The seed loader is **idempotent** — re-runs upsert by `slug`. Editing a field 
 
 ## 4. `schedule_kind` — calendar rendering
 
-Required (NOT NULL since Phase 8a + 8e). Declares how instances of this type should render on calendar/schedule surfaces. Mirrors `backend/app/models/enums.py:ScheduleKind`.
+Required. Declares how instances of this type should render on calendar/schedule surfaces. Mirrors `backend/app/models/enums.py:ScheduleKind`.
 
 | Value | Calendar behavior | Example types |
 |---|---|---|
@@ -81,7 +81,7 @@ Required (NOT NULL since Phase 8a + 8e). Declares how instances of this type sho
 ### Defaults at the column level
 
 - `schedule_kind` defaults to `state` (the safe "never per-day expansion" rendering) at the DB level. The seed loader also falls back to `state` if a seed entry omits the field — but every shipped seed declares it.
-- `category_concept_id` is NOT NULL with `ondelete="RESTRICT"` (Phase 8e). The seed loader falls back to the system `general-event` concept if a seed entry omits `category_slug`.
+- `category_concept_id` is NOT NULL with `ondelete="RESTRICT"`. The seed loader falls back to the system `general-event` concept if a seed entry omits `category_slug`.
 
 ## 5. `metadata_schema` — dynamic form fields
 
@@ -181,7 +181,7 @@ Every `ClinicalEventType` belongs to exactly one **category** — a `Concept` of
 
 1. Add a concept entry to `backend/data/seeds/concepts.json` with `"kinds": ["event_category"]` and a unique `slug`.
 2. Add the slug to the `case` block in `frontend/src/components/events/EventTypeCard.tsx:getEventIcon` so the picker shows an icon for it.
-3. Add frontend translations under `events.category.{slug}.{name,description}` in both `frontend/src/locales/en/common.json` and `frontend/src/locales/el/common.json` (§9).
+3. Add frontend translations under `events.category.{slug}.{name,description}` in both `frontend/src/locales/en/common.json` and `frontend/src/locales/el/common.json` (see *Localization*).
 4. Restart — the seed loader reconciles the new concept, and types can reference it via `category_slug`.
 
 The `general-event` category is **always present** (seeded by `concepts.json` + defensively re-inserted by migration `p8e5f6g7h8i9` on fresh DBs). It's the NOT-NULL backfill target for types whose seed entry omits `category_slug`. You should rarely need to assign a type to it — every shipped type fits one of the four domain categories above.
@@ -236,7 +236,7 @@ To see the full JSON for any of these, look at `backend/data/seeds/clinical_even
 4. **Declare `metadata_schema`** if the type needs custom form fields (§5). Otherwise omit.
 5. **Add the type entry** to `backend/data/seeds/clinical_event_types.json`.
 6. **Add the slug to `getEventIcon`** in `frontend/src/components/events/EventTypeCard.tsx` so the picker shows an icon.
-7. **Add translations** under `events.type.{slug}.{name,description}` in both `en/common.json` and `el/common.json` (§8). Optional but recommended.
+7. **Add translations** under `events.type.{slug}.{name,description}` in both `en/common.json` and `el/common.json` (see *Localization*). Optional but recommended.
 8. **Restart** — `SeedService.seed_clinical_event_types` reconciles the new row.
 
 ## 12. Endpoints (summary)
@@ -247,7 +247,7 @@ The full REST contract is in [API.md](API.md). The key endpoints:
 |---|---|---|
 | `GET` | `/api/v1/clinical-events/types` | List all event types (used by the form's picker). |
 | `POST` | `/api/v1/clinical-events/types` | Create a type (admin). Body validates against `ClinicalEventTypeBase` — `schedule_kind` and `category_concept_id` are required. |
-| `GET` | `/api/v1/clinical-events` | List events. Supports `patient_id`, `examination_id`, `active_on`, `onset_on`, `date_range` filters (Phase 2). |
+| `GET` | `/api/v1/clinical-events` | List events. Supports `patient_id`, `examination_id`, `active_on`, `onset_on`, `date_range` filters. |
 | `POST` | `/api/v1/clinical-events` | Create an event instance. |
 | `GET` | `/api/v1/clinical-events/{id}` | Read one event (with type_details, examinations, observations, anatomy_links). |
 | `POST` | `/api/v1/clinical-events/{id}/occurrences` | Add a discrete occurrence (§9). |

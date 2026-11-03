@@ -1,4 +1,4 @@
-"""Tests for ``integrations.sdk.documents`` — DocumentPull spec.
+"""Tests for ``app.extensions.sdk.documents`` — DocumentPull spec.
 
 Phase 3.2 hardening: ``filename`` is sanitized at the SDK boundary (rejects
 path traversal, absolute paths, NUL/control chars, overlong names) and the
@@ -8,8 +8,9 @@ identifier fields carry ``max_length`` caps.
 from __future__ import annotations
 
 import pytest
-from integrations.sdk.documents import DocumentPull
 from pydantic import ValidationError
+
+from app.extensions.sdk.documents import DocumentPull
 
 
 def _valid() -> dict:

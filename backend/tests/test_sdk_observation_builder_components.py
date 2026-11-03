@@ -10,8 +10,7 @@ mutual exclusion (FHIR R4 §3.1.1).
 
 import datetime
 
-from integrations.sdk.observation_builder import ObservationBuilder
-
+from app.extensions.sdk.observation_builder import ObservationBuilder
 from app.models.enums import CodingSystem
 
 TENANT = "00000000-0000-0000-0000-000000000001"

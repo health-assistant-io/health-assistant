@@ -31,10 +31,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import utcnow as _now
 from app.core.database import AsyncSessionLocal
+from app.extensions.registry import integration_registry
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir import Observation
 from app.models.telemetry_model import TelemetryDataModel
-from app.services.fhir_helpers import coerce_patient_id
+from app.services.fhir_helpers import coerce_observation_patient_ids
 
 logger = logging.getLogger(__name__)
 
@@ -56,28 +57,42 @@ INTEGRATION_MAX_DOCS_PER_SYNC = 20
 INTEGRATION_MAX_DOC_BYTES_PER_SYNC = 50 * 1024 * 1024  # 50 MiB
 
 
-def _opt_in(provider: Any, hook_name: str) -> bool:
-    """Generic capability probe for opt-in provider hooks.
+def _declared(provider: Any, hook_name: str) -> bool:
+    """Declared-capability gate (D3/D18 — replaces hook probing).
 
-    Returns the boolean result of calling ``provider.<hook_name>()`` if the
-    method exists; ``False`` otherwise. Centralizes the ``getattr`` /
-    callable-check dance so the engine can grow new opt-in hooks
-    (``supports_clinical_events``, future ``supports_examinations``,
-    ``supports_documents`` ...) without each call site re-implementing it.
+    ``hook_name`` keeps the historical opt-in names as the engine's
+    internal vocabulary; the ANSWER now comes from the registry: the
+    ``push``/``notify`` charter capabilities, or (for the pull families)
+    the data classes declared in the manifest's ``itemSchema`` (this
+    host's connector-kind profile). An undeclared capability is never
+    called — capabilities gate at registration, never mid-run.
     """
-    fn = getattr(provider, hook_name, None)
-    if not callable(fn):
+    domain = getattr(provider, "domain", None) or getattr(
+        getattr(provider, "integration", None), "provider", None
+    )
+    if not domain:
         return False
-    try:
-        return bool(fn())
-    except Exception:
-        logger.warning(
-            "provider %s.%s raised; treating as not-supported",
-            type(provider).__name__,
-            hook_name,
-            exc_info=True,
-        )
+    if hook_name == "supports_push":
+        return integration_registry.has_capability(domain, "push")
+    if hook_name == "supports_notifications":
+        return integration_registry.has_capability(domain, "notify")
+    data_class = _PULL_HOOK_DATA_CLASSES.get(hook_name)
+    if data_class is None:
+        logger.warning("unknown capability hook %r", hook_name)
         return False
+    return data_class in integration_registry.declared_data_classes(domain)
+
+
+_PULL_HOOK_DATA_CLASSES = {
+    "supports_clinical_events": "clinical_event",
+    "supports_examinations": "examination",
+    "supports_catalog_proposals": "catalog_proposal",
+    "supports_hitl_proposals": "hitl_proposal",
+    "supports_documents": "document",
+    "supports_medications": "medication",
+    "supports_allergies": "allergy",
+    "supports_immunizations": "immunization",
+}
 
 
 def _obs_value(obs: Observation) -> float | None:
@@ -232,7 +247,7 @@ class SyncResult:
     allergies_written: int = 0
     immunizations_pulled: int = 0
     immunizations_written: int = 0
-    # Carried from ``IntegrationRateLimitError.retry_after_seconds`` when
+    # Carried from the typed rate-limited error's retry_after_ms when
     # the upstream sent a ``Retry-After`` header. The caller (worker)
     # may use this to write a Redis cooldown key so the next beat skips
     # this integration until the cooldown expires. ``None`` when the
@@ -268,7 +283,7 @@ async def _try_acquire_lock(integration_id: UUID) -> tuple[bool, str]:
 # Rate-limit cooldown (item 1 of the integrations-sdk-improvements plan).
 #
 # When an upstream returns 429 with a ``Retry-After`` header, the SDK
-# surfaces the value on ``IntegrationRateLimitError.retry_after_seconds``.
+# surfaces the value on the typed rate-limited error's retry hint.
 # ``run_sync`` copies it onto ``SyncResult.retry_after_seconds``; the
 # worker then calls ``set_rate_limit_cooldown`` so subsequent beats
 # skip the integration until the cooldown expires (instead of
@@ -338,7 +353,7 @@ async def is_rate_limited(integration_id: UUID) -> bool:
 
     Returns ``False`` when Redis is unavailable (degrades to "not
     rate limited" so the sync proceeds; the upstream will re-raise
-    ``IntegrationRateLimitError`` if still closed, and the cooldown
+    the charter ``rate-limited`` code if still closed, and the cooldown
     will be re-set).
     """
     try:
@@ -466,18 +481,15 @@ async def run_sync(
     Pipeline: acquire lock → pull → convert → biomarker-map → telemetry-split
     → push → stamp ``last_synced_at`` → write ``IntegrationSyncLog`` → commit.
 
-    The 3-tier error contract (``IntegrationAuthError`` → status ERROR;
-    ``IntegrationRateLimitError`` → retry next cycle; other → log) is handled
+    The charter-code routing (``auth`` → status ERROR; ``rate-limited`` →
+    cooldown + retry next cycle; ``net-denied`` → non-retryable config
+    class, instance stays ACTIVE; other codes → logged failure) is handled
     uniformly here so the worker and the manual endpoint share the exact same
     behaviour.
 
     Returns a :class:`SyncResult`. The caller decides how to surface errors.
     """
-    from integrations.sdk.exceptions import (
-        IntegrationAuthError,
-        IntegrationRateLimitError,
-    )
-
+    from app.extensions.errors import ExtensionError
     from app.models.user_integration import IntegrationStatus, IntegrationSyncLog
 
     started = _now()
@@ -498,7 +510,14 @@ async def run_sync(
     result: SyncResult | None = None
     try:
         # ---- pull ----
-        observations_data = await provider.pull_data(integration)
+        # The ``sync`` capability gates the pull leg: extensions without it
+        # (webhook, bridge, mcp_client) have no beat-driven ingestion — their
+        # ``pull_data`` default is a no-op, so skipping the call is
+        # behavior-preserving and honest (declared capabilities, not probes).
+        if integration_registry.has_capability(integration.provider, "sync"):
+            observations_data = await provider.pull_data(integration)
+        else:
+            observations_data = []
         pulled = len(observations_data) if observations_data else 0
 
         observations: list[Observation] = []
@@ -525,8 +544,7 @@ async def run_sync(
         # audit B3: keep the relational patient_id in sync with the FHIR subject
         # reference on integration-sourced observations (the SDK builder only
         # sets ``subject``).
-        for _obs in observations:
-            _obs.patient_id = coerce_patient_id(_obs.patient_id, _obs.subject)
+        coerce_observation_patient_ids(observations)
 
         # Map once for the whole batch (was previously indented inside the
         # per-observation loop above and ran N times — wasted work, since
@@ -566,7 +584,7 @@ async def run_sync(
         # the push hook's resilience).
         events_pulled = 0
         events_written = 0
-        supports_events = _opt_in(provider, "supports_clinical_events")
+        supports_events = _declared(provider, "supports_clinical_events")
         if supports_events:
             try:
                 events_data = await provider.pull_clinical_events(integration)
@@ -632,7 +650,7 @@ async def run_sync(
         # the provider set on ``ExaminationCreate``; value is the resulting
         # exam's UUID. Empty when the provider doesn't opt into exams.
         exam_by_external_id: dict[str, UUID] = {}
-        supports_exams = _opt_in(provider, "supports_examinations")
+        supports_exams = _declared(provider, "supports_examinations")
         if supports_exams:
             try:
                 exams_data = await provider.pull_examinations(integration)
@@ -698,7 +716,7 @@ async def run_sync(
         # don't abort the sync (mirrors the events / exams hooks).
         proposals_pulled = 0
         proposals_applied = 0
-        supports_proposals = _opt_in(provider, "supports_catalog_proposals")
+        supports_proposals = _declared(provider, "supports_catalog_proposals")
         if supports_proposals:
             try:
                 proposals_data = await provider.pull_catalog_proposals(integration)
@@ -775,7 +793,7 @@ async def run_sync(
         # the sync (mirrors the events / exams / catalog-proposals hooks).
         hitl_pulled = 0
         hitl_inserted = 0
-        supports_hitl = _opt_in(provider, "supports_hitl_proposals")
+        supports_hitl = _declared(provider, "supports_hitl_proposals")
         if supports_hitl:
             try:
                 hitl_specs = await provider.pull_hitl_proposals(integration)
@@ -872,7 +890,7 @@ async def run_sync(
         # Both enforced before ``ingest_document_bytes`` is called.
         docs_pulled = 0
         docs_written = 0
-        supports_docs = _opt_in(provider, "supports_documents")
+        supports_docs = _declared(provider, "supports_documents")
         if supports_docs:
             try:
                 docs_data = await provider.pull_documents(integration)
@@ -1009,7 +1027,7 @@ async def run_sync(
         # abort the sync (mirrors the events / exams / docs hooks).
         meds_pulled = 0
         meds_written = 0
-        supports_meds = _opt_in(provider, "supports_medications")
+        supports_meds = _declared(provider, "supports_medications")
         if supports_meds:
             try:
                 meds_data = await provider.pull_medications(integration)
@@ -1054,7 +1072,7 @@ async def run_sync(
         # the engine writes each via ``allergy_service.add_patient_allergy``.
         allergies_pulled = 0
         allergies_written = 0
-        supports_allergies = _opt_in(provider, "supports_allergies")
+        supports_allergies = _declared(provider, "supports_allergies")
         if supports_allergies:
             try:
                 allergy_data = await provider.pull_allergies(integration)
@@ -1099,7 +1117,7 @@ async def run_sync(
         # ``vaccine_service.add_patient_immunization``.
         immuns_pulled = 0
         immuns_written = 0
-        supports_immuns = _opt_in(provider, "supports_immunizations")
+        supports_immuns = _declared(provider, "supports_immunizations")
         if supports_immuns:
             try:
                 immun_data = await provider.pull_immunizations(integration)
@@ -1146,7 +1164,7 @@ async def run_sync(
         # are still called; push-only-default providers skip the no-op.
         push_result: dict[str, Any] | None = None
         try:
-            if _opt_in(provider, "supports_push"):
+            if _declared(provider, "supports_push"):
                 push_result = await provider.push_data(integration, {"status": f"{source}_sync"})
         except Exception as push_err:
             logger.warning("Push failed for %s: %s", integration.provider, push_err)
@@ -1209,43 +1227,91 @@ async def run_sync(
         )
         return result
 
-    except IntegrationAuthError as e:
+    except ExtensionError as e:
         await db.rollback()
-        logger.warning("Auth error for %s: %s", integration.provider, e)
-        await _debug("Auth Error", {"error": str(e), "source": source}, level="error")
-        integration.status = IntegrationStatus.ERROR
-        _write_failed_log(db, integration, started, str(e))
+        # Charter-code routing (the D4 map): ``auth`` flips the instance to
+        # ERROR (the UI shows a reconnect prompt); ``rate-limited`` leaves
+        # the instance ACTIVE and surfaces the upstream Retry-After hint as
+        # a Redis cooldown key; ``net-denied`` is NON-retryable config class
+        # (the historical SSRFBlock semantics preserved exactly: logged, a
+        # failed sync row, the instance stays ACTIVE — the remedy is config,
+        # not retry); every other code is a logged failure with the code on
+        # the sync row.
+        if e.code == "auth":
+            logger.warning("Auth error for %s: %s", integration.provider, e)
+            await _debug(
+                "Auth Error", {"code": e.code, "detail": e.detail, "source": source}, level="error"
+            )
+            integration.status = IntegrationStatus.ERROR
+            _write_failed_log(db, integration, started, e.detail, error_code=e.code)
+            await db.commit()
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+            )
+        if e.code == "rate-limited":
+            logger.warning("Rate limit for %s: %s", integration.provider, e)
+            await _debug(
+                "Rate Limit Error",
+                {"code": e.code, "detail": e.detail, "source": source},
+                level="warning",
+            )
+            _write_failed_log(
+                db,
+                integration,
+                started,
+                "Rate Limit Exceeded. Will retry later.",
+                error_code=e.code,
+            )
+            await db.commit()
+            # The worker reads ``SyncResult.retry_after_seconds`` and writes
+            # a Redis cooldown key (clamped 60s..1h inside the cooldown
+            # helper to defend against an upstream lying).
+            retry_after = e.retry_after_ms / 1000.0 if e.retry_after_ms is not None else None
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+                retry_after_seconds=retry_after,
+            )
+        if e.code == "net-denied":
+            logger.warning(
+                "Network policy denied a call for %s (non-retryable config class): %s",
+                integration.provider,
+                e.detail,
+            )
+            await _debug(
+                "Net Denied",
+                {"code": e.code, "detail": e.detail, "source": source},
+                level="warning",
+            )
+            _write_failed_log(db, integration, started, e.detail, error_code=e.code)
+            await db.commit()
+            return SyncResult(
+                status="failed",
+                error=e.detail,
+                error_type=e.code,
+                started_at=started,
+                completed_at=_now(),
+            )
+        logger.error("Sync error for %s (%s): %s", integration.provider, e.code, e.detail)
+        await _debug(
+            "Sync Error", {"code": e.code, "detail": e.detail, "source": source}, level="error"
+        )
+        _write_failed_log(db, integration, started, e.detail, error_code=e.code)
         await db.commit()
-        result = SyncResult(
+        return SyncResult(
             status="failed",
-            error=str(e),
-            error_type="auth",
+            error=e.detail,
+            error_type=e.code,
             started_at=started,
             completed_at=_now(),
         )
-        return result
-
-    except IntegrationRateLimitError as e:
-        await db.rollback()
-        logger.warning("Rate limit for %s: %s", integration.provider, e)
-        await _debug("Rate Limit Error", {"error": str(e), "source": source}, level="warning")
-        _write_failed_log(db, integration, started, "Rate Limit Exceeded. Will retry later.")
-        await db.commit()
-        # Surface the upstream's Retry-After hint (if any) so the
-        # caller can avoid hammering the upstream on every beat. The
-        # worker reads ``SyncResult.retry_after_seconds`` and writes a
-        # Redis cooldown key. The value is clamped inside the cooldown
-        # helper (60s..1h) to defend against an upstream lying.
-        retry_after = getattr(e, "retry_after_seconds", None)
-        result = SyncResult(
-            status="failed",
-            error=str(e),
-            error_type="rate_limit",
-            started_at=started,
-            completed_at=_now(),
-            retry_after_seconds=retry_after,
-        )
-        return result
 
     except Exception as e:
         await db.rollback()
@@ -1287,8 +1353,19 @@ async def run_sync(
                 logger.exception("post_sync_notifications raised for %s", integration.id)
 
 
-def _write_failed_log(db: AsyncSession, integration: Any, started: datetime, error: str) -> None:
-    """Queue a ``failed`` IntegrationSyncLog row (caller commits)."""
+def _write_failed_log(
+    db: AsyncSession,
+    integration: Any,
+    started: datetime,
+    error: str,
+    error_code: str | None = None,
+) -> None:
+    """Queue a ``failed`` IntegrationSyncLog row (caller commits).
+
+    ``error_code`` is the charter code (``net-denied``, ``auth``, …) —
+    carried beside the capped detail as ``[code] detail`` so typed routing
+    survives into the log rows without a schema change.
+    """
     from app.models.user_integration import IntegrationSyncLog
 
     db.add(
@@ -1299,7 +1376,7 @@ def _write_failed_log(db: AsyncSession, integration: Any, started: datetime, err
             records_synced=0,
             started_at=started,
             completed_at=_now(),
-            error_message=error,
+            error_message=f"[{error_code}] {error}" if error_code else error,
         )
     )
 
@@ -1433,7 +1510,7 @@ async def _emit_provider_notifications(
     Called from ``run_sync``'s ``finally`` block after a successful/partial
     sync, AND from the webhook handler (see :func:`post_sync_notifications`).
     The provider's :meth:`get_notifications` returns a list of
-    :class:`~integrations.sdk.notifications.NotificationSpec`. The platform
+    :class:`~app.extensions.sdk.notifications.NotificationSpec`. The platform
     emits each with:
 
     * ``source=NotificationSource.INTEGRATION``
@@ -1445,7 +1522,7 @@ async def _emit_provider_notifications(
 
     Failures are logged and swallowed — never propagate to the sync result.
     """
-    if provider is None or not getattr(provider, "supports_notifications", lambda: False)():
+    if provider is None or not _declared(provider, "supports_notifications"):
         return
 
     context = {

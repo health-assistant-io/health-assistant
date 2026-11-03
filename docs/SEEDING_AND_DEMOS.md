@@ -19,6 +19,7 @@ Every application startup runs a single ordered, idempotent seed pipeline agains
 | 9 | `concept_edges` (incl. concept→anatomy + anatomy→anatomy) | concepts + diseases + body_parts + vaccines |
 | 10 | `default_catalog` (units + biomarker definitions) | concepts (biomarker_class) |
 | 11 | `biomarker_panels` (MEMBER_OF edges) | concepts + default_catalog |
+| 12 | `biomarker_states` (STATE biomarker picklists) | default_catalog |
 
 **Conventions:**
 - **Envelope** — every seed JSON is `{ "metadata": {...}, "items": [...] }`. (The legacy `anatomy_base.json` was split into `anatomy_structures.json` + `anatomy_relations.json`; the latter is now **deleted** — anatomy hierarchy edges live in `concept_edges.json` with `src_type=anatomy, dst_type=anatomy`. `biomarker_panels.json` migrated from a `{panel: [slugs]}` map to the standard items list.)
@@ -186,7 +187,7 @@ To extend the base anatomy catalog that ships with the application:
 
 The Anatomy Explorer renders a 2D human body and overlays organ markers so users can locate structures visually. The atlas is **fully DB-driven, image-based, and admin-manageable**:
 
-- **`anatomy_figures` table** — each row is one view of one figure (e.g. `man-front`, `woman-back`) backed by a **WebP image** stored on disk under `UPLOAD_DIR/anatomy_figures/`. No SVG markup or viewBox — the stored image IS the view. The four defaults ship as bundled WebP seeds (rasterized from the Wikimedia surface diagrams at 3×, CC BY-SA 3.0 — see `NOTICE`) and are copied to `UPLOAD_DIR` at startup.
+- **`anatomy_figures` table** — each row is one view of one figure (e.g. `man-front`, `woman-back`) backed by a **WebP image** stored on disk under `HA_UPLOAD_DIR/anatomy_figures/`. No SVG markup or viewBox — the stored image IS the view. The four defaults ship as bundled WebP seeds (rasterized from the Wikimedia surface diagrams at 3×, CC BY-SA 3.0 — see `NOTICE`) and are copied to `HA_UPLOAD_DIR` at startup.
 - **Per-figure markers** — every structure may carry `display.map.markers[<figure-slug>] = { nx, ny, nr }`, where `nx`/`ny`/`nr` are fractions of the image's pixel dimensions (0–1). The marker overlay SVG uses the image's `width × height` as its viewBox, so it aligns with the `<img>` by construction at any render size.
 - **Frontend store** — `useAnatomyAtlas` (Zustand, `frontend/src/components/anatomy/atlas.ts`) fetches the figure list once and lazily fetches each image as an authenticated blob → object URL.
 
@@ -209,7 +210,7 @@ generation tools, or the ontology-catalog import — and then **snapshot that
 instance's data back into the shipped seed format**. `SeedExportService`
 (`backend/app/services/seed_export_service.py`) is the strict inverse of
 `SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
-envelope each `seed_*` stage consumes, covering **all ten seed files** —
+envelope each `seed_*` stage consumes, covering **all seed files** —
 concepts, diseases, medications, vaccines, clinical event types, allergies,
 concept edges, anatomy structures, the default catalog, and biomarker panels.
 
@@ -223,14 +224,13 @@ unchanged DB is a git no-op — the point is to review diffs, not blind-replace.
 between seed items are by slug (`parent_slug`, `src_slug`/`dst_slug`,
 `panel_slug`, `class_concept_slug`). Where an entity has a real external code,
 `coding_system` + `code` are emitted alongside as **identity evidence**
-(FHIR-aligned, useful for interop/dedup audits) but are *not* the join key —
-see the design discussion in `dev/plans/seed-export-service-2026-07-07.md`.
+(FHIR-aligned, useful for interop/dedup audits) but are *not* the join key.
 
 ### 7.2 Three delivery surfaces (same service underneath)
 
 **UI download (SYSTEM_ADMIN)** — the **Catalogs workspace** toolbar
 (`/catalogs`) has an **Export seeds** button that calls
-`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the eight files. The
+`GET /api/v1/admin/seeds/export.zip` and saves a ZIP of the seed files. The
 download is **read-only** — the server never writes its own `data/seeds/`.
 
 **CLI (curator on the same machine as the DB)**:
@@ -286,7 +286,7 @@ runs `HA_APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
 `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production gate
 requires).
 
-`demo_mode` is an **instance fact** (identity-auth §4/§13): `HA_DEMO_MODE`
+`demo_mode` is an **instance fact**: `HA_DEMO_MODE`
 is consumed **only when initializing an empty database** and then lives in
 `instance_settings.demo_mode`. Post-init env flips are ignored with a loud
 warning — the DB value stays authoritative — and unknown/missing values
@@ -347,9 +347,9 @@ off, so the route is inert on normal instances (a probe is audited as a
 denied `auth.demo_login` event). The tokens carry the contract claim
 `auth_mode: "demo"`.
 
-**Every verifier rejects `demo` tokens while `demo_mode=false`**
-(identity-auth §13/§18.11): HTTP dependencies, the WebSocket handshake,
-the presigned-preview Bearer path, and — as of plan 16 H7 — the refresh
+**Every verifier rejects `demo` tokens while `demo_mode=false`**:
+HTTP dependencies, the WebSocket handshake,
+the presigned-preview Bearer path, and the refresh
 path, which re-checks the live instance fact on **every rotation**. A
 demo sign-in minted on a demo instance dies with the instance's
 `demo_mode`; no env flip can extend it. Symmetrically, the demo principal

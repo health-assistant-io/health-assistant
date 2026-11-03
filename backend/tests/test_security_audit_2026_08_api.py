@@ -54,7 +54,7 @@ async def test_restore_documents_sanitizes_filename_extension(tmp_path):
     tenant_id = "11111111-1111-1111-1111-111111111111"
     upload_dir = tmp_path / "uploads"
     with (
-        patch("app.services.document_service.UPLOAD_DIR", upload_dir),
+        patch("app.services.document_service.HA_UPLOAD_DIR", upload_dir),
         patch(
             "app.services.document_service.ALLOWED_UPLOAD_EXTENSIONS",
             frozenset({".pdf", ".txt", ".png"}),

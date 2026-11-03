@@ -12,8 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS deps
-# Build stage: compilers live here only, never in the runtime layer.
-RUN apt-get update && apt-get install -y --no-install-recommends gcc \
+# Build stage: compilers + git live here only, never in the runtime layer
+# (git is needed by `uv sync --frozen` to fetch the git-SHA-pinned
+# family auth-kit dependency).
+RUN apt-get update && apt-get install -y --no-install-recommends gcc git \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
 # Workspace manifests first (cache-friendly); uv installs into /app/.venv.
@@ -36,7 +38,10 @@ COPY backend/app /app/backend/app
 COPY backend/alembic /app/backend/alembic
 COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/scripts /app/backend/scripts
-COPY integrations /app/integrations
+# Seed JSONs + catalogs read at runtime (startup seed_all, the OMB picklist
+# behind GET /setup/extension-catalog, demo mode's sample PDF) — omitting
+# this dir shipped images whose wizard dropdowns and seed stages ran empty.
+COPY backend/data /app/backend/data
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
 RUN useradd --create-home --uid 10001 ha \
@@ -44,7 +49,7 @@ RUN useradd --create-home --uid 10001 ha \
     && chown -R ha:ha /app /data /var/healthassistant
 USER ha
 
-ENV PYTHONPATH=/app/backend:/app
+ENV PYTHONPATH=/app/backend
 WORKDIR /app/backend
 
 EXPOSE 8000

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Self-test suite for the family-convergence gate (plan 23 D4 / T1–T6, T13–T14).
+# Self-test suite for the family-convergence gate (plan 23 D4 / T1–T6,
+# T13–T16; plan 21 C7 security-surface cases).
 #
 # Fixtures are materialized at runtime into mktemp -d from heredoc builders —
 # no committed fixture trees, so vendoring four copies stays cheap and
@@ -36,8 +37,11 @@ ok_case()   { PASS=$((PASS + 1)); echo "ok   $1"; }
 fail_case() { FAIL=$((FAIL + 1)); echo "FAIL $1"; echo "$2" | sed 's/^/     /'; }
 
 # run_self DIR -- run the gate's --self mode inside DIR; sets RUN_OUT/RUN_RC.
+# --self roots the check at the VENDORED COPY's repo (one level above the
+# script), so the tree under test runs its own planted copy — gate_artifacts()
+# puts one in every fixture (same discipline as the byok selftest).
 run_self() {
-  RUN_OUT="$(cd "$1" && bash "$GATE" --self 2>&1)"
+  RUN_OUT="$(cd "$1" && bash "$1/scripts/check-family-convergence.sh" --self 2>&1)"
   RUN_RC=$?
 }
 
@@ -69,6 +73,12 @@ PLANTED_MARKERS=(
   "ca-drawing" "ca-image" "ca-material" "ca-course" "caq/v" "ca-backup/v"
   "ca-skills/v" "x-ca-" "LEGACY_KIND_MAP" "card_kind_from_legacy"
   "legacy_kind_from_card"
+  'type": "stream_start"' 'type": "stream_delta"'
+  'type": "assistant_message"' 'type": "stream_interrupted"'
+  'type": "turn_error"' 'emit("interview_state"'
+  "event: interview_state" "case 'stream_start'" "case 'stream_delta'"
+  "case 'turn_error'" "[HITL_TASK]" "[SESSION_ID]" "to_family_events"
+  "stream_loop_as_sse" "FLOW_EVENT_PREFIX" "flow_events=true"
 )
 PLANTED_ENV=(
   "DATABASE_URL" "APP_ENV" "DATA_DIR" "UPLOAD_DIR" "SPA_DIST" "API_HOST"
@@ -76,6 +86,14 @@ PLANTED_ENV=(
   "REGISTRATION_ENABLED" "COOKIE_SECURE" "TRUSTED_PROXY_COUNT"
   "RATE_LIMIT_ENABLED" "AUTH_RATE_LIMIT" "AUTH_EMAIL_RATE_LIMIT"
   "SESSION_KEY" "REFRESH_KEY" "DATA_KEY"
+)
+PLANTED_MIGRATIONS=(
+  "command.upgrade" "run_migrations"
+)
+PLANTED_SECURITY=(
+  "class SlidingWindowRateLimiter" "class RateLimitMiddleware"
+  "class SecurityHeadersMiddleware"
+  'BUCKETS = ("AUTH", "AUTH_EMAIL", "AI", "MCP", "DEFAULT")'
 )
 
 # ---------------------------------------------------------------------------
@@ -92,8 +110,9 @@ gate_artifacts() {
   cp "$PATTERNS_DIR/"*.txt "$1/scripts/gate-patterns/"
 }
 
-# fixture_conformant DIR -- a tree that passes C1–C6 (incl. T3 prefixed-env
-# negatives and T1/T6).
+# fixture_conformant DIR -- a tree that passes C1–C7 (incl. T3 prefixed-env
+# negatives and T1/T6; C7 holds because no limiter/headers class or bucket
+# constant is declared product-side).
 fixture_conformant() {
   local d="$1"
   mkdir -p "$d/backend/app" "$d/backend/tests" "$d/frontend/src" \
@@ -216,6 +235,31 @@ def upgrade():
 EOF
 }
 
+# fixture_restore_migration_site DIR -- T15/F12 positive: app/local.py
+# migrates and the declared restore-flow site passes — restore is a
+# declared ops action that migrates (reference-architecture §4).
+fixture_restore_migration_site() {
+  local d="$1"
+  fixture_conformant "$d"
+  cat > "$d/backend/app/backup.py" <<'EOF'
+def restore():
+    from .local import run_migrations  # gate-allow: run_migrations (F12 restore)
+    run_migrations()  # gate-allow: run_migrations (F12 restore)
+EOF
+}
+
+# fixture_migration_call_in_main DIR -- T16/F12 negative: the same restore
+# call, undeclared, in app/main.py still fails.
+fixture_migration_call_in_main() {
+  local d="$1"
+  fixture_conformant "$d"
+  cat > "$d/backend/app/main.py" <<'EOF'
+def create_app():
+    from .local import run_migrations
+    run_migrations()
+EOF
+}
+
 # fixture_requirements_txt DIR -- T5/C5.
 fixture_requirements_txt() {
   local d="$1"
@@ -263,19 +307,62 @@ for name in "${PLANTED_ENV[@]}"; do
   expect "T2 C2 trips for planted env name '$name'" 1 "FAIL C2"
 done
 
+# T2d: migration-surface completeness — one planted reference per
+# migration vocabulary entry trips C3.
+for name in "${PLANTED_MIGRATIONS[@]}"; do
+  d="$WORK/t2-c3"; rm -rf "$d"; fixture_conformant "$d"
+  printf 'PLANTED = %s\n' "\"$name\"" > "$d/backend/app/planted.py"
+  run_self "$d"
+  expect "T2 C3 trips for planted migration surface '$name'" 1 "FAIL C3"
+done
+
+# T2e: security-surface completeness — one planted copy per vocabulary
+# entry trips C7 (a product-local class or bucket-constant copy).
+for marker in "${PLANTED_SECURITY[@]}"; do
+  d="$WORK/t2-c7"; rm -rf "$d"; fixture_conformant "$d"
+  if [ "$marker" = "class SlidingWindowRateLimiter" ]; then
+    printf 'class SlidingWindowRateLimiter:\n    pass\n' > "$d/backend/app/planted.py"
+  elif [ "$marker" = "class RateLimitMiddleware" ]; then
+    printf 'class RateLimitMiddleware:\n    pass\n' > "$d/backend/app/planted.py"
+  elif [ "$marker" = "class SecurityHeadersMiddleware" ]; then
+    printf 'class SecurityHeadersMiddleware:\n    pass\n' > "$d/backend/app/planted.py"
+  else
+    printf 'PLANTED = %s\n' "$marker" > "$d/backend/app/planted.py"
+  fi
+  run_self "$d"
+  expect "T2 C7 trips for planted security copy '$marker'" 1 "FAIL C7"
+done
+
+# T17/plan-21: a product-local headers middleware anywhere under backend
+# (app or tests) is a named C7 finding.
+d="$WORK/t17-headers-copy"; fixture_conformant "$d"
+cat > "$d/backend/tests/test_headers_copy.py" <<'EOF2'
+class SecurityHeadersMiddleware:  # a stale local copy smuggled into tests
+    pass
+EOF2
+run_self "$d"
+expect "T17 product-local headers copy in tests -> FAIL C7" 1 "FAIL C7"
+
 # T2c: correspondence — the pinned planted lists must stay 1:1 with the
 # vocabulary files (this is the case that fails when a vocabulary line is
 # deleted — the completeness loop must have teeth).
 vocab_markers="$(vocab_file "$PATTERNS_DIR/legacy-markers.txt" | cut -f2 | sort)"
 vocab_env="$(vocab_file "$PATTERNS_DIR/env-names.txt" | cut -f2 | sort)"
+vocab_migrations="$(vocab_file "$PATTERNS_DIR/migration-sites.txt" | cut -f2 | sort)"
+vocab_security="$(vocab_file "$PATTERNS_DIR/security-surface.txt" | cut -f2 | sort)"
 pinned_markers="$(printf '%s\n' "${PLANTED_MARKERS[@]}" | sort)"
 pinned_env="$(printf '%s\n' "${PLANTED_ENV[@]}" | sort)"
-if [ "$vocab_markers" = "$pinned_markers" ] && [ "$vocab_env" = "$pinned_env" ]; then
+pinned_migrations="$(printf '%s\n' "${PLANTED_MIGRATIONS[@]}" | sort)"
+pinned_security="$(printf '%s\n' "${PLANTED_SECURITY[@]}" | sort)"
+if [ "$vocab_markers" = "$pinned_markers" ] && [ "$vocab_env" = "$pinned_env" ] \
+  && [ "$vocab_migrations" = "$pinned_migrations" ] && [ "$vocab_security" = "$pinned_security" ]; then
   ok_case "T2 vocabulary <-> planted-list correspondence (1:1)"
 else
   fail_case "T2 vocabulary <-> planted-list correspondence (1:1)" \
     "markers vocab: $vocab_markers / pinned: $pinned_markers
-env vocab: $vocab_env / pinned: $pinned_env"
+env vocab: $vocab_env / pinned: $pinned_env
+migrations vocab: $vocab_migrations / pinned: $pinned_migrations
+security vocab: $vocab_security / pinned: $pinned_security"
 fi
 
 # T4: unprefixed read/write forms trip C2 and name file:line.
@@ -354,6 +441,20 @@ d="$WORK/t5-c3"; fixture_migrations_elsewhere "$d"
 run_self "$d"
 expect "T5/C3 migrations outside app/local.py -> FAIL C3" 1 "FAIL C3"
 
+# T15/F12 positive: app/local.py migrates AND the declared restore-flow
+# site passes — the D6 restore exception (pragma'd, exactly one site).
+d="$WORK/t15-restore-site"; fixture_restore_migration_site "$d"
+run_self "$d"
+expect "T15 declared restore migrations site -> RESULT: OK" 0 "RESULT: OK" "FAIL"
+
+# T16/F12 negative: the same restore call, undeclared, in app/main.py
+# still fails (the allowance names lines, never files or patterns).
+d="$WORK/t16-main-call"; fixture_migration_call_in_main "$d"
+run_self "$d"
+expect "T16 undeclared migrations call in app/main.py -> FAIL C3" 1 "FAIL C3"
+expect_lines "T16 findings name the offending lines" \
+  "backend/app/main.py:2:" "backend/app/main.py:3:"
+
 # T5/C5: requirements.txt present.
 d="$WORK/t5-c5"; fixture_requirements_txt "$d"
 run_self "$d"
@@ -368,7 +469,7 @@ expect "T5/C6 missing contract gate in CI -> FAIL C6" 1 "FAIL C6"
 # patterns are data, so the gate can never match its own patterns.
 gate_text="$(cat "$GATE")"
 missing_lit=""
-for marker in "${PLANTED_MARKERS[@]}" "${PLANTED_ENV[@]}"; do
+for marker in "${PLANTED_MARKERS[@]}" "${PLANTED_ENV[@]}" "${PLANTED_MIGRATIONS[@]}" "${PLANTED_SECURITY[@]}"; do
   if grep -qF -- "$marker" <<<"$gate_text"; then
     missing_lit="$missing_lit $marker"
   fi

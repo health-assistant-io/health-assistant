@@ -477,8 +477,7 @@ async def test_endpoint_put_unknown_kind_returns_404(async_client):
 @pytest.mark.asyncio
 async def test_filter_specs_uses_per_instance_key():
     """Muting one integration instance must not affect another of the same provider."""
-    from integrations.sdk.notifications import NotificationSpec
-
+    from app.extensions.sdk.notifications import NotificationSpec
     from app.services.integration_sync_service import _filter_specs_by_owner_type_prefs
 
     tenant = await _make_tenant()

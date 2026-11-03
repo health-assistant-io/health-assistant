@@ -6,14 +6,935 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 > **Workflow:** every user-facing change adds a line under `## [Unreleased]` at
-> commit time (see [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)). At release
-> time, `## [Unreleased]` is renamed to `## [vX.Y.Z] - YYYY-MM-DD` and a fresh
-> `## [Unreleased]` is opened above it.
+> commit time. At release time, `## [Unreleased]` is renamed to
+> `## [vX.Y.Z] - YYYY-MM-DD` and a fresh `## [Unreleased]` is opened above it.
 
 ## [Unreleased]
 
+### Changed (extensions — per-extension documentation is a validated contract)
+- **The four builtin doc trees migrated to the family `extensionDocsTree`
+  form (the extension-docs contract's 'Per-extension documentation'
+  section).** The
+  as-landed free-form category lists ("Getting Started", "Sync",
+  "Advanced", "Using the Bridge", "Help", "Security") map into the CLOSED
+  seven-category vocabulary (`overview | setup | usage | reference |
+  security | changelog | troubleshooting` — evidence-derived; every real
+  tree carried a troubleshooting page, so it is a category of its own);
+  trees gain optional manifest-convention i18n label maps (en carried
+  today, structure only) and per-item `audience: user|dev` tags; items
+  may flag `index: true` (at most one) as the landing-page override of
+  the first-item-of-first-category default. The manifests bind their
+  docs with the new optional `"docs": "docs/docs-tree.json"` pointer
+  (webhook ships none — README-only, honest absence).
+- **Registration validates the tree when the pointer is present: an
+  invalid tree self-disables the extension with a reason, exactly like
+  an invalid manifest** (`registry._load_manifests` →
+  `app/extensions/docs.py`: schema + wall semantics — unique ids, each
+  category once, at-most-one index, every file resolving beside the
+  tree, no escapes).
+- **`GET /{domain}/documentation` applies the landing rule and the
+  markdown law.** The dialog opens on the landing page (index flag or
+  first item of the first category), and page markdown crosses with raw
+  HTML neutralized to escaped text fence-aware — the post-H3 shape
+  (the H3 website lesson: a committed `<script>` once rendered
+  executable on the website; extension-doc surfaces never make that
+  mistake).
+- **The frontend dialog resolves tree labels through the tree's i18n map
+  (host locale, defaultLocale fallback, title-cased slug last) and
+  shows the audience tag as a badge when present** (minimal §10.6
+  surface; the tag routes readers, it never gates access).
+- Tests: `tests/test_extension_docs_binding.py` (helpers, registration
+  both directions — valid pointer+tree registers, invalid tree
+  self-disables red-check —, endpoint landing+stripping, the four
+  shipped trees + pointer-iff-tree) + the vendored fixture suite now
+  rejects by schema OR wall semantics; `integrationViews` tests cover
+  the new tree shape, label resolution, the landing rule and audience
+  lookup. Rider (same-commit duty): the website's ingestion reader,
+  validator semantics, vendored schema+fixtures and gates moved to the
+  new form same-wave (product docs-tree stays docs.md's own law — the
+  website gate scope-splits it out of the extension contract).
+
+### Fixed (security — the outbound transport actually pins what the guard checked)
+- **`guarded_request` now sends to the PINNED guard-checked address, and
+  a fetch fails closed when resolution fails.** The guard ran, then
+  discarded its resolution — httpx re-resolved at connect, so the
+  DNS-rebinding TOCTOU was open on every FHIR/OAuth egress (a name
+  answering public-at-check / private-at-connect connected unchecked),
+  and a guard-time resolution failure fell through best-effort to an
+  unchecked by-name connect (an external security evaluation,
+  2026-10-18). The request now goes to the checked IP with the original
+  `Host` header and TLS SNI/certificate validation against the real
+  hostname (`polite_http.pinned_request_parts`, now public in the
+  vendored runtime), every redirect hop re-guards AND re-pins, and a
+  resolution failure during a fetch raises typed `unreachable` — the
+  documented best-effort allow stays a pre-check semantic only. New
+  walls execute this host's adapter (the vendored fixture wall never
+  did): the rebind scenario (public-at-check/private-at-connect) pins to
+  the checked IP, Host/SNI correctness is asserted on the wire, redirect
+  hops re-pin, and NXDOMAIN sends nothing.
+
+### Fixed (integrations)
+- **`GET /integrations/instance/{id}/details` no longer echoes the
+  `api_secret` ciphertext wrapper.** Instances of inbound-capable
+  extensions carry a platform-provisioned machine secret whether or not
+  the extension's config form declares it (the reference extension
+  declares only `webhook_secret`, so its auto-provisioned `api_secret`
+  was returned as the raw encrypted wrapper while `webhook_secret`
+  showed `***`). Both machine-secret fields now mask as `***` on every
+  details read — the plaintext remains show-once at creation and
+  rotation (`POST /instance/{id}/rotate-secret`). No client consumed the
+  ciphertext: the bridge client SDKs (python/ts/kotlin) and the Android
+  app receive the secret only through the show-once flow (creation
+  response / rotation / onboarding QR + manual entry), and the web
+  config form already treats `***` as "set — not re-sent".
+- **Bridge `POST /api/{id}/sync` now persists telemetry rows with the
+  bound patient's id** (the third persist path had skipped the
+  subject→`patient_id` re-coercion the manual-sync and webhook paths
+  apply): pushed wearable data landed with a NULL relational patient
+  and was invisible to the patient-scoped reads in multi-patient
+  tenants. All three persist paths now share one coercion helper.
+
+### Changed (docs — README raw HTML removed for the safe website pipeline)
+- **`README.md` no longer uses raw HTML** (centered div wrappers,
+  `<picture>` logo blocks, hand-rolled tables, `<br>` spacing): the
+  website renders this README as the "Getting started" docs page, and
+  its markdown pipeline now renders raw HTML as escaped text by design
+  (an external security evaluation, 2026-10-18 — a committed `<script>`
+  used to serialize into executable static HTML). Everything converts to
+  standard markdown (GFM tables, markdown images/links) — GitHub
+  rendering is preserved; dark-mode `<picture>` logo variants collapse
+  to the light variants.
+
+### Changed (docs — the integration SDK re-chaptered into the ten-chapter set + bridge quickstarts)
+- **`docs/dev/extensions.md` is now the chaptered integration-SDK doc set
+  at `docs/dev/sdk/`** — the ten-chapter taxonomy (overview, quickstart,
+  core concepts, installation & modes, authoring & configuration,
+  examples & use cases, security & gotchas, reference, versioning &
+  migration, troubleshooting & FAQ) with a validating `docs-tree.json`
+  (the chaptered form of the family docs-tree contract; content
+  re-chaptered, not rewritten). The quickstart's transcript is real
+  output from a scratch Postgres + Redis run (scratch server boot,
+  config-flow connect, manual sync, the 4-FHIR-observation + 1-telemetry
+  split, exam/event/document/proposal side effects) and is additionally
+  pinned by `tests/test_dev_dummy_provider.py`. The set's tree validates
+  in-repo against the vendored docs-tree schema + fixtures via the new
+  `tests/test_extension_docs_tree.py` (fixtures + unique ids + file
+  resolution + audience routing).
+- **Bridge client-SDK quickstarts** refreshed in place (python / ts /
+  kotlin READMEs): install → configure (`base_url` + `integration_id` +
+  `api_secret`) → signed first call → first push → one streaming chat
+  call (ts typed `chatStream`; python via the exported `sign_request`
+  raw SSE path; kotlin `chat`/`requestLines`) → typed error handling
+  (`BridgeException` codes / typed kotlin subclasses; the python thin
+  client's `detail.code` decode). HMAC examples verified against
+  `signing.py` / `Signing.kt`; transcripts from live signed runs
+  against a dev server (python + ts); every path pinned by the existing
+  suites (`test_bridge_sdk_signing.py`, `test_bridge_sdk_sync_client.py`,
+  the ts `npm test` set, the kotlin schema-conformance + parity suites).
+- **User-facing integration pages** added under `docs/user/` (the
+  audience-split set nodes): connecting an integration, what you grant
+  when you connect, integration troubleshooting. The product
+  `docs/docs-tree.json` gains the "Extension SDK" category (prefixed
+  ids) and swaps the old `extensions` row for the three user pages.
+- **`docs/dev/extensions.md` deleted** — every in-repo reference
+  re-pointed to the set's chapters (README, INTEGRATIONS_FRAMEWORK,
+  API, API_LAYERS, MOBILE_SYNC, NOTIFICATION_SYSTEM,
+  GETTING_STARTED_GUIDE, docs-tree), including repairs to the
+  pre-existing malformed link fragments. The vendored docs-tree schema +
+  fixtures land at `contracts/` through the family extension-contract
+  sync (ledgered; `--check` clean).
+
+### Added (integrations — the bridge goes schema-first)
+- **The bridge sub-API is now schema-first.** The provider's route table is
+  extracted into a machine-readable schema (66 routes, 118 payload/error/
+  stream-event components, the HMAC auth classes, the `BridgeError` code
+  vocabulary, the SSE flow-event vocabulary and the `/status`
+  feature-flag handshake — all derived from live code, never restated) and
+  published at `GET /api/v1/integrations/health_assistant_bridge/schema`
+  (authenticated, like the documentation endpoint). The official python
+  and TypeScript SDKs gain generated model layers
+  (`generated_models.py` / `generated-models.ts`: payloads, typed error
+  codes, stream event types) regenerated from the schema by committed
+  family-internal scripts — signing, retry and SSE transports are unchanged
+  hand-written code, and no existing SDK API moved. CI gains a drift gate
+  (schema + both model layers regenerate byte-identically or the build
+  fails). One cross-SDK fixture set (`schema/fixtures.json`), generated
+  from the schema, is consumed by new conformance suites in all three SDKs;
+  the Kotlin models stay hand-written against it (no family-internal Kotlin
+  codegen — recorded with its future path in the plan ledger). Zero wire
+  changes: the only provider edit hoists the `bridge_features` list into a
+  module constant the handler already returned.
+
+### Changed (integrations — the settings surfaces render through the family kit)
+- **The integrations UI swaps onto the `@neuronection/assistant-ui`
+  integrations kit**): the browse modal's
+  hand-rolled category grid is now `IntegrationCatalogGrid` (charter-category
+  groups + controlled search) inside the app modal; the active-integrations
+  list is `IntegrationInstancesList` — instances GROUPED UNDER THEIR
+  EXTENSION (G1), finally rendering the family `sync_status` vocabulary
+  (ok/degraded/failing/stale + needs-config) the backend already sent;
+  the detail page's hero is `IntegrationCard` (origin chip, tier, capability
+  chips) with connection state, sync direction and the page actions as
+  app content in the card's detail/action slots; `ConfigFlowModal` renders
+  the charter's JSON-schema-subset through `IntegrationConfigForm` with the
+  endpoint's 400 detail flowing back through the kit's validation display,
+  while health's extended config dialect (key-value maps, constrained array
+  enums, conditional visibility, JSON documents) stays app-owned below the
+  kit fields; the docs modal is the kit's `DocsDialog` with the markdown
+  fetch/render riding the app content slot. `IntegrationDocsModal` is
+  deleted; the pure wire→kit mapping lives in
+  `components/integrations/integrationViews.ts` (capabilities narrow through
+  the kit's generated vocabulary). OAuth authorize, the Bridge pairing QR,
+  custom actions and the `ActionResultModal` DisplayBlocks flow stay app
+  content (the kit's ActionResultDialog hosts the declarative
+  SurfaceRenderer contract — a different payload shape; recorded as a kit
+  gap, not forced). Pin moves to `^0.67.0` (the pending library publish
+  wave); local dev runs the kept tarball overlay until it lands.
+
+### Added (extensions — the family instance-status surface)
+- **Instance status surfaces speak the charter vocabulary** (D7/D21):
+  `GET /integrations/active` and the instance-details response carry a
+  computed `sync_status` — `ok | degraded | failing | stale` with
+  `last_success_at`, `consecutive_failures` and the `needs-config`
+  condition (stored config no longer satisfying the manifest's required
+  configSchema fields). Persistence stays health-owned; thresholds are
+  host-profile policy (degraded after one failed sync, failing after
+  two, stale past 24 h).
+
+### Changed (docs — truth fixes + the merged authoring guide)
+- **`docs/INTEGRATIONS_SDK.md` merged into `docs/dev/extensions.md`** —
+  the gold-standard authoring guide keeps its content, gains the charter
+  vocabulary (envelope manifests, declared capabilities, the polite
+  transport runtime, the typed error model); docs-tree row updated.
+- **`INTEGRATIONS_FRAMEWORK.md` default-on truth fixed** (code is
+  authoritative: bundled extensions are available on discovery; only an
+  explicit admin disable hides them) and the `supports_*` probing prose
+  retired.
+- **Bridge `authentication.md` stale UUID-only mode removed** (the mode
+  was deleted by the 2026-08 audit — the api_secret is mandatory and
+  auto-provisioned); `client-setup.md` aligned.
+
+### Changed (extensions — charter typed errors + the polite transport runtime)
+- **The `IntegrationError` class tree is replaced by the charter typed
+  error model** (`app/extensions/errors.py`): one closed 15-code enum +
+  capped detail + closed `retryable` sub-enum, with `retry_after_ms`
+  carrying the surfaced 429 payload. The D4 re-authoring map (auth →
+  `auth`, rate-limit → `rate-limited`, data → split by cause into
+  `protocol`/`provider`/`unreachable`, config → `invalid`, the SSRF
+  block → `net-denied`) is recorded once in the module docstring —
+  no aliases, no shims; suites re-authored in the same commit.
+  `BridgeError` stays (the inbound API's HTTP-identity vocabulary —
+  host policy per the charter's bridge-kind note).
+- **Outbound HTTP rides the vendored family runtime**
+  (`app/extensions/runtime/http.py`): the SSRF guard
+  (resolve-then-connect, every address, injectable resolver, numeric
+  literal obfuscations) re-run on EVERY redirect hop — deliberately
+  stricter than before: a redirect chain into a private target now
+  fails loudly as `net-denied` instead of being followed; the pooled
+  per-provider client stays the injected transport (built
+  `follow_redirects=False`). Full-jitter retry, RFC 7231 Retry-After
+  in both forms and the 401/403-immediate + 429/5xx-retried +
+  others-returned policy are preserved. `sdk/http.py` and
+  `sdk/net_guard.py` are deleted; Bundle pagination + OperationOutcome
+  diagnostics live in `sdk/fhir.py`; SMART/Bearer lifecycle in
+  `sdk/auth.py`; webhook_security + atrest secrets unchanged.
+- **Escape hatches are Settings-routed** (the runtime module reads no
+  environment): `INTEGRATION_ALLOWED_HOSTS`,
+  `INTEGRATION_BLOCK_PRIVATE_RANGES`, `INTEGRATION_ALLOW_PRIVATE` —
+  the historical env names, now injectable config.
+- **Sync routing speaks codes**: `auth` → instance ERROR + reconnect,
+  `rate-limited` → cooldown with the surfaced hint, `net-denied` →
+  non-retryable config class (logged, instance stays ACTIVE — the
+  SSRFBlock semantics preserved exactly); failed sync-log rows carry
+  `[code] detail`.
+- MCP client construction stays AI-layer-only
+  (`app/ai/mcp_client_factory.py`); `validate_http_url` and the AI
+  provider `api_base` guard ride the vendored guard.
+
+### Changed (extensions — the charter envelope, vendored contracts, declared capabilities)
+- **The family extension-contract set is vendored**: `contracts/`
+  (charter vocabularies, manifest/sources schemas, capability-RPC spec +
+  the hostile fixture walls) plus the Python modules
+  `app/extensions/{contract,polite_http,conformance}.py` — byte-identical
+  from the dev canonicals via `scripts/sync-extension-contract.sh`,
+  drift-gated by verify-wiring. The in-repo fixture wall
+  (`tests/test_extensions_contract.py`) runs the same 85 structural +
+  hostile cases every family host runs.
+- **All five bundled manifests re-authored onto the `extension/v1`
+  envelope** (kind connector/bridge, kindVersion, declared capabilities,
+  provenance author/license, closed-vocabulary categories, i18n, item
+  data-class schema, `x-secret` on credential fields): validated against
+  the vendored schema AT REGISTRATION — an invalid manifest never loads
+  (loose reads end). The registry keys by envelope id; health's
+  underscore `domain` survives as the product alias (ruling 4), so REST
+  paths and stored provider values are unchanged.
+- **Declared capabilities replace `supports_*` probing everywhere
+  (D18)**: the `notify`/`push`/`chat-tools`/`inbound-webhook`/
+  `inbound-api`/`sync` capabilities and the itemSchema data classes
+  (observation, clinical_event, examination, document, medication,
+  allergy, immunization, catalog/hitl proposals) gate the engine at the
+  `_opt_in`/`_provider_overrides` choke points, the tool aggregator and
+  the machine-secret provisioning. The eleven `supports_*` hooks are
+  deleted from the SDK base and the providers; suites re-authored in the
+  same commit. Beat-driven pull now requires the `sync` capability
+  (webhook/bridge/mcp pulls were no-ops before — same outcomes, honest
+  declarations).
+- **D19 secret honesty gate at registration**: every config-flow secret
+  field must be `x-secret`-declared in the manifest configSchema or the
+  extension refuses to load.
+
+### Changed (extensions — D24 relocation onto the family extension home)
+- **The integrations framework relocated to `backend/app/extensions/`**
+  (the family extension subsystem home, one layout across the Python
+  products): the SDK surface is now `app/extensions/sdk/` (the old core
+  ABCs folded into `sdk/base.py`), the five bundled integrations live in
+  `app/extensions/builtin/<domain>/`, and the registry is
+  `app/extensions/registry.py` (`app.core.integration_registry` is
+  gone). Imports change from `integrations.*` to `app.extensions.*`.
+- **The bridge client SDKs are satellites:** python/ts/kotlin SDKs moved
+  to `integrations/health-assistant-bridge/` (from
+  `integrations/health_assistant_bridge/`); they are consumer-facing
+  packages the backend never imports. `PYTHONPATH` no longer needs the
+  repo root; the runtime Docker image stops copying `integrations/`.
+- **MCP client construction is AI-layer-confined** (the family MCP rule):
+  fastmcp imports now live only in `app/ai/mcp_client_factory.py`;
+  the bundled `mcp_client` extension delegates to it (alignment gate R2
+  holds after the move).
+- Default-on semantics, capability probing and the error model are
+  unchanged in this commit — they converge in the follow-up commits of
+  this wave.
+
+### Fixed (endpoint-routed token cap + optional temperature — compatible servers and reasoning models both work, 2026-10-15)
+- **`build_openai` routes the token-cap parameter by endpoint (the shared
+  wire policy):** api.openai.com always receives `max_completion_tokens`
+  (modern OpenAI models hard-reject `max_tokens`), while
+  OpenAI-compatible base URLs (LocalAI, vLLM, Ollama, LM Studio,
+  llama.cpp) keep `max_tokens` via `CompatibleChatOpenAI` — Python
+  `langchain-openai`'s unconditional rename broke the latter. Model ids
+  are never sniffed for the wire contract. Pinned by
+  tests/test_chat_models_wire.py and the shared fixture table.
+- **Temperature is omit-unless-configured:** the manufactured `0.7`
+  default (model rows, schema, ENV fallbacks, OCR/NLP processors) is
+  retired — an unset temperature sends nothing, so reasoning-family
+  models (GPT-5 / o-series, which reject any non-default temperature)
+  work out of the box; a user-chosen value still rides the wire.
+  Migration clears rows still carrying the old manufactured default.
+  Pinned by tests/test_chat_models_wire.py.
+- **The policy is canonical and enforced:** the wire rules live in the
+  vendored `app/ai/wire_params.py` (byte-identical across the family —
+  this repo no longer carries its own copy), the shared fixture table
+  (`tests/fixtures/wire_params.fixtures.json`) drives the new
+  tests/test_wire_params_contract.py alongside the other repos, and
+  alignment rules R6/R7 keep wire construction in the AI layer and
+  temperature defaults out of app code.
+
+### Added (model transport knob — reasoning + function tools on gpt-6 via the Responses API, 2026-10-15)
+- **Model rows can set `chat_transport='responses'`** (nullable column,
+  migration c1h2a4t5t6r; create/update/response schemas carry it) to
+  ride the Responses API — honored only when the base URL is
+  api.openai.com (compatible servers don't implement /responses and
+  keep completions), always store-less (`store=False`; the API stores
+  outputs by default and the storage posture here is "never"). The
+  gpt-6 family rejects function tools + `reasoning_effort` on chat
+  completions; the knob keeps reasoning on tool tasks, while
+  `reasoning_effort='none'` remains the zero-config alternative.
+  `auto`/NULL stays on completions — nothing changes for existing rows.
+  The shared fixture table pins the resolution matrix. **Field learning,
+  same day:** gpt-6 rejects tool tasks on completions even with
+  reasoning_effort omitted — so `auto` now routes by endpoint
+  (api.openai.com → responses store-less, else completions;
+  `chat_transport='completions'` pins the legacy wire).
+
+### Changed (assistant-ui 0.57.0 — capability-kind model form, 2026-10-14)
+- **The models-tab add/edit form matches study's capability-kind UX:**
+  `decision` joins the capability pills, standalone kinds
+  (decision/stt/tts/embeddings) select exclusively — chat caps combine —
+  per-capability generation options, the decision transport row
+  (systemone, carried on create/update via `decision_transport`), the
+  provider context banner (configured name + base URL) and the labelled
+  ghost manual toggle with direction copy. i18n en + el
+  (`settings.ai.caps_decision`, `transport`, `use_catalog`,
+  `provider_context`).
+
+### Added (embeddings defaults wave — first-class embeddings support, 2026-10-13)
+- **Embeddings are a first-class task:** the canonical presets contract
+  gained a docs-verified `embeddings_model` per preset (re-vendored
+  byte-identical; `text-embedding-3-small` for OpenAI, `gemini-embedding-2`
+  for Gemini, `mistral-embed` for Mistral, `nomic-embed-text` for Ollama —
+  honest nulls for vendors without an embeddings API). Health now exposes
+  the `embed` task slot: capability-filtered picker in the defaults group
+  (en + el i18n), surfaced in the config summary, and served by a real,
+  tested gateway path (`run_embed` — OpenAI-compatible `/embeddings` and
+  Google `embedContent`/`batchEmbedContents` per the preset wire type,
+  provider errors typed through the shared classifier). Infrastructure-first:
+  no product feature calls it yet.
+- **Setup binds the embeddings default:** one-click setup gap-fills the
+  EMPTY embed slot from the preset's docs-verified default
+  (`bind_embeddings`, the five-bind options body's sixth flag; empty slots
+  only, live bindings never clobbered, `assigned_embeddings_model` in the
+  outcome and the success panel). Model-id inference recognizes the
+  `embed` substring (`mistral-embed`, `nomic-embed-text`).
+
+### Changed (embeddings defaults wave — decision pickers get a preset hint, 2026-10-13)
+- **Empty decision pickers suggest the preset default:** when a decision
+  slot is unassigned and a configured provider's preset declares
+  `decision_default`, a muted "Suggested: <model>" line appears under the
+  picker (en + el). Display-only — nothing is ever auto-assigned.
+
+### Added (settings follow-up wave B — capability chips on the setup tiles, 2026-10-13)
+- **The preset grid is self-explanatory:** the setup wizard derives
+  per-tile capability chips from the API preset data — chat type → Chat
+  (+ Vision where the preferred model carries it, + Speech-to-text where
+  `stt_model` exists), `decision_models` → Decision, keyless-local →
+  Local — rendered by assistant-ui 0.55.0's new `chips` prop with i18n
+  labels (`settings.ai.chip_*`, en + el). The grid now reads: openai
+  [Chat, Vision, Speech-to-text] · gemini [Chat, Vision] (overlay
+  disabled) · openrouter [Chat, Decision] · typesafe [Decision] ·
+  groq/mistral/deepseek [Chat] · ollama [Chat, Decision, Local].
+
+### Changed (settings follow-up — decision presets exposed, 2026-10-13)
+- **Three decision providers, one transport, docs-verified:** the
+  `typesafe` preset flips into `presetOrder` (a decision-only tile after
+  OpenRouter; keyUrl → docs.typesafe.ai/api with console-worded steps —
+  the console URL is not stated in the docs); Ollama gains decision
+  models (`nimble` default, `tev1`, `clef`, `clef-flash` — pull-required,
+  version floor riding the preset steps: v0.35.0+, clef models v0.35.1+)
+  and now surfaces decision rows in setup keylessly; OpenRouter's
+  decision ids are corrected to `typesafe/jev-1.13` (pinned, the
+  default) + `~typesafe/jev-latest` (rolling) with the systemone surface
+  pinned via `base_url_override` (`https://openrouter.ai/api` — the
+  `/api` prefix; the SDK appends `/v1/systemone`). No `provisional`
+  markers remain on decision data. Canonical + sync re-vendored
+  byte-identical; `presets_data.py` regenerated.
+- **Keyless decision resolution (local Ollama):** the official
+  `typesafe-sdk` requires a non-empty API key (D9), so keyless presets
+  (no `key_url` in the canonical data) resolve through the explicit
+  sentinel key instead of failing `needs-key`; keyed presets keep the
+  needs-key failure. Pinned by the conformance suite; the contract
+  matrix's exposure assertions flip to the new reality (typesafe in the
+  tile surface, openrouter ids + override pinned, ollama decision data
+  pinned).
+
+### Changed (settings follow-up — single-source sweep, 2026-10-13)
+- **No canonical model ids as code literals:** the decision probe's
+  model id derives from the synced preset data via
+  `decision_probe_model_id()` (specs → `decision_default`, raising on a
+  preset that declares neither — never an invented `jev-latest`); the
+  revalidate probe for a model-less decision provider derives from the
+  provider's preset stamp, failing with an actionable message when
+  nothing is derivable; and the `OPENAI_STT_MODEL` env-fallback default
+  now reads the canonical `openai.stt_model` instead of a literal
+  (env still overrides). Contract matrix gains the derivation pin
+  (case 23b).
+
+### Changed (settings — closeout sweep)
+- **Ruff: the generated presets module is excluded from the formatter**
+  (`[tool.ruff.format]` exclude; the lint E501 per-file-ignore stays) —
+  the scoped family accommodation; `ruff format --check .` is now
+  green here too. Vendored gates re-synced to the dev masters: byok
+  gate **R8** (no needle/llm decision-engine code), the alignment
+  family table lists health strict, and the convergence gate's `--self`
+  roots at the vendored copy's repo with layout probing (the old
+  directory-name heuristic mis-fired "missing backend/pyproject.toml"
+  when invoked from the parent directory).
+
+### Added
+- **Decision models:** the §15 family
+  `decision` capability and its four slots land in health — stored as
+  `decision_tool_dispatch` / `decision_boolean_gate` / `decision_choice` /
+  `decision_score` task assignments (scope-aware, USER default; admins
+  SYSTEM/TENANT) with priority-ordered fallback across the scope cascade
+  and D4 slot separation enforced in both directions (decision models never
+  serve chat/OCR tasks; a decision-only provider routed at chat is a
+  rejected config error). The decide funnel (`app/ai/decide/`) resolves
+  `decision:*` slots → model → provider over the `systemone` transport
+  (`typesafe-sdk`, AI-layer confined), with per-revision resolution caching,
+  fail-open semantics and a structured audit record per invocation. Setup
+  gains the five-bind options body (`bind_decision`): decision models
+  persist from preset `decision_models`, gap-fill fills each **empty**
+  declared slot at the setup's own scope, and decision-only presets (e.g.
+  the provisional `typesafe`) validate via the decision probe — a classified
+  failure persists nothing. **PHI scope guard (D17):** `decision_*`
+  assignments are PHI-excluded by default — a PHI-adjacent dispatch runs
+  only on assignments carrying the explicit `phi_allowed` opt-in
+  (task-assignment API; gap-fill and set-default never set it). Migration
+  `d1e2c3i4s5i6` adds `ai_models.decision_transport` +
+  `ai_task_assignments.phi_allowed` (tested round-trip). Contract matrix
+  grows the decision + probe + PHI cases (23 cases). Settings UI: a
+  *Decision models* group in task assignment (library pickers,
+  capability-filtered, with the verbatim cloud privacy notice), decision
+  rows in the setup success panel, and the five-bind re-run review.
+
 ### Changed
-- **uv + pyproject packaging (plan 20 Phase 5):** `requirements*.txt` /
+- **BYOK setup UI swaps to the library kit:** the
+  byok port's tiles, guided form and re-run review now render
+  `@neuronection/assistant-ui` components (`provider-setup-tiles` with the
+  Custom tile, `provider-setup-form` with the hosting toggle + country
+  riding `advancedExtra` and §15 error-enum copy via `errorLabels`,
+  `setup-review` over the library switch row); the local `ProviderLogo.tsx`
+  and the hand-rolled review `SwitchRow` are deleted in the same commit.
+  Behavior change: with an edited base URL / hosting / country the
+  **Set up automatically** action now saves through the manual create path
+  (study semantics) instead of hiding itself — the explicit *Set up
+  manually* footer action remains. The review keeps its four-key
+  snake_case wire body (`bind_decision` arrives with the Phase 5 decision
+  port). Dep pin `^0.52.0` → `^0.54.0` (0.54.0 pending publish — verified
+  against the packed RC tarball: frontend lint + build + 722/722 tests,
+  backend 3470 passed + 1 skipped, byok R1–R7 gate green; lockfile
+  registry-pinned, publish-ready).
+
+### Added
+- **Bridge SDK releases — Kotlin 0.6.0, Python 1.4.0, TypeScript 1.4.0:** the
+  three client SDKs ship the R7 hardening wave in lockstep (versions synced
+  across `manifest.json`, each SDK's embedded constant, and the
+  `latest_sdks` advertisement). The new versions unlock: signed `/status`
+  discovery (`bridge_features` capability gating via `getStatus()`), SSE
+  streaming with HITL resume (`chatStream`/`resumeChatStream`), typed chat
+  results (`tasks`/`citations` inline in `chat()`), typed errors
+  (`BridgeException.code`), the no-auto-retry matrix for AI turn POSTs, and
+  `transcribe()` voice input.
+- **Bridge voice input (R7 WS10):** `POST /ai/transcribe` gives mobile chat
+  the PWA's speech-to-text parity — body `{data: base64, mime?}` (the
+  documents base64 pattern; `;`-parameters normalized to the bare subtype),
+  checked against the audio MIME allowlist now shared from
+  `app/ai/assistance/stt.py` (moved out of the PWA endpoint module — one
+  list, never duplicated) and capped at `AI_STT_MAX_AUDIO_BYTES`. The STT
+  target is resolved for the integration's owner through the same gateway
+  service layer the PWA endpoint uses (the one-gateway rule — no
+  provider SDK imports outside `app/ai/`). **Audio is ephemeral:** decoded
+  in memory, streamed to the tenant's STT model, and discarded — no DB
+  rows, no files, no object storage (pinned by test); the `/ai/*`
+  30-per-5-min budget and audit trail are the only ledger. The transcribed
+  text runs through the non-blocking prompt-injection guard
+  (`bridge_transcription` audit context) exactly like the PWA, and the
+  reply is `{text, success}`. Input guards are typed 400 `validation`
+  (missing/invalid base64, empty audio, disallowed mime, oversize); an
+  upstream STT failure answers 502 with the new `stt_failed` code
+  (Errors table updated). SDKs: Kotlin `transcribe(audio, mime)` and
+  TypeScript `transcribe(audio, mime)` returning `TranscriptionResult` —
+  read-only semantics (a replay just re-transcribes), so unlike the AI
+  turn POSTs they keep the standard retry policy.
+- **Bridge typed error contract (WS8):** bridge errors are now
+  programmatically distinguishable — the provider raises
+  `BridgeError(ValueError)` carrying `status_code` + a stable `code`
+  (closed vocabulary: `not_found`/404 for foreign or missing
+  session/exam/document/… rows, `turn_conflict`/409 for a held
+  single-flight turn lock, `hitl_conflict`/409 for a repeat HITL resolve,
+  `validation`/400 for malformed input/guards), and the integration API
+  proxy maps it to `HTTPException(status, detail={"code", "message"})`
+  (bare `ValueError` keeps the legacy plain-string 400 — nothing
+  regresses to 500, older clients unaffected). SDKs decode both detail
+  shapes: Kotlin `BridgeException` gained `code` plus typed
+  `NotFoundException` / `TurnConflictException` / `HitlConflictException`;
+  the TypeScript `BridgeException` gained `code` (switch on it) surfaced
+  from `request`/`requestLines`. The bridge docs gained an **Errors**
+  section (vocabulary table + envelope shapes + the closed-set rule);
+  SSE `flow_failed` guard frames are unchanged — in-stream errors stay
+  in-band. PWA endpoints untouched (they already map 404/409).
+- **Bridge SDK retry safety — AI turn POSTs are never auto-retried (R7 WS9,
+  F11):** the Kotlin `send()` layer now carries an explicit `retry` flag
+  (default true). `requestLines` (the SSE reader behind chat stream and
+  `resumeChatStream`) joins `chat()` in passing `retry = false` — no retry
+  on 429/5xx and none on network failures, so a mid-body stream failure can
+  never replay the turn into a duplicate user message + duplicate LLM call;
+  recovery is the caller starting a new turn. Reads, `/sync`, and idempotent
+  mutations keep the full-jitter retry (default unchanged — pinned by
+  tests). The retry matrix is codified in the Kotlin KDoc and the TS JSDoc
+  (the TypeScript `requestLines`/`chat` paths were already no-retry;
+  behavior unchanged), the wire docs gained a Retries note in the AI
+  section, and both SDK suites pin the request counts (503 → exactly 1
+  request for an AI turn; mid-body/fetch-reject failures → exactly 1
+  request; a retrying read still retries).
+- **Bridge HITL resume streaming (R7 WS4):** `POST /ai/sessions/{id}/resume`
+  streams the agent's continuation turn after the mobile client resolves
+  task cards — the same SSE event vocabulary as `/ai/chat/stream` (an
+  `interrupt` card can pause the flow again), body `{message_id?}` (the
+  PWA `HitlResumeRequest` semantics), ownership isolation first, the
+  shared single-flight turn lock always taken (a concurrent turn → HTTP
+  400), guard violations surfacing as terminal `flow_failed` frames with
+  `code:"guard"`, and the `/ai/*` 30-per-5-min budget applying. The
+  Kotlin SDK gained `BridgeClient.resumeChatStream(sessionId,
+  messageId?)`; the TypeScript SDK gained its SSE streaming primitive
+  `requestLines(method, path, body?)` (fetch-based line reader, no retry,
+  `BridgeException` before the first emission on non-2xx) plus
+  `chatStream(message, sessionId?)` and `resumeChatStream(sessionId,
+  messageId?)` — all covered by the `node:test` harness. The bridge's
+  SSE-turn skeleton (DB-session lifetime, lock, error frames) is shared
+  between chat-stream and resume (`_sse_turn_stream`).
+- **One-line remote install (`scripts/bootstrap.sh`):** `curl -fsSL
+  https://health-assistant.io/install.sh | bash` bootstraps a full install
+  without cloning — checks prerequisites up front (bash, curl, tar, Docker;
+  never installs system packages, never runs as root), resolves the latest
+  published release, downloads the official GitHub tarball, prints its
+  SHA-256 (optional strict pinning via `HEALTH_EXPECTED_SHA256`), extracts
+  to `~/health-assistant` (override with `HEALTH_INSTALL_DIR`/`--dir`,
+  `HEALTH_REF`/`--ref`), and hands off to `scripts/install.sh` with the
+  terminal re-attached so its interactive question works under a pipe.
+  `--dry-run` verifies everything without starting anything. The bootstrap
+  is a small readable wrapper — `install.sh` remains the source of truth.
+- **Mobile-grade SSE hardening (R7 WS7):** event-stream responses are never
+  gzipped — `GZipMiddleware` is replaced by a thin subclass that pins the
+  `text/event-stream` exclusion unconditionally (compressing streams buys
+  nothing and risks buffering bubbles through intermediaries). Every SSE
+  turn stream — the bridge's shared `_sse_turn_stream` skeleton and the
+  PWA `/ai-assistance` stream/edit/regenerate/resume endpoints — now
+  carries `Cache-Control: no-cache` + `X-Accel-Buffering: no`, and idle
+  stretches emit a `: keep-alive` comment line every 15 s from the shared
+  `sse_keep_alive` wrapper (`app/ai/assistance/turns.py`, task-race design
+  that never cancels an in-flight frame): comments are mandated-ignorable
+  per the SSE spec, so consumers filtering `data:` lines are unaffected
+  while NATs/proxies hold the connection open through long tool runs.
+- **Bridge session rename (WS6):** `PATCH /ai/sessions/{id}` renames a chat
+  session over the integration identity — body `{title}` (non-blank, ≤ 200
+  chars, mirroring the PWA `ChatSessionTitleUpdate` contract) →
+  `{id, title, updated_at}`, with the same owner+patient isolation envelope
+  as every other `/ai/*` path. Kotlin `renameSession(sessionId, title)` and
+  the TypeScript twin ship in the same commit (decode + wire tests included;
+  version bumps land in WS11).
+- **Bridge rich non-streaming chat turn (WS5):** `POST /ai/chat` now
+  returns `{message, session_id, success, message_id, tasks, citations}` —
+  the turn's persisted assistant row (id + HITL proposal cards + citations)
+  is read back on the same DB session before the response is built, so
+  mobile renders task cards immediately without a messages refetch. The
+  max-iterations path (`success: false`, no assistant row) answers
+  `message_id: null` with empty arrays. The `message` guards (non-blank,
+  8000-char cap) moved into a shared validator used by both `/ai/chat` and
+  `/ai/chat/stream`, and the chat paths resolve the integration actor once
+  per turn (was twice). `GET /ai/sessions/{id}/messages` gained `?limit=`
+  (default 200, max 500, newest-first) — unbounded reads are retired; the
+  PWA endpoint is untouched. SDKs: Kotlin `chat()` (typed `ChatTurnResult`,
+  never auto-retries — the send layer gained an internal no-retry path),
+  `getMessages(sessionId, limit?)` (typed `ChatMessage` envelope); the
+  TypeScript SDK gained the same `chat`/`getMessages` + `ChatTurnResult`
+  (the request loop gained a `retry: false` option used by `chat`) and its
+  first `node:test` harness (mocked fetch: decode, signing, no-retry pin).
+- **Bridge AI rate-limit bucket (R7 WS2):** `/ai/*` proxy paths now share
+  the web client's AI budget — 30 requests / 5 minutes per integration
+  (HTTP 429 + `Retry-After`), enforced after HMAC verification and before
+  dispatch. The existing `HA_RATELIMIT_AI` setting governs both surfaces
+  together (override the ceiling or `0` to disable); non-AI bridge paths
+  are unaffected.
+- **Bridge AI assistant paths (R7 Phase 1+2):** the mobile app
+  can chat natively through the integration identity — `GET /ai/sessions`,
+  `GET /ai/sessions/{id}/messages` (HITL `tasks` cards included),
+  `POST /ai/chat` (one non-streaming turn; creates/treads sessions, patient
+  context pinned server-side to the bound patient, 8000-char cap,
+  prompt-injection guard as in the PWA), `DELETE /ai/sessions/{id}`, and
+  `POST /ai/sessions/{id}/tasks/{proposal_id}/resolve`. The resolve logic
+  moved into the shared `app/services/hitl_resolver.py` (typed
+  not-found/conflict errors) and the `/ai-assistance` endpoint now delegates
+  to it — behavior identical (404/409/400 mappings kept).
+- **Bridge AI chat streaming (R7 Phase 2):** `POST /ai/chat/stream` returns
+  the PWA-identical SSE stream (shared vocabulary + `session`/`task`/
+  `citation`/`interrupt` payload events) through the integration proxy,
+  which now passes provider `StreamingResponse`s through untouched. The
+  chat turn single-flight lock + SSE error-frame classification moved to
+  `app/ai/assistance/turns.py` and is shared by the web endpoint and the
+  bridge, so PWA and mobile turns interlock per session. The Kotlin SDK
+  gained `BridgeClient.requestLines` (line-by-line SSE reading on a
+  dedicated no-request-timeout engine, ktor kept internal).
+- **Bridge examination SDK models (kotlin-sdk):** `ExaminationSummary` now
+  carries the enriched card fields (progress, per-section counts, timestamps)
+  and a new typed `ExaminationDetail` (+ `ExaminationObservation`,
+  `ExaminationClinicalEvent`) backs `getExamination()` — observations with
+  flattened reference ranges, doctors, medications, and health journeys, so
+  mobile exam pages no longer need a raw-JSON fallback. Decoding stays
+  forward-compatible (`ignoreUnknownKeys`, nullable fields).
+- **Bridge examination enrichment (mobile next-gen exam pages):** `GET /examinations`
+  list items now carry the card fields — `category`, `lab_name`, `diagnoses`,
+  `extraction_progress`, `observation_count`/`medication_count`/`document_count`,
+  `created_at`/`updated_at` — and `GET /examinations/{id}` returns the full
+  detail projection: `extraction_progress`, `error_message`, per-section counts,
+  timestamps, `observations[]` (value/unit, flattened `reference_range {low,
+  high}`, `interpretation`, `relative_score`, biomarker linkage), `doctors[]`,
+  `medications[]`, and `clinical_events[]` (the health journeys the visit
+  belongs to, eagerly loaded). Wire docs updated in
+  `integrations/health_assistant_bridge/docs/api-reference.md`; patient
+  isolation unchanged (cross-patient still `ValueError`).
+- **Bridge `/status` compatibility surface — server version + feature
+  flags:** the signed `GET /status` payload also carries `server_version`
+  and the closed `bridge_features` flag list (`exam_enrichment`,
+  `ai_assistant`, `ai_streaming`) so clients gate on flags instead of
+  version math — an older server simply omits them and the client
+  degrades. The vocabulary table (and the same-commit update rule) lives
+  in `integrations/health_assistant_bridge/docs/api-reference.md`.
+
+### Changed
+- **Bridge route dispatch is a declarative route table (internal).** The
+  54-branch if/elif chain in `handle_api_request`
+  (`integrations/health_assistant_bridge/provider.py`) is replaced by a
+  module-level `_ROUTES` list of `(METHOD, literal-or-regex pattern,
+  handler)` entries grouped by the existing phase sections — same handlers,
+  same wire responses, no behavior change. The served surface is frozen by
+  `backend/tests/test_bridge_route_inventory.py` (64 routes incl. every
+  parameterized path — WS4 added the HITL resume path): adding or removing
+  a route without updating the inventory fails CI. User-invisible
+  refactor.
+- **Chat turn lock is now Redis-backed** (`app/ai/assistance/turns.py`):
+  one streaming turn per chat session interlocks correctly across all
+  workers/replicas (the previous in-process set was silently per-worker),
+  every lock is TTL-bounded (900 s — a crashed or never-iterated stream
+  can no longer wedge a session until restart), release is an atomic
+  compare-and-delete so a superseded turn can never unlock a newer one,
+  and a Redis outage degrades open (turns are allowed; a lost interlock,
+  never a chat outage — the family rate-limiter precedent). Behavior from
+  the clients is unchanged: 409 on the PWA, `ValueError` on the bridge.
+- **Bridge examination reads honor soft delete + stable ordering.** Exam list
+  and detail now exclude soft-deleted examinations and soft-deleted children
+  (observations/medications/documents), so the card counts always match what
+  the section endpoints list; `_bound_examination` rejects soft-deleted exams
+  like foreign-patient ones (`ValueError`). The list also orders dateless
+  exams **last** (`nullslast`) — offline-created exams must not jump the
+  newest-first queue (Postgres DESC defaults to NULLS FIRST). The
+  `GET /examinations/{id}` detail payload is now built by spreading the list
+  projection (one source for the card fields).
+
+### Fixed
+- **PWA HITL resume now takes the per-session turn lock (R7 WS4):** the
+  `POST /ai-assistance/sessions/{id}/resume` endpoint never acquired the
+  single-flight lock, so a HITL resume could interleave with a streaming
+  turn on the same session — exactly the interleaving the lock exists to
+  prevent. It now acquires before the stream starts (409 while a turn
+  streams, like every other turn endpoint) and releases in the
+  generator's `finally`.
+- **All three bridge SDKs now sign `GET /status`** (Kotlin `getStatus`,
+  Python sync + async `get_status`, TypeScript `getStatus`) when an API
+  secret is configured, so paired clients finally receive the full
+  discovery payload — cursor, `latest_sdks`, `frontend_base_url`,
+  `server_version`, `bridge_features` — instead of the minimal
+  `{status, server_time}` probe shape (the unsigned tier stays as the
+  pre-pairing liveness probe; two-tier contract pinned by proxy tests).
+  The `BridgeStatus` models gained `server_time` (+ the new discovery
+  fields in the Python/TS SDKs), and the TS SDK gained a `node:test`
+  harness (`npm test`) covering signed/unsigned status and both payload
+  decodes.
+
+### Security
+- **Rate limiting + security headers move onto the auth-kit counter
+  (v0.4.0, re-pinned `eb3499103ce91cb52e3282c72129f72ed419f3bb`) —
+  module import only.** `app/core/rate_limit.py` keeps every dependency
+  name (`rate_limit`, `rate_limit_user`, `rate_limit_integration`,
+  `check_account_limit`) and the §16 `HA_RATELIMIT_*` semantics as thin
+  wrappers over the kit's `RateLimitPolicy.hit`; the Redis fixed-window
+  counter (verbatim `rl:*` keys), cross-process windows and the
+  **degrade-open** rule are unchanged — pinned by the existing A2/S-4
+  tests. The inline security-headers middleware in `app/main.py` is now
+  the kit's `SecurityHeadersMiddleware` with health's policy (no CSP at
+  the app layer, per-route `X-Frame-Options` overrides preserved,
+  TLS-gated HSTS); the nginx layer is untouched. New §16 ceiling tests +
+  contract marks (§18.19/20/22) on the R/H matrix rows.
+
+### Added
+- **Chat branching:** chat messages form a
+  branch tree per session — `parent_id` + per-node `active_child_id` on
+  messages, `active_root_id` on sessions (service-enforced pointers); the
+  visible conversation is the active-path walk, and legacy rows were
+  back-chained into identical linear trees by the migration. New endpoints:
+  `POST /ai-assistance/messages/{id}/edit` (edit-and-resend as a sibling
+  variant — the old subtree stays switchable), `…/regenerate` (a fresh
+  assistant sibling under the target user message — never overwrite),
+  `…/select` (level-flip one pointer, returns the re-walked path), and
+  `GET /ai-assistance/sessions/{id}/tree`; message lists carry `parent_id`,
+  `variant_index`, `variant_count`, `sibling_ids`. The chat UI wires the
+  library branching pieces: inline message editor, `‹ n/N ›` variant
+  switcher, regenerate on assistant rows, the error-tile retry as a branch,
+  and the `ChatBranchTree` rail behind the header's branch button.
+- **Per-session single-flight turn lock:** one streaming turn per chat
+  session at a time — two branches of one session never stream concurrently;
+  a concurrent turn on any branch is rejected with 409 before any row is
+  written.
+
+### Changed
+- **LangGraph threads are branch-scoped (health ruling, plan 11 §6):** a
+  turn runs on the bare session id while the conversation is un-branched
+  (legacy threads and pre-existing `ask_user` pauses keep working) and on
+  `{session_id}:{branch_tip_id}` once branched — a paused `ask_user` on one
+  branch survives turns streamed on any other, and `/resume` derives the
+  paused run's thread from the card-bearing message. A fresh turn on a
+  branch whose thread holds an abandoned pause supersedes it (the turn runs
+  clean; the visible card degrades to the fresh-continuation resume path).
+- **Checkpoint pruning covers branch threads:** the daily prune derives
+  thread ownership for both the bare and the `{session}:{tip}` forms — live
+  sessions' branch threads survive, stale sessions' and true orphans go.
+
+### Fixed
+- **Welcome message renders where the first message row sits (top-left)**
+  again: the transcript centers empty-state content by family design, which
+  suited career's chip-style empty states but pulled health's welcome
+  bubble to mid-screen; the slot content now stretches and pins to the
+  conversation start.
+- **New Chat reliably starts a fresh chat:** clicking New Chat (toolbar,
+  drawer header, or the session-list action) could momentarily resurrect the
+  conversation it just left — the reset navigates via a router transition
+  that lands after the local state commit, and a churning session-load
+  callback plus the still-set store pointer reloaded the abandoned session
+  in that window. The reset now clears the shared session pointer
+  atomically with the click, and the session loader keeps a stable identity
+  so navigation no longer re-fires the session effects.
+- **Chat turns no longer crash on block-list model content:** providers and
+  OpenAI-compatible gateways that stream Anthropic-style content blocks
+  (`[{"type": "text", "text": …}, …]`) crashed the graph engine's
+  `agent_step` with `TypeError: can only concatenate str (not "list") to
+  str`, killing the turn mid-stream. Both the streaming and non-streaming
+  paths now normalize message content to its visible text: text blocks
+  stream through as deltas, while `thinking`/`tool_use`/`image` blocks
+  contribute nothing (they are not part of the visible answer and never
+  reach the persisted `content.text`).
+
+### Added
+- **Session rename:** `PATCH /api/v1/ai-assistance/sessions/{id}` (title,
+  tenant-scoped, family B3 contract) so the library `ChatSessionList` rename
+  action works — foreign user/tenant sessions answer a hidden 404, and the
+  title round-trips through the session list.
+- The `/ai-assistant` page gains an always-visible session sidebar on desktop
+  (fuzzy search, date groups, rename/delete/export as Markdown) and a mobile
+  history overlay behind the existing History button; frontend chat module
+  shims `components/ui/chat.ts` + `ui/dictation.ts` (import-path +
+  exit-hatch re-exports, career parity); the `@neuronection/assistant-ui`
+  pin moves to `^0.51.0` (terminal `flow_interrupted` in the chat-core event
+  types).
+
+### Changed
+- **Chat UI now composes the library core:** the local
+  1,364-line `AIChatInterface` tree decomposed onto
+  `@neuronection/assistant-ui` pieces — `ChatPanel` (page/sidebar variants),
+  `ChatTranscript` + `ChatMessage` + `MarkdownSurface` (GFM tables, safe
+  `urlTransform` — http(s)/mailto/internal only, never `javascript:`),
+  `ChatComposer` (IME-safe, drag-drop/paste via `onAttachFiles`, library
+  dictation `useDictation`/`DictationButton`/`DictationStrip` wired to the
+  existing `/ai-assistance/transcribe` path), `ChatToolCard` for tool chips,
+  `ChatTurnStatus` (row) as the live tail (FlowStatusCard retires from chat —
+  it stays on non-chat surfaces), and the drawer is now the library
+  `ChatDrawer` (focus trap, Escape, keyboard resize) keeping the historical
+  `ai-drawer-width` storage key. HITL proposal cards, the evidence ledger,
+  the data inspector and the citations pipeline (`citation://` links,
+  `CitationButton`) stay app components rendered through library slots —
+  propose/approve/edit/reject/resume flows and the partial-continue button
+  behave exactly as before, now pinned by tests. The SSE wiring maps the
+  family event vocabulary onto the library's `useChatStream` through a
+  ~120-line transport adapter (`components/chat/chatTransport.ts`), including
+  the resumable HITL `interrupt` pause and classified error localization.
+  Deleted same-commit: `ChatHistoryOverlay`, `ChatVoiceButton`,
+  `RecordingBanner`, `useVoiceRecorder`, and the drawer's hand-rolled resize
+  internals.
+- **At-rest cipher is now the shared auth-kit implementation:** the
+  Fernet machinery behind every encrypted-at-rest value (AI provider
+  keys, MFA authenticator secrets, integration `user_config` secrets,
+  machine-generated webhook/API secrets) moved from this repo's local
+  copies (`app/core/encryption.py`, `integrations/sdk/secrets.py`) to the
+  shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit)
+  module `nx_auth.atrest`, consumed as a git-SHA-pinned workspace
+  dependency (`v0.3.2`). **Zero storage impact**: ciphertext format,
+  `_kid` key fingerprints, rotation ring, and context binding are
+  byte-identical (verified against a demo-database snapshot before/after —
+  same ciphertext, same `_kid`, same plaintext), so no data migration is
+  needed and reverting is a plain `git revert`. All env names and public
+  APIs are unchanged: `HA_DATA_KEY[_PREVIOUS]` still configure the ring,
+  `sdk.SecretCipher` / `encrypt_fields` / `decrypt_fields` / `mask_fields`
+  keep their exact shapes for integration authors, and
+  `app.core.encryption` keeps its helper surface (`encrypt_secret`,
+  `decrypt_secret`, `mask_secret`, …) as a thin adapter. Docker image
+  builds now fetch the pinned kit from `github.com` during
+  `uv sync --frozen`.
+- **Chat stream speaks one shared event vocabulary (breaking):** the
+  `/ai-assistance/stream` and `/ai-assistance/sessions/{id}/resume` SSE
+  streams now emit the shared chat-event contract plus health's payload
+  events as one JSON object per frame
+  (`data: {"event": <name>, ...}`). Core events: `flow_started`,
+  `node_started`/`node_finished`, `delta` (text), `tool_call` (§5 shape:
+  `id`/`name`/`status` running|done/`args` string/`result`),
+  `flow_finished`, `flow_failed` (`code`/`message`/`retryable` — the former
+  `{"error", "error_type"}` envelope is now this frame). Health payload
+  events: `citation` (tool name in `source`), `task` (the HITL card,
+  payload identical to the persisted `tasks` JSONB), `interrupt` (the
+  resumable ask_user pause), `session` (freshly auto-created session id).
+  Deleted outright, no compatibility: the `[TOOL_CALL_*]`/`[CITATION]`/
+  `[HITL_TASK]`/`[SESSION_ID]`-in-content sentinel protocol, the
+  `stream_loop_as_sse` re-emitter, and the `?flow_events=true` gate on both
+  endpoints (family emission is always-on). Closed event set in
+  `app/ai/flow_events.py`, pinned by a vocabulary-wall test; the frontend
+  parser (`aiAssistanceService.ts`) consumes the frames directly
+  (component-facing message shapes unchanged). `@neuronection/assistant-ui`
+  stays at `^0.50.1` (health has no server-broadcast stop, so the 0.51.0
+  `flow_interrupted` event is deliberately not adopted).
+
+### Added
+- **Boot-time warning on unknown/renamed env names (audit follow-up a):**
+  `Settings` construction now emits warning-only telemetry when an env var
+  matches a retired name (`APP_ENV` → `HA_APP_ENV`, `SECRET_KEY` → the
+  `HA_SESSION_KEY`/`HA_REFRESH_KEY`/`HA_DATA_KEY` family) or when an
+  `HA_*` name that is not a Settings field is set — the typo'd
+  `APP_ENV=production` that used to boot silently in development now says
+  so at boot, naming the correct replacement. Never refuses to boot (the
+  refusal gates stay boot guards); names only, values are never logged.
+  Tooling-owned `HA_*` names (`HA_ENV_FILE`, logging/backup/ui-capture
+  knobs) are exempt.
+
+### Changed
+- **`DATABASE_URL` → `HA_DATABASE_URL`, `UPLOAD_DIR` → `HA_UPLOAD_DIR`
+  (audit item e — the prefixed-only env doctrine):** the last two
+  unprefixed env names Health's config owns are renamed, prefixed-only —
+  no compat aliases, so a stale `DATABASE_URL`/`UPLOAD_DIR` in a `.env` or
+  compose file is now ignored (and flagged at boot by the env-name
+  telemetry above). Blast radius updated in the same commit: docker compose
+  files (dev/standalone/prod), `.env.example`, docs, scripts, and the
+  plan-23 D3 `# gate-allow:` pragmas are removed — the C2 family gate now
+  enforces the prefixed names. `POSTGRES_*`/`REDIS_*` infra container
+  names are unchanged by design.
+- **frontend(deps): assistant-ui 0.49.0 → 0.50.1 (2026-10-08):** bumped the
+  family UI library to its latest release. `InstanceModeControl` (+ subpath
+  export) is now available in the library but not yet adopted here; includes
+  a combobox accessibility fix and a direct `katex: ^0.19.0` dependency
+  aligning with this frontend's existing `katex ^0.19.0` override.
+- **Docs overhaul — accuracy, deduplication, structure (2026-10-08):** full
+  audit of the public docs against the codebase. Factual fixes: wrong env var
+  (`TRUSTED_PROXY_COUNT` → `HA_TRUSTED_PROXY_COUNT`), stale FHIR resource
+  count (19 → 20, Substance listed), handler/module counts, seed-stage table
+  (12 stages), Zustand slice list, version examples, broken anchors and
+  no-op shell commands, mobile "optional" API-secret contradiction, Android
+  API level. Deduplication: SMART/OAuth explainer now canonical in
+  FHIR_R4_FACADE (API/API_LAYERS link to it), README slimmed (quickstart →
+  INSTALL, architecture diagram → ARCHITECTURE, docs-link wall → funnel
+  links), TAXONOMY endpoint table → API reference. Structure:
+  `PROJECT_STRUCTURE.md` retired (repo layout absorbed into ARCHITECTURE —
+  the hand-maintained tree had drifted on every count);
+  `TASK_DEBUGGING.md` moved to the local workspace with its unique internals
+  (TaskLogger/redaction/log schema/monitoring thresholds) absorbed into the
+  public Task Debugging Guide; SETUP_WIZARD's developer sections, the
+  notification-source recipe, and taxonomy schema internals consolidated
+  into DEVELOPMENT.md § Contributor recipes; `CI_CD_SETUP.md` rewritten
+  (GitHub workflows first, the standalone deploy pipeline as it actually
+  runs, complete secrets table); `MOBILE_SYNC.md` now covers the full
+  two-way bridge surface (treatments/documents/events/notifications/changes
+  feed); INTEGRATIONS_SDK gained a TOC and a fixed §3.13→§3.15 numbering
+  gap; ONTOLOGY_CATALOG/TAXONOMY/CLINICAL_EVENTS de-phased and de-overlapped.
+  Gaps filled: manual (no-AI) data entry in the Getting Started Guide,
+  backup/export reachable from the install checklist, telemetry read APIs
+  documented, setup-wizard vs first-run-wizard disambiguation, SDK
+  renumber. `docs-tree.json`: "Repository Structure" page retired, setup
+  wizard retitled "Guided Onboarding (Setup Wizard)".
+- **Docs publication policy (2026-10-08):** the public tree now carries product
+  + developer documentation only; plans, decisions, project-tracking state,
+  and internal-workspace references are local-only. `DEVELOPMENT_PLAN.md`,
+  `STATUS.md`, and the public roadmap retired from the website (STATUS moved
+  to the local development workspace; README gained a marketing "Highlights"
+  section instead). `AGENTS.md` was rewritten as a public contributor guide
+  (maintainer instructions — skill routing, family library rules, toolchain —
+  live in the local agents file). Internal plan/audit/spec citations scrubbed
+  from STATUS, AI_SYSTEM, DEVELOPMENT, CI_CD_SETUP, UI_CAPTURE_PIPELINE,
+  PROJECT_STRUCTURE, README, API, INSTALL, SEEDING_AND_DEMOS, SETUP_WIZARD,
+  STATE_BIOMARKERS, ARCHITECTURE, FHIR_R4_FACADE. New gate
+  `backend/tests/test_docs_publication_policy.py` bans internal-workspace
+  references from public surfaces (docs/, README, AGENTS, and the unreleased
+  CHANGELOG slice) and pins docs-tree structure.
+- **`docs/RELEASE_PROCESS.md` moved out of the public repo:** the release
+  manual (version_manager flows, RC promotion, remote cadence, push policy)
+  is internal process documentation — it now lives in the local development
+  workspace (not published). `version_manager.toml`
+  `[release] docs` no longer stages it; README/docs cross-links updated.
+  Public contributors: the changelog rule and push policy remain summarized
+  in `docs/DEVELOPMENT.md` § "Project Versioning".
+- **uv + pyproject packaging:** `requirements*.txt` /
   `pytest.ini` / `generate-requirements.sh` are gone — workspace
   `pyproject.toml` + `uv.lock` (version regex from `config.py`), `dev`
   dependency group, `local-ai` extra (scispacy excluded with the
@@ -23,7 +944,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `APP_ENV` reference (prefixed-only, family gate C2).
 
 ### Fixed
-- **Docker images (plan 20 Phase 7 boot smoke):** the consolidated
+- **Explicit `proxy_http_version 1.1` for WebSocket upgrades in both nginx
+  flavors:** the `/api/` gateway blocks had the Upgrade/Connection headers
+  but relied on nginx's implicit HTTP/1.1-on-upgrade behavior (the `/flower/`
+  blocks already set it). Current nginx speaks 1.1 upstream automatically —
+  verified end-to-end with a live WS handshake through a byte-identical
+  block — but the implicit path is version-dependent; the flag is now
+  explicit per nginx's documented WS recipe, so older pinned images keep
+  `/api/v1/ws/*` (notifications, task monitor) working.
+- **`NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS` is now a real setting:** the
+  operator checklist documented this knob but the Settings field never
+  existed, so setting it silently did nothing (the service fell back to the
+  6-hour default). Field added to config with the documented default and
+  clamping behavior covered by tests. The export manifest note for
+  patient-scope telemetry also no longer claims telemetry lacks a
+  `patient_id` column (it has one; the exclusion is because rows are
+  tenant-scoped).
+- **Docker images shipped without `backend/data` (wizard demographics empty):**
+  the runtime COPY allowlist omitted `backend/data`, so production containers
+  had no seed JSONs — `GET /setup/extension-catalog` returned empty options
+  (startup wizard's race / ethnicity / preferred-language dropdowns rendered
+  blank; the OMB picklist is read from disk at request time) and every
+  `seed_all()` startup stage warned "seed file not found" while seeding
+  nothing. Both backend images now COPY `backend/data`; on the next deploy
+  the idempotent seed stages populate the clinical catalogs. Guarded by
+  `tests/test_docker_packaging.py`.
+- **Docker images (boot smoke):** the consolidated
   multi-source COPY flattened `alembic/` so migrations could never run
   in-image (explicit COPY lines now); the default upload root
   (`/var/healthassistant/uploads`) was never created for the non-root
@@ -40,12 +986,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instance.
 
 ### Changed
-- **Family datastore naming amended (ADR-0022 revision): `neuro_` →
+- **Family datastore naming amended: `neuro_` →
   `neuronection_` prefix.** The truncated prefix read as meaningless to
   users; the pattern shape is unchanged — health's database is now
   `neuronection_health` (+ `neuronection_health_test` /
   `neuronection_health_demo`) with roles `neuronection_health_owner` /
-  `neuronection_health_app`. Family law (ADR-0022 clause 5 +
+  `neuronection_health_app`. The family naming law (clause 5 +
   `guidelines/deployment.md` in the family repo) was amended first; health
   adopts it here — compose defaults, `init-roles.sh`, backup/restore and
   reset scripts, CI test databases (also dragged out of the ancient
@@ -81,7 +1027,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker/README.md` → "Compose project name & volumes". Container names,
   services and ports are unchanged; running stacks stay untouched until
   their next `up`.
-- **Shared country/language catalogs adopted (family ADR-0024):** the
+- **Shared country/language catalogs adopted:** the
   112-entry local `frontend/src/utils/countryUtils.ts` copy is deleted —
   provider country pickers (`ProviderManager`, `ProviderSetupModal`) and
   the AI-provider flag badge now import the full ISO 3166-1 alpha-2
@@ -96,14 +1042,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Backend: `company_country` on the AI provider schemas is now validated
   as `^[A-Z]{2}$` (create/update/responses) — free-text country names
   are rejected at the API boundary.
-- **OMB seed language membership test (ADR-0024 §3.4):** the family
+- **OMB seed language membership test:** the family
   language catalog ships as `backend/data/catalogs/languages.json`
   (synced-data channel); a new test asserts every seed language code in
   `data/seeds/omb_race_ethnicity.json` (the curated
   `preferred_language` picklist) resolves in that catalog.
 
 ### Added
-- **SECURITY.md — §20 threat model filled (plan 16 H8):** all
+- **SECURITY.md — §20 threat model filled:** all
   nine surfaces answered concretely (auth surface with rate-limit
   numbers, DB-authoritative instance state, §10 cookie/CSRF/revocation
   semantics, trust boundaries incl. the codified machine/device class —
@@ -114,8 +1060,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what the code does not do (init-only instance modes, per-endpoint
   auth without a route-scan guard, list-reads unaudited, no self-serve
   password change/reset, bridge doc drift on 'UUID-only' mode).
-- **TOTP two-factor authentication (family plan 16 H5, identity-auth
-  §5.14/§20 kit extension, implemented health-direct per §5.10):**
+- **TOTP two-factor authentication (the shared identity
+  kit's MFA extension, implemented health-direct):**
   optional per-account MFA, admin-forceable (promoted for institute
   use). RFC 6238 TOTP (SHA1, 6 digits, 30 s step, ±1 drift window) with
   the standard `otpauth://` provisioning URI + QR rendered in the
@@ -150,8 +1096,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and §9 Bearer clients (Android, OAuth facade) are unaffected; the
   bridge is untouched. `/auth/mfa/*` joins the CSRF-exempt bootstrap
   prefixes (pre-session, like login).
-- **Demo hygiene: full §13 verifier sweep + seeder guard rails (family
-  plan 16 H7, identity-auth §13 — closes the S-7 residual):** every
+- **Demo hygiene: full verifier sweep + seeder guard rails (closes
+  the demo-residual):** every
   session-class surface now rejects `auth_mode="demo"` tokens unless the
   live DB fact `instance_settings.demo_mode` is true. `POST /auth/refresh`
   re-checks the fact on **every rotation** — a demo refresh family minted
@@ -168,7 +1114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gated via `authenticate_session_token` (H1) — H7 adds regression
   tests for each (§18.11-style), plus env-flip immunity and fail-closed
   unset-state tests for `demo_mode`.
-- **Demo seeder §13 refusal matrix (plan 16 H7):** `scripts/seed_demo.py`
+- **Demo seeder refusal matrix:** `scripts/seed_demo.py`
   now refuses — loudly, exit code 2, before writing anything — any target
   that is not a provable demo: a PostgreSQL database not named `*_demo`
   (deployment.md: `neuro_health_demo`), an instance whose
@@ -184,8 +1130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HA_DEMO_MODE=true` set on first boot (e.g. a scratch
   `health_capture_demo`), or reuse the demo compose — seeding a plain
   dev database is refused by design (docs/SEEDING_AND_DEMOS.md §8).
-- **Cookie sessions for browsers + CSRF + WS Origin gate (family plan 16
-  H3, identity-auth §10):** browsers now authenticate with the §10 cookie
+- **Cookie sessions for browsers + CSRF + WS Origin gate (the
+  shared cookie-session model):** browsers now authenticate with the cookie
   triple — `nx_access` (HttpOnly, SameSite=Lax, Secure, Path=/`;
   `__Host-nx_access` when `HA_COOKIE_SECURE=true`), `nx_refresh`
   (HttpOnly, Path=/api/v1/auth) and the JS-readable `nx_csrf` — set by
@@ -210,7 +1156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Android/integrations HMAC bridge is behaviorally frozen — untouched.
   New knobs: `HA_COOKIE_SECURE` (default false), `HA_COOKIE_SAMESITE`
   (default lax), `HA_WS_ALLOWED_ORIGINS`.
-- **Frontend off localStorage tokens (plan 16 H3):** the SPA no longer
+- **Frontend off localStorage tokens:** the SPA no longer
   stores `accessToken` / `refreshToken` / tenant-switch originals in
   localStorage (a boot-time purge sweeps legacy keys) — the axios client
   rides the cookie session (`withCredentials`), echoes `nx_csrf` on
@@ -222,7 +1168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subprotocol token); logout now calls `POST /auth/logout` so the
   HttpOnly cookies are actually revoked; the demo auto-login flow is
   cookie-based.
-- **Ops hardening (family plan 16 H6, deployment.md):** compose stacks
+- **Ops hardening:** compose stacks
   move to `timescale/timescaledb:latest-pg16` (TimescaleDB 2.30.1
   verified on-image; the extension is optional via init-db.sql) with
   the naming law (`neuro_health` default DB, `neuro_health_test`
@@ -232,7 +1178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   standalone + prod, Flower basic-auth on every flavor, host-side
   `scripts/backup.sh`/`restore.sh`, and a live-run restore drill +
   sizing/exposure guidance in docker/README.md.
-- **Audit stream (family plan 16 H2, identity-auth §17 — the
+- **Audit stream (the
   small-institute must be able to answer "who touched what"):** the
   audit trail now records **record reads** (sensitive clinical GETs —
   observation/patient/examination/document/medication/allergy/
@@ -258,8 +1204,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `task_logs`, `integration_sync_logs`) are unchanged.
 
 ### Changed
-- **Key separation for health-assistant (family plan 16 H4, identity-auth
-  §8): the per-purpose key ring replaces the single all-purpose
+- **Key separation for health-assistant: the per-purpose key ring
+  replaces the single all-purpose
   `SECRET`.** Three independent per-instance secrets (each 32+ random
   bytes, none derived from another, no value serving two purposes):
   `HA_SESSION_KEY` signs session JWTs **and the session-family product
@@ -303,14 +1249,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `INTEGRATION_SECRET_KEY` fallback), `docs/INSTALL.md` security
   checklist + key-separation note, `docs/CI_CD_SETUP.md` secret table.
 - **`audit_logs` → `audit_events` (model `AuditLog` → `AuditEvent`) +
-  normative `outcome` column** (identity-auth §5/§17; migration
+  normative `outcome` column** (migration
   `a1u2d3i4t5e6` on top of `h1c2o3n4t5r6` — destructive-OK per H1
   policy, existing rows kept). `outcome` is `TEXT(20) NOT NULL
   DEFAULT 'ok'` (`ok` / `denied` / `error`), indexed; the §5-allowed
   product columns (`old_value`/`new_value` diffs) are unchanged.
-- **Identity contract alignment (family plan 16 H1, ADR-0013 — token/
+- **Identity contract alignment (token/
   claim/dependency surface, no behavior change to the Class S
-  extensions):** JWT claims per identity-auth §8 — `sub` is now the
+  extensions):** JWT claims — `sub` is now the
   **user id** (was the email), `iss` on every kind, a uniform
   `token_kind` (session/refresh/api/invite/download — the old
   `type="refresh"` and `sub`-sentinel discriminators are gone),
@@ -341,7 +1287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test); now reads the `email` claim.
 
 ### Changed
-- **frontend(auth): adopt the shared assistant-ui `AuthGate` (plan 16 Phase 5 closeout)** — the
+- **frontend(auth): adopt the shared assistant-ui `AuthGate`** — the
   `checking → authenticated | anonymous` session machine moves to the library (`@neuronection/assistant-ui/auth-gate`,
   consumed via the documented tarball flow, no manifest change); health composes `SessionGate` over it and
   deletes the local `useProtectedRoute` gate and the anonymous route set in the same change. The login node
@@ -351,6 +1297,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nx:unauthenticated` → `resetKey`; sign-in (password, MFA, demo, setup) bumps the gate and re-boots.
   Backend, bridge, MFA endpoints, demo seeders and setup API untouched. Gates: lint 0 errors · tsc clean ·
   673 tests (88 files, +5 gate tests) · build green.
+
+### Security
+- **Frontend dependency audit brought to zero moderate+ findings:** `dompurify`
+  3.4.15 → 3.4.16 (production sanitizer — GHSA-p98j-92pf-mc4p /
+  GHSA-6688-9rhm-gjv2, DOM-XSS via the `IN_PLACE` sanitize hooks; this app's
+  `sanitizeHtml`/`sanitizeSvg` use standard mode, patched regardless), plus
+  dev-chain DoS bumps `brace-expansion` (1.1.21 / 2.1.7), `source-map-js`
+  1.2.2, `fast-uri` 3.1.8, and a scoped `overrides` pin of
+  `postcss-selector-parser` ^7.1.6 under `@tailwindcss/typography`
+  (GHSA-rj75-hqrm-r3gf — upstream 0.5.20 still declares 6.0.10; build +
+  lint verified green with 7.1.6). A `katex` ^0.19.0 override closes the
+  low-severity math-rendering chain behind `@neuronection/assistant-ui`
+  (GHSA-238p-pmpm-9mq7 — rehype-katex/mermaid/micromark-extension-math
+  all still declare ^0.16, so no upstream release fixes consumers; the
+  override dedupes the whole tree to 0.19.0 — the fixed line; 0.18.11 is
+  a deprecated accidental breaking release). Frontend audit now reports
+  **zero** vulnerabilities; build + 673 tests + lint green.
 
 ## [v0.8.0] - 2026-09-20
 

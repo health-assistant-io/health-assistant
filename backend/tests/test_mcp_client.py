@@ -14,13 +14,14 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from integrations.mcp_client.security import (
+
+from app.extensions.builtin.mcp_client.security import (
     build_ssl_context,
     get_allowed_commands,
     validate_http_url,
     validate_stdio_command,
 )
-from integrations.mcp_client.tool_adapter import (
+from app.extensions.builtin.mcp_client.tool_adapter import (
     MAX_DESCRIPTION_LEN,
     _extract_text_result,
     filter_and_adapt_tools,
@@ -29,7 +30,7 @@ from integrations.mcp_client.tool_adapter import (
 )
 
 # These imports don't require fastmcp and don't touch the DB.
-from integrations.sdk.secrets import (
+from app.extensions.sdk.secrets import (
     SecretCipher,
     decrypt_fields,
     encrypt_fields,
@@ -115,6 +116,30 @@ class TestHttpUrlValidation:
 
     def test_empty_rejected(self):
         assert not validate_http_url("")[0]
+
+    def test_guard_failure_fails_closed(self, monkeypatch):
+        """F20: an unexpected guard error is a typed rejection, never `pass`."""
+        from app.extensions import polite_http
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("guard backend exploded")
+
+        monkeypatch.setattr(polite_http, "check_url", _boom)
+        ok, reason = validate_http_url("https://example.com/mcp")
+        assert not ok
+        assert "could not be validated" in reason.lower()
+
+    def test_net_guard_config_failure_fails_closed(self, monkeypatch):
+        """F20: failure while building the guard config is also a rejection."""
+        from app.extensions.runtime import http as runtime_http
+
+        def _boom(*_a, **_kw):
+            raise RuntimeError("settings unavailable")
+
+        monkeypatch.setattr(runtime_http, "net_guard_config", _boom)
+        ok, reason = validate_http_url("https://example.com/mcp")
+        assert not ok
+        assert "could not be validated" in reason.lower()
 
 
 class TestAllowedCommands:
@@ -222,13 +247,13 @@ class TestConfigFlowSdkHooks:
     """Verify the MCP config flow declares capabilities via SDK hooks."""
 
     def test_get_secret_fields(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         assert set(cf.get_secret_fields()) == {"env", "headers", "auth_token"}
 
     def test_max_instances_per_user_from_settings(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         assert cf.max_instances_per_user == 5  # MCP_MAX_SERVERS_PER_USER default
@@ -236,7 +261,7 @@ class TestConfigFlowSdkHooks:
     def test_prepare_for_storage_encrypts_secrets(self):
         import asyncio
 
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         enc = asyncio.run(
@@ -253,7 +278,7 @@ class TestConfigFlowSdkHooks:
         assert enc["url"] == "https://x.com"
 
     def test_prepare_for_read_masks_secrets(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = cf.prepare_for_read({"env": {"K": "V"}, "auth_token": "tok", "url": "u"})
@@ -263,7 +288,7 @@ class TestConfigFlowSdkHooks:
 
     def test_default_config_flow_has_no_secrets_and_no_cap(self):
         """Existing integrations (dev_dummy, webhook, etc.) are unaffected."""
-        from integrations.sdk import BaseConfigFlow
+        from app.extensions.sdk import BaseConfigFlow
 
         class DummyCF(BaseConfigFlow):
             domain = "dummy"
@@ -358,7 +383,7 @@ class TestExtractResult:
 class TestDescriptionTruncation:
     def test_long_description_truncated_in_adapter(self):
         pytest.importorskip("fastmcp")
-        from integrations.mcp_client.tool_adapter import adapt_tool
+        from app.extensions.builtin.mcp_client.tool_adapter import adapt_tool
 
         long_desc = "x" * (MAX_DESCRIPTION_LEN + 100)
         mcp_tool = MagicMock()
@@ -389,7 +414,8 @@ class TestAdapterEndToEnd:
     def test_discover_and_call(self):
         pytest.importorskip("fastmcp")
         from fastmcp import Client, FastMCP
-        from integrations.mcp_client.connection_manager import (
+
+        from app.extensions.builtin.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
         )
@@ -443,7 +469,8 @@ class TestAdapterEndToEnd:
     def test_disabled_tools_filtered(self):
         pytest.importorskip("fastmcp")
         from fastmcp import Client, FastMCP
-        from integrations.mcp_client.connection_manager import (
+
+        from app.extensions.builtin.mcp_client.connection_manager import (
             _Connection,
             mcp_connection_manager,
         )
@@ -500,12 +527,16 @@ class TestAggregator:
         integration.user_config = config or {}
         return integration
 
-    def _patch_registry(self, monkeypatch, providers):
-        """providers: dict {domain: provider_mock}."""
-        from app.core import integration_registry as reg_mod
+    def _patch_registry(self, monkeypatch, providers, tool_domains=("mcp_client",)):
+        """providers: dict {domain: provider_mock}; tool_domains are the
+        domains whose manifests declare chat-tools (declaration gate)."""
+        from app.extensions import registry as reg_mod
 
         fake_registry = MagicMock()
         fake_registry.get_provider.side_effect = lambda d: providers.get(d)
+        fake_registry.has_capability.side_effect = lambda domain, cap: (
+            cap == "chat-tools" and domain in tool_domains
+        )
         monkeypatch.setattr(reg_mod, "integration_registry", fake_registry)
         # Also patch the aggregator's own import site.
         from app.ai.tools import aggregator as agg_mod
@@ -547,8 +578,7 @@ class TestAggregator:
 
         mcp_provider.get_tools = fake_get_tools
 
-        webhook_provider = MagicMock()
-        webhook_provider.supports_tools.return_value = False  # not a tool provider
+        webhook_provider = MagicMock()  # webhook declares no chat-tools (manifest)
 
         self._patch_registry(
             monkeypatch,
@@ -562,8 +592,8 @@ class TestAggregator:
             integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
         )
         assert len(out) == 1
-        # webhook was skipped (supports_tools False), mcp was picked up
-        webhook_provider.supports_tools.assert_called_once()
+        # webhook was skipped (declares no chat-tools), mcp was picked up
+        assert all(t.name == "mcp__mcp__tool" for t in out)
 
     def test_skips_failing_instance(self, monkeypatch):
         from app.ai.tools import aggregator as integration_tool_aggregator
@@ -630,7 +660,7 @@ class TestAggregator:
         assert len(out) == 1  # capped at 1
 
     def test_domain_agnostic_picks_up_hypothetical_integration(self, monkeypatch):
-        """A non-MCP integration that implements supports_tools is picked up."""
+        """A non-MCP integration that declares chat-tools is picked up."""
         from app.ai.tools import aggregator as integration_tool_aggregator
 
         # Hypothetical future 'web_search' integration
@@ -642,7 +672,6 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         ws_provider = MagicMock()
-        ws_provider.supports_tools.return_value = True
 
         async def fake_get_tools(integration):
             t = MagicMock()
@@ -651,7 +680,7 @@ class TestAggregator:
 
         ws_provider.get_tools = fake_get_tools
 
-        self._patch_registry(monkeypatch, {"web_search": ws_provider})
+        self._patch_registry(monkeypatch, {"web_search": ws_provider}, tool_domains=("web_search",))
 
         out = asyncio.run(
             integration_tool_aggregator.aggregate(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
@@ -665,7 +694,7 @@ class TestAggregator:
 
 class TestConfigFlow:
     def test_validates_http_url(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
@@ -680,7 +709,7 @@ class TestConfigFlow:
         assert out["transport"] == "http"
 
     def test_rejects_insecure_http(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -695,7 +724,7 @@ class TestConfigFlow:
             )
 
     def test_validates_stdio_command(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         out = asyncio.run(
@@ -711,7 +740,7 @@ class TestConfigFlow:
         assert out["command"] == "npx"
 
     def test_rejects_disallowed_stdio(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -727,7 +756,7 @@ class TestConfigFlow:
             )
 
     def test_rejects_missing_instance_name(self):
-        from integrations.mcp_client.config_flow import McpClientConfigFlow
+        from app.extensions.builtin.mcp_client.config_flow import McpClientConfigFlow
 
         cf = McpClientConfigFlow()
         with pytest.raises(ValueError):
@@ -739,21 +768,26 @@ class TestConfigFlow:
 
 class TestProvider:
     def test_pull_data_noop(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         out = asyncio.run(provider.pull_data(MagicMock()))
         assert out == []
 
-    def test_supports_tools_true(self):
-        from integrations.mcp_client.provider import McpClientProvider
+    def test_chat_tools_declared(self):
+        """The chat-tools surface is manifest-declared (D18): the provider
+        hook is gone, the aggregator reads the registry."""
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
+        from app.extensions.registry import IntegrationRegistry
 
-        provider = McpClientProvider()
-        assert provider.supports_tools() is True
+        assert not hasattr(McpClientProvider, "supports_tools")
+        reg = IntegrationRegistry()
+        reg._load_manifests()
+        assert reg.has_capability("mcp_client", "chat-tools")
 
     def test_get_tools_returns_empty_on_failure(self):
         """get_tools swallows errors and returns [] (SDK contract)."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
@@ -761,7 +795,7 @@ class TestProvider:
         integration.instance_name = "Bad"
 
         # Patch the connection manager to raise.
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -779,14 +813,14 @@ class TestProvider:
 
     def test_list_tools_action_returns_structured_results(self):
         """The list_tools custom action returns display blocks, not just a message."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
         integration.id = uuid.uuid4()
         integration.instance_name = "TestServer"
 
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -819,14 +853,14 @@ class TestProvider:
 
     def test_test_connection_action_returns_kv_block(self):
         """The test_connection custom action returns a kv block with status."""
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         integration = MagicMock()
         integration.id = uuid.uuid4()
         integration.instance_name = "TestServer"
 
-        import integrations.mcp_client.connection_manager as cm_mod
+        import app.extensions.builtin.mcp_client.connection_manager as cm_mod
 
         original = cm_mod.mcp_connection_manager
         fake_cm = MagicMock()
@@ -846,7 +880,7 @@ class TestProvider:
             cm_mod.mcp_connection_manager = original
 
     def test_custom_actions(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         actions = provider.get_custom_actions()
@@ -854,7 +888,7 @@ class TestProvider:
         assert ids == {"test_connection", "list_tools", "restart_connection"}
 
     def test_api_proxy_refuses_tool_invocation(self):
-        from integrations.mcp_client.provider import McpClientProvider
+        from app.extensions.builtin.mcp_client.provider import McpClientProvider
 
         provider = McpClientProvider()
         # Only GET /status is allowed.
@@ -870,7 +904,7 @@ class TestDisplayBlocks:
     """Verify the SDK display block builders (integrations/sdk/display.py)."""
 
     def test_kv_block(self):
-        from integrations.sdk import kv_block
+        from app.extensions.sdk import kv_block
 
         b = kv_block("Conn", {"Status": "Connected", "Tools": 3})
         assert b["type"] == "kv"
@@ -878,14 +912,14 @@ class TestDisplayBlocks:
         assert b["items"] == {"Status": "Connected", "Tools": 3}
 
     def test_list_block(self):
-        from integrations.sdk import list_block
+        from app.extensions.sdk import list_block
 
         b = list_block("Tools", ["echo", "add"])
         assert b["type"] == "list"
         assert b["items"] == ["echo", "add"]
 
     def test_table_block(self):
-        from integrations.sdk import table_block
+        from app.extensions.sdk import table_block
 
         b = table_block("T", ["Name", "Desc"], [["echo", "Echos"], ["add", "Adds"]])
         assert b["type"] == "table"
@@ -893,48 +927,48 @@ class TestDisplayBlocks:
         assert b["rows"] == [["echo", "Echos"], ["add", "Adds"]]
 
     def test_json_block(self):
-        from integrations.sdk import json_block
+        from app.extensions.sdk import json_block
 
         b = json_block("Raw", {"k": "v"})
         assert b["type"] == "json"
         assert b["data"] == {"k": "v"}
 
     def test_text_block(self):
-        from integrations.sdk import text_block
+        from app.extensions.sdk import text_block
 
         b = text_block("Note", "hello world")
         assert b["type"] == "text"
         assert b["content"] == "hello world"
 
     def test_code_block_with_language(self):
-        from integrations.sdk import code_block
+        from app.extensions.sdk import code_block
 
         b = code_block("Cmd", "curl x", "bash")
         assert b["type"] == "code"
         assert b["language"] == "bash"
 
     def test_code_block_without_language(self):
-        from integrations.sdk import code_block
+        from app.extensions.sdk import code_block
 
         b = code_block("Cmd", "curl x")
         assert "language" not in b
 
     def test_action_result_with_message_and_results(self):
-        from integrations.sdk import action_result, list_block
+        from app.extensions.sdk import action_result, list_block
 
         r = action_result("Discovered 2 tools", [list_block("Tools", ["a", "b"])])
         assert r["message"] == "Discovered 2 tools"
         assert len(r["results"]) == 1
 
     def test_action_result_message_only(self):
-        from integrations.sdk import action_result
+        from app.extensions.sdk import action_result
 
         r = action_result("just a toast")
         assert r == {"message": "just a toast"}
         assert "results" not in r
 
     def test_action_result_extra_fields(self):
-        from integrations.sdk import action_result, list_block
+        from app.extensions.sdk import action_result, list_block
 
         r = action_result("msg", [list_block("T", ["x"])], tools=["x"])
         assert r["tools"] == ["x"]  # backwards-compat extra field

@@ -12,7 +12,7 @@ from app.core.config import settings
 
 
 def _index_exists(table: str, index_name: str) -> bool:
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -51,7 +51,7 @@ def test_observation_subject_ref_index_is_used_by_planner():
     result — if the index were missing the plan would still be a Seq Scan and
     the test would still fail; it merely removes the row-count dependency.
     """
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

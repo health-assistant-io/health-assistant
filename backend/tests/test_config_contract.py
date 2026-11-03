@@ -61,10 +61,14 @@ READ_ELSEWHERE = {
 
 # (b) env names set by tests specifically to prove they are IGNORED (the
 # "assert old names are inert" class) — behaviorally pinned by
-# test_key_separation.test_legacy_env_names_are_gone.
+# test_key_separation.test_legacy_env_names_are_gone. HA_FOO_BAR is the
+# deliberate unknown-name probe of the env-name telemetry
+# (test_config_env_name_warnings): set to prove the warning fires, never
+# read by the app.
 UNREAD_BY_DESIGN = (
     "INTEGRATION_SECRET_KEY",
     "INTEGRATION_SECRET_KEY_PREVIOUS",
+    "HA_FOO_BAR",
 )
 
 # (b) names written through patch.dict("os.environ", {...}) blocks (the

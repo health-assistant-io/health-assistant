@@ -42,6 +42,12 @@ class ProviderType(enum.StrEnum):
     TESSERACT = "tesseract"
     SPACY = "spacy"
 
+    # --- Decision-only providers (ADR-0032 / D13: wire ``systemone``) ---
+    #: Serves ``decision_*`` task slots only, through the decide funnel —
+    #: never yields a ``BaseChatModel``; routing it at chat is a config
+    #: error the resolver rejects.
+    DECISION = "decision"
+
     @classmethod
     def from_string(cls, value: str | None) -> ProviderType | None:
         """Tolerant lookup used by the registry/resolution path.
@@ -61,9 +67,9 @@ class ProviderType(enum.StrEnum):
     def is_llm_capable(cls, value: str | None) -> bool:
         """True if ``value`` maps to a provider that yields a ``BaseChatModel``.
 
-        Processor-only backends (``tesseract``, ``spacy``) return False — they
-        are dispatched through the OCR/NLP processor factories, not the LLM
-        registry.
+        Processor-only backends (``tesseract``, ``spacy``) and decision-only
+        providers (``decision``) return False — they are dispatched through
+        the OCR/NLP factories or the decide funnel, not the LLM registry.
         """
         pt = cls.from_string(value)
         return pt in {
@@ -74,6 +80,39 @@ class ProviderType(enum.StrEnum):
             cls.BEDROCK,
             cls.MOCK,
         }
+
+
+class DecisionCapability(enum.StrEnum):
+    """The sparse decision-capability matrix a transport declares (D2b).
+
+    Family slots are health task types (``decision_tool_dispatch`` &c.); a
+    decision point requests ONE capability and the resolver routes to a
+    transport that declares it. ``OPEN_ARGS`` is vocabulary-only — reserved,
+    never assignable until a transport declares it.
+    """
+
+    TOOL_DISPATCH = "tool-dispatch"
+    BOOLEAN_GATE = "boolean-gate"
+    CHOICE = "choice"
+    SCORE = "score"
+    OPEN_ARGS = "open-args"
+
+
+class DecisionTransport(enum.StrEnum):
+    """Decision transports (ADR-0032: transports replace engines)."""
+
+    SYSTEMONE = "systemone"
+
+
+class SystemOneErrorKind(enum.StrEnum):
+    """Typed transport error kinds mapped off the TypeSafe SDK exceptions."""
+
+    AUTH = "auth"
+    RATE_LIMIT = "rate-limit"
+    OVERLOADED = "overloaded"
+    VALIDATION = "validation"
+    TIMEOUT = "timeout"
+    UNAVAILABLE = "unavailable"
 
 
 class TaskType(enum.StrEnum):
@@ -100,6 +139,25 @@ class TaskType(enum.StrEnum):
     GENERATE_CATEGORY_ICON = "generate_category_icon"
     CHAT = "chat"
     TRANSCRIPTION = "transcription"
+    #: Embedding vectors (§15 family ``embeddings`` capability) — the embed
+    #: slot the setup gap-fill binds the preset's docs-verified default into.
+    EMBED = "embed"
+
+    # --- Decision slots (plan 26 / ADR-0032; D17: PHI scope guard applies) ---
+    #: Health's storage of the family ``decision:<cap>`` slots (§3 contract
+    #: table); fallback = ``priority`` ordering across the scope cascade.
+    #: Resolution NEVER falls back to ``default`` (D4 slot separation).
+    DECISION_TOOL_DISPATCH = "decision_tool_dispatch"
+    DECISION_BOOLEAN_GATE = "decision_boolean_gate"
+    DECISION_CHOICE = "decision_choice"
+    DECISION_SCORE = "decision_score"
+
+    # --- Decision default (ADR-0036 §1; D17 PHI scope guard applies) ---
+    #: The ``decision`` default slot joins the vocabulary beside the kind
+    #: overrides: resolution order is kind override → decision default →
+    #: unavailable — never a hop onto ``default`` (D4 slot separation).
+    #: Single-slot per ADR-0037 (no fallback of its own).
+    DECISION = "decision"
 
     @classmethod
     def all_values(cls) -> list[str]:
@@ -119,3 +177,23 @@ class TaskType(enum.StrEnum):
             return cls(value)
         except ValueError:
             return None
+
+    @classmethod
+    def is_decision_default(cls, value: str | None) -> bool:
+        """True for the ``decision`` default slot (ADR-0036)."""
+        return value == cls.DECISION.value
+
+    @classmethod
+    def is_decision(cls, value: str | None) -> bool:
+        """True for the four ``decision_*`` slots (plan 26 / ADR-0032).
+
+        Decision slots live in the same table as every other assignment but
+        obey D4 slot separation: they resolve only decision-capable models
+        and never fall back to the ``default`` task.
+        """
+        return value in (
+            cls.DECISION_TOOL_DISPATCH.value,
+            cls.DECISION_BOOLEAN_GATE.value,
+            cls.DECISION_CHOICE.value,
+            cls.DECISION_SCORE.value,
+        )

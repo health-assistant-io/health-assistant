@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neuronection.dev/contracts/extension-sources.schema.json",
+  "title": "Extension source descriptor — git-native import (D13/D22)",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 512,
+      "pattern": "^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9](:[0-9]{1,5})?(/[A-Za-z0-9._~!$&'()*+,;=:%/-]*)?$",
+      "$comment": "https-only git URL. The pattern is an ALLOWLIST (host + path classes): userinfo credentials ('@'), whitespace, backslashes and non-https transports are all structurally inexpressible rather than filtered — ssh:// and file:// are refused at this seam: the family distribution surface is https git URLs (D13)."
+    },
+    "ref": {
+      "$ref": "#/$defs/refStrategy"
+    },
+    "subpath": {
+      "$ref": "#/$defs/subpath"
+    },
+    "credentials": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "properties": {
+          "slot": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$",
+            "$comment": "Secret-slot REFERENCE resolved by the host in its settings-map-declared secret store (private-repo credentials). There is no field anywhere in this schema that can hold a token VALUE — inline secrets are structurally invalid, not merely discouraged (D22)."
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": ["slot"],
+        "additionalProperties": false
+      }
+    },
+    "pin": {
+      "$ref": "#/$defs/pinRecord",
+      "$comment": "Recorded at install: the exact ref fetched + sha256 over the discovered content. Installs are digest-pinned; updates are ref-move + digest-change + manifest-diff (D15)."
+    },
+    "notes": {
+      "$ref": "#/$defs/notes"
+    }
+  },
+  "required": ["url", "ref"],
+  "additionalProperties": false,
+  "$defs": {
+    "subpath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$",
+      "$comment": "Directory inside the repo containing the extension manifest(s). No leading '/', no '..' segments (each segment starts alnum), no trailing slash."
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 400
+    },
+    "refStrategy": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "enum": ["release-tag", "tag-pattern", "branch", "commit-pin"]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9._/+*-]{1,200}$",
+          "$comment": "The tag pattern / branch name / commit sha. Bounded, no whitespace/quotes — ref names are attacker-controlled input. Required for tag-pattern (glob, e.g. 'v*'), branch, commit-pin (40-hex or 64-hex, enforced by the branches below); release-tag resolves 'latest release' with no value."
+        }
+      },
+      "required": ["strategy"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "strategy": { "const": "commit-pin" } },
+            "required": ["strategy"]
+          },
+          "then": {
+            "properties": {
+              "value": { "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" }
+            },
+            "required": ["value"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "strategy": { "enum": ["tag-pattern", "branch"] } },
+            "required": ["strategy"]
+          },
+          "then": {
+            "required": ["value"]
+          }
+        }
+      ]
+    },
+    "pinRecord": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[A-Za-z0-9._/+*-]{1,200}$",
+          "$comment": "The exact git ref that was fetched (tag, branch-head sha or pinned commit)."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "$comment": "sha256 content digest over the discovered extension content — the consent surface names it; updates diff against it."
+        }
+      },
+      "required": ["ref", "digest"],
+      "additionalProperties": false
+    },
+    "desiredStateDocument": {
+      "title": "GitOps desired-state document (admin-owned, D13/D22)",
+      "type": "object",
+      "properties": {
+        "schema": { "const": 1 },
+        "sources": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#" }
+        },
+        "extensions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{2,39}$",
+                "$comment": "The named extension whose pin the list moves — reconcile touches ONLY entries listed here (D22)."
+              },
+              "sourceUrl": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^https://[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9](:[0-9]{1,5})?(/[A-Za-z0-9._~!$&'()*+,;=:%/-]*)?$",
+                "$comment": "Reference into sources[] (cross-checked host-side)."
+              },
+              "pin": { "$ref": "#/$defs/pinRecord" },
+              "enabled": {
+                "type": "boolean",
+                "$comment": "Optional enable INTENT for the named extension — reconcile still never auto-enables imported code without consent (D13: consent is the gate, the list is only a pin-mover; hosts may ignore this field entirely)."
+              }
+            },
+            "required": ["id", "sourceUrl", "pin"],
+            "additionalProperties": false
+          },
+          "$comment": "There is deliberately NO remove/delete/uninstall field anywhere in this document: reconcile installs and moves pins only — never auto-enables, never deletes data; removal from the list parks the extension disabled and tombstone-able (D22). Deletion is structurally inexpressible."
+        }
+      },
+      "required": ["schema", "sources", "extensions"],
+      "additionalProperties": false,
+      "$comment": "Admin-authored data ONLY — the model never authors desired state (ADR-0011 §7 / ADR-0030 §6, charter modelAuthorship)."
+    },
+    "localSourceDescriptor": {
+      "title": "Local git source — dev/test file-path variant (structurally distinct from the https root)",
+      "type": "object",
+      "properties": {
+        "local": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 512,
+              "pattern": "^/[^\\u0000-\\u001f\\u007f]*$",
+              "allOf": [
+                { "not": { "pattern": "(^|/)\\.\\.(/|$)" } }
+              ],
+              "$comment": "ABSOLUTE filesystem path to a local git repo (the sibling template repo, a dogfood checkout, a test fixture). Absolute-only and '..'-segment-free structurally — relative paths and traversal are rejected at this seam, never filtered. Host-side confinement (allowlisted parent roots, fail-closed off in production boots) is ADDITIONAL host policy on top (plan 32 Phase 3 local-source ruling)."
+            }
+          },
+          "required": ["path"],
+          "additionalProperties": false
+        },
+        "ref": {
+          "$ref": "#/$defs/refStrategy"
+        },
+        "subpath": {
+          "$ref": "#/$defs/subpath"
+        },
+        "pin": {
+          "$ref": "#/$defs/pinRecord"
+        },
+        "notes": {
+          "$ref": "#/$defs/notes"
+        }
+      },
+      "required": ["local", "ref"],
+      "additionalProperties": false,
+      "$comment": "The dev/test variant of the root descriptor: `local.path` replaces `url` — the two are structurally distinct shapes, and a local document NEVER validates against the root (which requires https `url` and has no `local` property). No `credentials` here: local file-path sources carry no private-repo auth (anything needing a credential is an https source). This definition exists so hosts validate local sources against the SAME schema artifact instead of hand-writing a per-host variant (D11) — production enforcement stays structural: the root descriptor is the production surface and remains https-only. Hosts MUST gate the local kind off in production boots (fail-closed) and confine paths to allowlisted roots."
+    }
+  },
+  "$comment": "Source descriptor (root) + GitOps desired-state document ($defs.desiredStateDocument) + dev/test local variant ($defs.localSourceDescriptor — NOT reachable from this root; production descriptors are https-only). Import pipeline (D13): resolve -> shallow fetch -> discover manifests -> schema-validate -> host-profile compatibility -> per-extension consent (capabilities, tier, provenance, digest in user language) -> pinned install (T0 data to the host store; T2 code to a sandbox dir never importable into process; T3 launch spec registered). A failed fetch leaves pins untouched and marks the source failing; manually-installed extensions are never re-pinned or removed."
+}

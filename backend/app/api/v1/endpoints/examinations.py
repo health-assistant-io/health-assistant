@@ -57,7 +57,7 @@ async def create_examination(
 
     Write logic lives in :func:`examination_service.create_examination`
     (workstream E.1) so the same path serves interactive callers, the
-    future ``supports_examinations`` SDK hook (E.3), and the bridge
+    ``examination`` data-class pull hook (E.3), and the bridge
     provider (E.2 will migrate the bridge off its stale direct-ORM write).
     The endpoint is a thin HTTP adapter that maps the service's
     :class:`~app.core.errors.NotFoundError` to a 404.

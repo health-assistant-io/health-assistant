@@ -1,22 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Banknote,
-  Check,
-  Copy,
-  ExternalLink,
-  House,
-  Loader2,
-  Settings2,
-  X,
-} from 'lucide-react';
+import { Banknote, Check, House, Loader2 } from 'lucide-react';
 import { ModelPicker, type ModelPickerProvider } from '@neuronection/assistant-ui';
 import {
   COUNTRIES,
   countryDisplayName,
 } from '@neuronection/assistant-ui/countries';
 import {
+  ProviderSetupForm,
+  type ProviderSetupFormValue,
+} from '@neuronection/assistant-ui/provider-setup-form';
+import {
+  ProviderSetupTiles,
+  ProviderSetupManualTile,
+} from '@neuronection/assistant-ui/provider-setup-tiles';
+import { SetupReview, type SetupReviewOptions } from '@neuronection/assistant-ui/setup-review';
+import { SetupSteps } from '@neuronection/assistant-ui/setup-steps';
+import { SetupAssignments } from '@neuronection/assistant-ui/setup-assignments';
+import {
   aiConfigApi,
+  DECISION_DEFAULT_TASK_TYPE,
   setupErrorDetail,
   type AIModel,
   type ProviderPreset,
@@ -28,10 +31,39 @@ import { Button } from '../../ui/Button';
 import { Modal } from '../../ui/Modal';
 import { SearchableDropdown } from '../../ui/SearchableDropdown';
 
-import { ProviderLogo } from './ProviderLogo';
-import { SetupErrorPanel } from './setupErrors';
+import { ERROR_CODES, SetupErrorPanel } from './setupErrors';
+import { CAP_ICONS, guessCaps } from './ReRunSetupDialog';
 
-type Phase = 'tiles' | 'form' | 'done';
+type Phase = 'tiles' | 'form' | 'review' | 'done';
+
+/**
+ * Capability chips for a preset tile (plan 26 §13.3 follow-up): derived
+ * from the API preset data — chat type → chat (+ vision where the
+ * preferred model carries it, + stt where stt_model exists),
+ * decision_models → decision, keyless-local → local. Labels via i18n.
+ */
+function chipsForPreset(
+  preset: ProviderPreset,
+  t: (key: string) => string,
+): { key: string; label: string }[] {
+  const chips: { key: string; label: string }[] = [];
+  if (preset.provider_type !== 'decision') {
+    chips.push({ key: 'chat', label: t('settings.ai.chip_chat') });
+    if (preset.preferred_model?.caps.includes('vision')) {
+      chips.push({ key: 'vision', label: t('settings.ai.chip_vision') });
+    }
+    if (preset.stt_model) {
+      chips.push({ key: 'stt', label: t('settings.ai.chip_stt') });
+    }
+  }
+  if (preset.decision_models && preset.decision_models.length > 0) {
+    chips.push({ key: 'decision', label: t('settings.ai.chip_decision') });
+  }
+  if (preset.local) {
+    chips.push({ key: 'local', label: t('settings.ai.chip_local') });
+  }
+  return chips;
+}
 
 const SCOPE_MAP = {
   global: 'SYSTEM',
@@ -106,7 +138,8 @@ function CountrySelect({ country, onChange }: { country: string; onChange: (c: s
 }
 
 /** Per-slot rebind pickers shown after a successful setup (§15 success panel).
- *  Slot mapping is health's: chat→default, vision→ocr, stt→transcription. */
+ *  Slot mapping is health's: chat→default, vision→ocr, stt→transcription;
+ *  decision slots (plan 26) list only the provider's decision models. */
 function SuccessDefaults({
   providerId,
   result,
@@ -136,6 +169,23 @@ function SuccessDefaults({
 
   if (models === null) return null;
   const providerModels = models.filter((model) => model.is_active);
+  const decisionModels = providerModels.filter(
+    (model) => Boolean(model.decision_transport) || model.capabilities?.includes('decision'),
+  );
+  const decisionCatalog: ModelPickerProvider[] =
+    decisionModels.length > 0
+      ? [
+          {
+            id: providerId,
+            name: result.provider.name,
+            models: decisionModels.map((model) => ({
+              id: model.model_name,
+              name: model.name || model.model_name,
+              capabilities: model.capabilities?.length ? model.capabilities : ['decision'],
+            })),
+          },
+        ]
+      : [];
   const catalog: ModelPickerProvider[] = [
     {
       id: providerId,
@@ -190,6 +240,24 @@ function SuccessDefaults({
           },
         ]
       : []),
+    ...(hasCap('embeddings')
+      ? [
+          {
+            task: 'embed',
+            label: t('settings.ai.setup.slot_embeddings'),
+            assigned: result.assigned_embeddings_model,
+          },
+        ]
+      : []),
+  ];
+  // ADR-0036 §3: setup binds the `decision` default slot only — one
+  // assignment, one review row; kind slots inherit.
+  const decisionRows = [
+    {
+      task: DECISION_DEFAULT_TASK_TYPE,
+      label: t('settings.ai.task_decision_default'),
+      assigned: result.assigned_decision_slots?.[DECISION_DEFAULT_TASK_TYPE] ?? null,
+    },
   ];
 
   if (providerModels.length === 0) {
@@ -215,6 +283,18 @@ function SuccessDefaults({
           label={row.label}
         />
       ))}
+      {decisionModels.length > 0
+        ? decisionRows.map((row) => (
+            <ModelPicker
+              key={row.task}
+              providers={decisionCatalog}
+              value={slotValue(row.assigned)}
+              onChange={(modelName) => void bind(row.task, modelName).catch(() => undefined)}
+              clearable={false}
+              label={row.label}
+            />
+          ))
+        : null}
       {error ? <p className="text-xs text-red-600 dark:text-red-400">{error}</p> : null}
     </div>
   );
@@ -229,6 +309,10 @@ export const ProviderSetupModal: React.FC<{
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
   const createProvider = useAIConfigStore((state) => state.createProvider);
+  // Live "now:" context for the review's assignment rows — the store's
+  // summary is refreshed by the connect call itself, so entering the
+  // review reads post-connect assignments and model display names.
+  const configSummary = useAIConfigStore((state) => state.configSummary);
 
   const [presets, setPresets] = useState<Record<string, ProviderPreset> | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -244,6 +328,18 @@ export const ProviderSetupModal: React.FC<{
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<ProviderSetupResult | null>(null);
   const [resultName, setResultName] = useState('');
+  // Review step (parity with the re-run dialog): connect binds nothing —
+  // what registers and what fills the empty defaults is chosen here.
+  const [reviewOptions, setReviewOptions] = useState<SetupReviewOptions>({
+    curatedIds: [],
+    bindChat: true,
+    bindVision: true,
+    bindStt: true,
+    bindDecision: true,
+  });
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<ProviderSetupErrorDetail | null>(null);
+  const [applyPlainError, setApplyPlainError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || presets) return;
@@ -259,6 +355,13 @@ export const ProviderSetupModal: React.FC<{
   if (!open) return null;
 
   const preset: ProviderPreset | null = presetKey ? presets?.[presetKey] ?? null : null;
+  // Decision models never ride the curated cards (ADR-0036 §3: one default
+  // slot, kinds inherit) — the switch binds the preset's `decision_default`
+  // only, so a decision section without one stays hidden (it could not
+  // bind anything).
+  const decisionCandidate =
+    preset?.decision_models?.find((entry) => entry.id === preset.decision_default) ?? null;
+  const decisionDeclared = decisionCandidate !== null;
 
   const openForm = (key: string) => {
     setPresetKey(key);
@@ -293,20 +396,70 @@ export const ProviderSetupModal: React.FC<{
     setError(null);
     setPlainError(null);
     try {
+      // Connect + register only — binds stay off so the review step
+      // decides what fills the defaults (same contract as re-setup).
       const data = await setupProvider(presetKey, {
         api_key: preset.local ? null : apiKey.trim() || null,
         name: name.trim() || null,
         scope: SCOPE_MAP[scope],
+        options: {
+          bind_chat: false,
+          bind_vision: false,
+          bind_stt: false,
+          bind_decision: false,
+        },
       });
       setResultName(name.trim() || preset.name);
       setResult(data);
-      setPhase('done');
+      setReviewOptions({
+        curatedIds: preset.curated_models ?? [],
+        bindChat: true,
+        bindVision: true,
+        bindStt: true,
+        bindDecision: decisionDeclared,
+      });
+      setApplyError(null);
+      setApplyPlainError(null);
+      setPhase('review');
     } catch (err: any) {
       const detail = setupErrorDetail(err);
       setError(detail);
       setPlainError(detail ? null : (err?.message ?? String(err)));
     } finally {
       setPending(false);
+    }
+  };
+
+  /** Apply the reviewed choices (second pass over the same preset): the
+   *  curated "models to add" selection plus the per-capability fill-empty
+   *  switches. Binding stays gap-fill backend-side — only empty defaults
+   *  are filled, nothing existing is ever removed. */
+  const applyReview = async () => {
+    if (presetKey === null || preset === null || applying) return;
+    setApplying(true);
+    setApplyError(null);
+    setApplyPlainError(null);
+    try {
+      const data = await setupProvider(presetKey, {
+        api_key: preset.local ? null : apiKey.trim() || null,
+        name: name.trim() || null,
+        scope: SCOPE_MAP[scope],
+        options: {
+          curated_ids: preset.curated_models ? reviewOptions.curatedIds : undefined,
+          bind_chat: reviewOptions.bindChat,
+          bind_vision: reviewOptions.bindVision,
+          bind_stt: reviewOptions.bindStt,
+          bind_decision: reviewOptions.bindDecision && decisionDeclared,
+        },
+      });
+      setResult(data);
+      setPhase('done');
+    } catch (err: any) {
+      const detail = setupErrorDetail(err);
+      setApplyError(detail);
+      setApplyPlainError(detail ? null : (err?.message ?? String(err)));
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -336,6 +489,187 @@ export const ProviderSetupModal: React.FC<{
       setPending(false);
     }
   };
+
+  if (phase === 'review' && result && preset) {
+    // Effective candidates mirror the backend's gap-fill resolution:
+    // preferred model (when its card stays selected) → first selected
+    // curated text model; vision rides the same model when capable, else
+    // the first selected vision-capable card; stt must keep its card.
+    const selectedCurated = (preset.curated_models ?? []).filter((id) =>
+      reviewOptions.curatedIds.includes(id),
+    );
+    const preferredId = preset.preferred_model?.id ?? null;
+    const textCandidate =
+      (preferredId !== null && selectedCurated.includes(preferredId) ? preferredId : null) ??
+      selectedCurated.find((id) => guessCaps(id).includes('text')) ??
+      selectedCurated[0] ??
+      null;
+    const visionCandidate =
+      (textCandidate !== null && guessCaps(textCandidate).includes('vision')
+        ? textCandidate
+        : null) ??
+      selectedCurated.find((id) => guessCaps(id).includes('vision')) ??
+      null;
+    const sttCandidate =
+      preset.stt_model && selectedCurated.includes(preset.stt_model) ? preset.stt_model : null;
+
+    const modelLabels = Object.fromEntries(
+      (configSummary?.models ?? []).map((model) => [model.model_name, model.name || model.model_name]),
+    );
+    const nowLabel = (slotTask: string) => {
+      const model = configSummary?.[slotTask as 'default']?.model;
+      const label = model ? (modelLabels[model.model_name] ?? model.model_name) : null;
+      return t('settings.ai.setup.review.now', {
+        model: label ?? t('settings.ai.setup.review.unset'),
+      });
+    };
+    const fillsLabel = (candidate: string | null, slotTask: string) =>
+      candidate === null
+        ? t('settings.ai.setup.review.no_candidate')
+        : `${nowLabel(slotTask)} · ${t('settings.ai.setup.review.fills', { model: candidate })}`;
+
+    // Health slot mapping: chat→default, vision→ocr, stt→transcription;
+    // the decision row reads the `decision` default slot (ADR-0036 §3).
+    const assignmentRows = [
+      ...(preset.provider_type !== 'decision'
+        ? [
+            {
+              id: 'chat',
+              label: t('settings.ai.setup.slot_chat'),
+              sub: fillsLabel(textCandidate, 'default'),
+              candidate: textCandidate,
+              bind: reviewOptions.bindChat,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindChat: next })),
+            },
+            {
+              id: 'vision',
+              label: t('settings.ai.setup.slot_vision'),
+              sub: fillsLabel(visionCandidate, 'ocr'),
+              candidate: visionCandidate,
+              bind: reviewOptions.bindVision,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindVision: next })),
+            },
+            ...(preset.stt_model
+              ? [
+                  {
+                    id: 'stt',
+                    label: t('settings.ai.setup.slot_stt'),
+                    sub: fillsLabel(sttCandidate, 'transcription'),
+                    candidate: sttCandidate,
+                    bind: reviewOptions.bindStt,
+                    set: (next: boolean) =>
+                      setReviewOptions((current) => ({ ...current, bindStt: next })),
+                  },
+                ]
+              : []),
+          ]
+        : []),
+      ...(decisionDeclared
+        ? [
+            {
+              id: 'decision',
+              label: t('settings.ai.task_decision_default'),
+              sub: fillsLabel(decisionCandidate!.name, DECISION_DEFAULT_TASK_TYPE),
+              candidate: decisionCandidate!.name,
+              bind: reviewOptions.bindDecision,
+              set: (next: boolean) =>
+                setReviewOptions((current) => ({ ...current, bindDecision: next })),
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <Modal
+        open
+        onOpenChange={(o) => (!o ? onClose() : undefined)}
+        title={t('settings.ai.setup.title')}
+        footer={
+          <div className="flex w-full items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={applying}
+              onClick={() => setPhase('form')}
+            >
+              {t('common.back')}
+            </Button>
+            <Button
+              size="sm"
+              disabled={applying}
+              onClick={() => void applyReview().catch(() => undefined)}
+            >
+              {applying ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />}
+              {t('settings.ai.setup.review.apply')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-dark-muted">
+            {t('settings.ai.setup.review.intro', {
+              name: resultName || preset.name,
+              count: result.catalog_count,
+            })}
+          </p>
+
+          <SetupSteps
+            steps={[
+              { id: 'connect', label: t('settings.ai.setup.step.connect') },
+              { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+            ]}
+            current={1}
+            label={t('settings.ai.setup.step.progress')}
+          />
+
+          {(preset.curated_models ?? []).length > 0 ? (
+            <section className="space-y-2">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-dark-text">
+                  {t('settings.ai.setup.review.models_title')}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-dark-muted">
+                  {t('settings.ai.setup.review.models_hint')}
+                </p>
+              </div>
+              <SetupReview
+                models={(preset.curated_models ?? []).map((modelId) => ({
+                  id: modelId,
+                  name: modelId,
+                  caps: guessCaps(modelId),
+                  selected: reviewOptions.curatedIds.includes(modelId),
+                }))}
+                slots={[]}
+                capIcons={CAP_ICONS}
+                modelsLabel={t('settings.ai.setup.review.models_title')}
+                footnote={t('settings.ai.setup.review.models_footnote')}
+                onOptionsChange={(options) =>
+                  setReviewOptions((current) => ({ ...current, curatedIds: options.curatedIds }))
+                }
+              />
+            </section>
+          ) : null}
+
+          <SetupAssignments
+            title={t('settings.ai.setup.review.assignments_title')}
+            hint={t('settings.ai.setup.review.assignments_hint')}
+            rows={assignmentRows.map((row) => ({
+              id: row.id,
+              label: row.label,
+              hint: row.sub,
+              checked: row.bind,
+              disabled: row.candidate === null,
+              onCheckedChange: row.set,
+            }))}
+          />
+
+          <SetupErrorPanel error={applyError} plainError={applyPlainError} />
+        </div>
+      </Modal>
+    );
+  }
 
   if (phase === 'done' && result) {
     return (
@@ -382,34 +716,15 @@ export const ProviderSetupModal: React.FC<{
       footer={
         phase === 'form' && preset ? (
           <div className="flex w-full items-center justify-between gap-2">
-            <Button variant="ghost" size="sm" onClick={backToTiles}>
-              {t('settings.ai.setup.choose_another')}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              title={t('settings.ai.setup.manually_hint')}
+              onClick={() => void connectManual().catch(() => undefined)}
+            >
+              {t('settings.ai.setup.manually')}
             </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                title={t('settings.ai.setup.manually_hint')}
-                onClick={() => void connectManual().catch(() => undefined)}
-              >
-                {t('settings.ai.setup.manually')}
-              </Button>
-              {!forcedManual ? (
-                <Button
-                  size="sm"
-                  disabled={(!preset.local && apiKey.trim().length === 0) || pending}
-                  onClick={() => void connect().catch(() => undefined)}
-                >
-                  {pending ? (
-                    <Loader2 className="animate-spin" aria-hidden />
-                  ) : (
-                    <Check aria-hidden />
-                  )}
-                  {t('settings.ai.setup.automatically')}
-                </Button>
-              ) : null}
-            </div>
           </div>
         ) : (
           <div className="flex w-full items-center justify-end gap-2">
@@ -425,143 +740,98 @@ export const ProviderSetupModal: React.FC<{
           {t('settings.ai.setup.modal_hint')}
         </p>
 
+        <SetupSteps
+          steps={[
+            { id: 'connect', label: t('settings.ai.setup.step.connect') },
+            { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+          ]}
+          current={0}
+          label={t('settings.ai.setup.step.progress')}
+        />
+
         {phase === 'tiles' ? (
-          <div
-            className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-            role="group"
-            aria-label={t('settings.ai.setup.title')}
-          >
-            {order.map((key) => {
+          <ProviderSetupTiles
+            presets={order.map((key) => {
               const tile = presets?.[key];
-              if (!tile) return null;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className="flex h-auto flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-4 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface dark:hover:bg-dark-bg"
-                  onClick={() => openForm(key)}
-                >
-                  <ProviderLogo presetKey={key} label={tile.name} />
-                  <span className="w-full truncate text-center text-sm font-medium text-gray-900 dark:text-dark-text">
-                    {tile.name}
-                  </span>
-                  {tile.local ? (
-                    <span className="text-[11px] text-gray-500 dark:text-dark-muted">
-                      {t('settings.ai.local_kind')}
-                    </span>
-                  ) : null}
-                </button>
-              );
+              if (!tile) return { key, name: key };
+              return { key, name: tile.name, chips: chipsForPreset(tile, t) };
             })}
-            <button
-              type="button"
-              className="flex h-auto flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-4 hover:bg-gray-50 dark:border-dark-border dark:bg-dark-surface dark:hover:bg-dark-bg"
+            onSelect={openForm}
+            label={t('settings.ai.setup.title')}
+            localLabel={t('settings.ai.local_kind')}
+          >
+            <ProviderSetupManualTile
               onClick={() => {
                 onClose();
                 onManual();
               }}
             >
-              <Settings2 className="h-5 w-5 text-gray-400" aria-hidden />
-              <span className="w-full truncate text-center text-sm font-medium text-gray-900 dark:text-dark-text">
-                {t('settings.ai.setup.custom')}
-              </span>
-            </button>
-          </div>
+              {t('settings.ai.setup.custom')}
+            </ProviderSetupManualTile>
+          </ProviderSetupTiles>
         ) : null}
 
         {phase === 'form' && preset ? (
           <>
-            <ol className="list-decimal space-y-1 pl-5 text-xs">
-              {(preset.steps ?? []).map((step, index) => (
-                <li
-                  key={index}
-                  className="flex items-start justify-between gap-2 text-gray-500 dark:text-dark-muted"
-                >
-                  <span>{step.replace('{url}', preset.key_url ?? '')}</span>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-1"
-                    aria-label={t('settings.ai.setup.copy_step')}
-                    title={t('settings.ai.setup.copy_step')}
-                    onClick={() => void navigator.clipboard.writeText(step)}
-                  >
-                    <Copy className="h-3 w-3" aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ol>
-            {preset.free_tier_note ? (
-              <p className="text-xs text-gray-500 dark:text-dark-muted">
-                {preset.free_tier_note}
-              </p>
-            ) : null}
-            {preset.key_url ? (
-              <a
-                className="inline-flex items-center gap-1 text-xs text-blue-600 underline dark:text-blue-400"
-                href={preset.key_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink className="h-3 w-3" aria-hidden />
-                {t('settings.ai.setup.get_key')}
-              </a>
-            ) : null}
-            <label className="block space-y-1 text-sm">
-              <span className="text-gray-500 dark:text-dark-muted">
-                {t('settings.ai.setup.connection_name')}
-              </span>
-              <input
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                value={name}
-                placeholder={preset.name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            {!preset.local ? (
-              <label className="block space-y-1 text-sm">
-                <span className="text-gray-500 dark:text-dark-muted">
-                  {t('settings.ai.api_key')}
-                </span>
-                <input
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  autoFocus
-                />
-              </label>
-            ) : (
-              <p className="text-xs text-gray-500 dark:text-dark-muted">
-                {t('settings.ai.setup.no_key_needed')}
-              </p>
-            )}
-            <details className="rounded-lg border border-gray-200 px-3 py-2 dark:border-dark-border">
-              <summary className="cursor-pointer text-sm font-medium">
-                {t('settings.ai.setup.advanced')}
-              </summary>
-              <div className="space-y-3 pt-2">
-                <label className="block space-y-1 text-sm">
-                  <span className="text-gray-500 dark:text-dark-muted">
-                    {t('settings.ai.base_url')}
-                  </span>
-                  <input
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono disabled:opacity-80 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-                    value={advancedBase}
-                    disabled={preset.fixed_base}
-                    onChange={(event) => setAdvancedBase(event.target.value)}
-                  />
-                </label>
-                {!preset.fixed_base ? (
-                  <p className="text-[11px] text-gray-500 dark:text-dark-muted">
-                    {t('settings.ai.setup.base_edit_hint')}
-                  </p>
-                ) : null}
-                <HostingToggle local={isLocal} onChange={setIsLocal} disabled={preset.local} />
-                <CountrySelect country={country} onChange={setCountry} />
-              </div>
-            </details>
-            <SetupErrorPanel error={error} plainError={plainError} />
+            <ProviderSetupForm
+              preset={{
+                key: presetKey ?? undefined,
+                name: preset.name,
+                keyUrl: preset.key_url ?? undefined,
+                steps: preset.steps ?? undefined,
+                freeTierNote: preset.free_tier_note ?? undefined,
+                fixedBase: preset.fixed_base,
+                baseUrl: preset.base_url,
+                local: preset.local,
+              }}
+              value={{ name, apiKey, baseUrl: advancedBase }}
+              onChange={(value: ProviderSetupFormValue) => {
+                setName(value.name);
+                setApiKey(value.apiKey);
+                setAdvancedBase(value.baseUrl ?? '');
+              }}
+              testing={pending}
+              error={
+                error
+                  ? { code: error.code, suspectedVendor: error.suspected_vendor ?? null }
+                  : plainError
+                    ? { code: 'unknown' }
+                    : null
+              }
+              errorLabels={{
+                ...Object.fromEntries(
+                  ERROR_CODES.map((code) => [code, t(`settings.ai.setup.errors.${code}`)]),
+                ),
+                unknown: plainError ?? t('settings.ai.setup.errors.unknown'),
+              }}
+              suspectedVendorHint={t('settings.ai.setup.errors.suspected_vendor', {
+                vendor: error?.suspected_vendor ?? '',
+              })}
+              advancedExtra={
+                <>
+                  <HostingToggle local={isLocal} onChange={setIsLocal} disabled={preset.local} />
+                  <CountrySelect country={country} onChange={setCountry} />
+                </>
+              }
+              copyLabel={t('settings.ai.setup.copy_step')}
+              getKeyLabel={t('settings.ai.setup.get_key')}
+              nameLabel={t('settings.ai.setup.connection_name')}
+              apiKeyLabel={t('settings.ai.api_key')}
+              noKeyLabel={t('settings.ai.setup.no_key_needed')}
+              advancedLabel={t('settings.ai.setup.advanced')}
+              baseUrlLabel={t('settings.ai.base_url')}
+              baseUrlHint={t('settings.ai.setup.base_edit_hint')}
+              submitLabel={t('settings.ai.setup.automatically')}
+              cancelLabel={t('settings.ai.setup.choose_another')}
+              onSubmit={() => {
+                if (forcedManual) {
+                  void connectManual().catch(() => undefined);
+                } else {
+                  void connect().catch(() => undefined);
+                }
+              }}
+              onCancel={backToTiles}
+            />
           </>
         ) : null}
       </div>

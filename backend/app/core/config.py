@@ -5,8 +5,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import ClassVar
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.ai.providers.presets_data import PRESETS as _CANONICAL_PRESETS
 
 
 def _resolve_env_file() -> str | None:
@@ -44,6 +46,42 @@ def _resolve_env_file() -> str | None:
     return None
 
 
+# --- Env-name typo telemetry (audit follow-up a) ---------------------------
+# ``Settings(extra="ignore")`` silently drops unknown env vars, so an
+# operator's typo'd ``APP_ENV=production`` boots in development with zero
+# signal — the exact class that made the ``HA_APP_ENV`` rename's tests
+# vacuous (plan 20 F1). The ``_warn_unknown_env_names`` validator below is
+# the loud counterpart: warning-only telemetry, never a refusal (the
+# family's refusal gates are the boot guards; this is typo signal).
+#
+# Highest-value hint: names that WERE read once. A stale ``APP_ENV`` /
+# ``SECRET_KEY`` in a .env or compose environment keeps "working" silently
+# after a rename, so each retired name maps to its replacement.
+RENAMED_ENV_HINTS: dict[str, str] = {
+    "APP_ENV": "HA_APP_ENV",
+    "SECRET_KEY": "HA_SESSION_KEY / HA_REFRESH_KEY / HA_DATA_KEY (identity-auth §8)",
+    # Audit item e (plan 20 D2 prefixed-only): the last unprefixed infra
+    # names the config owned; prefixed-only, no compat aliases.
+    "DATABASE_URL": "HA_DATABASE_URL",
+    "UPLOAD_DIR": "HA_UPLOAD_DIR",
+}
+
+# HA_-namespace names owned by launcher/tooling, not Settings — read via
+# os.getenv outside the model (logging_setup, run-dev.sh, backup/restore,
+# ui-capture seeding). Deliberately exempt from the unknown-name warning.
+TOOLING_ENV_NAMES: frozenset[str] = frozenset(
+    {
+        "HA_ENV_FILE",  # launcher: explicit .env path (_resolve_env_file)
+        "HA_LOG_NAME",  # logging_setup: per-process log file name
+        "HA_LOG_TO_CONSOLE",  # logging_setup: console handler on/off
+        "HA_COMPOSE_FILE",  # backup.sh / restore.sh: compose file override
+        "HA_COMPOSE_PROJECT",  # backup.sh / restore.sh: compose project override
+        "HA_DEMO_DATABASE_URL",  # ui-capture/seed_demo.sh: demo DB override
+        "HA_DEMO_INIT",  # ui-capture/seed_demo.sh: --init-demo flag
+    }
+)
+
+
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
@@ -73,6 +111,47 @@ class Settings(BaseSettings):
     HA_DEMO_EMAIL: str = "demo@healthassistant.local"
     HA_DEMO_PASSWORD: str = "Demo1234!"
 
+    @model_validator(mode="after")
+    def _warn_unknown_env_names(self) -> "Settings":
+        """Boot-time typo telemetry for env names (warning-only, never refuses).
+
+        Two loud-but-harmless hints at construction:
+
+        1. a KNOWN-RENAMED name is set (``RENAMED_ENV_HINTS``) -> point at
+           its replacement — a stale ``APP_ENV=production`` would otherwise
+           boot in development with zero signal;
+        2. an ``HA_*`` name that matches no Settings field (and no tooling
+           name in ``TOOLING_ENV_NAMES``) is set -> likely typo; the value
+           is silently ignored by ``extra="ignore"``.
+
+        Scans ``os.environ`` — the surface every real launcher materializes
+        (docker-compose interpolation, systemd units, CI, run-dev.sh's
+        exported .env, pytest env_files). Names only, never values (secrets
+        must not land in logs). Deliberately positioned FIRST among the
+        validators so the hint prints even when a later boot guard refuses.
+        """
+        import logging
+
+        known = Settings.model_fields.keys() | TOOLING_ENV_NAMES
+        for name in sorted(os.environ):
+            replacement = RENAMED_ENV_HINTS.get(name)
+            if replacement:
+                logging.warning(
+                    "Renamed env var %s is set but no longer read — use %s "
+                    "instead. The old value is silently ignored "
+                    "(Settings extra='ignore').",
+                    name,
+                    replacement,
+                )
+            elif name.startswith("HA_") and name not in known:
+                logging.warning(
+                    "Unknown env var %s is set but Settings has no such field "
+                    "— possible typo; the value is silently ignored "
+                    "(Settings extra='ignore').",
+                    name,
+                )
+        return self
+
     # Database
     POSTGRES_USER: str = "admin"
     # No insecure default password — must be supplied via env. The production
@@ -84,12 +163,14 @@ class Settings(BaseSettings):
     # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
     # neuronection_health_demo / neuronection_health_test[_gwN] via env.
     POSTGRES_DB: str = "neuronection_health"
-    DATABASE_URL: str | None = None  # gate-allow: DATABASE_URL (live health name)
+    # Full URL override — wins over the POSTGRES_* parts above (audit item
+    # e: renamed DATABASE_URL -> HA_DATABASE_URL, plan 20 D2 prefixed-only).
+    HA_DATABASE_URL: str | None = None
 
     @model_validator(mode="after")
     def assemble_db_connection(self) -> "Settings":
-        if not self.DATABASE_URL:
-            self.DATABASE_URL = (
+        if not self.HA_DATABASE_URL:
+            self.HA_DATABASE_URL = (
                 f"postgresql+asyncpg://{self.POSTGRES_USER}:"
                 f"{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:"
                 f"{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -104,17 +185,17 @@ class Settings(BaseSettings):
         """
         weak_passwords = {"", "admin123", "password", "postgres", "secret", "changeme"}
 
-        # We know DATABASE_URL is constructed by the time this runs.
+        # We know HA_DATABASE_URL is constructed by the time this runs.
         # Extract the actual password being used.
         import urllib.parse
 
-        parsed_url = urllib.parse.urlparse(self.DATABASE_URL)
+        parsed_url = urllib.parse.urlparse(self.HA_DATABASE_URL)
         active_password = parsed_url.password or ""
 
         if self.HA_APP_ENV not in ("development", "test", "testing"):
             if active_password in weak_passwords or active_password == "secure_password_here":
                 raise ValueError(
-                    "A strong database password must be provided in the DATABASE_URL "
+                    "A strong database password must be provided in the HA_DATABASE_URL "
                     f"for HA_APP_ENV={self.HA_APP_ENV!r}. Refusing to boot with insecure "
                     "database credentials."
                 )
@@ -456,7 +537,9 @@ class Settings(BaseSettings):
     # §16 rate-limit ceilings (career reference): per-bucket, requests per
     # minute. When set (non-null) a bucket ceiling overrides the per-route
     # code defaults; ``0`` disables the bucket. Unset ⇒ route defaults only
-    # (the pre-§16 behavior — see app/core/rate_limit.py).
+    # (the pre-§16 behavior — see app/core/rate_limit.py). A blank env
+    # value (compose forwards unset optionals as empty strings) means
+    # unset — see the validator below.
     HA_RATELIMIT_ENABLED: bool = True
     HA_RATELIMIT_AUTH: int | None = None
     HA_RATELIMIT_AUTH_EMAIL: int | None = None
@@ -490,8 +573,15 @@ class Settings(BaseSettings):
     # the transcription call timeout.
     AI_STT_MAX_AUDIO_BYTES: int = 20 * 1024 * 1024  # 20 MiB compressed audio
     AI_STT_TIMEOUT_SECONDS: int = 60
-    # Default STT model when no DB assignment exists (OpenAI-compatible API).
-    OPENAI_STT_MODEL: str = "whisper-1"
+    # Default STT model when no DB assignment exists (OpenAI-compatible
+    # API). §15 single-source: the default derives from the synced
+    # canonical preset data (openai.stt_model), never a code literal —
+    # env still overrides for deployments that need it.
+    OPENAI_STT_MODEL: str = str(_CANONICAL_PRESETS.get("openai", {}).get("stt_model") or "")
+
+    # AI Chat — embeddings (the ``embed`` task). Batch text-embedding calls
+    # against the assigned provider; the timeout guards the whole batch.
+    AI_EMBED_TIMEOUT_SECONDS: int = 30
 
     @model_validator(mode="after")
     def _validate_data_key(self) -> "Settings":
@@ -567,12 +657,20 @@ class Settings(BaseSettings):
     MCP_REQUEST_TIMEOUT: float = 30.0
     MCP_TOOL_RESULT_MAX_BYTES: int = 65536
     INTEGRATION_MAX_TOOLS_PER_SESSION: int = 20
+    # Polite-runtime escape hatches (the historical env names, now routed
+    # through Settings into the vendored guard's injectable config — the
+    # runtime module itself reads no environment; D5):
+    # trusted self-hosted hostnames exempt from the private-range block,
+    # the wholesale private-range hatch, and the trusted-flow bypass.
+    INTEGRATION_ALLOWED_HOSTS: str = ""
+    INTEGRATION_BLOCK_PRIVATE_RANGES: bool = True
+    INTEGRATION_ALLOW_PRIVATE: bool = False
     MCP_CONNECTION_IDLE_TIMEOUT: int = 900
     MCP_PER_INSTANCE_CONCURRENCY: int = 4
     MCP_ALLOW_INSECURE_HTTP: bool = False
 
-    # File Storage
-    UPLOAD_DIR: str = "/var/healthassistant/uploads"  # gate-allow: UPLOAD_DIR (live health name)
+    # File Storage (audit item e: UPLOAD_DIR -> HA_UPLOAD_DIR, prefixed-only)
+    HA_UPLOAD_DIR: str = "/var/healthassistant/uploads"
     MAX_UPLOAD_SIZE: int = 50  # MB
 
     # Email
@@ -592,6 +690,11 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: str | None = None
     VAPID_PRIVATE_KEY: str | None = None
     VAPID_ADMIN_EMAIL: str = "admin@healthassistant.local"
+
+    # Default TTL window for notification digest collapsing (emit with the
+    # same digest_key inside this window reuses one row). Clamped to
+    # [60s, 7d] at read time by notification_service.
+    NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS: int = 21600
 
     @model_validator(mode="after")
     def _validate_vapid_keys(self) -> "Settings":
@@ -623,6 +726,27 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator(
+        "HA_RATELIMIT_AUTH",
+        "HA_RATELIMIT_AUTH_EMAIL",
+        "HA_RATELIMIT_AI",
+        "HA_RATELIMIT_MCP",
+        "HA_RATELIMIT_DEFAULT",
+        mode="before",
+    )
+    @classmethod
+    def _blank_ratelimit_knob_is_unset(cls, value: object) -> object:
+        """Blank §16 ceiling = unset (route default applies).
+
+        The standalone/prod compose files forward unset optional knobs as
+        empty strings (``${HA_RATELIMIT_AUTH:-}``); without this the
+        default deployment would die at boot on ``int('')`` instead of
+        keeping the route defaults.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache

@@ -65,7 +65,7 @@ def test_placeholder_db_password_refused_in_production():
         prod_settings(POSTGRES_PASSWORD="secure_password_here")
     msg = str(exc_info.value)
     assert "database password" in msg  # the offending knob, named
-    assert "DATABASE_URL" in msg
+    assert "HA_DATABASE_URL" in msg
     assert "insecure database credentials" in msg
 
 

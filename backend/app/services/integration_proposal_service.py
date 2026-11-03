@@ -4,7 +4,7 @@ Workstream G of the integrations follow-ups pass. Closes the gap left by
 ``ConceptProvenance.INTEGRATION`` for the case where the integration wants
 a human to review its catalog contributions before they apply. Today
 (workstream F) integrations can already auto-apply catalog entries via
-``supports_catalog_proposals``; this module is the opt-in HITL layer for
+the ``catalog_proposal`` data class; this module is the opt-in HITL layer for
 providers that want a human-in-the-loop gate.
 
 Two layers:
@@ -25,12 +25,12 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from integrations.sdk.catalog import CatalogProposal
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.converters import utcnow as _now
+from app.extensions.sdk.catalog import CatalogProposal
 from app.models.enums import HitlTaskStatus
 from app.models.integration_proposal import IntegrationProposal
 
@@ -468,7 +468,7 @@ async def resolve_proposal(
     # the provider learns whether the apply succeeded.
     if provider is not None and action == "approve":
         try:
-            from integrations.sdk.proposals import ProposalOutcome
+            from app.extensions.sdk.proposals import ProposalOutcome
 
             outcome = ProposalOutcome(
                 action=action,

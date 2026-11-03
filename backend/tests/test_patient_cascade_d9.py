@@ -13,7 +13,7 @@ from app.core.config import settings
 
 def _patient_fk_cascade_rules():
     """Return {table_name: delete_rule} for every patient_id FK."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

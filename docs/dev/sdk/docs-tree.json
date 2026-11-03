@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "project": "health-integration-sdk",
+  "title": "Health Assistant integration SDK",
+  "description": "Authoring and operating Health Assistant extensions over the family extension charter: validated manifests with declared capabilities, the polite transport runtime, the sync pipeline, OAuth/SMART, signed webhooks, the two-way bridge API, and the bridge client SDKs.",
+  "chapters": [
+    "overview",
+    "quickstart",
+    "core-concepts",
+    "installation-and-modes",
+    "authoring-and-configuration",
+    "examples-and-use-cases",
+    "security-and-gotchas",
+    "reference",
+    "versioning-and-migration",
+    "troubleshooting-and-faq"
+  ],
+  "roots": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "description": "What the integration SDK is — one charter surface for connectors and bridges on a server-class host — and when to write an extension instead of a core feature.",
+      "audience": "dev",
+      "file": "overview.md"
+    },
+    {
+      "id": "quickstart",
+      "title": "Quickstart",
+      "description": "Stand up a scratch Health Assistant server, connect the dev-dummy reference extension, sync, and see observations land — with a real transcript.",
+      "audience": "dev",
+      "file": "quickstart.md"
+    },
+    {
+      "id": "core-concepts",
+      "title": "Core Concepts",
+      "description": "The load-bearing nouns: extension, kind, capability, data class, instance, provider, config flow, sync — and how they connect.",
+      "audience": "dev",
+      "file": "core-concepts.md"
+    },
+    {
+      "id": "installation-and-modes",
+      "title": "Installation & Modes",
+      "description": "Connecting an integration in the app: the bundled catalog, the config flow, machine secrets shown once, and instance lifecycle.",
+      "audience": "user",
+      "file": "../../user/connect-integrations.md",
+      "children": [
+        {
+          "id": "installation-internals",
+          "title": "Install lifecycle internals",
+          "description": "Bundled-only steady state, the registry, admin gating, on-disk layout, and where every artifact lives.",
+          "audience": "dev",
+          "file": "installation-and-modes.md"
+        }
+      ]
+    },
+    {
+      "id": "authoring-and-configuration",
+      "title": "Authoring & Configuration",
+      "description": "The manifest reference, config flows + x-secret, every capability hook (pull families, notifications, tools, actions, OAuth, webhooks, the two-way API), and building FHIR observations.",
+      "audience": "dev",
+      "file": "authoring-and-configuration.md"
+    },
+    {
+      "id": "examples-and-use-cases",
+      "title": "Examples & Use Cases",
+      "description": "Five complete recipes: the dev-dummy full-surface walkthrough, an HMAC webhook receiver, a SMART-on-FHIR sync, an MCP client connection, and the bridge as mobile/headless transport.",
+      "audience": "dev",
+      "file": "examples-and-use-cases.md"
+    },
+    {
+      "id": "security-and-gotchas",
+      "title": "Security & Gotchas",
+      "description": "What you grant when you connect an integration: machine secrets, HMAC gates, and what each capability can see and do.",
+      "audience": "user",
+      "file": "../../user/integration-security.md",
+      "children": [
+        {
+          "id": "security-gotchas-dev",
+          "title": "Security & gotchas (authoring)",
+          "description": "The trust posture, the secrets law, politeness and SSRF, the inbound chokepoint rules, and the residual risks.",
+          "audience": "dev",
+          "file": "security-and-gotchas.md"
+        }
+      ]
+    },
+    {
+      "id": "reference",
+      "title": "Reference",
+      "description": "The 15 extension error codes + retry table, the bridge error vocabulary, every integrations endpoint, the admin API, status vocabularies, and the settings knobs.",
+      "audience": "dev",
+      "file": "reference.md"
+    },
+    {
+      "id": "versioning-and-migration",
+      "title": "Versioning & Migration",
+      "description": "extension/v1 policy, per-kind versions, append-only vocabularies, the no-shims doctrine, breaking-change rules and the underscore-domain alias.",
+      "audience": "dev",
+      "file": "versioning-and-migration.md"
+    },
+    {
+      "id": "troubleshooting-and-faq",
+      "title": "Troubleshooting & FAQ",
+      "description": "Integration problems decoded: instance states, sync failures, signing errors, mapping, duplicates.",
+      "audience": "user",
+      "file": "../../user/integration-troubleshooting.md",
+      "children": [
+        {
+          "id": "troubleshooting-dev",
+          "title": "Developer diagnostics & FAQ",
+          "description": "Every wall-tested failure mode decoded — the pull hooks, the HMAC gate, the bridge client loops — plus the real FAQ.",
+          "audience": "dev",
+          "file": "troubleshooting-and-faq.md"
+        }
+      ]
+    }
+  ]
+}

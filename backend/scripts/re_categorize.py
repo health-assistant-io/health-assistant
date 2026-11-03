@@ -14,7 +14,7 @@ logger = logging.getLogger("Recategorize")
 
 
 async def main():
-    engine = create_async_engine(settings.DATABASE_URL)
+    engine = create_async_engine(settings.HA_DATABASE_URL)
     LocalSession = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
     async with LocalSession() as db:

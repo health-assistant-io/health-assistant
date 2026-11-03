@@ -15,7 +15,7 @@ of bug this file guards against).
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from integrations.sdk.observation_builder import ObservationBuilder
+from app.extensions.sdk.observation_builder import ObservationBuilder
 
 TENANT = uuid4()
 PATIENT = uuid4()

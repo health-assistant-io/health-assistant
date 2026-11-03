@@ -22,7 +22,17 @@ async def test_list_available_integrations(async_client: AsyncClient):
     # Mock the registry directly
     with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
         mock_registry.get_all_manifests.return_value = [
-            {"domain": "dev_dummy", "name": "Dev Dummy", "version": "1.0.0"}
+            {
+                "apiVersion": "extension/v1",
+                "kindVersion": 1,
+                "kind": "bridge",
+                "id": "dev-dummy",
+                "version": "1.0.0",
+                "capabilities": ["inbound-webhook"],
+                "author": "Test",
+                "license": "Apache-2.0",
+                "i18n": {"defaultLocale": "en", "locales": {"en": {"title": "Dev Dummy"}}},
+            }
         ]
 
         from app.core.database import get_db
@@ -60,8 +70,28 @@ async def test_list_available_integrations_hides_disabled(async_client: AsyncCli
     """A domain a SYSTEM_ADMIN has explicitly disabled must not be listed."""
     with patch("app.api.v1.endpoints.integrations.integration_registry") as mock_registry:
         mock_registry.get_all_manifests.return_value = [
-            {"domain": "dev_dummy", "name": "Dev Dummy", "version": "1.0.0"},
-            {"domain": "other", "name": "Other", "version": "1.0.0"},
+            {
+                "apiVersion": "extension/v1",
+                "kindVersion": 1,
+                "kind": "bridge",
+                "id": "dev-dummy",
+                "version": "1.0.0",
+                "capabilities": ["inbound-webhook"],
+                "author": "Test",
+                "license": "Apache-2.0",
+                "i18n": {"defaultLocale": "en", "locales": {"en": {"title": "Dev Dummy"}}},
+            },
+            {
+                "apiVersion": "extension/v1",
+                "kindVersion": 1,
+                "kind": "bridge",
+                "id": "other",
+                "version": "1.0.0",
+                "capabilities": ["inbound-webhook"],
+                "author": "Test",
+                "license": "Apache-2.0",
+                "i18n": {"defaultLocale": "en", "locales": {"en": {"title": "Other"}}},
+            },
         ]
 
         from app.core.database import get_db

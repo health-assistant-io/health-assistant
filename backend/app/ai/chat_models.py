@@ -39,6 +39,14 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
 
+from app.ai.wire_params import CompatibleChatOpenAI, is_openai_endpoint, resolve_chat_transport
+
+__all__ = [
+    "CompatibleChatOpenAI",
+    "is_openai_endpoint",
+    "resolve_chat_transport",
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,24 +55,48 @@ def build_openai(
     api_key: str | None,
     base_url: str,
     model_name: str,
-    temperature: float,
+    temperature: float | None = None,
     max_tokens: int,
     reasoning_effort: str | None = None,
+    chat_transport: str | None = None,
 ) -> BaseChatModel:
     """Build a ``ChatOpenAI`` (OpenAI-compatible: OpenAI, LocalAI, vLLM, ...).
+
+    ``temperature`` is omit-unless-configured (ADR-0038 temperature
+    addendum): ``None`` sends nothing and the provider's own default (1.0)
+    applies — the only value reasoning-family models accept. A
+    user-chosen value rides the wire and remains the user's call.
 
     ``reasoning_effort`` (model-row setting, e.g. ``"none"``) is forwarded
     verbatim — reasoning-family models require it for function-tool calls
     on chat completions. ``None`` keeps the provider default.
+
+    ``chat_transport`` (model-row setting, ADR-0039): ``"responses"``
+    opts the row into the Responses API — honored only on OpenAI's own
+    endpoint and always constructed store-less. The remedy for model
+    families that reject function tools + ``reasoning_effort`` on chat
+    completions (gpt-6): keep the effort and set ``responses``, or set
+    the effort to ``none``.
+
+    The token cap rides the endpoint's wire parameter (ADR-0038):
+    api.openai.com gets ``max_completion_tokens`` (accepted by every OpenAI
+    chat model, old and new — model ids are the wrong signal), every other
+    base URL keeps ``max_tokens`` via :class:`CompatibleChatOpenAI`.
     """
-    return ChatOpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        model=model_name,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        reasoning_effort=reasoning_effort,
-    )
+    kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "model": model_name,
+        "max_tokens": max_tokens,
+        "reasoning_effort": reasoning_effort,
+    }
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    if resolve_chat_transport("openai", base_url, chat_transport) == "responses":
+        kwargs["use_responses_api"] = True
+        kwargs["store"] = False
+    cls: type[BaseChatModel] = ChatOpenAI if is_openai_endpoint(base_url) else CompatibleChatOpenAI
+    return cls(**kwargs)
 
 
 def build_anthropic(

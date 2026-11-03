@@ -11,10 +11,10 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import delete
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel

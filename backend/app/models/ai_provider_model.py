@@ -130,9 +130,18 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
         default=lambda: [AIModelCapability.TEXT.value],
         server_default=text("'[\"text\"]'"),
     )
+    # Decision transport seam (plan 26 / ADR-0032, D2): 'systemone' today.
+    # NULL = not a decision model. Callers never branch on the value — the
+    # decide funnel's registry resolves transport → engine.
+    decision_transport = Column(String(20), nullable=True)
+    # Chat transport seam (ADR-0039): 'responses' | 'completions'.
+    # NULL/anything else = auto = chat completions. Honored only when the
+    # base URL rides OpenAI's own API; the responses path is always
+    # constructed store-less.
+    chat_transport = Column(String(20), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
     max_tokens = Column(Integer, default=65536)
-    temperature = Column(Float, default=0.7)
+    temperature = Column(Float, nullable=True)
     is_local = Column(Boolean, nullable=True)  # Override provider's is_local
     settings = Column(JSONB, nullable=True, default=dict)
 
@@ -168,6 +177,7 @@ class AIModel(Base, UUIDMixin, TimestampMixin):
             "model_name": self.model_name,
             "description": self.description,
             "capabilities": self.get_capabilities(),
+            "decision_transport": self.decision_transport,
             "is_active": self.is_active,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
@@ -199,6 +209,12 @@ class AITaskAssignment(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
     )
     is_active = Column(Boolean, default=True, index=True)
     priority = Column(Integer, default=0)
+    # PHI scope guard (plan 26 D17, health-specific): decision_* assignments
+    # are PHI-excluded by default — a PHI-adjacent dispatch never runs on the
+    # slot unless this flag was explicitly set (ADR-0020 §6 sensitive-scope
+    # exclusion; default False, gap-fill never sets it, only the explicit
+    # task-assignment surface can).
+    phi_allowed = Column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     # Relationships
     provider = relationship("AIProviderModel", back_populates="task_assignments")
@@ -219,6 +235,7 @@ class AITaskAssignment(Base, UUIDMixin, TenantMixin, UserMixin, TimestampMixin):
             "model_id": str(self.model_id) if self.model_id else None,
             "is_active": self.is_active,
             "priority": self.priority,
+            "phi_allowed": self.phi_allowed,
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "user_id": str(self.user_id) if self.user_id else None,
             "created_at": str(self.created_at) if self.created_at else None,

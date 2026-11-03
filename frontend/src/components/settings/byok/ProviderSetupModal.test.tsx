@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProviderSetupModal } from './ProviderSetupModal';
@@ -30,6 +30,12 @@ const storeState = {
         is_active: true,
       },
     ],
+    // Live "now:" context for the review's assignment rows — the text
+    // default is taken, vision/transcription are unset.
+    default: {
+      task_type: 'default',
+      model: { id: 'm0', provider_id: 'prov-0', name: 'GPT-4o legacy', model_name: 'gpt-4o-legacy', is_active: true },
+    },
   },
 };
 
@@ -56,7 +62,7 @@ vi.mock('../../../api/aiConfig', async (importOriginal) => {
 });
 
 const PRESETS = {
-  order: ['openai', 'ollama'],
+  order: ['openai', 'openrouter', 'ollama'],
   presets: {
     openai: {
       key: 'openai',
@@ -73,6 +79,32 @@ const PRESETS = {
       steps: ['Open {url} and sign in.', 'Paste it below and connect.'],
       free_tier_note: null,
     },
+    openrouter: {
+      key: 'openrouter',
+      name: 'OpenRouter',
+      provider_type: 'openai',
+      wire_type: 'openai_compatible',
+      base_url: 'https://openrouter.ai/api/v1',
+      fixed_base: true,
+      local: false,
+      key_url: null,
+      preferred_model: null,
+      curated_models: ['openrouter/auto'],
+      stt_model: null,
+      decision_models: [
+        {
+          id: 'openrouter.jev-latest',
+          name: 'Jev via OpenRouter (latest)',
+          transport: 'systemone',
+          caps: ['tool-dispatch', 'boolean-gate', 'choice', 'score'],
+          provisional: true,
+        },
+      ],
+      decision_default: 'openrouter.jev-latest',
+      provisional: null,
+      steps: null,
+      free_tier_note: null,
+    },
     ollama: {
       key: 'ollama',
       name: 'Ollama (local)',
@@ -82,10 +114,18 @@ const PRESETS = {
       fixed_base: false,
       local: true,
       key_url: null,
-      preferred_model: null,
+      preferred_model: { id: 'gemma4:e4b', name: 'Gemma 4 E4B', caps: ['text', 'tools', 'vision'] },
       curated_models: null,
       stt_model: null,
-      steps: null,
+      embeddings_model: 'embeddinggemma-2:440m',
+      steps: [
+        'Install Ollama v0.35.0 or newer from ollama.com (the clef decision models need v0.35.1+).',
+        'Pull the default chat/vision model, e.g. run: ollama pull gemma4:e4b',
+        'Pull the embeddings model, e.g. run: ollama pull embeddinggemma-2:440m',
+        'Pull the decision models you want, e.g. run: ollama pull nimble',
+        'Make sure Ollama is running on this machine.',
+        'Connect below — no API key needed.',
+      ],
       free_tier_note: null,
     },
   },
@@ -130,6 +170,11 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.slot_chat': 'Text / chat',
   'settings.ai.setup.slot_vision': 'Vision',
   'settings.ai.setup.slot_stt': 'Transcription',
+  'settings.ai.task_decision_default': 'Default decision model',
+  'settings.ai.slot_decision_tool_dispatch': 'Tool dispatch',
+  'settings.ai.slot_decision_boolean_gate': 'Boolean gate',
+  'settings.ai.slot_decision_choice': 'Choice',
+  'settings.ai.slot_decision_score': 'Score',
   'settings.ai.setup.get_key': 'Get an API key',
   'settings.ai.setup.connection_name': 'Connection name',
   'settings.ai.setup.no_key_needed': 'No API key needed for this local provider.',
@@ -143,6 +188,24 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.copy_step': 'Copy step',
   'settings.ai.setup.errors.invalid_key': 'That API key was rejected.',
   'settings.ai.setup.errors.suspected_vendor': 'Heads-up: this key looks like a {{vendor}} key.',
+  'common.back': 'Back',
+  'settings.ai.setup.step.progress': 'Setup progress',
+  'settings.ai.setup.step.connect': 'Connect provider',
+  'settings.ai.setup.step.defaults': 'Choose defaults',
+  'settings.ai.setup.review.intro':
+    '{{name}} connected — {{count}} models found. Choose the models to add, then which empty defaults they fill.',
+  'settings.ai.setup.review.models_title': 'Models to add',
+  'settings.ai.setup.review.models_hint':
+    'Selected models are added to your catalog and become assignable everywhere.',
+  'settings.ai.setup.review.models_footnote': 'Only the selected models are added — you can add more anytime.',
+  'settings.ai.setup.review.assignments_title': 'Default assignments',
+  'settings.ai.setup.review.assignments_hint':
+    'Each switch fills that empty default with the shown model — existing assignments are never touched.',
+  'settings.ai.setup.review.fills': 'fills: {{model}}',
+  'settings.ai.setup.review.no_candidate': 'no model selected',
+  'settings.ai.setup.review.now': 'now: {{model}}',
+  'settings.ai.setup.review.unset': 'not set',
+  'settings.ai.setup.review.apply': 'Apply',
 };
 
 vi.mock('react-i18next', () => ({
@@ -209,8 +272,9 @@ describe('ProviderSetupModal', () => {
     expect(
       await screen.findByText(/open https:\/\/platform\.openai\.com\/api-keys and sign in\./i),
     ).toBeInTheDocument();
-    // every checklist step carries a copy affordance
-    expect(screen.getAllByRole('button', { name: 'Copy step' })).toHaveLength(2);
+    // command-less guidance steps carry no copy affordance
+    const checklist = screen.getByRole('list', { name: 'Setup steps' });
+    expect(within(checklist).queryByRole('button', { name: 'Copy step' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Get an API key' })).toHaveAttribute(
       'href',
       'https://platform.openai.com/api-keys',
@@ -220,7 +284,19 @@ describe('ProviderSetupModal', () => {
     expect(base).not.toHaveAttribute('disabled');
   });
 
-  it('set up automatically calls the store action with the trimmed key and shows the success panel', async () => {
+  it('preset form copies exactly the run command on ollama steps', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByRole('button', { name: /Ollama/ }));
+    // each run command renders as an inline code chip with its own copy button
+    expect(await screen.findByText('ollama pull gemma4:e4b')).toBeInTheDocument();
+    const checklist = screen.getByRole('list', { name: 'Setup steps' });
+    expect(within(checklist).getAllByRole('button', { name: 'Copy step' })).toHaveLength(3);
+    expect(within(checklist).getByText('ollama pull embeddinggemma-2:440m')).toBeInTheDocument();
+    expect(within(checklist).getByText('ollama pull nimble')).toBeInTheDocument();
+  });
+
+  it('set up automatically: bind-less connect → review → apply → done (two-step wizard)', async () => {
     const user = userEvent.setup();
     setupProvider.mockResolvedValue(SETUP_OK);
     renderModal();
@@ -228,13 +304,45 @@ describe('ProviderSetupModal', () => {
     await user.type(await screen.findByLabelText('API Key'), '  sk-test  ');
     await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
+    // connect is bind-less — the review step decides what registers/binds
     await waitFor(() =>
       expect(setupProvider).toHaveBeenCalledWith('openai', {
         api_key: 'sk-test',
         name: null,
         scope: 'USER',
+        options: { bind_chat: false, bind_vision: false, bind_stt: false, bind_decision: false },
       }),
     );
+
+    // step 2 is explicit: the wizard header names it, the assignments
+    // section carries now/fills context per task row
+    expect(await screen.findByText('Choose defaults')).toBeInTheDocument();
+    expect(screen.getByText('Default assignments')).toBeInTheDocument();
+    // terra serves chat and vision — both rows name it; the live text
+    // default rides the chat row's now-context
+    expect(await screen.findAllByText(/fills: gpt-5\.6-terra/)).toHaveLength(2);
+    expect(screen.getByText(/now: gpt-4o-legacy · fills: gpt-5\.6-terra/)).toBeInTheDocument();
+    // whisper keeps its own card → its own candidate
+    expect(screen.getByText(/fills: whisper-1/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(setupProvider).toHaveBeenLastCalledWith(
+        'openai',
+        expect.objectContaining({
+          api_key: 'sk-test',
+          options: expect.objectContaining({
+            curated_ids: ['gpt-5.6-terra', 'whisper-1'],
+            bind_chat: true,
+            bind_vision: true,
+            bind_stt: true,
+            bind_decision: false,
+          }),
+        }),
+      ),
+    );
+
+    // done: the success panel with its per-slot pickers
     expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
     expect(screen.getByText('2 curated models were added.')).toBeInTheDocument();
     expect(screen.getByText('Default models')).toBeInTheDocument();
@@ -263,6 +371,120 @@ describe('ProviderSetupModal', () => {
     expect(screen.getByRole('button', { name: 'Choose another provider' })).toBeInTheDocument();
   });
 
+  it('success panel renders decision rows bound to the provider decision models (plan 26)', async () => {
+    const user = userEvent.setup();
+    setupProvider.mockResolvedValue({
+      ...SETUP_OK,
+      // ADR-0036 §3: setup binds the `decision` default slot only.
+      assigned_decision_slots: { decision: 'openrouter.jev-latest' },
+    });
+    getProviderWithModels.mockResolvedValue({
+      models: [
+        {
+          id: 'm1',
+          provider_id: 'prov-1',
+          name: 'GPT-5.6 Terra',
+          model_name: 'gpt-5.6-terra',
+          capabilities: ['text', 'vision', 'tools'],
+          is_active: true,
+        },
+        {
+          id: 'm-jev',
+          provider_id: 'prov-1',
+          name: 'Jev via OpenRouter (latest)',
+          model_name: 'openrouter.jev-latest',
+          capabilities: ['decision'],
+          decision_transport: 'systemone',
+          is_active: true,
+        },
+      ],
+    });
+    renderModal();
+    await user.click(await screen.findByText('OpenAI'));
+    await user.type(await screen.findByLabelText('API Key'), 'sk-or-v1-key');
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+    // the openai preset declares no decision models → no decision review row
+    expect(await screen.findByText('Default assignments')).toBeInTheDocument();
+    expect(screen.queryByText('Default decision model')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(await screen.findByText('OpenAI is connected.')).toBeInTheDocument();
+    // ADR-0036 §3: ONE decision review row — the default decision model;
+    // the kind slots inherit (plan 29 / ADR-0036).
+        const decisionReviewRow = screen.getByText('Default decision model').closest('div')!;
+    // The picker resolves the bound model's display name (D4: kind rows inherit).
+    expect(within(decisionReviewRow).getByText('Jev via OpenRouter (latest)')).toBeInTheDocument();
+    for (const slot of ['Tool dispatch', 'Boolean gate', 'Choice', 'Score']) {
+      expect(screen.queryByText(slot)).not.toBeInTheDocument();
+    }
+  });
+
+  it('setup review offers the decision default for decision-capable presets (ADR-0036)', async () => {
+    const user = userEvent.setup();
+    setupProvider.mockResolvedValue({
+      ...SETUP_OK,
+      provider: { ...SETUP_OK.provider, name: 'OpenRouter', preset_key: 'openrouter' },
+      catalog_count: 1,
+      assigned_chat_model: null,
+      assigned_vision_model: null,
+      assigned_stt_model: null,
+      assigned_decision_slots: null,
+    });
+    getProviderWithModels.mockResolvedValue({
+      models: [
+        {
+          id: 'm-auto',
+          provider_id: 'prov-1',
+          name: 'Auto (best match)',
+          model_name: 'openrouter/auto',
+          capabilities: ['text'],
+          is_active: true,
+        },
+        {
+          id: 'm-jev',
+          provider_id: 'prov-1',
+          name: 'Jev via OpenRouter (latest)',
+          model_name: 'openrouter.jev-latest',
+          capabilities: ['decision'],
+          decision_transport: 'systemone',
+          is_active: true,
+        },
+      ],
+    });
+    renderModal();
+    await user.click(await screen.findByText('OpenRouter'));
+    await user.type(await screen.findByLabelText('API Key'), 'sk-or-v1-key');
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
+
+    // review: the decision default row names the model it would bind
+    // (openrouter declares decision models; the Jev card never rides the
+    // curated list, so the sub-line is where it must surface)
+    expect(await screen.findByText('Choose defaults')).toBeInTheDocument();
+    expect(screen.getByText('Default decision model')).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/fills: Jev via OpenRouter \(latest\)/)).length,
+    ).toBeGreaterThan(0);
+    // the auto card is text-only → the vision row has no candidate and disables
+    expect(screen.getByText(/fills: openrouter\/auto/)).toBeInTheDocument();
+    expect(screen.getByText('no model selected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(setupProvider).toHaveBeenLastCalledWith(
+        'openrouter',
+        expect.objectContaining({
+          options: expect.objectContaining({
+            curated_ids: ['openrouter/auto'],
+            bind_decision: true,
+          }),
+        }),
+      ),
+    );
+    // done: the registered decision model feeds the default-decision picker
+    expect(await screen.findByText('OpenRouter is connected.')).toBeInTheDocument();
+    expect(screen.getByText('Default decision model')).toBeInTheDocument();
+  });
+
   it('local presets hide the key field and the footer can go back to the tiles', async () => {
     const user = userEvent.setup();
     renderModal();
@@ -280,7 +502,7 @@ describe('ProviderSetupModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('editing the base URL hides automatic setup; manual connect creates the row without auto-configure', async () => {
+  it('editing the base URL reroutes automatic setup through the manual create path', async () => {
     const user = userEvent.setup();
     const { onClose, onManual } = renderModal();
     createProvider.mockResolvedValue({ id: 'prov-9' });
@@ -290,13 +512,9 @@ describe('ProviderSetupModal', () => {
     await user.clear(baseInput);
     await user.type(baseInput, 'https://relay.test/v1');
 
-    // edited preset → automatic setup no longer represents it
-    expect(
-      screen.queryByRole('button', { name: 'Set up automatically' }),
-    ).not.toBeInTheDocument();
-
+    // edited preset → the automatic action saves through the manual form
     await user.type(await screen.findByLabelText('API Key'), 'sk-test');
-    await user.click(screen.getByRole('button', { name: 'Set up manually' }));
+    await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
     await waitFor(() =>
       expect(createProvider).toHaveBeenCalledWith(

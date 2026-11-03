@@ -172,8 +172,8 @@ async def _resolve_state_slugs(
     return out
 
 
-# TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (from DEVELOPMENT_PLAN.md)  # noqa: E501 -- long template/message string; reflow when touched
-# TODO: Add endpoints to retrieve correlated biomarkers for a given clinical event (from DEVELOPMENT_PLAN.md)  # noqa: E501 -- long template/message string; reflow when touched
+# TODO: Add endpoint /api/v1/biomarkers/correlated for querying by organ/symptom (internal development plan)  # noqa: E501 -- long template/message string; reflow when touched
+# TODO: Add endpoints to retrieve correlated biomarkers for a given clinical event (internal development plan)  # noqa: E501 -- long template/message string; reflow when touched
 
 
 @router.get("/", response_model=list[BiomarkerResponse])

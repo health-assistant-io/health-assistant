@@ -1,9 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Eye, EyeOff, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Check, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { integrationService, ConfigFlowSchema } from '../../services/integrationService';
-import { Portal } from '../ui/Portal';
 import { usePatientStore } from '../../store/slices/patientSlice';
+import { Modal } from '../ui/Modal';
+import {
+  IntegrationConfigForm,
+  parseIntegrationConfigSchema,
+  type IntegrationConfigFieldView,
+  type IntegrationConfigSaveInput,
+  type IntegrationConfigValidationView,
+  type IntegrationConfigValues,
+} from '../ui/integrations';
 
 interface Props {
   domain: string;
@@ -19,8 +28,9 @@ function isArrayField(prop: any): boolean {
 }
 
 // Array-of-strings fields constrained to a known set (``items.enum``) —
-// rendered as a toggle-card multi-select instead of the free-text chip
-// editor. ``items.enum_descriptions`` optionally annotates each option.
+// health's toggle-card multi-select dialect, kept app-side (the kit form
+// renders the charter's free chip array; a constrained multi-select with
+// per-option descriptions is domain content).
 function isArrayEnumField(prop: any): boolean {
   return isArrayField(prop) && Array.isArray(prop?.items?.enum) && prop.items.enum.length > 0;
 }
@@ -30,7 +40,12 @@ function isKeyValueField(prop: any): boolean {
   return prop?.type === 'object' && prop?.['x-format'] === 'key-value';
 }
 
-// Password-like fields.
+// JSON-document textareas.
+function isJsonField(prop: any): boolean {
+  return prop?.format === 'json';
+}
+
+// Password-like fields (rendered through the kit's sealed secret slot).
 function isPasswordField(prop: any): boolean {
   return prop?.format === 'password' || prop?.['x-secret'] === true;
 }
@@ -38,7 +53,7 @@ function isPasswordField(prop: any): boolean {
 // Generic conditional visibility: a property is shown if the referenced
 // field equals (or is contained in) the expected value. Supports both
 // `depends_on` (single condition) and `depends_on_any` (list of conditions).
-function isFieldVisible(
+export function isFieldVisible(
   key: string,
   prop: any,
   formData: Record<string, any>
@@ -55,15 +70,31 @@ function isFieldVisible(
   });
 }
 
+// A property renders through the kit's IntegrationConfigForm when it fits
+// the charter's JSON-schema-subset (desktop's boundary: parsing stays
+// host-side, the kit receives field views). Health's extended dialect —
+// key-value maps, constrained array enums, conditional visibility, JSON
+// documents — stays app-owned below the kit fields.
+function isKitField(prop: any): boolean {
+  return (
+    !isKeyValueField(prop) &&
+    !isArrayEnumField(prop) &&
+    !isJsonField(prop) &&
+    !prop?.depends_on &&
+    !Array.isArray(prop?.depends_on_any)
+  );
+}
+
 const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSuccess, initialData }) => {
+  const { t } = useTranslation();
   const { currentPatient } = usePatientStore();
   const [schema, setSchema] = useState<ConfigFlowSchema | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [error, setError] = useState<string | null>(null);
+  const [validation, setValidation] = useState<IntegrationConfigValidationView | null>(null);
   const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchSchema = async () => {
@@ -104,332 +135,319 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
       }
     };
     fetchSchema();
-  }, [domain, initialData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain]);
 
-  const handleChange = (key: string, value: any, type: string) => {
-    let parsedValue = value;
-    if (type === 'integer') parsedValue = parseInt(value, 10);
-    if (type === 'number') parsedValue = parseFloat(value);
-    setFormData(prev => ({ ...prev, [key]: parsedValue }));
-  };
+  const properties = useMemo(
+    () => Object.entries(schema?.data_schema?.properties ?? {}) as [string, any][],
+    [schema],
+  );
 
-  const handleJsonChange = (key: string, value: string) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-    try {
-      JSON.parse(value);
-      setJsonErrors(prev => ({ ...prev, [key]: '' }));
-    } catch (e: any) {
-      setJsonErrors(prev => ({ ...prev, [key]: 'Invalid JSON: ' + e.message }));
+  const requiredKeys = useMemo(
+    () => new Set<string>((schema?.data_schema?.required as string[]) ?? []),
+    [schema],
+  );
+
+  const kitNames = useMemo(() => {
+    const names = properties.filter(([, prop]) => isKitField(prop)).map(([key]) => key);
+    return new Set(names);
+  }, [properties]);
+
+  // Kit field views (charter subset) — enum_descriptions ride the view's
+  // description channel for the CURRENTLY SELECTED option, keeping health's
+  // per-option explanations inside the kit's rendering.
+  const kitFields = useMemo<IntegrationConfigFieldView[]>(() => {
+    if (kitNames.size === 0) return [];
+    const subset: Record<string, any> = {};
+    for (const [key, prop] of properties) {
+      if (!kitNames.has(key)) continue;
+      const normalized = isPasswordField(prop) ? { ...prop, 'x-secret': true } : prop;
+      subset[key] = normalized;
     }
-  };
-
-  // String-array chip editor helpers.
-  const handleArrayAdd = (key: string, value: string) => {
-    if (!value.trim()) return;
-    setFormData(prev => ({ ...prev, [key]: [...(prev[key] || []), value.trim()] }));
-  };
-  const handleArrayRemove = (key: string, idx: number) => {
-    setFormData(prev => ({ ...prev, [key]: (prev[key] || []).filter((_: any, i: number) => i !== idx) }));
-  };
-
-  // Key-value map editor helpers.
-  const handleKvChange = (key: string, k: string, newK: string) => {
-    setFormData(prev => {
-      const obj = { ...(prev[key] || {}) };
-      const v = obj[k];
-      delete obj[k];
-      obj[newK] = v;
-      return { ...prev, [key]: obj };
+    const views = parseIntegrationConfigSchema({
+      type: 'object',
+      properties: subset,
+      required: properties.filter(([key]) => requiredKeys.has(key) && kitNames.has(key)).map(([key]) => key),
     });
-  };
-  const handleKvValueChange = (key: string, k: string, v: string) => {
-    setFormData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [k]: v } }));
-  };
-  const handleKvAdd = (key: string) => {
-    setFormData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), '': '' } }));
-  };
-  const handleKvRemove = (key: string, k: string) => {
-    setFormData(prev => {
-      const obj = { ...(prev[key] || {}) };
-      delete obj[k];
-      return { ...prev, [key]: obj };
+    return views.map((view) => {
+      const prop = properties.find(([key]) => key === view.name)?.[1];
+      const selected = formData[view.name] || prop?.default || prop?.enum?.[0];
+      const described = prop?.enum_descriptions?.[selected];
+      return described ? { ...view, description: described } : view;
     });
+  }, [properties, kitNames, requiredKeys, formData]);
+
+  const secretSlots = useMemo(() => {
+    const slots: Record<string, { set: boolean; hint?: string | null }> = {};
+    for (const [key, prop] of properties) {
+      if (kitNames.has(key) && isPasswordField(prop)) {
+        slots[key] = { set: initialData?.[key] === '***' };
+      }
+    }
+    return slots;
+  }, [properties, kitNames, initialData]);
+
+  const handleValuesChange = (values: IntegrationConfigValues) => {
+    setFormData((prev) => ({ ...prev, ...values }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Health's extended-dialect editors (key-value maps, constrained array
+  // enums, JSON documents) — the kit cannot express these; they render
+  // app-owned in schema order after the kit fields.
+  const renderExtendedField = (key: string, prop: any) => {
+    if (!isFieldVisible(key, prop, formData)) return null;
+    const required = requiredKeys.has(key);
+
+    if (isKeyValueField(prop)) {
+      return (
+        <div key={key}>
+          <label className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+            {prop.title || key}
+            {required && <span className="text-red-500 ml-1">*</span>}
+          </label>
+          <div className="space-y-2 rounded-xl border border-gray-200 dark:border-dark-border p-3 bg-gray-50 dark:bg-dark-bg">
+            {Object.entries(formData[key] || {}).map(([k, v]: [string, any], idx: number) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={k}
+                  placeholder="Key"
+                  onChange={(e) => setFormData((prev) => {
+                    const obj = { ...(prev[key] || {}) };
+                    const v0 = obj[k];
+                    delete obj[k];
+                    obj[e.target.value] = v0;
+                    return { ...prev, [key]: obj };
+                  })}
+                  className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
+                />
+                <input
+                  type="text"
+                  value={v as string}
+                  placeholder="Value"
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    [key]: { ...(prev[key] || {}), [k]: e.target.value },
+                  }))}
+                  className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
+                />
+                <button
+                  type="button"
+                  onClick={() => setFormData((prev) => {
+                    const obj = { ...(prev[key] || {}) };
+                    delete obj[k];
+                    return { ...prev, [key]: obj };
+                  })}
+                  className="text-gray-400 hover:text-red-500 transition-colors"
+                  title="Remove"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setFormData((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), '': '' } }))}
+              className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add row
+            </button>
+          </div>
+          {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
+        </div>
+      );
+    }
+
+    if (isArrayEnumField(prop)) {
+      const options: string[] = prop.items.enum;
+      return (
+        <div key={key}>
+          <span className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+            {prop.title || key}
+            {required && <span className="text-red-500 ml-1">*</span>}
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {options.map((opt: string) => {
+              const current: string[] = Array.isArray(formData[key]) ? formData[key] : [];
+              const selected = current.includes(opt);
+              const desc = prop.items.enum_descriptions?.[opt];
+              return (
+                <button
+                  type="button"
+                  key={opt}
+                  onClick={() => {
+                    const next = selected
+                      ? current.filter((v: string) => v !== opt)
+                      : [...current, opt];
+                    // Preserve enum order so the stored value is deterministic.
+                    const ordered = options.filter((v: string) => next.includes(v));
+                    setFormData((prev) => ({ ...prev, [key]: ordered }));
+                  }}
+                  className={`flex items-start gap-2 text-left rounded-xl border p-3 transition-colors ${
+                    selected
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20'
+                      : 'border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-dark-bg'
+                  }`}
+                >
+                  <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-sm flex items-center justify-center ${selected ? 'bg-blue-600 text-white' : 'border border-gray-300 dark:border-gray-600'}`}>
+                    {selected && <Check className="w-3 h-3" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-dark-text">{opt}</div>
+                    {desc && <div className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{desc}</div>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {(formData[key] || []).length === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              Select at least one record type.
+            </p>
+          )}
+          {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
+        </div>
+      );
+    }
+
+    if (isJsonField(prop)) {
+      return (
+        <div key={key}>
+          <label htmlFor={key} className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+            {prop.title || key}
+            {required && <span className="text-red-500 ml-1">*</span>}
+          </label>
+          <textarea
+            id={key}
+            value={formData[key] !== undefined ? formData[key] : ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFormData((prev) => ({ ...prev, [key]: value }));
+              try {
+                JSON.parse(value);
+                setJsonErrors((prev) => ({ ...prev, [key]: '' }));
+              } catch (err: any) {
+                setJsonErrors((prev) => ({ ...prev, [key]: 'Invalid JSON: ' + err.message }));
+              }
+            }}
+            rows={10}
+            className={`w-full rounded-xl border px-4 py-2 bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text font-mono text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors ${jsonErrors[key] ? 'border-red-500' : 'border-gray-200 dark:border-dark-border'}`}
+          />
+          {jsonErrors[key] && <p className="text-xs text-red-500 font-medium">{jsonErrors[key]}</p>}
+          {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
+        </div>
+      );
+    }
+
+    // Conditional plain fields (depends_on/depends_on_any on kit values).
+    return (
+      <div key={key}>
+        <label htmlFor={key} className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
+          {prop.title || key}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        <input
+          id={key}
+          type={prop.type === 'integer' || prop.type === 'number' ? 'number' : 'text'}
+          value={formData[key] !== undefined && typeof formData[key] !== 'object' ? formData[key] : ''}
+          min={prop.minimum}
+          max={prop.maximum}
+          onChange={(e) => setFormData((prev) => ({
+            ...prev,
+            [key]: prop.type === 'integer'
+              ? parseInt(e.target.value, 10)
+              : prop.type === 'number'
+                ? parseFloat(e.target.value)
+                : e.target.value,
+          }))}
+          className="w-full rounded-xl border border-gray-200 dark:border-dark-border px-4 py-2 bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
+        />
+        {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
+      </div>
+    );
+  };
+
+  const handleSubmit = async ({ values, secrets }: IntegrationConfigSaveInput) => {
     if (!currentPatient) return;
+    const invalidJson = Object.entries(jsonErrors).find(([, err]) => err !== '');
+    if (invalidJson) {
+      setValidation({ state: 'error', message: `${invalidJson[0]}: ${invalidJson[1]}` });
+      return;
+    }
+    // Health's config-flow endpoint is the validator (G2): values go out,
+    // the 400 detail comes back through the kit's validation display.
+    const payload: Record<string, any> = { ...formData, ...values };
+    for (const [key, prop] of properties) {
+      if (isPasswordField(prop)) payload[key] = secrets[key] ?? '';
+    }
     try {
       setSubmitting(true);
-      await integrationService.submitConfigFlow(domain, currentPatient.id, formData, integrationId);
+      setValidation({ state: 'validating' });
+      await integrationService.submitConfigFlow(domain, currentPatient.id, payload, integrationId);
       toast.success("Integration configured successfully!");
       onSuccess();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to save configuration");
+      const detail = err.response?.data?.detail || "Failed to save configuration";
+      toast.error(detail);
+      setValidation({ state: 'error', message: typeof detail === 'string' ? detail : JSON.stringify(detail) });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Portal>
-      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-dark-surface w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] z-10000">
-        <div className="p-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">
-            {schema?.title || 'Configure Integration'}
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
+    <Modal
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={schema?.title || 'Configure Integration'}
+      size="md"
+    >
+      {loading ? (
+        <div className="py-8 text-center text-gray-500 dark:text-dark-muted">
+          {t('integrations.config.loading', 'Loading configuration UI...')}
         </div>
-
-        <div className="p-6 overflow-y-auto">
-          {loading ? (
-            <div className="py-8 text-center text-gray-500 dark:text-dark-muted">Loading configuration UI...</div>
-          ) : error ? (
-            <div className="py-4 text-red-600 bg-red-50 dark:bg-red-900/20 rounded-xl px-4">{error}</div>
-          ) : schema && (
-            <form id="config-form" onSubmit={handleSubmit} className="space-y-4">
-              {schema.description && <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{schema.description}</p>}
-
-              {schema.data_schema?.properties && Object.entries(schema.data_schema.properties).map(([key, prop]: [string, any]) => {
-                // Generic conditional visibility (generalizes the old
-                // webhook-only `parser_type === 'custom'` special case).
-                if (!isFieldVisible(key, prop, formData)) return null;
-                const required = schema.data_schema.required?.includes(key);
-
-                return (
-                <div key={key}>
-                  <label htmlFor={key} className="block text-sm font-medium text-gray-700 dark:text-dark-text mb-1">
-                    {prop.title || key}
-                    {required && <span className="text-red-500 ml-1">*</span>}
-                  </label>
-                  <div>
-                    {prop.enum ? (
-                      <div>
-                        <select
-                          id={key}
-                          required={required}
-                          value={formData[key] || prop.default || prop.enum[0]}
-                          onChange={(e) => handleChange(key, e.target.value, prop.type)}
-                          className="w-full rounded-xl border border-gray-200 dark:border-dark-border px-4 py-2 bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                        >
-                          {prop.enum.map((opt: string) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                        </select>
-                        {prop.enum_descriptions && prop.enum_descriptions[formData[key] || prop.default || prop.enum[0]] && (
-                          <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl">
-                            <p className="text-xs text-blue-700 dark:text-blue-300">
-                              {prop.enum_descriptions[formData[key] || prop.default || prop.enum[0]]}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ) : isKeyValueField(prop) ? (
-                      <div className="space-y-2 rounded-xl border border-gray-200 dark:border-dark-border p-3 bg-gray-50 dark:bg-dark-bg">
-                        {Object.entries(formData[key] || {}).map(([k, v]: [string, any], idx: number) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={k}
-                              placeholder="Key"
-                              onChange={(e) => handleKvChange(key, k, e.target.value)}
-                              className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
-                            />
-                            <input
-                              type={isPasswordField(prop) ? (showSecrets[key] ? 'text' : 'password') : 'text'}
-                              value={v as string}
-                              placeholder="Value"
-                              onChange={(e) => handleKvValueChange(key, k, e.target.value)}
-                              className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleKvRemove(key, k)}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
-                              title="Remove"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => handleKvAdd(key)}
-                          className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add row
-                        </button>
-                      </div>
-                    ) : isArrayEnumField(prop) ? (
-                      <div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {prop.items.enum.map((opt: string) => {
-                            const current: string[] = Array.isArray(formData[key]) ? formData[key] : [];
-                            const selected = current.includes(opt);
-                            const desc = prop.items.enum_descriptions?.[opt];
-                            return (
-                              <button
-                                type="button"
-                                key={opt}
-                                onClick={() => {
-                                  const next = selected
-                                    ? current.filter((v: string) => v !== opt)
-                                    : [...current, opt];
-                                  // Preserve enum order so the stored value is deterministic.
-                                  const ordered = prop.items.enum.filter((v: string) => next.includes(v));
-                                  setFormData((prev) => ({ ...prev, [key]: ordered }));
-                                }}
-                                className={`flex items-start gap-2 text-left rounded-xl border p-3 transition-colors ${
-                                  selected
-                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/20'
-                                    : 'border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-dark-bg'
-                                }`}
-                              >
-                                <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-sm flex items-center justify-center ${selected ? 'bg-blue-600 text-white' : 'border border-gray-300 dark:border-gray-600'}`}>
-                                  {selected && <Check className="w-3 h-3" />}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 dark:text-dark-text">{opt}</div>
-                                  {desc && <div className="text-xs text-gray-500 dark:text-dark-muted mt-0.5">{desc}</div>}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        {(formData[key] || []).length === 0 && (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                            Select at least one record type.
-                          </p>
-                        )}
-                      </div>
-                    ) : isArrayField(prop) ? (
-                      <div className="space-y-2 rounded-xl border border-gray-200 dark:border-dark-border p-3 bg-gray-50 dark:bg-dark-bg">
-                        {(formData[key] || []).map((item: string, idx: number) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={item}
-                              onChange={(e) => {
-                                const next = [...(formData[key] || [])];
-                                next[idx] = e.target.value;
-                                setFormData(prev => ({ ...prev, [key]: next }));
-                              }}
-                              className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleArrayRemove(key, idx)}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
-                              title="Remove"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            placeholder="Add value + Enter"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleArrayAdd(key, (e.target as HTMLInputElement).value);
-                                (e.target as HTMLInputElement).value = '';
-                              }
-                            }}
-                            className="flex-1 rounded-lg border border-gray-200 dark:border-dark-border px-3 py-1.5 bg-white dark:bg-dark-surface text-sm text-gray-900 dark:text-dark-text"
-                          />
-                          <Plus className="w-4 h-4 text-gray-400" />
-                        </div>
-                      </div>
-                    ) : prop.format === 'json' ? (
-                      <div className="space-y-2">
-                        <textarea
-                          id={key}
-                          required={required}
-                          value={formData[key] !== undefined ? formData[key] : ''}
-                          onChange={(e) => handleJsonChange(key, e.target.value)}
-                          rows={10}
-                          className={`w-full rounded-xl border px-4 py-2 bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text font-mono text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors ${jsonErrors[key] ? 'border-red-500' : 'border-gray-200 dark:border-dark-border'}`}
-                        />
-                        {jsonErrors[key] && <p className="text-xs text-red-500 font-medium">{jsonErrors[key]}</p>}
-                      </div>
-                    ) : isPasswordField(prop) ? (
-                      <div className="relative">
-                        <input
-                          type={showSecrets[key] ? 'text' : 'password'}
-                          id={key}
-                          required={required}
-                          value={formData[key] !== undefined ? formData[key] : ''}
-                          onChange={(e) => handleChange(key, e.target.value, prop.type)}
-                          className="w-full rounded-xl border border-gray-200 dark:border-dark-border px-4 py-2 pr-10 bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                          placeholder={initialData?.[key] === '***' ? '•••••••• (re-enter to change)' : ''}
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }))}
-                          className="absolute inset-y-0 right-0 px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                          title={showSecrets[key] ? 'Hide' : 'Show'}
-                        >
-                          {showSecrets[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    ) : prop.type === 'boolean' ? (
-                      <input
-                        type="checkbox"
-                        id={key}
-                        checked={formData[key] || false}
-                        onChange={(e) => handleChange(key, e.target.checked, prop.type)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-sm"
-                      />
-                    ) : (
-                      <input
-                        type={prop.type === 'integer' || prop.type === 'number' ? 'number' : 'text'}
-                        id={key}
-                        required={required}
-                        value={formData[key] !== undefined ? formData[key] : ''}
-                        onChange={(e) => handleChange(key, e.target.value, prop.type)}
-                        min={prop.minimum}
-                        max={prop.maximum}
-                        className="w-full rounded-xl border border-gray-200 dark:border-dark-border px-4 py-2 bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                      />
-                    )}
-                  </div>
-                  {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
-                </div>
-                );
-              })}
-            </form>
+      ) : error ? (
+        <div className="py-4 text-red-600 bg-red-50 dark:bg-red-900/20 rounded-xl px-4">{error}</div>
+      ) : (
+        <div className="space-y-4">
+          {schema?.description && (
+            <p className="text-sm text-gray-500 dark:text-dark-muted">{schema.description}</p>
+          )}
+          <IntegrationConfigForm
+            fields={kitFields}
+            values={Object.fromEntries(
+              Object.entries(formData).filter(([key]) => kitNames.has(key)),
+            ) as IntegrationConfigValues}
+            onValuesChange={handleValuesChange}
+            onSave={handleSubmit}
+            validation={validation}
+            secretSlots={secretSlots}
+            busy={submitting}
+            labels={{
+              submitLabel: submitting
+                ? t('integrations.config.saving', 'Saving...')
+                : t('integrations.config.save', 'Save Configuration'),
+              cancelLabel: t('integrations.config.cancel', 'Cancel'),
+              secretSetLabel: t('integrations.config.secretSet', 'set — leave empty to keep'),
+              secretHintLabel: t('integrations.config.secretNotSet', 'not set'),
+            }}
+            onCancel={onClose}
+          />
+          {properties.some(([key]) => !kitNames.has(key)) && (
+            <div className="space-y-4 border-t border-gray-100 dark:border-dark-border pt-4">
+              {properties
+                .filter(([key]) => !kitNames.has(key))
+                .map(([key, prop]) => renderExtendedField(key, prop))}
+            </div>
+          )}
+          {Object.values(jsonErrors).some((err) => err !== '') && (
+            <p role="alert" className="text-xs text-red-500 font-medium">
+              {t('integrations.config.invalidJson', 'Fix invalid JSON before saving.')}
+            </p>
           )}
         </div>
-
-        <div className="p-6 bg-gray-50 dark:bg-dark-border/30 flex items-center justify-end space-x-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-dark-muted hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="config-form"
-            disabled={loading || !!error || submitting || Object.values(jsonErrors).some(err => err !== '')}
-            className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-md shadow-blue-200/50 dark:shadow-none active:scale-95 disabled:opacity-50"
-          >
-            {submitting ? 'Saving...' : 'Save Configuration'}
-          </button>
-        </div>
-      </div>
-      </div>
-    </Portal>
+      )}
+    </Modal>
   );
 };
 

@@ -391,7 +391,6 @@ async def resume_after_hitl(
     tenant_id: UUID,
     user_id: UUID,
     message_id: UUID | None = None,
-    flow_events: bool = False,
 ):
     """Stream a continuation turn after the user has resolved one or more HITL
     task cards. Reads the resolved tasks from the target message's ``tasks``
@@ -402,7 +401,7 @@ async def resume_after_hitl(
       * Session must belong to (user_id, tenant_id).
       * Target message must exist and have tasks (graceful fallback otherwise).
 
-    Yields the same SSE sentinel vocabulary as the streaming chat path.
+    Yields the same SSE frames (family vocabulary) as the streaming chat path.
     """
     # Lazy import to avoid the chat_agent <-> hitl top-level cycle.
     from sqlalchemy import select
@@ -410,7 +409,7 @@ async def resume_after_hitl(
     from app.ai.agents.chat_agent import (
         build_chat_tools,
         reconstruct_history,
-        stream_loop_as_sse,
+        stream_events_as_sse,
     )
     from app.ai.agents.prompts import build_resume_system_prompt
     from app.ai.graphs.chat_agent import (
@@ -418,6 +417,7 @@ async def resume_after_hitl(
         resume_interrupted_chat_graph,
     )
     from app.models.chat_model import ChatSession as _ChatSession
+    from app.services.chat_branching import card_thread_key
 
     # Verify ownership + pull patient_id for tool context.
     session_result = await db.execute(
@@ -465,15 +465,24 @@ async def resume_after_hitl(
             "offer any natural follow-up."
         )
 
+    # Branch placement (plan 13 H2): the continuation writes hang under the
+    # card-bearing message — the resume is branch-local and never leaks rows
+    # into whichever other branch is currently selected.
+    continuation_parent_id = target.id if target is not None else None
+
     # Persist the summary as a user message so it reconstructs naturally
     # into LLM history on subsequent turns. It is tagged ``kind=hitl_feedback``
     # so the GET /messages endpoint can hide it from the UI (it is an
     # LLM-internal instruction, never meant to render as a chat bubble).
-    await chat_session_service.save_message(
+    feedback_row = await chat_session_service.save_message(
         session_id=session_id,
         role="user",
         content={"text": summary, "kind": "hitl_feedback"},
+        parent_id=continuation_parent_id,
     )
+    # Everything the continuation writes (a follow-up card, the fallback
+    # reply) hangs under the feedback row — the newest row of this branch.
+    continuation_parent_id = feedback_row.id
 
     patient_id = str(session.patient_id) if session.patient_id else None
     # Resume turns don't carry exam context.
@@ -489,29 +498,46 @@ async def resume_after_hitl(
         chat_session_service, session_id, user_id, tenant_id, system_prompt, summary
     )
 
-    # Graph engine (Phase 3.3): when the session's checkpointed run is paused
+    # Branch thread key (plan 11 §6 health ruling): derive the paused run's
+    # thread FROM THE CARD-BEARING MESSAGE — cards attach to messages, not
+    # thread state, so a card on branch A resumes branch A even after branch
+    # B was created and selected.
+    resume_thread_id: str | None = None
+    if target is not None:
+        all_messages = await chat_session_service.get_session_messages(
+            session_id, user_id, tenant_id
+        )
+        resume_thread_id = card_thread_key(session_id, all_messages, target)
+
+    # Graph engine (Phase 3.3): when the checkpointed run is paused
     # at an ask_user interrupt, the summary is delivered as Command(resume=...)
     # — the model continues the SAME conversation (the answers land as the
     # ask_user ToolMessage). Falls back to the fresh-continuation turn when
     # there is no pending interrupt (e.g. loop-engine sessions or an
     # already-abandoned checkpoint).
-    resumed = await resume_interrupted_chat_graph(
-        session_id,
-        summary,
-        llm_with_tools=llm_with_tools,
-        tools=tools,
-        chat_session_service=chat_session_service,
-        log_label="AI Assistance (resume)",
-        user_id=user_id,
-        tenant_id=tenant_id,
+    resumed = (
+        await resume_interrupted_chat_graph(
+            session_id,
+            summary,
+            llm_with_tools=llm_with_tools,
+            tools=tools,
+            chat_session_service=chat_session_service,
+            log_label="AI Assistance (resume)",
+            user_id=user_id,
+            tenant_id=tenant_id,
+            thread_id=resume_thread_id,
+            turn_parent_id=continuation_parent_id,
+        )
+        if resume_thread_id is not None
+        else None
     )
     if resumed is not None:
         logger.info(
             f"HITL resume: resuming checkpointed graph run for session "
-            f"{session_id} (ask_user interrupt)."
+            f"{session_id} on thread {resume_thread_id} (ask_user interrupt)."
         )
-        async for chunk in stream_loop_as_sse(resumed, flow_events=flow_events):
-            yield chunk
+        async for frame in stream_events_as_sse(resumed):
+            yield frame
         return
 
     loop = chat_engine_iter(
@@ -525,6 +551,8 @@ async def resume_after_hitl(
         log_label="AI Assistance (resume)",
         user_id=user_id,
         tenant_id=tenant_id,
+        thread_id=resume_thread_id,
+        turn_parent_id=continuation_parent_id,
     )
-    async for chunk in stream_loop_as_sse(loop, flow_events=flow_events):
-        yield chunk
+    async for frame in stream_events_as_sse(loop):
+        yield frame

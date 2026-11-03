@@ -236,10 +236,27 @@ def _override_user():
     app.dependency_overrides.pop(get_current_user, None)
 
 
+@pytest.fixture(autouse=True)
+def turn_redis(monkeypatch):
+    """Hermetic turn lock for the resume endpoint tests.
+
+    The endpoint takes the shared per-session turn lock; on the real
+    client, a connection pooled by an earlier test (fresh event loop per
+    test) makes acquire/release fail unpredictably mid-suite. The
+    FakeRedis pattern from tests/test_turn_lock.py keeps these tests
+    deterministic."""
+    from app.ai.assistance import turns as turns_mod
+    from tests.test_turn_lock import FakeRedis
+
+    fake = FakeRedis()
+    monkeypatch.setattr(turns_mod, "redis_client", fake)
+    return fake
+
+
 @pytest.mark.asyncio
 async def test_resume_endpoint_streams_content(async_client):
-    """When the service yields sentinel chunks, the endpoint wraps each as
-    `data: {"content": ...}` SSE frames.
+    """The service yields family-vocabulary SSE frames; the endpoint passes
+    them through verbatim.
 
     NOTE: `resume_after_hitl` is an async generator function (uses `yield`),
     so calling it returns the async generator directly — the endpoint must
@@ -249,8 +266,12 @@ async def test_resume_endpoint_streams_content(async_client):
     """
 
     async def _fake_resume(*args, **kwargs):
-        for chunk in ["Hello ", "[TOOL_CALL_START] get_system_time", "world"]:
-            yield chunk
+        yield 'data: {"event": "delta", "text": "Hello "}\n\n'
+        yield (
+            'data: {"event": "tool_call", "id": "get_system_time", '
+            '"name": "get_system_time", "status": "running"}\n\n'
+        )
+        yield 'data: {"event": "delta", "text": "world"}\n\n'
 
     with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
@@ -266,9 +287,10 @@ async def test_resume_endpoint_streams_content(async_client):
         )
         assert resp.status_code == 200
         body = resp.text
-        assert 'data: {"content": "Hello "}' in body
-        assert 'data: {"content": "world"' in body
-        assert "[TOOL_CALL_START]" in body
+        assert 'data: {"event": "delta", "text": "Hello "}' in body
+        assert 'data: {"event": "delta", "text": "world"}' in body
+        assert '"tool_call"' in body
+        assert '"event"' in body
 
 
 @pytest.mark.asyncio
@@ -278,8 +300,8 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
     should stream normally; the summary handles pending items."""
 
     async def _fake_resume(*args, **kwargs):
-        yield "Acknowledged your partial review."
-        yield ""
+        yield 'data: {"event": "delta", "text": "Acknowledged your partial review."}\n\n'
+        yield 'data: {"event": "flow_finished"}\n\n'
 
     with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
         mock_instance = MagicMock()
@@ -293,8 +315,8 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
         )
         assert resp.status_code == 200
         assert "Acknowledged your partial review" in resp.text
-        # No error frame should be emitted.
-        assert '"error"' not in resp.text
+        # No failure frame should be emitted.
+        assert "flow_failed" not in resp.text
 
 
 @pytest.mark.asyncio
@@ -467,6 +489,10 @@ async def test_get_session_messages_hides_hitl_feedback(async_client):
         m.citations = None
         m.tasks = None
         m.created_at = "2026-01-01T00:00:00Z"
+        m.parent_id = None
+        m.variant_index = 1
+        m.variant_count = 1
+        m.sibling_ids = [m.id]
         return m
 
     visible = [_msg("user question"), _msg("assistant answer")]
@@ -478,7 +504,7 @@ async def test_get_session_messages_hides_hitl_feedback(async_client):
 
     with patch.object(ep, "ChatSessionService") as mock_cls:
         inst = mock_cls.return_value
-        inst.get_session_messages = AsyncMock(return_value=[visible[0], internal, visible[1]])
+        inst.get_active_path_decorated = AsyncMock(return_value=[visible[0], internal, visible[1]])
 
         session_id = uuid4()
         resp = await async_client.get(f"/api/v1/ai-assistance/sessions/{session_id}/messages")

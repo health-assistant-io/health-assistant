@@ -157,4 +157,3 @@ ObservationBuilder(tenant_id, patient_id)
 - [Ontology & Catalog](ONTOLOGY_CATALOG.md) — the JSON catalog format (gains optional `value_type` + `allowed_states` per biomarker).
 - [Telemetry & TimescaleDB](TELEMETRY_AND_AGGREGATION.md) — why STATE biomarkers are excluded from telemetry.
 - [FHIR R4 Facade](FHIR_R4_FACADE.md) — search params and the external API surface.
-- `dev/plans/state-biomarkers-2026-08-05.md` — the implementation plan.

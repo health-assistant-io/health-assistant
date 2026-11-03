@@ -181,7 +181,7 @@ What to look for:
 | Log signal | Meaning | Fix |
 |---|---|---|
 | `ocr_start` stage with no completion log | Upstream provider hang or 5xx | Check provider status page; verify API key |
-| `FileNotFoundError` (any stage) | Source file moved/deleted/permissions | Verify `UPLOAD_DIR`; restore file; retry |
+| `FileNotFoundError` (any stage) | Source file moved/deleted/permissions | Verify `HA_UPLOAD_DIR`; restore file; retry |
 | `pydicom` error / DICOM processing failure | pydicom couldn't read the `.dcm` | File corrupt; re-upload |
 | Upstream `401 Unauthorized` | AI provider API key invalid | Rotate key in `/ai-config/providers/{id}` |
 | Upstream `429 Too Many Requests` | Provider rate limit | Reduce concurrency or upgrade plan |
@@ -265,7 +265,7 @@ LIMIT 50;
 |---|---|---|
 | Many rows stuck at `0%`, no error logged | Celery worker not running | Step 2 |
 | `config_check` error in logs | AI provider inactive or assignment missing | Step 3 |
-| `FileNotFoundError` in logs | Source file missing from `UPLOAD_DIR` | Restore file or delete the document row |
+| `FileNotFoundError` in logs | Source file missing from `HA_UPLOAD_DIR` | Restore file or delete the document row |
 | `upstream 401 Unauthorized` | AI provider API key invalid | Rotate key in `/ai-config/providers/{id}` |
 | `upstream 429 Too Many Requests` | Provider rate limit | Reduce concurrency or upgrade plan |
 | DICOM `pydicom` error | File not valid DICOM | Re-upload; convert to images first |
@@ -283,8 +283,8 @@ LIMIT 50;
   for >5 min, or when the per-status queue depth is non-monotonic.
 - **AI config snapshots**: snapshot the active OCR + NLP assignments
   (`/ai-config/summary`) before each deploy so a regression is quick to spot.
-- **`UPLOAD_DIR` on persistent volume**: a common cause of `FileNotFoundError`
-  after a redeploy is `UPLOAD_DIR` not surviving the container lifecycle.
+- **`HA_UPLOAD_DIR` on persistent volume**: a common cause of `FileNotFoundError`
+  after a redeploy is `HA_UPLOAD_DIR` not surviving the container lifecycle.
 - **Keep Celery + beat on the same image version** as the API — schema/serializer
   drift between API and worker produces silent task failures.
 
@@ -296,3 +296,49 @@ LIMIT 50;
 - [AI_SYSTEM.md](AI_SYSTEM.md) — the AI provider factory + OCR/NLP pipeline
 - [DEVELOPMENT.md](DEVELOPMENT.md) — running the full dev stack (API + worker + beat)
 - [SEEDING_AND_DEMOS.md](SEEDING_AND_DEMOS.md) — deterministic demo data
+
+---
+
+## Appendix: the logging components (internals)
+
+What produces the signals the guide above reads.
+
+### TaskLogger (`backend/app/workers/task_logger.py`)
+
+A structured logger for Celery tasks, designed security-first: no API keys or credentials in logs, structured JSON for parsing, error categorization for monitoring, and tenant isolation in the log context.
+
+- Auto-redacts sensitive keys (`api_key`, `token`, `secret`, …) and truncates long strings (>100 chars).
+- Emits `start` / `progress` / `success` / `error` events.
+- Categorizes errors: `configuration`, `file`, `api`, `validation`, `system`.
+
+**TaskProgressTracker** mirrors status into the database in real time (document + examination status, error messages on failure). **TaskTimeoutMonitor** detects stalled tasks (default 5 minutes, `max_duration_seconds=300`), prevents infinite loops, and returns the remaining seconds before timeout.
+
+### Structured log line shape
+
+```json
+{
+  "timestamp": "2026-03-17T10:30:00Z",
+  "level": "ERROR",
+  "task_name": "ocr_document",
+  "task_id": "uuid",
+  "tenant_id": "uuid",
+  "message": "Error in file_check",
+  "data": {
+    "error_type": "file",
+    "error_class": "FileNotFoundError",
+    "error_message": "File not found..."
+  },
+  "duration_seconds": 2.5
+}
+```
+
+### Monitoring metrics & alert thresholds
+
+Health indicators: processing count (should be low), stalled count (should be 0), age distribution (most < 5 minutes), error rate (< 5%).
+
+| Alert | Threshold |
+|---|---|
+| Stalled tasks | > 0 → investigate |
+| Processing age | > 10 min → retry |
+| Error rate | > 10% → check config |
+| Timeout rate | > 5% → optimize |

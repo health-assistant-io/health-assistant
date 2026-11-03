@@ -6,6 +6,33 @@ Health Assistant is a self-hosted, open-source health records platform. You own 
 
 Docker is the fastest way to get up and running. Everything (UI, API, task monitor) is served behind a single built-in Nginx proxy on port 80. You'll need: **Docker** with **Docker Compose** (Linux, WSL2, or macOS), **Git**, and **Python 3** (used only once to generate your secure keys). The stack needs about 2–3 GB of free RAM.
 
+### One-line install (no clone needed)
+
+If you'd rather not clone anything, the remote bootstrap fetches the latest
+published release, shows you its SHA-256, extracts it to `~/health-assistant`,
+and hands off to the same installer:
+
+```bash
+curl -fsSL https://health-assistant.io/install.sh | bash
+```
+
+The script is small and readable on purpose — read it before running it
+(it is also in the repo at `scripts/bootstrap.sh`). It never runs anything as
+root and never installs system packages; if Docker is missing it prints
+install instructions instead. Pin a release or relocate the install with
+environment variables or flags (`HEALTH_REF`, `HEALTH_INSTALL_DIR`,
+`HEALTH_EXPECTED_SHA256`, `--dry-run`, `--dir`, `--ref` — see `--help`).
+Everything after the flags is forwarded to `scripts/install.sh`:
+
+```bash
+curl -fsSL https://health-assistant.io/install.sh | bash -s -- --dir /srv/ha
+```
+
+The clone-based flow below does exactly the same thing and stays the source
+of truth — the one-liner is a convenience wrapper around it.
+
+### Clone-based install
+
 1. **Install Docker and Docker Compose**, then **clone the repository:**
 
    ```bash
@@ -50,7 +77,7 @@ Docker is the fastest way to get up and running. Everything (UI, API, task monit
 
 ### What the installer configures (and what it doesn't)
 
-Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
+Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `HA_TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
 
 - **AI features** — OCR, document extraction, and the chat assistant need an **AI provider key**, configured in-app (System Admin → AI) or via the `OPENAI_*` env vars. The app runs fine without one; you just don't get the AI features.
 - **Demo mode, the Flower task monitor, and anatomy expansion packs** exist but aren't needed for a first install — see [Advanced & Reference](#advanced--reference).
@@ -102,7 +129,7 @@ Three `.env` variables redirect the images without editing the compose file:
 **Pin a release** — recommended for production, so an upstream `latest` push can't change your running version. Add to `.env`:
 
 ```bash
-IMAGE_TAG=0.3.2   # example — use a tag published to your registry (see CHANGELOG.md)
+IMAGE_TAG=0.8.0   # example — use a tag published to your registry (see CHANGELOG.md)
 ```
 
 **Run from source** — no registry, offline, or a modified build. Build and tag the images locally first; `docker compose up` then reuses them:
@@ -120,10 +147,10 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 > [SECURITY.md](../SECURITY.md); this checklist is the operator-side
 > minimum.
 
-- [ ] **Set the §8 key family** *(handled by `setup_env.py` if used)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
+- [ ] **Set the per-purpose key family** *(handled by `setup_env.py` if used)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
   - `HA_SESSION_KEY` (signs session JWTs + api/invite/download kinds): `python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))"`
   - `HA_REFRESH_KEY` (signs refresh JWTs only): same command, a **different** value — boot refuses shared/partial/weak pins
-  - `HA_DATA_KEY` (Fernet at-rest key; never signs): `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` — pre-H4 deployments rename their `INTEGRATION_SECRET_KEY` value here (same value, every sealed ring keeps decrypting); put a retired key in `HA_DATA_KEY_PREVIOUS` when rotating
+  - `HA_DATA_KEY` (Fernet at-rest key; never signs): `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` — pre-H4 deployments rename their `INTEGRATION_SECRET_KEY` value here (same value, every sealed ring keeps decrypting); put a retired key in `HA_DATA_KEY_PREVIOUS` when rotating. The at-rest cipher implementation is the shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit) module (`nx_auth.atrest`), pinned by git SHA in the workspace `pyproject.toml`/`uv.lock`.
 - [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). Easiest path: `python3 scripts/setup_env.py` generates both keys and prompts for the email automatically. Manual alternative: `npx web-push generate-vapid-keys`, then set `VAPID_ADMIN_EMAIL` to a real address you monitor. *(Optional in development — Web Push is silently skipped when keys are missing.)*
 - [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value *(handled by `setup_env.py` if used)*
 - [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** *(handled by `setup_env.py` if used)*
@@ -133,12 +160,12 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Set `HA_APP_ENV=production`
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
-- [ ] Set up database backups
+- [ ] Set up database backups — built in: `scripts/backup.sh` / `scripts/restore.sh`, plus the in-app [Export & Import](./EXPORT_IMPORT.md) (FHIR Bundle + ZIP with SHA256 manifest)
 - [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`)
 - [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS)
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation); unsigned requests are rejected
-- [ ] Set `TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
+- [ ] Set `HA_TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
 - [ ] Set `REDIS_PASSWORD` — the docker stacks require it and Redis runs with `requirepass`
 - [ ] API docs (`/docs`) are disabled in production by default; set `ENABLE_API_DOCS=true` only if you understand the exposure
 
@@ -235,12 +262,12 @@ Common causes: an existing `.env` with stale or placeholder secrets, or a port c
 ### Backend Import Errors
 
 ```bash
-cd backend && # (uv manages the environment) && python -c "from app.main import app"
+cd backend && python -c "from app.main import app"
 ```
 
 ### Database Connection Error
 
-- Check `DATABASE_URL` in `.env`.
+- Check `HA_DATABASE_URL` (or the `POSTGRES_*` parts) in `.env`.
 - Ensure PostgreSQL is running: `docker compose --env-file .env -f docker/docker-compose.standalone.yml ps`.
 - Remember PostgreSQL needs the **TimescaleDB extension** — a plain Postgres will crash on the telemetry hypertable migration. The compose files ship a compatible image.
 
@@ -256,11 +283,11 @@ cp .env.example .env
 
 You **must** generate your own `HA_SESSION_KEY` and `HA_REFRESH_KEY` (independent random values, ≥32 chars), `POSTGRES_PASSWORD`, `FLOWER_PASSWORD`, `REDIS_PASSWORD`, and `HA_DATA_KEY` (a base64url-encoded 32-byte Fernet key), plus the VAPID pair for production, and paste them into the `.env` file. `setup_env.py`'s Keys Only mode (`python3 scripts/setup_env.py --mode=3`) generates just the keys and leaves everything else at the template defaults.
 
-> **Key separation note (identity-auth §8):** `HA_SESSION_KEY` signs session-family JWTs, `HA_REFRESH_KEY` signs refresh JWTs only, and `HA_DATA_KEY` is the Fernet key for secrets at rest — no key is derived from another and no value may serve two purposes (the boot guard refuses). Verification is family-locked, so a token signed by the "wrong" key fails — rotating the session key invalidates only session tokens, and the data key never affects login. `HA_DATA_KEY_PREVIOUS` (comma-separated) holds prior Fernet keys accepted for decryption only, so rotating the at-rest key never orphans stored ciphertext: new writes seal under the primary, old values keep decrypting until re-sealed.
+> **Key separation note:** `HA_SESSION_KEY` signs session-family JWTs, `HA_REFRESH_KEY` signs refresh JWTs only, and `HA_DATA_KEY` is the Fernet key for secrets at rest — no key is derived from another and no value may serve two purposes (the boot guard refuses). Verification is family-locked, so a token signed by the "wrong" key fails — rotating the session key invalidates only session tokens, and the data key never affects login. `HA_DATA_KEY_PREVIOUS` (comma-separated) holds prior Fernet keys accepted for decryption only, so rotating the at-rest key never orphans stored ciphertext: new writes seal under the primary, old values keep decrypting until re-sealed.
 
 ### Setup-token modes
 
-The first-run wizard's token protects a fresh instance from being claimed by a stranger before you do. Four modes exist (see `dev/audits/setup-token-modes.md`):
+The first-run wizard's token protects a fresh instance from being claimed by a stranger before you do. Four modes exist:
 
 | Mode | Behaviour | Recommended deploy |
 |---|---|---|
@@ -337,7 +364,8 @@ Nodes are upserted by `slug` (existing nodes update, nothing is deleted); edges 
 ## See also
 
 - [Getting Started Guide](./GETTING_STARTED_GUIDE.md) — first-hour walkthrough after install (add a person, upload a lab, configure AI, connect a wearable)
-- [Architecture Overview](./ARCHITECTURE.md) — tech stack, data model, biomarker engine, AI pipeline
+- [Architecture Overview](./ARCHITECTURE.md) — system diagram, data model, biomarker engine, AI pipeline
+- [Export & Import (Backup)](./EXPORT_IMPORT.md) — built-in FHIR/ZIP backup and restore
 - [Development Guide](./DEVELOPMENT.md) — local dev setup with hot-reload
 - [Seeding & Demo Data](./SEEDING_AND_DEMOS.md) — how catalogs, taxonomy, and anatomy reconcile on boot
 - [Tenancy & User Management](./TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, invite tokens

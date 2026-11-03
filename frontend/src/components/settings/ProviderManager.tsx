@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { House, Loader2, Pencil, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
-import {
-  ConnectionTestRow,
-  ProviderForm,
-  type ConnectionTestStatus,
-} from '@neuronection/assistant-ui';
+import { Loader2, Pencil, PlugZap, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
+import { ProviderCard, ProviderForm, type ConnectionTestStatus } from '@neuronection/assistant-ui';
 import {
   COUNTRIES,
   countryDisplayName,
@@ -15,7 +11,6 @@ import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { AIProvider } from '../../api/aiConfig';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { Button } from '../ui/Button';
-import { Card, CardContent } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 import { ReRunSetupDialog } from './byok/ReRunSetupDialog';
@@ -41,6 +36,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
   const showConfirmation = useUIStore((state) => state.showConfirmation);
   const {
     providers,
+    models,
     deleteProvider,
     fetchExternalModels,
     error,
@@ -97,100 +93,109 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
         const test = tests[provider.id];
         const status: ConnectionTestStatus =
           test?.status ?? 'idle';
+        // Career parity: the connection test lives ONLY in the overflow
+        // menu, and only when a registered model exists to test against
+        // (health's registry is the shared store — career's fetchAllModels).
+        const testing = status === 'testing';
+        const registeredModels = models.filter(
+          (m) => m.provider_id === provider.id,
+        );
+        const actions = [
+          ...(provider.preset_key
+            ? [
+                {
+                  key: 'setup',
+                  label: t('settings.ai.setup.automatically'),
+                  icon: Sparkles,
+                  onSelect: () => setRerunProvider(provider),
+                },
+              ]
+            : []),
+          {
+            key: 'edit',
+            label: t('settings.ai.edit'),
+            icon: Pencil,
+            onSelect: () => setDialog({ provider }),
+          },
+          ...(registeredModels.length > 0
+            ? [
+                {
+                  key: 'test',
+                  label: t('settings.ai.test'),
+                  icon: PlugZap,
+                  disabled: testing,
+                  pending: testing,
+                  onSelect: () => void runTest(provider).catch(() => undefined),
+                },
+              ]
+            : []),
+          {
+            key: 'delete',
+            label: t('settings.ai.delete_provider'),
+            icon: Trash2,
+            danger: true,
+            onSelect: () => handleDelete(provider),
+          },
+        ];
         return (
-          <Card key={provider.id}>
-            <CardContent className="flex items-start gap-3 p-4">
-              <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-2 truncate text-sm font-bold text-gray-900 dark:text-dark-text">
-                  {provider.name}
-                  <span className="text-muted-foreground text-xs font-medium">
-                    · {provider.provider_type}
-                  </span>
-                  {provider.is_local ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold uppercase text-green-600 dark:bg-green-900/30">
-                      <House className="h-3 w-3" aria-hidden />
-                      {t('settings.ai.local_kind')}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-600 dark:bg-blue-900/30">
-                      {t('settings.ai.cloud_kind')}
-                    </span>
-                  )}
-                  {!provider.user_id && !provider.tenant_id ? (
-                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold uppercase text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
-                      {t('settings.ai.scope_system')}
-                    </span>
-                  ) : provider.tenant_id && !provider.user_id ? (
-                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                      {t('settings.ai.scope_org')}
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                      {t('settings.ai.scope_personal')}
-                    </span>
-                  )}
-                  {!provider.is_active ? (
-                    <span className="rounded-sm border border-gray-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:border-dark-border dark:text-dark-muted">
-                      {t('settings.ai.disabled')}
-                    </span>
-                  ) : null}
-                </p>
-                <p className="truncate font-mono text-xs text-gray-400">
-                  {provider.api_base}
-                  {' · '}
-                  {provider.has_api_key ? provider.api_key : t('settings.ai.no_key')}
-                  {provider.company_country ? (
-                    <span className="ml-2" title={provider.company_country}>
-                      {getCountryFlag(provider.company_country)}
-                    </span>
-                  ) : null}
-                </p>
-                <ConnectionTestRow
-                  variant="inline"
-                  className="mt-1"
-                  label={t('settings.ai.connection')}
-                  status={status}
-                  errorMessage={test?.error ?? null}
-                  meta={
-                    test?.modelCount != null
-                      ? t('settings.ai.models_count', { count: test.modelCount })
-                      : undefined
-                  }
-                  testLabel={t('settings.ai.test')}
-                  okLabel={t('settings.ai.test_ok')}
-                  failLabel={t('settings.ai.test_failed')}
-                  onTest={() => void runTest(provider).catch(() => undefined)}
-                />
-              </div>
-              {provider.preset_key ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title={t('settings.ai.setup.automatically')}
-                  onClick={() => setRerunProvider(provider)}
-                >
-                  <Sparkles className="h-4 w-4" aria-hidden />
-                  {t('settings.ai.setup.automatically')}
-                </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="icon"
-                title={t('settings.ai.edit_provider')}
-                onClick={() => setDialog({ provider })}
-              >
-                <Pencil className="h-4 w-4" aria-hidden />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                title={t('settings.ai.delete_provider')}
-                onClick={() => handleDelete(provider)}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden />
-              </Button>
-            </CardContent>
-          </Card>
+          <ProviderCard
+            key={provider.id}
+            name={provider.name}
+            logoPreset={provider.preset_key ?? undefined}
+            nameTitle={provider.api_base}
+            subtitle={provider.api_base}
+            status={status}
+            idleLabel={t('settings.ai.not_tested')}
+            okLabel={t('settings.ai.test_ok')}
+            failLabel={t('settings.ai.test_failed')}
+            errorMessage={test?.error ?? null}
+            meta={t('settings.ai.models_count', {
+              count: registeredModels.length,
+            })}
+            badges={[
+              { key: 'type', label: provider.provider_type },
+              {
+                key: 'hosting',
+                label: provider.is_local
+                  ? t('settings.ai.local_kind')
+                  : t('settings.ai.cloud_kind'),
+                testId: `provider-hosting-${provider.id}`,
+              },
+              {
+                key: 'scope',
+                label: !provider.user_id && !provider.tenant_id
+                  ? t('settings.ai.scope_system')
+                  : provider.tenant_id && !provider.user_id
+                    ? t('settings.ai.scope_org')
+                    : t('settings.ai.scope_personal'),
+              },
+              ...(provider.company_country
+                ? [
+                    {
+                      key: 'country',
+                      label: `${getCountryFlag(provider.company_country)} ${provider.company_country}`,
+                      title: provider.company_country,
+                      testId: `provider-country-${provider.id}`,
+                    },
+                  ]
+                : []),
+              ...(!(provider.has_api_key || provider.api_key)
+                ? [
+                    {
+                      key: 'key',
+                      label: t('settings.ai.no_key'),
+                      danger: true,
+                      testId: `provider-key-${provider.id}`,
+                    },
+                  ]
+                : []),
+              ...(!provider.is_active
+                ? [{ key: 'inactive', label: t('settings.ai.disabled'), danger: true }]
+                : []),
+            ]}
+            actions={actions}
+            actionsLabel={t('settings.ai.actions_aria', { name: provider.name })}
+          />
         );
       })}
 

@@ -114,7 +114,11 @@ def bump_version(current: str, bump_type: str) -> str:
     if bump_type == "minor":
         return format_version(major, minor + 1, 0)
     if bump_type == "patch":
-        return format_version(major, minor, patch) if suffix else format_version(major, minor, patch + 1)
+        return (
+            format_version(major, minor, patch)
+            if suffix
+            else format_version(major, minor, patch + 1)
+        )
     if bump_type == "rc":
         if suffix and suffix.startswith("rc."):
             try:
@@ -131,7 +135,11 @@ def splice_version(content: str, pattern_str: str, new_version: str) -> tuple[st
 
     def _sub(match: re.Match) -> str:
         start, end = match.span("version")
-        return match.group(0)[: start - match.start()] + new_version + match.group(0)[end - match.start() :]
+        return (
+            match.group(0)[: start - match.start()]
+            + new_version
+            + match.group(0)[end - match.start() :]
+        )
 
     return pattern.subn(_sub, content)
 
@@ -159,7 +167,9 @@ def apply_propagation(cfg: dict, new_version: str) -> list[str]:
                 data["packages"][""]["version"] = new_version
             new_text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         elif ptype == "regex":
-            version_text = new_version.replace("-", "--") if prop.get("dash_escape") else new_version
+            version_text = (
+                new_version.replace("-", "--") if prop.get("dash_escape") else new_version
+            )
             template = prop.get("template")
             if template:
                 replacement = template.replace("{version}", version_text)
@@ -190,7 +200,9 @@ def release_paths(cfg: dict) -> list[str]:
 def run(args: list[str], check: bool = True, strip: bool = True) -> str:
     result = subprocess.run(args, capture_output=True, text=True, cwd=ROOT)
     if check and result.returncode != 0:
-        raise RuntimeError(f"Command {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}")
+        raise RuntimeError(
+            f"Command {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"
+        )
     return result.stdout.strip() if strip else result.stdout
 
 
@@ -258,17 +270,29 @@ def main() -> None:
     parser.add_argument("--version", action="version",
                         version=f"version_manager {TEMPLATE_VERSION}")
     git_parser = argparse.ArgumentParser(add_help=False)
-    git_parser.add_argument("--git", "-g", action="store_true", help="commit the bump and create the tag")
-    git_parser.add_argument("--push", "-p", action="store_true", help="push commit + tag to every remote (implies --git)")
+    git_parser.add_argument(
+        "--git", "-g", action="store_true", help="commit the bump and create the tag"
+    )
+    git_parser.add_argument(
+        "--push", "-p", action="store_true",
+        help="push commit + tag to every remote (implies --git)"
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("show", help="print the current version")
-    set_parser = subparsers.add_parser("set", parents=[git_parser], help="set an explicit version (X.Y.Z or X.Y.Z-suffix)")
+    set_parser = subparsers.add_parser(
+        "set", parents=[git_parser], help="set an explicit version (X.Y.Z or X.Y.Z-suffix)"
+    )
     set_parser.add_argument("version")
     set_parser.add_argument("--dry", action="store_true", help="print the change without writing")
-    bump_parser = subparsers.add_parser("bump", parents=[git_parser], help="bump major/minor/patch/rc")
+    bump_parser = subparsers.add_parser(
+        "bump", parents=[git_parser], help="bump major/minor/patch/rc"
+    )
     bump_parser.add_argument("type", choices=["major", "minor", "patch", "rc"])
     bump_parser.add_argument("--dry", action="store_true", help="print the change without writing")
-    subparsers.add_parser("release", parents=[git_parser], help="commit/tag/push the version already recorded on disk")
+    subparsers.add_parser(
+        "release", parents=[git_parser],
+        help="commit/tag/push the version already recorded on disk"
+    )
     args = parser.parse_args()
 
     cfg = load_config()

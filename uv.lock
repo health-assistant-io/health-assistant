@@ -1534,6 +1534,7 @@ dependencies = [
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
+    { name = "neuronection-auth-kit" },
     { name = "numpy" },
     { name = "openai" },
     { name = "pdf2image" },
@@ -1556,6 +1557,7 @@ dependencies = [
     { name = "requests" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "starlette" },
+    { name = "typesafe-sdk" },
     { name = "uvicorn" },
 ]
 
@@ -1596,6 +1598,7 @@ requires-dist = [
     { name = "langchain-openai", specifier = ">=1.6,<2" },
     { name = "langgraph", specifier = ">=1.2,<2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3,<4" },
+    { name = "neuronection-auth-kit", git = "https://github.com/neuronection/auth-kit?rev=eb3499103ce91cb52e3282c72129f72ed419f3bb" },
     { name = "nltk", marker = "extra == 'local-ai'", specifier = ">=3.10.3" },
     { name = "numpy", specifier = ">=2.5" },
     { name = "openai", specifier = ">=2.54" },
@@ -1622,6 +1625,7 @@ requires-dist = [
     { name = "starlette", specifier = ">=1.6" },
     { name = "torch", marker = "extra == 'local-ai'", specifier = ">=2.1.2" },
     { name = "transformers", marker = "extra == 'local-ai'", specifier = ">=4.57.6" },
+    { name = "typesafe-sdk", specifier = ">=0.7,<0.8" },
     { name = "uvicorn", specifier = ">=0.52" },
 ]
 provides-extras = ["local-ai"]
@@ -2848,6 +2852,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/cd/fe58041e9011f307c490e3e17dd48cc516448f7c698a3f2d9d9d65d7e6a8/networkx-3.7-py3-none-any.whl", hash = "sha256:e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0", size = 2142205, upload-time = "2026-09-21T16:45:14.609Z" },
+]
+
+[[package]]
+name = "neuronection-auth-kit"
+version = "0.4.0"
+source = { git = "https://github.com/neuronection/auth-kit?rev=eb3499103ce91cb52e3282c72129f72ed419f3bb#eb3499103ce91cb52e3282c72129f72ed419f3bb" }
+dependencies = [
+    { name = "bcrypt" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "pyjwt" },
+    { name = "sqlalchemy" },
 ]
 
 [[package]]
@@ -5019,6 +5035,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/16/f7/57713ba479fd405eb76de31404b2c744c289e336b2d999511ebf51e496f7/typer-0.27.2.tar.gz", hash = "sha256:269b7eb9d3c202ca84b4bc9618cb04ebb43d3d4d1e567e4c768607232c05f945", size = 204045, upload-time = "2026-08-28T10:26:55.046Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/bf/205d0004930ede8f542fb58f601526fccf4ae7626075ca1e6c4de5d3d652/typer-0.27.2-py3-none-any.whl", hash = "sha256:b3a5fc4342d5fc8fda8fc3010b1cf117e9249aab7fae800c2eff62fd3842d97d", size = 123130, upload-time = "2026-08-28T10:26:53.752Z" },
+]
+
+[[package]]
+name = "typesafe-sdk"
+version = "0.7.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx2" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "tenacity" },
+    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/94/12/3a897e9f424be6f4db0648a955f8fadbe62149d118a03614df897b5a2ec9/typesafe_sdk-0.7.4.tar.gz", hash = "sha256:a20dca217a746db1ac5534ac502de16e1f86a400b4ec09f8594e6221c2bc9558", size = 24388, upload-time = "2026-10-09T15:47:14.978Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a2/49/6cd65684e41e25069f4d12c09cd7e1e3f81477f06acb29bf0d1815e27d1e/typesafe_sdk-0.7.4-py3-none-any.whl", hash = "sha256:61cf3f2fe9da20b68c3d3fe2fb76bbb2f35f8c4a9a65a6b81c43a535d2a53210", size = 37700, upload-time = "2026-10-09T15:47:12.418Z" },
 ]
 
 [[package]]

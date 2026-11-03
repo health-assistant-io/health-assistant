@@ -10,7 +10,7 @@ Before this module existed, the canonical write path was inlined in the
 category resolution, heuristic dedup, ORM construction, doctor linking,
 commit, and relationship reload all lived in the route handler. That
 meant integrations (the bridge provider, the future
-``supports_examinations`` SDK hook) had no clean call site and either
+``examination`` data-class pull hook) had no clean call site and either
 bypassed dedup entirely (losing data integrity) or duplicated the logic
 (the bridge did the latter, and its copy is stale — uses the wrong
 ``category_id`` column name).

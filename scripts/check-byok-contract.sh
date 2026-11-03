@@ -9,6 +9,24 @@
 #   R3 setup orchestration lives in the sanctioned AI layer
 #   R4 the uniform contract-test matrix file exists and names the core cases
 #   R5 setup options naming (camelCase in TS; snake_case in Python payloads)
+#   R6 decision preset data is on the schema-2 wave and reaches the generated
+#      modules (plan 26 / ADR-0032 presets v2) — catches a stale
+#      canonical+generated PAIR, which R1 cannot see (R1 compares generated
+#      against the LOCAL canonical, so a stale pair passes silently)
+#   R7 decision secrets live under provider:<id> ids (plan 26 D8) — no
+#      bespoke decision secret ids anywhere (desktop's pre-plan-26
+#      'openrouter:key' exemption was retired with the plan 26 Phase 1
+#      S2 migration)
+#   R8 no needle/llm decision-engine code (plan 26 D7/S1: needle 3 was
+#      discarded and the llm engine deleted with the transport rewrite —
+#      systemone is the only decision transport). The ban targets ENGINE
+#      CODE markers (class/constant names, module paths); comments and
+#      string data about the retired engines never match (the one-time
+#      legacy-config migrations were themselves deleted outright in the
+#      plan 26 §13.8 no-legacy sweep).
+#
+# Self-test: check-byok-contract.selftest.sh (same dir; materializes temp
+# trees for the R6/R7 pass/fail cases).
 #
 # Usage: check-byok-contract.sh [--self]   (run from the repo root)
 set -uo pipefail
@@ -67,18 +85,19 @@ else
 fi
 
 # R2 — no 'audio' capability literals (vocabulary is stt/tts post-freeze).
-# TS repos: under src/ (AppConfig.ts hosts the sanctioned load-time legacy
-# migration shim audio → [stt, tts]; it is exempt).
+# TS repos: under src/ (the AppConfig.ts load-time audio→[stt,tts] shim
+# was deleted outright with the plan 26 §13.8 no-legacy sweep — no
+# exemption remains).
 # Python repos: under backend/app/ (alembic versions host the one-time data
 # migration; they are exempt, as is the generated presets module). Files whose
 # 'audio' is the MaterialKind/media-file vocabulary (audio files as study
 # materials — unrelated to model capabilities) are exempt by path.
-AUDIO_HITS="$(grep -rn "'audio'" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" | grep -v "src/shared/config/AppConfig.ts" || true)"
+AUDIO_HITS="$(grep -rn "'audio'" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
 if [ -n "$AUDIO_HITS" ]; then
   bad "R2 legacy 'audio' capability literals found (vocabulary is stt/tts):"
   echo "$AUDIO_HITS" >&2
 else
-  good "R2 no 'audio' capability literals outside the migration shim"
+  good "R2 no legacy 'audio' capability literals (vocabulary is stt/tts)"
 fi
 AUDIO_HITS_PY="$(grep -rEn "['\"]audio['\"]" "$ROOT/backend/app" 2>/dev/null \
   | grep -v "backend/alembic/versions/" \
@@ -96,11 +115,14 @@ fi
 
 # R3 — setup orchestration lives in the sanctioned AI layer.
 # TS repos: imported only by the AI layer + IPC handlers (renderer reaches it
-# through the typed bridge — that is the sanctioned path).
+# through the typed bridge — that is the sanctioned path). The IPC surface is
+# `src/main/ipc-handlers.ts` and, since desktop's registrar decomposition
+# (fc0fcaa), the per-domain registrars under `src/main/ipc/` — same surface,
+# split files.
 # Python repos: backend/app/ai/providers/setup.py, imported only by the AI
 # layer + the API surface (the FastAPI router is the sanctioned consumer).
 if [ -f "$ROOT/src/main/ai/providers/setup.ts" ]; then
-  OUTSIDE="$(grep -rln "from '@main/ai/providers/setup'" "$ROOT/src" 2>/dev/null | grep -v "src/main/ipc-handlers.ts" || true)"
+  OUTSIDE="$(grep -rln "from '@main/ai/providers/setup'" "$ROOT/src" 2>/dev/null | grep -v "src/main/ipc-handlers.ts" | grep -v "src/main/ipc/" || true)"
   if [ -n "$OUTSIDE" ]; then
     bad "R3 setup module imported outside the AI layer / IPC surface:"
     echo "$OUTSIDE" >&2
@@ -175,6 +197,113 @@ if [ -f "$OPTS_FILE_PY" ]; then
   fi
 else
   note "R5 skipped (no Python setup module)"
+fi
+
+# R6 — decision preset data present + generated (plan 26 / ADR-0032, presets
+# v2 schema-2 wave). The vendored canonical must declare schema >= 2 with
+# 'decision' in the capability vocabulary, and every generated module must
+# carry the decision fields — a repo that regenerated against a STALE local
+# canonical (or stripped the decision data) fails here even though R1's
+# generated-vs-local comparison is consistent.
+if [ -f "$ROOT/contracts/ai-presets.json" ]; then
+  R6_TS="$ROOT/src/shared/ai/providerPresets.generated.ts"
+  R6_PY="$ROOT/backend/app/ai/providers/presets_data.py"
+  BYOK_SCHEMA="$(sed -nE 's/.*"schema"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ROOT/contracts/ai-presets.json" | head -1)"
+  if [ -z "$BYOK_SCHEMA" ]; then
+    bad "R6 contracts/ai-presets.json declares no schema version (expected >= 2, the plan 26 presets v2 wave)"
+  elif [ "$BYOK_SCHEMA" -lt 2 ]; then
+    bad "R6 contracts/ai-presets.json is schema $BYOK_SCHEMA (pre-decision) — re-vendor the dev canonical + sync script (plan 26 / ADR-0032 presets v2)"
+  elif ! grep -q '"decision"' "$ROOT/contracts/ai-presets.json"; then
+    bad "R6 contracts/ai-presets.json lacks the 'decision' capability (D1 vocabulary freeze)"
+  else
+    good "R6 canonical presets are on the schema-$BYOK_SCHEMA decision wave"
+  fi
+  if [ -f "$R6_TS" ]; then
+    if grep -q "decisionModels" "$R6_TS" && grep -q "decisionDefault" "$R6_TS" && grep -q "CAPABILITY_VOCABULARY" "$R6_TS"; then
+      good "R6 generated TS module carries the decision fields (decisionModels/decisionDefault/CAPABILITY_VOCABULARY)"
+    else
+      bad "R6 $R6_TS lacks the decision fields — regenerate with the vendored schema-2 sync script"
+    fi
+  fi
+  if [ -f "$R6_PY" ]; then
+    if grep -q "decision_models" "$R6_PY" && grep -q "decision_default" "$R6_PY" && grep -q "CAPABILITY_VOCABULARY" "$R6_PY"; then
+      good "R6 generated Python module carries the decision fields (decision_models/decision_default/CAPABILITY_VOCABULARY)"
+    else
+      bad "R6 $R6_PY lacks the decision fields — regenerate with the vendored schema-2 sync script"
+    fi
+  fi
+  if [ ! -f "$R6_TS" ] && [ ! -f "$R6_PY" ]; then
+    note "R6 generated-module check skipped (no generated preset module yet — required once the repo ships the setup surface)"
+  fi
+else
+  note "R6 skipped (canonical presets not vendored yet — required once the repo ships the setup surface)"
+fi
+
+# R7 — decision secrets live under provider:<id> ids (plan 26 D8). Secret-id
+# literals in decision code must be provider-row ids; bespoke ids
+# (jev:key, decision:key, engine secrets, the retired 'openrouter:key', …)
+# are violations. Template ids built as `provider:${id}` / "provider:%s"
+# are the sanctioned form.
+check_decision_secret_line() {  # grep -rn hit line (file:lineno:content)
+  local line="$1" val
+  val="$(printf '%s' "$line" | grep -oE "[\"'][a-zA-Z0-9:_.-]+[\"']" | tail -1)"
+  val="${val%\'}"; val="${val#\'}"; val="${val%\"}"; val="${val#\"}"
+  if [ -z "$val" ]; then
+    return 0
+  fi
+  case "$val" in
+    provider:*)
+      return 0
+      ;;
+    *)
+      bad "R7 decision secret id '$val' is not a provider:<id> id (plan 26 D8): $line"
+      ;;
+  esac
+}
+DECISION_SECRET_RE="(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*['\"][a-zA-Z0-9:_.-]+['\"]"
+if [ -d "$ROOT/src" ]; then
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    check_decision_secret_line "$hit"
+  done < <(grep -rnE "$DECISION_SECRET_RE" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)
+  TEMPLATE_HITS="$(grep -rnE "(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*[\`']provider:" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
+  if [ -n "$TEMPLATE_HITS" ]; then
+    good "R7 decision secret ids are provider-templated (TS)"
+  fi
+fi
+if [ -d "$ROOT/backend/app" ]; then
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    check_decision_secret_line "$hit"
+  done < <(grep -rnE "$DECISION_SECRET_RE" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)
+  TEMPLATE_HITS_PY="$(grep -rnE "(SECRET_ID|secretId|secret_id)[[:space:]]*[:=][[:space:]]*[\`']provider:" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)"
+  if [ -n "$TEMPLATE_HITS_PY" ]; then
+    good "R7 decision secret ids are provider-templated (Python)"
+  fi
+fi
+
+# R8 — no needle/llm decision-engine code (plan 26 D7/S1). Engine-code
+# markers only: the deleted desktop engine classes/modules and their
+# Python equivalents (which never shipped). The legacy-config migration
+# modules legitimately reference the retired names while retiring real
+# stores — they import nothing, so they cannot match these patterns.
+LEGACY_ENGINE_RE='NeedleEngine|JEV_SECRET_ID|NEEDLE_WEIGHTS|decide/(needle|jev|llm)|app\.ai\.decide\.(needle|jev|llm)|from ["'"'"']\.{1,2}/(needle|jev)(/|["'"'"'])|from \.{1,2}(needle|jev) import'
+LEGACY_HITS=""
+if [ -d "$ROOT/src" ]; then
+  LEGACY_HITS="$(grep -rnE "$LEGACY_ENGINE_RE" "$ROOT/src" 2>/dev/null | grep -v "providerPresets.generated" || true)"
+fi
+if [ -d "$ROOT/backend/app" ]; then
+  LEGACY_HITS="${LEGACY_HITS:+$LEGACY_HITS
+}$(grep -rnE "$LEGACY_ENGINE_RE" "$ROOT/backend/app" 2>/dev/null | grep -v "presets_data.py" || true)"
+fi
+if [ -n "$LEGACY_HITS" ]; then
+  bad "R8 needle/llm decision-engine code found (D7 — systemone is the only transport):"
+  echo "$LEGACY_HITS" >&2
+else
+  good "R8 no needle/llm decision-engine code (systemone is the only transport)"
+fi
+if [ "$FAIL" -eq 0 ]; then
+  good "R7 no decision secrets outside provider:<id> ids"
 fi
 
 if [ "$FAIL" -eq 0 ]; then

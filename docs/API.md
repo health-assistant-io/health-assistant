@@ -18,7 +18,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 > This reference documents every router module mounted under
 > `backend/app/api/v1/endpoints/`. Each section mirrors the FastAPI tag/grouping.
-> 298 HTTP/WS handlers across 36 modules (incl. `oauth` client management). For
+> 330+ HTTP/WS handlers across 41 router modules (incl. `oauth` client management). For
 > the always-current OpenAPI rendering, visit `http://localhost:8000/docs` while
 > the server is running.
 
@@ -44,13 +44,13 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 ## Authentication & authorization
 
 > Per-surface security posture (which endpoints are public, cookie/CSRF
-> semantics, the §9 client classes incl. the integrations HMAC
+> semantics, the user-client classes incl. the integrations HMAC
 > machine/device credential, and known gaps) is codified in
 > [SECURITY.md](../SECURITY.md).
 
 ### JWT
 
-**Browser clients (SPA) — cookie mode (identity-auth §10):** the web client
+**Browser clients (SPA) — cookie mode:** the web client
 authenticates with HttpOnly cookies set by the auth endpoints; **tokens are
 never stored in `localStorage`/`sessionStorage`** for browser clients.
 
@@ -63,17 +63,17 @@ never stored in `localStorage`/`sessionStorage`** for browser clients.
 `POST /auth/login`, `/auth/setup`, `/auth/demo-login`, `/auth/refresh`
 (plus the tenant-switch endpoints) set the triple; `POST /auth/logout` and
 `/auth/logout-all` clear it. This pass **also keeps returning the tokens in
-the JSON body** — §9 user clients (the Android app, CLI scripts) consume
+the JSON body** — personal API clients (the Android app, CLI scripts) consume
 them; the browser client ignores the body and rides the cookies.
 
-**CSRF (double submit, §10):** any non-GET `/api/*` request that carries the
+**CSRF (double submit):** any non-GET `/api/*` request that carries the
 session cookies must echo the `nx_csrf` cookie value in an `X-CSRF-Token`
 header — mismatch or absence is a `403`. Requests with an `Authorization`
-header (Bearer user clients, §9) are exempt, as are the auth bootstrap
+header (Bearer user clients) are exempt, as are the auth bootstrap
 endpoints (`login` / `refresh` / `register` / `setup` / `demo-login`) and
 health/docs.
 
-**User clients (§9) — Bearer:** keep sending the header:
+**User clients — Bearer:** keep sending the header:
 
 ```
 Authorization: Bearer <your-jwt-token>
@@ -98,7 +98,7 @@ land in proxy logs). WS handshakes additionally verify the browser `Origin`
 against the configured allow-list (`HA_WS_ALLOWED_ORIGINS`, default
 same-origin + the CORS list) and reject anything else with `1008`.
 
-**Signing keys (identity-auth §8, plan 16 H4):** JWTs are signed with
+**Signing keys (per-purpose key separation):** JWTs are signed with
 per-purpose keys — `HA_SESSION_KEY` signs session-family tokens
 (session/api/invite/download) and `HA_REFRESH_KEY` signs refresh tokens
 only; verification is family-locked, so a token signed by the "wrong"
@@ -148,18 +148,19 @@ can't mint fresh buckets.
 | `POST` | `/auth/register` | `UserRegister` | `UserResponse` | **Join** an existing tenant — requires `tenant_id` + a valid **single-use** `invite_token` JWT (consumed atomically on first use; TTL capped at 30 days). The invite is validated *before* the email-exists check so unauthenticated callers can't enumerate emails. Bootstrap lives at `/auth/setup`. |
 | `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`, capped at 30) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. Tokens are single-use; `SYSTEM_ADMIN` cannot be granted via invite. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
-| `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `nx_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (audit A5; rotation also re-stamps the §10 cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
-| `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the §10 cookies. CSRF-gated for cookie sessions (double submit). |
+| `GET` | `/auth/setup-status` | (none) | `{initialized: bool, …}` | Whether first-run setup has been claimed (drives the login-page redirect to the setup wizard). |
+| `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `nx_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (rotation also re-stamps the cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
+| `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the session cookies. CSRF-gated for cookie sessions (double submit). |
 | `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user. |
 
-#### TOTP MFA (plan 16 H5)
+#### TOTP MFA
 
 Optional per-account two-factor authentication (RFC 6238 TOTP — SHA1, 6 digits,
 30 s step, ±1 step drift; any authenticator app works via the standard
 `otpauth://` provisioning URI). The shared secret is stored **encrypted at rest
 under the `HA_DATA_KEY` family** (Fernet, `enc::` prefix — never plaintext);
 8 single-use recovery codes are bcrypt-hashed like passwords and shown exactly
-once at enrollment. MFA gates **login only** — live sessions and the §9 Bearer
+once at enrollment. MFA gates **login only** — live sessions and the Bearer
 clients (Android app, OAuth facade clients) are unaffected.
 
 Login flow when MFA is active: `POST /auth/login` with correct credentials
@@ -169,8 +170,8 @@ The `mfa_token` is a dedicated `mfa_challenge` JWT kind (session key family,
 5-minute TTL, single-use — consumed by the first successful verify; it is
 mutually exclusive with session tokens and never authenticates the API).
 `POST /auth/mfa/verify` with `{mfa_token, code}` (TOTP or a recovery code)
-issues the normal session (§10 cookie triple + body tokens). **Wrong codes
-count toward the §7 lockout** (same counter as wrong passwords — 5 strikes ⇒
+issues the normal session (cookie triple + body tokens). **Wrong codes
+count toward the account lockout** (same counter as wrong passwords — 5 strikes ⇒
 423 for 15 min); the counter resets when the password succeeds and again when
 the challenge passes.
 
@@ -181,7 +182,7 @@ verify call confirms the enrollment and signs in in one step.
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/auth/mfa/verify` | none (challenge token) | `MFAVerifyRequest` (`mfa_token`, `code`) | `TokenResponse` | Answers a login challenge. Consumes the challenge (single-use); 401 on wrong code, 423 when the §7 lockout trips. Rate-limited (20/min per IP, per-account window). |
+| `POST` | `/auth/mfa/verify` | none (challenge token) | `MFAVerifyRequest` (`mfa_token`, `code`) | `TokenResponse` | Answers a login challenge. Consumes the challenge (single-use); 401 on wrong code, 423 when the account lockout trips. Rate-limited (20/min per IP, per-account window). |
 | `POST` | `/auth/mfa/enroll` | none (challenge token) | `{mfa_token}` | `MFAEnrollResponse` | Forced-enrollment provisioning — only when the login challenge carried `enrollment_needed: true` (400 otherwise). |
 
 Self-service surface (settings → Security), mounted under `/me` to match the
@@ -190,6 +191,8 @@ Self-service surface (settings → Security), mounted under `/me` to match the
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/me/mfa` | any | — | `MFAStatusResponse` | `{enabled, enforced, pending}` — drives the settings card. |
+| `GET` | `/me/sessions` | any | — | list of session rows | Active sessions for the account (device, created, last-seen). |
+| `DELETE` | `/me/sessions/{session_id}` | any | — | `{message}` | Revoke one other session (self-service sign-out of a stale device). |
 | `POST` | `/me/mfa/enroll` | any | — | `MFAEnrollResponse` | One-time provisioning payload (secret + otpauth URI + recovery codes); pending until confirmed. 409 when already active. Audit-logged as `mfa.enroll`. |
 | `POST` | `/me/mfa/confirm` | any | `{code}` | `MFAStatusResponse` | Code check against the pending secret ⇒ active. 400 on a wrong code. Audit-logged as `mfa.confirm`. |
 | `DELETE` | `/me/mfa` | any | `{password}` | `MFAStatusResponse` | Password-confirmed removal. **403 while `mfa_enforced`** — an admin requirement is not self-cancellable. Audit-logged as `mfa.disable`. |
@@ -547,9 +550,9 @@ All routes `SYSTEM_ADMIN`-only. Audit-logged.
 | `POST` | `/admin/tenants/exit-switch` | — | `SwitchTenantResponse` | Restore the original `SYSTEM_ADMIN` session after a switch. |
 | `GET` | `/admin/tenants/{tenant_id}/users` | query: `search?`, `limit=50`, `offset=0` | `TenantUserListResponse` | Paginated user list for a tenant. |
 | `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}` | `UpdateTenantUser` | `TenantUserResponse` | Update a tenant user (role / active toggle). |
-| `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA (plan 16 H5). `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
+| `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA. `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
 | `POST` | `/admin/tenants/{tenant_id}/invite` | `CreateInvitePayload` | `InviteResponse` | Mint a tenant-scoped invite token (audit-logged as `tenant.invite`). |
-| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer (§17). |
+| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer . |
 | `GET` | `/admin/audit` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | **Cross-tenant** audit stream (`SYSTEM_ADMIN`-only; omit `tenant_id` for every tenant + system-level rows). |
 
 ### `admin/integrations` — global integration enablement
@@ -600,7 +603,7 @@ Multi-layout dashboard persistence per `(patient_id, user_id)`. All routes pass
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/observations` | any | `patient_id?`, `code?`, `start_date?`, `end_date?`, `limit=100`, `offset=0` | `List[observation]` | `USER` without `patient_id` gets `{items:[], total:0}`. |
-| `POST` | `/observations` | `check_patient_access` | observation dict (FHIR-shape `subject.reference` or top-level `patient_id`) | `observation` | Writes an `AuditLog` entry (provenance). Fires `NotificationManager.trigger_event("biomarker_update")` + the rules engine. |
+| `POST` | `/observations` | `check_patient_access` | observation dict (FHIR-shape `subject.reference` or top-level `patient_id`) | `observation` | Writes an `AuditLog` entry (provenance) and feeds the notification rules engine. |
 | `GET` | `/observations/{observation_id}` | tenant-scoped | — | `observation` | 404 cross-tenant. |
 | `DELETE` | `/observations/{observation_id}` | `USER` patient-access check via `subject.reference` | — | `{message}` | Audited. |
 
@@ -608,11 +611,7 @@ Multi-layout dashboard persistence per `(patient_id, user_id)`. All routes pass
 
 The clinical-visit container. Holds documents, observations, medications, doctors,
 category concept, organization, and event links. Patient-access is enforced via
-`check_examination_access` (chains through `check_patient_access`).
-
-The `POST /examinations` write path delegates to `examination_service.create_examination`
-— the canonical write chokepoint also used by integrations that opt into
-`supports_examinations` (see [INTEGRATIONS_SDK.md §3.10](INTEGRATIONS_SDK.md#310-clinical-events--examinations-opt-in-write-hooks)).
+`check_examination_access` (chains through `check_patient_access`; see [write hooks](dev/sdk/authoring-and-configuration.md#clinical-events--examinations-write-hooks)).
 Responses include two optional integration-provenance fields
 (`source_integration_id`, `external_id`) populated only on rows written by an
 integration sync.
@@ -665,11 +664,7 @@ integration sync.
 | `POST` | `/clinical-events/types/{type_id}/biomarkers` | `get_current_user` | `BiomarkerCorrelationCreate` | — | Bind a biomarker (idempotent on pair). |
 | `DELETE` | `/clinical-events/types/{type_id}/biomarkers/{biomarker_id}` | `get_current_user` | — | `{message}` | Remove a correlation. |
 
-**Event instances** (the journey):
-
-The `POST /clinical-events` write path delegates to `clinical_event_service.create_event`
-— the canonical write chokepoint also used by integrations that opt into
-`supports_clinical_events` (see [INTEGRATIONS_SDK.md §3.10](INTEGRATIONS_SDK.md#310-clinical-events--examinations-opt-in-write-hooks)).
+**Event instances** (the journey); see [write hooks](dev/sdk/authoring-and-configuration.md#clinical-events--examinations-write-hooks)).
 Responses include two optional integration-provenance fields
 (`source_integration_id`, `external_id`) populated only on rows written by an
 integration sync.
@@ -958,7 +953,7 @@ telemetry split + OHLC aggregation are documented in
 | Method | Path | Auth | Body / Query | Response |
 |---|---|---|---|---|
 | `POST` | `/ai-config/providers` | `check_scope_access` | `AIProviderCreate` | `AIProviderResponse` (`201`) |
-| `GET` | `/ai-config/provider-presets` | any | — | `ProviderPresetsResponse` (§15 setup tile surface: enabled presets + disabled-with-reason; metadata only) |
+| `GET` | `/ai-config/provider-presets` | any | — | `ProviderPresetsResponse` (setup tile surface: enabled presets + disabled-with-reason; metadata only) |
 | `POST` | `/ai-config/providers/{preset_key}/setup` | any (USER scope) | `ProviderSetupRequest` (`api_key`, `name?`, `options{curated_ids, bind_chat, bind_vision, bind_stt}`) | `ProviderSetupResponse` — fetch-first validation; 404 unknown preset; 422 `{code, suspected_vendor, message}` on classified failure (nothing persisted); 400 SSRF-guard violation |
 | `PUT` | `/ai-config/providers/{provider_id}/set-default` | `verify_provider_access` + USER-scope owner | `ProviderSetDefaultRequest` (`model_name`, `task?="default"`) | `ProviderSetDefaultResponse` — capability-guarded; 409 cross-provider model; 422 capability/unknown-task |
 | `GET` | `/ai-config/providers` | any | `tenant_id?`, `user_id?`, `scope?`, `is_active?=true`, `include_models?=false` | `List[AIProviderResponse]` |
@@ -992,9 +987,13 @@ telemetry split + OHLC aggregation are documented in
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `POST` | `/ai-assistance/assist` | any | `AIAssistanceRequest` | `AIAssistanceResponse` | Non-streaming assistance (form filling, icons, SVG, chat). |
-| `POST` | `/ai-assistance/stream` | any | `AIAssistanceRequest` | SSE `text/event-stream` | Streaming chat. Rejects `task_type != "chat"` with 400. Stable SSE error codes: `connection`, `auth`, `rate_limit`, `timeout`, `generic`, `guard`. |
+| `POST` | `/ai-assistance/stream` | any | `AIAssistanceRequest` | SSE `text/event-stream` | Streaming chat. Rejects `task_type != "chat"` with 400. Stable SSE error codes: `connection`, `auth`, `rate_limit`, `timeout`, `generic`, `guard`. Per-session single-flight: a second concurrent turn on the same session is rejected with 409 before the stream starts. |
 | `GET` | `/ai-assistance/sessions` | any | query: `patient_id?` | `List[ChatSessionSchema]` | Tenant-scoped. |
-| `GET` | `/ai-assistance/sessions/{session_id}/messages` | any (ownership verified in service) | — | `List[ChatMessageSchema]` |  |
+| `GET` | `/ai-assistance/sessions/{session_id}/messages` | any (ownership verified in service) | — | `List[ChatMessageSchema]` | The active-path walk, variant-decorated (`parent_id` / `variant_index` / `variant_count` / `sibling_ids`). |
+| `POST` | `/ai-assistance/messages/{message_id}/edit` | any | `{content: str, context?}` | SSE `text/event-stream` | Edit-and-resend as a branch: new user sibling under the same parent, pointer flip, fresh turn; old subtree kept as a variant. 400 on non-user targets, 404 foreign. |
+| `POST` | `/ai-assistance/messages/{message_id}/regenerate` | any | `{context?}` (optional body) | SSE `text/event-stream` | New assistant sibling under the target user message — earlier replies stay switchable variants. 400 on non-user targets. |
+| `POST` | `/ai-assistance/messages/{message_id}/select` | any | — | `List[ChatMessageSchema]` | Level-flip exactly one branch pointer; returns the re-walked decorated path. |
+| `GET` | `/ai-assistance/sessions/{session_id}/tree` | any | — | `ChatTreeSchema` | Read-only `{active_root_id, nodes[]}` branch-tree projection. |
 | `DELETE` | `/ai-assistance/sessions/{session_id}` | any (ownership verified in service) | — | `{success: true}` |  |
 | `GET` | `/ai-assistance/tools` | any | query: `patient_id` *, `examination_id?` | `List[AIAssistanceToolSchema]` | Built-in tools + integration-aggregated tools (failures logged, not raised). |
 | `POST` | `/ai-assistance/sessions/{session_id}/tasks/{proposal_id}/resolve` | any | `HitlResolutionRequest` (CONFIRMED/DISMISSED) | `{success, task}` | HITL resolution. Idempotent: 409 if already resolved. Does NOT perform the underlying write (frontend commits via canonical REST). |
@@ -1006,8 +1005,7 @@ telemetry split + OHLC aggregation are documented in
 ## Integrations
 
 The integrations surface lives at `/api/v1/integrations/*` (see
-[INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) for the discovery +
-enable + sync flow, and [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) for building
+[INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) and the [integration SDK](dev/sdk/overview.md) for building
 custom providers). Two **tokenless** inbound routes are exposed for external
 systems that don't carry the platform JWT.
 
@@ -1037,11 +1035,11 @@ systems that don't carry the platform JWT.
 | `POST` | `/integrations/instance/{integration_id}/toggle-debug` | any | `patient_id` * | `{message, is_debug_enabled}` |  |
 | `DELETE` | `/integrations/instance/{integration_id}` | any | `patient_id` * | `{message}` | Best-effort revokes OAuth tokens (RFC 7009). |
 | `POST` | `/integrations/instance/{integration_id}/action/{action_id}` | any | `patient_id` * | provider ActionResult | 400 if the provider doesn't implement `execute_custom_action`. |
-| `POST` | `/integrations/instance/{integration_id}/sync` | any | `patient_id` * | `{message, metrics_synced, pulled, dropped_invalid, status, last_synced_at}` | 409 if a sync is already running; 401 on auth failure; 429 on upstream rate limit (writes a Redis cooldown key `sync_cooldown:{integration_id}` so the background beat skips subsequent attempts until the upstream window opens — see [INTEGRATIONS_SDK.md §3.3](INTEGRATIONS_SDK.md#33-managed-exceptions--ui-feedback)); 500 on other failures. Runs every opt-in hook the provider supports (events / exams / catalog-proposals / HITL-proposals / documents). |
+| `POST` | `/integrations/instance/{integration_id}/rotate-secret` | any | — | `{secret}` | Regenerates the HMAC `api_secret` (shown once; stored Fernet-encrypted); 500 on other failures. Runs every opt-in hook the provider supports (events / exams / catalog-proposals / HITL-proposals / documents). |
 
 ### HITL proposals (review + resolve)
 
-Catalog write proposals queued for human review by providers that opt into `supports_hitl_proposals` (see [INTEGRATIONS_SDK.md §3.12](INTEGRATIONS_SDK.md#312-hitl-proposals-human-in-the-loop-catalog-review)). Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook (§3.11) uses.
+Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook uses. See [HITL proposals](dev/sdk/authoring-and-configuration.md#hitl-proposals-human-review).
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
@@ -1068,9 +1066,7 @@ rejected with 401 (fail-closed). Bodies are capped at 40 MiB.
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `POST` | `/integrations/{domain}/webhook/{integration_id}` | **mandatory** HMAC via `webhook_secret` | raw Request body (≤40 MiB) | `{message, metrics_synced}` | Signature headers: `X-Webhook-Signature`, `X-Webhook-Signature-256`, `X-Hub-Signature-256` (GitHub; `sha256=<hex>` tolerated). **Replay protection:** with `X-Webhook-Timestamp` the canonical timestamped scheme applies (±5-min skew); bare body-MACs are deduplicated via a 10-minute Redis replay guard. Calls `provider.handle_webhook`, maps observations, splits telemetry vs FHIR, writes `IntegrationSyncLog`, dispatches post-sync notifications. |
-| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | **mandatory** HMAC via `api_secret` | raw Request body (≤40 MiB) | provider-defined | Two-way API proxy. Requires `X-Api-Signature` = HMAC-SHA256 of `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` **and** a mandatory `X-Api-Timestamp` (±5-min skew; no timestamp → 401). The MAC covers the **query string**, so query params can't be tampered on a captured request. `GET /status` without a signature returns only `{status, server_time}` (pairing probe + clock resync); a *signed* status probe returns the full provider payload. |
-
-See [INTEGRATIONS_SDK.md §3.9](INTEGRATIONS_SDK.md#39-notifications-event-driven-rich-actionable)
+| `ANY` | `/integrations/{domain}/api/{integration_id}/{path:path}` | **mandatory** HMAC via `api_secret` | raw Request body (≤40 MiB) | provider-defined | Two-way API proxy. Requires `X-Api-Signature` = HMAC-SHA256 of `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` **and** a mandatory `X-Api-Timestamp` (±5-min skew; no timestamp → 401). The MAC covers the **query string**, so query params can't be tampered on a captured request. `GET /status` without a signature returns only `{status, server_time}` (pairing probe + clock resync); see [the typed errors](dev/sdk/reference.md#the-bridge-error-vocabulary-bridgeerror)
 for the notification-action contract.
 
 ---
@@ -1160,11 +1156,11 @@ See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec
 | `PUT` | `/fhir/R4/{resource_type}/{resource_id}` | any | Update (full replacement). `If-Match` honored → 412 on version mismatch. |
 | `DELETE` | `/fhir/R4/{resource_type}/{resource_id}` | any | Soft-delete → subsequent reads return 410 Gone. Returns `204`. |
 
-**19 registered resource types:** Patient, Observation, Condition (← ClinicalEvent),
+**20 registered resource types:** Patient, Observation, Condition (← ClinicalEvent),
 EpisodeOfCare (← ClinicalEvent journey view), Encounter (← ExaminationModel),
 AllergyIntolerance, MedicationStatement, MedicationRequest (both ← Medication
 via `intent` discriminator), Medication (← MedicationCatalog, read-only),
-Immunization (patient dose records; REST CRUD at `/vaccines/*`),
+Substance (read-only), Immunization (patient dose records; REST CRUD at `/vaccines/*`),
 DiagnosticReport, DocumentReference (← DocumentModel), Device, Communication,
 Organization, Practitioner, Provenance (immutable), plus two **computed**
 terminology resources — CodeSystem and ValueSet — that project disease-kind
@@ -1230,7 +1226,7 @@ text for easier debugging.
 - [TELEMETRY_AND_AGGREGATION.md](TELEMETRY_AND_AGGREGATION.md) — TimescaleDB telemetry split + OHLC aggregation
 - [TAXONOMY.md](TAXONOMY.md) — unified taxonomy / knowledge graph
 - [AI_SYSTEM.md](AI_SYSTEM.md) — AI provider factory, agentic chat, HITL wall
-- [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) + [INTEGRATIONS_SDK.md](INTEGRATIONS_SDK.md) — integrations discovery + SDK
+- [INTEGRATIONS_FRAMEWORK.md](INTEGRATIONS_FRAMEWORK.md) — integrations discovery; the [integration SDK doc set](dev/sdk/overview.md) covers the SDK
 - [EXPORT_IMPORT.md](EXPORT_IMPORT.md) — backup format / scopes / restore
 
 When running locally, visit **http://localhost:8000/docs** (Swagger UI) or

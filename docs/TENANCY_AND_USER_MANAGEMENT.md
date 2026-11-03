@@ -109,15 +109,16 @@ a short-lived **invite token** minted by that tenant's admin.
    or SYSTEM_ADMIN only). The admin can optionally bind the token to a
    specific email, choose a role (USER/ADMIN/MANAGER), and set an expiry
    (default 7 days, **capped at 30**). Invites are **single-use** — the jti
-   is consumed atomically on first registration (audit 2026-08 M3).
+   is consumed atomically on first registration.
    `SYSTEM_ADMIN` is **never** grantable via invite — or via
    `PUT /api/v1/users/{id}` / `POST /api/v1/users` by a tenant ADMIN/MANAGER
-   (audit 2026-08 C-2); only an existing SYSTEM_ADMIN (or first-run bootstrap)
+   (enforced server-side); only an existing SYSTEM_ADMIN (or first-run bootstrap)
    can create that role. Changing a user's role **revokes all their live
    tokens** so the new role takes effect immediately (they just re-login).
    ```bash
    curl -X POST https://your-host/api/v1/auth/invite \
         -H "Authorization: Bearer $ADMIN_JWT" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
          -d "email=newmember@example.com" -d "role=USER"
    # → { "invite_token": "...", "tenant_id": "...", "role": "USER", "expires_in_days": 7 }
    ```
@@ -180,9 +181,11 @@ patients, observations, medications, examinations, documents,
 notification rules, notifications, AI config, chat sessions, etc.
 
 **Exception**: `telemetry_data` is a TimescaleDB hypertable where FK
-constraints aren't reliably supported. The `tenant_id` column has no FK;
-a periodic cleanup job is responsible for purging telemetry rows after
-their tenant is deleted.
+constraints aren't reliably supported, so its `tenant_id` column carries no
+FK. **Telemetry rows are not purged automatically when a tenant is deleted**
+— if you decommission a tenant and must remove its telemetry for
+data-minimization reasons, delete the rows explicitly
+(`DELETE FROM telemetry_data WHERE tenant_id = '…'`).
 
 ### Patient Deletion
 Deleting a `Patient` CASCADEs to **their entire clinical record**:

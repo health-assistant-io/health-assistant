@@ -105,7 +105,7 @@ async def _make_observation(tenant_id, patient_id) -> uuid.UUID:
 
 def _table_names() -> set[str]:
     """Sync introspection of the public schema (psycopg2)."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -119,7 +119,7 @@ def _table_names() -> set[str]:
 
 def _columns(table: str) -> dict[str, str | None]:
     """{column: column_default} for a table (sync introspection)."""
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:

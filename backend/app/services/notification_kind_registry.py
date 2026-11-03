@@ -263,7 +263,7 @@ async def _enumerate_integration_kinds(
 ) -> list[NotificationKindMeta]:
     """One kind per (integration_instance, declared notification type)."""
     try:
-        from app.core.integration_registry import integration_registry
+        from app.extensions.registry import integration_registry
         from app.models.user_integration import UserIntegration
     except Exception:  # pragma: no cover - import guard
         return []

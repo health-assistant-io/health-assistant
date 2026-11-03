@@ -154,7 +154,16 @@ def prompt(text, default="", options=None):
     options_text = f" ({'/'.join(options)})" if options else ""
     
     while True:
-        response = input(f"{text}{options_text}{default_text}: ").strip()
+        try:
+            response = input(f"{text}{options_text}{default_text}: ").strip()
+        except EOFError:
+            # Non-interactive stdin (e.g. `--mode=1 < /dev/null`): take the
+            # default instead of crashing — --mode runs are documented to
+            # never hang (or die) on a prompt.
+            if default:
+                return default
+            print(f"\nNo input available and no default for: {text}")
+            sys.exit(1)
         
         # Use default if empty
         if not response and default:
@@ -176,7 +185,10 @@ def prompt_bool(text, default="y"):
     """Interactive prompt for boolean values."""
     default_text = "[Y/n]" if default.lower() == 'y' else "[y/N]"
     while True:
-        response = input(f"{text} {default_text}: ").strip().lower()
+        try:
+            response = input(f"{text} {default_text}: ").strip().lower()
+        except EOFError:
+            return "true" if default.lower() == "y" else "false"
         if not response:
             return "true" if default.lower() == 'y' else "false"
         if response in ['y', 'yes', 'true']:

@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { integrationService, IntegrationManifest, ActiveIntegration } from '../../services/integrationService';
 import { toast } from 'react-toastify';
-import { CheckCircle, XCircle, Settings, Server, Cloud, Globe, Search, LayoutGrid, Plug } from 'lucide-react';
+import { Search, LayoutGrid, Plug, Settings } from 'lucide-react';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
-import IntegrationDocsModal from '../../components/integrations/IntegrationDocsModal';
+import IntegrationDocsDialog from '../../components/integrations/IntegrationDocsDialog';
 import BrowseIntegrationsModal from '../../components/integrations/BrowseIntegrationsModal';
+import { instanceGroups } from '../../components/integrations/integrationViews';
+import { IntegrationInstancesList } from '../../components/ui/integrations';
 import { NoPatientState } from '../../components/ui/NoPatientState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { usePatientStore } from '../../store/slices/patientSlice';
-
-import { Link } from 'react-router-dom';
 
 const Integrations: React.FC = () => {
   const { t } = useTranslation();
@@ -42,12 +43,13 @@ const Integrations: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPatient]);
 
   const handleRemove = async (integrationId: string, domain: string) => {
     if (!currentPatient) return;
     if (!window.confirm(`Are you sure you want to remove this ${domain} integration instance?`)) return;
-    
+
     try {
       await integrationService.removeIntegration(integrationId, currentPatient.id);
       toast.success("Integration removed");
@@ -57,20 +59,13 @@ const Integrations: React.FC = () => {
     }
   };
 
+  const groups = useMemo(() => instanceGroups(active, available), [active, available]);
+
   // Get unique categories from available integrations (for the browse modal badge).
   const categoryCount = Array.from(new Set(available.flatMap(i => i.categories || ['Uncategorized']))).length;
   const connectedDomains = useMemo(() => new Set(active.map((i) => i.domain)), [active]);
 
-  const getAccessIcon = (type?: string) => {
-    switch(type) {
-      case 'local': return <Server className="h-4 w-4 text-gray-500" />;
-      case 'cloud': return <Cloud className="h-4 w-4 text-blue-500" />;
-      case 'hybrid': return <Globe className="h-4 w-4 text-purple-500" />;
-      default: return null;
-    }
-  };
-
-  if (!currentPatient) return <NoPatientState icon={Server} contextKey="integrations" />;
+  if (!currentPatient) return <NoPatientState icon={Plug} contextKey="integrations" />;
   if (loading) return <div className="p-8 text-center text-gray-500">Loading Integrations...</div>;
 
   return (
@@ -81,68 +76,46 @@ const Integrations: React.FC = () => {
         icon={<Plug className="w-8 h-8" />}
       />
 
-      {/* Active Integrations */}
+      {/* Active Integrations — the kit's grouped instances list (G1: one
+          extension, N configured occurrences). Details/remove stay app
+          actions in the instance-actions slot. */}
       <div className="bg-white dark:bg-dark-surface shadow-sm rounded-lg mb-8 overflow-hidden border border-gray-200 dark:border-dark-border">
         <div className="px-4 py-5 sm:px-6 border-b border-gray-200 dark:border-dark-border">
           <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Your Integrations</h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your connected health data sources.</p>
         </div>
-        <ul className="divide-y divide-gray-200 dark:divide-dark-border">
-          {active.length === 0 ? (
-            <li className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No active integrations found.</li>
-          ) : (
-            active.map((integration) => {
-              const manifest = available.find(a => a.domain === integration.domain);
-              return (
-                <li key={integration.id} className="px-4 py-4 sm:px-6 hover:bg-gray-50 dark:hover:bg-dark-border/50 flex items-center justify-between">
-                  <div className="flex items-center">
-                    {integration.status === 'ACTIVE' || integration.status === 'active' ? (
-                      <CheckCircle className="h-6 w-6 text-green-500 mr-3" />
-                    ) : integration.status === 'ERROR' || integration.status === 'error' ? (
-                      <XCircle className="h-6 w-6 text-red-500 mr-3" />
-                    ) : (
-                      <XCircle className="h-6 w-6 text-gray-500 mr-3" />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Link to={`/settings/integrations/${integration.id}`} className="text-base font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 hover:underline">
-                          {integration.instance_name || manifest?.name || integration.domain}
-                        </Link>
-                        {integration.instance_name && (
-                           <span className="px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400 rounded-full whitespace-nowrap">
-                             via {manifest?.name || integration.domain}
-                           </span>
-                        )}
-                        {manifest?.access_type && getAccessIcon(manifest.access_type)}
-                      </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {integration.status === 'ERROR' || integration.status === 'error' ? (
-                          <span className="text-red-500 font-medium">Integration Error - Requires Attention</span>
-                        ) : (
-                          <>Last Synced: {integration.last_synced_at ? new Date(integration.last_synced_at).toLocaleString() : 'Never'}</>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <Link
-                      to={`/settings/integrations/${integration.id}`}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-sm shadow-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden"
-                    >
-                      <Settings className="h-4 w-4 mr-1"/> Details
-                    </Link>
-                    <button 
-                      onClick={() => handleRemove(integration.id, integration.domain)}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-sm text-red-700 bg-red-100 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 focus:outline-hidden"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </li>
-              );
-            })
-          )}
-        </ul>
+        <div className="px-4 py-4 sm:px-6">
+          <IntegrationInstancesList
+            groups={groups}
+            labels={{
+              emptyLabel: t('integrations.list.empty', 'No active integrations found.'),
+              enableAriaLabel: t('integrations.list.enableAria', 'Enable'),
+              tombstoneLabel: t('integrations.list.remove', 'Remove'),
+              conditionLabels: {
+                'needs-config': t('integrations.list.needsConfig', 'needs config'),
+                'needs-secret': t('integrations.list.needsSecret', 'needs secret'),
+              },
+              lastSuccessLabel: t('integrations.list.lastSynced', 'Last synced'),
+              failuresLabel: t('integrations.list.failures', 'consecutive failures'),
+              statusLabels: {
+                ok: t('integrations.list.statusOk', 'Connected'),
+                degraded: t('integrations.list.statusDegraded', 'Degraded'),
+                failing: t('integrations.list.statusFailing', 'Error — requires attention'),
+                stale: t('integrations.list.statusStale', 'Pending setup'),
+              },
+            }}
+            onTombstone={(instance) => void handleRemove(instance.id, String(instance.metadata?.domain ?? instance.extensionId ?? ''))}
+            renderInstanceActions={(instance) => (
+              <Link
+                to={`/settings/integrations/${instance.id}`}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-xs font-medium rounded-sm shadow-xs text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-hidden"
+              >
+                <Settings className="h-4 w-4 mr-1" aria-hidden />
+                {t('integrations.list.details', 'Details')}
+              </Link>
+            )}
+          />
+        </div>
       </div>
 
       {/* Available Integrations — launcher card */}
@@ -186,18 +159,18 @@ const Integrations: React.FC = () => {
       />
 
       {selectedDomain && (
-        <ConfigFlowModal 
-          domain={selectedDomain} 
-          onClose={() => setSelectedDomain(null)} 
+        <ConfigFlowModal
+          domain={selectedDomain}
+          onClose={() => setSelectedDomain(null)}
           onSuccess={() => {
             setSelectedDomain(null);
             loadData();
-          }} 
+          }}
         />
       )}
 
       {docsDomain && (
-        <IntegrationDocsModal
+        <IntegrationDocsDialog
           domain={docsDomain}
           onClose={() => setDocsDomain(null)}
         />

@@ -45,7 +45,7 @@ jobs:
       # got the binary — `uv sync`/`uv run` died with exit 127. Family
       # pattern (career/study ci.yml): astral-sh/setup-uv.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: '3.12'
 
@@ -66,7 +66,7 @@ jobs:
 
       - name: Run Pytest Suite
         env:
-          # Configure via parts (not DATABASE_URL) so config.py assembles the
+          # Configure via parts (not HA_DATABASE_URL) so config.py assembles the
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
           POSTGRES_USER: neuronection_health_owner
           POSTGRES_PASSWORD: password
@@ -80,6 +80,18 @@ jobs:
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
           uv run pytest
+      - name: Bridge SDK schema drift gate (plan 32 D11)
+        # career's openapi --check precedent: the committed schema + the
+        # generated python/ts model layers must regenerate byte-identically
+        # from the live provider surface — a provider/shape change without
+        # the same-commit regeneration fails here.
+        run: |
+          cd backend
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
+          uv run python scripts/export_bridge_schema.py --check
+          cd ../integrations/health-assistant-bridge
+          python3 scripts/generate_python_models.py --check
+          node scripts/generate_ts_models.mjs --check
       - name: Contract drift gate (identity-auth §18)
         env:
           POSTGRES_USER: neuronection_health_owner
@@ -91,7 +103,7 @@ jobs:
         run: |
           cd backend
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
-          pytest -m contract
+          uv run pytest -m contract
 
   test-frontend:
     name: Run Frontend Lint & Build Test

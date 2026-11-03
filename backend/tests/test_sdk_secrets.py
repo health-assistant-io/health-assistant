@@ -1,4 +1,4 @@
-"""Unit tests for ``integrations.sdk.secrets`` — Fernet field encryption.
+"""Unit tests for ``app.extensions.sdk.secrets`` — Fernet field encryption.
 
 Covers the Phase 1.2 hardening: ``MultiFernet`` key rotation (decrypt with a
 previous key after rotating the primary), ``_kid`` tagging, and the opt-in
@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import pytest
 from cryptography.fernet import Fernet
-from integrations.sdk.secrets import (
+
+from app.extensions.sdk.secrets import (
     KEY_ID_MARKER,
     SECRET_MARKER,
     SecretCipher,
@@ -168,6 +169,23 @@ def test_encrypt_decrypt_fields_roundtrip(cipher_key, monkeypatch):
     assert dec["api_secret"] == "hunter2"
 
 
+def test_encrypt_fields_binds_user_secrets_to_the_instance(cipher_key, monkeypatch):
+    """F21: user-entered secret slots are row-bound like machine secrets.
+
+    A wrapper encrypted for instance A must not decrypt under instance B —
+    the cut-and-paste hole the module docstring promised to close.
+    """
+    _patch_settings(monkeypatch, cipher_key)
+    config = {"api_secret": "user-entered-token", "instance_name": "bridge"}
+    enc = encrypt_fields(config, ["api_secret"], context="instance-a")
+    assert enc["api_secret"][SECRET_MARKER]
+    assert decrypt_fields(enc, ["api_secret"], context="instance-a")["api_secret"] == (
+        "user-entered-token"
+    )
+    with pytest.raises(ValueError, match="different context"):
+        decrypt_fields(enc, ["api_secret"], context="instance-b")
+
+
 def test_encrypt_fields_skips_empties(cipher_key, monkeypatch):
     _patch_settings(monkeypatch, cipher_key)
     config = {"api_secret": "", "token": None, "nested": {}}
@@ -207,7 +225,7 @@ def _patch_settings(monkeypatch, primary_key: str, previous: str = ""):
     """Make ``SecretCipher.from_settings()`` use the given keys without booting
     the full app config. ``encrypt_fields`` / ``decrypt_fields`` call the
     classmethod, so patching it covers the field-level helpers too."""
-    from integrations.sdk import secrets as secrets_mod
+    from app.extensions.sdk import secrets as secrets_mod
 
     monkeypatch.setattr(
         secrets_mod.SecretCipher,

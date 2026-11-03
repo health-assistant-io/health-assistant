@@ -110,12 +110,17 @@ async def prune_setup() -> AsyncIterator[dict]:
         await _insert_checkpoint_rows(db, str(fresh_session_id))
         await _insert_checkpoint_rows(db, str(stale_session_id))
         await _insert_checkpoint_rows(db, orphan_thread)
+        # Plan 13 H2 branch threads: "{session_id}:{branch_tip_id}" forms.
+        await _insert_checkpoint_rows(db, f"{fresh_session_id}:branch-tip-1")
+        await _insert_checkpoint_rows(db, f"{stale_session_id}:branch-tip-2")
         await db.commit()
 
     try:
         yield {
             "fresh": str(fresh_session_id),
+            "fresh_branch": f"{fresh_session_id}:branch-tip-1",
             "stale": str(stale_session_id),
+            "stale_branch": f"{stale_session_id}:branch-tip-2",
             "orphan": orphan_thread,
         }
     finally:
@@ -165,6 +170,11 @@ async def test_prune_removes_stale_and_orphan_threads_keeps_fresh(prune_setup):
     assert data["fresh"] in after, "live session's checkpoints must survive"
     assert data["stale"] not in after, "stale session's checkpoints must go"
     assert data["orphan"] not in after, "orphan threads must go"
+    # Plan 13 H2: branch threads follow their OWNING session's fate — a live
+    # session's per-branch threads (paused ask_user interrupts included) are
+    # NOT orphans and must survive; a stale session's branch threads go.
+    assert data["fresh_branch"] in after, "live session's branch threads must survive"
+    assert data["stale_branch"] not in after, "stale session's branch threads must go"
 
 
 @pytest.mark.asyncio

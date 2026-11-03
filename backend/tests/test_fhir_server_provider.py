@@ -1,4 +1,4 @@
-"""Unit tests for integrations.fhir_server.provider (Stage 2 pull + Stage 2b push).
+"""Unit tests for app.extensions.builtin.fhir_server.provider (Stage 2 pull + Stage 2b push).
 
 Covers the per-instance ``auth_mode`` (smart vs none/tokenless), the SMART
 refresh-on-401 path, the push pipeline (echo exclusion, custom-coding exclusion,
@@ -14,8 +14,21 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from integrations.fhir_server.provider import FhirServerProvider
-from integrations.sdk.exceptions import IntegrationAuthError
+
+from app.extensions.builtin.fhir_server.provider import FhirServerProvider
+from app.extensions.errors import ExtensionError
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_dns(monkeypatch):
+    """Synthetic hosts (``ehr``, ``portal.example``…) resolve to a fixed
+    public address: fetches fail CLOSED on resolution failure since the
+    2026-10-18 evaluation's H2 fix, so the mocked-transport suites pin
+    the name the guard checks (the transport then sees the pinned IP —
+    path/query assertions are unaffected)."""
+    from app.extensions import polite_http
+
+    monkeypatch.setattr(polite_http, "_default_resolver", lambda host: ["93.184.216.34"])
 
 
 def _client(handler):
@@ -66,7 +79,7 @@ class _FakeSmart:
 
     async def get_live_token(self, i):
         if self._raise_on_live:
-            raise IntegrationAuthError("no token")
+            raise ExtensionError("no token")
         return self._token
 
     async def force_refresh(self, i):
@@ -297,7 +310,10 @@ async def test_run_push_excludes_echo_and_custom_coding_and_rewrites_subject():
 
     with (
         _patch_db([pushable, echo, custom]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -337,7 +353,10 @@ async def test_run_push_412_counted_as_skipped():
 
     with (
         _patch_db([obs]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -365,7 +384,10 @@ async def test_run_push_excludes_background_echo_by_domain_display():
 
     with (
         _patch_db([bg_echo, pushable]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         result = await provider._run_push(integ)
 
@@ -487,7 +509,10 @@ async def test_action_push_preview_lists_candidates_without_sending():
 
     with (
         _patch_db([pushable, echo]),
-        patch("integrations.fhir_server.provider.fhir_conditional_update", new=fake_update),
+        patch(
+            "app.extensions.builtin.fhir_server.provider.fhir_conditional_update",
+            new=fake_update,
+        ),
     ):
         response = await provider.execute_custom_action(integ, "push_preview")
 
@@ -986,16 +1011,22 @@ async def test_reset_cursors_clears_per_resource_cursors():
 # ---------------------------------------------------------------------------
 
 
-def test_all_pull_hooks_declared():
-    """fhir_server opts into every multi-resource pull capability."""
-    provider = FhirServerProvider()
-    assert provider.supports_clinical_events() is True
-    assert provider.supports_examinations() is True
-    assert provider.supports_documents() is True
-    assert provider.supports_hitl_proposals() is True
-    assert provider.supports_medications() is True
-    assert provider.supports_allergies() is True
-    assert provider.supports_immunizations() is True
+def test_all_pull_data_classes_declared():
+    """fhir_server declares every multi-resource data class it can pull."""
+    from app.extensions.registry import IntegrationRegistry
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    declared = reg.declared_data_classes("fhir_server")
+    assert {
+        "clinical_event",
+        "examination",
+        "document",
+        "hitl_proposal",
+        "medication",
+        "allergy",
+        "immunization",
+    } <= declared
 
 
 # ---------------------------------------------------------------------------

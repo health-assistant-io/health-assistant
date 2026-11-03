@@ -93,7 +93,7 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     """A body figure view stored as a raster image on disk (replaces the old
     hardcoded SVG atlas). Each row is one view of one figure (e.g.
     ``man-front``, ``woman-back``) backed by a WebP/PNG image file under
-    ``UPLOAD_DIR/anatomy_figures/``. Markers on
+    ``HA_UPLOAD_DIR/anatomy_figures/``. Markers on
     ``AnatomyStructure.display.map.markers`` are keyed by ``figure.slug``,
     normalized 0-1 relative to the image's pixel dimensions. Managed by
     SYSTEM_ADMIN.
@@ -108,7 +108,7 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     # Free-form view tag: "front", "back", "left", "right", or custom — not an
     # enum so admins can invent new aspects without code changes.
     view_key = Column(String(50), nullable=False)
-    # Relative path to the image under UPLOAD_DIR (e.g. "anatomy_figures/man-front.webp").
+    # Relative path to the image under HA_UPLOAD_DIR (e.g. "anatomy_figures/man-front.webp").
     image_path = Column(String(500), nullable=True)
     # Original uncropped source image (for re-cropping in the editor). NULL when
     # no crop was applied (the image_path IS the original) or when discarded.

@@ -2,13 +2,22 @@
 # AI-architecture alignment gate (ADR-0008 / guidelines/ai-features.md).
 #
 # Enforces, per product repo (python and js/electron kinds):
-#   R1  no provider-SDK imports (openai / anthropic / google-genai) outside
-#       the AI layer (python: backend/app/ai/chat_models.py; js: src/main/ai/)
-#       and tests
+#   R1  no provider-SDK imports (openai / anthropic / google-genai; decision
+#       transports: @typesafe-ai/sdk js, typesafe_sdk python — plan 26 /
+#       ADR-0032) outside the AI layer (python: backend/app/ai/
+#       chat_models.py; js: src/main/ai/) and tests. The python
+#       typesafe_sdk pattern activates when the plan 26 Phase 3/5 ports
+#       adopt the SDK; it is in the sanctioned surface from the start so
+#       no port ever ships with the SDK outside the AI layer.
 #   R2  LangChain chat classes, the agent/graph stack (langchain,
 #       @langchain/langgraph*), and MCP libraries (fastmcp / mcp /
 #       @langchain/mcp-adapters) imported only inside the AI layer
-#       (python: backend/app/ai/; js: src/main/ai/) (+ tests)
+#       (python: backend/app/ai/; js: src/main/ai/) (+ tests).
+#       The mcp/fastmcp match covers nested module paths and plain
+#       imports (from mcp.server.mcpserver import …, import mcp.client…)
+#       — first-level-module matching alone let study ship an MCP server
+#       import outside ai/ while the gate stayed green (plan 32 Phase 9
+#       observation; tightened 2026-10-17)
 #   R3  LangGraph graphs (StateGraph; js: also createAgent) live under the
 #       ai/graphs/ dir (python: backend/app/ai/graphs; js: src/main/ai/graphs)
 #   R4  langgraph (+ langgraph-checkpoint-* when persistent checkpointing
@@ -17,6 +26,16 @@
 #       audio/speech, /v1/models — ADR-0018) stay inside the AI layer
 #       (python: backend/app/ai/; js: src/main/ai/) — these are raw
 #       httpx/fetch surfaces invisible to R1/R2's import checks
+#   R6  wire-parameter construction stays in the AI layer: the modern
+#       token-cap parameter name (max_completion_tokens) appears only in
+#       backend/app/ai/ (python) / src/main/ai/ (js) + tests (+ ops
+#       scripts/ for the REST pings) — config storage spells max_tokens,
+#       and a stray occurrence means a hand-rolled payload or rename
+#       (ADR-0038)
+#   R7  sampling temperature is omit-unless-configured: no numeric
+#       temperature default may be manufactured in app code (the old
+#       0.7/0.0 defaults turned every model row into a reasoning-model
+#       breaker — ADR-0038 temperature addendum); unset = send nothing
 #
 # Modes: strict (findings fail) or transition (findings reported, exit 0).
 # Repos with pre-existing R1–R5 surfaces run in transition until their
@@ -39,10 +58,14 @@ DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE="$(dirname "$DEV_ROOT")"
 
 # repo (relative to workspace) : mode : tests dir (repo-relative) : kind
+# All four repos run strict since plan 26 Phase 6 (career's grand port and
+# health's decision port landed; both had been transition from the plan 10
+# era — their own CIs already ran --self --mode strict, so the family scan
+# table now matches).
 REPOS=(
   "study-assistant:strict:backend/tests:python"
-  "career-assistant:transition:backend/tests:python"
-  "health-assistant/core:transition:backend/tests:python"
+  "career-assistant:strict:backend/tests:python"
+  "health-assistant/core:strict:backend/tests:python"
   "desktop-assistant:strict:tests:js"
 )
 
@@ -77,7 +100,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     SCAN_ARGS=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
       --exclude-dir='node_modules' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
-    SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@google/genai['\"])"
+    SDK_RE="(from ['\"]openai['\"]|require\(['\"]openai['\"]\)|from ['\"]anthropic['\"]|from ['\"]@anthropic-ai/sdk['\"]|from ['\"]@typesafe-ai/sdk['\"]|from ['\"]@google/genai['\"])"
     CLASS_RE="(from ['\"]@langchain/(openai|anthropic|google-genai|google)['\"]|require\(['\"]@langchain/(openai|anthropic|google-genai|google)['\"]\)|from ['\"]@langchain/langgraph|from ['\"]@langchain/mcp-adapters['\"]|from ['\"]langchain(/agents)?['\"])";
     DEPS_FILES=("$dir/package.json")
   else
@@ -92,8 +115,8 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     SCAN_ARGS=(--include='*.py' -rIlnE
       --exclude-dir='.venv' --exclude-dir='venv' --exclude-dir='dist'
       --exclude-dir='build' --exclude-dir='__pycache__' --exclude-dir='.git')
-    SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai)'
-    CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp[. ]import|from mcp[.](server|client|shared)[. ]import)'
+    SDK_RE='(from openai[. ]|import openai$|from anthropic[. ]|import anthropic$|from google[.]genai|from google import genai|from google[.]generativeai|from typesafe_sdk[. ]|import typesafe_sdk$)'
+    CLASS_RE='(from langchain_(openai|anthropic|google_genai)[. ]import|init_chat_model[[:space:]]*\(|from fastmcp([. ]|$)|from mcp[.](server|client|shared)([.]| import)|import mcp[.](server|client|shared))'
     GRAPH_RE='StateGraph'
     DEPS_FILES=("$backend/pyproject.toml")
   fi
@@ -101,6 +124,10 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
   is_allowed() {  # path repo-relative -> ai layer, tests, or graphs dir
     case "$1" in
       "$FACTORY"|"$FACTORY"/*|"$tests_dir"/*|"$GRAPHS_DIR"/*) return 0 ;;
+      # Python repos: the AI layer is the whole app/ai dir (the decision
+      # funnel lives in app/ai/decide/ — plan 26 §3.7 sanctions the decision
+      # SDK inside the AI layer, not the chat factory alone).
+      "$AI_LAYER"|"$AI_LAYER"/*) return 0 ;;
       *) return 1 ;;
     esac
   }
@@ -150,6 +177,45 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     rel="${f#"$dir"/}"
     is_allowed_r2 "$rel" || report R5 "$rel" 'audio/catalog endpoint call outside the AI layer (ADR-0018)'
   done < <(grep "${SCAN_ARGS[@]}" 'audio/transcriptions|audio/speech|/v1/models|generativelanguage[.]googleapis[.]com' "$backend" 2>/dev/null | sort -u)
+
+  # R6 (ADR-0038): max_completion_tokens is payload construction — it lives
+  # in the AI layer (the vendored wire module / factory) and tests, plus
+  # ops scripts/ for the REST pings. Config storage and API schemas spell
+  # max_tokens; a stray occurrence is a hand-rolled payload or rename.
+  if [ "$kind" = "python" ]; then
+    r6_scan=("$backend/app"); r6_args=(--include='*.py' -rIlnE
+      --exclude-dir='__pycache__' --exclude-dir='.git')
+    r6_extra='scripts/*'
+  else
+    r6_scan=("$dir/src"); r6_args=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
+      --exclude-dir='node_modules' --exclude-dir='dist' --exclude-dir='build'
+      --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
+    r6_extra='src/shared/*'
+  fi
+  while IFS= read -r f; do
+    rel="${f#"$dir"/}"
+    case "$rel" in
+      "$AI_LAYER"|"$AI_LAYER"/*|"$tests_dir"/*|$r6_extra) ;;
+      *) report R6 "$rel" 'max_completion_tokens outside the AI layer (ADR-0038)' ;;
+    esac
+  done < <(grep "${r6_args[@]}" 'max_completion_tokens' "${r6_scan[@]}" 2>/dev/null | sort -u)
+
+  # R7 (ADR-0038 temperature addendum): no manufactured temperature defaults
+  # in app code — unset rides the provider default (the only value reasoning
+  # families accept); a user-set value must be the only way a number rides
+  # the wire. Tests are exempt (they construct fixtures explicitly).
+  if [ "$kind" = "python" ]; then
+    r7_scan=("$backend/app"); r7_args=(--include='*.py' -rIlnE
+      --exclude-dir='__pycache__' --exclude-dir='.git')
+  else
+    r7_scan=("$dir/src"); r7_args=(--include='*.ts' --include='*.tsx' --include='*.js' -rIlnE
+      --exclude-dir='node_modules' --exclude-dir='dist' --exclude-dir='build'
+      --exclude-dir='release' --exclude-dir='generated' --exclude-dir='.git')
+  fi
+  while IFS= read -r f; do
+    rel="${f#"$dir"/}"
+    case "$rel" in "$tests_dir"/*) ;; *) report R7 "$rel" 'manufactured temperature default — omit unless configured (ADR-0038)' ;; esac
+  done < <(grep "${r7_args[@]}" 'temperature[^A-Za-z0-9_]*[:=][[:space:]]*0\.' "${r7_scan[@]}" 2>/dev/null | sort -u)
 
   if [ "$graphs" -eq 1 ]; then
     grep -qh 'langgraph' "${DEPS_FILES[@]}" 2>/dev/null || report R4 'deps' 'graphs exist but no langgraph dependency'

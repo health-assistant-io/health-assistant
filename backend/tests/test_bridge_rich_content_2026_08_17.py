@@ -8,10 +8,10 @@ import uuid
 
 import pytest
 import pytest_asyncio
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel

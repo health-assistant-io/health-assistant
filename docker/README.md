@@ -99,7 +99,7 @@ deployment.md:
 |---|---|
 | Database | `neuronection_health` (test: `neuronection_health_test`, demo: `neuronection_health_demo` in `../demo/`) |
 | Roles | `neuronection_health_owner` (owns schema, runs migrations/DDL) + `neuronection_health_app` (runtime: CONNECT + DML only — never DDL) |
-| Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL` (URL wins when set). Health historically uses the unprefixed `POSTGRES_*` names rather than an `HA_DB_*` family — same contract, kept for compatibility. |
+| Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `HA_DATABASE_URL` (URL wins when set). The `POSTGRES_*` parts are the infra container names shared with the compose files; the assembled/pinned URL carries the `HA_` prefix (plan 20 D2). |
 
 **Two-role split — what exactly happens here:** `docker/init-roles.sh`
 runs once, on first boot of an empty data volume, and grants the app role
@@ -107,7 +107,7 @@ DML-only privileges (plus `ALTER DEFAULT PRIVILEGES` so tables the owner
 creates during migrations are covered automatically). The compose stacks
 then wire **two URLs**: the shared `x-backend-env` anchor connects
 backend/worker/beat as `neuronection_health_app` (least privilege), while the
-one-shot `migrate` service overrides `DATABASE_URL` to run
+one-shot `migrate` service overrides `HA_DATABASE_URL` to run
 `alembic upgrade head` as `neuronection_health_owner` — the compose-level
 equivalent of career/study's `SA_MIGRATIONS_DATABASE_URL` entrypoint
 pattern (health runs migrations as a separate gated service instead of an

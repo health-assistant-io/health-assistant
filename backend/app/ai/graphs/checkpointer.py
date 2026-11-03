@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 
 _DRAIN_POLL_SECONDS = 0.1
 
+# The tables AsyncPostgresSaver.setup() manages (langgraph-checkpoint-postgres
+# MIGRATIONS + its migration bookkeeping table). Probed before any DDL is
+# attempted — see CheckpointStore.open.
+_CHECKPOINT_TABLES = (
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+    "checkpoint_migrations",
+)
+
 
 def get_checkpoint_conninfo() -> str:
     """Libpq conninfo for the checkpoint tables (same DB as the app)."""
@@ -38,6 +48,24 @@ def get_checkpoint_conninfo() -> str:
         f"password={settings.POSTGRES_PASSWORD} "
         f"dbname={settings.POSTGRES_DB}"
     )
+
+
+async def _checkpoint_tables_exist(saver: AsyncPostgresSaver) -> bool:
+    """True when every langgraph checkpoint table is already present.
+
+    Probed via information_schema so a role without CREATE privileges
+    (the DML-only runtime role) can still verify the tables the migrate
+    step prepared — no DDL is attempted when they all exist.
+    """
+    async with saver.conn.cursor() as cur:
+        await cur.execute(
+            "SELECT COUNT(*) AS n FROM information_schema.tables "
+            "WHERE table_schema = current_schema() "
+            "AND table_name = ANY(%s)",
+            (list(_CHECKPOINT_TABLES),),
+        )
+        row = await cur.fetchone()
+    return row["n"] == len(_CHECKPOINT_TABLES)
 
 
 class CheckpointStore:
@@ -72,12 +100,23 @@ class CheckpointStore:
         return self._in_flight_runs
 
     async def open(self) -> None:
-        """Open the pool and create/verify the checkpoint tables (idempotent)."""
+        """Open the pool and create/verify the checkpoint tables (idempotent).
+
+        The tables are normally prepared by the migrate service (owner role)
+        right after ``alembic upgrade head`` via scripts/setup_checkpoints.py:
+        the runtime role (neuronection_health_app, DML-only) cannot execute
+        the DDL that ``saver.setup()`` performs, and PG15+ no longer grants
+        CREATE on the public schema to non-owners. So when all the checkpoint
+        tables already exist, setup() is skipped and no DDL is attempted; a
+        boot against a database the migrate step never prepared still fails
+        loudly, exactly as before.
+        """
         if self._saver is not None:
             return
         stack = AsyncExitStack()
         saver = await stack.enter_async_context(AsyncPostgresSaver.from_conn_string(self._conninfo))
-        await saver.setup()
+        if not await _checkpoint_tables_exist(saver):
+            await saver.setup()
         self._stack = stack
         self._saver = saver
         logger.info("Checkpoint store open (checkpoint tables ready)")

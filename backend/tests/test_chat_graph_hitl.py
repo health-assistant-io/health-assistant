@@ -1,12 +1,16 @@
 """Phase 3.3: ask_user interrupt semantics + fault tolerance in the graph
 engine (AI_AGENT_ENGINE=graph).
 
-Ruling: ask_user PAUSES the turn at the question card (terminal-card SSE) and
-/resume delivers the resolution summary as Command(resume=...) — the model
-continues the SAME conversation. propose_* keeps continue-after-propose.
-Fault tolerance: agent_step retries transient errors; tool_exec is pinned to
-a single attempt (clinical tools stay non-idempotent even checkpointed) and
-errors bubble to the SSE error classifier exactly like the loop engine.
+Ruling: ask_user PAUSES the turn at the question card (the ``task`` payload
+event ends the stream) and /resume delivers the resolution summary as
+Command(resume=...) — the model continues the SAME conversation. propose_*
+keeps continue-after-propose. Fault tolerance: agent_step retries transient
+errors; tool_exec is pinned to a single attempt (clinical tools stay
+non-idempotent even checkpointed) and errors bubble to the SSE error
+classifier exactly like the loop engine.
+
+Plan 24 V3: assertions are pinned to the family vocabulary + health payload
+events — no legacy sentinels on the wire.
 """
 
 import json
@@ -15,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
+from app.ai.agents.chat_agent import stream_events_as_sse
 from app.ai.graphs.chat_agent import (
     chat_engine_iter,
     has_pending_interrupt,
@@ -83,6 +88,10 @@ async def _collect(gen):
     return [event async for event in gen]
 
 
+def _names(events):
+    return [e["event"] for e in events]
+
+
 @pytest.mark.asyncio
 async def test_ask_user_interrupt_resume_roundtrip():
     """The turn pauses at the card; /resume continues the SAME conversation."""
@@ -128,10 +137,15 @@ async def test_ask_user_interrupt_resume_roundtrip():
             )
         )
 
-        # Terminal-card stream: ends after the card, no done event.
-        kinds1 = [k for k, _ in events1 if k != "flow_event"]
-        assert kinds1[-2:] == ["hitl_task", "tool_call_finished"]
-        assert "done" not in kinds1
+        # Terminal-card stream: the task card ends the payload stream — no
+        # done, no finalize, no flow_finished.
+        names1 = _names(events1)
+        task_events = [e for e in events1 if e["event"] == "task"]
+        assert len(task_events) == 1
+        assert task_events[0]["task"]["proposal_id"] == "prop-1"
+        assert names1[-1] == "interrupt"
+        assert "done" not in names1
+        assert "flow_finished" not in names1
         # Paused at an interrupt on the session's thread.
         assert await has_pending_interrupt(SESSION_ID)
 
@@ -151,10 +165,23 @@ async def test_ask_user_interrupt_resume_roundtrip():
         )
         events2 = await _collect(resumed)
 
-        kinds2 = [k for k, _ in events2 if k != "flow_event"]
-        assert kinds2 == ["content", "done"]
-        assert [e for e in events2 if e[0] != "flow_event"][-1] == ("done", False)
-        assert "Thanks! Dose noted." in [d for k, d in events2 if k == "content"]
+        names2 = _names(events2)
+        assert names2 == [
+            "node_started",  # await_user replay (side-effect-free resume)
+            "node_finished",
+            "node_started",  # agent_step continuation
+            "delta",
+            "node_finished",
+            "node_started",  # finalize
+            "done",
+            "node_finished",
+        ]
+        # No flow bracket on the resume stream (continuation of the paused
+        # run — `interrupt` marked the pause on the first stream).
+        assert "flow_started" not in names2
+        assert "flow_finished" not in names2
+        assert next(e for e in events2 if e["event"] == "done")["reached_max"] is False
+        assert "Thanks! Dose noted." in [e["text"] for e in events2 if e["event"] == "delta"]
 
         # Side-effect safety: the ask_user tool executed exactly ONCE across
         # both runs (await_user is side-effect-free; tool_exec committed via
@@ -172,9 +199,7 @@ async def test_ask_user_interrupt_resume_roundtrip():
 
 @pytest.mark.asyncio
 async def test_ask_user_sse_terminal_card():
-    """stream_loop_as_sse ends right after the card — no content after it."""
-    from app.ai.agents.chat_agent import stream_loop_as_sse
-
+    """The SSE stream ends right after the card — no content after it."""
     ask_tool = _ask_user_tool(_ask_observation())
     store = CheckpointStore(drain_timeout=2.0)
     await store.open()
@@ -198,9 +223,9 @@ async def test_ask_user_sse_terminal_card():
                 [AIMessageChunk(content="SHOULD NEVER STREAM")],
             ]
         )
-        sse = [
-            chunk
-            async for chunk in stream_loop_as_sse(
+        frames = [
+            frame
+            async for frame in stream_events_as_sse(
                 chat_engine_iter(
                     llm,
                     tools=[ask_tool],
@@ -212,9 +237,16 @@ async def test_ask_user_sse_terminal_card():
                 )
             )
         ]
-        assert sse[-2].startswith("[HITL_TASK] ")
-        assert sse[-1] == "[TOOL_CALL_FINISHED]"
-        assert all("SHOULD NEVER STREAM" not in c for c in sse)
+        parsed = [json.loads(f.removeprefix("data: ").strip()) for f in frames]
+        names = [p["event"] for p in parsed]
+        # The card rides as the ``task`` payload event; only node/interrupt
+        # frames follow it, and the stream never resumes content.
+        assert "task" in names
+        assert names[-1] == "interrupt"
+        task_idx = names.index("task")
+        tail = names[task_idx + 1 :]
+        assert all(n in ("node_started", "node_finished", "interrupt") for n in tail)
+        assert all("SHOULD NEVER STREAM" not in json.dumps(p) for p in parsed)
     finally:
         bind_runtime_store(None)
         await store.close()
@@ -244,8 +276,9 @@ async def test_agent_step_retries_transient_errors():
             session_id=None,
         )
     )
-    legacy = [e for e in events if e[0] != "flow_event"]
-    assert legacy == [("content", "ok"), ("done", False)]
+    assert [e["text"] for e in events if e["event"] == "delta"] == ["ok"]
+    assert next(e for e in events if e["event"] == "done")["reached_max"] is False
+    assert events[-1]["event"] == "flow_finished"
     assert calls["n"] == 2
 
 
@@ -318,13 +351,21 @@ async def test_ask_user_nonstreaming_degrades_to_continue_mode():
             session_id=None,
         )
     )
-    kinds = [k for k, _ in events if k != "flow_event"]
-    assert kinds == [
-        "tool_call_exec",
-        "tool_call_result",
-        "hitl_task",
-        "tool_call_finished",
-        "content",
+    assert _names(events) == [
+        "flow_started",
+        "node_started",  # agent_step
+        "node_finished",
+        "node_started",  # tool_exec
+        "tool_call",  # exec (running)
+        "tool_call",  # trimmed feedback (done)
+        "task",
+        "node_finished",
+        "node_started",  # agent_step (continuation)
+        "delta",
+        "node_finished",
+        "node_started",  # finalize
         "done",
+        "node_finished",
+        "flow_finished",
     ]
     assert ask_tool.ainvoke.await_count == 1

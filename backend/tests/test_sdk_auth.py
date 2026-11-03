@@ -1,4 +1,4 @@
-"""Unit tests for integrations.sdk.auth (Stage 2 Pair A).
+"""Unit tests for app.extensions.sdk.auth (Stage 2 Pair A).
 
 HTTP is mocked via ``httpx.MockTransport``; the OAuth state store uses a tiny
 in-memory async fake (no fakeredis dependency). The token-store cipher is
@@ -13,7 +13,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from cryptography.fernet import Fernet
-from integrations.sdk.auth import (
+
+from app.extensions.errors import ExtensionError
+from app.extensions.sdk.auth import (
     DEFAULT_SCOPES,
     OAuthStateStore,
     OAuthTokenStore,
@@ -27,8 +29,20 @@ from integrations.sdk.auth import (
     refresh_token,
     register_client,
 )
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
-from integrations.sdk.secrets import SecretCipher
+from app.extensions.sdk.secrets import SecretCipher
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_dns(monkeypatch):
+    """Synthetic hosts (``ehr``, ``portal.example``…) resolve to a fixed
+    public address: fetches fail CLOSED on resolution failure since the
+    2026-10-18 evaluation's H2 fix, so the mocked-transport suites pin
+    the name the guard checks (the transport then sees the pinned IP —
+    path/query assertions are unaffected)."""
+    from app.extensions import polite_http
+
+    monkeypatch.setattr(polite_http, "_default_resolver", lambda host: ["93.184.216.34"])
+
 
 # ---------- fixtures ----------
 
@@ -167,14 +181,14 @@ async def test_discover_smart_ok():
 @pytest.mark.asyncio
 async def test_discover_smart_missing_endpoints_raises_data_error():
     async with _mock_client(lambda r: httpx.Response(200, json={"foo": "bar"})) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await discover_smart("https://ehr/fhir", http)
 
 
 @pytest.mark.asyncio
 async def test_discover_smart_404_raises_data_error():
     async with _mock_client(lambda r: httpx.Response(404, text="nope")) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await discover_smart("https://ehr/fhir", http)
 
 
@@ -182,7 +196,7 @@ async def test_discover_smart_404_raises_data_error():
 async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
     """OAuth/DCR/token HTTP calls used to be single-shot — a transient 5xx
     on a hospital IdP's load balancer would surface as
-    ``IntegrationDataError`` immediately. After routing ``_request_json``
+    ``ExtensionError`` immediately. After routing ``_request_json``
     through ``http._retry_request``, the same call retries with the same
     full-jitter backoff every other SDK HTTP call uses.
 
@@ -195,7 +209,7 @@ async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
 
@@ -204,7 +218,7 @@ async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
         return httpx.Response(503, text="IdP down")
 
     async with _mock_client(handler) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await discover_smart("https://ehr/fhir", http)
 
     assert calls["n"] > 1, (
@@ -216,19 +230,19 @@ async def test_discover_smart_retries_5xx_via_shared_helper(monkeypatch):
 @pytest.mark.asyncio
 async def test_discover_smart_429_retries_then_raises_rate_limit(monkeypatch):
     """A 429 from the OAuth server must surface as
-    :class:`IntegrationRateLimitError` after retries exhaust — the prior
+    :class:`ExtensionError` after retries exhaust — the prior
     single-shot implementation raised it on the first 429 without retrying.
     """
 
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
-    from integrations.sdk.exceptions import IntegrationRateLimitError
+    from app.extensions.errors import ExtensionError
 
     async with _mock_client(lambda r: httpx.Response(429)) as http:
-        with pytest.raises(IntegrationRateLimitError):
+        with pytest.raises(ExtensionError):
             await discover_smart("https://ehr/fhir", http)
 
 
@@ -255,7 +269,7 @@ async def test_register_client_ok():
 @pytest.mark.asyncio
 async def test_register_client_missing_client_id_raises():
     async with _mock_client(lambda r: httpx.Response(200, json={"client_name": "x"})) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await register_client("https://ehr/register", ["https://app/cb"], "x", http=http)
 
 
@@ -289,7 +303,7 @@ async def test_exchange_code_ok_normalizes():
 @pytest.mark.asyncio
 async def test_exchange_code_401_raises_auth_error():
     async with _mock_client(lambda r: httpx.Response(401, text="bad code")) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await exchange_code("https://ehr/token", "X", "V", "https://app/cb", "CID", http=http)
 
 
@@ -328,6 +342,20 @@ async def test_token_store_encrypts_and_roundtrips():
     assert store.get_refresh_token(integ) == "RT"
     assert store.get_patient(integ) == "pat-1"
     assert not store.is_expired(integ)
+
+
+def test_token_store_blob_is_bound_to_the_instance():
+    """F21: the OAuth blob is encrypted with the instance id as context; a
+    blob copied onto another row's ``user_config`` must not authenticate."""
+    store = OAuthTokenStore(cipher=_cipher())
+    integ = _integration()
+    store.store(integ, {"access_token": "AT", "refresh_token": "RT"})
+    assert store.get_access_token(integ) == "AT"
+
+    # Same blob, different row id → context mismatch.
+    other = SimpleNamespace(id="int-2", user_config=integ.user_config)
+    with pytest.raises(ValueError, match="different context"):
+        store.get_access_token(other)
 
 
 def test_token_store_expired_when_no_expires_at():
@@ -377,7 +405,7 @@ async def test_token_store_refresh_without_token_raises_auth():
     past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     store.store(integ, {"access_token": "AT", "expires_at": past})  # no refresh_token
     async with _mock_client(lambda r: httpx.Response(200, json={})) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await store.refresh_if_needed(
                 integ, http, token_endpoint="https://ehr/token", client_id="CID"
             )
@@ -492,7 +520,7 @@ async def test_smart_oauth_complete_with_unknown_state_raises_auth():
             token_store=OAuthTokenStore(cipher=_cipher()),
             state_store=OAuthStateStore(redis_client=_FakeRedis()),
         )
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await oauth.complete_connect(_integration(), {}, "CODE")  # empty pending
 
 
@@ -520,10 +548,10 @@ def test_pkce_default_is_in_spec():
 @pytest.mark.asyncio
 async def test_request_json_maps_oauth_400_to_auth_error():
     """A token-endpoint 400 with an RFC 6749 ``error`` field (invalid_grant,
-    invalid_client, …) must surface as IntegrationAuthError so the worker
+    invalid_client, …) must surface as ExtensionError so the worker
     flips the instance to ERROR + prompts reconnect — not a silent
-    IntegrationDataError that leaves it ACTIVE and failing every sync."""
-    from integrations.sdk.auth import _request_json
+    ExtensionError that leaves it ACTIVE and failing every sync."""
+    from app.extensions.sdk.auth import _request_json
 
     def handler(request):
         return httpx.Response(
@@ -532,17 +560,17 @@ async def test_request_json_maps_oauth_400_to_auth_error():
         )
 
     async with _mock_client(handler) as http:
-        with pytest.raises(IntegrationAuthError, match="invalid_grant"):
+        with pytest.raises(ExtensionError, match="invalid_grant"):
             await _request_json(http, "POST", "https://ehr/token", data={"x": 1})
 
 
 @pytest.mark.asyncio
 async def test_request_json_non_oauth_400_still_data_error():
-    """A 4xx without an OAuth ``error`` field stays IntegrationDataError."""
-    from integrations.sdk.auth import _request_json
+    """A 4xx without an OAuth ``error`` field stays ExtensionError."""
+    from app.extensions.sdk.auth import _request_json
 
     async with _mock_client(lambda r: httpx.Response(422, text="bad shape")) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await _request_json(http, "POST", "https://ehr/register", json_body={})
 
 
@@ -556,7 +584,7 @@ async def test_exchange_code_redacts_token_in_error():
         return httpx.Response(200, json={"refresh_token": "rt-secret", "scope": "x"})
 
     async with _mock_client(handler) as http:
-        with pytest.raises(IntegrationAuthError) as ei:
+        with pytest.raises(ExtensionError) as ei:
             await exchange_code(
                 "https://ehr/token", "CODE", "VVV", "https://app/cb", "CID", http=http
             )
@@ -573,7 +601,7 @@ async def test_register_client_redacts_secret_in_error():
         return httpx.Response(200, json={"client_secret": "DCR-SECRET-XYZ", "client_name": "ha"})
 
     async with _mock_client(handler) as http:
-        with pytest.raises(IntegrationDataError) as ei:
+        with pytest.raises(ExtensionError) as ei:
             await register_client("https://ehr/register", ["https://app/cb"], "ha", http=http)
     msg = str(ei.value)
     assert "DCR-SECRET-XYZ" not in msg
@@ -597,34 +625,36 @@ def _smart_with_stored_oauth(http, cipher, oauth_blob):
 
 
 @pytest.mark.asyncio
-async def test_revoke_routes_through_retry_request_not_raw_post(monkeypatch):
-    """Phase 3.1: ``SmartOAuth.revoke`` must call the shared ``_retry_request``
-    (which runs ``net_guard.assert_safe_url`` + retries transient failures),
-    not ``self.http.post`` directly. Pre-fix revoke was the only SDK HTTP call
-    that bypassed both SSRF defense and the retry/backoff contract.
+async def test_revoke_routes_through_the_guarded_runtime_not_raw_post(monkeypatch):
+    """``SmartOAuth.revoke`` must call the polite transport runtime
+    (``guarded_request`` — the vendored guard + retry/backoff contract),
+    not ``self.http.post`` directly. Pre-fix revoke was the only extension
+    HTTP call that bypassed both SSRF defense and the retry contract.
     """
     cipher = SecretCipher(Fernet.generate_key())
     calls = {"retry": 0, "raw_post": 0}
 
     async with _mock_client(lambda r: httpx.Response(200)) as http:
-        # Wrap http.post so we can detect a raw (unguarded) call.
-        original_post = http.post
+        # Wrap http.send so we can see the one transport call the runtime
+        # makes (build_request + send — a raw ``http.post`` would bypass
+        # the guarded path and be visible as no guarded_request call).
+        original_send = http.send
 
-        async def _spy_post(*a, **kw):
+        async def _spy_send(*a, **kw):
             calls["raw_post"] += 1
-            return await original_post(*a, **kw)
+            return await original_send(*a, **kw)
 
-        http.post = _spy_post  # type: ignore[method-assign]
+        http.send = _spy_send  # type: ignore[method-assign]
 
-        import integrations.sdk.http as http_module
+        import app.extensions.sdk.auth as auth_module
 
-        real_retry = http_module._retry_request
+        real_guarded = auth_module.guarded_request
 
-        async def _spy_retry(do_request, *, url, method, max_retries=3):
+        async def _spy_guarded(client, method, url, **kw):
             calls["retry"] += 1
-            return await real_retry(do_request, url=url, method=method, max_retries=max_retries)
+            return await real_guarded(client, method, url, **kw)
 
-        monkeypatch.setattr(http_module, "_retry_request", _spy_retry)
+        monkeypatch.setattr(auth_module, "guarded_request", _spy_guarded)
 
         smart = _smart_with_stored_oauth(
             http,
@@ -638,8 +668,8 @@ async def test_revoke_routes_through_retry_request_not_raw_post(monkeypatch):
         )
         await smart.revoke(SimpleNamespace(id="00000000-0000-0000-0000-000000000001"))
 
-    assert calls["retry"] == 1, "revoke must go through _retry_request"
-    assert calls["raw_post"] == 1, "the retry wrapper still ends up calling http.post once"
+    assert calls["retry"] == 1, "revoke must go through the guarded runtime"
+    assert calls["raw_post"] == 1, "the guarded runtime still sends exactly one request"
 
 
 @pytest.mark.asyncio
@@ -786,7 +816,7 @@ async def test_concurrent_get_live_token_refreshes_once(monkeypatch):
     token was consumed → next refresh ``invalid_grant`` → spurious reconnect.
     """
     # Squat the poll interval so the waiter doesn't sleep long.
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
 
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
@@ -932,7 +962,7 @@ async def test_get_live_token_returns_cached_when_not_expired():
 async def test_force_refresh_acquires_lock_and_refreshes(monkeypatch):
     """force_refresh on a free lock: acquires, refreshes, releases. Exactly
     one /token POST."""
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
     refresh_calls = {"n": 0}
@@ -975,7 +1005,7 @@ async def test_force_refresh_lock_held_waits_for_leader(monkeypatch):
     """force_refresh when another caller holds the lock: waits for the
     leader's refresh rather than burning a second single-use refresh_token.
     Exactly one /token POST total (no double-refresh)."""
-    monkeypatch.setattr("integrations.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
+    monkeypatch.setattr("app.extensions.sdk.auth.REFRESH_LOCK_POLL_INTERVAL", 0.05)
     cipher = SecretCipher(Fernet.generate_key())
     fake_redis = _FakeRedis()
     refresh_calls = {"n": 0}
@@ -1042,5 +1072,5 @@ async def test_force_refresh_no_refresh_token_raises():
                 # no refresh_token
             },
         )
-        with pytest.raises(IntegrationAuthError, match="no refresh_token"):
+        with pytest.raises(ExtensionError, match="no refresh_token"):
             await smart.force_refresh(SimpleNamespace(id="00000000-0000-0000-0000-000000000022"))

@@ -25,10 +25,10 @@ def get_url():
     # environment variables, and Docker network hostnames.
     from app.core.config import settings
 
-    if not settings.DATABASE_URL:
-        raise ValueError("DATABASE_URL must be defined to run migrations")
+    if not settings.HA_DATABASE_URL:
+        raise ValueError("HA_DATABASE_URL must be defined to run migrations")
 
-    url = settings.DATABASE_URL
+    url = settings.HA_DATABASE_URL
     # Convert async URL to sync for Alembic
     return url.replace("+asyncpg", "+psycopg2")
 

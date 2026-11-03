@@ -42,9 +42,12 @@ function mobileGalleryPath(gallery) {
   return gallery.replace(/\.md$/i, ".mobile.md");
 }
 
-function sceneBlock(scene, viewport, outDir, regenCommand) {
-  const file = `${scene.name}-${viewport}.png`;
-  const has = scene.viewports.includes(viewport) && existsSync(`${outDir}/${file}`);
+function sceneBlock(scene, galleryViewport, outDir, regenCommand) {
+  const viewport = primaryViewport(scene, galleryViewport);
+  if (!viewport) return "";
+  const still = sceneStill(scene, viewport);
+  if (!still) return "";
+  const has = existsSync(`${outDir}/${still}`);
 
   const lines = [];
   lines.push(`### ${scene.name}`);
@@ -52,14 +55,80 @@ function sceneBlock(scene, viewport, outDir, regenCommand) {
   lines.push(`_${scene.caption}_`);
   lines.push("");
   if (has) {
-    lines.push(`![${scene.name} ${viewport}](${relImagePath(file)})`);
+    lines.push(`![${scene.name} — ${scene.caption}](${relImagePath(still)})`);
   } else {
     lines.push(
       `> ⚠️ No ${viewport} screenshot yet for **${scene.name}**. Run \`${regenCommand} -- --scene ${scene.name} --viewport ${viewport}\`.`,
     );
   }
   lines.push("");
+
+  const beats = visibleBeats(scene);
+  if (beats.length > 1) {
+    const frames = beats
+      .map(({ beat, index }) => {
+        const file = beatFileName(scene, viewport, beat, index);
+        if (!existsSync(`${outDir}/${file}`)) return null;
+        return `**${beat.caption ?? beat.id ?? `Frame ${index + 1}`}**\n\n![${scene.name} — ${beat.caption ?? beat.id ?? index + 1}](${relImagePath(file)})`;
+      })
+      .filter(Boolean);
+    if (frames.length > 0) {
+      lines.push("#### Storyboard");
+      lines.push("");
+      lines.push(`_${frames.length} frames in order._`);
+      lines.push("");
+      lines.push(frames.join("\n\n"));
+      lines.push("");
+    }
+  }
   return lines.join("\n");
+}
+
+/**
+ * Storyboard contract (manifest v2): a scene is a chapter, each visible
+ * beat is one frame. Scenes without `beats` keep the one-shot behavior
+ * (frame = the old `<scene>-<viewport>.png`). Beat ids become filename
+ * segments, so they are slugged identically here and in capture.mjs.
+ */
+function slug(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+export function beatFileName(scene, viewport, beat, index) {
+  const id = slug(beat.id ?? "") || String(index + 1).padStart(2, "0");
+  return `${scene.name}-${viewport}--${id}.png`;
+}
+
+export function visibleBeats(scene) {
+  return (scene.beats ?? [])
+    .map((beat, index) => ({ beat, index }))
+    .filter(({ beat }) => beat.capture !== false);
+}
+
+export function sceneStill(scene, viewport) {
+  const beats = visibleBeats(scene);
+  if (beats.length === 0) return `${scene.name}-${viewport}.png`;
+  const chosen = beats.find(({ beat }) => beat.still) ?? beats[beats.length - 1];
+  return beatFileName(scene, viewport, chosen.beat, chosen.index);
+}
+
+/**
+ * Which viewport carries a scene in a gallery document. The desktop doc
+ * is the primary tour: scenes with custom viewport names (Electron
+ * windows sized per scene) belong there under their first viewport. The
+ * mobile companion only ever takes literal `mobile` captures.
+ */
+function primaryViewport(scene, galleryViewport) {
+  if (galleryViewport === "mobile") {
+    return scene.viewports.includes("mobile") ? "mobile" : null;
+  }
+  if (scene.viewports.includes("desktop")) return "desktop";
+  if (scene.viewports.length === 1 && scene.viewports[0] === "mobile") return null;
+  return scene.viewports[0] ?? null;
 }
 
 function buildFrontMatter(cfg, viewport, siblingDoc, hasSibling) {
@@ -97,9 +166,12 @@ function buildFrontMatter(cfg, viewport, siblingDoc, hasSibling) {
  */
 async function writeViewportGallery(cfg, scenes, groups, { out, galleryPath, viewport, siblingDoc, hasSibling }) {
   const regenCommand = cfg.gallery?.regenCommand ?? "./scripts/ui-capture/capture_ui.sh";
-  const anyPresent = scenes.some(
-    (s) => s.viewports.includes(viewport) && existsSync(`${out}/${s.name}-${viewport}.png`),
-  );
+  const anyPresent = scenes.some((scene) => {
+    const vp = primaryViewport(scene, viewport);
+    if (!vp) return false;
+    const still = sceneStill(scene, vp);
+    return still != null && existsSync(`${out}/${still}`);
+  });
 
   if (!anyPresent) {
     // No captures for this viewport → drop a stale doc so docs/ stays in
@@ -144,8 +216,23 @@ function buildManifest(scenes, cfg, { out, gallery, mobileGallery, writtenDeskto
   const manifestScenes = [];
   for (const scene of ordered) {
     const files = {};
+    const frames = [];
     for (const vp of scene.viewports) {
-      if (existsSync(`${out}/${scene.name}-${vp}.png`)) files[vp] = `${scene.name}-${vp}.png`;
+      const still = sceneStill(scene, vp);
+      if (!still || !existsSync(`${out}/${still}`)) continue;
+      files[vp] = still;
+      for (const { beat, index } of visibleBeats(scene)) {
+        const file = beatFileName(scene, vp, beat, index);
+        if (!existsSync(`${out}/${file}`)) continue;
+        frames.push({
+          viewport: vp,
+          id: beat.id ?? null,
+          file,
+          caption: beat.caption ?? null,
+          ...(beat.holdMs != null ? { holdMs: beat.holdMs } : {}),
+          ...(beat.still ? { still: true } : {}),
+        });
+      }
     }
     if (Object.keys(files).length === 0) continue;
     manifestScenes.push({
@@ -155,10 +242,11 @@ function buildManifest(scenes, cfg, { out, gallery, mobileGallery, writtenDeskto
       ...(scene.narration ? { narration: scene.narration } : {}),
       viewports: Object.keys(files),
       files,
+      ...(frames.length > 0 ? { frames } : {}),
     });
   }
   return {
-    version: 1,
+    version: 2,
     templateVersion: templateVersion ?? null,
     project: cfg.project?.name ?? null,
     generatedBy: "scripts/ui-capture (Neuronection family template)",
@@ -180,7 +268,7 @@ export async function generateGallery(scenes, groups, opts) {
   // PNGs are on disk. Mobile state is resolved first so the desktop doc's
   // "mobile views" footer line is accurate.
   const mobilePresent = scenes.some(
-    (s) => s.viewports.includes("mobile") && existsSync(`${out}/${s.name}-mobile.png`),
+    (scene) => scene.viewports.includes("mobile") && existsSync(`${out}/${sceneStill(scene, "mobile")}`),
   );
 
   const writtenDesktop = await writeViewportGallery(cfg, scenes, groups, {

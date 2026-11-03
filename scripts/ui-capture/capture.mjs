@@ -49,9 +49,9 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { generateGallery } from "./gallery.mjs";
+import { generateGallery, beatFileName, visibleBeats } from "./gallery.mjs";
 
-export const TEMPLATE_VERSION = "1.2.5";
+export const TEMPLATE_VERSION = "1.3.0";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..", ".."); // scripts/ui-capture → repo root
@@ -145,7 +145,8 @@ function printHelp() {
   --print <key>         print one resolved value for scripting:
                           base | api | login | outDir | gallery | healthUrls |
                           seed | frontendDir | gifOrder | gifOut | gifWidth |
-                          frameSeconds | holdLast | mode | cdp | manifest
+                          gifStageHeight | frameSeconds | holdLast | gifFiles | gifFrames |
+                          mode | cdp | manifest | transparentBackground
   --version             print family template version`);
 }
 
@@ -228,10 +229,12 @@ function printResolved(opts, key) {
     gifOrder: (cfg.gif?.order ?? []).join("\n"),
     gifOut: abs(cfg.gif?.output ?? "docs/images/visual-tour.gif"),
     gifWidth: String(cfg.gif?.width ?? 800),
+    gifStageHeight: String(cfg.gif?.stageHeight ?? 0),
     frameSeconds: String(cfg.gif?.frameSeconds ?? 2),
     holdLast: String(cfg.gif?.holdLast ?? 3),
     mode: opts.mode,
     cdp: opts.mode === "cdp" ? opts.cdp : "",
+    transparentBackground: cfg.capture?.transparentBackground === true ? "1" : "0",
     // Story-ordered "scene<TAB>file" pairs from the manifest on disk —
     // the GIF assembler's single source of truth for which PNG is which
     // scene (no filename guessing; viewport names vary per repo).
@@ -245,6 +248,34 @@ function printResolved(opts, key) {
           })
           .filter(Boolean)
           .join("\n");
+      } catch {
+        return "";
+      }
+    })(),
+    // Storyboard frames in narrative order with their hold time, for the
+    // GIF assembler: `file<TAB>holdMs` per line. Manifests without frames
+    // (older captures) fall back to the scene still at the default rate.
+    gifFrames: (() => {
+      const defaultHold = (cfg.gif?.frameSeconds ?? 2) * 1000;
+      try {
+        const manifest = JSON.parse(readFileSync(opts.manifest, "utf8"));
+        const lines = [];
+        for (const scene of manifest.scenes) {
+          const frames = scene.frames ?? [];
+          const preferred =
+            frames.filter((f) => f.viewport === "desktop").length > 0
+              ? frames.filter((f) => f.viewport === "desktop")
+              : frames.filter((f) => f.viewport === (scene.viewports?.[0] ?? frames[0]?.viewport));
+          if (preferred.length > 0) {
+            for (const frame of preferred) {
+              if (frame.file) lines.push(`${frame.file}\t${frame.holdMs ?? defaultHold}`);
+            }
+            continue;
+          }
+          const file = scene.files.desktop ?? Object.values(scene.files)[0] ?? "";
+          if (file) lines.push(`${file}\t${defaultHold}`);
+        }
+        return lines.join("\n");
       } catch {
         return "";
       }
@@ -581,25 +612,102 @@ async function captureOnPage(page, scene, vpName, opts, tokens, issues) {
       issues.warnings.push(`${scene.name} [${vpName}] ${msg}`);
     }
   }
-  await page.waitForTimeout(scene.settleMs ?? opts.cfg.capture?.settleMs ?? 800);
 
-  const filename = `${scene.name}-${vpName}.png`;
-  const filepath = join(opts.out, filename);
+  const vp = (opts.cfg.capture?.viewports ?? {})[vpName] ?? DEFAULT_VIEWPORTS[vpName];
+  const settleMs = scene.settleMs ?? opts.cfg.capture?.settleMs ?? 800;
+  const captured = [];
+
+  const beats = visibleBeats(scene);
+  if (beats.length === 0) {
+    await page.waitForTimeout(settleMs);
+    const filename = `${scene.name}-${vpName}.png`;
+    await shootScene(page, scene, vp, join(opts.out, filename), opts);
+    captured.push({ viewport: vpName, file: filename });
+    console.log(`  ✓ ${scene.name} [${vpName}] → ${filename}`);
+    return captured;
+  }
+
+  for (const { beat, index } of beats) {
+    if (beat.actions) {
+      for (const step of beat.actions) await runStep(page, step, opts.base, opts.strict, issues);
+    }
+    if (beat.waitForSelector) {
+      const found = await page
+        .waitForSelector(beat.waitForSelector, { timeout: beat.timeout ?? 15000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!found) {
+        const msg = `beat "${beat.id ?? index + 1}" waitForSelector "${beat.waitForSelector}" not found.`;
+        if (opts.strict) throw new Error(msg);
+        console.warn(`  ⚠ ${scene.name} [${vpName}] ${msg}`);
+        issues.warnings.push(`${scene.name} [${vpName}] ${msg}`);
+      }
+    }
+    await page.waitForTimeout(beat.settleMs ?? settleMs);
+    const filename = beatFileName(scene, vpName, beat, index);
+    await shootScene(page, scene, vp, join(opts.out, filename), opts);
+    captured.push({
+      viewport: vpName,
+      file: filename,
+      beat: beat.id ?? null,
+      caption: beat.caption ?? null,
+      ...(beat.holdMs != null ? { holdMs: beat.holdMs } : {}),
+      ...(beat.still ? { still: true } : {}),
+    });
+    console.log(`  ✓ ${scene.name} [${vpName}] ${beat.id ?? index + 1} → ${filename}`);
+  }
+  return captured;
+}
+
+/**
+ * One storyboard frame (or the legacy single still). Auto-height launcher
+ * viewports are synced to the app's real window right before the shot —
+ * the app owns its content-driven size, the capture only mirrors it, so
+ * hardcoded heights can never clip a frame again.
+ */
+async function shootScene(page, scene, vp, filepath, opts) {
+  if (opts.mode === "cdp") {
+    // The app owns its window size (content-driven launcher, resized
+    // desktop/settings) — wait for it to settle, then shoot at the real
+    // viewport. No emulation: screen metrics stay real, so the app's own
+    // layout budgets behave exactly as they do for a user.
+    await waitForStableWindowSize(page);
+  }
   const fullPage = scene.fullPage ?? true;
-
   if (scene.capture === "element" && scene.selector) {
     const el = await page.$(scene.selector);
-    if (el) await el.screenshot({ path: filepath });
-    else {
-      console.warn(`  ⚠ ${scene.name} [${vpName}] selector "${scene.selector}" not found; fullPage fallback.`);
-      if (opts.strict) throw new Error(`element selector not found: ${scene.selector}`);
-      await shootFullPage(page, filepath, fullPage);
+    if (el) {
+      await el.screenshot({ path: filepath, omitBackground: transparentBackground(opts) });
+      return;
     }
-  } else {
-    await shootFullPage(page, filepath, fullPage);
+    console.warn(`  ⚠ ${scene.name} selector "${scene.selector}" not found; fullPage fallback.`);
+    if (opts.strict) throw new Error(`element selector not found: ${scene.selector}`);
   }
-  console.log(`  ✓ ${scene.name} [${vpName}] → ${filename}`);
-  return filename;
+  await shootFullPage(page, filepath, fullPage, opts);
+}
+
+async function waitForStableWindowSize(page, { timeoutMs = 8000, quietMs = 200, maxWaitMs = 700 } = {}) {
+  const startedAt = Date.now();
+  let last = null;
+  let lastChange = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const size = await page.evaluate(() => ({ width: window.outerWidth, height: window.outerHeight })).catch(() => null);
+    if (size) {
+      if (last && size.width === last.width && size.height === last.height) {
+        if (Date.now() - lastChange >= quietMs) return size;
+      } else {
+        last = size;
+        lastChange = Date.now();
+      }
+    }
+    // Streaming content keeps growing the window; a mid-stream storyboard
+    // frame must shoot before the stream ends, so the stability wait is
+    // bounded (a few px of lag is invisible; waiting for the final size
+    // would silently replace the frame with the finished answer).
+    if (last && Date.now() - startedAt >= maxWaitMs) return last;
+    await page.waitForTimeout(100);
+  }
+  return last;
 }
 
 /**
@@ -613,9 +721,15 @@ async function captureOnPage(page, scene, vpName, opts, tokens, issues) {
  * through the normal paint path, so what readiness verified is what the
  * pixels show. Verified A/B on career's CV builder (2026-09).
  */
-async function shootFullPage(page, filepath, fullPage) {
+async function shootFullPage(page, filepath, fullPage, opts) {
   if (!fullPage) {
-    await page.screenshot({ path: filepath });
+    await page.screenshot({ path: filepath, omitBackground: transparentBackground(opts) });
+    return;
+  }
+  // cdp mode: the real window IS the viewport (the app sizes it); never
+  // emulate or resize it here.
+  if (opts?.mode === "cdp") {
+    await page.screenshot({ path: filepath, omitBackground: transparentBackground(opts) });
     return;
   }
   const vp = page.viewportSize();
@@ -626,8 +740,21 @@ async function shootFullPage(page, filepath, fullPage) {
     await page.setViewportSize({ width: vp.width, height });
     await page.waitForTimeout(250); // settle re-layout before the pixels
   }
-  await page.screenshot({ path: filepath });
+  await page.screenshot({ path: filepath, omitBackground: transparentBackground(opts) });
   if (vp && height > vp.height) await page.setViewportSize(vp);
+}
+
+/**
+ * Transparent-background captures (`capture.transparentBackground: true`)
+ * map to Playwright's `omitBackground`, which clears Chromium's default
+ * page background so the alpha channel survives — rounded, frameless app
+ * windows land on a transparent canvas instead of a baked-in dark fill,
+ * so one PNG composites correctly onto light and dark surfaces (README,
+ * docs, website). Opt-in: platforms differ in how transparent layers
+ * rasterize, so the default stays the safest opaque capture.
+ */
+function transparentBackground(opts) {
+  return opts?.cfg?.capture?.transparentBackground === true;
 }
 
 /** Install the session store + capture flag (context- or page-level init script). */
@@ -670,7 +797,10 @@ async function captureScene(browser, scene, opts, tokens, issues) {
       continue;
     }
     const context = await browser.newContext({
-      viewport: { width: vp.width, height: vp.height },
+      viewport: {
+        width: vp.width,
+        height: typeof vp.height === "number" ? vp.height : vp.fallbackHeight ?? 900,
+      },
       deviceScaleFactor: vp.deviceScaleFactor ?? 1,
       // Suppress entrance animations for deterministic captures (apps that
       // honor prefers-reduced-motion, e.g. framer-motion based UIs).
@@ -685,8 +815,8 @@ async function captureScene(browser, scene, opts, tokens, issues) {
     const page = await context.newPage();
     await installFixedClock(page, opts);
 
-    const filename = await captureOnPage(page, scene, vpName, opts, tokens, issues);
-    if (filename) captured.push({ viewport: vpName, file: filename });
+    const frames = await captureOnPage(page, scene, vpName, opts, tokens, issues);
+    if (frames.length > 0) captured.push(...frames);
     await context.close();
   }
   return captured;
@@ -727,6 +857,16 @@ async function captureSceneCdp(browser, scene, opts, tokens, issues) {
   await installCaptureInitScript(page, windowFlag, store);
   await installFixedClock(page, opts);
 
+  // Drop any device-metrics override left behind by an older capture run
+  // (Playwright emulation outlives its session). The first navigation
+  // applies the cleared metrics; from here on the real window is captured.
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+  } catch {
+    // Non-Chromium cdp transports may not expose the Emulation domain.
+  }
+
   for (const vpName of scene.viewports) {
     if (opts.viewport && opts.viewport !== vpName) continue;
     const vp = viewports[vpName];
@@ -734,15 +874,30 @@ async function captureSceneCdp(browser, scene, opts, tokens, issues) {
       console.warn(`  ⚠ unknown viewport "${vpName}" — skipping`);
       continue;
     }
-    // Viewport emulation resizes the captured content; the OS window keeps
-    // its own size (Electron) — screenshots still reflect the emulated size.
-    try {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-    } catch {
-      console.warn("  ⚠ setViewportSize failed — capturing at the window's own size");
+    // Fixed viewport = resize the real window (the app exposes the same
+    // IPC users' manual resize uses); auto = the app's content-driven size
+    // is used as-is. Both are captured without Playwright emulation, so
+    // screen metrics and layout budgets stay real.
+    if (vp.height !== "auto") {
+      const resized = await page
+        .evaluate(async ({ width, height }) => {
+          if (!window.electronAPI?.resizeWindow) return false;
+          await window.electronAPI.resizeWindow(width, height);
+          return true;
+        }, { width: vp.width, height: vp.height })
+        .catch(() => false);
+      if (resized) {
+        await waitForStableWindowSize(page);
+      } else {
+        try {
+          await page.setViewportSize({ width: vp.width, height: vp.height });
+        } catch {
+          console.warn("  ⚠ setViewportSize failed — capturing at the window's own size");
+        }
+      }
     }
-    const filename = await captureOnPage(page, scene, vpName, opts, tokens, issues);
-    if (filename) captured.push({ viewport: vpName, file: filename });
+    const frames = await captureOnPage(page, scene, vpName, opts, tokens, issues);
+    if (frames.length > 0) captured.push(...frames);
   }
   return captured;
 }

@@ -1,17 +1,30 @@
-"""Unit tests for integrations.sdk.fhir (Stage 2 Pair B)."""
+"""Unit tests for app.extensions.sdk.fhir (Stage 2 Pair B)."""
 
 from uuid import uuid4
 
 import httpx
 import pytest
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
-from integrations.sdk.fhir import (
+
+from app.extensions.errors import ExtensionError
+from app.extensions.sdk.fhir import (
     fhir_conditional_update,
     fhir_create,
     fhir_observation_to_create,
     fhir_search,
     parse_operation_outcome,
 )
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_dns(monkeypatch):
+    """Synthetic hosts (``ehr``, ``portal.example``…) resolve to a fixed
+    public address: fetches fail CLOSED on resolution failure since the
+    2026-10-18 evaluation's H2 fix, so the mocked-transport suites pin
+    the name the guard checks (the transport then sees the pinned IP —
+    path/query assertions are unaffected)."""
+    from app.extensions import polite_http
+
+    monkeypatch.setattr(polite_http, "_default_resolver", lambda host: ["93.184.216.34"])
 
 
 def _client(handler):
@@ -295,7 +308,7 @@ async def test_conditional_update_tokenless_sends_no_bearer():
 @pytest.mark.asyncio
 async def test_conditional_update_401_raises_auth_error():
     async with _client(lambda r: httpx.Response(401, text="nope")) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await fhir_conditional_update(
                 http,
                 "https://ehr/fhir",
@@ -308,7 +321,7 @@ async def test_conditional_update_401_raises_auth_error():
 @pytest.mark.asyncio
 async def test_conditional_update_400_raises_data_error():
     async with _client(lambda r: httpx.Response(400, text="bad")) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await fhir_conditional_update(
                 http,
                 "https://ehr/fhir",
@@ -376,19 +389,19 @@ def test_parse_operation_outcome_does_not_dump_phi_resource():
 
 # ---------------------------------------------------------------------------
 # fhir_create (POST /{Resource}) — was previously implemented but not
-# re-exported from integrations.sdk. These tests lock in the public export
+# re-exported from app.extensions.sdk. These tests lock in the public export
 # and the documented behavior.
 # ---------------------------------------------------------------------------
 
 
 def test_fhir_create_is_reexported_from_sdk_package():
-    """``from integrations.sdk import fhir_create`` must succeed.
+    """``from app.extensions.sdk import fhir_create`` must succeed.
 
     Regression for the public-API gap: ``fhir_create`` was defined in
     ``integrations/sdk/fhir.py:179`` but absent from
     ``integrations/sdk/__init__.py``'s imports / ``__all__``.
     """
-    from integrations.sdk import fhir_create as re_exported
+    from app.extensions.sdk import fhir_create as re_exported
 
     assert callable(re_exported)
     assert re_exported is fhir_create
@@ -421,7 +434,7 @@ async def test_fhir_create_401_raises_auth_error():
         )
 
     async with _client(handler) as http:
-        with pytest.raises(IntegrationAuthError):
+        with pytest.raises(ExtensionError):
             await fhir_create(http, "https://ehr/fhir", "Observation", body)
 
 
@@ -449,26 +462,26 @@ async def test_fhir_create_with_token_sends_bearer():
 
 def test_fhir_helpers_route_through_shared_retry_request():
     """Source-level guard: ``fhir_create`` and ``fhir_conditional_update``
-    must delegate retry/backoff/jitter to ``http._retry_request``.
+    must delegate retry/backoff/jitter to the polite transport runtime
+    (``guarded_request``).
 
-    Before this refactor each helper inlined its own retry loop; the two
-    copies had already diverged subtly (``fhir_create`` had no logger
-    warnings, ``fhir_conditional_update`` did) and neither had jitter. If
-    a future edit re-inlines either helper, the literal ``_retry_request``
+    Before the runtime existed each helper inlined its own retry loop; the
+    two copies had already diverged subtly and neither had jitter. If a
+    future edit re-inlines either helper, the literal ``guarded_request``
     reference disappears from its source and this test fails.
     """
     import inspect
 
-    from integrations.sdk import fhir as fhir_mod
+    from app.extensions.sdk import fhir as fhir_mod
 
     create_src = inspect.getsource(fhir_mod.fhir_create)
     update_src = inspect.getsource(fhir_mod.fhir_conditional_update)
 
-    assert "_retry_request" in create_src, (
+    assert "guarded_request" in create_src, (
         "fhir_create must call _retry_request — re-inlining the retry loop "
         "would reintroduce the divergence / no-jitter bug"
     )
-    assert "_retry_request" in update_src, (
+    assert "guarded_request" in update_src, (
         "fhir_conditional_update must call _retry_request — re-inlining the "
         "retry loop would reintroduce the divergence / no-jitter bug"
     )
@@ -482,7 +495,7 @@ async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
     async def _no_sleep(_):
         return None
 
-    monkeypatch.setattr("integrations.sdk.http.asyncio.sleep", _no_sleep)
+    monkeypatch.setattr("app.extensions.runtime.http.asyncio.sleep", _no_sleep)
 
     calls = {"n": 0}
 
@@ -492,7 +505,7 @@ async def test_fhir_create_retries_5xx_then_raises_data_error(monkeypatch):
 
     body = {"resourceType": "Observation"}
     async with _client(handler) as http:
-        with pytest.raises(IntegrationDataError):
+        with pytest.raises(ExtensionError):
             await fhir_create(http, "https://ehr/fhir", "Observation", body, max_retries=3)
     assert calls["n"] == 3, (
         f"fhir_create should have made 3 attempts (max_retries=3); got {calls['n']}"

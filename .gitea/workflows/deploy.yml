@@ -58,9 +58,23 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: uv.lock
+
+      # The backend moved to uv in plan 20 (abebd80) but the runner image
+      # ships no uv binary — `uv sync` died with `uv: command not found`
+      # (exit 127) since run #167. Gitea twin of the GitHub-side plan 23 F1
+      # fix (dbc5b02); family pattern (career/study ci.yml): setup-uv.
+      # v7 (node24-declared) verified safe on the runner 2026-10-08: the
+      # pulled docker.gitea.com/runner-images:ubuntu-latest
+      # (sha256:0e62e56b…) ships node 24.19.0 as the PATH default, and
+      # act_runner v0.6.1 executes every JS action with plain PATH `node`
+      # regardless of the declared major — v5 was already running on v24.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
 
       - name: Start database services on the job network
         run: |
@@ -111,7 +125,7 @@ jobs:
 
       - name: Run Pytest Suite
         env:
-          # Configure via parts (not DATABASE_URL) so config.py assembles the
+          # Configure via parts (not HA_DATABASE_URL) so config.py assembles the
           # URL and the b13 security-hygiene tests exercise POSTGRES_PASSWORD.
           # postgres + redis are reached by their --network-alias names set
           # above (resolvable on the job's Docker network).
@@ -126,7 +140,7 @@ jobs:
           # Mirror production Docker PYTHONPATH (/app/backend:/app) so the
           # top-level `integrations` package is importable during tests.
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
-          pytest
+          uv run pytest
 
       - name: Stop database services
         if: always()
@@ -159,13 +173,48 @@ jobs:
           npm run lint
           npm run build
 
-  build-and-push:
-    name: Build & Push Docker Images
-    needs: [test-backend, test-frontend]
+  # Gitea 28.1.0 (server upgraded 2026-10-08) rejects the `secrets` context
+  # in job-level `if:` at workflow-parse time ("Unrecognized named-value:
+  # 'secrets'") — GitHub's context-availability table never allowed it
+  # there either. The registry/deploy enable-decisions therefore move into
+  # this tiny gate job: step `env:` may read secrets everywhere, and the
+  # downstream jobs test the published booleans via `needs`, which IS
+  # allowed in job-level `if`.
+  deploy-config:
+    name: Deployment Config Gate
     runs-on: ubuntu-latest
     container:
       image: gitea/runner-images:ubuntu-latest
-    if: ${{ secrets.REGISTRY_HOST != '' && secrets.REGISTRY_TOKEN != '' }}
+    outputs:
+      registry: ${{ steps.check.outputs.registry }}
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Check which secrets are configured
+        id: check
+        env:
+          REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "$REGISTRY_HOST" ] && [ -n "$REGISTRY_TOKEN" ]; then
+            echo "registry=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "registry=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$VM_HOST" ] && [ -n "$SSH_PRIVATE_KEY" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-and-push:
+    name: Build & Push Docker Images
+    needs: [test-backend, test-frontend, deploy-config]
+    runs-on: ubuntu-latest
+    container:
+      image: gitea/runner-images:ubuntu-latest
+    if: needs.deploy-config.outputs.registry == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -194,52 +243,13 @@ jobs:
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ env.IMAGE_TAG_FLOATING }}
           docker push ${{ env.REGISTRY_LOWER }}/${{ env.REPOSITORY_LOWER }}/health-assistant-frontend:${{ github.sha }}
 
-  # OPTIONAL: after new images are pushed, SSH into the demo server and pull +
-  # restart the demo stack so it runs the freshly-built :latest images.
-  #
-  # Opt-in: set the DEMO_DEPLOY_PATH secret in this repo to enable (e.g.
-  # /home/deploy/health_assistant_demo). Without it, this job is skipped
-  # entirely and the pipeline is unaffected. Override DEMO_VM_HOST too if the
-  # demo lives on a different host than production, and DEMO_SSH_PRIVATE_KEY if
-  # the demo host uses a separate SSH key (falls back to SSH_PRIVATE_KEY so an
-  # unset secret never breaks an existing single-host setup). continue-on-error
-  # ensures the pipeline NEVER fails even if the demo SSH/deploy breaks — demo
-  # deployment is best-effort, not a critical dependency.
-  trigger-demo-deploy:
-    name: Redeploy demo with new images (optional)
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    container:
-      image: gitea/runner-images:ubuntu-latest
-    if: ${{ github.ref_name == 'main' && secrets.DEMO_DEPLOY_PATH != '' }}
-    steps:
-      - name: Pull new images + restart demo stack
-        uses: appleboy/ssh-action@v1
-        continue-on-error: true
-        env:
-          DEMO_PATH: ${{ secrets.DEMO_DEPLOY_PATH }}
-        with:
-          host: ${{ secrets.DEMO_VM_HOST || secrets.VM_HOST }}
-          username: deploy
-          key: ${{ secrets.DEMO_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VM_PORT || '22' }}
-          envs: DEMO_PATH
-          script: |
-            set -euo pipefail
-            cd "$DEMO_PATH"
-            echo "→ Pulling new :latest images…"
-            docker compose -f docker-compose.demo.yml --env-file .env pull
-            echo "→ Restarting demo stack…"
-            docker compose -f docker-compose.demo.yml --env-file .env up -d
-            echo "✅ Demo stack restarted with new images."
-
   deploy:
     name: Deploy to Target Server
-    needs: build-and-push
+    needs: [build-and-push, deploy-config]
     runs-on: ubuntu-latest
     container:
       image: gitea/runner-images:ubuntu-latest
-    if: ${{ secrets.VM_HOST != '' && secrets.SSH_PRIVATE_KEY != '' }}
+    if: needs.deploy-config.outputs.deploy == 'true'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -266,7 +276,7 @@ jobs:
           username: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.VM_PORT || '22' }}
-          source: "docker/docker-compose.prod.yml,docker/init-db.sql"
+          source: "docker/docker-compose.standalone.yml,docker/init-db.sql,docker/init-roles.sh,docker/nginx.conf"
           target: ${{ env.DEPLOY_PATH }}
           strip_components: 1
 
@@ -294,8 +304,23 @@ jobs:
             STACK_NAME=${{ env.STACK_NAME }}
             
             # Application
-            APP_ENV=production
             DEBUG=false
+            # Single source of truth: the APP_URL secret is the canonical
+            # public origin users type in the browser. FRONTEND_URL and
+            # HTTP_PORT are OPTIONAL overrides for the fronted-by-another-
+            # proxy topology (TLS proxy on :443 -> gateway on :8090):
+            #   - FRONTEND_URL unset -> same origin as APP_URL (single-origin
+            #     gateway, the common case). Set it to a SECOND public origin
+            #     (e.g. the direct http address) to add that host to the
+            #     TrustedHost allowlist and CORS list.
+            #   - HTTP_PORT is derived from APP_URL's port part below; set the
+            #     secret only when a front proxy publishes the canonical port
+            #     and the gateway itself publishes a different one.
+            # Production validates the Host header against these (audit
+            # 2026-08 CFG-L1); they also drive CORS and the OAuth issuer.
+            # With a front proxy hop, also set HA_TRUSTED_PROXY_COUNT=2.
+            APP_URL=${{ secrets.APP_URL || 'http://localhost' }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL || secrets.APP_URL || 'http://localhost' }}
             # Per-purpose key family (identity-auth §8, plan 16 H4). The
             # single all-purpose SECRET_KEY is retired from all signing.
             HA_SESSION_KEY=${{ secrets.HA_SESSION_KEY }}
@@ -308,7 +333,7 @@ jobs:
             # Reverse-proxy chain depth for rate-limit identity (audit 2026-08
             # AUTH-H1). This stack fronts the backend with a host proxy on
             # 127.0.0.1, so exactly 1 trusted hop.
-            TRUSTED_PROXY_COUNT=${{ secrets.TRUSTED_PROXY_COUNT || '1' }}
+            HA_TRUSTED_PROXY_COUNT=${{ secrets.HA_TRUSTED_PROXY_COUNT || '1' }}
             
             # PostgreSQL Secrets
             POSTGRES_DB=${{ secrets.POSTGRES_DB || 'neuronection_health' }}
@@ -327,6 +352,9 @@ jobs:
             BACKEND_PORT=${{ env.BACKEND_PORT }}
             FRONTEND_PORT=${{ env.FRONTEND_PORT }}
             FLOWER_PORT=${{ env.FLOWER_PORT }}
+            # Gateway published port — filled in from APP_URL right after the
+            # heredoc (derived, not a separate secret).
+            HTTP_PORT=
             FLOWER_USER=${{ secrets.FLOWER_USER || 'admin' }}
             FLOWER_PASSWORD=${{ secrets.FLOWER_PASSWORD }}
             
@@ -354,14 +382,58 @@ jobs:
             VAPID_ADMIN_EMAIL=${{ secrets.VAPID_ADMIN_EMAIL || 'admin@healthassistant.local' }}
             EOF
             
+            # Gateway published port: the optional HTTP_PORT secret wins
+            # (front-proxy topology, where the canonical port lives on the
+            # proxy), else derived from APP_URL's port part (80/443 by
+            # scheme).
+            PUBLIC_ORIGIN="${{ secrets.APP_URL || 'http://localhost' }}"
+            HTTP_PORT_DERIVED="$(printf '%s' "$PUBLIC_ORIGIN" | sed -nE 's|.*:([0-9]+)/?$|\1|p')"
+            if [ -z "$HTTP_PORT_DERIVED" ]; then
+                case "$PUBLIC_ORIGIN" in
+                    https://*) HTTP_PORT_DERIVED="443" ;;
+                    *)         HTTP_PORT_DERIVED="80"  ;;
+                esac
+            fi
+            if [ -n "${{ secrets.HTTP_PORT }}" ]; then
+                HTTP_PORT_DERIVED="${{ secrets.HTTP_PORT }}"
+            fi
+            sed -i "s|^HTTP_PORT=.*$|HTTP_PORT=${HTTP_PORT_DERIVED}|" .env
+
             # 1. Pull new images explicitly BEFORE bringing down active containers
             # This prevents downtime if network or authentication fails during pull!
             echo "Pulling new Docker images..."
-            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.standalone.yml pull
             
             # 2. Stop old containers and start new ones
             echo "Restarting application stack..."
-            # One-time migration: before docker-compose.prod.yml pinned the
+            # Pre-flight (2026-10-07 outage class): PostgreSQL data dirs are
+            # incompatible across major versions. If the existing postgres
+            # volume was initialized by a different major than the compose
+            # image pins, a new container crash-loops ("database files are
+            # incompatible with server") — abort BEFORE `down` so a stale
+            # volume can never stop a running stack and leave a crash-loop
+            # in its place. Migration path: docker/README.md → "Upgrading
+            # from pg14" (dump with the OLD major's image → fresh volume →
+            # restore). Covers both the STACK_NAME volume and a legacy
+            # basename-project volume not yet adopted by the block below.
+            STACK_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
+            STACK_PROJECT="${STACK_PROJECT:-health-assistant}"
+            TSIMG="$(grep -E '^[[:space:]]*image:[[:space:]]*timescale/timescaledb' docker-compose.standalone.yml | head -n1 | awk '{print $2}')"
+            PG_MAJOR_IMG="${TSIMG##*-pg}"
+            for PG_VOL in "${STACK_PROJECT}_postgres_data" "$(basename "$PWD")_postgres_data"; do
+                docker volume inspect "$PG_VOL" >/dev/null 2>&1 || continue
+                PG_VERSION_VOL="$(docker run --rm --entrypoint sh \
+                    -v "${PG_VOL}:/pgdata:ro" "$TSIMG" \
+                    -c 'cat /pgdata/PG_VERSION' 2>/dev/null || true)"
+                if [ -n "$PG_VERSION_VOL" ] && [ "$PG_VERSION_VOL" != "$PG_MAJOR_IMG" ]; then
+                    echo "CRITICAL: postgres volume ${PG_VOL} is PG v${PG_VERSION_VOL}, but the stack image is ${TSIMG} (v${PG_MAJOR_IMG})."
+                    echo "Major versions cannot open each other's data directories — the new postgres would crash-loop, not migrate."
+                    echo "Refusing to touch the running stack. Migrate first (dump with a v${PG_VERSION_VOL} image, recreate the volume,"
+                    echo "restore) — see docker/README.md 'Upgrading from pg14'. The stack was left untouched."
+                    exit 1
+                fi
+            done
+            # One-time migration: before docker-compose.standalone.yml pinned the
             # top-level `name:` (= STACK_NAME), the compose project was the
             # deploy-dir basename (health_assistant / health_assistant_test).
             # Stop that legacy project first and copy its volumes under the
@@ -375,7 +447,7 @@ jobs:
             NEW_PROJECT="$(grep -E '^STACK_NAME=' .env | head -n1 | cut -d= -f2- || true)"
             NEW_PROJECT="${NEW_PROJECT:-health-assistant}"
             if [ "$LEGACY_PROJECT" != "$NEW_PROJECT" ]; then
-                docker compose -p "$LEGACY_PROJECT" -f docker-compose.prod.yml down --remove-orphans
+                docker compose -p "$LEGACY_PROJECT" -f docker-compose.standalone.yml down --remove-orphans
                 for VOL in postgres_data redis_data uploads; do
                     docker volume inspect "${LEGACY_PROJECT}_${VOL}" >/dev/null 2>&1 || continue
                     docker volume inspect "${NEW_PROJECT}_${VOL}" >/dev/null 2>&1 && continue
@@ -400,18 +472,18 @@ jobs:
                     echo "Adopted legacy volume ${LEGACY_PROJECT}_${VOL} -> ${NEW_PROJECT}_${VOL}"
                 done
             fi
-            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker compose -f docker-compose.standalone.yml down --remove-orphans
             # One-time ADR-0022 DB/role rename (neuro_* → neuronection_*):
             # existing volumes ignore POSTGRES_DB after first boot, so start
             # postgres and rename inside it before the stack boots on the new
             # names. PostgreSQL refuses to rename the session's own user, so
             # the owner role is renamed through a throwaway superuser. No-op
             # when the legacy names don't exist (fresh installs).
-            docker compose -f docker-compose.prod.yml up -d postgres
+            docker compose -f docker-compose.standalone.yml up -d postgres
             CONNECTED=""
             for i in $(seq 1 30); do
                 for ROLE in neuronection_health_owner neuro_health_owner admin; do
-                    if docker compose -f docker-compose.prod.yml exec -T postgres \
+                    if docker compose -f docker-compose.standalone.yml exec -T postgres \
                             psql -U "$ROLE" -d postgres -tAc "select 1" >/dev/null 2>&1; then
                         CONNECTED="$ROLE"
                         break 2
@@ -421,9 +493,15 @@ jobs:
             done
             if [ -z "$CONNECTED" ]; then
                 echo "Cannot connect to postgres to rename legacy database names — aborting deploy."
+                # The retry loop swallows stderr by design; without this the
+                # abort reason (e.g. a crash-looping postgres) never reaches
+                # the job log.
+                echo "── postgres container state + last logs ──"
+                docker compose -f docker-compose.standalone.yml ps postgres || true
+                docker compose -f docker-compose.standalone.yml logs postgres --tail 30 || true
                 exit 1
             fi
-            PSQLC="docker compose -f docker-compose.prod.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
+            PSQLC="docker compose -f docker-compose.standalone.yml exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
             for OLD_DB in neuro_health health_assistant; do
                 if [ "$($PSQLC -tAc "select 1 from pg_database where datname='$OLD_DB'")" = "1" ]; then
                     if [ "$($PSQLC -tAc "select 1 from pg_database where datname='neuronection_health'")" = "1" ]; then
@@ -446,31 +524,31 @@ jobs:
                 fi
                 $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;"
                 $PSQLC -c "CREATE ROLE ha_db_migrator LOGIN SUPERUSER;"
-                docker compose -f docker-compose.prod.yml exec -T postgres \
+                docker compose -f docker-compose.standalone.yml exec -T postgres \
                     psql -U ha_db_migrator -d postgres -v ON_ERROR_STOP=1 \
                     -c "ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;"
-                docker compose -f docker-compose.prod.yml exec -T postgres \
+                docker compose -f docker-compose.standalone.yml exec -T postgres \
                     psql -U neuronection_health_owner -d postgres -v ON_ERROR_STOP=1 \
                     -c "DROP ROLE ha_db_migrator;"
                 echo "Renamed role neuro_health_owner -> neuronection_health_owner"
             fi
             $PSQLC -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null 2>&1 || true
-            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.standalone.yml up -d
             
             # 3. Wait and verify that containers successfully started
             echo "Verifying application startup..."
             sleep 5
-            CONTAINER_EXITS=$(docker compose -f docker-compose.prod.yml ps --format json | grep -i "exited" || true)
+            CONTAINER_EXITS=$(docker compose -f docker-compose.standalone.yml ps --format json | grep -i "exited" || true)
             if [ -n "$CONTAINER_EXITS" ]; then
                 echo "CRITICAL ERROR: One or more containers failed to start and exited immediately!"
-                docker compose -f docker-compose.prod.yml ps
-                docker compose -f docker-compose.prod.yml logs
+                docker compose -f docker-compose.standalone.yml ps
+                docker compose -f docker-compose.standalone.yml logs
                 exit 1
             fi
             
             # 4. Run Database Migrations
             echo "Running database migrations..."
-            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+            docker compose -f docker-compose.standalone.yml exec -T backend alembic upgrade head
             
             # 5. Clean up old docker images to preserve disk space
             echo "Pruning old unused Docker images..."

@@ -32,7 +32,7 @@ async def create_system_admin(
 
     if not DATABASE_AVAILABLE:
         print("❌ Error: Database is not available")
-        print("Please check your DATABASE_URL in the root .env file")
+        print("Please check your HA_DATABASE_URL in the root .env file")
         return False
 
     try:

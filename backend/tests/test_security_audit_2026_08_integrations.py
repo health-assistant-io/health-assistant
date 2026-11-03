@@ -27,8 +27,8 @@ def test_mcp_stdio_disabled_by_default():
 
 
 def test_mcp_inline_code_args_rejected():
-    from integrations.mcp_client import security as mcp_sec
-    from integrations.mcp_client.security import validate_stdio_command
+    from app.extensions.builtin.mcp_client import security as mcp_sec
+    from app.extensions.builtin.mcp_client.security import validate_stdio_command
 
     with patch.object(mcp_sec, "get_allowed_commands", return_value=["python", "node"]):
         ok, reason = validate_stdio_command("python", ["-c", "import os; os.system('id')"])
@@ -44,7 +44,7 @@ def test_mcp_inline_code_args_rejected():
 
 
 def test_mcp_stdio_disabled_message_when_allowlist_empty():
-    from integrations.mcp_client.security import validate_stdio_command
+    from app.extensions.builtin.mcp_client.security import validate_stdio_command
 
     ok, reason = validate_stdio_command("python", ["script.py"])
     assert not ok
@@ -52,7 +52,7 @@ def test_mcp_stdio_disabled_message_when_allowlist_empty():
 
 
 def test_mcp_http_url_blocks_private_targets():
-    from integrations.mcp_client.security import validate_http_url
+    from app.extensions.builtin.mcp_client.security import validate_http_url
 
     for url in (
         "https://169.254.169.254/latest/meta-data/",
@@ -72,7 +72,7 @@ def test_mcp_http_url_blocks_private_targets():
 def test_fetch_attachment_uses_net_guard():
     import inspect
 
-    from integrations.fhir_server import provider as fhir_provider
+    from app.extensions.builtin.fhir_server import provider as fhir_provider
 
     src = inspect.getsource(fhir_provider.FhirServerProvider)
     assert "assert_safe_url" in src
@@ -388,9 +388,7 @@ async def test_config_flow_provisions_machine_secrets():
     config_flow.is_oauth = False
 
     provider = MagicMock()
-    # Provider "implements" both hooks (distinct from base defaults).
-    type(provider).handle_webhook = lambda self, i, p, r=None: []
-    type(provider).handle_api_request = lambda self, i, p, m, r: {}
+    provider.domain = "health_assistant_bridge"
 
     patient = MagicMock()
     patient.id = "22222222-2222-4222-8222-222222222222"
@@ -407,8 +405,20 @@ async def test_config_flow_provisions_machine_secrets():
     with (
         patch.object(integ.integration_registry, "get_config_flow") as gcf,
         patch.object(integ.integration_registry, "get_provider") as gp,
+        patch.object(
+            integ.integration_registry,
+            "has_capability",
+            side_effect=lambda domain, cap: (
+                cap
+                in (
+                    {"inbound-webhook", "inbound-api"}
+                    if domain == "health_assistant_bridge"
+                    else set()
+                )
+            ),
+        ),
         patch(
-            "integrations.sdk.secrets.SecretCipher.from_settings",
+            "app.extensions.sdk.secrets.SecretCipher.from_settings",
             return_value=_FakeCipher(),
         ),
         patch.object(integ, "is_domain_disabled", new=AsyncMock(return_value=False)),
@@ -451,7 +461,7 @@ async def test_rotate_secret_owner_scoped_and_returns_once():
 
     from sqlalchemy.orm.attributes import flag_modified  # noqa: F401
 
-    with patch("integrations.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()):
+    with patch("app.extensions.sdk.secrets.SecretCipher.from_settings", return_value=_Cipher()):
         result = await integ.rotate_instance_secret(
             str(row.id),
             patient_id="22222222-2222-4222-8222-222222222222",
@@ -507,7 +517,7 @@ async def test_rotate_secret_missing_instance_404():
 async def test_rotated_secret_verifies_and_old_one_dies():
     """End-to-end shape: after rotation the machine route accepts a signature
     computed with the NEW secret and rejects the OLD one."""
-    from integrations.sdk.webhook_security import verify_canonical_signature
+    from app.extensions.sdk.webhook_security import verify_canonical_signature
 
     old_secret = "old-secret-old-secret-old-secret-1"
     new_secret = _rotate_plain()
@@ -540,3 +550,87 @@ def _rotate_plain() -> str:
     import secrets as _s
 
     return _s.token_urlsafe(32)
+
+
+# ---------------------------------------------------------------------------
+# H1/H2 read side — details must never echo the ciphertext wrapper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_details_masks_platform_provisioned_secret_wrappers():
+    """``GET /instance/{id}/details`` must mask BOTH machine secrets. The
+    platform provisions ``api_secret`` for inbound-api instances whether or
+    not the flow declares it (dev_dummy declares only ``webhook_secret``),
+    and the plaintext is show-once at creation/rotation — the read side used
+    to echo the undeclared field's ``{"_encrypted": ...}`` wrapper verbatim."""
+    import json
+    import uuid as _uuid
+
+    from app.api.v1.endpoints import integrations as integ
+    from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
+
+    integration_id = _uuid.uuid4()
+
+    def _row():
+        row = MagicMock()
+        row.id = integration_id
+        row.provider = "dev_dummy"
+        row.instance_name = "Dummy"
+        row.status.value = "active"
+        row.tenant_id = _uuid.uuid4()
+        row.user_config = {
+            "api_secret": {"_encrypted": "tok-api", "_kid": "k1"},
+            "webhook_secret": {"_encrypted": "tok-hook", "_kid": "k1"},
+        }
+        row.is_debug_enabled = False
+        row.last_synced_at = None
+        return row
+
+    def _db(row):
+        res_integration = MagicMock()
+        res_integration.scalar_one_or_none.return_value = row
+        res_logs = MagicMock()
+        res_logs.scalars().all.return_value = []
+        res_rows = MagicMock()
+        res_rows.all.return_value = []
+        res_scalars = MagicMock()
+        res_scalars.scalars().all.return_value = []
+        db = MagicMock()
+        db.execute = AsyncMock(
+            side_effect=[res_integration, res_logs, res_rows, res_scalars, res_scalars]
+        )
+        return db
+
+    async def _details(db):
+        return await integ.get_integration_details(
+            str(integration_id),
+            patient_id=str(_uuid.uuid4()),
+            current_user=MagicMock(user_id="u", tenant_id="t"),
+            db=db,
+        )
+
+    with (
+        patch.object(
+            integ.integration_registry, "get_config_flow", return_value=DevDummyConfigFlow()
+        ),
+        patch.object(integ.integration_registry, "get_provider", return_value=None),
+    ):
+        result = await _details(_db(_row()))
+    cfg = result["user_config"]
+    assert cfg["webhook_secret"] == "***", "declared secret field masks via the flow"
+    assert cfg["api_secret"] == "***", "undeclared platform-provisioned wrapper masks too"
+    assert "_encrypted" not in json.dumps(result, default=str)
+
+    # No-flow branch (registry miss / domain without a config flow): the
+    # raw config used to be returned verbatim — wrapper detection must
+    # cover it there as well.
+    with (
+        patch.object(integ.integration_registry, "get_config_flow", return_value=None),
+        patch.object(integ.integration_registry, "get_provider", return_value=None),
+    ):
+        result = await _details(_db(_row()))
+    cfg = result["user_config"]
+    assert cfg["webhook_secret"] == "***"
+    assert cfg["api_secret"] == "***"
+    assert "_encrypted" not in json.dumps(result, default=str)

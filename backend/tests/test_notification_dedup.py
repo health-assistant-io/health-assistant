@@ -246,7 +246,7 @@ async def test_emit_dedup_is_best_effort_no_unique_constraint():
 
     from app.core.config import settings
 
-    sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "")
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
@@ -275,7 +275,7 @@ async def test_emit_dedup_is_best_effort_no_unique_constraint():
 
 def test_notification_spec_supports_digest_key():
     """``NotificationSpec`` carries the optional digest_key field."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec(title="x")
     assert spec.digest_key is None  # default
@@ -286,7 +286,7 @@ def test_notification_spec_supports_digest_key():
 
 def test_notification_spec_builder_digest_key():
     """The fluent builder exposes ``.digest_key(key)``."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec.builder(title="x").digest_key("dev_dummy:hr:patient/abc").build()
     assert spec.digest_key == "dev_dummy:hr:patient/abc"
@@ -296,8 +296,24 @@ def test_notification_to_payload_does_not_leak_digest_key():
     """``digest_key`` is platform routing metadata, not user-visible
     payload content. ``to_payload()`` must not include it (the engine
     forwards it as a kwarg to ``emit``, not via the payload dict)."""
-    from integrations.sdk import NotificationSpec
+    from app.extensions.sdk import NotificationSpec
 
     spec = NotificationSpec(title="x", digest_key="some:key")
     payload = spec.to_payload()
     assert "digest_key" not in payload
+
+
+def test_digest_ttl_reads_settings_default():
+    """The documented operator knob ``NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS``
+    exists on Settings and drives the fallback TTL (clamped to [60s, 7d])."""
+    from app.core.config import Settings
+    from app.services.notification_service import (
+        _DIGEST_TTL_CEILING_SECONDS,
+        _DIGEST_TTL_FLOOR_SECONDS,
+        _resolve_digest_ttl,
+    )
+
+    assert Settings.model_fields["NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS"].default == 21600
+    assert _resolve_digest_ttl(None) == 21600
+    assert _resolve_digest_ttl(10) == _DIGEST_TTL_FLOOR_SECONDS
+    assert _resolve_digest_ttl(10_000_000) == _DIGEST_TTL_CEILING_SECONDS

@@ -2,6 +2,7 @@
 import contextlib
 import datetime
 import hashlib
+import json
 import logging
 import os
 import secrets as _py_secrets
@@ -9,16 +10,20 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from integrations.sdk.auth import OAuthStateStore
-from integrations.sdk.exceptions import IntegrationAuthError, IntegrationDataError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.integration_registry import integration_registry
-from app.core.rate_limit import rate_limit, rate_limit_integration
+from app.core.rate_limit import (
+    enforce_integration_rate_limit,
+    rate_limit,
+    rate_limit_integration,
+)
 from app.core.redis import redis_client
 from app.core.security import get_current_user
+from app.extensions.errors import BridgeError, ExtensionError, machine_error_detail
+from app.extensions.registry import integration_registry
+from app.extensions.sdk.auth import OAuthStateStore
 from app.models.enums import IntegrationStatus
 from app.models.fhir.patient import Patient
 from app.models.user_integration import UserIntegration
@@ -37,16 +42,15 @@ logger = logging.getLogger(__name__)
 _MACHINE_BODY_CAP_BYTES = 40 * 1024 * 1024
 
 
-def _provider_overrides(provider: Any, hook: str) -> bool:
-    """True when the provider class actually implements ``hook`` (vs the
-    SDK base's safe default)."""
-    from integrations.base import BaseHealthProvider as _CoreBase
-    from integrations.sdk.base import BaseHealthProvider as _SdkBase
-
-    fn = getattr(type(provider), hook, None)
-    if fn is None:
+def _declared_inbound(provider: Any, capability: str) -> bool:
+    """Declared-capability gate for the machine surfaces: an instance gets
+    webhook/API provisioning exactly when the manifest declares
+    ``inbound-webhook`` / ``inbound-api`` (D3 — registration-time data,
+    never method-shape probing)."""
+    domain = getattr(provider, "domain", None)
+    if not domain:
         return False
-    return fn is not getattr(_SdkBase, hook, None) and fn is not getattr(_CoreBase, hook, None)
+    return integration_registry.has_capability(domain, capability)
 
 
 def _generate_integration_secret() -> str:
@@ -92,6 +96,87 @@ def _frontend_origin() -> str:
     return os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 
+# App-side display icons per extension (the envelope's `icon` field is a
+# data-URL capability, not a component-library name — the lucide mapping is
+# product UI concern and lives here, keyed by domain alias).
+_DOMAIN_ICONS = {
+    "dev_dummy": "Bug",
+    "webhook": "Webhook",
+    "fhir_server": "Hospital",
+    "health_assistant_bridge": "Smartphone",
+    "mcp_client": "Cable",
+}
+
+
+def _render_wire_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Render a validated charter envelope as health's product wire
+    manifest (the settings UI shape). The envelope is the source of truth;
+    ``domain`` is health's product alias of the envelope id (ruling 4)."""
+    from app.extensions.registry import domain_of
+
+    domain = domain_of(str(manifest["id"]))
+    locale = (
+        (manifest.get("i18n") or {})
+        .get("locales", {})
+        .get((manifest.get("i18n") or {}).get("defaultLocale", "en"), {})
+    )
+    capabilities = set(manifest.get("capabilities") or [])
+    data_classes = set((manifest.get("itemSchema") or {}).get("properties") or {})
+    access = (
+        "hybrid"
+        if "chat-tools" in capabilities and domain == "mcp_client"
+        else (
+            "cloud"
+            if {"sync", "push", "inbound-api", "inbound-webhook"} & capabilities
+            else "local"
+        )
+    )
+    integration_type = []
+    if "sync" in capabilities or "inbound-webhook" in capabilities or data_classes:
+        integration_type.append("pull")
+    if "push" in capabilities or "inbound-webhook" in capabilities or "inbound-api" in capabilities:
+        integration_type.append("push")
+    return {
+        "domain": domain,
+        "name": locale.get("title") or domain,
+        "version": manifest.get("version"),
+        "integration_type": integration_type,
+        "description": manifest.get("description"),
+        "author": manifest.get("author"),
+        "access_type": access,
+        "categories": manifest.get("categories") or [],
+        "icon": _DOMAIN_ICONS.get(domain),
+        "kind": manifest.get("kind"),
+        "capabilities": sorted(capabilities),
+    }
+
+
+@router.get("/host-profile")
+async def extension_host_profile(
+    current_user: TokenData = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The author-visible host profile (plan 37 §6.2.4): what this host
+    hosts/honors, its apiVersion ceilings, degrade rules and T2 posture —
+    no secrets, no mutable state."""
+    from app.extensions.registry import _charter, _profile
+
+    profile = _profile()
+    return {
+        "product": profile.get("product"),
+        "class": profile.get("class"),
+        "kinds": profile.get("kinds", []),
+        "tiers": profile.get("tiers", []),
+        "honors": profile.get("honors", []),
+        "honorsByTier": profile.get("honorsByTier", {}),
+        "honorsByKind": profile.get("honorsByKind", {}),
+        "surfaces": profile.get("surfaces"),
+        "apiVersion": {"envelope": "extension/v1", "connectorKindVersion": 1},
+        "degradeRules": _charter()["surfaces"]["degradeRules"],
+        "t2Isolation": "none",
+        "disclosures": ["t3PerimeterDisclosure"],
+    }
+
+
 @router.get("/available", response_model=list[dict[str, Any]])
 async def list_available_integrations(
     current_user: TokenData = Depends(get_current_user),
@@ -103,10 +188,16 @@ async def list_available_integrations(
     Integrations are enabled by default; only domains a SYSTEM_ADMIN has
     explicitly disabled are hidden. Requires an authenticated user (any role).
     """
+    from app.extensions.registry import domain_of
+
     manifests = integration_registry.get_all_manifests()
     disabled_domains = await get_disabled_domains(db)
 
-    return [m for m in manifests if m.get("domain") not in disabled_domains]
+    return [
+        _render_wire_manifest(m)
+        for m in manifests
+        if domain_of(str(m.get("id", ""))) not in disabled_domains
+    ]
 
 
 @router.get("/active", response_model=list[dict[str, Any]])
@@ -125,12 +216,31 @@ async def list_active_integrations(
     result = await db.execute(stmt)
     integrations = result.scalars().all()
 
+    from sqlalchemy import desc
+
+    from app.models.user_integration import IntegrationSyncLog
+    from app.services.instance_status import instance_status_surface
+
+    surfaces: dict[str, dict[str, Any]] = {}
+    if integrations:
+        logs_stmt = (
+            select(IntegrationSyncLog)
+            .where(
+                IntegrationSyncLog.integration_id.in_([i.id for i in integrations]),
+            )
+            .order_by(desc(IntegrationSyncLog.started_at))
+            .limit(200)
+        )
+        for log in (await db.execute(logs_stmt)).scalars().all():
+            surfaces.setdefault(str(log.integration_id), []).append(log)
+
     return [
         {
             "id": str(i.id),
             "domain": i.provider,
             "instance_name": i.instance_name,
             "status": i.status.value,
+            "sync_status": instance_status_surface(i, surfaces.get(str(i.id), [])),
             "last_synced_at": i.last_synced_at,
         }
         for i in integrations
@@ -151,40 +261,31 @@ async def get_integration_documentation(
     import json
     import os
 
-    from app.core.integration_registry import integration_registry
-
     # We don't check if it's enabled here, so users can read docs before enabling.
     # We do check if the domain is known to the registry (discovered).
+    from app.extensions.registry import domain_of, integration_registry
+
     manifests = integration_registry.get_all_manifests()
-    if not any(m.get("domain") == domain for m in manifests):
+    if not any(domain_of(str(m.get("id", ""))) == domain for m in manifests):
         raise HTTPException(status_code=404, detail="Integration not found")
 
-    base_path = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "..",
-            "..",
-            "..",
-            "..",
-            "integrations",
-            domain,
-        )
-    )
+    base_path = integration_registry.base_dir(domain)
 
-    # 1. Check for structured docs (docs-tree.json)
+    # 1. Check for structured docs (docs-tree.json) — the extensionDocsTree
+    #    form (plan 34 §10): {version, categories: [{category, items}]},
+    #    validated at registration when the manifest carries the pointer.
     docs_tree_path = os.path.join(base_path, "docs", "docs-tree.json")
     if os.path.exists(docs_tree_path):
         try:
             with open(docs_tree_path) as f:
                 tree = json.load(f)
 
-            target_file = file
-            if not target_file:
-                for category in tree:
-                    if category.get("items") and len(category["items"]) > 0:
-                        target_file = category["items"][0].get("file")
-                        break
+            # The landing rule (plan 34 §10.4): array order is render
+            # order; the first item of the first category lands unless
+            # exactly one item carries index: true.
+            from app.extensions.docs import landing_file, strip_raw_html
+
+            target_file = file or landing_file(tree)
 
             markdown_content = ""
             if target_file:
@@ -193,7 +294,11 @@ async def get_integration_documentation(
                 target_file_path = os.path.join(base_path, "docs", target_file)
                 if os.path.exists(target_file_path):
                     with open(target_file_path) as f:
-                        markdown_content = f.read()
+                        raw_markdown = f.read()
+                    # The markdown law (plan 34 §10.7): no raw HTML on
+                    # extension-doc surfaces — neutralized fence-aware,
+                    # the post-H3 shape (app/extensions/docs.py cites it).
+                    markdown_content = strip_raw_html(raw_markdown)
                 else:
                     markdown_content = (
                         f"# Error\n\nCould not find file {target_file} in docs folder."
@@ -218,6 +323,65 @@ async def get_integration_documentation(
     return {
         "markdown": f"# {domain.capitalize()} Integration\n\nNo documentation provided for this integration."
     }
+
+
+#: Published-schema document cache (audit 2026-10-18 F36). The bridge schema
+#: is ~212 KB; parsing it from disk on every authenticated read made this the
+#: heaviest unthrottled GET in the file. Keyed by path + (mtime_ns, size) so
+#: a republished artifact invalidates without a restart; the parsed document
+#: is immutable by contract (no request mutates it).
+_PUBLISHED_SCHEMA_CACHE: dict[str, tuple[int, int, dict[str, Any]]] = {}
+
+
+def _load_published_schema(path: str) -> dict[str, Any]:
+    """Return the parsed published schema, re-reading only when the file changed."""
+    stat = os.stat(path)
+    cached = _PUBLISHED_SCHEMA_CACHE.get(path)
+    if cached and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+        return cached[2]
+    with open(path) as f:
+        document = json.load(f)
+    _PUBLISHED_SCHEMA_CACHE[path] = (stat.st_mtime_ns, stat.st_size, document)
+    return document
+
+
+@router.get("/{domain}/schema")
+async def get_integration_api_schema(
+    domain: str,
+    current_user: TokenData = Depends(get_current_user),
+    _rl=Depends(rate_limit("integration_schema", max_requests=120, window=60)),
+) -> dict[str, Any]:
+    """The bridge's published sub-API schema (plan 32 D11 — schema-first SDKs).
+
+    Serves the committed, generator-extracted schema artifact for
+    schema-capable extensions (today: ``health_assistant_bridge``). Same
+    authenticated-user contract as ``/{domain}/documentation``; the schema
+    carries no secrets — it is the wire contract the SDK model layers and
+    the cross-SDK fixtures are generated from. 404 for unknown domains and
+    for extensions without a schema.
+
+    Cached + rate limited (audit 2026-10-18 F36): the parsed document is
+    reused until the artifact changes, and the route shares the default
+    per-IP bucket so an authenticated caller cannot stream the 212 KB
+    artifact at will.
+    """
+    from app.extensions.registry import domain_of
+
+    manifests = integration_registry.get_all_manifests()
+    if not any(domain_of(str(m.get("id", ""))) == domain for m in manifests):
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    schema_path = os.path.join(
+        integration_registry.base_dir(domain), "schema", "bridge-api.schema.json"
+    )
+    if not os.path.exists(schema_path):
+        raise HTTPException(status_code=404, detail="No API schema published for this integration")
+    try:
+        return _load_published_schema(schema_path)
+    except (OSError, ValueError) as e:
+        # No raw exception text on this surface.
+        logger.error("Failed to load published schema for %s: %s", domain, e)
+        raise HTTPException(status_code=500, detail="Failed to load API schema") from e
 
 
 @router.get("/{domain}/config-flow", response_model=dict[str, Any])
@@ -246,11 +410,15 @@ async def submit_config_flow(
     patient_id: str,
     payload: dict[str, Any],
     integration_id: str | None = None,
+    dry_run: bool = False,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """
     Submit configuration data and setup the integration.
+
+    ``dry_run=true`` validates only: no instance is created or mutated and
+    no secret is persisted (plan 37 §8C / the kit G2 validate-only channel).
     """
     # Integrations are enabled by default — only an explicit admin disable blocks this.
     if await is_domain_disabled(db, domain):
@@ -265,13 +433,47 @@ async def submit_config_flow(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    if dry_run:
+        # Validate-only: no instance, no secret, no side effect.
+        return {
+            "ok": True,
+            "dryRun": True,
+            "fields": sorted(str(key) for key in validated_config),
+        }
+
     # Extract instance_name if provided, otherwise default to domain
     instance_name = validated_config.pop("instance_name", domain.capitalize())
+
+    # Resolve the target instance BEFORE encrypting. User-entered secrets are
+    # row-bound exactly like platform-provisioned machine secrets (audit
+    # 2026-10-18 F21): the instance id is the cipher context, so a ciphertext
+    # copied into another instance fails to decrypt. For a create we mint the
+    # id here and reuse it for the row.
+    existing: UserIntegration | None = None
+    if integration_id:
+        try:
+            integration_uuid = UUID(integration_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid integration ID format")
+
+        stmt = select(UserIntegration).where(
+            UserIntegration.id == integration_uuid,
+            UserIntegration.user_id == current_user.user_id,
+            UserIntegration.patient_id == patient_id,
+        )
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Integration instance not found")
+        instance_uuid = existing.id
+    else:
+        instance_uuid = uuid4()
 
     # Generic: let the config flow encrypt any secret fields it declared.
     # No-op for integrations with no secret fields (no key required).
     try:
-        validated_config = await config_flow.prepare_for_storage(validated_config)
+        validated_config = await config_flow.prepare_for_storage(
+            validated_config, context=str(instance_uuid)
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -299,24 +501,9 @@ async def submit_config_flow(
                 ),
             )
 
+    generated: dict[str, str] = {}
     # Check if this is an update to an existing instance
-    if integration_id:
-        try:
-            integration_uuid = UUID(integration_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid integration ID format")
-
-        stmt = select(UserIntegration).where(
-            UserIntegration.id == integration_uuid,
-            UserIntegration.user_id == current_user.user_id,
-            UserIntegration.patient_id == patient_id,
-        )
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
-
-        if not existing:
-            raise HTTPException(status_code=404, detail="Integration instance not found")
-
+    if existing is not None:
         existing.user_config = validated_config
         existing.instance_name = instance_name
     else:
@@ -345,12 +532,10 @@ async def submit_config_flow(
         # the instance id as context binding. The machine routes below
         # reject instances without a configured secret.
         provider = integration_registry.get_provider(domain)
-        generated: dict[str, str] = {}
-        instance_uuid = uuid4()
-        wants_webhook = provider is not None and _provider_overrides(provider, "handle_webhook")
-        wants_api = provider is not None and _provider_overrides(provider, "handle_api_request")
+        wants_webhook = provider is not None and _declared_inbound(provider, "inbound-webhook")
+        wants_api = provider is not None and _declared_inbound(provider, "inbound-api")
         try:
-            from integrations.sdk.secrets import SecretCipher
+            from app.extensions.sdk.secrets import SecretCipher
 
             cipher = SecretCipher.from_settings()
             if wants_webhook and not validated_config.get("webhook_secret"):
@@ -461,7 +646,7 @@ async def oauth_start(
                 "tenant_id": str(current_user.tenant_id),
             },
         )
-    except (IntegrationAuthError, IntegrationDataError) as e:
+    except ExtensionError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"authorize_url": authorize_url, "state": state}
@@ -507,7 +692,7 @@ async def oauth_callback(
 
     try:
         await provider.complete_oauth(integration, pending, code)
-    except (IntegrationAuthError, IntegrationDataError):
+    except ExtensionError:
         redirect = (
             f"{_frontend_origin()}/integrations/{domain}/connected"
             f"?integration_id={integration_id}&status=error"
@@ -685,15 +870,27 @@ async def get_integration_details(
     else:
         returned_config = integration.user_config
 
+    # Read-side twin of ``_resolve_secret_field``'s undeclared-wrapper
+    # handling: platform-provisioned machine secrets (audit 2026-08 H1/H2)
+    # are stored encrypted even when the flow doesn't declare them, and the
+    # plaintext is show-once at creation/rotation — details must never echo
+    # the ciphertext wrapper.
+    from app.extensions.sdk.secrets import mask_wrapped_secrets
+
+    returned_config = mask_wrapped_secrets(returned_config or {}, ("api_secret", "webhook_secret"))
+
     # Surface the last push result + sync direction for the FHIR server (and any
     # other integration that writes them). Lives under _sync_state cursors.
     sync_state = (integration.user_config or {}).get("_sync_state") or {}
+
+    from app.services.instance_status import instance_status_surface
 
     return {
         "id": str(integration.id),
         "domain": integration.provider,
         "instance_name": integration.instance_name,
         "status": integration.status.value,
+        "sync_status": instance_status_surface(integration, sync_logs),
         "user_config": returned_config,
         "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat()
@@ -935,7 +1132,9 @@ async def execute_notification_action(
     provider = integration_registry.get_provider(domain)
     if provider is None:
         raise HTTPException(status_code=404, detail="Integration provider not loaded")
-    if not getattr(provider, "supports_notifications", lambda: False)():
+    from app.extensions.registry import integration_registry as _registry
+
+    if not _registry.has_capability(getattr(provider, "domain", ""), "notify"):
         raise HTTPException(
             status_code=400,
             detail="Provider does not support notification actions",
@@ -1205,7 +1404,7 @@ async def rotate_instance_secret(
         raise HTTPException(status_code=404, detail="Integration instance not found")
 
     try:
-        from integrations.sdk.secrets import SecretCipher
+        from app.extensions.sdk.secrets import SecretCipher
 
         cipher = SecretCipher.from_settings()
     except RuntimeError as e:
@@ -1337,7 +1536,7 @@ def _resolve_secret_field(
         # doesn't declare the field. Decrypt directly with the instance id
         # as context.
         try:
-            from integrations.sdk.secrets import SecretCipher
+            from app.extensions.sdk.secrets import SecretCipher
 
             decrypted = SecretCipher.from_settings().decrypt_value(raw, context=context)
             return decrypted if isinstance(decrypted, str) and decrypted else None
@@ -1347,7 +1546,7 @@ def _resolve_secret_field(
         # Not declared secret — return as-is (already plaintext).
         return raw if isinstance(raw, str) else None
     try:
-        decrypted = flow.decrypt_for_use(config)
+        decrypted = flow.decrypt_for_use(config, context=context)
         val = decrypted.get(field_name)
         if val == "***" or not val:
             return None
@@ -1378,11 +1577,11 @@ def _verify_webhook_signature(secret: str, raw_body: bytes, provided_signature: 
 
     Returns True iff the computed HMAC matches the provided signature.
 
-    Thin wrapper around :func:`integrations.sdk.webhook_security.verify_hmac_signature`
+    Thin wrapper around :func:`app.extensions.sdk.webhook_security.verify_hmac_signature`
     — the canonical implementation lives in the SDK so providers can
     reuse it without re-implementing the algorithm.
     """
-    from integrations.sdk.webhook_security import verify_hmac_signature
+    from app.extensions.sdk.webhook_security import verify_hmac_signature
 
     return verify_hmac_signature(secret, raw_body, provided_signature)
 
@@ -1423,9 +1622,9 @@ def _verify_api_signature(
     is empty.
 
     Thin wrapper around
-    :func:`integrations.sdk.webhook_security.verify_canonical_signature`.
+    :func:`app.extensions.sdk.webhook_security.verify_canonical_signature`.
     """
-    from integrations.sdk.webhook_security import verify_canonical_signature
+    from app.extensions.sdk.webhook_security import verify_canonical_signature
 
     return verify_canonical_signature(
         secret,
@@ -1562,13 +1761,13 @@ async def integration_webhook(
                     if hasattr(obs_data, "dict")
                     else obs_data
                 )
-                obs = Observation(**obs_dict)
-                # audit B3: sync relational patient_id with the FHIR subject ref
-                # (the SDK ObservationCreate carries only ``subject``).
-                from app.services.fhir_helpers import coerce_patient_id
+                observations.append(Observation(**obs_dict))
 
-                obs.patient_id = coerce_patient_id(obs.patient_id, obs.subject)
-                observations.append(obs)
+            # audit B3: sync relational patient_id with the FHIR subject ref
+            # (the SDK ObservationCreate carries only ``subject``).
+            from app.services.fhir_helpers import coerce_observation_patient_ids
+
+            coerce_observation_patient_ids(observations)
 
             from app.services.fhir_service import map_observations_to_biomarkers
 
@@ -1636,11 +1835,15 @@ async def integration_webhook(
     except Exception as e:
         await db.rollback()
         logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
+        # Audit 2026-10-18 F22: this is a machine surface. Persist/echo a
+        # typed code + capped detail, never the raw exception string. The
+        # full traceback stays in the server log above.
+        failure = machine_error_detail(e)
 
         if integration.is_debug_enabled and hasattr(provider, "log_debug_payload"):
             with contextlib.suppress(Exception):
                 await provider.log_debug_payload(
-                    integration, "Webhook Error", {"error": str(e)}, level="error"
+                    integration, "Webhook Error", failure, level="error"
                 )
 
         # Log failure
@@ -1652,7 +1855,7 @@ async def integration_webhook(
             records_synced=0,
             started_at=start_time,
             completed_at=failure_completed,
-            error_message=str(e),
+            error_message=f"[{failure['code']}] {failure['detail']}",
         )
         db.add(sync_log)
         await db.commit()
@@ -1670,8 +1873,10 @@ async def integration_webhook(
                 status="failed",
                 started_at=start_time,
                 completed_at=failure_completed,
-                error=str(e),
-                error_type="data",
+                # ``error_type`` keeps the notification service's failure
+                # routing (auth/data); the typed charter code rides the text.
+                error=f"[{failure['code']}] {failure['detail']}",
+                error_type="auth" if failure["code"] == "auth" else "data",
                 observations=[],
             )
         except Exception as webhook_notif_err:
@@ -1680,7 +1885,10 @@ async def integration_webhook(
                 domain,
                 webhook_notif_err,
             )
-        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {e!s}")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": failure["code"], "message": failure["detail"]},
+        )
 
 
 @router.api_route(
@@ -1780,24 +1988,67 @@ async def integration_api_proxy(
             detail="Invalid or missing X-Api-Signature.",
         )
 
+    # AI budget: every ``ai/*`` path plus the provider-declared AI paths that
+    # lack the prefix (the bridge's ``/map`` — audit 2026-10-18 F19) draws
+    # from one per-instance bucket, so a signed client cannot bypass the
+    # 30/5-min AI ceiling by calling an LLM-backed route off-prefix.
+    if path.startswith("ai/") or path in getattr(provider, "ai_api_paths", ()):
+        await enforce_integration_rate_limit(
+            "integration_api_proxy_ai",
+            str(integration.id),
+            max_requests=30,
+            window=300,
+            bucket="ai",
+        )
+
     try:
         response_data = await provider.handle_api_request(
             integration=integration, path=path, method=request.method, request=request
         )
+        # Streaming (SSE) provider responses pass through untouched — the
+        # provider owns its DB-session lifetime inside the generator (the
+        # request-scoped session must not be touched by the stream body).
+        from fastapi.responses import StreamingResponse as _StreamingResponse
+
+        if isinstance(response_data, _StreamingResponse):
+            return response_data
         # Commit any configuration changes the provider made (e.g., sync cursor update)
         from sqlalchemy.orm.attributes import flag_modified
 
         flag_modified(integration, "user_config")
         await db.commit()
         return response_data
-    except NotImplementedError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ValueError as e:
-        # Pass ValueErrors (like validation or user errors) as 400 Bad Request
-        raise HTTPException(status_code=400, detail=str(e))
+    except NotImplementedError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "validation",
+                "message": "This path is not supported by the integration.",
+            },
+        )
+    except BridgeError as e:
+        # Bridge errors are already the client-facing typed vocabulary; the
+        # message is authored/capped, never a raw exception string (F22).
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={"code": e.code, "message": str(e)},
+        )
+    except ValueError:
+        # Bare ValueErrors are the legacy validation class. Answer the typed
+        # envelope with a stable message — the raw text may carry internal
+        # detail (audit 2026-10-18 F22). Providers that need a specific
+        # client message raise BridgeError.
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "validation", "message": "Invalid request."},
+        )
     except Exception as e:
         logger.error(
             f"API request failed for {domain} (Integration: {integration_id}): {e}",
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=f"API request failed: {e!s}")
+        failure = machine_error_detail(e)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": failure["code"], "message": failure["detail"]},
+        )

@@ -83,6 +83,7 @@ const AtlasManager = lazy(() => import('./pages/Admin/AtlasManager'));
 const OAuthClients = lazy(() => import('./pages/Admin/OAuthClients'));
 
 const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));
+const ToolsConfig = lazy(() => import('./pages/Settings/ToolsConfig').then(m => ({ default: m.ToolsConfig })));
 import { useAuthStore } from './store/slices/authSlice';
 import { useSettingsStore } from './store/slices/settingsSlice';
 import { getCurrentUser } from './services/userService';
@@ -287,6 +288,7 @@ function App() {
               <Route element={<SettingsShell nav={systemSettingsNav} header={systemSettingsHeader} />}>
                 <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
                 <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
+                <Route path="/admin/system/tools" element={<ToolsConfig scope="global" />} />
                 <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
                 <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
                 <Route path="/admin/system/taxonomy" element={<Navigate to="/catalogs?type=concept" replace />} />
@@ -307,6 +309,7 @@ function App() {
               <Route element={<SettingsShell nav={tenantSettingsNav} header={tenantSettingsHeader} />}>
                 <Route path="/admin/tenant/settings" element={<TenantSettingsPage />} />
                 <Route path="/admin/tenant/ai-config" element={<AIConfig scope="tenant" />} />
+                <Route path="/admin/tenant/tools" element={<ToolsConfig scope="tenant" />} />
               </Route>
             </>
           )}

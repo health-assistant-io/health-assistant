@@ -1,5 +1,3 @@
-import json
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import (
@@ -7,22 +5,40 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
-    Query,
     UploadFile,
     status,
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.agents.chat_agent import FLOW_EVENT_PREFIX
 from app.ai.assistance.service import AIAssistanceService
-from app.ai.assistance.stt import TranscriptionError, transcribe_audio
+from app.ai.assistance.stt import (
+    ALLOWED_AUDIO_MIME as _ALLOWED_AUDIO_MIME,
+)
+from app.ai.assistance.stt import (
+    TranscriptionError,
+    transcribe_audio,
+)
+from app.ai.assistance.turns import (
+    SSE_RESPONSE_HEADERS,
+    TURN_LOCK_MESSAGE,
+    TurnConflictError,
+    acquire_turn,
+    release_turn,
+    sse_keep_alive,
+    stream_error_frame,
+)
 from app.ai.schemas.assistance import (
     AIAssistanceRequest,
     AIAssistanceResponse,
     AIAssistanceToolSchema,
+    ChatBranchContext,
+    ChatBranchNodeSchema,
+    ChatMessageEditRequest,
     ChatMessageSchema,
     ChatSessionSchema,
+    ChatSessionTitleUpdate,
+    ChatTreeSchema,
     HitlResolutionRequest,
     HitlResumeRequest,
 )
@@ -30,86 +46,17 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit_user
 from app.core.security import get_current_user
-from app.models.enums import HitlTaskStatus
+from app.models.enums import HitlTaskStatus  # noqa: F401 -- re-exported for schema consumers
 from app.schemas.user import TokenData
 from app.services.chat_session_service import ChatSessionService, is_internal_message
+from app.services.hitl_resolver import (
+    HitlResolutionConflict,
+    HitlResolutionError,
+    resolve_chat_task,
+)
 from app.utils.prompt_guard import check_user_input_safety
 
 router = APIRouter(prefix="/ai-assistance", tags=["AI Assistance"])
-
-
-# Audio MIME types accepted for STT — Opus/WebM (Chrome default) + the common
-# fallbacks. WAV/PCM is allowed (some browsers lack Opus) but discouraged by the
-# client, which always requests Opus when available.
-_ALLOWED_AUDIO_MIME = {
-    "audio/webm",
-    "audio/ogg",
-    "audio/mp4",
-    "audio/mpeg",
-    "audio/x-m4a",
-    "audio/wav",
-    "audio/x-wav",
-    "audio/flac",
-}
-
-
-# ---------------------------------------------------------------------------
-# Streaming error classification
-# ---------------------------------------------------------------------------
-# The chat stream endpoints catch exceptions and forward them to the client as
-# an SSE ``{"error": ..., "error_type": ...}`` payload. We never forward raw
-# provider SDK strings (e.g. OpenAI's "Connection error.") because they leak
-# the upstream vendor and aren't localized. Instead we classify the exception
-# into a short, stable code that the frontend maps to a translated message.
-# ValueError is the channel for *intentional* client-facing guard violations
-# (ownership/no-tasks/pending-task checks); its message is already user-facing
-# and is forwarded verbatim with error_type="guard".
-
-_STREAM_ERROR_TYPES = (
-    "connection",
-    "auth",
-    "rate_limit",
-    "timeout",
-    "generic",
-    "guard",
-)
-
-# Provider-SDK exception classes (openai v1) mapped to stable error codes.
-# Matched by class NAME via the MRO instead of isinstance so this endpoint —
-# like every non-factory module (ADR-0008) — never imports a provider SDK.
-# Order matters: APITimeoutError subclasses APIConnectionError.
-# ``model_config`` (provider HTTP 400) means the request/model shape was
-# rejected — almost always a model/task mismatch (e.g. a reasoning model
-# that cannot run chat tools). The frontend maps it to actionable guidance
-# (check the AI Configuration task assignment).
-_PROVIDER_ERROR_NAMES: tuple[tuple[str, str], ...] = (
-    ("APITimeoutError", "timeout"),
-    ("APIConnectionError", "connection"),
-    ("AuthenticationError", "auth"),
-    ("RateLimitError", "rate_limit"),
-    ("BadRequestError", "model_config"),
-)
-
-
-def _classify_stream_error(exc: Exception) -> tuple[str, str]:
-    """Return ``(error_type, user_message)`` for a streaming exception.
-
-    The ``error_type`` is a stable lowercase code the frontend localizes.
-    ``user_message`` is non-empty only for soft guard messages (ValueError);
-    for provider errors it is empty so the frontend MUST localize from the
-    code (no raw SDK text leaves the server).
-    """
-    if isinstance(exc, ValueError):
-        # Intentional guard violation — message is already user-facing.
-        return ("guard", str(exc))
-
-    # Map known LLM/provider errors to non-leaky codes by walking the MRO —
-    # LangChain passes the provider SDK's exception classes through verbatim.
-    names = {cls.__name__ for cls in type(exc).__mro__}
-    for name, code in _PROVIDER_ERROR_NAMES:
-        if name in names:
-            return (code, "")
-    return ("generic", "")
 
 
 async def _validate_owned_session(context: dict, current_user: TokenData, db: AsyncSession) -> None:
@@ -192,12 +139,12 @@ async def assist_user_stream(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
-    flow_events: bool = Query(
-        True,
-        description="Emit additive family flow events alongside the legacy sentinels.",
-    ),
 ):
-    """Stream AI-driven assistance for chat tasks"""
+    """Stream AI-driven assistance for chat tasks.
+
+    SSE frames carry the family chat vocabulary (ai-features §5) plus
+    health's payload events (``citation`` / ``task`` / ``interrupt`` /
+    ``session``) — one JSON object per frame with the name in ``event``."""
     if request.task_type != "chat":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -208,25 +155,33 @@ async def assist_user_stream(
     await _validate_owned_session(request.context, current_user, db)
     service = AIAssistanceService(db)
 
+    context_session = (request.context or {}).get("session_id")
+    lock_session_id = UUID(context_session) if context_session else None
+    lock_token = None
+    if lock_session_id is not None:
+        try:
+            lock_token = await acquire_turn(lock_session_id)
+        except TurnConflictError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=TURN_LOCK_MESSAGE,
+            ) from e
+
     async def event_generator():
         try:
-            async for chunk in await service.assist(
-                task_type=request.task_type,
-                user_input=request.user_input,
-                reference_image=request.reference_image,
-                context=request.context,
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.user_id,
-                stream=True,
-                images=request.images,
-                flow_events=flow_events,
+            async for frame in sse_keep_alive(
+                await service.assist(
+                    task_type=request.task_type,
+                    user_input=request.user_input,
+                    reference_image=request.reference_image,
+                    context=request.context,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    stream=True,
+                    images=request.images,
+                )
             ):
-                if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
-                    yield f"data: {frame}\n\n"
-                    continue
-                payload = json.dumps({"content": chunk})
-                yield f"data: {payload}\n\n"
+                yield frame
         except ValueError as e:
             # Includes ImageValidationError (subclass of ValueError) from
             # attachment validation — surfaces as a localized, user-facing
@@ -234,18 +189,21 @@ async def assist_user_stream(
             import logging
 
             logging.getLogger(__name__).warning(f"Chat stream rejected: {e}")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("AI assistance streaming failed")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield stream_error_frame(e)
+        finally:
+            if lock_session_id is not None:
+                await release_turn(lock_session_id, lock_token)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
 
 
 @router.get("/sessions", response_model=list[ChatSessionSchema])
@@ -265,9 +223,11 @@ async def get_session_messages(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get all messages for a specific chat session"""
+    """The visible (active-path) messages of a session — the branch-tree
+    pointer walk (plan 13 H2) — decorated with variant info
+    (``parent_id`` / ``variant_index`` / ``variant_count`` / ``sibling_ids``)."""
     service = ChatSessionService(db)
-    messages = await service.get_session_messages(
+    messages = await service.get_active_path_decorated(
         session_id, current_user.user_id, current_user.tenant_id
     )
     # Hide LLM-internal artifacts (e.g. the [HITL RESOLUTION FEEDBACK] user
@@ -286,6 +246,174 @@ async def delete_session(
     service = ChatSessionService(db)
     await service.delete_session(session_id, current_user.user_id)
     return {"success": True}
+
+
+@router.patch("/sessions/{session_id}", response_model=ChatSessionSchema)
+async def rename_session(
+    session_id: UUID,
+    data: ChatSessionTitleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Rename a chat session (family B3 contract: tenant-scoped title PATCH)."""
+    service = ChatSessionService(db)
+    session = await service.rename_session(
+        session_id, current_user.user_id, current_user.tenant_id, data.title
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    return session
+
+
+async def _branch_turn_stream(
+    message_id: UUID,
+    current_user: TokenData,
+    db: AsyncSession,
+    branch: dict,
+    user_input: str,
+    context: dict | None = None,
+):
+    """Shared SSE turn stream for the branching endpoints (edit /
+    regenerate): read-only pre-validation (tenant-scoped ownership + role,
+    404/400 before the stream starts), the per-session turn lock, then the
+    same family vocabulary as ``/stream``. The branch mutation itself runs
+    inside the stream (service-validated again) while the lock is held."""
+    chat_service = ChatSessionService(db)
+    message = await chat_service.get_message(
+        message_id, current_user.user_id, current_user.tenant_id
+    )
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if branch.get("kind") == "edit" and message.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Only user messages can be edited"
+        )
+    if branch.get("kind") == "regenerate" and message.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Regenerate targets a user message",
+        )
+    session = await chat_service.get_owned_session(
+        message.session_id, current_user.user_id, current_user.tenant_id
+    )
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+
+    try:
+        lock_token = await acquire_turn(session.id)
+    except TurnConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=TURN_LOCK_MESSAGE,
+        ) from e
+    service = AIAssistanceService(db)
+
+    async def event_generator():
+        try:
+            async for frame in sse_keep_alive(
+                await service.assist(
+                    task_type="chat",
+                    user_input=user_input,
+                    context=context or {},
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    stream=True,
+                    branch=branch | {"message_id": str(message_id)},
+                )
+            ):
+                yield frame
+        except ValueError as e:
+            import logging
+
+            logging.getLogger(__name__).warning(f"Branch turn rejected: {e}")
+            yield stream_error_frame(e)
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).exception("Branch turn streaming failed")
+            yield stream_error_frame(e)
+        finally:
+            await release_turn(session.id, lock_token)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
+
+
+@router.post("/messages/{message_id}/edit")
+async def edit_message(
+    message_id: UUID,
+    data: ChatMessageEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
+):
+    """Edit-and-resend (family branching contract): branch the user message
+    as a new sibling under the same parent, flip the parent's active-child
+    pointer, and stream a fresh reply for the edited prompt. The old subtree
+    stays as a switchable variant."""
+    return await _branch_turn_stream(
+        message_id, current_user, db, {"kind": "edit"}, data.content, data.context
+    )
+
+
+@router.post("/messages/{message_id}/regenerate")
+async def regenerate_message(
+    message_id: UUID,
+    data: ChatBranchContext | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _rl: None = Depends(rate_limit_user("ai_stream", max_requests=30, window=300)),
+):
+    """Regenerate (family branching contract): stream a fresh assistant
+    sibling under the target user message; earlier replies stay switchable
+    variants — never overwritten."""
+    return await _branch_turn_stream(
+        message_id,
+        current_user,
+        db,
+        {"kind": "regenerate"},
+        "",
+        data.context if data is not None else None,
+    )
+
+
+@router.post("/messages/{message_id}/select", response_model=list[ChatMessageSchema])
+async def select_message(
+    message_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+) -> list[ChatMessageSchema]:
+    """Flip exactly one branch pointer (level-flip semantics — no
+    ancestor-chain activation) and return the re-walked visible path."""
+    service = ChatSessionService(db)
+    try:
+        rows = await service.select_message(
+            message_id, current_user.user_id, current_user.tenant_id
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return [m for m in rows if not is_internal_message(m.content)]
+
+
+@router.get("/sessions/{session_id}/tree", response_model=ChatTreeSchema)
+async def get_session_tree(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+) -> ChatTreeSchema:
+    """Read-only branch-tree projection ``{active_root_id, nodes[]}`` for
+    the tree rail (family branching contract)."""
+    service = ChatSessionService(db)
+    projection = await service.tree(session_id, current_user.user_id, current_user.tenant_id)
+    if projection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat session not found")
+    return ChatTreeSchema(
+        active_root_id=projection["active_root_id"],
+        nodes=[ChatBranchNodeSchema(**node) for node in projection["nodes"]],
+    )
 
 
 @router.get("/tools", response_model=list[AIAssistanceToolSchema])
@@ -360,89 +488,37 @@ async def resolve_hitl_task(
     the outcome into the task JSONB (for audit + agent awareness); it does not
     perform the write itself. Idempotent: a second resolve on the same proposal
     returns 409.
+
+    The logic lives in ``app.services.hitl_resolver`` (shared with the
+    health-assistant bridge, R7 Phase 1); this endpoint maps its typed
+    errors to HTTP.
     """
-    # Pydantic coerces `status` to HitlTaskStatus already; this is a defense-
-    # in-depth check in case the schema is bypassed (it accepts only the two
-    # resolution transitions, not PROPOSED/FAILED which are server-set).
-    if resolution.status not in (HitlTaskStatus.CONFIRMED, HitlTaskStatus.DISMISSED):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="status must be 'confirmed' or 'dismissed'",
-        )
-
     chat_service = ChatSessionService(db)
-    message = await chat_service.find_message_by_proposal(
-        session_id, proposal_id, current_user.user_id, current_user.tenant_id
-    )
-    if not message:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task proposal not found or access denied.",
+    try:
+        task = await resolve_chat_task(
+            chat_service,
+            session_id=session_id,
+            proposal_id=proposal_id,
+            status=resolution.status,
+            final_payload=resolution.final_payload,
+            result=resolution.result,
+            error=resolution.error,
+            user_id=current_user.user_id,
+            tenant_id=current_user.tenant_id,
         )
-
-    tasks = list(message.tasks or [])
-    task_idx = next(
-        (
-            i
-            for i, t in enumerate(tasks)
-            if isinstance(t, dict) and t.get("proposal_id") == proposal_id
-        ),
-        None,
-    )
-    if task_idx is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Task proposal not found."
-        )
-
-    task = tasks[task_idx]
-    prior_status = task.get("status")
-    if prior_status not in (None, HitlTaskStatus.PROPOSED):
+    except HitlResolutionConflict as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Task already {prior_status}.",
+            detail=str(e),
+        ) from e
+    except HitlResolutionError as e:
+        message = str(e)
+        status_code = (
+            status.HTTP_400_BAD_REQUEST
+            if message.startswith("status must be")
+            else status.HTTP_404_NOT_FOUND
         )
-
-    now = datetime.now(UTC).isoformat()
-    task["status"] = resolution.status
-    task["resolved"] = {
-        "confirmed_by": str(current_user.user_id),
-        "final_payload": resolution.final_payload,
-        "result": resolution.result,
-        "error": resolution.error,
-        "at": now,
-    }
-    tasks[task_idx] = task
-    await chat_service.update_message_tasks(message, tasks)
-
-    # Agent awareness: append a concise assistant note so the next chat turn
-    # knows the proposed action was carried out (or dismissed) by the user.
-    #
-    # ``ask_user`` tasks are read-only (no REST write happens) and the user's
-    # answers are surfaced in full on the immediately-following resume turn
-    # via the [HITL RESOLUTION FEEDBACK] message. Repeating them here would
-    # be redundant AND would say "saved" (misleading — nothing was saved),
-    # so the audit note for ask_user explicitly says "answered" instead.
-    task_type = task.get("task_type")
-    if resolution.status == HitlTaskStatus.CONFIRMED:
-        payload = task.get("proposed_payload") or {}
-        label = payload.get("title") or task.get("title") or task.get("task_type")
-        if task_type == "ask_user":
-            note_text = f"✓ The user answered: {label}."
-        else:
-            note_text = f"✓ Confirmed and saved: {label}."
-        await chat_service.save_message(
-            session_id=session_id,
-            role="assistant",
-            content={"text": note_text},
-        )
-    elif resolution.status == HitlTaskStatus.DISMISSED:
-        await chat_service.save_message(
-            session_id=session_id,
-            role="assistant",
-            content={
-                "text": "The proposed draft was dismissed. Let me know how you'd like to proceed."
-            },
-        )
+        raise HTTPException(status_code=status_code, detail=message) from e
 
     return {"success": True, "task": task}
 
@@ -454,22 +530,31 @@ async def resume_hitl_session(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _rl: None = Depends(rate_limit_user("ai_resume", max_requests=30, window=300)),
-    flow_events: bool = Query(True),
 ):
     """Trigger an agent continuation turn after the user has resolved one or
     more HITL task cards in the session.
 
-    Returns an SSE stream (same shape as `/stream`). The agent receives a
-    structured `[HITL RESOLUTION FEEDBACK]` user message built from the target
-    message's resolved tasks (read from `tasks` JSONB on the server — never
-    trusted from the request body).
+    Returns an SSE stream (same family vocabulary as `/stream`). The agent
+    receives a structured `[HITL RESOLUTION FEEDBACK]` user message built
+    from the target message's resolved tasks (read from `tasks` JSONB on
+    the server — never trusted from the request body).
 
     Guards:
       * Session ownership verified (user_id + tenant_id).
       * Target message must exist and have tasks.
       * Every task on the target message must be in a terminal state.
+      * One streaming turn per session (the shared single-flight turn
+        lock): while any turn streams on the session, resume answers 409.
     """
     service = AIAssistanceService(db)
+
+    try:
+        lock_token = await acquire_turn(session_id)
+    except TurnConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=TURN_LOCK_MESSAGE,
+        ) from e
 
     async def event_generator():
         try:
@@ -477,36 +562,34 @@ async def resume_hitl_session(
             # calling it returns the generator directly — do NOT await it.
             # Awaiting would raise: "object async_generator can't be used in
             # 'await' expression".
-            async for chunk in service.resume_after_hitl(
-                session_id=session_id,
-                tenant_id=current_user.tenant_id,
-                user_id=current_user.user_id,
-                message_id=body.message_id,
-                flow_events=flow_events,
+            async for frame in sse_keep_alive(
+                service.resume_after_hitl(
+                    session_id=session_id,
+                    tenant_id=current_user.tenant_id,
+                    user_id=current_user.user_id,
+                    message_id=body.message_id,
+                )
             ):
-                if chunk.startswith(FLOW_EVENT_PREFIX):
-                    frame = json.dumps({"flow_event": json.loads(chunk[len(FLOW_EVENT_PREFIX) :])})
-                    yield f"data: {frame}\n\n"
-                    continue
-                payload = json.dumps({"content": chunk})
-                yield f"data: {payload}\n\n"
+                yield frame
         except ValueError as e:
             # Client-facing guard violations (ownership, no tasks, pending).
             import logging
 
             logging.getLogger(__name__).warning(f"HITL resume rejected: {e}")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield stream_error_frame(e)
         except Exception as e:
             import logging
 
             logging.getLogger(__name__).exception("HITL resume streaming failed")
-            error_type, user_message = _classify_stream_error(e)
-            error_payload = json.dumps({"error": user_message, "error_type": error_type})
-            yield f"data: {error_payload}\n\n"
+            yield stream_error_frame(e)
+        finally:
+            await release_turn(session_id, lock_token)
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=SSE_RESPONSE_HEADERS,
+    )
 
 
 @router.post("/transcribe")
@@ -572,7 +655,14 @@ async def transcribe(
             target=target,
         )
     except TranscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        # No raw upstream exception text on a 502 (audit 2026-10-18 F22).
+        import logging
+
+        logging.getLogger(__name__).warning("Speech-to-text upstream failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speech-to-text failed upstream. Try again later.",
+        ) from e
 
     # Run the transcribed text through the prompt-injection guard for audit
     # correlation (non-blocking) — consistent with every other user input path.

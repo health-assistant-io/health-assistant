@@ -10,7 +10,7 @@ flattened to ``{min, max}`` — multi-range observations (age-stratified) lost d
 
 from uuid import uuid4
 
-from integrations.sdk.fhir import fhir_observation_to_create
+from app.extensions.sdk.fhir import fhir_observation_to_create
 
 
 def _bp_obs():

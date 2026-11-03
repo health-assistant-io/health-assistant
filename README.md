@@ -1,6 +1,5 @@
-<div align="center">
+![Health Assistant logo](frontend/public/icon.svg)
 
-<img src="frontend/public/icon.svg" width="120" height="120" alt="Health Assistant logo">
 
 # Health Assistant
 ### Self-hosted, privacy-first health records
@@ -13,28 +12,12 @@
 [![React](https://img.shields.io/badge/React-20232A?style=flat&logo=react&logoColor=61DAFB)](https://react.dev/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 
-<br>
 
-<a href="docs/SCREENSHOTS.md">
-  <img src="docs/images/visual-tour.gif" width="800" alt="Health Assistant visual tour">
-</a>
+[![Health Assistant visual tour](docs/images/visual-tour.gif)](docs/SCREENSHOTS.md)
 
-<br>
-
-  <p>
-    <small>Part of</small><br>
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/neuronection-dark.svg">
-      <img src="https://neuronection.com/logos/neuronection.svg" height="30" alt="">
-    </picture>&nbsp;&nbsp;&nbsp;<picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/neuronection-wordmark-dark.svg">
-      <img src="https://neuronection.com/logos/neuronection-wordmark.svg" height="30" alt="Neuronection — one ecosystem, four guides">
-    </picture>
-  </p>
+*Part of the [Neuronection](https://neuronection.com) family — one ecosystem, four guides.*
 
 **Website**: [health-assistant.io](https://health-assistant.io) · **Repository**: [health-assistant-io/health-assistant](https://github.com/health-assistant-io/health-assistant)
-
-</div>
 
 > **Independent project.** Health Assistant is inspired by the privacy-first, local-control philosophy of Home Assistant. It is not affiliated with, endorsed by, or connected to Home Assistant or Nabu Casa.
 
@@ -54,7 +37,7 @@
 - [Documentation](#documentation)
 - [Tech stack](#tech-stack)
 - [Scope & limitations](#scope--limitations)
-- [Status & roadmap](#status--roadmap)
+- [Highlights](#highlights)
 - [Contributing](#contributing)
 - [Support the project](#support-the-project)
 - [Security](#security)
@@ -154,16 +137,10 @@ External terminology code sets (LOINC, SNOMED CT, ICD-10, ATC, CVX) are used in 
 
 Reproducible screenshots captured against a seeded clinical dataset — see the [full visual tour](docs/SCREENSHOTS.md).
 
-<table>
-  <tr>
-    <td width="50%" align="center"><a href="docs/images/dashboard-desktop.png"><img src="docs/images/dashboard-desktop.png" alt="Patient dashboard"/><br/><sub>Draggable dashboard</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/ai-chat-desktop.png"><img src="docs/images/ai-chat-desktop.png" alt="AI assistant"/><br/><sub>AI chat with review cards</sub></a></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center"><a href="docs/images/biomarker-detail-desktop.png"><img src="docs/images/biomarker-detail-desktop.png" alt="Biomarker detail"/><br/><sub>Longitudinal biomarker trends</sub></a></td>
-    <td width="50%" align="center"><a href="docs/images/examination-detail-desktop.png"><img src="docs/images/examination-detail-desktop.png" alt="Examination detail"/><br/><sub>Examination with linked journeys</sub></a></td>
-  </tr>
-</table>
+| | |
+| --- | --- |
+| [![Patient dashboard](docs/images/dashboard-desktop.png)](docs/images/dashboard-desktop.png) — *Draggable dashboard* | [![AI assistant](docs/images/ai-chat-desktop.png)](docs/images/ai-chat-desktop.png) — *AI chat with review cards* |
+| [![Biomarker detail](docs/images/biomarker-detail-desktop.png)](docs/images/biomarker-detail-desktop.png) — *Longitudinal biomarker trends* | [![Examination detail](docs/images/examination-detail-desktop.png)](docs/images/examination-detail-desktop.png) — *Examination with linked journeys* |
 
 ## Quick start
 
@@ -173,38 +150,15 @@ The fastest path from a fresh clone to a running instance — one command:
 
 ```bash
 git clone https://github.com/health-assistant-io/health-assistant.git
-```
-
-```bash
 cd health-assistant
-```
-
-```bash
 ./scripts/install.sh    # asks the app URL, generates secure keys, starts the standalone stack
 ```
 
 The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, starts the stack, and prints your URLs plus a one-click first-run setup link.
 
-Prefer explicit steps? The manual equivalent:
-
-```bash
-python3 scripts/setup_env.py          # Quick Start is the default — generates SECRET_KEY, Fernet key, POSTGRES_PASSWORD, VAPID pair
-```
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
-```
-
 Create your initial admin by opening **http://localhost** — a fresh install auto-redirects to a setup wizard where you pick the email, password, and organization name. There are no default credentials; you choose them.
 
-For headless/automation deploys, use the CLI instead:
-
-```bash
-docker compose --env-file .env -f docker/docker-compose.standalone.yml exec backend \
-  python scripts/create_system_admin.py --email admin@example.com --password 'securepassword' --tenant "My Organization"
-```
-
-The standalone compose file ships a built-in Nginx on port 80. If you already run a reverse proxy (Traefik/Nginx/Caddy), use `docker/docker-compose.prod.yml` instead. Full details in the [Installation Guide](docs/INSTALL.md).
+Already running a reverse proxy, want the manual steps, or a headless/automation deploy? See the [Installation Guide](docs/INSTALL.md) — deployment flavors, security checklist, troubleshooting, and updates.
 
 ### Development
 
@@ -223,44 +177,20 @@ Frontend: http://localhost:3000 · API docs: http://localhost:8000/docs · Flowe
 
 ## Architecture at a glance
 
-```mermaid
-flowchart LR
-    subgraph Clients
-        FE[React PWA<br/>Vite + Zustand]
-        RN[Mobile / custom clients<br/>via Bridge SDKs]
-    end
-    subgraph Server["FastAPI server"]
-        API[REST + WebSocket<br/>+ FHIR R4 facade]
-        W[Celery worker + beat<br/>OCR · extraction · sync · reminders]
-    end
-    subgraph Datastore
-        PG[(PostgreSQL + TimescaleDB<br/>records + telemetry)]
-        RQ[(Redis<br/>queue + pub/sub)]
-    end
-    LLM[Your LLM<br/>OpenAI-compatible]
-    INT[Integrations<br/>FHIR server · Webhook · MCP]
-
-    FE --> API
-    RN --> API
-    INT --> API
-    API <--> PG
-    API <--> RQ <--> W
-    W <--> PG
-    W --> LLM
-```
-
 The frontend talks to **domain endpoints** optimized for the UI. External systems (a hospital's FHIR server, a webhook sender) talk to the **FHIR R4 facade**. Both surfaces sit on the same FHIR-enhanced relational tables — there is no dual-write.
 
 Background work (document OCR/extraction, integration sync, reminders, alert checks) runs in a separate Celery process coordinated through Redis; the FastAPI process does not run background jobs itself.
 
-Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Deep dive — system diagram, data model, and subsystem breakdown: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
 
 **Getting started**
-- [Visual Tour](docs/SCREENSHOTS.md) — every page, reproducible screenshots
+- [Visual Tour](docs/SCREENSHOTS.md) — a guided tour with reproducible screenshots
 - [Installation Guide](docs/INSTALL.md) — Docker, manual setup, prod security checklist, nginx, troubleshooting
-- [Architecture Overview](docs/ARCHITECTURE.md) — tech stack, DB schema, biomarker engine, AI pipeline
+- [Getting Started Guide](docs/GETTING_STARTED_GUIDE.md) — your first hour with the app
+- [Setup Wizard](docs/SETUP_WIZARD.md) — the in-app guided onboarding checklist
+- [Architecture Overview](docs/ARCHITECTURE.md) — system diagram, DB schema, biomarker engine, AI pipeline
 
 **Everyday use & core systems**
 - [User Management & Tenancy](docs/TENANCY_AND_USER_MANAGEMENT.md) — tenants, roles, identity ↔ record linking
@@ -275,14 +205,11 @@ Deep dive: [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **Integrations & API**
 - [REST API Reference](docs/API.md) · [FHIR R4 Facade](docs/FHIR_R4_FACADE.md)
-- [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integrations SDK](docs/INTEGRATIONS_SDK.md)
+- [Integrations Framework](docs/INTEGRATIONS_FRAMEWORK.md) · [Integration SDK (doc set)](docs/dev/sdk/overview.md)
 
 **Development & operations**
-- [Development Guide](docs/DEVELOPMENT.md) · [CI/CD Deployment](docs/CI_CD_SETUP.md) · [Release Process](docs/RELEASE_PROCESS.md)
+- [Development Guide](docs/DEVELOPMENT.md) · [CI/CD Deployment](docs/CI_CD_SETUP.md)
 - [Seeding & Demos](docs/SEEDING_AND_DEMOS.md) · [Task Debugging Guide](docs/TASK_DEBUGGING_GUIDE.md)
-
-**Project status**
-- [Current Status](docs/STATUS.md) · [Development Roadmap](docs/DEVELOPMENT_PLAN.md)
 
 Interactive API docs are also available at `/docs` on a running backend.
 
@@ -295,7 +222,7 @@ Interactive API docs are also available at `/docs` on a running backend.
 | State | Zustand 4 (slices, some persisted) |
 | Database | PostgreSQL + TimescaleDB (required) |
 | Cache / Queue | Redis + Celery (JSON serializer, UTC, per-task event loops) |
-| Migrations | Alembic (sync `psycopg2` engine; 51+ migrations) |
+| Migrations | Alembic (sync `psycopg2` engine) |
 | AI / NLP | LangChain unified factory, OpenAI-compatible (`langchain_openai.ChatOpenAI`), spaCy fallback |
 | Container | Docker + Docker Compose |
 | PWA | vite-plugin-pwa (injectManifest), Web Push (VAPID), Dexie offline cache |
@@ -303,29 +230,29 @@ Interactive API docs are also available at `/docs` on a running backend.
 
 ## Scope & limitations
 
-Health Assistant is **Beta** (`0.3.x`). The points below are honest boundaries — not every limitation is a bug.
+Health Assistant is **Beta** (`0.8.x`). The points below are honest boundaries — not every limitation is a bug.
 
 - **Pre-1.0 APIs.** REST endpoints, DB schemas, and FHIR projections may change before `1.0`. Pin a version for production deployments.
 - **Self-hosted only.** There is no managed/cloud hosted offering. You run it on Linux via Docker. No native Windows or macOS desktop installers.
 - **TimescaleDB is mandatory.** A plain Postgres will crash on the telemetry hypertable migration. Use the bundled compose image or install the extension.
 - **Celery is a separate process.** The FastAPI process does not run background jobs. If you run `uvicorn` standalone, document extraction, reminders, and integration sync will queue silently in Redis. The provided compose files and `run-dev.sh` start them together.
 - **AI features need an external LLM.** OCR, document extraction, and the chat assistant call an OpenAI-compatible endpoint you provide (OpenAI, vLLM, Ollama, etc.). The rest of the app works without one.
-- **Wearable data is one-directional so far.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted, but there is no first-party phone app yet — data arrives via the webhook, bridge SDK, or a FHIR server integration. A headless mobile companion is on the roadmap.
+- **Mobile data arrives via integrations.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted via the webhook, the bridge SDK, or a FHIR server integration; a first-party phone app is on the roadmap.
 - **Notification channels.** In-app (WebSocket) and Web Push (VAPID) are fully implemented. Email and SMS are stubbed.
-- **FHIR coverage.** 19 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
+- **FHIR coverage.** 20 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
 - **Test coverage.** The backend has 1800+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
-## Status & roadmap
+## Highlights
 
-A few headline items from [STATUS.md](docs/STATUS.md) and [DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md):
+**Shipped recently** — unified catalog registry with ownership-based access, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade, human-in-the-loop proposals with auto-resume, a unified notifications system, and an Android bridge SDK for two-way mobile sync.
 
-- **Mobile companion** — headless app bridging Android Health Connect / iOS HealthKit directly to your instance.
-- **Biomarker insights** — deeper trend analytics, organ/symptom correlations, contextual "why does this matter?" explanations.
+**On the roadmap**
+
+- **First-party mobile app** — the bridge SDK already powers two-way sync; a dedicated app is next.
+- **Deeper biomarker insights** — organ/symptom correlations, contextual "why does this matter?" explanations.
 - **Advanced FHIR R4 conformance** — `_format=xml`, transaction/batch Bundle processing, `POST /_search` (for clinic interop).
 - **End-to-end test suite** — Playwright or Cypress covering the document → extraction → biomarker pipeline.
-
-Already shipped recently: unified catalog registry with ownership-based access, cross-catalog knowledge graph, hybrid (trigram + FTS + RRF) search, FHIR R4 facade Stage 3, human-in-the-loop proposals with auto-resume, and a unified notifications system.
 
 ## Contributing
 
@@ -348,54 +275,16 @@ to disclose it responsibly.
 <!-- NEURONECTION:ECOSYSTEM:START -->
 ---
 
-<div align="center">
-
 ### Part of the Neuronection family
 
 **Health Assistant** is one of four connected, open-source (Apache-2.0) AI assistants
 for life's big decisions — structured data instead of text dumps, AI that explains
 its reasoning, and you in control of your information.
 
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/health-light.svg">
-        <img src="https://neuronection.com/logos/health.svg" height="34" alt="Health Assistant">
-      </picture>
-      <br>
-      <a href="https://neuronection.com/en/health/"><strong>Health Assistant</strong> <sub>· this repo</sub></a>
-      <br><sub>Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data.</sub>
-      <br><sub><a href="https://github.com/health-assistant-io/health-assistant">GitHub</a> · <a href="https://health-assistant.io">health-assistant.io</a></sub>
-    </td>
-    <td width="50%" align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://neuronection.com/logos/career-light.svg">
-        <img src="https://neuronection.com/logos/career.svg" height="34" alt="Career Assistant">
-      </picture>
-      <br>
-      <a href="https://neuronection.com/en/career/"><strong>Career Assistant</strong></a>
-      <br><sub>A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future.</sub>
-      <br><sub><a href="https://github.com/neuronection/career-assistant">GitHub</a> · <a href="https://github.com/neuronection/career-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <img src="https://neuronection.com/logos/study.svg" height="34" alt="Study Assistant">
-      <br>
-      <a href="https://neuronection.com/en/study/"><strong>Study Assistant</strong></a>
-      <br><sub>A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic.</sub>
-      <br><sub><a href="https://github.com/neuronection/study-assistant">GitHub</a> · <a href="https://github.com/neuronection/study-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-    <td width="50%" align="center" valign="top">
-      <img src="https://neuronection.com/logos/desktop.svg" height="34" alt="Desktop Assistant">
-      <br>
-      <a href="https://neuronection.com/en/desktop/"><strong>Desktop Assistant</strong></a>
-      <br><sub>A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history.</sub>
-      <br><sub><a href="https://github.com/neuronection/desktop-assistant">GitHub</a> · <a href="https://github.com/neuronection/desktop-assistant/tree/main/docs">Docs</a></sub>
-    </td>
-  </tr>
-</table>
+| | |
+| --- | --- |
+| [![Health Assistant](https://neuronection.com/logos/health.svg?v=2)](https://neuronection.com/en/health/) — **Health Assistant** · Self-hosted, privacy-first health records — lab results, biomarkers, documents and AI-powered insights into your own data. · [GitHub](https://github.com/health-assistant-io/health-assistant) · [health-assistant.io](https://health-assistant.io) | [![Career Assistant](https://neuronection.com/logos/career.svg?v=2)](https://neuronection.com/en/career/) — **Career Assistant** · A mapped universe of jobs — family tree + relation graph, AI match scoring and university pathways, built for students deciding their future. · [GitHub](https://github.com/neuronection/career-assistant) · [Docs](https://github.com/neuronection/career-assistant/tree/main/docs) |
+| [![Study Assistant](https://neuronection.com/logos/study.svg?v=2)](https://neuronection.com/en/study/) — **Study Assistant** · A local-first study workbench, in browser or on desktop — AI-powered course library, handwriting, chat and practice; math-first, subject-agnostic. · [GitHub](https://github.com/neuronection/study-assistant) · [Docs](https://github.com/neuronection/study-assistant/tree/main/docs) | [![Desktop Assistant](https://neuronection.com/logos/desktop.svg?v=2)](https://neuronection.com/en/desktop/) — **Desktop Assistant** · A system-tray AI launcher for Windows, Linux and macOS — global hotkey, streaming chat, voice input, attachments; local-only history. · [GitHub](https://github.com/neuronection/desktop-assistant) · [Docs](https://github.com/neuronection/desktop-assistant/tree/main/docs) |
 
 Created and maintained by [Ilias Chatzopoulos](https://github.com/constLiakos)
 · [LinkedIn](https://www.linkedin.com/in/ilias-chatzopoulos-aabb22163/)
@@ -403,8 +292,6 @@ Created and maintained by [Ilias Chatzopoulos](https://github.com/constLiakos)
 
 [neuronection.com](https://neuronection.com) — one ecosystem, four guides
 · [♥ Support development](https://buymeacoffee.com/neuronection) · star what you use
-
-</div>
 <!-- NEURONECTION:ECOSYSTEM:END -->
 
 ## License

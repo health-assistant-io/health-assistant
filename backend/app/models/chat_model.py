@@ -23,6 +23,10 @@ class ChatSession(Base, UUIDMixin, TenantMixin, TimestampMixin):
     )
     title = Column(String(255), nullable=True)
     metadata_json = Column(JSONB, nullable=True, default=dict)
+    # Branch tree (family contract, plan 11 §6): the root of the visible
+    # conversation. Service-enforced pointer — plain UUID, no FK, so the
+    # session-delete cascade never fights dangling tree edges.
+    active_root_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
 
     messages = relationship(
         "ChatMessage",
@@ -48,6 +52,12 @@ class ChatMessage(Base, UUIDMixin, TimestampMixin):
     citations = Column(JSONB, nullable=True)
     # Human-in-the-loop task cards proposed by the assistant (see HITL_TASK protocol)
     tasks = Column(JSONB, nullable=True)
+    # Branch tree (family contract, plan 11 §6): messages form a forest per
+    # session — ``parent_id`` is the tree edge, ``active_child_id`` the
+    # per-node variant pointer. Both service-enforced (no FKs): deletes
+    # cascade from the session row and never trip tree edges.
+    parent_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
+    active_child_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
 
     session = relationship("ChatSession", back_populates="messages")
 

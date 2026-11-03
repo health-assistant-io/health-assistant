@@ -348,12 +348,12 @@ async def get_anatomy_graph(
 
 # --- Anatomy figures (DB-driven body atlas, raster images) ---
 
-FIGURES_DIR = "anatomy_figures"  # subdirectory under UPLOAD_DIR
+FIGURES_DIR = "anatomy_figures"  # subdirectory under HA_UPLOAD_DIR
 
 
 def _figures_base_dir() -> Path:
-    """Absolute path to the anatomy figures image directory under UPLOAD_DIR."""
-    base = Path(str(settings.UPLOAD_DIR)) / FIGURES_DIR
+    """Absolute path to the anatomy figures image directory under HA_UPLOAD_DIR."""
+    base = Path(str(settings.HA_UPLOAD_DIR)) / FIGURES_DIR
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -361,7 +361,7 @@ def _figures_base_dir() -> Path:
 def save_figure_image(
     slug: str, data: bytes, ext: str = "webp", kind: str = "image"
 ) -> tuple[str, int, int]:
-    """Write image bytes to UPLOAD_DIR/anatomy_figures/{slug}.{ext} (or
+    """Write image bytes to HA_UPLOAD_DIR/anatomy_figures/{slug}.{ext} (or
     {slug}-source.{ext} when kind='source') and return (relative_path, w, h)."""
     import io
     import re
@@ -389,13 +389,13 @@ def save_figure_image(
 def figure_image_abspath(figure: AnatomyFigure) -> Path | None:
     if not figure.image_path:
         return None
-    return Path(str(settings.UPLOAD_DIR)) / figure.image_path
+    return Path(str(settings.HA_UPLOAD_DIR)) / figure.image_path
 
 
 def figure_source_abspath(figure: AnatomyFigure) -> Path | None:
     if not figure.source_image_path:
         return None
-    return Path(str(settings.UPLOAD_DIR)) / figure.source_image_path
+    return Path(str(settings.HA_UPLOAD_DIR)) / figure.source_image_path
 
 
 async def list_anatomy_figures(

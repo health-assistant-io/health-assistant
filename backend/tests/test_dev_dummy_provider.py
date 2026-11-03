@@ -49,13 +49,10 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from integrations.dev_dummy.config_flow import DevDummyConfigFlow
-from integrations.dev_dummy.provider import DevDummyProvider
-from integrations.sdk.exceptions import (
-    IntegrationAuthError,
-    IntegrationDataError,
-    IntegrationRateLimitError,
-)
+
+from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
+from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
+from app.extensions.errors import ExtensionError
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -150,14 +147,14 @@ async def test_pull_data_emits_quantitative_and_categorical(provider: DevDummyPr
 @pytest.mark.asyncio
 async def test_pull_data_raises_auth_error(provider: DevDummyProvider):
     integration = make_integration(config={"simulate_auth_error": True})
-    with pytest.raises(IntegrationAuthError):
+    with pytest.raises(ExtensionError):
         await provider.pull_data(integration)
 
 
 @pytest.mark.asyncio
 async def test_pull_data_raises_rate_limit_error(provider: DevDummyProvider):
     integration = make_integration(config={"simulate_rate_limit": True})
-    with pytest.raises(IntegrationRateLimitError):
+    with pytest.raises(ExtensionError):
         await provider.pull_data(integration)
 
 
@@ -287,7 +284,7 @@ async def test_webhook_rejects_missing_signature_when_secret_set(
         DevDummyProvider, "_resolve_webhook_secret", staticmethod(lambda i: "topsecret")
     )
     request = FakeRequest(body_bytes=b"{}", headers={})
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, {"metrics": []}, request=request)
 
 
@@ -301,7 +298,7 @@ async def test_webhook_rejects_invalid_signature(provider: DevDummyProvider, mon
         body_bytes=b'{"metrics":[]}',
         headers={"X-DevDummy-Signature": "deadbeef"},
     )
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, {"metrics": []}, request=request)
 
 
@@ -323,7 +320,7 @@ async def test_webhook_accepts_valid_signature(provider: DevDummyProvider, monke
 @pytest.mark.asyncio
 async def test_webhook_rejects_non_dict_payload(provider: DevDummyProvider):
     integration = make_integration(config={})
-    with pytest.raises(IntegrationDataError):
+    with pytest.raises(ExtensionError):
         await provider.handle_webhook(integration, "not-a-dict", request=FakeRequest())
 
 
@@ -401,8 +398,16 @@ async def test_supports_tools_returns_empty_when_disabled(provider: DevDummyProv
     assert tools == []
 
 
-def test_supports_tools_flag(provider: DevDummyProvider):
-    assert provider.supports_tools() is True
+def _reg():
+    from app.extensions.registry import IntegrationRegistry
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+    return reg
+
+
+def test_chat_tools_declared():
+    assert _reg().has_capability("dev_dummy", "chat-tools")
 
 
 # ---------------------------------------------------------------------------
@@ -410,8 +415,8 @@ def test_supports_tools_flag(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_clinical_events_flag(provider: DevDummyProvider):
-    assert provider.supports_clinical_events() is True
+def test_clinical_events_data_class_declared():
+    assert "clinical_event" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -436,8 +441,8 @@ async def test_pull_clinical_events_respects_toggle(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_examinations_flag(provider: DevDummyProvider):
-    assert provider.supports_examinations() is True
+def test_examinations_data_class_declared():
+    assert "examination" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -462,8 +467,8 @@ async def test_pull_examinations_respects_toggle(provider: DevDummyProvider):
 # ---------------------------------------------------------------------------
 
 
-def test_supports_catalog_proposals_flag(provider: DevDummyProvider):
-    assert provider.supports_catalog_proposals() is True
+def test_catalog_proposals_data_class_declared():
+    assert "catalog_proposal" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -486,8 +491,8 @@ async def test_pull_catalog_proposals_respects_toggle(provider: DevDummyProvider
 # ---------------------------------------------------------------------------
 
 
-def test_supports_hitl_proposals_flag(provider: DevDummyProvider):
-    assert provider.supports_hitl_proposals() is True
+def test_hitl_proposals_data_class_declared():
+    assert "hitl_proposal" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio
@@ -517,7 +522,7 @@ async def test_pull_hitl_proposals_respects_toggle(provider: DevDummyProvider):
 @pytest.mark.asyncio
 async def test_handle_proposal_resolution_advances_cursor(provider: DevDummyProvider):
     integration = make_integration(config={})
-    from integrations.sdk import ProposalOutcome
+    from app.extensions.sdk import ProposalOutcome
 
     await provider.handle_proposal_resolution(integration, uuid4(), ProposalOutcome())
     assert provider.get_sync_cursor(integration, "hitl_stress_index_resolved") is True
@@ -529,8 +534,8 @@ async def test_handle_proposal_resolution_advances_cursor(provider: DevDummyProv
 # ---------------------------------------------------------------------------
 
 
-def test_supports_documents_flag(provider: DevDummyProvider):
-    assert provider.supports_documents() is True
+def test_documents_data_class_declared():
+    assert "document" in _reg().declared_data_classes("dev_dummy")
 
 
 @pytest.mark.asyncio

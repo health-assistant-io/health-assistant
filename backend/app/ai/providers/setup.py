@@ -1,4 +1,4 @@
-"""§15 BYOK one-click provider setup — USER-scope orchestration.
+"""§15 BYOK one-click provider setup — scope-aware orchestration.
 
 Uniform family semantics (dev/guidelines/ai-features.md §15, frozen
 2026-09-19; Python reference: study ``app/ai/providers/setup.py``):
@@ -10,16 +10,29 @@ Uniform family semantics (dev/guidelines/ai-features.md §15, frozen
 * append-union on re-run (dedupe by wire id); user models are never deleted;
 * gap-fill only empty/dead slots — live assignments are never clobbered;
 * ``preset_key`` stamp + adoption of manual rows (same type+base, earliest
-  first); options body ``curated_ids / bind_chat / bind_vision / bind_stt``.
+  first); options body ``curated_ids / bind_chat / bind_vision / bind_stt /
+  bind_embeddings / bind_decision`` (the five-bind body gained
+  ``bind_embeddings`` with the plan-26 embeddings wave — six wire flags).
 
-Health deltas (recorded per plan 17 Phase 3):
+Health deltas (recorded per plan 17 Phase 3 + plan 26 Phase 5):
 
-* **USER scope only.** Every row this module creates or touches is
-  ``scope=USER`` bound to ``(tenant_id, user_id)`` — SYSTEM/TENANT
-  providers and assignments are never read for adoption and never written.
+* **Scope-aware (SYSTEM / TENANT / USER).** Every row this module creates or
+  touches is bound to the requested ``(scope, tenant_id, user_id)`` — other
+  scopes' providers and assignments are never read for adoption and never
+  written. ``bind_decision`` gap-fill is scope-local the same way.
 * **Slot mapping.** The family ``chat``/text slot is health's ``default``
-  task (the resolution fallback), the ``vision`` slot is ``ocr``, and the
-  ``stt`` slot is ``transcription``. Health has no embeddings slot.
+  task (the resolution fallback), the ``vision`` slot is ``ocr``, the
+  ``stt`` slot is ``transcription``, and the ``embeddings`` slot is
+  ``embed``. The decision kinds are health task types
+  (``decision_tool_dispatch`` &c.); ADR-0036: setup binds only the
+  ``decision`` default slot (kind slots inherit).
+* **Decision-only presets** (wire type ``decision``, e.g. ``typesafe``)
+  validate via the decision probe (D13/D18) — one minimal typed question
+  under the abort timeout; a classified failure persists nothing. They ride
+  ``ALL_PRESETS`` but never the tile surface.
+* **PHI scope guard (D17).** Rows this module creates or rebinds never
+  carry the ``phi_allowed`` opt-in — the explicit override lives on the
+  task-assignment surface only.
 * **Secrets** follow health's existing encrypted-at-rest pattern
   (``app.core.encryption`` on ``ai_providers.api_key``) — never plaintext,
   never logged.
@@ -27,6 +40,7 @@ Health deltas (recorded per plan 17 Phase 3):
   create/update path.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -35,10 +49,11 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.decide.systemone.probe import DecisionProbeInput, probe_decision_provider
 from app.ai.providers.capabilities import required_capabilities_for_task
-from app.ai.providers.enums import TaskType
+from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.errors import ClassifiedProviderError, classify_provider_error
-from app.ai.providers.presets import SETUP_PRESETS
+from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
 from app.ai.providers.service import guard_api_base
 from app.core.encryption import decrypt_secret, encrypt_secret
 from app.models.ai_provider_model import (
@@ -47,6 +62,7 @@ from app.models.ai_provider_model import (
     AIScope,
     AITaskAssignment,
 )
+from app.models.enums import AIModelCapability
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +71,7 @@ _SLOT_TASK_TYPES: dict[str, str] = {
     "chat": TaskType.DEFAULT.value,
     "vision": TaskType.OCR.value,
     "stt": TaskType.TRANSCRIPTION.value,
+    "embeddings": TaskType.EMBED.value,
 }
 
 
@@ -81,6 +98,8 @@ class SetupOptions:
     bind_chat: bool = True
     bind_vision: bool = True
     bind_stt: bool = True
+    bind_embeddings: bool = True
+    bind_decision: bool = True
 
 
 @dataclass(frozen=True)
@@ -91,6 +110,8 @@ class SetupOutcome:
     assigned_chat_model: str | None = None
     assigned_vision_model: str | None = None
     assigned_stt_model: str | None = None
+    assigned_embeddings_model: str | None = None
+    assigned_decision_slots: dict[str, str] | None = None
 
 
 @dataclass
@@ -108,7 +129,7 @@ class _PersistedModel:
 def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
     """Infer the §15 capability set from a model id (optional Gemini methods)."""
     name = external_id.lower()
-    if "embedding" in name or "bge" in name or (methods is not None and "embedContent" in methods):
+    if "embed" in name or "bge" in name or (methods is not None and "embedContent" in methods):
         return ["embeddings"]
     if any(hint in name for hint in ("whisper", "transcribe", "stt")):
         return ["stt"]
@@ -123,6 +144,7 @@ def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
         "gpt-4.1",
         "gpt-4-turbo",
         "gpt-5",
+        "gpt-6",
         "claude-3",
         "claude-4",
         "claude-sonnet",
@@ -139,6 +161,7 @@ def infer_caps(external_id: str, methods: list[str] | None = None) -> list[str]:
     tool_hints = (
         "gpt-4",
         "gpt-5",
+        "gpt-6",
         "o3",
         "o4",
         "claude",
@@ -422,6 +445,89 @@ def _match_curated(model_id: str, curated: list[str]) -> str | None:
     return None
 
 
+def _decision_model_specs(preset: dict[str, Any]) -> list[dict[str, Any]]:
+    return [dict(entry) for entry in (preset.get("decision_models") or [])]
+
+
+async def _upsert_decision_models(
+    db: AsyncSession,
+    provider: AIProviderModel,
+    specs: list[dict[str, Any]],
+) -> dict[str, AIModel]:
+    """Persist the preset's decision models (caps ``['decision']`` + transport).
+
+    Append-union like the chat catalog: existing rows gain the capability,
+    nothing is ever deleted.
+    """
+    existing = {
+        model.model_name: model
+        for model in (await db.execute(select(AIModel).where(AIModel.provider_id == provider.id)))
+        .scalars()
+        .all()
+    }
+    persisted: dict[str, AIModel] = {}
+    for entry in specs:
+        model_name = str(entry["id"])
+        transport = str(entry.get("transport") or "systemone")
+        model = existing.get(model_name)
+        if model is None:
+            model = AIModel(
+                provider_id=provider.id,
+                name=str(entry.get("name") or model_name),
+                model_name=model_name,
+                capabilities=[AIModelCapability.DECISION.value],
+                decision_transport=transport,
+                is_active=True,
+                settings={},
+            )
+            db.add(model)
+            await db.flush()
+        else:
+            model.capabilities = list(
+                dict.fromkeys([*(model.get_capabilities()), AIModelCapability.DECISION.value])
+            )
+            model.decision_transport = transport
+            model.is_active = True
+        persisted[model_name] = model
+    return persisted
+
+
+async def _probe_decision_preset(
+    provider: AIProviderModel, api_key: str, preset: dict[str, Any]
+) -> None:
+    """Validate a decision-only preset via the decision probe (D13/D18).
+
+    Raises httpx-shaped errors so the §15 classifier maps the failure
+    exactly like a catalog fetch (timeout → ``timeout``, 401 →
+    ``invalid_key`` &c.); the caller rolls back — nothing persists.
+    """
+    model_name = decision_probe_model_id(preset)
+    model = AIModel(
+        provider_id=provider.id,
+        name=model_name,
+        model_name=model_name,
+        capabilities=[AIModelCapability.DECISION.value],
+        decision_transport="systemone",
+    )
+    result = await asyncio.to_thread(
+        probe_decision_provider,
+        DecisionProbeInput(provider=provider, model=model, api_key=api_key),
+    )
+    if result.ok:
+        return
+    if result.kind == "timeout":
+        raise httpx.ReadTimeout(result.error or "decision probe timed out") from None
+    if result.status is not None:
+        request = httpx.Request("POST", provider.api_base)
+        response = httpx.Response(
+            result.status, request=request, text=result.error or "decision probe failed"
+        )
+        raise httpx.HTTPStatusError(
+            f"Client error {result.status}", request=request, response=response
+        ) from None
+    raise RuntimeError(result.error or "decision probe failed") from None
+
+
 # ---------------------------------------------------------------------------
 # Setup + set-default
 # ---------------------------------------------------------------------------
@@ -440,16 +546,22 @@ async def setup_provider_from_preset(
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> SetupOutcome:
     """Run the §15 setup flow for one preset, at the requested scope
-    (SYSTEM / TENANT / USER — the caller enforces role access)."""
+    (SYSTEM / TENANT / USER — the caller enforces role access).
+
+    Decision-only presets (wire type ``decision``) validate via the decision
+    probe instead of a catalog fetch (D13); mixed presets carry their
+    decision models alongside the chat catalog.
+    """
     options = options or SetupOptions()
-    preset = SETUP_PRESETS.get(preset_key)
+    preset = ALL_PRESETS.get(preset_key)
     if preset is None:
         raise UnknownPresetError(f"unknown provider preset '{preset_key}'")
 
+    decision_only = preset["wire_type"] == "decision"
     guard_api_base(preset["base_url"])
 
     existing = await _resolve_target_row(db, preset_key, preset, scope, tenant_id, user_id)
-    key = "" if preset["local"] else (api_key or "").strip()
+    key = "" if (preset["local"] and not decision_only) else (api_key or "").strip()
     if not key and existing is not None:
         key = decrypt_secret(existing.api_key) or ""
 
@@ -476,10 +588,15 @@ async def setup_provider_from_preset(
     provider.preset_key = preset_key
     await db.flush()
 
+    decision_specs = _decision_model_specs(preset)
+    catalog: list[RemoteModel] = []
     try:
-        catalog = await fetch_remote_models(
-            preset["wire_type"], provider.api_base, key or None, transport=transport
-        )
+        if decision_only:
+            await _probe_decision_preset(provider, key, preset)
+        else:
+            catalog = await fetch_remote_models(
+                preset["wire_type"], provider.api_base, key or None, transport=transport
+            )
     except Exception as error:
         classified = classify_provider_error(
             error,
@@ -518,7 +635,7 @@ async def setup_provider_from_preset(
         provider.api_key = encrypt_secret(key)
     await db.flush()
 
-    assigned: dict[str, str | None] = {"chat": None, "vision": None, "stt": None}
+    assigned: dict[str, str | None] = {"chat": None, "vision": None, "stt": None, "embed": None}
 
     preferred = preset["preferred_model"]
     preferred_model_id = preferred["id"] if preferred else None
@@ -620,15 +737,76 @@ async def setup_provider_from_preset(
                 by_wire_id[stt_resolved_id],
             )
 
+    # Embeddings default (§15 embeddings wave): the preset's docs-verified
+    # default gap-fills the EMPTY embed slot — resolved in the curated
+    # catalog by external_id or snapshot-suffix match, empty slots only,
+    # never a live binding.
+    embeddings_model_id = preset["embeddings_model"]
+    embeddings_resolved_id = None
+    if embeddings_model_id:
+        embeddings_resolved_id = next(
+            (
+                item.external_id
+                for item in persist_catalog
+                if item.external_id == embeddings_model_id
+                or _match_curated(item.external_id, curated) == embeddings_model_id
+            ),
+            None,
+        )
+    if options.bind_embeddings and embeddings_resolved_id:
+        _, embeddings_model = await _slot_alive(
+            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["embeddings"]
+        )
+        if embeddings_model is None:
+            assigned["embed"] = embeddings_resolved_id
+            await _bind_slot(
+                db,
+                scope,
+                tenant_id,
+                user_id,
+                _SLOT_TASK_TYPES["embeddings"],
+                provider,
+                by_wire_id[embeddings_resolved_id],
+            )
+
+    # Decision slots (plan 26 D14/D17): capability-aware gap-fill at the
+    # SAME scope — each EMPTY declared slot gets the preset's decision
+    # default; live slots are never clobbered; `open-args` is not a slot;
+    # rows never carry the phi_allowed opt-in.
+    decision_rows: dict[str, AIModel] = {}
+    if decision_specs:
+        decision_rows = await _upsert_decision_models(db, provider, decision_specs)
+        await db.flush()
+
+    assigned_decision: dict[str, str] = {}
+    decision_default = preset.get("decision_default")
+    if options.bind_decision and decision_rows and decision_default:
+        candidate = decision_rows.get(str(decision_default))
+        if candidate is None:
+            candidate = next(iter(decision_rows.values()))
+        # ADR-0036 §3: setup binds the `decision` default slot only — one
+        # assignment, one review row; kind slots inherit. Single-slot per
+        # ADR-0037 (no fallback leg of its own).
+        _, live_model = await _slot_alive(db, scope, tenant_id, user_id, TaskType.DECISION.value)
+        if live_model is None:
+            assigned_decision[TaskType.DECISION.value] = candidate.model_name
+            await _bind_slot(
+                db, scope, tenant_id, user_id, TaskType.DECISION.value, provider, candidate
+            )
+        if assigned_decision:
+            await db.flush()
+
     await db.commit()
 
     return SetupOutcome(
         provider_id=provider.id,
-        catalog_count=len(persist_catalog),
+        catalog_count=len(persist_catalog) + len(decision_rows),
         curated_missed=curated_missed,
         assigned_chat_model=assigned["chat"],
         assigned_vision_model=assigned["vision"],
         assigned_stt_model=assigned["stt"],
+        assigned_embeddings_model=assigned["embed"],
+        assigned_decision_slots=assigned_decision or None,
     )
 
 
@@ -670,11 +848,15 @@ async def set_default_model(
         )
         if elsewhere is not None:
             raise CrossProviderModelError(f"model '{model_name}' belongs to another provider")
+        decision_provider = provider.provider_type == ProviderType.DECISION.value
         model = AIModel(
             provider_id=provider.id,
             name=model_name,
             model_name=model_name,
-            capabilities=infer_caps(model_name),
+            capabilities=(
+                [AIModelCapability.DECISION.value] if decision_provider else infer_caps(model_name)
+            ),
+            decision_transport="systemone" if decision_provider else None,
             is_active=True,
             settings={},
         )

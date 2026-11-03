@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient

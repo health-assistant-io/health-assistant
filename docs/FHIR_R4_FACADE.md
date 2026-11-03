@@ -7,7 +7,7 @@ The frontend uses domain endpoints (`/patients/*`, `/observations/*`,
 app-specific fields the UI needs. This document explains how to use the facade
 and how to add new resources.
 
-> **Coverage**: 19 FHIR resources registered; standard search params + Bundle
+> **Coverage**: 20 FHIR resources registered; standard search params + Bundle
 > responses + canonical CRUD + soft-delete tombstones + Provenance-on-write.
 > Includes two **computed** terminology resources (`CodeSystem`/`ValueSet`) that
 > project from the `concepts` table without a dedicated backing table.
@@ -328,7 +328,7 @@ which return ORM-shape dicts (snake_case + app fields):
 backend/app/
 ├── facade/                                 # the facade package (outside api/v1 — no circular imports)
 │   ├── __init__.py                         # docstring
-│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (19 resources)
+│   ├── registry.py                         # RESOURCE_REGISTRY + register_all() (20 resources)
 │   ├── terminology.py                      # computed CodeSystem/ValueSet projections (Phase 6)
 │   ├── search_params.py                    # FhirSearchParams + parse_search_params + RESOURCE_PARAMS + SORT_COLUMNS
 │   ├── responses.py                        # OperationOutcome + 201/200/204/410/404 helpers
@@ -393,6 +393,4 @@ backend/tests/                              # 131 new tests across 6 files
 ## References
 
 - **Architecture**: `docs/ARCHITECTURE.md` "FHIR R4 Facade (Stage 3)".
-- **Status**: `docs/STATUS.md` (FHIR R4 facade bullet under Backend completed).
-- **Skills**: `clinical-data` §1, `backend` §10.
 - **FHIR R4 spec**: <https://hl7.org/fhir/R4/>

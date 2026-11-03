@@ -3,9 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from nx_auth.headers import HeaderPolicy, SecurityHeadersMiddleware
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.requests import ClientDisconnect
 
 from app.api.v1 import api_router
@@ -112,7 +113,7 @@ async def lifespan(app: FastAPI):
 
     # Seed initial data
     from app.core.database import DATABASE_AVAILABLE
-    from app.core.integration_registry import integration_registry
+    from app.extensions.registry import integration_registry
     from app.services.seed_service import seed_service
 
     if DATABASE_AVAILABLE:
@@ -278,7 +279,7 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to close checkpoint store cleanly: {e}")
 
     try:
-        from app.core.integration_registry import integration_registry
+        from app.extensions.registry import integration_registry
 
         for provider in integration_registry.get_all_providers():
             try:
@@ -435,8 +436,30 @@ async def catalog_conflict_handler(request: Request, exc: CatalogConflict):
     )
 
 
-# CORS middleware
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+class SSEPassthroughGZipMiddleware(GZipMiddleware):
+    """GZip compression that never touches ``text/event-stream`` responses.
+
+    Compressing event streams buys nothing — every frame is flushed
+    immediately — and risks buffering bubbles through intermediaries (a
+    gzip encoder that only completes the stream when the stream ends).
+    The exclusion is pinned explicitly here instead of being left to the
+    middleware library's default exclusion list, so an upstream default
+    change can never silently re-introduce SSE compression; every other
+    response compresses exactly as :class:`GZipMiddleware` would.
+    """
+
+    def __init__(self, app, minimum_size: int = 500, compresslevel: int = 9):
+        super().__init__(
+            app,
+            minimum_size=minimum_size,
+            compresslevel=compresslevel,
+            exclude_content_types=tuple(
+                dict.fromkeys((*DEFAULT_EXCLUDED_CONTENT_TYPES, "text/event-stream"))
+            ),
+        )
+
+
+app.add_middleware(SSEPassthroughGZipMiddleware, minimum_size=1000)
 
 # §10 double-submit CSRF (plan 16 H3): non-safe /api/* requests that carry
 # session/CSRF cookies must echo nx_csrf in X-CSRF-Token (403 otherwise).
@@ -447,23 +470,17 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(CsrfMiddleware)
 
 
-# Security: baseline response headers (audit A7). Applied to every response.
-# HSTS only makes sense over HTTPS and is most effective when set by the
-# reverse proxy; we still emit it so direct-HTTPS deployments are protected.
-# CSP is intentionally permissive for an API+SPA (the frontend is a separate
-# origin); tighten APP_CSP_CONTENT via env if you serve the SPA from here.
-@app.middleware("http")
-async def security_headers_middleware(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    # X-Frame-Options: DENY is the safe baseline. Routes that legitimately
-    # need to be embedded in a same-origin <iframe> (e.g. the inline document
-    # download used for PDF preview) may set the header themselves; use
-    # setdefault so an explicit per-route value wins. See documents.py.
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
+# Security: baseline response headers (audit A7) — the kit's middleware
+# with health's policy (plan 21): no CSP here (the frontend is a separate
+# origin; the website's CSP is single-sourced in nginx/website config),
+# X-Frame-Options overridable per route (the inline document download
+# relaxes to SAMEORIGIN for the PDF preview iframe), and HSTS only when
+# the client's connection actually arrived over TLS. Applied to every
+# response; the nginx layer (ADR-0005) stays untouched.
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    policy=HeaderPolicy(web_csp=None, frame_overridable=True, hsts_behind_proxy=True),
+)
 
 
 # Security: CORS configuration
@@ -530,12 +547,19 @@ async def smart_configuration():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (liveness — always 200; dependency states
+    ride the payload, never the status code: a degraded Redis must not
+    fail the probe containers act on)."""
     from app.core.database import DATABASE_AVAILABLE
+    from app.core.redis import redis_client
 
     db_status = "connected" if DATABASE_AVAILABLE else "not_available"
+    try:
+        redis_status = "connected" if await redis_client.ping() else "not_available"
+    except Exception:
+        redis_status = "not_available"
 
-    return {"status": "healthy", "database": db_status, "redis": "not_configured"}
+    return {"status": "healthy", "database": db_status, "redis": redis_status}
 
 
 @app.get("/")

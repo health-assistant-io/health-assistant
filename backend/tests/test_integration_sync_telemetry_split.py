@@ -433,29 +433,32 @@ def test_run_sync_wires_clinical_events_opt_in_hook():
     assert "source_integration_id=integration.id" in src
 
 
-def test_opt_in_helper_handles_missing_method():
-    from app.services.integration_sync_service import _opt_in
+def test_declared_helper_reads_the_registry(monkeypatch):
+    """``_declared`` answers from manifest declarations — unknown domains
+    declare nothing, and no provider method is ever probed."""
+    from app.extensions.registry import IntegrationRegistry
+    from app.services.integration_sync_service import _declared
+
+    reg = IntegrationRegistry()
+    reg._load_manifests()
+
+    import app.services.integration_sync_service as svc
 
     class _Bare:
         pass
 
-    assert _opt_in(_Bare(), "supports_clinical_events") is False
-
-    class _OptIn:
-        def supports_clinical_events(self):
-            return True
-
-    assert _opt_in(_OptIn(), "supports_clinical_events") is True
-
-
-def test_opt_in_helper_swallows_exceptions_from_capability_probe():
-    from app.services.integration_sync_service import _opt_in
-
-    class _Broken:
-        def supports_clinical_events(self):
-            raise RuntimeError("boom")
-
-    assert _opt_in(_Broken(), "supports_clinical_events") is False
+    # a real bundled domain answers from its manifest (patch the singleton —
+    # at runtime the app's startup initialize() populates it)
+    real = svc.integration_registry
+    svc.integration_registry = reg
+    try:
+        assert _declared(type("P", (), {"domain": "fhir_server"})(), "supports_documents") is True
+    finally:
+        svc.integration_registry = real
+    # a domain with no such declaration answers False
+    assert _declared(type("P", (), {"domain": "webhook"})(), "supports_documents") is False
+    # no domain attribute -> nothing declared
+    assert _declared(_Bare(), "supports_documents") is False
 
 
 def test_run_sync_wires_examinations_opt_in_hook():

@@ -1,8 +1,8 @@
-"""Unit tests for ``integrations.sdk.webhook_security``.
+"""Unit tests for ``app.extensions.sdk.webhook_security``.
 
 These pin the contract used by both the platform webhook/API-proxy
 endpoints (``app.api.v1.endpoints.integrations``) and per-provider
-verification (``integrations.dev_dummy.provider``). The HMAC algorithm
+verification (``app.extensions.builtin.dev_dummy.provider``). The HMAC algorithm
 itself was previously inlined in two places; this is the canonical
 implementation, so the tests are exhaustive about the accepted forms.
 """
@@ -14,7 +14,8 @@ import hmac
 import time
 
 import pytest
-from integrations.sdk.webhook_security import (
+
+from app.extensions.sdk.webhook_security import (
     DEFAULT_WEBHOOK_SIGNATURE_HEADERS,
     get_signature_header,
     verify_canonical_signature,

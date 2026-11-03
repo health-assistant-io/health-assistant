@@ -26,7 +26,7 @@ async def test_database_connection():
     print("\n📊 TEST 1: Database Connection")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with engine.connect() as conn:
             result = await conn.execute(select(func.count(TenantModel.id)))
             tenant_count = result.scalar()
@@ -44,7 +44,7 @@ async def test_documents_exist():
     print("\n📄 TEST 2: Documents in Database")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with AsyncSession(engine) as session:
             result = await session.execute(select(DocumentModel))
             documents = result.scalars().all()
@@ -73,7 +73,7 @@ async def test_files_exist():
     print("\n📁 TEST 3: Uploaded Files on Disk")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with AsyncSession(engine) as session:
             result = await session.execute(select(DocumentModel))
             documents = result.scalars().all()
@@ -104,7 +104,7 @@ async def test_user_tenant_relationship():
     print("\n👥 TEST 4: User-Tenant Relationship")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with AsyncSession(engine) as session:
             # Get all users with their tenants
             result = await session.execute(
@@ -132,7 +132,7 @@ async def test_document_ownership():
     print("\n🔐 TEST 5: Document Ownership")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with AsyncSession(engine) as session:
             result = await session.execute(
                 select(DocumentModel, UserModel).join(
@@ -162,7 +162,7 @@ async def test_extraction_status():
     print("\n🔍 TEST 6: OCR Extraction Status")
     print("-" * 50)
     try:
-        engine = create_async_engine(settings.DATABASE_URL)
+        engine = create_async_engine(settings.HA_DATABASE_URL)
         async with AsyncSession(engine) as session:
             result = await session.execute(
                 select(DocumentModel).where(DocumentModel.extracted_text is not None)

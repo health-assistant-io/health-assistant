@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neuronection.dev/contracts/capability-rpc.schema.json",
+  "title": "Capability RPC message (capability-rpc/1) — one JSON object per line",
+  "type": "object",
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "type": {
+      "enum": ["call", "result", "error", "event"]
+    },
+    "id": {
+      "type": ["integer", "string"],
+      "minimum": 0,
+      "maxLength": 64,
+      "$comment": "Correlation id, host-assigned for host->ext calls, extension-assigned for ext->host capability calls; echoed by result/error. 'ok' for events is not permitted — events carry ids only for audit correlation."
+    },
+    "method": {
+      "enum": [
+        "cap.net.fetch",
+        "cap.state.get",
+        "cap.state.set",
+        "cap.items.emit",
+        "cap.secrets.need",
+        "ext.invoke",
+        "ext.dispose",
+        "evt.progress",
+        "evt.log"
+      ],
+      "$comment": "Closed method vocabulary (extension-charter.json rpc) — an unknown method is a protocol error and the call is refused (never dispatched)."
+    },
+    "params": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "array", "object", "null"],
+        "$comment": "Params are method-specific (typed shapes in capability-rpc.md §4/§5); the schema bounds the envelope — hosts validate params per method at the seam. String values are capped at 8192 chars host-side (framing cap: one line <= limits.rpcLineMaxBytes)."
+      }
+    },
+    "result": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": true,
+      "$comment": "Method-specific result payload (typed shapes in the spec); bounded by the framing cap."
+    },
+    "error": {
+      "$ref": "#/$defs/errorEnvelope"
+    }
+  },
+  "required": ["v", "type", "id"],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "call" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["method", "params"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "result" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["result"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "error" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["method", "error"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "event" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "method": { "enum": ["evt.progress", "evt.log"] }
+        },
+        "required": ["method"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": { "const": "call" },
+          "method": { "enum": ["evt.progress", "evt.log"] }
+        },
+        "required": ["type", "method"]
+      },
+      "then": false,
+      "$comment": "Events are never calls (and vice versa) — the type discriminates."
+    }
+  ],
+  "$defs": {
+    "errorEnvelope": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "not-ready",
+            "needs-secret",
+            "invalid",
+            "unsupported",
+            "io",
+            "not-found",
+            "path-denied",
+            "net-denied",
+            "auth",
+            "rate-limited",
+            "unreachable",
+            "protocol",
+            "provider",
+            "budget",
+            "canceled"
+          ],
+          "$comment": "The charter error enum, verbatim (extension-charter.json errors) — one typed vocabulary across manifests, envelopes and the seam."
+        },
+        "detail": {
+          "$ref": "#/$defs/errorDetail",
+          "$comment": "A bounded object, never a string (7E wire truth): JSON-encoded-string details are deleted. Declared keys only; `message` is the capped host diagnostic for logs/typed machine surfaces — product UI copy is keyed by `code` and may interpolate the data keys, never `message` raw."
+        },
+        "retryable": {
+          "enum": ["yes", "no", "after-delay", "after-config-change"]
+        },
+        "retryAfterMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["code", "detail", "retryable"],
+      "additionalProperties": false
+    },
+    "errorDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 0,
+      "properties": {
+        "message": { "type": "string", "maxLength": 400 },
+        "path": { "type": "string", "maxLength": 256 },
+        "field": { "type": "string", "maxLength": 64 },
+        "id": { "type": "string", "maxLength": 128 },
+        "packId": { "type": "string", "maxLength": 128 },
+        "runId": { "type": "string", "maxLength": 128 },
+        "slot": { "type": "string", "maxLength": 128 },
+        "host": { "type": "string", "maxLength": 253 },
+        "hop": { "type": "integer", "minimum": 0 },
+        "method": { "type": "string", "maxLength": 128 },
+        "op": { "type": "string", "maxLength": 64 },
+        "stage": { "type": "string", "maxLength": 64 },
+        "engine": { "type": "string", "maxLength": 64 },
+        "expected": { "type": "string", "maxLength": 128 },
+        "actual": { "type": "string", "maxLength": 128 },
+        "limit": { "type": "integer", "minimum": 0 },
+        "used": { "type": "integer", "minimum": 0 }
+      },
+      "$comment": "The closed detail vocabulary (plan 37 7E / D3, bounded object): paths, field names, ids, engine kind, hop/host, caps — data, never prose. `message` is the one capped diagnostic slot (logs/typed machine surfaces); product copy is keyed by `code`. Construction rules (validator-owned, mirrored at both seams): only declared keys survive; `message` truncates at 400 chars; the SERIALIZED object is capped at limits.errorDetailMaxChars (truncate `message` first, then drop non-message keys)."
+    }
+  },
+  "$comment": "STRUCTURAL GATE for one framed line. The protocol's behavioral law lives in contracts/capability-rpc.md: one process per extension, frozen module surface, wall-clock + memory watchdogs per call, per-extension quotas, one audit row per capability call, secrets never crossing the seam, net only via the host-side polite runtime scoped to declared domains (all hops)."
+}

@@ -16,7 +16,7 @@ def get_nlp_extractor(
     api_base: str | None = None,
     model: str | None = None,
     max_tokens: int = 65536,
-    temperature: float = 0.7,
+    temperature: float | None = None,
     llm: BaseChatModel | None = None,
     **kwargs,
 ) -> NLPExtractor:

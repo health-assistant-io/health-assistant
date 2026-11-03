@@ -14,8 +14,8 @@ these tests pin the wiring (bridge → shared helper, no inline construction).
 import ast
 import inspect
 
-import integrations.health_assistant_bridge.provider as bridge_module
-from integrations.health_assistant_bridge.provider import HealthAssistantBridgeProvider
+import app.extensions.builtin.health_assistant_bridge.provider as bridge_module
+from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 
 
 def _tree() -> ast.Module:

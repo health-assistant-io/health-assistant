@@ -1,4 +1,5 @@
 # ruff: noqa: B904 -- long immutable strings; reflow when touched
+import asyncio
 from typing import Any
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers import setup as byok_setup
+from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.service import AIProviderService
 from app.ai.schemas.config import (
     AIConfigSummary,
@@ -29,8 +31,8 @@ from app.ai.schemas.config import (
 )
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.ai_provider_model import AIScope
-from app.models.enums import Role
+from app.models.ai_provider_model import AIModel, AIProviderModel, AIScope
+from app.models.enums import AIModelCapability, Role
 from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/ai-config", tags=["AI Configuration"])
@@ -271,6 +273,10 @@ async def fetch_external_models(
     Scope-checked against the provider row; ``api_base`` is SSRF-guarded
     (scheme + DNS-aware private/loopback blocking) inside the service via
     ``guard_api_base`` — audit 2026-09-11 S-2.
+
+    Decision-only providers (ADR-0032 D13) validate via the decision probe
+    instead of a catalog fetch: success returns the persisted decision
+    models, a failed probe maps to the same error surface (never an oracle).
     """
     service = AIProviderService(db)
     provider = await service.get_provider(provider_id)
@@ -278,6 +284,14 @@ async def fetch_external_models(
         raise HTTPException(status_code=404, detail="Provider not found")
 
     verify_provider_access(provider, current_user)
+
+    if provider.provider_type == ProviderType.DECISION.value:
+        try:
+            return await _probe_decision_provider_models(db, provider)
+        except Exception:
+            logger = __import__("logging").getLogger(__name__)
+            logger.exception("decision probe failed for provider %s", provider_id)
+            raise HTTPException(status_code=502, detail="Decision provider probe failed")
 
     try:
         models = await service.fetch_external_models(provider_id)
@@ -289,6 +303,76 @@ async def fetch_external_models(
         logger = __import__("logging").getLogger(__name__)
         logger.exception("fetch_external_models failed for provider %s", provider_id)
         raise HTTPException(status_code=502, detail="Upstream provider request failed")
+
+
+def _preset_derived_probe_model(provider: AIProviderModel) -> AIModel | None:
+    """A throwaway probe model derived from the provider's preset stamp.
+
+    §15 single-source: the probe id comes from the synced canonical data
+    (the preset's ``decision_models[0].id`` / ``decision_default``) —
+    never a code literal. Returns None when nothing can be derived
+    (no preset stamp, or the preset declares no decision models): the
+    caller fails honestly instead of inventing an id.
+    """
+    from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
+
+    if not provider.preset_key:
+        return None
+    preset = ALL_PRESETS.get(provider.preset_key)
+    if preset is None:
+        return None
+    try:
+        model_name = decision_probe_model_id(preset)
+    except ValueError:
+        return None
+    return AIModel(
+        provider_id=provider.id,
+        name=model_name,
+        model_name=model_name,
+        capabilities=[AIModelCapability.DECISION.value],
+        decision_transport="systemone",
+    )
+
+
+async def _probe_decision_provider_models(
+    db: AsyncSession, provider: AIProviderModel
+) -> list[dict[str, Any]]:
+    """Probe a decision provider and return its persisted decision models."""
+    from sqlalchemy import select as sa_select
+
+    from app.ai.decide import DecisionProbeInput, probe_decision_provider
+
+    decision_models = (
+        (
+            await db.execute(
+                sa_select(AIModel).where(
+                    AIModel.provider_id == provider.id,
+                    AIModel.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    probe_model = decision_models[0] if decision_models else _preset_derived_probe_model(provider)
+    if probe_model is None:
+        raise RuntimeError(
+            "no decision model to probe: add a decision model to this provider, then revalidate"
+        )
+    result = await asyncio.to_thread(
+        probe_decision_provider,
+        DecisionProbeInput(
+            provider=provider,
+            model=probe_model,
+            api_key=provider.get_api_key_plaintext() or "",
+        ),
+    )
+    if not result.ok:
+        raise RuntimeError(result.error or "decision probe failed")
+    return [
+        {"id": model.model_name, "name": model.name, "owned_by": provider.name}
+        for model in decision_models
+    ]
 
 
 # Model endpoints
@@ -394,6 +478,21 @@ async def delete_model(
     return None
 
 
+def _guard_phi_allowed(task_type: str, phi_allowed: bool) -> None:
+    """D17 PHI scope guard: the explicit opt-in exists ONLY on decision_*.
+
+    Setting ``phi_allowed`` on a non-decision task type is a 422 — the guard
+    is decision-specific by contract, not a general assignment flag.
+    """
+    if phi_allowed and not (
+        TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="phi_allowed applies to decision_* task assignments only",
+        )
+
+
 # Task assignment endpoints
 @router.post(
     "/task-assignments",
@@ -408,6 +507,7 @@ async def create_task_assignment(
     """Create a new task assignment"""
     service = AIProviderService(db)
 
+    _guard_phi_allowed(assignment_data.task_type, assignment_data.phi_allowed)
     check_scope_access(
         assignment_data.scope,
         current_user,
@@ -513,6 +613,9 @@ async def update_task_assignment(
     assignment = await service.get_task_assignment(assignment_id)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
+
+    if assignment_data.phi_allowed is not None:
+        _guard_phi_allowed(assignment.task_type, assignment_data.phi_allowed)
 
     check_scope_access(
         assignment.scope,
@@ -692,16 +795,20 @@ async def get_default_for_task(
 
 @router.get("/provider-presets", response_model=ProviderPresetsResponse)
 async def list_provider_presets():
-    """The one-click setup tile surface (§15 canonical data + health overlay).
+    """The preset surface (§15 canonical data + health overlay).
 
-    Public metadata only — no keys, no secrets. Disabled registry-native
-    presets are reported with their recorded reasons so the UI stays
-    explainable.
+    ``presets`` covers every mappable preset (``ALL_PRESETS`` — including
+    decision-only entries such as ``typesafe``). ``order`` is the TILE
+    surface (family order minus health-disabled presets; the docs-verified
+    ``typesafe`` preset rides the order like every preset — the §13.3
+    exposure switch flipped 2026-10-13). Public metadata only — no keys,
+    no secrets. Disabled registry-native presets are reported with their
+    recorded reasons so the UI stays explainable.
     """
     from app.ai.providers.presets import (
+        ALL_PRESETS,
         DISABLED_PRESET_REASONS,
         PRESET_ORDER,
-        SETUP_PRESETS,
     )
 
     presets = {
@@ -717,10 +824,14 @@ async def list_provider_presets():
             preferred_model=row["preferred_model"],
             curated_models=row["curated_models"],
             stt_model=row["stt_model"],
+            embeddings_model=row["embeddings_model"],
+            decision_models=row["decision_models"],
+            decision_default=row["decision_default"],
+            provisional=row["provisional"],
             steps=row["steps"],
             free_tier_note=row["free_tier_note"],
         )
-        for key, row in SETUP_PRESETS.items()
+        for key, row in ALL_PRESETS.items()
     }
     return ProviderPresetsResponse(
         order=[key for key in PRESET_ORDER if key in presets],
@@ -779,6 +890,8 @@ async def setup_provider(
                 bind_chat=body.options.bind_chat,
                 bind_vision=body.options.bind_vision,
                 bind_stt=body.options.bind_stt,
+                bind_embeddings=body.options.bind_embeddings,
+                bind_decision=body.options.bind_decision,
             ),
             **_scope_context(body.scope, current_user),
         )
@@ -804,6 +917,8 @@ async def setup_provider(
         assigned_chat_model=outcome.assigned_chat_model,
         assigned_vision_model=outcome.assigned_vision_model,
         assigned_stt_model=outcome.assigned_stt_model,
+        assigned_embeddings_model=outcome.assigned_embeddings_model,
+        assigned_decision_slots=outcome.assigned_decision_slots,
     )
 
 

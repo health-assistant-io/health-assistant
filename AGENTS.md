@@ -1,32 +1,31 @@
 # AGENTS.md — Health Assistant (core)
 
 Health Assistant is a self-hosted, privacy-first, open-source health records
-platform (FastAPI + React + FHIR + a Biomarker Engine). This repo (`core/`) holds
-the **backend, the integrations framework, and the web frontend**. The Android
-companion app lives in a **sibling repo** at `../app/` (see *Mobile* below).
+platform (FastAPI + React + FHIR + a Biomarker Engine). This repo (`core/`)
+holds the **backend, the extension subsystem (integrations framework), and
+the web frontend**. The Android companion app lives in a separate repository;
+the Kotlin bridge SDK ships here under
+`integrations/health-assistant-bridge/kotlin-sdk/`.
 
-**Identity class S** (family ADR-0013): server-first, always
-authenticated — the family auth contract binds claims, lifetimes, cookie
-storage, and dependency names; health keeps its Class S domain extensions
-(tenants + hard `tenant_id` filtering, roles, invites, SMART scopes,
-ownership cascade, integration credentials). Rollout deltas: per-purpose
-keys (`SESSION`/`REFRESH`/`DATA` — the shared `SECRET_KEY` retires),
-cookie sessions for browsers (bearer stays for Android/integrations),
-and `audit_events` for record access + admin actions.
-
-Before any task, load the matching skill in `.opencode/skills/`:
-`backend`, `frontend`, `ai-pipeline`, `clinical-data`, `integrations`, `mobile`,
-`documentation`, `versioning`, `seeding`, `hitl-task-cards`.
+The API is server-first and always authenticated: multi-tenant with hard
+`tenant_id` filtering on every query, roles, invites, SMART-on-FHIR scopes,
+an ownership cascade, and per-purpose signing keys (session / refresh /
+data-at-rest).
 
 ## Repo map
 ```
 core/
 ├── backend/      # FastAPI app (app/), alembic migrations, tests/, scripts/, venv/
-├── integrations/ # SOURCE OF TRUTH for integrations (NOT backend/app/integrations)
+│   └── app/extensions/   # the extension subsystem (family extension
+│                         # charter home): vendored family contract modules,
+│                         # registry, runtime, the authoring SDK and builtin/
+├── integrations/ # bridge client SDK satellites only (python/ts/kotlin —
+│                 # consumer-facing packages, never imported by the backend);
+│                 # the framework itself lives in backend/app/extensions/
 ├── frontend/     # React 18 + Vite + TS + Tailwind + Zustand
 ├── docs/         # docs-tree.json is the source of truth for public nav + SEO
 ├── docker/ scripts/ uploads/ logging/
-└── .opencode/skills/  # agent skills (local; gitignored)
+└── .opencode/    # local agent/tool config (gitignored)
 ```
 
 ## Build & test
@@ -38,57 +37,39 @@ cd backend && ruff check && ruff format        # lint/format
 # Frontend
 cd frontend && npm run build && npm run lint   # build = tsc && vite build
 ```
-- Backend tests: `backend/pyproject.toml` `[tool.pytest.ini_options]` (`asyncio_mode=auto`, `.env.test`). Real
-  Postgres test DB required (`conftest.py` runs `alembic upgrade head`).
-- `PYTHONPATH=.:..` from `backend/` so `app.*` + `integrations.*` both resolve.
+- Backend tests: `backend/pyproject.toml` `[tool.pytest.ini_options]`
+  (`asyncio_mode=auto`, `.env.test`). Real Postgres test DB required
+  (`conftest.py` runs `alembic upgrade head`).
+- `PYTHONPATH=.` from `backend/` — the extension subsystem is an ordinary
+  `app.*` package (`app/extensions/`).
 
 ## Conventions that apply everywhere
 - **Tenant isolation is hard**: every query filters `tenant_id`; `USER` role is
   further restricted to `Patient.user_id == current_user.user_id`.
 - **JSONB mutations** need `flag_modified(obj, "field")` before commit.
 - **No comments unless requested**; Google-style docstrings on public APIs.
-- **Integrations source of truth is `integrations/`**, never `backend/app/integrations/`.
+- **Extension source of truth is `backend/app/extensions/`** (registry, SDK,
+  runtime, `builtin/`); `integrations/` holds only the bridge client SDK
+  satellites (never imported by the backend).
 - **Always update `CHANGELOG.md`** under `## [Unreleased]` for user-visible changes.
 - **Never push to the online repo by default** — `version_manager.py --git` stops at a
   local commit + tag; add `--push` only when explicitly asked.
+- **Generic UI primitives** come from
+  [`@neuronection/assistant-ui`](https://github.com/neuronection/assistant-ui)
+  (first-party: published npm package + public repo, shared with the other
+  Neuronection assistants) — extend the library rather than forking it; its
+  repo documents the contribution flow.
 
-## Mobile (Android) — two-repo workflow
-The app is at `../app/` (`app/android` Compose app + `app/shared` KMP core; the
-Kotlin bridge SDK is in this repo at
-`integrations/health_assistant_bridge/kotlin-sdk/`). Load the **`mobile`** skill
-for full details. Quick:
+## Mobile (Android)
+The Kotlin bridge SDK satellite commits in this repo
+(`integrations/health-assistant-bridge/`); build it with Gradle after setting
+`JAVA_HOME` (JDK 25) and `ANDROID_HOME` to your local SDK path:
 ```bash
-export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64 ANDROID_HOME=/home/ilias/Android/Sdk
-cd ../app/android && ./gradlew build          # app + shared + kotlin-sdk
+cd integrations/health-assistant-bridge/kotlin-sdk && ./gradlew build
 ```
-Mobile-app code commits in `../app/` (its own git repo); Kotlin-SDK + backend
-bridge changes commit here in `core/`.
 
-## Skills index (load the matching one before the task)
-| Task | Skill |
-|---|---|
-| Backend endpoint/service/model/migration/Celery | `backend` |
-| Frontend page/component/store/hook/PWA | `frontend` |
-| AI/OCR/NLP/chatbot/Magic Fill/AI config | `ai-pipeline` |
-| FHIR/biomarkers/telemetry/taxonomy/analytics | `clinical-data` |
-| Wearables/labs/webhooks/Integrations SDK | `integrations` |
-| Android app / KMP / Kotlin SDK / bridge read paths | `mobile` |
-| Docs, docs-tree.json, SEO, positioning | `documentation` |
-| Version bump / release / CHANGELOG | `versioning` |
-| New shared-looking UI / family UI library | `ha-assistant-ui` |
-
-## Shared UI library (assistant-ui)
-
-`@neuronection/assistant-ui` is **our first-party family library**
-(sibling checkout `../../assistant-ui`), shared with study- and
-career-assistant — see the `ha-assistant-ui` skill. Core rules:
-
-- **Check the library first for NEW generic UI** — no new local copies of
-  things the family ships — the app is fully adopted: `components/ui`
-  are library re-export shims, the selectors are async Combobox wrappers,
-  and the drift audit is clean. Never reintroduce a local implementation
-  (`LegacyPopover` is deleted); extend the library instead.
-- First-party means mutable: if the API doesn't fit, change the library
-  (two-app rule + `scripts/verify-in-app.mjs` — details in the skill),
-  never fork or wrap it.
-- Styling via `--as-*` tokens / `data-as-*` only.
+## Docs
+Public documentation lives in `docs/` and is navigated via `docs-tree.json`
+(the source of truth for the website nav + SEO metadata). Plans, internal
+process docs, and maintainer instructions are maintained **locally, outside
+this repository**.
