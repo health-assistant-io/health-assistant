@@ -138,7 +138,44 @@ export const scenes = [
     ],
     viewports: ["desktop"],
     waitForSelector: "main",
-  }
+  },
+  // ---- Component captures (plan 48) — element crops for the hub feature rows.
+  // `tour: false` keeps them out of the manifest/GIF; `outDir: "components"`
+  // writes docs/images/components/<capability-id>-desktop.png.
+  {
+    name: "biomarker-trends",
+    group: "Clinical data",
+    caption: "Longitudinal biomarker chart with reference-range bands.",
+    path: "/biomarkers/details/{biomarkerId}",
+    interactions: [
+      { action: "wait", ms: 3000 }
+    ],
+    tour: false,
+    capture: "element",
+    selector: '[data-capture="biomarker-trends"]',
+    outDir: "components",
+    viewports: ["desktop"],
+    waitForSelector: '[data-capture="biomarker-trends"]',
+  },
+  {
+    name: "ask-your-data",
+    group: "AI assistant",
+    caption: "Answer with its citation — the source names the record.",
+    path: "/ai-assistant",
+    interactions: [
+      { action: "waitFor", selector: "textarea", timeout: 20000 },
+      { action: "fill", selector: "textarea", value: "Provide me with the results of my latest examination", timeout: 20000 },
+      { action: "press", key: "Enter" },
+      { action: "waitFor", selector: '[data-capture="citation-chip"]', timeout: 30000 },
+      { action: "wait", ms: 4000 },
+    ],
+    tour: false,
+    capture: "element",
+    selector: ':nth-match(p:has([data-capture="citation-chip"]), 1)',
+    outDir: "components",
+    viewports: ["desktop"],
+    waitForSelector: "main",
+  },
 ];
 
 export const groups = [

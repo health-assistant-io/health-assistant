@@ -23,7 +23,7 @@ def override_get_current_user():
 
 
 @pytest.mark.asyncio
-@patch("app.services.medication_service.get_catalog_medication")
+@patch("app.services.clinical.medication_service.get_catalog_medication")
 async def test_get_catalog_medication_details(mock_get_details, async_client: AsyncClient):
     from app.core.security import get_current_user
     from app.main import app
@@ -56,7 +56,7 @@ async def test_get_catalog_medication_details(mock_get_details, async_client: As
 
 
 @pytest.mark.asyncio
-@patch("app.services.medication_service.get_catalog_medication")
+@patch("app.services.clinical.medication_service.get_catalog_medication")
 async def test_get_catalog_medication_not_found(mock_get_details, async_client: AsyncClient):
     from app.core.security import get_current_user
     from app.main import app

@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 1,
+  "contract": "cloud-providers",
+  "updated": "2026-11-03",
+  "purpose": "Family cloud-account catalog (ADR-0052). One row per provider: which services it exposes (calendar, files), the transport protocol per service, the verbatim OAuth scope sets for read and write, the hosts token-bearing calls may reach, and the `setupFields` the bind form renders from. Providers are DATA; adapters are CODE keyed by protocol \u2014 adding a provider that speaks an existing protocol costs one row and no code, no UI change. Products never hand-curate provider lists or scope strings \u2014 they render this catalog through their settings surface.",
+  "secretDisclosure": "Credentials live only in the host secret store (OS keyring on desktop, keyring/env in server products). No credential value is stored in an account row, a config file, a log line, an export or a model prompt.",
+  "authKinds": [
+    "oauth2",
+    "app-password",
+    "token",
+    "none"
+  ],
+  "services": [
+    "calendar",
+    "files"
+  ],
+  "protocols": {
+    "calendar": [
+      "caldav",
+      "google-calendar",
+      "graph-calendar",
+      "ics"
+    ],
+    "files": [
+      "webdav",
+      "google-drive",
+      "graph-drive",
+      "dropbox"
+    ]
+  },
+  "providers": [
+    {
+      "id": "google",
+      "label": "Google",
+      "services": [
+        "calendar",
+        "files"
+      ],
+      "authKinds": [
+        "oauth2"
+      ],
+      "baseUrlRequired": false,
+      "oauth": {
+        "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "revokeUrl": "https://oauth2.googleapis.com/revoke",
+        "extraAuthParams": {
+          "access_type": "offline",
+          "prompt": "consent",
+          "include_granted_scopes": "true"
+        }
+      },
+      "domains": [
+        "accounts.google.com",
+        "oauth2.googleapis.com",
+        "www.googleapis.com"
+      ],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "google-calendar",
+          "apiBase": "https://www.googleapis.com/calendar/v3",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "calendar-list",
+          "scopes": {
+            "read": [
+              "https://www.googleapis.com/auth/calendar.readonly"
+            ],
+            "write": [
+              "https://www.googleapis.com/auth/calendar.readonly",
+              "https://www.googleapis.com/auth/calendar.events"
+            ]
+          },
+          "setupFields": [
+            {
+              "key": "calendar_id",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_id"
+            }
+          ]
+        },
+        "files": {
+          "protocol": "google-drive",
+          "apiBase": "https://www.googleapis.com/drive/v3",
+          "uploadBase": "https://www.googleapis.com/upload/drive/v3",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "drive-list",
+          "scopes": {
+            "read": [
+              "https://www.googleapis.com/auth/drive.readonly"
+            ],
+            "write": [
+              "https://www.googleapis.com/auth/drive.readonly",
+              "https://www.googleapis.com/auth/drive.file"
+            ]
+          },
+          "setupFields": []
+        }
+      }
+    },
+    {
+      "id": "microsoft",
+      "label": "Microsoft 365",
+      "services": [
+        "calendar",
+        "files"
+      ],
+      "authKinds": [
+        "oauth2"
+      ],
+      "baseUrlRequired": false,
+      "oauth": {
+        "authorizeUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        "revokeUrl": null,
+        "extraAuthParams": {
+          "response_mode": "query"
+        }
+      },
+      "domains": [
+        "login.microsoftonline.com",
+        "graph.microsoft.com"
+      ],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "graph-calendar",
+          "apiBase": "https://graph.microsoft.com/v1.0",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "calendar-list",
+          "scopes": {
+            "read": [
+              "Calendars.Read",
+              "User.Read",
+              "offline_access"
+            ],
+            "write": [
+              "Calendars.ReadWrite",
+              "User.Read",
+              "offline_access"
+            ]
+          },
+          "setupFields": [
+            {
+              "key": "calendar_id",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_id"
+            }
+          ]
+        },
+        "files": {
+          "protocol": "graph-drive",
+          "apiBase": "https://graph.microsoft.com/v1.0",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "drive-list",
+          "scopes": {
+            "read": [
+              "Files.Read",
+              "User.Read",
+              "offline_access"
+            ],
+            "write": [
+              "Files.ReadWrite",
+              "User.Read",
+              "offline_access"
+            ]
+          },
+          "setupFields": []
+        }
+      }
+    },
+    {
+      "id": "nextcloud",
+      "label": "Nextcloud",
+      "services": [
+        "calendar",
+        "files"
+      ],
+      "authKinds": [
+        "app-password"
+      ],
+      "baseUrlRequired": true,
+      "domains": [],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "caldav",
+          "pathTemplate": "/remote.php/dav/calendars/{username}/",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "caldav-principal",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "calendar_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "calendarUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/calendars/you/personal/",
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "calendar",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "token",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "token",
+              "manualKey": null
+            }
+          ]
+        },
+        "files": {
+          "protocol": "webdav",
+          "pathTemplate": "/remote.php/dav/files/{username}/",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "webdav-root",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "base_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "baseUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/files/you/",
+              "authKind": null,
+              "manualKey": "base_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "icloud",
+      "label": "iCloud Calendar",
+      "services": [
+        "calendar"
+      ],
+      "authKinds": [
+        "app-password"
+      ],
+      "baseUrlRequired": false,
+      "domains": [
+        "caldav.icloud.com"
+      ],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "caldav",
+          "apiBase": "https://caldav.icloud.com",
+          "pathTemplate": "/{username}/calendars/",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "caldav-principal",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "calendar_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "calendarUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/calendars/you/personal/",
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "calendar",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "token",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "token",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fastmail",
+      "label": "Fastmail",
+      "services": [
+        "calendar",
+        "files"
+      ],
+      "authKinds": [
+        "app-password"
+      ],
+      "baseUrlRequired": false,
+      "domains": [
+        "caldav.fastmail.com",
+        "webdav.fastmail.com"
+      ],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "caldav",
+          "apiBase": "https://caldav.fastmail.com",
+          "pathTemplate": "/dav/calendars/user/{username}/",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "caldav-principal",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "calendar_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "calendarUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/calendars/you/personal/",
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "calendar",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "token",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "token",
+              "manualKey": null
+            }
+          ]
+        },
+        "files": {
+          "protocol": "webdav",
+          "apiBase": "https://webdav.fastmail.com",
+          "pathTemplate": "/{username}/",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "webdav-root",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "base_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "baseUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/files/you/",
+              "authKind": null,
+              "manualKey": "base_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "caldav",
+      "label": "CalDAV (self-hosted)",
+      "services": [
+        "calendar"
+      ],
+      "authKinds": [
+        "app-password",
+        "token"
+      ],
+      "baseUrlRequired": true,
+      "domains": [],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "caldav",
+          "pathTemplate": "",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "caldav-principal",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "calendar_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "calendarUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/calendars/you/personal/",
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "calendar",
+              "kind": "calendar",
+              "required": false,
+              "labelKey": "calendarPicker",
+              "placeholder": null,
+              "authKind": null,
+              "manualKey": "calendar_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "token",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "token",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "webdav",
+      "label": "WebDAV (self-hosted)",
+      "services": [
+        "files"
+      ],
+      "authKinds": [
+        "app-password",
+        "token"
+      ],
+      "baseUrlRequired": true,
+      "domains": [],
+      "serviceConfig": {
+        "files": {
+          "protocol": "webdav",
+          "pathTemplate": "",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "webdav-root",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "base_url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "baseUrl",
+              "placeholder": "https://cloud.example.com/remote.php/dav/files/you/",
+              "authKind": null,
+              "manualKey": "base_url"
+            },
+            {
+              "key": "username",
+              "kind": "text",
+              "required": true,
+              "labelKey": "username",
+              "placeholder": null,
+              "authKind": "app-password",
+              "manualKey": "username"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": true,
+              "labelKey": "appPassword",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "app-password",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dropbox",
+      "label": "Dropbox",
+      "services": [
+        "files"
+      ],
+      "authKinds": [
+        "oauth2"
+      ],
+      "baseUrlRequired": false,
+      "oauth": {
+        "authorizeUrl": "https://www.dropbox.com/oauth2/authorize",
+        "tokenUrl": "https://api.dropboxapi.com/oauth2/token",
+        "revokeUrl": "https://api.dropboxapi.com/2/auth/token/revoke",
+        "extraAuthParams": {
+          "token_access_type": "offline"
+        }
+      },
+      "domains": [
+        "www.dropbox.com",
+        "api.dropboxapi.com",
+        "content.dropboxapi.com"
+      ],
+      "serviceConfig": {
+        "files": {
+          "protocol": "dropbox",
+          "apiBase": "https://api.dropboxapi.com/2",
+          "contentBase": "https://content.dropboxapi.com/2",
+          "writable": true,
+          "supportsDelta": true,
+          "identity": "dropbox-root",
+          "scopes": {
+            "read": [
+              "files.content.read",
+              "files.metadata.read"
+            ],
+            "write": [
+              "files.content.read",
+              "files.content.write",
+              "files.metadata.read"
+            ]
+          },
+          "setupFields": []
+        }
+      }
+    },
+    {
+      "id": "ics",
+      "label": "ICS subscription",
+      "services": [
+        "calendar"
+      ],
+      "authKinds": [
+        "none",
+        "token"
+      ],
+      "baseUrlRequired": true,
+      "domains": [],
+      "serviceConfig": {
+        "calendar": {
+          "protocol": "ics",
+          "writable": false,
+          "supportsDelta": false,
+          "identity": "feed",
+          "scopes": {
+            "read": [],
+            "write": []
+          },
+          "setupFields": [
+            {
+              "key": "url",
+              "kind": "url",
+              "required": true,
+              "labelKey": "feedUrl",
+              "placeholder": "https://example.com/calendar.ics",
+              "authKind": null,
+              "manualKey": "url"
+            },
+            {
+              "key": "secret",
+              "kind": "secret",
+              "required": false,
+              "labelKey": "token",
+              "placeholder": null,
+              "autocomplete": "new-password",
+              "authKind": "token",
+              "manualKey": null
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "clientIdEnvTemplate": "{PREFIX}_{ID}_CLIENT_ID",
+  "clientIdEnvPrefixes": {
+    "desktop-assistant": "DESKTOP",
+    "study-assistant": "SA",
+    "health-assistant": "CALENDAR"
+  }
+}

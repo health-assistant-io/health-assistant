@@ -20,6 +20,7 @@ import type {
   ActiveIntegration,
   IntegrationDocsTree,
   IntegrationManifest,
+  SystemIntegrationRow,
 } from '../../services/integrationService';
 
 /**
@@ -60,15 +61,15 @@ export function tierFor(capabilityIds: string[] | undefined | null): ExtensionTi
 }
 
 /** Family status first (the /active + /details sync_status surface); the
- * legacy status string is the fallback for rows that predate it. */
+ * older status string is the fallback for rows that predate it. */
 export function statusOf(
   syncStatus?: WireSyncStatus | null,
-  legacyStatus?: string | null,
+  rawStatus?: string | null,
 ): ExtensionStatusState | null {
   const declared = syncStatus?.status;
   if (declared && isExtensionStatusState(declared)) return declared;
-  if (legacyStatus === 'ACTIVE' || legacyStatus === 'active') return 'ok';
-  if (legacyStatus === 'ERROR' || legacyStatus === 'error') return 'failing';
+  if (rawStatus === 'ACTIVE' || rawStatus === 'active') return 'ok';
+  if (rawStatus === 'ERROR' || rawStatus === 'error') return 'failing';
   return 'stale';
 }
 
@@ -156,6 +157,24 @@ export function detailExtension(
     capabilities: capabilityViews(manifest?.capabilities),
     provenance: manifest?.author ? { author: manifest.author } : null,
     metadata: { domain: details.domain, accessType: manifest?.access_type ?? null },
+  };
+}
+
+/** One system-admin availability row as the kit's extension view-model.
+ * The globally-disabled state is host data (``metadata.isEnabled``); the
+ * card renders it through its ``enabled`` prop. */
+export function adminExtension(entry: SystemIntegrationRow): IntegrationExtensionView {
+  return {
+    id: entry.domain,
+    name: entry.name || entry.domain,
+    version: entry.version ?? null,
+    summary: entry.description ?? null,
+    originClass: 'bundled',
+    tier: tierFor(entry.capabilities),
+    kind: kindOf(entry.kind),
+    categories: categoryViews(entry.categories),
+    capabilities: capabilityViews(entry.capabilities),
+    metadata: { domain: entry.domain, onFilesystem: entry.on_filesystem },
   };
 }
 

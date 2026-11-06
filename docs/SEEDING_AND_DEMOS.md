@@ -4,7 +4,7 @@ Creating demo data is critical for E2E tests, documentation screenshots, and loc
 
 ## 0. The Seed Pipeline (`SeedService.seed_all`)
 
-Every application startup runs a single ordered, idempotent seed pipeline against the dev/prod DB (`backend/app/services/seed_service.py`). The stage order is declared in `_SEED_STAGE_NAMES` so dependencies land first:
+Every application startup runs a single ordered, idempotent seed pipeline against the dev/prod DB (`backend/app/services/seed/` — the entity-family modules behind `SeedService`). The stage order is declared in `_SEED_STAGE_NAMES` so dependencies land first:
 
 | # | Stage | Depends on |
 |---|---|---|
@@ -105,7 +105,7 @@ To re-seed the base anatomy catalog manually (e.g., after editing the split seed
 cd backend
 # (uv manages the environment)
 export PYTHONPATH=.:../
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_body_parts())"
+python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed.service import SeedService; asyncio.run(SeedService().seed_body_parts())"
 ```
 
 (The `scripts/seed_anatomy.py` CLI is for importing *custom expansion packs* — see §6.3 — not for re-seeding the base catalog.)
@@ -208,7 +208,7 @@ canonical taxonomy / anatomy / biomarker catalog in a running instance — via
 the Catalogs workspace, the Anatomy Atlas editor, the AI chatbot's graph-
 generation tools, or the ontology-catalog import — and then **snapshot that
 instance's data back into the shipped seed format**. `SeedExportService`
-(`backend/app/services/seed_export_service.py`) is the strict inverse of
+(`backend/app/services/seed/seed_export_service.py`) is the strict inverse of
 `SeedService`: it reads the DB and emits the slug-keyed `{metadata, items}`
 envelope each `seed_*` stage consumes, covering **all seed files** —
 concepts, diseases, medications, vaccines, clinical event types, allergies,

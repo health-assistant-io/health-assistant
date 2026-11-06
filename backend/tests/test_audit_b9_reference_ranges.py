@@ -20,7 +20,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.base import Base
 from app.models.biomarker_model import BiomarkerDefinition, BiomarkerReferenceRange
 from app.models.enums import Gender
-from app.services.reference_ranges import (
+from app.services.biomarkers.reference_ranges import (
     ResolvedRange,
     compute_relative_score,
     pick_reference_range,

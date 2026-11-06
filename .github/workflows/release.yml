@@ -55,18 +55,21 @@ jobs:
 
           # Extract the section for this version from CHANGELOG.md.
           # Matches: ## [VERSION] - YYYY-MM-DD  ... up to the next ## [ header.
-          # Falls back to the tag name if no entry is found.
+          # The changelog convention carries a leading `v` (`## [v0.9.0]`), so
+          # match both forms — the original single-form match silently produced
+          # a one-line stub for every release.
           NOTES=$(awk -v ver="$VERSION" '
             BEGIN { capture=0 }
             /^## \[/ {
               if (capture) exit
-              if (index($0, "[" ver "]") > 0) { capture=1; next }
+              if (index($0, "[" ver "]") > 0 || index($0, "[v" ver "]") > 0) { capture=1; next }
             }
             capture { print }
           ' CHANGELOG.md)
 
           if [ -z "$NOTES" ]; then
-            NOTES="Release $TAG. See CHANGELOG.md for details."
+            echo "::error::No CHANGELOG section found for ${TAG} (tried [$VERSION] and [v$VERSION]) — refusing to publish a stub release body."
+            exit 1
           fi
 
           # Write to a file to preserve multi-line content in the action output.

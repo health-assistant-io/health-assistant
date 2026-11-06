@@ -1,0 +1,41 @@
+{
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "connector",
+  "id": "withings",
+  "version": "1.0.0",
+  "description": "OAuth2 wearable connector for Withings: pulls the account's measure categories (weight, body composition, blood pressure, heart rate, SpO2, temperature) into the ingest funnel through the user's own Withings partner app. The sealed oauth2 credential refreshes before every pull and a failed or revoked refresh fails closed before any data call. Sleep and activity are not wired yet.",
+  "docs": "docs/docs-tree.json",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["data"],
+  "capabilities": ["sync", "secrets"],
+  "itemSchema": {
+    "type": "object",
+    "properties": {
+      "observation": { "type": "string", "title": "Withings measure (telemetry funnel)" }
+    }
+  },
+  "supportsIncremental": true,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "withings_client_id": { "type": "string", "title": "Withings partner-app client id (non-secret)" },
+      "withings_client_secret": { "type": "string", "title": "Withings partner-app client secret", "x-secret": true },
+      "withings_userid": { "type": "string", "title": "Withings user binding (recorded at authorization)" },
+      "initial_window_days": { "type": "number", "title": "Initial pull window (days)" }
+    }
+  },
+  "secrets": [
+    { "id": "withings-oauth2", "purpose": "OAuth2 client secret + access/refresh token pair, sealed in integration_credentials (kind oauth2) with maintained access/refresh expiry columns" }
+  ],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "Withings",
+        "summary": "OAuth2 sync of Withings scale, blood-pressure and activity-tracker measurements."
+      }
+    }
+  }
+}

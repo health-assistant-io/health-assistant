@@ -179,7 +179,7 @@ async def test_lifecycle_notifications_emitted(async_client):
     patient_id = await _make_patient(tenant_id)
 
     with patch(
-        "app.services.clinical_event_service.emit_event_notification",
+        "app.services.clinical.clinical_event_service.emit_event_notification",
         new=AsyncMock(),
     ) as mock_emit:
         create = await async_client.post(
@@ -223,7 +223,7 @@ async def test_non_resolve_update_emits_updated_not_resolved(async_client):
     patient_id = await _make_patient(tenant_id)
 
     with patch(
-        "app.services.clinical_event_service.emit_event_notification",
+        "app.services.clinical.clinical_event_service.emit_event_notification",
         new=AsyncMock(),
     ) as mock_emit:
         create = await async_client.post(
@@ -821,7 +821,7 @@ async def test_episode_of_care_projection_round_trip():
     """to_fhir_episode_of_care_dict() ↔ fhir_to_episode_of_care_orm() round-trip."""
     from app.models.clinical_event import ClinicalEvent
     from app.models.enums import ClinicalEventStatus
-    from app.services.fhir_converter import fhir_to_episode_of_care_orm
+    from app.services.fhir.fhir_converter import fhir_to_episode_of_care_orm
 
     event = ClinicalEvent(
         id=uuid.uuid4(),
@@ -848,7 +848,7 @@ async def test_episode_of_care_projection_round_trip():
 async def test_version_advances_on_update(async_client):
     """VersionedMixin is now active: each PUT bumps version, and the FHIR
     meta.versionId advances with it (previously always '1')."""
-    from app.services.fhir_converter import fhir_to_condition_orm
+    from app.services.fhir.fhir_converter import fhir_to_condition_orm
 
     tenant_id, headers = await _tenant_and_headers()
     patient_id = await _make_patient(tenant_id)

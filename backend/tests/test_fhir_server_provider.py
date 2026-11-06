@@ -17,6 +17,7 @@ import pytest
 
 from app.extensions.builtin.fhir_server.provider import FhirServerProvider
 from app.extensions.errors import ExtensionError
+from app.models.enums import IntegrationSyncStream
 
 
 @pytest.fixture(autouse=True)
@@ -229,7 +230,7 @@ async def test_push_data_skipped_when_direction_is_pull_only():
         await provider.push_data(integ, {"status": "x"})
         m.assert_not_called()
     # cursor must not be set
-    assert provider.get_sync_cursor(integ, "last_pushed_at") is None
+    assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="push") is None
     await provider.close()
 
 
@@ -337,7 +338,7 @@ async def test_run_push_excludes_echo_and_custom_coding_and_rewrites_subject():
     # tokenless -> no bearer
     assert captured["access_token"] is None
     # cursor advanced
-    assert provider.get_sync_cursor(integ, "last_pushed_at") is not None
+    assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="push") is not None
     await provider.close()
 
 
@@ -405,7 +406,7 @@ async def test_push_data_smart_pending_noop():
     with patch("app.core.database.AsyncSessionLocal") as m:
         await provider.push_data(integ, {})
         m.assert_not_called()
-    assert provider.get_sync_cursor(integ, "last_pushed_at") is None
+    assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="push") is None
     await provider.close()
 
 
@@ -482,14 +483,17 @@ async def test_action_reset_cursors_clears_sync_state():
     provider = FhirServerProvider()
     await provider.setup({})
     integ = _integration("none")
-    provider.set_sync_cursor(integ, "last_updated", "2026-01-01T00:00:00Z")
-    provider.set_sync_cursor(integ, "last_pushed_at", "2026-01-02T00:00:00Z")
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2026-01-01T00:00:00Z", key="Observation"
+    )
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2026-01-02T00:00:00Z", key="push"
+    )
 
     response = await provider.execute_custom_action(integ, "reset_cursors")
 
-    state = (integ.user_config or {}).get("_sync_state", {})
-    assert "last_updated" not in state
-    assert "last_pushed_at" not in state
+    assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="Observation") is None
+    assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="push") is None
     assert "Reset" in response["message"]
 
 
@@ -685,7 +689,10 @@ async def test_pull_clinical_events_maps_condition_with_external_id():
     assert ev.title == "Type 2 Diabetes"
     assert str(ev.patient_id) == str(integ.patient_id)
     # per-resource cursor advanced
-    assert provider.get_sync_cursor(integ, "last_updated:Condition") == "2026-06-01T10:00:00Z"
+    assert (
+        provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="Condition")
+        == "2026-06-01T10:00:00Z"
+    )
     await provider.close()
 
 
@@ -728,7 +735,10 @@ async def test_pull_examinations_maps_encounter_period_start():
     assert exam.external_id == "enc-1"
     assert str(exam.examination_date) == "2026-05-01"
     assert "Annual checkup" in (exam.notes or "")
-    assert provider.get_sync_cursor(integ, "last_updated:Encounter") == "2026-06-02T10:00:00Z"
+    assert (
+        provider.get_cursor(integ, IntegrationSyncStream.APPOINTMENTS, key="Encounter")
+        == "2026-06-02T10:00:00Z"
+    )
     await provider.close()
 
 
@@ -745,11 +755,19 @@ async def test_search_resource_advances_per_resource_cursor():
     await provider.setup({})
     provider._http_client = _client(lambda r: httpx.Response(200, json=_bundle([_condition()])))
     integ = _integration("none")
-    provider.set_sync_cursor(integ, "last_updated", "2020-01-01T00:00:00Z")
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2020-01-01T00:00:00Z", key="Observation"
+    )
     await provider._search_resource(integ, "Condition")
     # Condition cursor set, Observation cursor untouched
-    assert provider.get_sync_cursor(integ, "last_updated:Condition") == "2026-06-01T10:00:00Z"
-    assert provider.get_sync_cursor(integ, "last_updated") == "2020-01-01T00:00:00Z"
+    assert (
+        provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="Condition")
+        == "2026-06-01T10:00:00Z"
+    )
+    assert (
+        provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key="Observation")
+        == "2020-01-01T00:00:00Z"
+    )
     await provider.close()
 
 
@@ -807,7 +825,8 @@ async def test_pull_documents_fetches_attachment_and_returns_pull():
     assert pull.examination_external_id == "enc-1"  # linked Encounter id
     assert pull.category_concept_slug == "lab-report"
     assert (
-        provider.get_sync_cursor(integ, "last_updated:DocumentReference") == "2026-06-03T10:00:00Z"
+        provider.get_cursor(integ, IntegrationSyncStream.DOCUMENTS, key="DocumentReference")
+        == "2026-06-03T10:00:00Z"
     )
     await provider.close()
 
@@ -870,7 +889,9 @@ async def test_pull_hitl_proposals_only_for_codes_absent_from_catalog():
     assert proposals[0].proposed_payload["coding_system"] == "loinc"
     assert proposals[0].proposed_payload["preferred_unit_symbol"] == "mg/L"
     # seen-codes cursor records both observed codes
-    seen = provider.get_sync_cursor(integ, "hitl:seen_codes", default=[])
+    seen = provider.get_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, key="hitl:seen_codes", default=[]
+    )
     assert "99999-9" in seen
     await provider.close()
 
@@ -894,7 +915,13 @@ async def test_pull_hitl_proposals_idempotent_across_syncs():
     provider._known_biomarker_codes = AsyncMock(return_value=set())
     integ = _integration("none")
     # already proposed in a prior sync
-    provider.set_sync_cursor(integ, "hitl:seen_codes", ["99999-9"])
+    provider.set_cursor(
+        integ,
+        IntegrationSyncStream.OBSERVATIONS,
+        ["99999-9"],
+        key="hitl:seen_codes",
+        kind="commit",
+    )
     proposals = await provider.pull_hitl_proposals(integ)
     assert proposals == []
     await provider.close()
@@ -907,7 +934,9 @@ async def test_handle_proposal_resolution_adds_code_to_seen():
     integ = _integration("none")
     outcome = SimpleNamespace(final_payload={"code": "88888-8"})
     await provider.handle_proposal_resolution(integ, "pid", outcome)
-    seen = provider.get_sync_cursor(integ, "hitl:seen_codes", default=[])
+    seen = provider.get_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, key="hitl:seen_codes", default=[]
+    )
     assert "88888-8" in seen
     await provider.close()
 
@@ -993,15 +1022,29 @@ async def test_reset_cursors_clears_per_resource_cursors():
     provider = FhirServerProvider()
     await provider.setup({})
     integ = _integration("none")
-    provider.set_sync_cursor(integ, "last_updated", "2026-01-01T00:00:00Z")
-    provider.set_sync_cursor(integ, "last_updated:Condition", "2026-02-01T00:00:00Z")
-    provider.set_sync_cursor(integ, "hitl:seen_codes", ["99999-9"])
-    provider.set_sync_cursor(integ, "last_pushed_at", "2026-03-01T00:00:00Z")
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2026-01-01T00:00:00Z", key="Observation"
+    )
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2026-02-01T00:00:00Z", key="Condition"
+    )
+    provider.set_cursor(
+        integ,
+        IntegrationSyncStream.OBSERVATIONS,
+        ["99999-9"],
+        key="hitl:seen_codes",
+        kind="commit",
+    )
+    provider.set_cursor(
+        integ, IntegrationSyncStream.OBSERVATIONS, "2026-03-01T00:00:00Z", key="push"
+    )
 
     response = await provider.execute_custom_action(integ, "reset_cursors")
 
-    state = (integ.user_config or {}).get("_sync_state", {})
-    assert state == {}  # everything cleared
+    for key in ("Observation", "Condition", "hitl:seen_codes", "push"):
+        assert provider.get_cursor(integ, IntegrationSyncStream.OBSERVATIONS, key=key) is None, (
+            f"{key} was not cleared"
+        )
     assert "Reset" in response["message"]
     await provider.close()
 

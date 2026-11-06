@@ -1,7 +1,7 @@
 """polite_http — the family Connector Runtime (ADR-0040 clause 6 / plan-32 D5).
 
 One polite-HTTP seam for every T1/T2 connector in the family, vendored
-byte-identical from ``dev/contracts/polite_http.py`` (ADR-0031
+byte-identical from ``the family Connector Runtime contract`` (ADR-0031
 sync-and-gate; never edited in-repo). Pure functions over an injectable
 ``httpx.AsyncClient``; the module reads NO environment and NO config
 files — every escape hatch is an injectable field of

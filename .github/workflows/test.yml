@@ -3,13 +3,20 @@ name: Reusable Test Suite
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   test-backend:
     name: Run Backend Pytest Suite
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: timescale/timescaledb:latest-pg14
+        # pg16 — the same major as docker/docker-compose.{dev,prod,standalone}.yml.
+        # (Was pg14; plan 4's ai_task_assignments single-slot law uses
+        # UNIQUE NULLS NOT DISTINCT, PG15+, so CI now tests the engine the
+        # product actually ships.)
+        image: timescale/timescaledb:latest-pg16
         env:
           POSTGRES_DB: neuronection_health_test
           POSTGRES_USER: neuronection_health_owner
@@ -112,20 +119,60 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install Frontend Dependencies
+        # pnpm-only toolchain (one lockfile: frontend/pnpm-lock.yaml). stdin
+        # is closed so a prompt is a hard EOF error, never a hung job.
         run: |
           cd frontend
-          npm ci
+          pnpm install --frozen-lockfile </dev/null
 
       - name: Run Frontend Lint & Build Test
         run: |
           cd frontend
-          npm run lint
-          npm run build
+          pnpm run lint
+          pnpm run build
+
+  # The frontend suite existed and was green locally but no workflow ran it
+  # (audit 2026-10-21). `vitest run` is non-watch by construction and exits
+  # non-zero on any failing test. Same pnpm toolchain as the lint/build job
+  # above — one lockfile (frontend/pnpm-lock.yaml), `--frozen-lockfile`.
+  test-frontend-unit:
+    name: Run Frontend Vitest Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile </dev/null
+
+      - name: Run Frontend Vitest Suite
+        run: |
+          cd frontend
+          pnpm exec vitest run

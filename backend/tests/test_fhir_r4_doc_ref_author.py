@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document_model import DocumentModel
-from app.services.document_service import _resolve_practitioner_id
+from app.services.documents.document_service import _resolve_practitioner_id
 
 # ---------------------------------------------------------------------------
 # to_fhir_dict — author reference shape
@@ -139,7 +139,7 @@ async def test_resolve_practitioner_id_invalid_uuid_returns_none():
 async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
     """upload_document must call _resolve_practitioner_id and copy the result
     onto DocumentModel.practitioner_id before persisting."""
-    from app.services import document_service
+    from app.services.documents import document_service
 
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
@@ -154,12 +154,12 @@ async def test_upload_document_sets_practitioner_id_from_resolver(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "app.services.document_service.write_file_if_not_exists",
+        "app.services.documents.document_service.write_file_if_not_exists",
         _fake_write,
         raising=False,
     )
     monkeypatch.setattr(
-        "app.services.document_service.uuid4",
+        "app.services.documents.document_service.uuid4",
         lambda: uuid.UUID("00000000-0000-0000-0000-0000000000aa"),
     )
 
@@ -190,7 +190,7 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
     """When the resolver returns None (admin/manager uploads), practitioner_id
     stays NULL — author will be omitted from the FHIR resource rather than
     emit a wrong reference."""
-    from app.services import document_service
+    from app.services.documents import document_service
 
     db = AsyncMock(spec=AsyncSession)
     upload = MagicMock()
@@ -205,12 +205,12 @@ async def test_upload_document_leaves_practitioner_id_unset_when_no_doctor(monke
         return None
 
     monkeypatch.setattr(
-        "app.services.document_service.write_file_if_not_exists",
+        "app.services.documents.document_service.write_file_if_not_exists",
         _fake_write,
         raising=False,
     )
     monkeypatch.setattr(
-        "app.services.document_service.uuid4",
+        "app.services.documents.document_service.uuid4",
         lambda: uuid.UUID("00000000-0000-0000-0000-0000000000bb"),
     )
 

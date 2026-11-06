@@ -1,7 +1,7 @@
 """Platform secret encryption at rest (Fernet) — the DATA_KEY family.
 
 The cipher is shared family code: the string helpers (``enc::`` prefix,
-``***`` mask marker, tolerant legacy reads) and the Fernet machinery come
+``***`` mask marker, tolerant unwrapped reads) and the Fernet machinery come
 from ``nx_auth.atrest`` (see the kit's ``docs/atrest.md`` for the threat
 model and the rotation runbook). This module is the thin health adapter:
 it resolves the key family from the app ``Settings`` via
@@ -20,7 +20,7 @@ value. Rotation ring (preserved from the pre-H4 integration key):
 no stored value becomes undecryptable across a key change.
 
 Secrets are encrypted at rest with a Fernet token prefixed by ``enc::``
-so storage and transport layers can distinguish them from any legacy
+so storage and transport layers can distinguish them from stored
 plaintext. Response schemas mask the key on read so it is never returned
 to clients.
 """
@@ -155,7 +155,7 @@ def decrypt_secret(stored: str | None) -> str | None:
     """Decrypt a stored value produced by :func:`encrypt_secret`.
 
     Returns the plaintext. If the input is None, returns None. If the input
-    is not in the encrypted form (legacy plaintext), returns it verbatim.
+    is not in the encrypted form (plaintext), returns it verbatim.
     Tries the full rotation ring (primary, then ``HA_DATA_KEY_PREVIOUS``)
     so pre-rotation ciphertext keeps decrypting. Raises ``ValueError`` if
     the value is encrypted but cannot be decrypted with any family key
@@ -180,7 +180,7 @@ def mask_secret(stored_or_plain: str | None) -> str | None:
     the last four plaintext characters (``***<last4>``). For structured
     tokens that is key material, and it turned every response-model read
     into a decryption oracle. Masking is now presence-only and never
-    touches the cipher: any non-empty value (ciphertext wrapper or legacy
+    touches the cipher: any non-empty value (ciphertext wrapper or unwrapped
     plaintext) answers ``***``.
     """
     if stored_or_plain is None or stored_or_plain == "":

@@ -1,7 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   UserCircle,
-  SlidersHorizontal,
   Shield,
   Palette,
   Cpu,
@@ -9,7 +8,6 @@ import {
   Download,
   Building2,
   Globe,
-  Database,
   Bone,
   Wrench,
 } from 'lucide-react';
@@ -54,7 +52,6 @@ export interface SettingsNavHeader {
  */
 export const userSettingsNav: SettingsNavItem[] = [
   { to: '/profile', icon: UserCircle, labelKey: 'settings.nav_profile', labelFallback: 'Profile', end: true },
-  { to: '/settings/preferences', icon: SlidersHorizontal, labelKey: 'settings.nav_preferences', labelFallback: 'Preferences' },
   { to: '/settings/security', icon: Shield, labelKey: 'settings.nav_security', labelFallback: 'Security' },
   { to: '/settings/appearance', icon: Palette, labelKey: 'settings.appearance_short', labelFallback: 'Appearance & Visualization' },
   { to: '/settings/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },

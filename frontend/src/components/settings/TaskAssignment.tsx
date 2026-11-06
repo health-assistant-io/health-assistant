@@ -22,129 +22,68 @@ import {
 } from '@neuronection/assistant-ui';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
 import { aiConfigApi, DECISION_DEFAULT_TASK_TYPE, isDecisionSlot, type ProviderPreset } from '../../api/aiConfig';
+import {
+  AI_DECISION_TASK_IDS,
+  AI_TASK_DEFS,
+  AI_TASKS,
+  isDecisionTask,
+  type AiTaskDef,
+} from '../../generated/taskRegistry';
 import { Button } from '../ui/Button';
 import { ProviderSetupModal } from './byok/ProviderSetupModal';
 
-/** The uniform "Default models" rows (plan 29 uniform ruling + ADR-0037
- *  single-slot defaults): four capability defaults + the decision
- *  default, one picker each. */
-const DEFAULT_SLOT_TASKS = [
-  { value: 'default', labelKey: 'settings.ai.task_default', requires: 'text' as const, icon: MessageSquare },
-  { value: 'ocr', labelKey: 'settings.ai.task_ocr', requires: 'vision' as const, icon: Eye },
-  {
-    value: 'transcription',
-    labelKey: 'settings.ai.task_transcription',
-    requires: 'stt' as const,
-    icon: AudioLines,
-  },
-  {
-    value: 'embed',
-    labelKey: 'settings.ai.task_embed',
-    requires: 'embeddings' as const,
-    icon: Database,
-  },
-];
-
-/** ADR-0036: the decision default row rides the "Default models"
- *  section like every capability default (single picker; the kind rows
- *  carry the PHI opt-in explicitly below). */
-const DECISION_DEFAULT_ROW = {
-  value: DECISION_DEFAULT_TASK_TYPE,
-  labelKey: 'settings.ai.task_decision_default',
-  hintKey: 'settings.ai.task_decision_default_hint',
-  requires: 'decision' as const,
-  icon: Sparkles,
+/** Presentation only: which icon a row renders. The task LIST itself is the
+ *  generated TaskDef registry — adding a task is a backend registry entry plus
+ *  a regeneration, never an edit here (plan 4 W1). */
+const CAPABILITY_ICONS: Record<string, LucideIcon> = {
+  text: MessageSquare,
+  vision: Eye,
+  stt: AudioLines,
+  embeddings: Database,
+  decision: Sparkles,
 };
 
-/** Decision slots (plan 26 / ADR-0032): health task types for the family
- *  `decision:<cap>` slots. Empty = inherits the Default decision model
- *  (the backend's priority-order fallback data stays untouched; the UI
- *  no longer offers a fallback picker). */
-const DECISION_SLOT_TASKS = [
-  {
-    value: 'decision_tool_dispatch',
-    labelKey: 'settings.ai.slot_decision_tool_dispatch',
-    hintKey: 'settings.ai.slot_decision_tool_dispatch_hint',
-    icon: Wrench,
-  },
-  {
-    value: 'decision_boolean_gate',
-    labelKey: 'settings.ai.slot_decision_boolean_gate',
-    hintKey: 'settings.ai.slot_decision_boolean_gate_hint',
-    icon: ShieldCheck,
-  },
-  {
-    value: 'decision_choice',
-    labelKey: 'settings.ai.slot_decision_choice',
-    hintKey: 'settings.ai.slot_decision_choice_hint',
-    icon: Languages,
-  },
-  {
-    value: 'decision_score',
-    labelKey: 'settings.ai.slot_decision_score',
-    hintKey: 'settings.ai.slot_decision_score_hint',
-    icon: Tag,
-  },
-];
+const DECISION_KIND_ICONS: Record<string, LucideIcon> = {
+  decision_tool_dispatch: Wrench,
+  decision_boolean_gate: ShieldCheck,
+  decision_choice: Languages,
+  decision_score: Tag,
+};
 
-const OTHER_TASKS = [
-  { value: 'nlp', labelKey: 'settings.ai.task_nlp', requires: 'text' as const, icon: Cpu },
-  {
-    value: 'medication_interaction',
-    labelKey: 'settings.ai.task_medication_interaction',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'anomaly_detection',
-    labelKey: 'settings.ai.task_anomaly_detection',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'fill_biomarker_form',
-    labelKey: 'settings.ai.task_fill_biomarker_form',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'fill_medication_form',
-    labelKey: 'settings.ai.task_fill_medication_form',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'magic_fill_examination',
-    labelKey: 'settings.ai.task_magic_fill_examination',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'define_biomarker',
-    labelKey: 'settings.ai.task_define_biomarker',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'define_medication',
-    labelKey: 'settings.ai.task_define_medication',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'suggest_category_icon',
-    labelKey: 'settings.ai.task_suggest_category_icon',
-    requires: 'text',
-    icon: Cpu,
-  },
-  {
-    value: 'generate_category_icon',
-    labelKey: 'settings.ai.task_generate_category_icon',
-    requires: 'text',
-    icon: Cpu,
-  },
-  { value: 'chat', labelKey: 'settings.ai.task_chat', requires: 'text', icon: Cpu },
-];
+function taskRow(task: AiTaskDef) {
+  return {
+    value: task.id,
+    labelKey: task.labelKey,
+    requires: task.capability,
+    icon: DECISION_KIND_ICONS[task.id] ?? CAPABILITY_ICONS[task.capability] ?? Cpu,
+  };
+}
+
+/** The uniform "Default models" rows (plan 29 uniform ruling + ADR-0037
+ *  single-slot defaults): one picker per capability default. */
+const DEFAULT_SLOT_TASKS = AI_TASKS.filter(
+  (task) => task.capabilityDefault && !isDecisionTask(task.id),
+).map(taskRow);
+
+/** ADR-0036: the decision default row rides the "Default models" section like
+ *  every capability default (single picker; the kind rows carry the PHI opt-in
+ *  explicitly below). */
+const DECISION_DEFAULT_ROW = {
+  ...taskRow(AI_TASK_DEFS[DECISION_DEFAULT_TASK_TYPE]),
+  hintKey: 'settings.ai.task_decision_default_hint',
+};
+
+/** Decision kind slots (plan 26 / ADR-0032): generated health task ids for the
+ *  family `decision:<cap>` slots. Empty = inherits the Default decision model. */
+const DECISION_SLOT_TASKS = AI_DECISION_TASK_IDS.map((taskId) => ({
+  ...taskRow(AI_TASK_DEFS[taskId]),
+  hintKey: `settings.ai.slot_${taskId}_hint`,
+}));
+
+/** Every remaining specialist task (no capability default, no decision slot). */
+const SPECIALIST_TASK_ROWS = AI_TASKS.filter(
+  (task) => !task.capabilityDefault && !isDecisionTask(task.id),
+).map(taskRow);
 
 /** One Decision kinds group row (single-picker ruling, 2026-10-14):
  *  composed from the library `ModelPicker` — no explicit inherit option:
@@ -277,7 +216,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   }, [presets, providers]);
 
   const assignmentFor = (taskType: string) =>
-    taskAssignments.find((a) => a.task_type === taskType && a.is_active);
+    taskAssignments.find((a) => a.task_type === taskType && !a.revoked_at);
 
   const catalog: ModelPickerProvider[] = useMemo(() => {
     const groups: Record<string, ModelPickerProvider> = {};
@@ -313,7 +252,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   const value: Record<string, string | null> = {};
   for (const task of [
     ...DEFAULT_SLOT_TASKS,
-    ...OTHER_TASKS,
+    ...SPECIALIST_TASK_ROWS,
     ...DECISION_SLOT_TASKS.map((entry) => ({ value: entry.value as string })),
     DECISION_DEFAULT_ROW,
   ]) {
@@ -372,7 +311,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       await updateTaskAssignment(existing.id, {
         provider_id: providerId,
         model_id: modelId,
-        is_active: true,
       });
     } else {
       await createTaskAssignment({
@@ -380,8 +318,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         scope: apiScope,
         provider_id: providerId,
         model_id: modelId,
-        is_active: true,
-        priority: 0,
         ...(scope === 'user' && userId ? { user_id: userId } : {}),
         ...(scope === 'tenant' && tenantId ? { tenant_id: tenantId } : {}),
       });
@@ -418,7 +354,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     {
       id: 'other',
       label: t('settings.ai.section_tasks'),
-      tasks: OTHER_TASKS.map((task) => ({
+      tasks: SPECIALIST_TASK_ROWS.map((task) => ({
         id: task.value,
         label: t(task.labelKey),
         requires: task.requires,
@@ -436,7 +372,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   return (
     <div className="max-w-3xl space-y-4">
       <p className="text-sm text-gray-500 dark:text-dark-muted">{t('settings.ai.tasks_hint')}</p>
-      {!configSummary?.default?.model ? (
+      {!configSummary?.tasks?.default?.model ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-900/20">
           <span className="text-sm text-amber-700 dark:text-amber-400">
             {t('settings.ai.setup.no_model_deep_link')}

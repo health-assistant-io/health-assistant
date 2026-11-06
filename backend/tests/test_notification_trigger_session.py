@@ -57,7 +57,7 @@ def test_task_injects_worker_session():
 
 def test_manager_signatures_accept_session():
     """Both public entry points accept an injectable ``session``."""
-    from app.services.notification_manager import NotificationManager
+    from app.services.notifications.notification_manager import NotificationManager
 
     pdt = inspect.signature(NotificationManager.process_due_triggers)
     assert "session" in pdt.parameters, "process_due_triggers must accept session"
@@ -76,7 +76,7 @@ async def test_process_due_triggers_uses_injected_session_and_forwards_it(monkey
     """When a session is injected, the manager must use it for the query and
     forward the SAME object to ``fire_notification`` — it must NOT instantiate
     ``AsyncSessionLocal``."""
-    from app.services import notification_manager as nm
+    from app.services.notifications import notification_manager as nm
 
     monkeypatch.setattr(nm, "DATABASE_AVAILABLE", True)
 
@@ -111,8 +111,8 @@ async def test_process_due_triggers_uses_injected_session_and_forwards_it(monkey
 async def test_fire_notification_uses_injected_session(monkeypatch):
     """``fire_notification(trigger, session=...)`` must forward the session to
     ``notification_service.emit`` and never instantiate ``AsyncSessionLocal``."""
-    from app.services import notification_manager as nm
-    from app.services import notification_service as nsvc
+    from app.services.notifications import notification_manager as nm
+    from app.services.notifications import notification_service as nsvc
 
     asl_spy = MagicMock()
     monkeypatch.setattr(nsvc, "AsyncSessionLocal", asl_spy)
@@ -152,7 +152,7 @@ async def test_process_due_triggers_rolls_back_on_failed_trigger(monkeypatch):
     must be rolled back so the remaining triggers still process and the final
     commit succeeds. (Without rollback a poisoned session would force every
     subsequent trigger to fail with PendingRollbackError.)"""
-    from app.services import notification_manager as nm
+    from app.services.notifications import notification_manager as nm
 
     monkeypatch.setattr(nm, "DATABASE_AVAILABLE", True)
     monkeypatch.setattr(nm, "AsyncSessionLocal", MagicMock())

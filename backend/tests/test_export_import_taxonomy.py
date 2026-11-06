@@ -51,9 +51,9 @@ from app.schemas.biomarker import (
     BiomarkerCreate,
     CatalogImportPayload,
 )
-from app.services.catalog_import_service import CatalogImportService
-from app.services.export_service import ExportService
-from app.services.import_service import ImportService
+from app.services.catalog.catalog_import_service import CatalogImportService
+from app.services.export.export_service import ExportService
+from app.services.imports.service import ImportService
 
 # ---------------------------------------------------------------------------
 # Helpers

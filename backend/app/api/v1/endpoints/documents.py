@@ -18,8 +18,8 @@ from app.core.security import get_current_user
 from app.models.enums import Role
 from app.schemas.document import DocumentEdit, DocumentResponse, DocumentUpdate
 from app.schemas.user import TokenData
-from app.services.audit_service import audit_read, log_audit_action
-from app.services.document_service import (
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.documents.document_service import (
     delete_document,
     get_document,
     get_documents,
@@ -151,7 +151,7 @@ async def list_documents(
         tenant_id=tenant_id_str, owner_id=owner_id, limit=limit, offset=offset, db=db
     )
 
-    from app.services.document_service import enrich_document_entities
+    from app.services.documents.document_service import enrich_document_entities
 
     return [await enrich_document_entities(doc.to_dict(), db) for doc in documents]
 
@@ -184,7 +184,7 @@ async def get_document_endpoint(
     if not is_admin and str(document.owner_id) != str(user_id):
         raise HTTPException(status_code=403, detail="Not authorized to view this document")
 
-    from app.services.document_service import enrich_document_entities
+    from app.services.documents.document_service import enrich_document_entities
 
     return await enrich_document_entities(document.to_dict(), db)
 
@@ -215,7 +215,7 @@ async def update_document_endpoint(
     ] and str(document.owner_id) != str(user_id):
         raise HTTPException(status_code=403, detail="Not authorized to update this document")
 
-    old_include = document.include_in_extraction
+    prior_include = document.include_in_extraction
     updated_document = await update_document(
         document_id, document_update.model_dump(exclude_unset=True), db
     )
@@ -224,7 +224,7 @@ async def update_document_endpoint(
 
     # If inclusion changed or text was updated, re-trigger cumulative extraction
     if (
-        updated_document.include_in_extraction != old_include
+        updated_document.include_in_extraction != prior_include
         or document_update.extracted_text is not None
     ) and updated_document.examination_id:
         # If we just enabled extraction and it hasn't been OCR'd yet (or failed), trigger OCR first
@@ -232,11 +232,11 @@ async def update_document_endpoint(
             "uploaded",
             "failed",
         ]:
-            from app.services.document_service import trigger_extraction
+            from app.services.documents.document_service import trigger_extraction
 
             await trigger_extraction(str(updated_document.id), db)
         else:
-            from app.services.document_service import trigger_cumulative_extraction
+            from app.services.documents.document_service import trigger_cumulative_extraction
 
             await trigger_cumulative_extraction(str(updated_document.examination_id), db)
 
@@ -278,7 +278,7 @@ async def edit_document_endpoint(
     ] and str(document.owner_id) != str(user_id):
         raise HTTPException(status_code=403, detail="Not authorized to edit this document")
 
-    from app.services.document_service import edit_document_service
+    from app.services.documents.document_service import edit_document_service
 
     new_document = await edit_document_service(document_id, edit_params.model_dump(), db)
 
@@ -363,7 +363,7 @@ async def download_document_endpoint(
     # depth forces an attachment for those extensions regardless. All other
     # types get X-Content-Type-Options: nosniff so browsers don't MIME-sniff a
     # benign extension into something executable.
-    from app.services.document_service import should_serve_inline
+    from app.services.documents.document_service import should_serve_inline
 
     serve_inline = should_serve_inline(document.filename)
     headers = {"X-Content-Type-Options": "nosniff"}
@@ -496,7 +496,7 @@ async def upload_temp_preview(
     try:
         # Save temp file — cap size to prevent RAM exhaustion (audit A4)
         from app.core.config import settings as _settings
-        from app.services.document_service import _read_capped
+        from app.services.documents.document_service import _read_capped
 
         content = await _read_capped(file, _settings.MAX_UPLOAD_SIZE * 1024 * 1024)
         with open(temp_path, "wb") as buffer:
@@ -764,7 +764,7 @@ async def delete_document_endpoint(
             action="delete_document",
             resource_type="Document",
             resource_id=document_id,
-            old_value={"filename": str(document.filename)},
+            old_value={"filename": str(document.filename)},  # gate-allow: *, audit diff
         )
         return {"message": "Document deleted successfully"}
     else:

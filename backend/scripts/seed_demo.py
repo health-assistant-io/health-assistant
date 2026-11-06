@@ -97,7 +97,7 @@ from app.models.examination_model import ExaminationModel  # noqa: E402
 from app.models.fhir.patient import Observation, Patient  # noqa: E402
 from app.models.tenant_model import TenantModel  # noqa: E402
 from app.models.user_model import UserModel  # noqa: E402
-from app.services.import_service import ImportService  # noqa: E402
+from app.services.imports.service import ImportService  # noqa: E402
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -769,25 +769,29 @@ async def seed_mock_ai(session, tenant_id: UUID) -> None:
         await session.flush()
         print("✅ Seeded mock AI model: mock-medical")
 
+    # Task slots are seeded lookup rows (ai_task_defs, deterministic ids), not
+    # free-form strings — make sure the vocabulary exists before assigning.
+    from app.ai.providers.task_defs import seed_task_defs, task_def_id
+
+    await seed_task_defs(session)
+    chat_task_id = task_def_id("chat")
     assignment = (
         await session.execute(
             select(AITaskAssignment).where(
-                AITaskAssignment.task_type == "chat",
+                AITaskAssignment.task_type_id == chat_task_id,
                 AITaskAssignment.scope == AIScope.TENANT,
                 AITaskAssignment.tenant_id == tenant_id,
-                AITaskAssignment.provider_id == provider.id,
+                AITaskAssignment.revoked_at.is_(None),
             )
         )
     ).scalar_one_or_none()
     if not assignment:
         session.add(
             AITaskAssignment(
-                task_type="chat",
+                task_type_id=chat_task_id,
                 scope=AIScope.TENANT,
                 provider_id=provider.id,
                 model_id=model.id,
-                is_active=True,
-                priority=0,
                 tenant_id=tenant_id,
             )
         )

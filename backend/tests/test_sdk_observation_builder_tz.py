@@ -60,7 +60,7 @@ def test_built_observation_passes_fhir_validation():
     """
     from app.extensions.sdk.observation_builder import ObservationBuilder
     from app.models.fhir import Observation
-    from app.services.fhir_helpers import assert_valid_fhir
+    from app.services.fhir.fhir_helpers import assert_valid_fhir
 
     tz_aware = datetime(2026, 6, 20, 22, 39, 56, 471381, tzinfo=UTC)
     obs_create = (
@@ -103,7 +103,7 @@ def test_observation_to_fhir_dict_handles_naive_datetime():
     export.
     """
     from app.models.fhir import Observation
-    from app.services.fhir_helpers import assert_valid_fhir
+    from app.services.fhir.fhir_helpers import assert_valid_fhir
 
     naive = datetime(2026, 6, 20, 22, 39, 56, 471381)  # no tz
     orm = Observation(
@@ -137,7 +137,7 @@ async def test_map_observations_returns_dropped_count(monkeypatch):
     count pathway we need a *truly* invalid resource (missing required
     ``code``).
     """
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     # Bypass the DB — the function uses AsyncSessionLocal() internally
     class _FakeSession:
@@ -199,7 +199,7 @@ async def test_map_observations_naive_datetime_no_longer_dropped(monkeypatch):
     """Guards against the D9 regression: a naive effective_datetime must NOT
     be dropped. The defensive ``fhir_isoformat`` helper assumes UTC and
     emits a conformant FHIR string."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     class _FakeSession:
         async def __aenter__(self):

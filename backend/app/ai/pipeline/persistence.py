@@ -31,7 +31,7 @@ from app.models.document_model import DocumentModel
 from app.models.enums import CodingSystem, QuantityType
 from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
 from app.models.fhir.patient import Observation
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_helpers import (
     FhirSerializationError,
     _normalize_interpretation,
     assert_valid_fhir,
@@ -262,7 +262,7 @@ async def save_observation(
             return
         # Hard value-shape contract (plan Step 5): validate the STATE
         # biomarker's allowed_states membership before persisting.
-        from app.services.observation_value_validator import (
+        from app.services.biomarkers.observation_value_validator import (
             validate_observation_value,
         )
 
@@ -281,7 +281,7 @@ async def save_observation(
         db.add(obs)
         return
 
-    # --- QUANTITY biomarker branch (the legacy path) -----------------------
+    # --- QUANTITY biomarker branch (the numeric path) ----------------------
     raw_unit_id = None
     # Default normalized_value to the raw value; refined below if we have
     # enough unit information to convert. The previous code only normalized

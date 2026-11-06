@@ -49,7 +49,7 @@ No code to write — it ships. The walkthrough (all runnable):
 #    whenever thresholds breach (HR > 100, BP ≥ 130/85, glitch > 200).
 
 # 3. "Show Status" custom action prints the live cursor + capability list;
-#    "Reset Sync Cursor" clears _sync_state so history repeats.
+#    "Reset Sync Cursor" clears the sync-state cursor row so history repeats.
 ```
 
 The notification round-trip it demonstrates: four

@@ -286,7 +286,7 @@ async def test_catalog_ref_snapshot_captures_rich_fields():
     ]
     ctx = _ctx()
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
         from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
@@ -333,7 +333,7 @@ async def test_catalog_ref_snapshot_normalises_string_telemetry_flag():
     ]
     ctx = _ctx()
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
         from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
@@ -357,7 +357,7 @@ async def test_catalog_ref_snapshot_truncates_long_description():
     fake_hits = [{"id": "u1", "label": "X", "type": "medication", "description": long_desc}]
     ctx = _ctx()
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
         from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
@@ -381,7 +381,7 @@ async def test_catalog_ref_snapshot_caps_at_max():
     fake_hits = [{"id": f"u{i}", "label": f"H{i}"} for i in range(50)]
     ctx = _ctx()
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits[:MAX_CANDIDATES_PER_REF]),
     ) as mock_search:
         from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
@@ -423,7 +423,7 @@ async def test_catalog_ref_snapshot_swallows_search_errors():
     """The snapshot must never raise — a search failure degrades to []."""
     ctx = _ctx()
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(side_effect=RuntimeError("boom")),
     ):
         from app.ai.tools.ask_user import CatalogRefQuestion, _snapshot_catalog_candidates
@@ -586,7 +586,7 @@ async def test_tool_populates_candidates_for_catalog_ref():
     ctx = _ctx()
     fake_hits = [{"id": "u1", "label": "HbA1c", "type": "biomarker"}]
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=fake_hits),
     ):
         (ask_user,) = build(ctx)

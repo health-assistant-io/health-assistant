@@ -19,7 +19,7 @@ from app.models.base import (
     AuditMixin,
     Base,
     SoftDeleteMixin,
-    TenantMixin,
+    SystemScopeTenantMixin,
     TimestampMixin,
     UUIDMixin,
     VersionedMixin,
@@ -44,7 +44,7 @@ def _enum_values(enum_cls):
 class Concept(
     Base,
     UUIDMixin,
-    TenantMixin,
+    SystemScopeTenantMixin,
     AuditMixin,
     VersionedMixin,
     TimestampMixin,
@@ -184,8 +184,8 @@ class ConceptKindTag(
     A single concept can carry multiple kind tags — e.g. "Blood Laboratory" is
     tagged as both ``examination_category`` and ``biomarker_class`` (and also
     ``document_category``). The pair ``(concept_id, kind)`` is unique. The
-    ``conceptkind`` PG enum type is shared with the legacy ``concepts.kind``
-    column (which this tag table replaces).
+    ``conceptkind`` PG enum type is shared with the ``concepts.kind`` column
+    (which this tag table supersedes).
 
     Cascade-deletes with its parent concept. The ``Concept.kind_tags``
     relationship is ``selectin``-loaded, so reads see the tags without an
@@ -214,7 +214,7 @@ class ConceptKindTag(
 class ConceptEdge(
     Base,
     UUIDMixin,
-    TenantMixin,
+    SystemScopeTenantMixin,
     AuditMixin,
     TimestampMixin,
 ):

@@ -262,7 +262,7 @@ async def test_mobile_only_user_counts_as_push_reachable(bridge_owner):
     """A user with NO Web Push subscription but ONE active MobilePushTarget
     must still be considered push-reachable — otherwise ``emit`` would skip
     creating a PUSH delivery and the device would never receive anything."""
-    from app.services.notification_service import _has_push_subscription
+    from app.services.notifications.notification_service import _has_push_subscription
 
     ctx = bridge_owner
     async with AsyncSessionLocal() as db:
@@ -294,7 +294,7 @@ async def test_dispatch_posts_to_each_active_device(bridge_owner, monkeypatch):
     """`dispatch` calls the UnifiedPush sender once per active device and
     returns a per-device result. A device failure does not raise — the
     others still get their delivery."""
-    from app.services import mobile_push_service as svc
+    from app.services.notifications import mobile_push_service as svc
 
     ctx = bridge_owner
     async with AsyncSessionLocal() as db:
@@ -342,7 +342,7 @@ async def test_dispatch_posts_to_each_active_device(bridge_owner, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_dispatch_skips_inactive(bridge_owner, monkeypatch):
-    from app.services import mobile_push_service as svc
+    from app.services.notifications import mobile_push_service as svc
 
     ctx = bridge_owner
     async with AsyncSessionLocal() as db:
@@ -410,8 +410,8 @@ async def test_emit_creates_push_delivery_for_mobile_only_user(bridge_owner, mon
         NotificationDelivery,
         NotificationStatus,
     )
-    from app.services import mobile_push_service as svc
-    from app.services import notification_service as ns
+    from app.services.notifications import mobile_push_service as svc
+    from app.services.notifications import notification_service as ns
 
     ctx = bridge_owner
 

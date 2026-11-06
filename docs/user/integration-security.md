@@ -59,6 +59,33 @@ phone, a scraper, a browser extension) never execute code here; they
 speak the published bridge protocol — signed requests, typed responses,
 closed error vocabulary — over the connection you created.
 
+## Imported extensions — what you are asked, and when
+
+Bundled connectors are not the only way an extension can arrive: your
+server's admins can register **sources** (a git repository, a registry)
+that publish third-party extensions. Those are treated with the
+browser-permission model — nothing runs, and nothing is asked of you,
+until the content is pinned and approved:
+
+- **You consent per capability, per version.** The consent screen names
+  every capability the extension declares, who published it (author,
+  license, repository — verbatim), and the exact **content digest** it is
+  pinned to. For sandboxed imports it says so plainly: the code runs
+  sandboxed, *not reviewed* — sandboxing limits the blast radius, it is
+  not a review of intent. For external-process imports it discloses that
+  the extension opens its own network connections outside the app's
+  guardrails, and that the app governs only what it returns.
+- **An upgrade asks again for what is new.** Granting a capability binds
+  to that exact content digest. If an update adds a capability, you are
+  asked about the new one; capabilities that did not change keep your
+  grant. Nothing you granted silently widens.
+- **Refusing is always available.** A denied capability stays denied; a
+  revoked or unapproved digest cannot run at all.
+- **Credentials stay sealed, per version.** Secret fields the extension
+  declares are encrypted at rest and bound to the content digest they
+  were sealed for — an upgraded extension has to be re-authorized, it
+  cannot quietly reuse your old credentials.
+
 ## The audit trail
 
 Writes flown through the integrations are stamped with their provenance

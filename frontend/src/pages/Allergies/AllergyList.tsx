@@ -20,7 +20,7 @@ import { useCreateIntent } from '../../hooks/useCreateIntent';
 /**
  * Patient-scoped allergy list page. Mirrors `MedicationList`: status filter,
  * grid/list view toggle, catalog shortcut, add button, active/resolved
- * sectioning. Replaces the legacy cross-patient `/alerts` page.
+ * sectioning. Replaces the cross-patient `/alerts` page.
  */
 function AllergyList() {
   const { t } = useTranslation();

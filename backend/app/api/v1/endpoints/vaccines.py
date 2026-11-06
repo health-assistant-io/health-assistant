@@ -23,12 +23,12 @@ from app.schemas.vaccine import (
     VaccineCatalogResponse,
     VaccineCatalogUpdate,
 )
-from app.services import vaccine_service
-from app.services.access import (
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import (
     check_immunization_access,
     check_patient_access,
 )
-from app.services.audit_service import audit_read, log_audit_action
+from app.services.clinical import vaccine_service
 
 router = APIRouter(prefix="/vaccines", tags=["vaccines"])
 

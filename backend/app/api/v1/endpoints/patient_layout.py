@@ -11,8 +11,8 @@ from app.schemas.patient_layout import (
     PatientLayoutUpdate,
 )
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
-from app.services.patient_layout_service import (
+from app.services.auth.access import check_patient_access
+from app.services.patients.patient_layout_service import (
     create_patient_layout,
     delete_patient_layout,
     get_active_layout,

@@ -13,12 +13,12 @@ from uuid import uuid4
 
 from app.models.fhir.communication import CommunicationModel
 from app.models.fhir.device import DeviceModel
-from app.services.fhir_converter import (
+from app.services.fhir.fhir_converter import (
     fhir_to_communication_orm,
     fhir_to_device_orm,
     validate_resource,
 )
-from app.services.fhir_helpers import parse_fhir_resource
+from app.services.fhir.fhir_helpers import parse_fhir_resource
 
 # ---------------------------------------------------------------------------
 # Device

@@ -6,7 +6,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_seed_concepts_idempotent():
     """Running seed_concepts twice is idempotent (upsert by slug)."""
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     stats1 = await svc.seed_concepts()
@@ -27,7 +27,7 @@ async def test_seed_concept_edges_idempotent():
 
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import ConceptEdge
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     await svc.seed_concepts()
@@ -60,7 +60,7 @@ async def test_seed_concepts_reconciles_kinds_on_existing_row():
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import Concept, ConceptKindTag
     from app.models.enums import ConceptKind
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     # First seed: runs the full file (concepts.json). Take a known concept.
@@ -107,7 +107,7 @@ async def test_seed_concept_to_anatomy_edges():
     from app.models.anatomy_model import AnatomyStructure
     from app.models.concept_model import Concept, ConceptEdge
     from app.models.enums import ConceptRelationType, EdgeEndpointType
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     await svc.seed_body_parts()  # creates heart, brain, …
@@ -143,7 +143,7 @@ async def test_seed_concept_to_anatomy_edges():
 @pytest.mark.asyncio
 async def test_seed_includes_all_expected_kinds():
     """Seed data covers at least the core domains."""
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     await svc.seed_concepts()
@@ -155,7 +155,7 @@ async def test_seed_includes_all_expected_kinds():
     from app.models.enums import ConceptKind
 
     async with AsyncSessionLocal() as session:
-        from app.services.concept_service import concepts_with_kind
+        from app.services.catalog.concept_service import concepts_with_kind
 
         for kind in [
             ConceptKind.SPECIALTY,
@@ -183,7 +183,7 @@ async def test_seed_includes_all_expected_kinds():
 @pytest.mark.asyncio
 async def test_seed_edges_create_graph():
     """Seeded edges connect specialties to body systems + exam categories."""
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     await svc.seed_concepts()

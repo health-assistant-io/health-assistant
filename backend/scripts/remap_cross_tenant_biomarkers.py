@@ -25,7 +25,7 @@ from sqlalchemy import select, text
 
 from app.core.database import AsyncSessionLocal
 from app.models.fhir.patient import Observation
-from app.services.fhir_service import map_observations_to_biomarkers
+from app.services.fhir.fhir_service import map_observations_to_biomarkers
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger("remap_cross_tenant")

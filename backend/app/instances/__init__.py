@@ -6,7 +6,7 @@ documents, clinical events, allergies, vaccines) each ship a search function
 here that runs a tenant- (+ optional patient-) scoped ILIKE query and returns
 uniform :class:`~app.schemas.instance_search.InstanceSearchHit` dicts. The
 functions self-register in :mod:`app.instances.registry`; the dispatcher in
-:mod:`app.services.instance_search_service` fans a query out across the
+:mod:`app.services.instances.instance_search_service` fans a query out across the
 requested types.
 
 This is the instance-side counterpart of the catalog ``search_catalogs``

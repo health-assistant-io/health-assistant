@@ -11,6 +11,9 @@
 #   ./scripts/install.sh --env-only  # generate .env only, don't start
 #   ./scripts/install.sh --no-wait   # skip the backend health-wait
 #   ./scripts/install.sh --no-pull   # don't fetch newer images (offline reuse)
+#   ./scripts/install.sh --image-tag 0.9.0   # pin images to a published release
+#   ./scripts/install.sh --auto-ports        # move busy ports to free ones in .env
+#   ./scripts/install.sh --no-ports          # skip the port pre-flight
 #   ./scripts/install.sh --reset     # wipe stack data volumes, then reinstall
 #   ./scripts/install.sh --reset --yes   # same, no confirmation prompt
 #   ./scripts/install.sh --reset --yes --reset-all  # also wipe user uploads
@@ -20,6 +23,13 @@
 # images (so stale local images from a previous install are refreshed), compose
 # up -d is a no-op when the stack is already running, and .env is never
 # overwritten.
+#
+# Image tag: the standalone compose file defaults to `:latest` (the images
+# built from main). Installing a release tree MUST pin the matching tag
+# (`--image-tag 0.9.0`, which the one-line bootstrap derives from the release
+# it extracted) — a release tree running main images fails at the migrate step
+# because the env contract differs. The pin is persisted in .env; a semver pin
+# that disagrees with this tree's VERSION aborts before anything starts.
 #
 # --reset force-refreshes the data: stops the stack and deletes the
 # postgres_data + redis_data volumes (and uploads with --reset-all) before
@@ -44,6 +54,11 @@ while [[ "$#" -gt 0 ]]; do
         --env-only) ENV_ONLY=1 ;;
         --no-wait) NO_WAIT=1 ;;
         --no-pull) NO_PULL=1 ;;
+        --image-tag)
+            [ "$#" -ge 2 ] || { echo -e "${RED}--image-tag needs a value${NC}" >&2; exit 1; }
+            IMAGE_TAG_ARG="$2"; shift ;;
+        --auto-ports) AUTO_PORTS=1 ;;
+        --no-ports) NO_PORTS=1 ;;
         --reset) RESET=1 ;;
         --yes) RESET_YES=1 ;;
         --reset-all) RESET_ALL=1 ;;
@@ -77,11 +92,28 @@ else
     echo -e "${GREEN}.env already exists — leaving it untouched.${NC}"
 fi
 
+# Pin the published-image tag to the tree being installed (the bootstrap
+# derives it from the release it extracted). Persisted, so later manual runs of
+# this script stay on the same release; update-docker.sh moves a semver pin
+# forward when the tree moves.
+if [ -n "$IMAGE_TAG_ARG" ]; then
+    set_env_value IMAGE_TAG "$IMAGE_TAG_ARG"
+    export IMAGE_TAG="$IMAGE_TAG_ARG"
+    echo -e "${GREEN}Pinned images to IMAGE_TAG=${IMAGE_TAG_ARG} (saved in .env).${NC}"
+fi
+check_image_tag_matches_tree
+warn_unpinned_release_tree
+
 if [ -n "$ENV_ONLY" ]; then
     echo -e "${GREEN}Done — .env is ready. Start the stack with:${NC}"
     echo "  $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d"
     exit 0
 fi
+
+# Refuse a pre-0.9 database / stale v0.8.0 .env before pulling images or
+# recreating volumes. Fresh installs pass (nothing is running); a re-run over
+# an existing install gets the actionable stop instead of a failed migrate.
+run_upgrade_preflight
 
 # Adopt volumes from before the compose files pinned their project name
 # (docker_* → <project>_*), so the reset/guard/down below reason about the
@@ -104,6 +136,18 @@ fi
 # postgres_data volume left by a previous install on this host (postgres only
 # applies the password on first init). Offer to reset it before starting.
 check_leftover_db_volume "$ENV_WAS_FRESH"
+
+# Port pre-flight: a host port already taken by something that is not this
+# stack aborts here, with the .env variable to change — instead of a raw
+# "address already in use" halfway through `up -d`. --auto-ports moves busy
+# ports to free ones in .env; --no-ports skips the check.
+if [ -z "$NO_PORTS" ]; then
+    if [ -n "$AUTO_PORTS" ]; then
+        check_published_ports --auto
+    else
+        check_published_ports
+    fi
+fi
 
 # Pull the latest published images so a re-run over a previous install's stale
 # local images (or the :latest tag) actually refreshes them. --no-pull skips
@@ -135,6 +179,9 @@ echo -e "${GREEN}======================================================${NC}"
 echo -e "${GREEN}   Health Assistant is running!${NC}"
 echo -e "${GREEN}======================================================${NC}"
 echo "  App:     $APP_URL"
+IMAGES="$(env_value IMAGE_TAG "")"
+[ -z "$IMAGES" ] && IMAGES="latest (built from main)"
+echo "  Images:  ${IMAGES}"
 if [ "$SETUP_TOKEN_MODE" = "env" ] && [ -n "$BOOTSTRAP_TOKEN" ]; then
     echo "  Setup:   $APP_URL/setup?token=$BOOTSTRAP_TOKEN"
     echo "           (one-click first-run setup — create your admin account)"

@@ -4,7 +4,7 @@ Phase 3 Python reference).
 One suite every shipping transport passes — bounded confidence, one audit
 record per invocation, empty input never throws, timeout respected,
 transport mocked, no network or keyring in tests. Health additions: the
-scope cascade + priority fallback chain (§3 contract table), D4
+scope cascade + the specialist fallback chain (§3 contract table), D4
 no-default-fallback resolution, and the D17 PHI scope guard.
 """
 
@@ -45,6 +45,7 @@ from app.ai.decide.systemone.client import (
 from app.ai.decide.systemone.probe import DecisionProbeInput
 from app.ai.decide.types import DecisionAnswer
 from app.ai.providers.enums import DecisionTransport, SystemOneErrorKind, TaskType
+from app.ai.providers.task_defs import task_def_id
 from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import (
     AIModel,
@@ -196,20 +197,19 @@ async def assign_slot(
     model_id,
     task_type: str = "decision_tool_dispatch",
     *,
-    priority: int = 0,
     phi_allowed: bool = False,
     scope: AIScope = AIScope.USER,
+    fallback_model_id: UUID | None = None,
 ) -> AITaskAssignment:
     async with AsyncSessionLocal() as session:
         row = AITaskAssignment(
-            task_type=task_type,
+            task_type_id=task_def_id(task_type),
             scope=scope,
             tenant_id=ctx["tenant_id"],
             user_id=ctx["user_id"] if scope == AIScope.USER else None,
             provider_id=None,
             model_id=model_id,
-            is_active=True,
-            priority=priority,
+            fallback_model_id=fallback_model_id,
             phi_allowed=phi_allowed,
         )
         session.add(row)
@@ -400,7 +400,7 @@ def test_conformance_parameter_stays_exactly_one_transport() -> None:
 
 
 # ---------------------------------------------------------------------------
-# resolution states (scope cascade + priority fallback, D2b, D4, D17)
+# resolution states (scope cascade + specialist fallback, D2b, D4, D17)
 # ---------------------------------------------------------------------------
 
 
@@ -533,14 +533,12 @@ async def test_resolution_never_falls_back_to_the_chat_default(decide_ctx) -> No
         await session.flush()
         session.add(
             AITaskAssignment(
-                task_type=TaskType.DEFAULT.value,
+                task_type_id=task_def_id(TaskType.DEFAULT.value),
                 scope=AIScope.USER,
                 tenant_id=decide_ctx["tenant_id"],
                 user_id=decide_ctx["user_id"],
                 provider_id=chat_provider.id,
                 model_id=chat_model.id,
-                is_active=True,
-                priority=0,
             )
         )
         await session.commit()
@@ -553,15 +551,17 @@ async def test_resolution_never_falls_back_to_the_chat_default(decide_ctx) -> No
     assert resolution.kind == "off"
 
 
-async def test_resolution_needs_key_then_priority_fallback_chain(decide_ctx) -> None:
+async def test_resolution_needs_key_then_specialist_fallback_chain(decide_ctx) -> None:
+    """A keyless primary rejects through ``resolve_candidate`` and the row's
+    own fallback pair (plan 4 W2: fallbacks are columns, not priority rows)
+    serves the call; remove the fallback and the slot reports needs-key."""
     _keyless, keyless_model = await seed_decision_provider(
         decide_ctx, with_key=False, model_name="jev-no-key"
     )
     _keyed, keyed_model = await seed_decision_provider(
         decide_ctx, with_key=True, model_name="jev-keyed"
     )
-    await assign_slot(decide_ctx, keyless_model.id, priority=10)
-    await assign_slot(decide_ctx, keyed_model.id, priority=0)
+    await assign_slot(decide_ctx, keyless_model.id, fallback_model_id=keyed_model.id)
 
     async with AsyncSessionLocal() as db:
         resolution = await resolve_decision(
@@ -573,10 +573,9 @@ async def test_resolution_needs_key_then_priority_fallback_chain(decide_ctx) -> 
 
     async with AsyncSessionLocal() as session:
         await session.execute(
-            delete(AITaskAssignment).where(
-                AITaskAssignment.model_id == keyed_model.id,
-                AITaskAssignment.tenant_id == decide_ctx["tenant_id"],
-            )
+            AITaskAssignment.__table__.update()
+            .where(AITaskAssignment.tenant_id == decide_ctx["tenant_id"])
+            .values(fallback_model_id=None, fallback_provider_id=None)
         )
         await session.commit()
     clear_decision_resolution_cache()
@@ -681,8 +680,8 @@ async def test_resolution_user_scope_wins_over_system(decide_ctx) -> None:
     _user_provider, user_model = await seed_decision_provider(
         decide_ctx, with_key=True, model_name="jev-user"
     )
-    await assign_slot(decide_ctx, sys_model.id, scope=AIScope.SYSTEM, priority=100)
-    await assign_slot(decide_ctx, user_model.id, scope=AIScope.USER, priority=0)
+    await assign_slot(decide_ctx, sys_model.id, scope=AIScope.SYSTEM)
+    await assign_slot(decide_ctx, user_model.id, scope=AIScope.USER)
 
     async with AsyncSessionLocal() as db:
         resolution = await resolve_decision(
@@ -778,11 +777,16 @@ async def test_phi_adjacent_dispatch_runs_after_explicit_override(decide_ctx) ->
     assert isinstance(resolution, SystemOneResolution)
 
 
-async def test_phi_guard_falls_through_to_an_opted_in_fallback(decide_ctx) -> None:
+async def test_phi_guard_falls_through_to_an_opted_in_scope(decide_ctx) -> None:
+    """D17 + the scope cascade: the USER row is not opted in, so a PHI-adjacent
+    dispatch falls through to the opted-in TENANT row (plan 4 W2 replaced the
+    old same-slot priority chain — one active row per scope key now)."""
     _excluded, excluded_model = await seed_decision_provider(decide_ctx, model_name="jev-no-phi")
-    _opted, opted_model = await seed_decision_provider(decide_ctx, model_name="jev-phi")
-    await assign_slot(decide_ctx, excluded_model.id, priority=10)
-    await assign_slot(decide_ctx, opted_model.id, priority=0, phi_allowed=True)
+    _opted, opted_model = await seed_decision_provider(
+        decide_ctx, model_name="jev-phi", scope=AIScope.TENANT
+    )
+    await assign_slot(decide_ctx, excluded_model.id)
+    await assign_slot(decide_ctx, opted_model.id, scope=AIScope.TENANT, phi_allowed=True)
 
     async with AsyncSessionLocal() as db:
         resolution = await resolve_decision(

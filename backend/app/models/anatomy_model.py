@@ -14,11 +14,23 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
-from app.models.base import AuditMixin, Base, TenantMixin, TimestampMixin, UUIDMixin
+from app.models.base import (
+    AuditMixin,
+    Base,
+    SystemScopeTenantMixin,
+    TimestampMixin,
+    UUIDMixin,
+)
 from app.models.enums import CatalogScope, CodingSystem
 
 
-class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
+class AnatomyStructure(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, TimestampMixin):
+    """A named anatomical structure in the global anatomy taxonomy.
+
+    Retention: catalog record (clinical-record class). Seeded globally
+    (``tenant_id IS NULL``); tenant-authored structures carry a tenant.
+    """
+
     __tablename__ = "anatomy_structures"
 
     name = Column(String(100), nullable=False)
@@ -57,7 +69,7 @@ class AnatomyStructure(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
         lazy="selectin",
     )
 
-    __table_args__ = (Index("idx_anatomy_tenant_slug", "tenant_id", "slug"),)
+    __table_args__ = (Index("ix_anatomy_tenant_slug", "tenant_id", "slug"),)
 
     @property
     def class_concept_slug(self) -> str | None:
@@ -119,7 +131,7 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    __table_args__ = (Index("idx_anatomy_figure_group", "figure_key", "view_key"),)
+    __table_args__ = (Index("ix_anatomy_figure_group", "figure_key", "view_key"),)
 
     def to_dict(self) -> dict:
         return {

@@ -96,10 +96,9 @@ export const ActiveTaskBadge: React.FC<Props> = ({
       case 'chat': friendlyTaskName = 'AI Assistant'; break;
       case 'fill_biomarker_form': friendlyTaskName = 'Biomarker Extraction'; break;
       case 'magic_fill_examination': friendlyTaskName = 'Smart Examination Extraction'; break;
-      case 'medication_interaction': friendlyTaskName = 'Medication Safety Audit'; break;
-      case 'anomaly_detection': friendlyTaskName = 'Trend & Anomaly Detection'; break;
       case 'define_biomarker': friendlyTaskName = 'Definition Builder'; break;
       case 'define_medication': friendlyTaskName = 'Definition Builder'; break;
+      case 'define_anatomy_graph': friendlyTaskName = 'Anatomy Graph Builder'; break;
     }
     
     return (

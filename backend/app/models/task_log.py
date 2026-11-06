@@ -1,10 +1,10 @@
 from sqlalchemy import UUID, Column, DateTime, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
-from app.models.base import Base, TenantMixin, UUIDMixin
+from app.models.base import Base, SystemScopeTenantMixin, UUIDMixin
 
 
-class TaskLog(Base, UUIDMixin, TenantMixin):
+class TaskLog(Base, UUIDMixin, SystemScopeTenantMixin):
     __tablename__ = "task_logs"
 
     task_name = Column(String(100), nullable=False, index=True)

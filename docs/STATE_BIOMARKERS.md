@@ -82,7 +82,7 @@ Each component entry carries its own `code` (the sub-context — e.g. organism n
 
 ## The hard value-shape contract
 
-Every Observation write path — REST create, OCR pipeline, integration sync, FHIR import — runs through a single validator (`app/services/observation_value_validator.py`) before the row is persisted. Mismatches raise `InvalidObservationValue` → HTTP 422.
+Every Observation write path — REST create, OCR pipeline, integration sync, FHIR import — runs through a single validator (`app/services/biomarkers/observation_value_validator.py`) before the row is persisted. Mismatches raise `InvalidObservationValue` → HTTP 422.
 
 | Biomarker `value_type` | `supports_multi_state` | Required value shape |
 |---|---|---|
@@ -99,7 +99,7 @@ State observations are time-stamped like any other Observation (`effective_datet
 - **`get_biomarker_state_history(tenant_id, patient_id, slug)`** — chronological list of `{timestamp, state_code, state_system, display, is_normal, observation_id}`. Powers a step/stair timeline of categorical results.
 - **`get_multi_state_history(tenant_id, patient_id, slug)`** — `{component_code: [...]}` mapping, one timeline per sub-context. Powers a multi-track swimlane for panels.
 
-The status badge for a state observation (`_get_observation_status` in `analytics_service.py`) returns `"Normal"` when the value's coding is in the biomarker's normal set, `"Abnormal"` otherwise. For multi-state panels, the badge is `"Abnormal"` if **any** component is non-normal — the conservative choice for a single-badge summary.
+The status badge for a state observation (`_get_observation_status` in `app/services/analytics/status.py`) returns `"Normal"` when the value's coding is in the biomarker's normal set, `"Abnormal"` otherwise. For multi-state panels, the badge is `"Abnormal"` if **any** component is non-normal — the conservative choice for a single-badge summary.
 
 ## FHIR R4 facade
 

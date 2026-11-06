@@ -3,7 +3,8 @@
 Custom actions may return ``{"message": "...", "results": [...]}``. The
 ``message`` is shown as a toast (backwards compatible). The optional
 ``results`` array is a list of typed display blocks rendered by the
-frontend's :mod:`ActionResultModal`.
+frontend's :mod:`ActionResultBlocks` payload renderer inside the family
+``ActionResultDialog``.
 
 This module documents the contract in one place and gives providers readable
 builder functions. Block types:
@@ -92,8 +93,8 @@ def action_result(
     """Assemble a custom-action response.
 
     ``message`` is shown as a toast. ``results`` is rendered in the result
-    modal. ``**extra`` is merged in (e.g. for backwards-compat fields like
-    the MCP provider's legacy ``tools`` key).
+    modal. ``**extra`` is merged in (e.g. for compatibility fields like
+    the MCP provider's ``tools`` key).
     """
     out: dict[str, Any] = {}
     if message:

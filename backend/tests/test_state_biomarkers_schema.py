@@ -81,7 +81,7 @@ def test_allowed_states_join_unique_constraint():
         for c in Base.metadata.tables["biomarker_allowed_states"].constraints
         if isinstance(c, UniqueConstraint) and c.name
     }
-    assert "uq_biomarker_allowed_states" in uqs
+    assert "uq_biomarker_allowed_states_biomarker_id_state_id" in uqs
 
 
 # ----------------------------------------------------------------------------

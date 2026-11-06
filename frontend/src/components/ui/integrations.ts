@@ -4,6 +4,11 @@ export {
   type IntegrationCardProps,
 } from '@neuronection/assistant-ui/integration-card';
 export {
+  ActionResultDialog,
+  type ActionResultDialogLabels,
+  type ActionResultDialogProps,
+} from '@neuronection/assistant-ui/integration-action-result-dialog';
+export {
   IntegrationCatalogGrid,
   type IntegrationCatalogGridLabels,
   type IntegrationCatalogGridProps,

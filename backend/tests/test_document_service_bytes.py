@@ -1,4 +1,4 @@
-"""Tests for ``app.services.document_service.ingest_document_bytes`` (C.1).
+"""Tests for ``app.services.documents.document_service.ingest_document_bytes`` (C.1).
 
 The canonical ingestion path that the integration engine uses (C.2) and
 that the existing ``upload_document`` UI wrapper now delegates to. These
@@ -21,7 +21,7 @@ from app.models.document_model import DocumentModel
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services import document_service
+from app.services.documents import document_service
 
 
 @pytest_asyncio.fixture
@@ -121,7 +121,7 @@ async def test_ingest_document_bytes_links_examination_and_category(
     provided (the engine wiring uses these for the integration pull path).
     """
     from app.models.enums import ConceptKind
-    from app.services.concept_service import ConceptService
+    from app.services.catalog.concept_service import ConceptService
 
     tenant_id, user_id, patient_id = tenant_user_patient
 

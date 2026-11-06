@@ -52,7 +52,6 @@ const OrganizationDetail = lazy(() => import('./pages/Organizations/Organization
 const AboutPage = lazy(() => import('./pages/About/AboutPage'));
 const MyAccount = lazy(() => import('./pages/Account/MyAccount'));
 const AppearanceSettings = lazy(() => import('./pages/Settings/AppearanceSettings'));
-const Preferences = lazy(() => import('./pages/Settings/Preferences'));
 const Security = lazy(() => import('./pages/Settings/Security'));
 const TenantSettingsPage = lazy(() => import('./pages/Admin/TenantSettings'));
 const SystemSettingsPage = lazy(() => import('./pages/Admin/SystemSettings'));
@@ -81,6 +80,7 @@ const VaccinationList = lazy(() => import('./pages/Vaccinations/VaccinationList'
 const SystemIntegrations = lazy(() => import('./pages/Admin/SystemIntegrations'));
 const AtlasManager = lazy(() => import('./pages/Admin/AtlasManager'));
 const OAuthClients = lazy(() => import('./pages/Admin/OAuthClients'));
+const NotFoundPage = lazy(() => import('./pages/NotFound/NotFoundPage'));
 
 const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));
 const ToolsConfig = lazy(() => import('./pages/Settings/ToolsConfig').then(m => ({ default: m.ToolsConfig })));
@@ -323,7 +323,6 @@ function App() {
           <Route element={<SettingsShell nav={userSettingsNav} header={userSettingsHeader} />}>
             <Route path="/profile" element={<MyAccount />} />
             <Route path="/settings" element={<Navigate to="/settings/appearance" replace />} />
-            <Route path="/settings/preferences" element={<Preferences />} />
             <Route path="/settings/security" element={<Security />} />
             <Route path="/settings/appearance" element={<AppearanceSettings />} />
             <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
@@ -335,7 +334,7 @@ function App() {
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
           <Route path="/integrations/:domain/connected" element={<OAuthConnected />} />
           <Route path="/about" element={<AboutPage />} />
-          <Route path="*" element={<Dashboard />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
       </Suspense>

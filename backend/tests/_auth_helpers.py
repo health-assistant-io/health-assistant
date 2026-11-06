@@ -24,7 +24,7 @@ from app.core.security import (
 from app.models.enums import Role
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services.auth_session_service import issue_session
+from app.services.auth.auth_session_service import issue_session
 
 __all__ = [
     "AUTH_MODE_DEMO",

@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "project": "health",
+  "updated": "2026-11-03",
+  "capabilities": [
+    {
+      "id": "own-your-records",
+      "verb": "Keep your health records on your own server",
+      "summary": "Self-host on Linux with Docker: the database, uploaded files and task queue stay on your infrastructure, with no managed cloud tier.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Nothing phones home — data lives where you deploy it",
+        "LLM API keys are Fernet-encrypted at rest and masked in responses",
+        "Prompt-injection screening on AI input; audit log on every clinical write",
+        "Export to a FHIR Bundle or ZIP backup with a SHA256 manifest"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/install"
+        },
+        {
+          "kind": "website",
+          "href": "https://health-assistant.io"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 10
+    },
+    {
+      "id": "ask-your-data",
+      "verb": "Ask your own records questions in plain language",
+      "summary": "The chat assistant answers from your biomarkers, medications and documents with citations back to the source, and proposes every write for your approval.",
+      "category": "ai",
+      "status": "shipped",
+      "proofs": [
+        "Answers cite the records they draw from",
+        "Proposes, never writes: every change opens a review card you approve",
+        "Works with any OpenAI-compatible provider, including local vLLM or Ollama"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/ai-system"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 20,
+      "visual": "images/components/ask-your-data-desktop.png"
+    },
+    {
+      "id": "biomarker-trends",
+      "verb": "Compare lab results across labs and over time",
+      "summary": "The biomarker engine normalizes results from different providers to a common unit and charts each marker longitudinally against its reference range.",
+      "category": "analyze",
+      "status": "shipped",
+      "proofs": [
+        "Results from different labs auto-convert to a common unit",
+        "Every result is scored 0.0–1.0 inside its reference range",
+        "Trend charts flag normal versus abnormal values over time"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/ontology-catalog"
+        },
+        {
+          "kind": "screenshots",
+          "href": "https://health-assistant.io/docs/visual-tour"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 30,
+      "visual": "images/components/biomarker-trends-desktop.png"
+    },
+    {
+      "id": "document-extraction",
+      "verb": "Turn lab reports into structured, searchable data",
+      "summary": "Snap a photo or drop a PDF of a report, letter or discharge summary; an OCR + AI pipeline extracts biomarkers, medications and findings for your review.",
+      "category": "ai",
+      "status": "shipped",
+      "proofs": [
+        "Handles lab reports, doctor letters, imaging and discharge summaries",
+        "Magic Fill maps pasted clinical text onto structured examination fields",
+        "Extraction runs in the background worker, off the API process"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/architecture"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 40
+    },
+    {
+      "id": "track-health-journeys",
+      "verb": "Follow a pregnancy, condition or recovery across visits",
+      "summary": "Clinical events group the examinations, results and notes of one journey into a single timeline with custom fields like trimester or pain intensity.",
+      "category": "analyze",
+      "status": "shipped",
+      "proofs": [
+        "Seeded journey types — pregnancy, pain episode, surgical recovery — carry their own field schemas",
+        "Every journey links back to the examinations and results that fed it",
+        "Journeys are stored as FHIR Condition resources, exposed on the R4 facade",
+        "Type blueprints, categories and templates localize with the app"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/clinical-events"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 45
+    },
+    {
+      "id": "connect-sources",
+      "verb": "Bring in data from wearables, apps and clinics",
+      "summary": "Bundled connectors pull wearable and hospital data — Withings over OAuth2, hospital FHIR servers over SMART-on-FHIR — and an HMAC-verified webhook receives pushes from custom senders.",
+      "category": "integrate",
+      "status": "shipped",
+      "proofs": [
+        "Pulls records from hospital FHIR servers over SMART-on-FHIR with PKCE",
+        "The bundled Withings connector pulls weight, blood pressure, heart rate and SpO2 over OAuth2",
+        "The inbound webhook verifies HMAC-SHA256 signatures with replay protection",
+        "Official bridge client SDKs ship for Python, TypeScript and Kotlin",
+        "An MCP client connection exposes external tool servers to the assistant"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/connect-integrations"
+        },
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/integrations-framework"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 50
+    },
+    {
+      "id": "cloud-calendars",
+      "verb": "Put appointments on a calendar you own",
+      "summary": "Publish examinations and clinical events to Google, Microsoft 365, Nextcloud, iCloud, Fastmail, CalDAV or an ICS feed. Detail is redacted by default.",
+      "category": "integrate",
+      "status": "shipped",
+      "proofs": [
+        "Default redaction shows only “Medical appointment” — never the reason",
+        "Full detail is opt-in and requires explicit confirmation",
+        "Credentials live in the sealed store; binding rows hold only a pointer",
+        "Inbound events are attributable-only — lookalikes need your confirmation",
+        "Providers, scopes and destinations come from a shared catalog"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/calendars"
+        }
+      ],
+      "order": 52
+    },
+    {
+      "id": "never-miss-follow-up",
+      "verb": "Get medication reminders and out-of-range alerts",
+      "summary": "Scheduled reminders and event-driven threshold alerts fan out to the in-app inbox and Web Push, with per-kind preferences and digest collapsing.",
+      "category": "automate",
+      "status": "shipped",
+      "proofs": [
+        "Medication and follow-up reminders fire on Celery beat schedules",
+        "Threshold alerts evaluate on observation ingestion — a bad result alerts immediately",
+        "Delivery is real-time in-app (WebSocket) and Web Push (VAPID)",
+        "Per-kind preferences with inline mute and digest collapsing"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/notification-system"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 55
+    },
+    {
+      "id": "extend-with-sdk",
+      "verb": "Extend it with your own integration providers",
+      "summary": "The Integration SDK authors bundled extensions: one validated manifest declares capabilities and data classes, and the engine never probes provider internals.",
+      "category": "developer",
+      "audience": "dev",
+      "status": "shipped",
+      "proofs": [
+        "One validated manifest gates every declared capability at registration",
+        "BaseHealthProvider, BaseConfigFlow and ObservationBuilder ship in the SDK",
+        "OAuth2 + PKCE, rate-limit handling and cursor-based delta sync included",
+        "A ten-chapter doc set starts with a ten-minute quickstart"
+      ],
+      "metric": {
+        "value": "3",
+        "label": "client SDK languages"
+      },
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/sdk-overview"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted"
+      ],
+      "order": 60
+    },
+    {
+      "id": "fhir-r4-facade",
+      "verb": "Integrate clinics over a standards-based FHIR R4 API",
+      "summary": "An OAuth2 + SMART-scoped FHIR R4 facade serves 20 resource types with CapabilityStatement, search Bundles, Provenance-on-write and soft-delete tombstones.",
+      "category": "developer",
+      "audience": "dev",
+      "status": "shipped",
+      "proofs": [
+        "20 R4 resources — Patient, Observation, Condition, MedicationStatement, DiagnosticReport and more",
+        "SMART-on-FHIR scopes and OAuth2 gate every external request",
+        "Every write records Provenance; deletes leave 410 Gone tombstones",
+        "Search returns FHIR Bundles with pagination and OperationOutcome errors"
+      ],
+      "metric": {
+        "value": "20",
+        "label": "FHIR R4 resource types"
+      },
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/fhir-r4-facade"
+        },
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/api-layers"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted"
+      ],
+      "order": 70
+    }
+  ],
+  "useCases": [
+    "Compare cholesterol across two labs after switching providers — drop both PDFs, get one unit-normalized trend line scored against its reference range.",
+    "Track a pregnancy visit by visit — start the seeded journey, fill trimester fields, link each examination, read the whole timeline in one place.",
+    "Catch an out-of-range result the day it lands — threshold rules evaluate at ingest and push a Web Push alert to your phone.",
+    "Pull your hospital record onto your own server — connect the clinic's FHIR server over SMART-on-FHIR and let cursor-based sync bring new results in.",
+    "Manage your household's records under one install — one record per person, role-scoped views, per-person dashboards and journeys."
+  ]
+}

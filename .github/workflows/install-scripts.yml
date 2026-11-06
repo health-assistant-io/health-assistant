@@ -1,0 +1,34 @@
+name: Installer scripts
+
+# The one-line install path has no other test: a broken installer is invisible
+# to pytest/vitest and only fails on a user's fresh host. These cases run
+# offline against a fake `docker` (no daemon, no images) plus a real bound
+# socket for port conflicts — see scripts/install.selftest.sh.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'docker/docker-compose.standalone.yml'
+      - '.github/workflows/install-scripts.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'docker/docker-compose.standalone.yml'
+      - '.github/workflows/install-scripts.yml'
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer self-test (no Docker daemon)
+        run: bash scripts/install.selftest.sh
+      - name: Upgrade pre-flight self-test
+        run: bash scripts/upgrade-check.selftest.sh
+      - name: Shell syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done

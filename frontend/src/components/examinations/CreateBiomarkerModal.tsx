@@ -45,7 +45,7 @@ export const CreateBiomarkerModal: React.FC<Props> = ({
       onClose();
     } catch (err) {
       console.error('Failed to create biomarker', err);
-      // Preserve the legacy behavior: surface a blocking alert. The slug collision
+      // Surface a blocking alert. The slug collision
       // is the most common cause.
       alert('Failed to create biomarker definition. Slug might already exist.');
     } finally {

@@ -120,7 +120,7 @@ export interface ClinicalEvent {
    * (`type_entity.schedule_kind`).
    *
    * Phase 8a: required — the backend always sets it (NOT NULL), so a missing
-   * value on the wire is a backend bug, not a legacy case to handle.
+   * value on the wire is a backend bug, not an input-tolerance case.
    */
   schedule_kind: ScheduleKind;
   coding_system?: ClinicalEventCodingSystem;

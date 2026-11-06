@@ -2,7 +2,7 @@
 """Pydantic schemas for the in-app guided-setup checklist.
 
 Backend-derived (no onboarding_state table): see
-``dev/audits/setup-wizard-design.md`` §D2. The checklist endpoint returns a
+``the design notes`` §D2. The checklist endpoint returns a
 ``SetupChecklistResponse``; the frontend wizard consumes ``steps`` + the
 per-entity completion ratio to render the wizard / completion card.
 """

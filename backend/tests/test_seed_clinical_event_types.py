@@ -9,11 +9,22 @@ Pins two contracts:
 """
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.clinical_event import ClinicalEventType
-from app.services.seed_service import SeedService
+from app.services.seed.service import SeedService
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _seeded_event_categories():
+    """The shipped seed resolves ``category_slug`` to an ``event_category``
+    concept (``reproductive-health`` and friends), which lives in the concepts
+    catalog. Seed it here so this file passes on a clean database and when run
+    alone — it used to depend on a catalog test having run earlier in the
+    session. Idempotent, so it costs one upsert pass per test."""
+    await SeedService().seed_concepts()
 
 
 @pytest.mark.asyncio

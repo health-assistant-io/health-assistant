@@ -31,8 +31,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.schemas.anatomy_import import AnatomyImportPayload
-from app.services.anatomy_import_service import AnatomyImportService
-from app.services.seed_service import seed_service
+from app.services.anatomy.anatomy_import_service import AnatomyImportService
+from app.services.seed.service import SeedService
 
 
 async def seed_base():
@@ -41,7 +41,7 @@ async def seed_base():
         sys.exit(1)
 
     print("🫀 Starting anatomy graph catalog sync (base seed)...")
-    stats = await seed_service.seed_body_parts()
+    stats = await SeedService().seed_body_parts()
 
     print("-" * 40)
     print("✅ Base anatomy sync complete!")

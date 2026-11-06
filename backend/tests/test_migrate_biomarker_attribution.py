@@ -8,7 +8,7 @@ were attributed to the wrong person — cross-patient data corruption.
 
 The first fix built a ``device_id → user_id → patient_id`` resolver from
 the tenant's UserIntegrations + Patients. The **long-format rewrite**
-(migration ``t1e2l3o4n5g6``) makes that resolver obsolete: ``patient_id``
+(long-format baseline) makes that resolver obsolete: ``patient_id``
 is now persisted directly on every telemetry row at insert time (apply_telemetry_split,
 the upload endpoint, the FHIR→telemetry migration direction).
 

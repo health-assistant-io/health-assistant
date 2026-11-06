@@ -15,9 +15,9 @@ from app.schemas.medication import (
     MedicationRecordUpdate,
 )
 from app.schemas.user import TokenData
-from app.services import medication_service
-from app.services.access import check_medication_access, check_patient_access
-from app.services.audit_service import audit_read, log_audit_action
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import check_medication_access, check_patient_access
+from app.services.clinical import medication_service
 
 router = APIRouter(prefix="/medications", tags=["medications"])
 

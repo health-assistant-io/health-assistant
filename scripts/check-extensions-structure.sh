@@ -115,6 +115,7 @@ for vendored in \
   "backend/app/extensions/polite_http.py" \
   "backend/app/extensions/contract.py" \
   "backend/app/extensions/conformance.py" \
+  "backend/app/extensions/hitl-proposal-kinds.json" \
   "contracts/extension-charter.json" \
   "contracts/extension-manifest.schema.json" \
   "contracts/extension-sources.schema.json" \
@@ -125,7 +126,7 @@ for vendored in \
   if [ -f "$ROOT/$vendored" ]; then
     ok "vendored: $vendored"
   else
-    note "vendored contract module missing: $vendored (run ../../dev/scripts/sync-extension-contract.sh --project health-assistant/core)"
+    note "vendored contract module missing: $vendored (run the family extension-contract sync tooling for health-assistant/core)"
   fi
 done
 

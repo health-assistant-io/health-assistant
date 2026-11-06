@@ -74,7 +74,7 @@ const generateSafeSlug = (name: string) => {
  * the value[x] is missing or not a CodeableConcept (a QUANTITY observation
  * slip-through, or a multi-state panel — handled separately by the caller).
  *
- * Used by the observations path and the legacy document path to populate
+ * Used by the observations path and the document path to populate
  * ``BiomarkerObservation.value.state`` without shoving strings into the
  * numeric ``raw`` slot.
  */
@@ -443,7 +443,7 @@ export function useBiomarkers({ documents = [], trendsData, observations = [] }:
             ? { raw: null, normalized: null, state: null, stateDisplay: rawInput }
             : { raw: numericRaw ?? 0, normalized: null };
           const observation: BiomarkerObservation = {
-            id: `${doc.id}-legacy-${index}`,
+            id: `${doc.id}-doc-${index}`,
             displayName: b.name,
             slug: generatedSlug,
             method: null,

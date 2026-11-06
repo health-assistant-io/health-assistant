@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.facade.bundle import build_search_bundle
 from app.models.concept_model import Concept
 from app.models.enums import ConceptKind
-from app.services.concept_service import concepts_with_kind
-from app.services.fhir_helpers import build_fhir_resource
+from app.services.catalog.concept_service import concepts_with_kind
+from app.services.fhir.fhir_helpers import build_fhir_resource
 
 # The canonical FHIR system URL for the ICD-10 coding system.
 _ICD10_SYSTEM = "http://hl7.org/fhir/sid/icd-10"

@@ -3,7 +3,6 @@
 Gate bundle (plan 13 §2 Phase H):
   * tree projection + variant decoration round-trips (walk, select, re-walk)
   * edit/regenerate row semantics (siblings, pointer flips, kept subtrees)
-  * migration backfill: legacy rows become identical linear trees
   * per-session single-flight turn lock (second concurrent turn on ANY
     branch is rejected while one streams) — see test_chat_turn_lock.py
   * interrupt-survives-branch + edit during an interrupted turn — see
@@ -11,25 +10,17 @@ Gate bundle (plan 13 §2 Phase H):
 """
 
 import uuid as uuid_mod
-from datetime import UTC, datetime, timedelta
 
 import pytest
-from alembic.config import Config as AlembicConfig
-from sqlalchemy import create_engine, text
 
-from alembic import command
-from app.core.config import settings
 from app.models.enums import Role
-from app.services.chat_branching import (
+from app.services.chat.chat_branching import (
     branch_thread_key,
     regenerate_thread_key,
     walk_active_path,
 )
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 from tests._auth_helpers import auth_headers, create_tenant, create_user
-
-PRE_BRANCH_HEAD = "h5m2f3a4t6o7"
-BRANCH_HEAD = "c1h2a3t4b5r6"
 
 
 async def _seed_turn(svc: ChatSessionService, session_id, user_id, tenant_id, question, answer):
@@ -212,7 +203,7 @@ async def test_thread_keys_follow_divergence():
         assert regenerate_thread_key(session.id, all_messages, u_next) == branch_key
 
         # Card derivation (resume side) mirrors the turn side for both shapes.
-        from app.services.chat_branching import card_thread_key
+        from app.services.chat.chat_branching import card_thread_key
 
         # A FIRST reply under u_next is a normal send on this branch — its
         # card keys on the branch divergence (the edit), like its turn did.
@@ -258,79 +249,6 @@ async def test_walk_survives_dangling_pointers():
 
         path = walk_active_path(all_messages, session_row.active_root_id)
         assert [m.id for m in path] == [u1.id, a1.id]
-
-
-async def test_migration_backfills_linear_trees():
-    """Legacy-data test (family-migration rule): rows seeded on the
-    pre-branch revision upgrade into identical linear trees."""
-    if not settings.POSTGRES_DB.endswith("_test"):
-        pytest.skip("legacy-shape seeding only runs against the *_test database")
-
-    tenant_id = await create_tenant()
-    user = await create_user(role=Role.USER, tenant_id=tenant_id)
-
-    sync_url = (
-        f"postgresql+psycopg2://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}"
-        f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
-    )
-    cfg = AlembicConfig("alembic.ini")
-    engine = create_engine(sync_url)
-    session_id = uuid_mod.uuid4()
-    other_session_id = uuid_mod.uuid4()
-    base = datetime.now(UTC)
-    ids = []
-    try:
-        command.downgrade(cfg, PRE_BRANCH_HEAD)
-        with engine.begin() as conn:
-            for sid in (session_id, other_session_id):
-                conn.execute(
-                    text(
-                        "INSERT INTO chat_sessions (id, tenant_id, user_id, title)"
-                        " VALUES (:id, :tid, :uid, 'legacy')"
-                    ),
-                    {"id": sid, "tid": tenant_id, "uid": user.id},
-                )
-            for i in range(3):
-                mid = uuid_mod.uuid4()
-                ids.append(mid)
-                conn.execute(
-                    text(
-                        "INSERT INTO chat_messages (id, session_id, role, content, created_at)"
-                        " VALUES (:id, :sid, 'user', '{\"text\": \"m\"}', :ts)"
-                    ),
-                    {
-                        "id": mid,
-                        "sid": session_id,
-                        "ts": base + timedelta(seconds=i),
-                    },
-                )
-        command.upgrade(cfg, BRANCH_HEAD)
-        with engine.begin() as conn:
-            root = conn.execute(
-                text("SELECT active_root_id FROM chat_sessions WHERE id = :sid"),
-                {"sid": session_id},
-            ).scalar_one()
-            chain = conn.execute(
-                text(
-                    "SELECT id, parent_id, active_child_id FROM chat_messages"
-                    " WHERE session_id = :sid ORDER BY created_at"
-                ),
-                {"sid": session_id},
-            ).fetchall()
-            other_root = conn.execute(
-                text("SELECT active_root_id FROM chat_sessions WHERE id = :sid"),
-                {"sid": other_session_id},
-            ).scalar_one()
-        assert root == ids[0]
-        assert other_root is None  # empty session stays empty
-        assert [(row.id, row.parent_id, row.active_child_id) for row in chain] == [
-            (ids[0], None, ids[1]),
-            (ids[1], ids[0], ids[2]),
-            (ids[2], ids[1], None),
-        ]
-    finally:
-        command.upgrade(cfg, "head")
-        engine.dispose()
 
 
 async def test_branching_endpoints_select_and_tree(async_client):

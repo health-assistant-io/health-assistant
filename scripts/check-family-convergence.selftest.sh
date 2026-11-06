@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test suite for the family-convergence gate (plan 23 D4 / T1–T6,
-# T13–T16; plan 21 C7 security-surface cases).
+# T13–T16; plan 21 C7 security-surface cases; T18 path resolution).
 #
 # Fixtures are materialized at runtime into mktemp -d from heredoc builders —
 # no committed fixture trees, so vendoring four copies stays cheap and
@@ -42,6 +42,14 @@ fail_case() { FAIL=$((FAIL + 1)); echo "FAIL $1"; echo "$2" | sed 's/^/     /'; 
 # puts one in every fixture (same discipline as the byok selftest).
 run_self() {
   RUN_OUT="$(cd "$1" && bash "$1/scripts/check-family-convergence.sh" --self 2>&1)"
+  RUN_RC=$?
+}
+
+# run_family COPY -- run the gate's no-arg (family scan) mode using the copy
+# at COPY/scripts/... from an unrelated cwd; sets RUN_OUT/RUN_RC. Path
+# resolution is the property under test, so the cwd must not matter.
+run_family() {
+  RUN_OUT="$(cd "$WORK" && bash "$1/scripts/check-family-convergence.sh" 2>&1)"
   RUN_RC=$?
 }
 
@@ -279,6 +287,35 @@ jobs:
 EOF
 }
 
+# fixture_family DIR -- T18: a real family layout. DIR carries the four
+# repos the REPOS table names (each a conformant tree with its own gate
+# copy) plus dev/, which holds only the gate artifacts: the two copy depths
+# a no-arg scan can be launched from.
+fixture_family() {
+  local fam="$1" r
+  for r in study-assistant career-assistant auth-kit; do
+    fixture_conformant "$fam/$r"
+  done
+  fixture_conformant "$fam/health-assistant/core"
+  # auth-kit is root-packaged (its REPOS entry is pyproject.toml), so the
+  # family ruff block + contract marker live in the root file — the same
+  # shape C1 compares for every repo.
+  cat > "$fam/auth-kit/pyproject.toml" <<'EOF'
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.ruff.lint.flake8-bugbear]
+
+[tool.pytest.ini_options]
+markers = ["contract: family contract drift gate"]
+EOF
+  mkdir -p "$fam/dev"
+  gate_artifacts "$fam/dev"
+}
+
 # ---------------------------------------------------------------------------
 # cases
 # ---------------------------------------------------------------------------
@@ -464,6 +501,48 @@ expect "T5/C5 requirements.txt present -> FAIL C5" 1 "FAIL C5"
 d="$WORK/t5-c6"; fixture_missing_contract_ci "$d"
 run_self "$d"
 expect "T5/C6 missing contract gate in CI -> FAIL C6" 1 "FAIL C6"
+
+# T18/plan 21 path resolution: a no-arg family scan launched from an
+# unrelated cwd must resolve the REAL family root from either copy depth.
+# The vendored copy at <family>/health-assistant/core used to resolve
+# <family>/health-assistant (dirname of dirname of dirname), where every
+# table entry missed — the very repo the gate lives in reported a false
+# "FAIL C5: missing backend/pyproject.toml".
+fam="$WORK/t18-family"; fixture_family "$fam"
+run_family "$fam/health-assistant/core"
+expect "T18 vendored copy no-arg resolves the family root" 0 "RESULT: OK" "FAIL"
+expect_lines "T18 vendored copy scans every table repo" \
+  "== family convergence: study-assistant" \
+  "== family convergence: career-assistant" \
+  "== family convergence: health-assistant/core" \
+  "== family convergence: auth-kit"
+if grep -qF "health-assistant/health-assistant" <<<"$RUN_OUT"; then
+  fail_case "T18 vendored copy never probes <family>/health-assistant/health-assistant" "$RUN_OUT"
+else
+  ok_case "T18 vendored copy never probes <family>/health-assistant/health-assistant"
+fi
+
+# T18b: the same scan hosted by the dev canonical copy (<family>/dev).
+run_family "$fam/dev"
+expect "T18 dev-canonical copy no-arg resolves the family root" 0 "RESULT: OK" "FAIL"
+
+# T18c: a lone copy with no siblings cannot run a family scan — loud
+# failure, never a vacuous "RESULT: OK".
+lone="$WORK/t18-lone/core"; fixture_conformant "$lone"
+run_family "$lone"
+if [ "$RUN_RC" -ne 0 ] && grep -qF "cannot locate the family root" <<<"$RUN_OUT" \
+  && ! grep -qF "RESULT: OK" <<<"$RUN_OUT"; then
+  ok_case "T18 lone copy no-arg fails loud (no vacuous RESULT: OK)"
+else
+  fail_case "T18 lone copy no-arg fails loud (no vacuous RESULT: OK)" \
+    "rc=$RUN_RC"$'\n'"$RUN_OUT"
+fi
+
+# T18d: a table repo that is not checked out is a named failure, not a
+# silent skip.
+fam2="$WORK/t18-missing"; fixture_family "$fam2"; rm -rf "$fam2/career-assistant"
+run_family "$fam2/health-assistant/core"
+expect "T18 missing family repo -> FAIL C5" 1 "FAIL C5: repo not checked out at .*career-assistant"
 
 # D2/F2 structural: the gate script must contain no vocabulary literal —
 # patterns are data, so the gate can never match its own patterns.

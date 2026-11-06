@@ -98,7 +98,6 @@ async def test_create_event(async_client: AsyncClient):
         title="Test Event",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         created_at=datetime.datetime.now(datetime.UTC),
         updated_at=datetime.datetime.now(datetime.UTC),
@@ -158,7 +157,6 @@ async def test_get_event(async_client: AsyncClient):
         title="Test Event",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         created_at=datetime.datetime.now(datetime.UTC),
         updated_at=datetime.datetime.now(datetime.UTC),
@@ -213,7 +211,6 @@ async def test_update_event(async_client: AsyncClient):
         title="Old Title",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         created_at=datetime.datetime.now(datetime.UTC),
         updated_at=datetime.datetime.now(datetime.UTC),
@@ -309,7 +306,6 @@ async def test_list_events_by_examination(async_client: AsyncClient):
         title="Event for Exam",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         created_at=datetime.datetime.now(datetime.UTC),
         updated_at=datetime.datetime.now(datetime.UTC),
@@ -341,7 +337,7 @@ async def test_list_events_by_examination(async_client: AsyncClient):
 
 
 def test_parse_date_range_valid():
-    from app.services.clinical_event_service import _parse_date_range
+    from app.services.clinical.clinical_event_service import _parse_date_range
 
     start, end = _parse_date_range("2026-03-01,2026-03-31")
     assert start == datetime.datetime(2026, 3, 1, 0, 0, 0, tzinfo=datetime.UTC)
@@ -349,7 +345,7 @@ def test_parse_date_range_valid():
 
 
 def test_parse_date_range_with_whitespace():
-    from app.services.clinical_event_service import _parse_date_range
+    from app.services.clinical.clinical_event_service import _parse_date_range
 
     start, end = _parse_date_range(" 2026-03-01 , 2026-03-31 ")
     assert start is not None
@@ -359,7 +355,7 @@ def test_parse_date_range_with_whitespace():
 
 
 def test_parse_date_range_invalid_returns_none():
-    from app.services.clinical_event_service import _parse_date_range
+    from app.services.clinical.clinical_event_service import _parse_date_range
 
     # Malformed dates — silently skipped (caller's responsibility to 400 if desired).
     assert _parse_date_range("not-a-date,2026-03-31") == (None, None)
@@ -385,7 +381,6 @@ async def test_list_events_with_active_on_param(async_client: AsyncClient):
         title="Ongoing Pain",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime(2026, 1, 15, tzinfo=datetime.UTC),
-        occurrences=[],
         event_metadata={},
         created_at=datetime.datetime.now(datetime.UTC),
         updated_at=datetime.datetime.now(datetime.UTC),
@@ -523,7 +518,6 @@ def test_clinical_event_to_dict_resolves_schedule_kind_from_type():
         title="Ongoing Back Pain",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         type_entity=type_row,
         examination_links=[],
@@ -549,7 +543,6 @@ def test_clinical_event_to_dict_schedule_kind_falls_back_to_state_when_type_miss
         title="Orphan Event",
         status=ClinicalEventStatus.ACTIVE,
         onset_date=datetime.datetime.now(datetime.UTC),
-        occurrences=[],
         event_metadata={},
         type_entity=None,
         examination_links=[],

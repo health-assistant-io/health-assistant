@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -191,23 +191,34 @@ async def test_update_user_admin(
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.users.delete_user")
-async def test_delete_user_admin(mock_delete_user, async_client: AsyncClient, mock_target_user):
+@patch("app.api.v1.endpoints.users.resolve_subject", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.users.get_user_by_id", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.users.run_erasure", new_callable=AsyncMock)
+async def test_delete_user_admin(
+    mock_run_erasure,
+    mock_get_user,
+    mock_resolve,
+    async_client: AsyncClient,
+    mock_target_user,
+):
+    from types import SimpleNamespace
+
     from app.core.security import get_current_user
     from app.main import app
 
     admin_token_data = override_get_admin_user()
     app.dependency_overrides[get_current_user] = lambda: admin_token_data
-    # Mock void return
-    mock_delete_user.return_value = True
+    mock_get_user.return_value = mock_target_user
+    mock_resolve.return_value = mock_target_user
+    mock_run_erasure.return_value = SimpleNamespace(id=uuid.uuid4())
 
     response = await async_client.delete(f"/api/v1/users/{mock_target_user.id}")
 
     assert response.status_code == 200
     assert response.json()["message"] == "User deleted successfully"
-    mock_delete_user.assert_called_once_with(
-        str(mock_target_user.id), tenant_id=admin_token_data.tenant_id
-    )
+    mock_run_erasure.assert_awaited_once()
+    assert mock_run_erasure.await_args.kwargs["subject_id"] == mock_target_user.id
+    assert mock_run_erasure.await_args.kwargs["dry_run"] is False
 
     app.dependency_overrides = {}
 

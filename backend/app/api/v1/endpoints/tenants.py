@@ -21,8 +21,8 @@ from app.core.database import get_db
 from app.core.security import RoleChecker, TokenData, get_current_user
 from app.models.enums import Role
 from app.schemas.tenant import TenantResponse, TenantUpdate
-from app.services.tenant_admin_service import TenantAdminService
-from app.services.tenant_service import get_tenant
+from app.services.tenancy.tenant_admin_service import TenantAdminService
+from app.services.tenancy.tenant_service import get_tenant
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
@@ -31,7 +31,7 @@ def _coerce_uuid(value: str, field: str = "tenant_id") -> UUID:
     try:
         return UUID(value)
     except (ValueError, AttributeError, TypeError):
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid {field}: must be a valid UUID.",
         )

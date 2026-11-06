@@ -16,7 +16,7 @@ describe('IconPreviewField', () => {
     expect(document.querySelector('svg')).toBeInTheDocument();
   });
 
-  it('accepts a legacy string icon', () => {
+  it('accepts a string icon name', () => {
     render(<IconPreviewField value="activity" />);
     expect(screen.getByText('activity')).toBeInTheDocument();
     expect(document.querySelector('svg')).toBeInTheDocument();

@@ -17,9 +17,9 @@ import pytest
 from app.models.fhir.provenance import (
     ProvenanceModel,
 )
-from app.services.fhir_converter import fhir_to_provenance_orm, validate_resource
-from app.services.fhir_helpers import parse_fhir_resource
-from app.services.provenance_service import (
+from app.services.fhir.fhir_converter import fhir_to_provenance_orm, validate_resource
+from app.services.fhir.fhir_helpers import parse_fhir_resource
+from app.services.fhir.provenance_service import (
     RECORD_CREATE,
     RECORD_DELETE,
     RECORD_UPDATE,
@@ -125,7 +125,7 @@ async def test_agent_block_user_resolved_to_practitioner():
     db = AsyncMock()
 
     with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
+        "app.services.fhir.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=f"Practitioner/{doctor_id}"),
     ) as mock_resolve:
         agents, degraded = await _agent_block(db, user_id=uid, tenant_id=uuid4())
@@ -146,7 +146,7 @@ async def test_agent_block_user_without_doctor_falls_back_to_display():
     db = AsyncMock()
 
     with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
+        "app.services.fhir.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=None),
     ):
         agents, degraded = await _agent_block(db, user_id=uid, tenant_id=uuid4())
@@ -168,7 +168,7 @@ async def test_agent_block_integration_resolved_to_device():
     db = AsyncMock()
 
     with patch(
-        "app.services.provenance_service._resolve_device_ref",
+        "app.services.fhir.provenance_service._resolve_device_ref",
         new=AsyncMock(return_value=f"Device/{device_id}"),
     ):
         agents, degraded = await _agent_block(db, user_id=None, tenant_id=None, integration_id=iid)
@@ -183,7 +183,7 @@ async def test_agent_block_integration_without_device_falls_back_to_display():
     db = AsyncMock()
 
     with patch(
-        "app.services.provenance_service._resolve_device_ref",
+        "app.services.fhir.provenance_service._resolve_device_ref",
         new=AsyncMock(return_value=None),
     ):
         agents, degraded = await _agent_block(db, user_id=None, tenant_id=None, integration_id=iid)
@@ -216,11 +216,11 @@ async def test_agent_block_user_and_integration_both_emitted():
 
     with (
         patch(
-            "app.services.provenance_service._resolve_device_ref",
+            "app.services.fhir.provenance_service._resolve_device_ref",
             new=AsyncMock(return_value=f"Device/{uuid4()}"),
         ),
         patch(
-            "app.services.provenance_service._resolve_practitioner_ref",
+            "app.services.fhir.provenance_service._resolve_practitioner_ref",
             new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
         ),
     ):
@@ -247,11 +247,11 @@ async def test_agent_block_never_emits_user_or_integration_resource_type():
     # Resolved path.
     with (
         patch(
-            "app.services.provenance_service._resolve_practitioner_ref",
+            "app.services.fhir.provenance_service._resolve_practitioner_ref",
             new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
         ),
         patch(
-            "app.services.provenance_service._resolve_device_ref",
+            "app.services.fhir.provenance_service._resolve_device_ref",
             new=AsyncMock(return_value=f"Device/{uuid4()}"),
         ),
     ):
@@ -264,11 +264,11 @@ async def test_agent_block_never_emits_user_or_integration_resource_type():
     # Degraded path.
     with (
         patch(
-            "app.services.provenance_service._resolve_practitioner_ref",
+            "app.services.fhir.provenance_service._resolve_practitioner_ref",
             new=AsyncMock(return_value=None),
         ),
         patch(
-            "app.services.provenance_service._resolve_device_ref",
+            "app.services.fhir.provenance_service._resolve_device_ref",
             new=AsyncMock(return_value=None),
         ),
     ):
@@ -347,7 +347,7 @@ async def test_record_provenance_creates_row():
     # Patch the resolvers so _agent_block doesn't hit the AsyncMock db.execute
     # (avoids the spurious "coroutine never awaited" warning from AsyncMock).
     with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
+        "app.services.fhir.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
     ):
         result = await record_provenance(
@@ -375,7 +375,7 @@ async def test_record_provenance_best_effort_on_validation_failure():
     fake_db.flush = AsyncMock()
 
     with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
+        "app.services.fhir.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
     ):
         result = await record_provenance(
@@ -403,7 +403,7 @@ async def test_record_provenance_returns_none_on_db_failure():
     fake_db.flush = AsyncMock(side_effect=Exception("DB down"))
 
     with patch(
-        "app.services.provenance_service._resolve_practitioner_ref",
+        "app.services.fhir.provenance_service._resolve_practitioner_ref",
         new=AsyncMock(return_value=f"Practitioner/{uuid4()}"),
     ):
         result = await record_provenance(

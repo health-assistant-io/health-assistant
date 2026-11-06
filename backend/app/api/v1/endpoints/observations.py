@@ -5,9 +5,9 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import Role
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
-from app.services.audit_service import audit_read, log_audit_action
-from app.services.fhir_service import (
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import check_patient_access
+from app.services.fhir.fhir_service import (
     create_observation,
     delete_observation,
     get_observation,
@@ -164,7 +164,7 @@ async def delete_observation_endpoint(
         if patient_id:
             await check_patient_access(patient_id, current_user, db)
 
-    old_snapshot = observation.to_dict() if hasattr(observation, "to_dict") else None
+    prior_snapshot = observation.to_dict() if hasattr(observation, "to_dict") else None
     success = await delete_observation(observation_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Observation not found")
@@ -174,6 +174,6 @@ async def delete_observation_endpoint(
         action="delete_observation",
         resource_type="Observation",
         resource_id=observation.id if hasattr(observation, "id") else None,
-        old_value=old_snapshot,
+        old_value=prior_snapshot,  # gate-allow: *, audit diff
     )
     return {"message": "Observation deleted successfully"}

@@ -28,7 +28,7 @@ from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
-from app.services import document_service
+from app.services.documents import document_service
 
 
 @pytest_asyncio.fixture
@@ -352,11 +352,13 @@ def test_run_sync_passes_integration_keys_to_ingest_document_bytes():
     + the spec's external_id to the canonical write path. We can't run
     the full pipeline without a provider + DB, so this is a static check
     on the source."""
+    from app.services import integration_sync_service as integration_sync_module
+    from app.services.integration import sync_legs
+
     src = Path(document_service.__file__).read_text()
     assert (
         "source_integration_id=integration.id" not in src
     )  # document_service itself doesn't say this
-    integration_sync_path = Path(document_service.__file__).parent / "integration_sync_service.py"
-    sync_src = integration_sync_path.read_text()
+    sync_src = "\n".join(Path(m.__file__).read_text() for m in (integration_sync_module, sync_legs))
     assert "source_integration_id=integration.id" in sync_src
     assert "external_id=getattr" in sync_src or "external_id=doc_spec.external_id" in sync_src

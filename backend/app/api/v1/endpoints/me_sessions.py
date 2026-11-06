@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core import token_store
 from app.core.security import get_current_user, get_token, verify_access_token
 from app.schemas.user import TokenData
-from app.services.auth_session_service import (
+from app.services.auth.auth_session_service import (
     get_family,
     list_for_user,
     revoke_family,

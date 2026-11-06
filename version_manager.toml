@@ -1,5 +1,5 @@
 # Health Assistant (core) — version manager config (family-unified script)
-# Family-unified script — do not fork; keep in sync with the internal standards distribution
+# Family-unified script — do not fork; keep it in sync with the family standards
 
 [project]
 name = "Health Assistant"
@@ -15,15 +15,10 @@ type = "json"
 field = "version"
 
 [[propagate]]
-name = "Frontend package-lock.json"
-file = "frontend/package-lock.json"
-type = "npm-lock"
-
-[[propagate]]
 name = "README version badge"
 file = "README.md"
 type = "regex"
-pattern = '(img\.shields\.io/badge/version-v)([^-\)]+)(--?[^-\)]*)?(-blue\.svg)'
+pattern = '(img\.shields\.io/badge/version-v)(?P<version>[^-\)]+)(--?[^-\)]*)?(-blue\.svg)'
 template = '\g<1>{version}\g<4>'
 dash_escape = true
 

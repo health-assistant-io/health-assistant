@@ -24,7 +24,7 @@ interface Props {
  * The switch over ``field.type`` is exhaustive: every ``MetadataFieldType``
  * literal has a branch, and the ``default`` arm asserts ``never`` so adding a
  * new field type without a renderer is a compile error (TS catches it at
- * build time). This permanently closes the legacy bug class where
+ * build time). This permanently closes the bug class where
  * ``select``/``code`` silently rendered nothing.
  *
  * ``catalog-select`` fields render through the reusable ``CatalogField`` →

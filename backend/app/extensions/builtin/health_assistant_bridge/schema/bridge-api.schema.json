@@ -78,7 +78,7 @@
         "ai_assistant",
         "ai_streaming"
       ],
-      "semantics": "Flags, not semver math, drive client gating; an older server omits bridge_features and clients degrade to legacy paths"
+      "semantics": "Flags, not semver math, drive client gating; an older server omits bridge_features and clients degrade to compatible paths"
     },
     "latestSdks": {
       "shape": {

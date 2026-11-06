@@ -17,8 +17,8 @@ import pytest
 
 from app.core.database import AsyncSessionLocal
 from app.models.tenant_model import TenantModel
-from app.services.fhir_helpers import parse_fhir_resource
-from app.services.seed_service import SeedService
+from app.services.fhir.fhir_helpers import parse_fhir_resource
+from app.services.seed.service import SeedService
 
 
 async def _tenant_and_headers(role="ADMIN"):

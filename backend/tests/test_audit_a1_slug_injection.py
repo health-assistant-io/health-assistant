@@ -1,11 +1,11 @@
 """Tests for audit item A1 — second-order SQL injection via biomarker slug.
 
 The biomarker ``slug`` is interpolated into raw SQL in the telemetry analytics
-path (``analytics_service.get_biomarker_trends``). These tests verify the three
+path (``analytics.trends.get_biomarker_trends``). These tests verify the three
 layers of defence:
 1. Pydantic schema rejects unsafe slugs on the API write path.
 2. ``sanitize_slug`` coerces arbitrary AI/import input into a safe slug.
-3. ``analytics_service`` skips (never interpolates) any slug that is not a
+3. The trends module skips (never interpolates) any slug that is not a
    strict identifier, regardless of how it entered the DB.
 """
 
@@ -159,7 +159,7 @@ class TestAnalyticsTelemetryGuard:
 
     @pytest.mark.asyncio
     async def test_evil_slug_not_interpolated_into_sql(self):
-        from app.services.analytics_service import get_biomarker_trends
+        from app.services.analytics import get_biomarker_trends
 
         tenant_id = str(uuid.uuid4())
         evil_payload = "x') UNION SELECT hashed_password FROM users--"

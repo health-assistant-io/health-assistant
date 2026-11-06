@@ -16,11 +16,11 @@ The integration synthesises data instead of calling a real API, so it works full
 - **Receive HMAC-signed webhooks** — `handle_webhook` validates an `X-DevDummy-Signature` header against the Fernet-encrypted `webhook_secret` config field.
 - **Serve a small REST API** for headless clients — `GET status`, `GET cursor`, `POST reset`, `POST echo`.
 - **Expose two LangChain tools** to the chat assistant (opt-in via `enable_tools`).
-- **Pull clinical events** (`supports_clinical_events`) — synthesises a flu-episode `ClinicalEventCreate` with dedup-friendly `external_id`.
-- **Pull examinations** (`supports_examinations`) — synthesises an annual-checkup `ExaminationCreate`.
-- **Auto-apply catalog proposals** (`supports_catalog_proposals`) — proposes a "Sleep Quality Score" biomarker definition.
-- **Queue HITL proposals** (`supports_hitl_proposals`) — queues a "Stress Index" concept for human review; advancing the cursor on resolve.
-- **Pull documents** (`supports_documents`) — synthesises a small text "lab report" once per instance.
+- **Pull clinical events** (declared `clinical_event` data class) — synthesises a flu-episode `ClinicalEventCreate` with dedup-friendly `external_id`.
+- **Pull examinations** (declared `examination` data class) — synthesises an annual-checkup `ExaminationCreate`.
+- **Auto-apply catalog proposals** (declared `catalog_proposal` data class) — proposes a "Sleep Quality Score" biomarker definition.
+- **Queue HITL proposals** (declared `hitl_proposal` data class) — queues a "Stress Index" concept for human review; advancing the cursor on resolve.
+- **Pull documents** (declared `document` data class) — synthesises a small text "lab report" once per instance.
 - **Demonstrate the secret-field lifecycle** — `webhook_secret` is Fernet-encrypted at rest, masked as `***` on read, decrypted only when the provider needs it.
 - **Demonstrate the per-user instance cap** — `max_instances_per_user = 3` (enforced by the endpoint on create).
 

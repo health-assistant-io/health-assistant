@@ -138,7 +138,7 @@ edges now live in `concept_edges.json` with `src_type=anatomy`,
 
 ## Exporting an instance back to seeds
 
-`SeedExportService` (`backend/app/services/seed_export_service.py`) is the
+`SeedExportService` (`backend/app/services/seed/seed_export_service.py`) is the
 inverse of `SeedService` — it snapshots a running instance's data into this
 slug-keyed format. Deterministic output; safe write (backup + atomic).
 

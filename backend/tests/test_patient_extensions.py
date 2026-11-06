@@ -1,4 +1,4 @@
-"""Unit tests for ``app/services/fhir_extensions.py`` + Patient.extensions
+"""Unit tests for ``app/services/fhir/fhir_extensions.py`` + Patient.extensions
 serialization (no DB).
 
 Covers:
@@ -17,7 +17,7 @@ import pytest
 
 from app.models.enums import Gender
 from app.models.fhir.patient import Patient
-from app.services.fhir_extensions import (
+from app.services.fhir.fhir_extensions import (
     INSURANCE_PROVIDER_URL,
     PREFERRED_LANGUAGE_URL,
     SUPPORTED_PATIENT_EXTENSIONS,
@@ -191,7 +191,7 @@ def test_to_fhir_dict_surfaces_canonical_extension_list():
 def test_assert_valid_fhir_accepts_patient_with_extensions():
     """The write-time gate must accept a Patient carrying the canonical
     extension[] array (US Core complex extension + simple ``valueCode``)."""
-    from app.services.fhir_helpers import assert_valid_fhir
+    from app.services.fhir.fhir_helpers import assert_valid_fhir
 
     cleaned = validate_patient_extensions(
         {

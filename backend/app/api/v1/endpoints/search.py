@@ -10,7 +10,7 @@ from app.models.enums import Role
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
 from app.schemas.user import TokenData
-from app.services.catalog_search_service import search_catalogs
+from app.services.catalog.catalog_search_service import search_catalogs
 
 router = APIRouter()
 

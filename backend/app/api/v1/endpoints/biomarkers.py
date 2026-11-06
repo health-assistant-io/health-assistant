@@ -33,7 +33,7 @@ from app.schemas.biomarker import (
     UnitResponse,
 )
 from app.schemas.user import TokenData
-from app.services.concept_service import resolve_biomarker_class_concept
+from app.services.catalog.concept_service import resolve_biomarker_class_concept
 
 router = APIRouter(prefix="/biomarkers", tags=["biomarkers"])
 
@@ -229,7 +229,7 @@ async def create_unit(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -272,9 +272,9 @@ async def create_biomarker(
         if unit:
             unit_id = unit.id
 
-    # Resolve legacy ``category`` string to a ``biomarker_class`` concept ID.
+    # Resolve the ``category`` string to a ``biomarker_class`` concept ID.
     # An explicit ``class_concept_id`` wins; otherwise we best-effort resolve
-    # the legacy ``category`` slug.
+    # the ``category`` slug.
     class_concept_id = biomarker.class_concept_id
     if class_concept_id is None:
         class_concept_id = await resolve_biomarker_class_concept(
@@ -328,7 +328,7 @@ async def create_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -366,7 +366,7 @@ async def delete_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -414,7 +414,7 @@ async def bulk_delete_biomarkers(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -511,7 +511,7 @@ async def retry_biomarker_migration(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -566,7 +566,7 @@ async def remap_observations(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -604,7 +604,7 @@ async def update_biomarker(
         actor_user_id=current_user.user_id,
     )
 
-    old_is_telemetry = db_biomarker.is_telemetry
+    prior_is_telemetry = db_biomarker.is_telemetry
 
     # Extract ``allowed_states`` BEFORE ``model_dump`` flattens the nested
     # AllowedStateSpec instances to dicts — we want the Pydantic models so
@@ -624,7 +624,7 @@ async def update_biomarker(
     update_data.pop("allowed_states", None)
 
     new_is_telemetry = update_data.get("is_telemetry")
-    needs_migration = new_is_telemetry is not None and old_is_telemetry != new_is_telemetry
+    needs_migration = new_is_telemetry is not None and prior_is_telemetry != new_is_telemetry
 
     # Hard guard (plan state-biomarkers Step 6/11): STATE biomarkers cannot
     # be telemetry — ``telemetry_data.value`` is Float NOT NULL. The Pydantic
@@ -642,7 +642,7 @@ async def update_biomarker(
         )
 
     # ``class_concept_id`` (the FK) is authoritative. ``category`` is a
-    # read-only property — if a caller sends only the legacy string, resolve
+    # read-only property — if a caller sends only the ``category`` string, resolve
     # it to a concept ID (best-effort) and drop the property name.
     if "class_concept_id" not in update_data and "category" in update_data:
         class_concept_id = await resolve_biomarker_class_concept(
@@ -650,8 +650,8 @@ async def update_biomarker(
         )
         update_data["class_concept_id"] = class_concept_id
     elif "category" in update_data:
-        # An explicit ``class_concept_id`` was provided — drop the legacy
-        # property name so it doesn't trip ``setattr`` below.
+        # An explicit ``class_concept_id`` was provided — drop the
+        # ``category`` property name so it doesn't trip ``setattr`` below.
         update_data.pop("category")
 
     for key, value in update_data.items():
@@ -718,7 +718,7 @@ async def update_biomarker(
     except Exception:
         await db.rollback()
         logger.exception("biomarker operation failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -815,7 +815,7 @@ async def create_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range create failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -861,7 +861,7 @@ async def update_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range update failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )
@@ -898,7 +898,7 @@ async def delete_reference_range(
     except Exception:
         await db.rollback()
         logger.exception("reference-range delete failed")
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail="Request could not be completed (see server log).",
         )

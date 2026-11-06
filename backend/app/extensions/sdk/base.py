@@ -129,25 +129,50 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         return []
 
     # --- State / Cursor Management ---
+    #
+    # Cursors are rows in ``integration_sync_state`` (plan 8 W1/W3) — never
+    # JSONB in ``user_config``. The engine (or another boundary that runs a
+    # provider) hydrates the instance buffer before the run and flushes it
+    # after; these helpers are the synchronous provider-facing view of it.
 
-    def get_sync_cursor(self, integration: UserIntegration, key: str, default: Any = None) -> Any:
-        """Retrieve a saved cursor (e.g., last timestamp) to perform delta syncs."""
-        if not integration.user_config:
-            return default
-        state = integration.user_config.get("_sync_state", {})
-        val = state.get(key)
-        return val if val is not None else default
+    def get_cursor(
+        self,
+        integration: UserIntegration,
+        stream: Any,
+        *,
+        key: str | None = None,
+        default: Any = None,
+    ) -> Any:
+        """Return the saved cursor for ``(stream, key)`` (delta-sync)."""
+        from app.services.integration.integration_sync_state import get_cursor as _read
 
-    def set_sync_cursor(self, integration: UserIntegration, key: str, value: Any) -> None:
-        """Save a cursor. Changes will be committed by the background sync worker."""
-        # Create a new dict to ensure SQLAlchemy detects the JSONB mutation
-        new_config = dict(integration.user_config) if integration.user_config else {}
+        return _read(integration, stream, key=key, default=default)
 
-        if "_sync_state" not in new_config:
-            new_config["_sync_state"] = {}
+    def set_cursor(
+        self,
+        integration: UserIntegration,
+        stream: Any,
+        value: Any,
+        *,
+        key: str | None = None,
+        kind: Any = "timestamp",
+    ) -> None:
+        """Buffer a cursor write. The boundary flushes it in its transaction."""
+        from app.services.integration.integration_sync_state import set_cursor as _write
 
-        new_config["_sync_state"][key] = value
-        integration.user_config = new_config
+        _write(integration, stream, value, key=key, kind=kind)
+
+    def clear_cursor(
+        self,
+        integration: UserIntegration,
+        stream: Any,
+        *,
+        key: str | None = None,
+    ) -> None:
+        """Reset a cursor to empty so the next pull restarts from scratch."""
+        from app.services.integration.integration_sync_state import clear_cursor as _clear
+
+        _clear(integration, stream, key=key)
 
     # --- Custom Actions ---
 
@@ -334,14 +359,15 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
     # (workstream F) — same payload shapes, but the integration asks the
     # platform to queue each proposal for human review instead of
     # auto-applying. The platform's ``run_sync`` calls the hook after the
-    # catalog-proposals step, persists each spec as a PROPOSED
-    # ``IntegrationProposal`` row + fires an HITL notification. The user
+    # catalog-proposals step, persists each spec as a PROPOSED row in the
+    # one ``proposals`` table + fires an HITL notification. The user
     # resolves via the
     # ``/api/v1/integrations/instance/{id}/proposals/.../resolve``
-    # endpoint, which routes the (possibly-edited) payload through
-    # ``catalog_proposal_service.apply_proposal`` — the same write path
-    # F.3 auto-applies through — and invokes the provider's
-    # ``handle_proposal_resolution`` callback so it can react.
+    # endpoint, which validates the (possibly-edited) payload against the
+    # kind contract and runs the kind's resolver (catalog service, or the
+    # canonical clinical service for the four patient-record kinds), then
+    # invokes the provider's ``handle_proposal_resolution`` callback so it
+    # can react.
     #
     # Why both hooks exist: a single provider can opt into both. Use
     # the ``catalog_proposal`` data class for entries the provider is confident
@@ -354,10 +380,11 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
         """Pull HITL proposals for this integration instance.
 
         Returns a list of ``IntegrationProposalSpec`` (re-exported from
-        :mod:`integrations.sdk`). Each spec is persisted as a PROPOSED
-        ``IntegrationProposal`` row + fires an HITL notification. The
+        :mod:`app.extensions.sdk`). Each spec is persisted as a PROPOSED row
+        in the one ``proposals`` table + fires an HITL notification. The
         user reviews via the resolve endpoint; on approve, the resolver
-        delegates to ``catalog_proposal_service.apply_proposal``.
+        validates the payload against the kind contract and runs the kind's
+        resolver.
 
         Idempotent on ``(proposal_type, proposed_payload)`` across syncs
         — re-emitting the same spec on consecutive syncs is a no-op
@@ -445,7 +472,7 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
     # --- Medications (opt-in) -------------------------------------------
     # Phase 4 (Route A) of the fhir-server multi-resource sync plan
-    # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Mirrors
+    # (local planning notes/fhir-server-multi-resource-sync-2026-07-23.md). Mirrors
     # the declaration shape from B + E + F + G + C — providers
     # that can pull patient medications (FHIR MedicationStatement /
     # MedicationRequest) from an upstream system override
@@ -517,6 +544,32 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
         Default: ``[]``. Override on providers that opt in via
         the ``immunization`` data-class declaration.
+        """
+        return []
+
+    # --- Labs (opt-in, plan 8 W4) ---------------------------------------
+    # The labs-stream counterpart of the hooks above. Providers that can
+    # pull lab reports (FHIR DiagnosticReport from a portal or an exchange)
+    # declare the ``lab_report`` data class in their manifest's
+    # ``itemSchema`` and return ingest-funnel payload dicts. The engine's
+    # labs leg writes each through ``integration_ingest.ingest_labs`` — the
+    # one labs path in — which dedups on the natural key
+    # (tenant, patient, code, effective) and records per-item rejections.
+
+    async def pull_labs(self, integration: UserIntegration) -> list[dict[str, Any]]:
+        """Pull lab reports (FHIR DiagnosticReport payload dicts).
+
+        Returns a list of dicts with at least ``status``, ``code`` and
+        ``subject`` (plus ``patient_id``/``effective_datetime`` when known)
+        — the shape ``integration_ingest.ingest_labs`` consumes. Dedup is
+        the funnel's job (natural key); re-pulling the same report writes
+        nothing twice.
+
+        Default: ``[]``. Override on providers that opt in via the
+        ``lab_report`` data-class declaration. Typed errors (``auth`` for a
+        fail-closed credential gate) propagate to the engine's routing —
+        a pull must never silently produce zero data on a broken
+        credential.
         """
         return []
 
@@ -698,3 +751,15 @@ class BaseConfigFlow(_CoreBaseConfigFlow, ABC):
         endpoint — only by the integration itself.
         """
         return decrypt_fields(config, self.get_secret_fields(), context=context)
+
+    async def store_credentials(self, db: Any, integration: Any, validated_config: dict) -> None:
+        """Seal credential-store slots from the submitted config (default no-op).
+
+        Called by the config-flow endpoint after the instance row exists
+        and before commit. Flows that collect a secret for the credential
+        store (``integration_credentials`` — plan 8 W1) pop their transient
+        slot from ``validated_config`` here and seal it; the stored
+        ``user_config`` must never carry credential material. Flows that
+        use the classic ``user_config`` x-secret path leave the default.
+        """
+        return None

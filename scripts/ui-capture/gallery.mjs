@@ -261,17 +261,21 @@ function buildManifest(scenes, cfg, { out, gallery, mobileGallery, writtenDeskto
 
 export async function generateGallery(scenes, groups, opts) {
   const { cfg, out, gallery } = opts;
+  // Component captures (scenes flagged `tour: false`) stay OUT of every tour
+  // document — they are element crops for other surfaces, not tour material
+  // (plan 48): not the gallery docs, not the manifest, not the GIF.
+  const tourScenes = scenes.filter((scene) => scene.tour !== false);
   const mobileGallery = mobileGalleryPath(gallery);
   const siblingName = mobileGallery.split("/").pop();
 
   // Desktop is the primary doc; the mobile companion is generated only if its
   // PNGs are on disk. Mobile state is resolved first so the desktop doc's
   // "mobile views" footer line is accurate.
-  const mobilePresent = scenes.some(
+  const mobilePresent = tourScenes.some(
     (scene) => scene.viewports.includes("mobile") && existsSync(`${out}/${sceneStill(scene, "mobile")}`),
   );
 
-  const writtenDesktop = await writeViewportGallery(cfg, scenes, groups, {
+  const writtenDesktop = await writeViewportGallery(cfg, tourScenes, groups, {
     out,
     galleryPath: gallery,
     viewport: "desktop",
@@ -279,7 +283,7 @@ export async function generateGallery(scenes, groups, opts) {
     hasSibling: mobilePresent,
   });
   const writtenMobile = mobilePresent
-    ? await writeViewportGallery(cfg, scenes, groups, {
+    ? await writeViewportGallery(cfg, tourScenes, groups, {
         out,
         galleryPath: mobileGallery,
         viewport: "mobile",
@@ -296,7 +300,7 @@ export async function generateGallery(scenes, groups, opts) {
         return null;
       })();
 
-  const manifest = buildManifest(scenes, cfg, {
+  const manifest = buildManifest(tourScenes, cfg, {
     out,
     gallery,
     mobileGallery,

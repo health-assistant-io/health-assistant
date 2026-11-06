@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.security import RoleChecker, TokenData, get_current_user
 from app.models.enums import Role
 from app.schemas.settings import SettingLevel
-from app.services.settings_service import SettingsService, can_manage_level
+from app.services.tenancy.settings_service import SettingsService, can_manage_level
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -69,7 +69,7 @@ async def update_system_override(
             current_user.tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- bare raise; add explicit chaining when touched
     return {"message": "System setting updated"}
 
 
@@ -119,7 +119,7 @@ async def update_tenant_override(
             current_user.tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- bare raise; add explicit chaining when touched
     return {"message": "Tenant setting updated"}
 
 
@@ -151,5 +151,5 @@ async def update_user_override(
             SettingLevel.USER, key, value, current_user.user_id, current_user.tenant_id
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(status_code=400, detail=str(exc))  # noqa: B904 -- bare raise; add explicit chaining when touched
     return {"message": "User setting updated"}

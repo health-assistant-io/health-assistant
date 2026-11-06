@@ -86,14 +86,14 @@ frontend/
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 ## Build for Production
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ## Docker Build

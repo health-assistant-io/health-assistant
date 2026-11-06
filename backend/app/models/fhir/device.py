@@ -24,7 +24,7 @@ from app.models.base import (
     TimestampMixin,
     UUIDMixin,
 )
-from app.services.fhir_helpers import build_fhir_resource, build_meta
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta
 
 
 class DeviceModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin, SoftDeleteMixin):

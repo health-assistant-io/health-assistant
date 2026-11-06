@@ -12,7 +12,7 @@ opt into the document-pull path by:
 
 The platform's ``run_sync`` pipeline calls ``pull_documents`` after the
 examinations + catalog-proposals + HITL-proposals steps, persists each
-document via :func:`app.services.document_service.ingest_document_bytes`
+document via :func:`app.services.documents.document_service.ingest_document_bytes`
 (the same write path the UI upload endpoint uses), and fires the OCR
 Celery task when ``include_in_extraction=True``.
 
@@ -141,7 +141,7 @@ class DocumentPull(BaseModel):
             "Strongly recommended when the upstream has stable ids "
             "(lab accession #, EHR attachment id, fax message id, ...). "
             "When unset, the provider owns idempotency via "
-            "``set_sync_cursor`` (the pre-3 behaviour)."
+            "``set_cursor`` (advance the ``documents`` stream cursor)."
         ),
     )
     category_concept_slug: str | None = Field(

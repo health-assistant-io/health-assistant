@@ -252,7 +252,7 @@ const AIChatInterfaceInner: React.FC<Props> = ({
     a: ({ node: _node, href, children, ...props }) => {
       if (isCitationHref(href)) {
         return (
-          <span className="inline-block translate-y-[2px]">
+          <span className="inline-block translate-y-[2px]" data-capture="citation-chip">
             <CitationButton reference={citationRef(href ?? '')} toolCalls={toolCalls} />
           </span>
         );

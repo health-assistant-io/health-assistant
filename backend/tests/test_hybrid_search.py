@@ -27,7 +27,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
-from app.services.catalog_search_service import (
+from app.services.catalog.catalog_search_service import (
     _hybrid_search_one,
     _specs_by_type,
     search_biomarkers,

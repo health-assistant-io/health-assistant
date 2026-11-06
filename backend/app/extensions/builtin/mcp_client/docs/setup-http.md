@@ -1,6 +1,6 @@
 # HTTP / SSE Server Setup
 
-Use the `http` (Streamable HTTP, recommended) or `sse` (legacy) transport to connect to a remote MCP server.
+Use the `http` (Streamable HTTP, recommended) or `sse` (the older) transport to connect to a remote MCP server.
 
 ## Fields
 

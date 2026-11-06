@@ -7,7 +7,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.database import DATABASE_AVAILABLE
-from app.services.seed_service import seed_service
+from app.services.seed.service import SeedService
 
 
 async def main():
@@ -16,7 +16,7 @@ async def main():
         return
 
     print("🚀 Starting manual allergy catalog sync...")
-    stats = await seed_service.seed_allergies()
+    stats = await SeedService().seed_allergies()
 
     print("-" * 30)
     print("✅ Sync complete!")

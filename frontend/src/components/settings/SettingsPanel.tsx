@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw, Monitor, Loader2, Info, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RotateCcw, Monitor, Bell, Loader2, Info, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
   settingsService,
@@ -25,12 +26,27 @@ const LEVEL_LABEL_KEY: Record<SettingLevel, string> = {
   user: 'settings.level_user',
 };
 
+/**
+ * Categories whose USER-facing editing surface is a dedicated page. The
+ * tiered definitions stay the storage/registry contract (admins still set the
+ * inherited defaults here); rendering them again at user level would be a
+ * second surface over the same preference.
+ */
+const USER_SURFACE_OWNED_CATEGORIES: Record<
+  string,
+  { labelKey: string; linkKey: string; to: string }
+> = {
+  notifications: {
+    labelKey: 'settings.notifications_surface_moved',
+    linkKey: 'settings.notifications_surface_link',
+    to: '/notifications/settings',
+  },
+};
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subtitle, icon }) => {
   const { t } = useTranslation();
   const theme = useSettingsStore(state => state.theme);
-  const notificationsEnabled = useSettingsStore(state => state.notificationsEnabled);
   const setTheme = useSettingsStore(state => state.setTheme);
-  const setNotificationsEnabled = useSettingsStore(state => state.setNotificationsEnabled);
   const applyEffectivePatch = useSettingsStore(state => state.applyEffectivePatch);
 
   const [definitions, setDefinitions] = useState<SettingDefinition[]>([]);
@@ -74,8 +90,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
   }, [level, t]);
 
   const sortedCategories = useMemo(
-    () => [...categories].sort((a, b) => a.order - b.order),
-    [categories]
+    () =>
+      [...categories]
+        .sort((a, b) => a.order - b.order)
+        .filter((c) => level !== 'user' || !(c.key in USER_SURFACE_OWNED_CATEGORIES)),
+    [categories, level]
   );
 
   const defsByCategory = useMemo(() => {
@@ -97,8 +116,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
 
   const resolveDisplayValue = (d: SettingDefinition): { value: any; overridden: boolean } => {
     if (d.storage === 'device') {
-      const localVal = d.key === 'appearance.theme' ? theme : notificationsEnabled;
-      return { value: localVal, overridden: true };
+      const deviceValues: Record<string, unknown> = { 'appearance.theme': theme };
+      return { value: deviceValues[d.key], overridden: true };
     }
     const overridden = Object.prototype.hasOwnProperty.call(overrides, d.key);
     if (overridden) return { value: overrides[d.key], overridden: true };
@@ -141,7 +160,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
 
   const writeDevice = async (d: SettingDefinition, value: any) => {
     if (d.key === 'appearance.theme') setTheme(value);
-    if (d.key === 'notifications.enabled') setNotificationsEnabled(value);
   };
 
   const handleChange = (d: SettingDefinition, value: any, reset = false) => {
@@ -200,6 +218,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ level, title, subt
   return (
     <div className="space-y-6">
       <PageHeader title={title} subtitle={subtitle} icon={icon} />
+
+      {level === 'user' &&
+        Object.values(USER_SURFACE_OWNED_CATEGORIES).map((owned) => (
+          <div
+            key={owned.to}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 text-xs text-blue-700 dark:text-blue-300"
+          >
+            <Bell className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {t(owned.labelKey, 'Notification preferences live in the Notification Center.')}{' '}
+              <Link to={owned.to} className="font-bold underline">
+                {t(owned.linkKey, 'Open notification settings')}
+              </Link>
+            </span>
+          </div>
+        ))}
 
       {sortedCategories.map((cat) => {
         const defs = (defsByCategory[cat.key] || []).filter(isRelevant);

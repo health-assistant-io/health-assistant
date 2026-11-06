@@ -10,7 +10,7 @@
  * predicates access fields that exist on that type's items, so the cast is
  * safe at runtime.
  *
- * See `dev/plans/modular-filter-system-2026-07-14.md` §2 Phase 3.
+ * See `local planning notes/modular-filter-system-2026-07-14.md` §2 Phase 3.
  */
 import type { FacetDefinition } from '../ui/filters';
 import type { CatalogItem } from '../../types/catalog';

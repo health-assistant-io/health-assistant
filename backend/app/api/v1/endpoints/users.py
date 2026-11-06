@@ -6,13 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user, get_password_hash
-from app.models.enums import Role
+from app.models.enums import ErasureSubjectType, Role
 from app.models.user_model import UserModel
 from app.schemas.user import TokenData, UserCreate, UserResponse
-from app.services.audit_service import log_audit_action
-from app.services.user_service import (
+from app.services.audit.audit_service import log_audit_action
+from app.services.data_lifecycle.erasure import ErasureError, resolve_subject, run_erasure
+from app.services.tenancy.user_service import (
     create_user,
-    delete_user,
     get_user_by_email,
     get_user_by_id,
     update_user,
@@ -129,6 +129,45 @@ async def get_current_user_endpoint(
     return user
 
 
+@router.delete("/me")
+async def delete_current_user_endpoint(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Self-service account erasure (``USER`` deletes self).
+
+    Runs the same ordered cascade as admin erasure (owned patients included)
+    and revokes every token family. Dry-run first at
+    ``POST /data-lifecycle/erasures``.
+    """
+    from app.core import token_store
+
+    if current_user.user_id is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        request = await run_erasure(
+            db,
+            subject_type=ErasureSubjectType.USER,
+            subject_id=current_user.user_id,
+            requested_by=current_user.user_id,
+            dry_run=False,
+        )
+    except ErasureError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
+    await log_audit_action(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.user_id,
+        action="user.self_delete",
+        resource_type="user",
+        resource_id=str(current_user.user_id),
+    )
+    await token_store.revoke_everything(str(current_user.user_id))
+    return {"message": "Account erased", "erasure_id": str(request.id)}
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user_endpoint(user_id: str, current_user: TokenData = Depends(get_current_user)):
     """Get user information"""
@@ -210,16 +249,16 @@ async def update_user_endpoint(
 
     # §17: user updates are admin actions (role changes get their own
     # action so the trail answers "who changed privileges?" directly).
-    old_snapshot = _user_snapshot(before)
+    prior_snapshot = _user_snapshot(before)
     new_snapshot = _user_snapshot(user)
-    role_changed = old_snapshot.get("role") != new_snapshot.get("role")
+    role_changed = prior_snapshot.get("role") != new_snapshot.get("role")
     await log_audit_action(
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="user.role_change" if role_changed else "user.update",
         resource_type="user",
         resource_id=user.id,
-        old_value=old_snapshot,
+        old_value=prior_snapshot,  # gate-allow: *, audit diff
         new_value=new_snapshot,
     )
 
@@ -228,7 +267,7 @@ async def update_user_endpoint(
     # Redis hot layer so stale privileged claims cannot outlive the change
     # (audit 2026-08 H2). The demoted user simply re-logs-in.
     if role and str(user.id) != str(current_user.user_id):
-        from app.services.user_service import bump_token_version
+        from app.services.tenancy.user_service import bump_token_version
 
         await bump_token_version(str(user.id))
         await token_store.revoke_everything(str(user.id))
@@ -240,8 +279,9 @@ async def update_user_endpoint(
 async def delete_user_endpoint(
     user_id: str,
     current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Delete user"""
+    """Erase a user account and every record it owns (data-subject erasure)."""
     from app.core import token_store
 
     # Enforce tenant isolation for non-system admins
@@ -249,10 +289,23 @@ async def delete_user_endpoint(
 
     # Snapshot for the §17 audit trail before the row disappears.
     before = await get_user_by_id(user_id, tenant_id=tenant_id)
-
-    success = await delete_user(user_id, tenant_id=tenant_id)
-    if not success:
+    if before is None:
         raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        subject = await resolve_subject(db, ErasureSubjectType.USER, before.id, tenant_id=tenant_id)
+        request = await run_erasure(
+            db,
+            subject_type=ErasureSubjectType.USER,
+            subject_id=subject.id,
+            requested_by=current_user.user_id,
+            dry_run=False,
+        )
+    except ErasureError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
 
     await log_audit_action(
         tenant_id=current_user.tenant_id,
@@ -260,10 +313,10 @@ async def delete_user_endpoint(
         action="user.delete",
         resource_type="user",
         resource_id=user_id,
-        old_value=_user_snapshot(before),
+        old_value=_user_snapshot(before),  # gate-allow: *, audit diff
     )
 
     # Deleted users must lose access at once — not when their tokens
     # happen to expire (audit 2026-08 H2).
     await token_store.revoke_everything(user_id)
-    return {"message": "User deleted successfully"}
+    return {"message": "User deleted successfully", "erasure_id": str(request.id)}

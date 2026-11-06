@@ -18,7 +18,7 @@ from sqlalchemy import select, text
 from app.core.database import AsyncSessionLocal
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.tenant_model import TenantModel
-from app.services.fhir_helpers import coerce_patient_id
+from app.services.fhir.fhir_helpers import coerce_patient_id
 
 
 async def _seed_tenant_and_patient(session):
@@ -60,7 +60,7 @@ async def test_patient_id_columns_and_cascade_fk_exist():
 
 @pytest.mark.asyncio
 async def test_create_observation_derives_patient_id_from_subject():
-    from app.services.fhir_service import create_observation
+    from app.services.fhir.fhir_service import create_observation
 
     async with AsyncSessionLocal() as session:
         tenant, patient = await _seed_tenant_and_patient(session)
@@ -97,7 +97,7 @@ async def test_create_observation_derives_patient_id_from_subject():
 
 @pytest.mark.asyncio
 async def test_create_diagnostic_report_derives_patient_id_from_subject():
-    from app.services.fhir_service import create_diagnostic_report
+    from app.services.fhir.fhir_service import create_diagnostic_report
 
     async with AsyncSessionLocal() as session:
         tenant, patient = await _seed_tenant_and_patient(session)

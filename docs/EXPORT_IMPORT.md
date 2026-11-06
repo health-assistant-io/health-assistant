@@ -2,7 +2,7 @@
 
 Health Assistant can export and re-import data as **backup files**, at three scopes and in three formats. Exports are FHIR R4B-conformant and integrity-checked; imports are validated with [`fhir.resources`](https://pypi.org/project/fhir.resources/) and upserted by natural key with automatic id remapping across tenants.
 
-> **Files**: `backend/app/services/{export_service,import_service,fhir_converter}.py`, `backend/app/api/v1/endpoints/{export,import_data}.py`, `backend/app/workers/tasks.py` (`export_backup`, `import_backup`), `backend/app/models/export_import_job.py`, `backend/app/schemas/backup.py`.
+> **Files**: `backend/app/services/{export/export_service,fhir/fhir_converter}.py + backend/app/services/imports/`, `backend/app/api/v1/endpoints/{export,import_data}.py`, `backend/app/workers/tasks.py` (`export_backup`, `import_backup`), `backend/app/models/export_import_job.py`, `backend/app/schemas/backup.py`.
 
 ---
 
@@ -89,7 +89,7 @@ All under `/api/v1`, JWT-auth required.
 | `GET` | `/import/jobs/{job_id}` | Get backup-import job status + `restore_result` (created/updated counts, manifest verification). |
 | `POST` | `/import/fhir` | Synchronous FHIR Bundle import (smaller bundles, no job tracking). |
 | `POST` | `/import/csv` | CSV import (legacy). |
-| `POST` | `/import/ocr` | OCR extraction (legacy). |
+| `POST` | `/import/ocr` | OCR extraction. The `ocr` AI task assignment resolves the provider, model and key (scoped resolution, BYOK at rest); the request carries only the file and an optional `patient_id`. |
 
 **`POST /import/backup`** — multipart `file` field. The server detects the format:
 - ZIP → verifies manifest SHA256, restores FHIR bundle + sidecars + documents.
@@ -101,7 +101,7 @@ All under `/api/v1`, JWT-auth required.
 ## 4. FHIR conversion & validation
 
 - **Library**: `fhir.resources==8.2.0` (R4B sub-package, Pydantic-v2-native). Provides *structural* validation (types, cardinality, JSON shape) without a terminology server.
-- **`services/fhir_converter.py`** converts ORM `to_dict()` output (snake_case + app extensions) to canonical FHIR R4B JSON and back:
+- **`services/fhir/fhir_converter.py`** converts ORM `to_dict()` output (snake_case + app extensions) to canonical FHIR R4B JSON and back:
   - App-only fields (`tenant_id`, `user_id`, `biomarker_id`, `normalized_value`, `dashboard_layout`, `org_type`, …) are stripped from the FHIR output.
   - `Patient.mrn` → `identifier[{system: "urn:healthassistant:mrn"}]`.
   - Enum casing normalized (`Gender.FEMALE` → `"female"`; `MedicationStatus.ACTIVE` → `"active"`).
@@ -143,16 +143,43 @@ Export/import are **async Celery tasks** (long jobs don't block the request):
 3. The import task deletes the temp upload file in `finally`.
 4. Poll `GET /export/jobs/{id}` (or `/import/jobs/{id}`) for progress; download via `GET /export/jobs/{id}/download`.
 
-Generated files are written to `HA_UPLOAD_DIR/exports/<tenant_id>/`. There is no automatic retention/cleanup yet (admin should prune old exports).
+Generated files are written to `HA_UPLOAD_DIR/exports/<tenant_id>/`. Cleanup is
+policy-driven: the `export_jobs` row in `retention_policies` (default 365
+days) removes old job records, and a subject erasure scrubs the job's file
+paths, manifest and `patient_ids` for any export that contained the subject
+(see §10).
 
 ---
 
 ## 8. Adding it to a new deployment
 
-`fhir.resources` is in `backend/pyproject.toml`. The `export_jobs` and `import_jobs` tables are created by the consolidated Alembic baseline (`8ddb7ef7ca4d`). Run `alembic upgrade head` after pulling.
+`fhir.resources` is in `backend/pyproject.toml`. The `export_jobs` and `import_jobs` tables are created by the Alembic baseline (`0001_baseline`). Run `alembic upgrade head` after pulling.
 
 ---
 
 ## 9. Frontend UI
 
 Admins reach the feature at **Settings → Export & Import** (`/settings/export-import`, `ADMIN`+). Two tabs — Export (scope, includes, trigger) and Import (upload, dry-run, history) — with a confirmation modal before any mutating run. Job progress polls live from the jobs tables; no page reload needed.
+
+---
+
+## 10. Erasure and exports
+
+Erasure offers the subject's export as a precondition artifact: set
+`export_before_erase=true` on `POST /api/v1/data-lifecycle/erasures` (or use
+the dry run first) and a `full_backup` job is produced **before** the walker
+deletes anything; its id lands in the erasure report. Treat that artifact as
+sensitive: it contains the subject's full record.
+
+Erasure then removes export artifacts that referenced the subject:
+
+- patient erasure matches `export_jobs.patient_ids` and unlinks the ZIP and
+  manifest, clearing `file_path`/`manifest_path`/`patient_ids` (the job row
+  stays as the record);
+- user erasure removes the user's export/import job rows and files;
+- tenant erasure removes every export artifact of the tenant.
+
+Document files attached to the erased record are unlinked before their rows
+disappear. Backups already taken before the erasure are handled by the
+erasure ledger replay plus the backup TTL — see `SECURITY.md` (“Data
+lifecycle: erasure, retention, backups”).

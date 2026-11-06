@@ -117,7 +117,7 @@ class TestEndpointsWired:
         import inspect
 
         from app.api.v1.endpoints import auth
-        from app.services import auth_session_service
+        from app.services.auth import auth_session_service
 
         # /refresh must revoke the old jti + register a new one (rotation).
         # Registration happens in the shared issuance path

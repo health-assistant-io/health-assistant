@@ -699,23 +699,27 @@ function AuditPanel({ tenantId }: { tenantId: string }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
-            {entries.map((e) => (
-              <tr key={e.id} className="align-top hover:bg-gray-50 dark:hover:bg-dark-bg/50">
-                <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                  {e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
-                </td>
-                <td className="px-4 py-3 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{e.action}</td>
-                <td className="px-4 py-3 text-xs text-gray-500">{e.resource_type}{e.resource_id ? ` / ${e.resource_id.slice(0, 8)}…` : ''}</td>
-                <td className="px-4 py-3 text-[10px] text-gray-400 font-mono max-w-md">
-                  {(e.old_value || e.new_value) && (
-                    <pre className="whitespace-pre-wrap break-all max-h-20 overflow-y-auto">
-                      {e.old_value ? `- ${JSON.stringify(e.old_value).slice(0, 200)}\n` : ''}
-                      {e.new_value ? `+ ${JSON.stringify(e.new_value).slice(0, 200)}` : ''}
-                    </pre>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {entries.map((e) => {
+              const before = e.old_value;  // # gate-allow: *, audit diff
+              const after = e.new_value;
+              return (
+                <tr key={e.id} className="align-top hover:bg-gray-50 dark:hover:bg-dark-bg/50">
+                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    {e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{e.action}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{e.resource_type}{e.resource_id ? ` / ${e.resource_id.slice(0, 8)}…` : ''}</td>
+                  <td className="px-4 py-3 text-[10px] text-gray-400 font-mono max-w-md">
+                    {(before || after) && (
+                      <pre className="whitespace-pre-wrap break-all max-h-20 overflow-y-auto">
+                        {before ? `- ${JSON.stringify(before).slice(0, 200)}\n` : ''}
+                        {after ? `+ ${JSON.stringify(after).slice(0, 200)}` : ''}
+                      </pre>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {entries.length === 0 && (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">No audit entries</td></tr>
             )}

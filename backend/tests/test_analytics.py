@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_get_biomarker_trends():
-    from app.services.analytics_service import get_biomarker_trends
+    from app.services.analytics import get_biomarker_trends
 
     tenant_id = str(uuid.uuid4())
     doc_id = str(uuid.uuid4())
@@ -69,7 +69,7 @@ async def test_get_biomarker_trends():
 
 @pytest.mark.asyncio
 async def test_get_dashboard_data():
-    from app.services.analytics_service import get_dashboard_data
+    from app.services.analytics import get_dashboard_data
 
     tenant_id = str(uuid.uuid4())
     doc_id = str(uuid.uuid4())

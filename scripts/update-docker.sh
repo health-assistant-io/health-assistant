@@ -58,10 +58,34 @@ if [ ! -f ".env" ]; then
     ENV_WAS_FRESH=1
 fi
 
+# Refuse a pre-0.9 database / stale v0.8.0 .env before pulling images or
+# recreating volumes. Runs against the still-running stack when there is one;
+# alembic/env.py enforces the same refusal for every other path.
+run_upgrade_preflight
+
 # Adopt volumes from before the compose files pinned their project name
 # (docker_* → <project>_*), so an update attaches to the existing data
 # instead of starting on empty volumes.
 adopt_legacy_volumes
+
+# Move a semver image pin forward with the tree (a pinned install refreshes via
+# this script, not by jumping tags on every install.sh run). `latest`, branch
+# names and custom tags are left untouched — those are deliberate choices.
+if [ -f ".env" ]; then
+    PINNED_TAG="$(env_value IMAGE_TAG "")"
+    TREE_VER="$(tree_version)"
+    case "$PINNED_TAG" in
+        ""|latest|main|master) ;;
+        *)
+            if [[ "$PINNED_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]] && [ -n "$TREE_VER" ] \
+                && [ "${PINNED_TAG#v}" != "$TREE_VER" ]; then
+                set_env_value IMAGE_TAG "$TREE_VER"
+                export IMAGE_TAG="$TREE_VER"
+                echo -e "${GREEN}Image pin moved ${PINNED_TAG} → ${TREE_VER} (this tree's version).${NC}"
+            fi
+            ;;
+    esac
+fi
 
 echo -e "${GREEN}Pulling latest images...${NC}"
 $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS pull

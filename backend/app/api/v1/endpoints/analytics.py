@@ -6,14 +6,14 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import Role
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
-from app.services.analytics_service import (
+from app.services.analytics import (
     get_analytics_summary,
     get_biomarker_anomalies,
     get_biomarker_trends,
     get_category_analytics,
     get_dashboard_data,
 )
+from app.services.auth.access import check_patient_access
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -108,7 +108,7 @@ async def get_reference_ranges_endpoint(
 ):
     """Return each visible biomarker's default reference range.
 
-    Sourced from the biomarker catalog (legacy global
+    Sourced from the biomarker catalog (the global
     ``reference_range_min``/``max``), not a hardcoded dict — the previous
     static table drifted from the real catalog and duplicated the source of
     truth. Stratified ranges live under

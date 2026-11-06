@@ -9,20 +9,20 @@ This doc maps each SDK hook to the toggle that enables it in Dev Dummy and the l
 | `setup(config)` lifecycle | Always on — logs the received `SystemIntegration.global_config` (one-time per-instance init hook) | top of `provider.py` |
 | `pull_data` (abstract) | Always on | `provider.py` §A |
 | Exception mapping (`IntegrationAuthError` / `IntegrationRateLimitError`) | `simulate_auth_error`, `simulate_rate_limit` (the latter now carries `retry_after_seconds`) | §B |
-| Cursor (`get_sync_cursor` / `set_sync_cursor`) | Always on (delta-sync 5-min increments) | §C |
+| Cursor (`get_cursor` / `set_cursor`) | Always on (delta-sync 5-min increments) | §C |
 | Debug logging (`log_debug_payload`) | UI debug toggle (`is_debug_enabled`) | §D |
 | Quantitative + categorical observations | `generate_heart_rate` / `generate_blood_pressure` / `generate_weight` / `generate_mood` | §E |
 | Sensor malfunction outlier | `simulate_sensor_glitch` (5% chance per sync) | §B |
 | Custom UI actions | Always on (three actions: `reset_cursor`, `show_status`, `clear_errors`) | §F |
-| Notifications (`supports_notifications` + types + emit + handle_action) | Always on; the elevated-HR notification sets `digest_key` so consecutive syncs collapse into one inbox entry | §G |
+| Notifications (declared `notify` capability + types + emit + handle_action) | Always on; the elevated-HR notification sets `digest_key` so consecutive syncs collapse into one inbox entry | §G |
 | Webhook (`handle_webhook`) + HMAC verification | Active whenever `webhook_secret` is set; verification delegates to `integrations.sdk.webhook_security.verify_hmac_signature` | §H |
 | Two-way API (`handle_api_request`) | Always on (`status` / `cursor` / `reset` / `echo`) | §I |
-| Chat tools (`supports_tools` / `get_tools`) | `enable_tools` | §J |
-| Clinical events (`supports_clinical_events` / `pull_clinical_events`) | `enable_clinical_events` | §K |
-| Examinations (`supports_examinations` / `pull_examinations`) | `enable_examinations` | §L |
-| Catalog proposals (`supports_catalog_proposals`) | `enable_catalog_proposals` | §M |
-| HITL proposals (`supports_hitl_proposals` + `handle_proposal_resolution`) | `enable_hitl_proposals` | §N |
-| Documents (`supports_documents` / `pull_documents`) | `enable_documents`; sets `external_id="dev_dummy_demo_report_v1"` so the engine dedups at the DB layer | §O |
+| Chat tools (declared `chat-tools` capability / `get_tools`) | `enable_tools` | §J |
+| Clinical events (declared `clinical_event` data class / `pull_clinical_events`) | `enable_clinical_events` | §K |
+| Examinations (declared `examination` data class / `pull_examinations`) | `enable_examinations` | §L |
+| Catalog proposals (declared `catalog_proposal` data class) | `enable_catalog_proposals` | §M |
+| HITL proposals (declared `hitl_proposal` data class + `handle_proposal_resolution`) | `enable_hitl_proposals` | §N |
+| Documents (declared `document` data class / `pull_documents`) | `enable_documents`; sets `external_id="dev_dummy_demo_report_v1"` so the engine dedups at the DB layer | §O |
 | Outbound push (`push_data`) | Always on (logs only) | §P |
 | Lifecycle (`close` / `revoke`) | Always on | §P |
 
@@ -41,7 +41,7 @@ This doc maps each SDK hook to the toggle that enables it in Dev Dummy and the l
 
 ## Recently shipped (was on the recommendations list)
 
-The integrations-sdk-improvements pass (`dev/plans/integrations-sdk-improvements-2026-07-21.md`) closed four of the seven original gaps. They're listed here for traceability:
+The integrations-SDK improvements pass closed four of the seven original gaps. They're listed here for traceability:
 
 - ✅ **`setup(config)` lifecycle hook now receives real config.** The registry forwards `SystemIntegration.global_config` to `provider.setup(config)` instead of an empty dict. Dev Dummy overrides `setup` to log it.
 - ✅ **Backpressure / rate-limit hints back to the engine.** `IntegrationRateLimitError` carries an optional `retry_after_seconds`; the worker writes a Redis cooldown key `sync_cooldown:{integration_id}` (TTL clamped to [60s, 1h]) so the next beat skips the integration.
@@ -53,4 +53,4 @@ The integrations-sdk-improvements pass (`dev/plans/integrations-sdk-improvements
 
 1. **Streaming / chunked observation pull** — `pull_data` always returns a single batch. A `pull_data_stream()` async-generator variant would let integrations page through huge upstream datasets without buffering them in memory.
 2. **Webhook signature schemes beyond HMAC-SHA256** — the new `verify_hmac_signature` helper covers GitHub/Slack/Stripe-style prefixed HMAC, but AWS-style `X-Amz-Signature` v4 and asymmetric (JWS) schemes would still need per-provider implementations.
-3. **Bulk-apply for catalog proposals** — `supports_catalog_proposals` applies one row per call. A bulk variant could amortise DB round-trips for integrations that propose hundreds of entries per sync.
+3. **Bulk-apply for catalog proposals** — the `catalog_proposal` flow applies one row per call. A bulk variant could amortise DB round-trips for integrations that propose hundreds of entries per sync.

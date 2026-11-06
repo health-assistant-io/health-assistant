@@ -64,7 +64,7 @@ export interface CardDefinition {
   category: CardCategory;
   /** whether this card consumes biomarker trends data */
   usesBiomarkers?: boolean;
-  /** legacy type keys that should resolve to this card (e.g. medication_calendar -> health_calendar) */
+  /** alias type keys that resolve to this card (e.g. medication_calendar -> health_calendar) */
   aliases?: string[];
   /** dynamic config factory for cards needing runtime defaults (e.g. first biomarker) */
   resolveDefaultConfig?: (ctx: CardDefaultConfigContext) => Record<string, any>;

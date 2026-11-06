@@ -4,7 +4,7 @@ Importing this package (``from app.catalogs import CatalogRegistry``) populates
 the registry with every registered catalog via
 :mod:`app.catalogs.registrations`. Consumers never hardcode the catalog list.
 
-See ``dev/plans/unified-catalog-architecture-2026-07-08.md``.
+See ``the design notes``.
 """
 
 from app.catalogs import registrations  # noqa: F401 — populates the registry

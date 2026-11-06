@@ -36,11 +36,11 @@ The whole loop is idempotent — re-pushing the same history is a no-op as long 
 | Custom actions | ✅ | "Connection Details", "Reset Sync Cursor" |
 | AI mapping | ✅ | `/map` — LLM maps raw metric names to biomarkers |
 | HMAC auth | ✅ | Optional `api_secret` config field |
-| Notifications | ❌ | Not opted into `supports_notifications` |
-| Tools (chat) | ❌ | Not opted into `supports_tools` |
-| Clinical events | ❌ | Not opted into `supports_clinical_events` |
-| Catalog proposals | ❌ | Not opted into `supports_catalog_proposals` |
-| Documents | ❌ | Not opted into `supports_documents` |
+| Notifications | ❌ | Does not declare the `notify` capability |
+| Tools (chat) | ❌ | Does not declare the `chat-tools` capability |
+| Clinical events | ❌ | Does not declare the `clinical_event` data class |
+| Catalog proposals | ❌ | Does not declare the `catalog_proposal` data class |
+| Documents | ❌ | Does not declare the `document` data class |
 
 ## See also
 

@@ -226,8 +226,6 @@ class TestAITaskAssignmentEndpoints:
             "task_type": "ocr",
             "provider_id": test_provider["id"],
             "model_id": test_model["id"],
-            "is_active": True,
-            "priority": 1,
         }
         response = await authenticated_client.post(
             "/api/v1/ai-config/task-assignments", json=assignment_data
@@ -252,7 +250,6 @@ class TestAITaskAssignmentEndpoints:
             "task_type": "nlp",
             "provider_id": test_provider["id"],
             "model_id": test_model["id"],
-            "is_active": True,
         }
         response = await authenticated_client.post(
             "/api/v1/ai-config/task-assignments", json=assignment_data
@@ -270,9 +267,8 @@ class TestAITaskAssignmentEndpoints:
         """Test updating a task assignment"""
         # Create assignment
         assignment_data = {
-            "task_type": "medication_interaction",
+            "task_type": "define_biomarker",
             "provider_id": test_provider["id"],
-            "is_active": True,
         }
         response = await authenticated_client.post(
             "/api/v1/ai-config/task-assignments", json=assignment_data
@@ -280,23 +276,21 @@ class TestAITaskAssignmentEndpoints:
         assignment_id = response.json()["id"]
 
         # Update
-        update_data = {"model_id": test_model["id"], "priority": 2}
+        update_data = {"model_id": test_model["id"]}
         response = await authenticated_client.put(
             f"/api/v1/ai-config/task-assignments/{assignment_id}", json=update_data
         )
         assert response.status_code == 200
         assert response.json()["model_id"] == test_model["id"]
-        assert response.json()["priority"] == 2
+        assert "priority" not in response.json()
 
     async def test_delete_task_assignment(
         self, authenticated_client: AsyncClient, test_provider: dict
     ):
-        """Test deleting a task assignment"""
-        # Create assignment
+        """Deleting revokes: the row survives, the slot stops resolving."""
         assignment_data = {
-            "task_type": "anomaly_detection",
+            "task_type": "chat",
             "provider_id": test_provider["id"],
-            "is_active": True,
         }
         response = await authenticated_client.post(
             "/api/v1/ai-config/task-assignments", json=assignment_data
@@ -308,6 +302,45 @@ class TestAITaskAssignmentEndpoints:
             f"/api/v1/ai-config/task-assignments/{assignment_id}"
         )
         assert response.status_code == 204
+
+        listing = await authenticated_client.get(
+            "/api/v1/ai-config/task-assignments?task_type=chat"
+        )
+        assert listing.status_code == 200
+        assert all(row["id"] != assignment_id for row in listing.json())
+
+        included = await authenticated_client.get(
+            "/api/v1/ai-config/task-assignments?task_type=chat&include_revoked=true"
+        )
+        revoked = [row for row in included.json() if row["id"] == assignment_id]
+        assert len(revoked) == 1
+        assert revoked[0]["revoked_at"] is not None
+
+    async def test_second_active_assignment_is_a_db_law_conflict(
+        self, authenticated_client: AsyncClient, test_provider: dict, test_model: dict
+    ):
+        """The single-slot law answers 409, not a silent second active row."""
+        payload = {
+            "task_type": "generate_category_icon",
+            "provider_id": test_provider["id"],
+            "model_id": test_model["id"],
+        }
+        first = await authenticated_client.post("/api/v1/ai-config/task-assignments", json=payload)
+        assert first.status_code == 201, first.text
+
+        second = await authenticated_client.post("/api/v1/ai-config/task-assignments", json=payload)
+        assert second.status_code == 409, second.text
+        assert second.json()["detail"]["code"] == "assignment_conflict"
+
+    async def test_unknown_task_type_is_refused(
+        self, authenticated_client: AsyncClient, test_provider: dict
+    ):
+        """The vocabulary is the registry: an unknown id is a 422."""
+        response = await authenticated_client.post(
+            "/api/v1/ai-config/task-assignments",
+            json={"task_type": "medication_interaction", "provider_id": test_provider["id"]},
+        )
+        assert response.status_code == 422, response.text
 
 
 class TestAIConfigSummary:
@@ -322,7 +355,6 @@ class TestAIConfigSummary:
             "task_type": "ocr",
             "provider_id": test_provider["id"],
             "model_id": test_model["id"],
-            "is_active": True,
         }
         await authenticated_client.post("/api/v1/ai-config/task-assignments", json=assignment_data)
 
@@ -339,17 +371,26 @@ class TestAIConfigSummary:
     async def test_get_default_for_task(
         self, authenticated_client: AsyncClient, test_provider: dict, test_model: dict
     ):
-        """Test getting default provider/model for task"""
-        # Create assignment
+        """``define_anatomy_graph`` is assignable and resolvable (plan 4 W1/W4).
+
+        Before the registry it existed only in the enum: no settings row, no
+        label, no resolvable slot — it silently rode ``default``. This is the
+        end-to-end proof that the task now takes its own assignment.
+        """
         assignment_data = {
-            "task_type": "ocr",
+            "task_type": "define_anatomy_graph",
             "provider_id": test_provider["id"],
             "model_id": test_model["id"],
-            "is_active": True,
         }
-        await authenticated_client.post("/api/v1/ai-config/task-assignments", json=assignment_data)
+        created = await authenticated_client.post(
+            "/api/v1/ai-config/task-assignments", json=assignment_data
+        )
+        assert created.status_code == 201, created.text
+        assert created.json()["task_type"] == "define_anatomy_graph"
 
-        # Get default
-        response = await authenticated_client.get("/api/v1/ai-config/default-for-task/ocr")
+        response = await authenticated_client.get(
+            "/api/v1/ai-config/default-for-task/define_anatomy_graph"
+        )
         assert response.status_code == 200
         assert response.json()["provider"]["id"] == test_provider["id"]
+        assert response.json()["model"]["id"] == test_model["id"]

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.ai.schemas.nlp import MetricMappingRequest
 from app.extensions.sdk import BaseHealthProvider, BridgeError
 from app.extensions.sdk.observation_builder import ObservationBuilder
+from app.models.enums import IntegrationSyncStream
 from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
 
@@ -97,6 +98,7 @@ def _observation_point_from_telemetry(
     from app.models.enums import CodingSystem
 
     value = row.get("value")
+    raw_value = row.get("raw_value", value)
     unit = row.get("unit")
     code = getattr(b_def, "code", None)
 
@@ -141,7 +143,7 @@ def _observation_point_from_telemetry(
         "biomarker_supports_multi_state": getattr(b_def, "supports_multi_state", False),
         "biomarker_reference_range_min": b_def.reference_range_min,
         "biomarker_reference_range_max": b_def.reference_range_max,
-        "raw_value": value,
+        "raw_value": raw_value,
         "normalized_value": value,
         "lab_reference_range": None,
         "normalized_unit": unit,
@@ -545,7 +547,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             "last_synced_at": integration.last_synced_at.isoformat()
             if integration.last_synced_at
             else None,
-            "cursor": self.get_sync_cursor(integration, "last_timestamp"),
+            "cursor": self.get_cursor(integration, IntegrationSyncStream.TELEMETRY),
             "latest_sdks": sdks,
             "frontend_base_url": public_urls["frontend_base_url"],
             # Compatibility surface (2026-10-11): the server's own version
@@ -592,7 +594,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
             # Update the cursor if provided by the client
             if sync_payload.cursor:
-                self.set_sync_cursor(integration, "last_timestamp", sync_payload.cursor)
+                self.set_cursor(integration, IntegrationSyncStream.TELEMETRY, sync_payload.cursor)
 
             return {
                 "success": True,
@@ -649,8 +651,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         from app.core.database import AsyncSessionLocal
         from app.models.biomarker_model import BiomarkerDefinition
-        from app.services.fhir_service import list_observations_latest
-        from app.services.telemetry_service import get_patient_telemetry_latest
+        from app.services.fhir.fhir_service import list_observations_latest
+        from app.services.telemetry.telemetry_service import get_patient_telemetry_latest
 
         patient_id = self._bound_patient_id(integration)
         try:
@@ -709,11 +711,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.fhir_service import (
+        from app.services.fhir.fhir_service import (
             list_observations,
             resolve_biomarker_definition,
         )
-        from app.services.telemetry_service import get_patient_telemetry_series
+        from app.services.telemetry.telemetry_service import get_patient_telemetry_series
 
         patient_id = self._bound_patient_id(integration)
         qp = request.query_params
@@ -844,7 +846,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
     @staticmethod
     def _examination_summary(e: Any) -> dict[str, Any]:
-        """The list-projection item for `GET /examinations`: the legacy thin
+        """The list-projection item for `GET /examinations`: the thin
         shape plus the card fields the mobile app renders (category, lab,
         diagnoses, progress, per-section counts). The selectin relationships
         on the model are already eager-loaded, so this adds no queries."""
@@ -1567,7 +1569,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     # ------------------------------------------------------------------
 
     async def _ai_actor_and_patient(self, db, integration: UserIntegration) -> tuple[Any, str]:
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         actor = await resolve_integration_actor(db, integration)
         return actor, str(self._bound_patient_id(integration))
@@ -1587,7 +1589,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         skip the redundant ``resolve_integration_actor`` round-trip."""
         from uuid import UUID as _UUID
 
-        from app.services.chat_session_service import ChatSessionService
+        from app.services.chat.chat_session_service import ChatSessionService
 
         try:
             sid = _UUID(session_id)
@@ -1620,7 +1622,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from uuid import UUID
 
         from app.core.database import AsyncSessionLocal
-        from app.services.chat_session_service import ChatSessionService
+        from app.services.chat.chat_session_service import ChatSessionService
 
         async with AsyncSessionLocal() as db:
             actor, patient_id = await self._ai_actor_and_patient(db, integration)
@@ -1690,7 +1692,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         from app.ai.assistance.service import AIAssistanceService
         from app.core.database import AsyncSessionLocal
-        from app.services.chat_session_service import ChatSessionService
+        from app.services.chat.chat_session_service import ChatSessionService
 
         message, session_id = await self._chat_turn_payload(request)
 
@@ -1865,7 +1867,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         then `.../tasks/{proposal_id}/resolve`), stream the agent's
         continuation turn. Body `{message_id?}` mirrors the PWA
         `HitlResumeRequest` (selectors only — outcomes are read from the
-        server-side tasks JSONB, never trusted from the body). Isolation
+        server-side proposal rows, never trusted from the body). Isolation
         via `_ai_owned_session` first, then the session's turn lock is
         ALWAYS taken (the session id is known); a concurrent turn on the
         session is rejected with `BridgeError` 409 `turn_conflict` before
@@ -1950,7 +1952,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         outcome + leaves the agent-awareness note). Body:
         `{status: "confirmed"|"dismissed", result?, error?}`."""
         from app.core.database import AsyncSessionLocal
-        from app.services.hitl_resolver import HitlResolutionConflict, resolve_chat_task
+        from app.services.proposals.hitl_resolver import HitlResolutionConflict, resolve_chat_task
 
         payload = await request.json()
         status = (payload.get("status") or "").lower()
@@ -2008,7 +2010,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.ai.assistance.stt import ALLOWED_AUDIO_MIME, TranscriptionError, transcribe_audio
         from app.core.config import settings
         from app.core.database import AsyncSessionLocal
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.integration.integration_actor import resolve_integration_actor
         from app.utils.prompt_guard import check_user_input_safety
 
         payload = await request.json()
@@ -2346,7 +2348,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.models.document_model import DocumentModel
         from app.models.fhir import Observation
         from app.models.fhir.medication import Medication
-        from app.services.document_service import delete_document
+        from app.services.documents.document_service import delete_document
 
         async with AsyncSessionLocal() as db:
             exam = await self._bound_examination(db, integration, exam_id)
@@ -2363,7 +2365,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             for (doc_id,) in doc_rows:
                 await delete_document(str(doc_id), db, trigger_cumulative=False)
             # Defensive cleanup (the FK CASCADE handles most of this; explicit
-            # in case of partial cascades or legacy rows).
+            # in case of partial cascades or rows that predate the FK).
             await db.execute(
                 delete(Observation).where(
                     Observation.examination_id == exam.id,
@@ -2391,7 +2393,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         raw-SQL observation cleanup). Patient-scoped via `_bound_document` so a
         cross-patient attempt fails *before* any side effects."""
         from app.core.database import AsyncSessionLocal
-        from app.services.document_service import delete_document
+        from app.services.documents.document_service import delete_document
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
@@ -2408,7 +2410,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         the PWA endpoint shape (``{job_id, message}``). The OCR task runs
         asynchronously; poll ``GET /documents/{id}/extract/status``."""
         from app.core.database import AsyncSessionLocal
-        from app.services.document_service import trigger_extraction
+        from app.services.documents.document_service import trigger_extraction
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
@@ -2531,7 +2533,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         import base64
 
         from app.core.database import AsyncSessionLocal
-        from app.services.document_service import ingest_document_bytes
+        from app.services.documents.document_service import ingest_document_bytes
 
         patient_id = self._bound_patient_id(integration)
         payload = await request.json()
@@ -2582,8 +2584,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from app.models.fhir.organization import OrganizationModel
         from app.schemas.examination import ExaminationCreate
-        from app.services.examination_service import create_examination
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.examination_service import create_examination
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload_data = await request.json()
         client_id = payload_data.get("id") or payload_data.get("client_request_id")
@@ -2796,10 +2798,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.models.fhir.organization import OrganizationModel
         from app.models.user_integration import IntegrationSyncLog
         from app.schemas.examination import ExaminationCreate
-        from app.services.examination_service import create_examination
-        from app.services.fhir_service import map_observations_to_biomarkers
-        from app.services.integration_actor import resolve_integration_actor
-        from app.services.integration_sync_service import apply_telemetry_split
+        from app.services.clinical.examination_service import create_examination
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         count = 0
         start_time = datetime.datetime.now(datetime.UTC)
@@ -2917,37 +2917,39 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 # and the webhook endpoint already coerce; this path skipped
                 # it, so bridge-pushed wearable data was patient-invisible in
                 # multi-patient tenants).
-                from app.services.fhir_helpers import coerce_observation_patient_ids
+                from app.services.fhir.fhir_helpers import coerce_observation_patient_ids
 
                 coerce_observation_patient_ids(observations)
 
                 if observations:
-                    await map_observations_to_biomarkers(db, observations)
+                    # One inbound path (plan 8 W2): the ingest funnel owns
+                    # validation, biomarker mapping, dedup, the FHIR/telemetry
+                    # split (canonical units + device registration) and
+                    # mapping-gap recording. Previously this block inlined a
+                    # stale split copy that constructed removed long-format
+                    # kwargs; the funnel is the single seam now.
+                    from app.services.integration.integration_ingest import ingest_observations
 
-                    # Route observations through the shared FHIR/telemetry split
-                    # (the same helper ``run_sync`` and the webhook endpoint
-                    # use). Previously this block inlined a stale copy that
-                    # constructed ``TelemetryDataModel(heart_rate=, steps=,
-                    # calories=, data=)`` — kwargs removed in the long-format
-                    # hypertable rewrite (migration ``t1e2l3o4n5g6``); the
-                    # model now takes ``slug=, value=, unit=, patient_id=``.
-                    # The inlined copy would have raised ``TypeError`` on any
-                    # wearable record. The shared helper resolves biomarker
-                    # defs, builds long-format rows, and assigns performers.
-                    telemetry_records, fhir_records = await apply_telemetry_split(
+                    ingest_report = await ingest_observations(
                         db,
+                        integration,
                         observations,
-                        tenant_id=integration.tenant_id,
-                        instance_name=integration.instance_name,
                         provider_name=integration.provider,
-                        integration_id=integration.id,
+                        instance_name=integration.instance_name,
                     )
-                    if telemetry_records:
-                        db.add_all(telemetry_records)
-                    if fhir_records:
-                        db.add_all(fhir_records)
-
-                    count += len(telemetry_records) + len(fhir_records)
+                    count += ingest_report.written
+                    if ingest_report.deduped:
+                        logger.info(
+                            "bridge sync: %d duplicate observation(s) skipped for %s",
+                            ingest_report.deduped,
+                            integration.id,
+                        )
+                    if ingest_report.has_mapping_gaps:
+                        logger.warning(
+                            "bridge sync: %d observation(s) stored raw (no catalog mapping) for %s",
+                            len(ingest_report.mapping_gaps),
+                            integration.id,
+                        )
 
                 # We do NOT db.add(integration) here because it is already attached
                 # to the outer session provided by the FastAPI Dependency `Depends(get_db)`.
@@ -2987,6 +2989,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                     records_synced=0,
                     started_at=start_time,
                     completed_at=datetime.datetime.now(datetime.UTC),
+                    error_class="io",
                     error_message=str(e),
                 )
                 db.add(sync_log)
@@ -3037,7 +3040,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             }
 
         if action_id == "reset_cursor":
-            self.set_sync_cursor(integration, "last_timestamp", None)
+            self.clear_cursor(integration, IntegrationSyncStream.TELEMETRY)
             return {
                 "message": "Sync cursor has been reset. The client will pull all historical data on the next sync."
             }
@@ -3251,8 +3254,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         a partial unique index on ``(source_integration_id, external_id)``)."""
         from app.core.database import AsyncSessionLocal
         from app.schemas.medication import MedicationRecordCreate
-        from app.services.integration_actor import resolve_integration_actor
-        from app.services.medication_service import add_patient_medication
+        from app.services.clinical.medication_service import add_patient_medication
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         client_id = payload.get("id") or payload.get("client_request_id")
@@ -3278,7 +3281,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.medication import MedicationRecordUpdate
-        from app.services.medication_service import update_patient_medication
+        from app.services.clinical.medication_service import update_patient_medication
 
         payload = await request.json()
         try:
@@ -3296,7 +3299,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, medication_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.medication_service import delete_patient_medication
+        from app.services.clinical.medication_service import delete_patient_medication
 
         async with AsyncSessionLocal() as db:
             m = await self._bound_medication(db, integration, medication_id)
@@ -3306,8 +3309,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     async def _create_allergy(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.allergy import AllergyIntoleranceCreate
-        from app.services.allergy_service import add_patient_allergy
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.allergy_service import add_patient_allergy
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         client_id = payload.get("id") or payload.get("client_request_id")
@@ -3333,7 +3336,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.allergy import AllergyIntoleranceUpdate
-        from app.services.allergy_service import update_patient_allergy
+        from app.services.clinical.allergy_service import update_patient_allergy
 
         payload = await request.json()
         try:
@@ -3351,7 +3354,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, allergy_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.allergy_service import delete_patient_allergy
+        from app.services.clinical.allergy_service import delete_patient_allergy
 
         async with AsyncSessionLocal() as db:
             a = await self._bound_allergy(db, integration, allergy_id)
@@ -3361,8 +3364,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     async def _create_vaccine(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.vaccine import PatientImmunizationCreate
-        from app.services.integration_actor import resolve_integration_actor
-        from app.services.vaccine_service import add_patient_immunization
+        from app.services.clinical.vaccine_service import add_patient_immunization
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         client_id = payload.get("id") or payload.get("client_request_id")
@@ -3388,7 +3391,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.vaccine import PatientImmunizationUpdate
-        from app.services.vaccine_service import update_patient_immunization
+        from app.services.clinical.vaccine_service import update_patient_immunization
 
         payload = await request.json()
         try:
@@ -3406,7 +3409,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, vaccine_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.vaccine_service import delete_patient_immunization
+        from app.services.clinical.vaccine_service import delete_patient_immunization
 
         async with AsyncSessionLocal() as db:
             v = await self._bound_vaccine(db, integration, vaccine_id)
@@ -3421,8 +3424,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         ``id``/``client_request_id`` → ``external_id``."""
         from app.core.database import AsyncSessionLocal
         from app.schemas.clinical_event import ClinicalEventCreate
-        from app.services.clinical_event_service import create_event
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.clinical_event_service import create_event
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         client_id = payload.get("id") or payload.get("client_request_id")
@@ -3448,8 +3451,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.schemas.clinical_event import ClinicalEventUpdate
-        from app.services.clinical_event_service import update_event
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.clinical_event_service import update_event
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         try:
@@ -3466,8 +3469,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, event_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.clinical_event_service import soft_delete_event
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.clinical_event_service import soft_delete_event
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             await self._bound_clinical_event(db, integration, event_id)
@@ -3485,8 +3488,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         """`POST /clinical-events/{id}/occurrences` — log a recurrence."""
         from app.core.database import AsyncSessionLocal
         from app.schemas.clinical_event import ClinicalEventOccurrenceCreate
-        from app.services.clinical_event_service import add_occurrence
-        from app.services.integration_actor import resolve_integration_actor
+        from app.services.clinical.clinical_event_service import add_occurrence
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         try:
@@ -3504,7 +3507,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         individual kwargs (no Pydantic schema); the bridge forwards the
         recognized fields from the JSON payload."""
         from app.core.database import AsyncSessionLocal
-        from app.services.doctor_service import create_doctor
+        from app.services.clinical.doctor_service import create_doctor
 
         payload = await request.json()
         name = payload.get("name")
@@ -3532,7 +3535,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, doctor_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.doctor_service import update_doctor
+        from app.services.clinical.doctor_service import update_doctor
 
         payload = await request.json()
         allowed = (
@@ -3560,7 +3563,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, doctor_id: str, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.doctor_service import delete_doctor
+        from app.services.clinical.doctor_service import delete_doctor
 
         async with AsyncSessionLocal() as db:
             await self._bound_doctor(db, integration, doctor_id)
@@ -3586,7 +3589,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         mirror the PWA: ``?status=``, ``?category=``, ``?source=``,
         ``?patient_id=``, ``?limit=`` (default 50), ``?offset=``."""
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_service import get_inbox
+        from app.services.notifications.notification_service import get_inbox
 
         qp = request.query_params
         try:
@@ -3624,7 +3627,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_service import get_unread_count
+        from app.services.notifications.notification_service import get_unread_count
 
         async with AsyncSessionLocal():
             count = await get_unread_count(integration.user_id, integration.tenant_id)
@@ -3634,7 +3637,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_service import mark_all_read
+        from app.services.notifications.notification_service import mark_all_read
 
         async with AsyncSessionLocal():
             n = await mark_all_read(integration.user_id, integration.tenant_id)
@@ -3651,7 +3654,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from uuid import UUID
 
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_service import (
+        from app.services.notifications.notification_service import (
             mark_dismissed,
             mark_read,
         )
@@ -3678,7 +3681,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_preferences_service import (
+        from app.services.notifications.notification_preferences_service import (
             NotificationPreferencesService,
         )
 
@@ -3694,7 +3697,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         request: Any,
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
-        from app.services.notification_preferences_service import (
+        from app.services.notifications.notification_preferences_service import (
             NotificationPreferencesService,
         )
 
@@ -3725,7 +3728,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         bound patient. (Scheduled medication reminders live on the device in
         the mobile app's WorkManager; the server-side rule surface is for
         "alert me when biomarker X crosses Y".)"""
-        from app.services.notification_rule_service import list_rules
+        from app.services.notifications.notification_rule_service import list_rules
 
         patient_id = self._bound_patient_id(integration)
         qp = request.query_params
@@ -3765,7 +3768,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     async def _notification_create_trigger(
         self, integration: UserIntegration, request: Any
     ) -> dict[str, Any]:
-        from app.services.notification_rule_service import create_rule
+        from app.services.notifications.notification_rule_service import create_rule
 
         patient_id = self._bound_patient_id(integration)
         payload = await request.json()
@@ -3789,7 +3792,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from uuid import UUID
 
-        from app.services.notification_rule_service import delete_rule
+        from app.services.notifications.notification_rule_service import delete_rule
 
         try:
             tid = UUID(trigger_id)
@@ -3827,7 +3830,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         user picks a new UnifiedPush distributor). The row is therefore
         stable across app upgrades.
         """
-        from app.services.mobile_push_service import register_device
+        from app.services.notifications.mobile_push_service import register_device
 
         payload = await request.json()
         device_id = payload.get("device_id")
@@ -3863,7 +3866,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         a device (sign-out / lost-device). Hard-delete is not exposed; the row
         is retained so a re-registration of the same device id is detected."""
         from app.core.database import AsyncSessionLocal
-        from app.services.mobile_push_service import unregister_device
+        from app.services.notifications.mobile_push_service import unregister_device
 
         async with AsyncSessionLocal() as db:
             ok = await unregister_device(
@@ -3890,7 +3893,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         are masked (the dispatch task reads the raw column; the bridge never
         echoes a usable credential back)."""
         from app.core.database import AsyncSessionLocal
-        from app.services.mobile_push_service import list_devices
+        from app.services.notifications.mobile_push_service import list_devices
 
         async with AsyncSessionLocal() as db:
             targets = await list_devices(db, user_id=integration.user_id, include_inactive=False)

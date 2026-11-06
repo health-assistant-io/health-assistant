@@ -25,8 +25,8 @@ from app.models.enums import (
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
-from app.services.catalog_graph_service import traverse
-from app.services.concept_endpoint_resolver import resolve_endpoints
+from app.services.catalog.catalog_graph_service import traverse
+from app.services.catalog.concept_endpoint_resolver import resolve_endpoints
 from tests._auth_helpers import headers_for_claims
 
 

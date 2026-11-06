@@ -59,7 +59,7 @@
       "pick": "items[0].id"
     },
     "biomarkerId": {
-      "path": "/biomarkers/slug/total-cholesterol",
+      "path": "/biomarkers/slug/cholesterol-total",
       "pick": "id"
     }
   },
@@ -71,20 +71,26 @@
     "headless": false,
     "viewports": {
       "desktop": {
-        "width": 1440,
-        "height": 1200,
+        "width": 1280,
+        "height": 960,
         "deviceScaleFactor": 1
       },
       "mobile": {
         "width": 390,
         "height": 844,
         "deviceScaleFactor": 2
+      },
+      "desktop3x": {
+        "width": 1280,
+        "height": 960,
+        "deviceScaleFactor": 5
       }
-    }
+    },
+    "fullPage": false
   },
   "gallery": {
-    "title": "Health Assistant — Visual Tour",
-    "mobileTitle": "Health Assistant — Visual Tour (Mobile)",
+    "title": "Health Assistant \u2014 Visual Tour",
+    "mobileTitle": "Health Assistant \u2014 Visual Tour (Mobile)",
     "regenCommand": "npm run capture:ui"
   },
   "gif": {

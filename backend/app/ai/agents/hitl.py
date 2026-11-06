@@ -16,6 +16,7 @@ load, while this module needs ``chat_engine_iter`` only at call time.
 
 import json
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -23,8 +24,50 @@ from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import HitlTaskStatus
+from app.utils.prompt_guard import scan_prompt_injection
 
 logger = logging.getLogger(__name__)
+
+#: Bound for one untrusted value embedded in a resume/feedback prompt.
+PROMPT_VALUE_CHAR_CAP = 200
+#: Bound for a compact draft/result object rendered as one line.
+PROMPT_OBJECT_CHAR_CAP = 400
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_WHITESPACE = re.compile(r"\s+")
+
+
+def screen_hitl_value(value: Any, *, cap: int = PROMPT_VALUE_CHAR_CAP) -> str:
+    """Render untrusted HITL payload content for a prompt safely.
+
+    The one seam ``final_payload``/``result``/``error`` content crosses to
+    become prompt text: control characters are stripped, whitespace is
+    collapsed, length is bounded, and prompt-injection patterns are neutralized
+    (the content is user-edited draft data, not instructions — the family security standard
+    AI trust boundary). Never embed a raw payload value in a prompt.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            text = str(value)
+    text = _CONTROL_CHARS.sub(" ", text)
+    text = _WHITESPACE.sub(" ", text).strip()
+    if len(text) > cap:
+        text = text[:cap].rstrip() + "…"
+    verdict = scan_prompt_injection(text)
+    if not verdict.get("safe", True):
+        logger.warning(
+            "HITL prompt content withheld (patterns=%s, risk=%s)",
+            verdict.get("matches"),
+            verdict.get("risk"),
+        )
+        return "[withheld: untrusted HITL content flagged by the prompt guard]"
+    return text
 
 
 def _parse_hitl_proposal(observation: Any) -> dict[str, Any] | None:
@@ -79,8 +122,9 @@ def _hitl_llm_feedback(task: dict[str, Any], note: str | None = None) -> str:
     if note:
         parts.append(note)
     parts.append(
-        f"[HITL] A {task.get('task_type', 'action')} proposal has been rendered "
-        f"as a review card for the user ({task.get('title', '')}). "
+        f"[HITL] A {screen_hitl_value(task.get('task_type', 'action'), cap=64)} proposal "
+        f"has been rendered as a review card for the user "
+        f"({screen_hitl_value(task.get('title', ''), cap=160)}). "
         f"The user must explicitly confirm or edit it before it takes effect. "
         f"Do NOT call the same proposal tool again for this request; continue "
         f"your explanation and wait for the user's response."
@@ -118,9 +162,9 @@ def _hitl_resolution_summary(tasks: list[dict[str, Any]]) -> str:
         # needed in _hitl_resolved_brief, not here.
         status_raw = t.get("status", HitlTaskStatus.PROPOSED)
         resolved = t.get("resolved") or {}
-        title = t.get("title") or t.get("task_type", "action")
-        task_type = t.get("task_type", "action")
-        proposal_id = t.get("proposal_id", "?")
+        title = screen_hitl_value(t.get("title") or t.get("task_type", "action"), cap=160)
+        task_type = screen_hitl_value(t.get("task_type", "action"), cap=64)
+        proposal_id = screen_hitl_value(t.get("proposal_id", "?"), cap=36)
         if status_raw == HitlTaskStatus.CONFIRMED:
             confirmed += 1
             parts = ["CONFIRMED"]
@@ -137,23 +181,27 @@ def _hitl_resolution_summary(tasks: list[dict[str, Any]]) -> str:
                     keys = ("name", "title", "slug", "coding_system", "code")
                     trimmed = {k: final[k] for k in keys if k in final}
                     if trimmed:
-                        parts.append(f"draft={json.dumps(trimmed, ensure_ascii=False)}")
+                        parts.append(
+                            f"draft={screen_hitl_value(trimmed, cap=PROMPT_OBJECT_CHAR_CAP)}"
+                        )
                 result = resolved.get("result")
                 if isinstance(result, dict) and result:
                     keys = ("id", "biomarker_id", "catalog_id", "event_id", "slug")
                     trimmed = {k: result[k] for k in keys if k in result}
                     if trimmed:
-                        parts.append(f"result={json.dumps(trimmed, ensure_ascii=False)}")
+                        parts.append(
+                            f"result={screen_hitl_value(trimmed, cap=PROMPT_OBJECT_CHAR_CAP)}"
+                        )
             err = resolved.get("error")
             if err:
-                parts.append(f"error={err}")
+                parts.append(f"error={screen_hitl_value(err, cap=300)}")
             lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): " + ", ".join(parts) + ".")
         elif status_raw == HitlTaskStatus.DISMISSED:
             dismissed += 1
             lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): DISMISSED by the user.")
         elif status_raw == HitlTaskStatus.FAILED:
             failed += 1
-            err = resolved.get("error", "unknown error")
+            err = screen_hitl_value(resolved.get("error", "unknown error"), cap=300)
             lines.append(f"- [{task_type}] {title} ({proposal_id[:8]}): FAILED ({err}).")
         else:
             unanswered += 1
@@ -228,7 +276,12 @@ def _format_ask_user_answers(resolved: dict[str, Any]) -> str | None:
 
     lines: list[str] = []
     for q_id, raw in answers.items():
-        lines.append(f"  - {q_id}: {_stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS)}")
+        key = screen_hitl_value(q_id, cap=64)
+        rendered = screen_hitl_value(
+            _stringify_answer(raw, FREETEXT_ANSWER_TRIM_CHARS),
+            cap=PROMPT_OBJECT_CHAR_CAP,
+        )
+        lines.append(f"  - {key}: {rendered}")
     return "answers:\n" + "\n".join(lines)
 
 
@@ -325,8 +378,8 @@ def _hitl_resolved_brief(tasks: list[dict[str, Any]]) -> str | None:
             continue
         # Normalize enum -> plain string for display.
         status = status_raw.value if isinstance(status_raw, HitlTaskStatus) else status_raw
-        task_type = t.get("task_type", "action")
-        title = t.get("title") or task_type
+        task_type = screen_hitl_value(t.get("task_type", "action"), cap=64)
+        title = screen_hitl_value(t.get("title") or task_type, cap=160)
         result = (t.get("resolved") or {}).get("result") or {}
         rid = ""
         if isinstance(result, dict):
@@ -417,7 +470,7 @@ async def resume_after_hitl(
         resume_interrupted_chat_graph,
     )
     from app.models.chat_model import ChatSession as _ChatSession
-    from app.services.chat_branching import card_thread_key
+    from app.services.chat.chat_branching import card_thread_key
 
     # Verify ownership + pull patient_id for tool context.
     session_result = await db.execute(

@@ -24,7 +24,7 @@ from app.models.enums import (
 )
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.vaccine import VaccineCatalog
-from app.services.seed_service import SeedService
+from app.services.seed.service import SeedService
 
 
 async def _seed_all_catalogs():
@@ -278,7 +278,7 @@ async def test_vaccine_prevents_cervical_cancer():
 @pytest.mark.asyncio
 async def test_graph_traverse_follows_treats_edge():
     """``catalog_graph_service.traverse`` follows a medication→disease TREATS edge."""
-    from app.services.catalog_graph_service import traverse
+    from app.services.catalog.catalog_graph_service import traverse
 
     await _seed_all_catalogs()
     metformin_id = await _medication_id("Metformin")

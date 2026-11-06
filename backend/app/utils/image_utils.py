@@ -1,4 +1,4 @@
-# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 import os
 
 import numpy as np

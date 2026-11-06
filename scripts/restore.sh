@@ -101,5 +101,12 @@ echo "==> Restoring uploads volume"
 docker run --rm -v "${PROJECT}_uploads":/data -v "$WORK":/in:ro alpine \
   sh -c "rm -rf /data/* && tar xzf /in/uploads.tar.gz -C /data"
 
+# A backup taken before an erasure must not resurrect the subject. The ledger
+# (erasure_requests done rows) is replayed before the app serves traffic; a
+# pre-plan-6 backup has no ledger table and logs a skip.
+echo "==> Replaying the erasure ledger"
+"${COMPOSE[@]}" run --rm --no-deps -T backend \
+  python scripts/replay_erasure_ledger.py
+
 echo "==> Done. Restart the app to re-run migrations if needed:"
 echo "    ${COMPOSE[*]} up -d"

@@ -1,0 +1,1376 @@
+{
+  "contract": "cloud-connectors",
+  "schemaVersion": 1,
+  "purpose": "Cross-language acceptance wall for the family cloud calendar/files contract (ADR-0052). The Python checker runs every row; a second-language host (desktop) pins the same rows against its own implementation. Values are data only \u2014 no real credentials, accounts or private events.",
+  "catalog": {
+    "order": [
+      "google",
+      "microsoft",
+      "nextcloud",
+      "icloud",
+      "fastmail",
+      "caldav",
+      "webdav",
+      "dropbox",
+      "ics"
+    ],
+    "calendarProviders": [
+      "google",
+      "microsoft",
+      "nextcloud",
+      "icloud",
+      "fastmail",
+      "caldav",
+      "ics"
+    ],
+    "filesProviders": [
+      "google",
+      "microsoft",
+      "nextcloud",
+      "fastmail",
+      "webdav",
+      "dropbox"
+    ],
+    "scopes": {
+      "google": {
+        "calendar": {
+          "read": [
+            "https://www.googleapis.com/auth/calendar.readonly"
+          ],
+          "write": [
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/calendar.events"
+          ]
+        },
+        "files": {
+          "read": [
+            "https://www.googleapis.com/auth/drive.readonly"
+          ],
+          "write": [
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive.file"
+          ]
+        }
+      },
+      "microsoft": {
+        "calendar": {
+          "read": [
+            "Calendars.Read",
+            "User.Read",
+            "offline_access"
+          ],
+          "write": [
+            "Calendars.ReadWrite",
+            "User.Read",
+            "offline_access"
+          ]
+        }
+      }
+    },
+    "scopeGrowth": [
+      {
+        "granted": [
+          "calendar.readonly"
+        ],
+        "requested": [
+          "calendar.readonly",
+          "calendar.events"
+        ],
+        "added": [
+          "calendar.events"
+        ],
+        "removed": []
+      },
+      {
+        "granted": [
+          "calendar.readonly",
+          "calendar.events"
+        ],
+        "requested": [
+          "calendar.readonly"
+        ],
+        "added": [],
+        "removed": [
+          "calendar.events"
+        ]
+      },
+      {
+        "granted": [],
+        "requested": [
+          "a",
+          "b"
+        ],
+        "added": [
+          "a",
+          "b"
+        ],
+        "removed": []
+      }
+    ],
+    "setupFields": {
+      "requiredKinds": [
+        "url",
+        "text",
+        "secret",
+        "calendar"
+      ],
+      "perProtocol": {
+        "caldav": {
+          "kinds": [
+            "url",
+            "calendar",
+            "text",
+            "secret",
+            "secret"
+          ],
+          "secretAuthKinds": [
+            "app-password",
+            "token"
+          ]
+        },
+        "google-calendar": {
+          "kinds": [
+            "calendar"
+          ],
+          "secretAuthKinds": []
+        },
+        "graph-calendar": {
+          "kinds": [
+            "calendar"
+          ],
+          "secretAuthKinds": []
+        },
+        "ics": {
+          "kinds": [
+            "url",
+            "secret"
+          ],
+          "secretAuthKinds": [
+            "token"
+          ]
+        }
+      },
+      "everyFieldHasLabelKey": true
+    },
+    "clientIdEnv": {
+      "template": "{PREFIX}_{ID}_CLIENT_ID",
+      "cases": [
+        {
+          "id": "google",
+          "prefix": "DESKTOP",
+          "expect": "DESKTOP_GOOGLE_CLIENT_ID"
+        },
+        {
+          "id": "microsoft",
+          "prefix": "DESKTOP",
+          "expect": "DESKTOP_MICROSOFT_CLIENT_ID"
+        },
+        {
+          "id": "nextcloud",
+          "prefix": "SA",
+          "expect": "SA_NEXTCLOUD_CLIENT_ID"
+        },
+        {
+          "id": "google",
+          "prefix": "CALENDAR",
+          "expect": "CALENDAR_GOOGLE_CLIENT_ID"
+        }
+      ]
+    }
+  },
+  "ics": {
+    "parse": [
+      {
+        "name": "timed-utc-with-alarm",
+        "ics": "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:evt-1\nDTSTART:20261103T090000Z\nDTEND:20261103T100000Z\nSUMMARY:Midterm exam\\, room 4\nDESCRIPTION:Bring\\nstudent ID\nLOCATION:Building A\nCATEGORIES:EXAM,Study\nSTATUS:TENTATIVE\nTRANSP:TRANSPARENT\nSEQUENCE:2\nBEGIN:VALARM\nACTION:DISPLAY\nTRIGGER:-PT30M\nEND:VALARM\nEND:VEVENT\nEND:VCALENDAR",
+        "expect": {
+          "uid": "evt-1",
+          "summary": "Midterm exam, room 4",
+          "description": "Bring\nstudent ID",
+          "location": "Building A",
+          "allDay": false,
+          "start": "2026-11-03T09:00:00Z",
+          "end": "2026-11-03T10:00:00Z",
+          "status": "tentative",
+          "transparency": "transparent",
+          "sequence": 2,
+          "categories": [
+            "EXAM",
+            "Study"
+          ],
+          "alarmsMinutes": [
+            30
+          ]
+        }
+      },
+      {
+        "name": "all-day-bounded-duration",
+        "ics": "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:evt-2\nDTSTART;VALUE=DATE:20261201\nDURATION:P2D\nSUMMARY:Reading week\nEND:VEVENT\nEND:VCALENDAR",
+        "expect": {
+          "uid": "evt-2",
+          "summary": "Reading week",
+          "allDay": true,
+          "start": "2026-12-01",
+          "end": "2026-12-03",
+          "status": "confirmed"
+        }
+      },
+      {
+        "name": "tzid-local-time",
+        "ics": "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:evt-3\nDTSTART;TZID=Europe/Berlin:20261103T140000\nDTEND;TZID=Europe/Berlin:20261103T153000\nSUMMARY:Lecture\nEND:VEVENT\nEND:VCALENDAR",
+        "expect": {
+          "uid": "evt-3",
+          "allDay": false,
+          "start": "2026-11-03T13:00:00Z",
+          "end": "2026-11-03T14:30:00Z"
+        }
+      },
+      {
+        "name": "private-class",
+        "ics": "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:evt-4\nDTSTART:20261105T090000Z\nSUMMARY:Therapy\nCLASS:PRIVATE\nEND:VEVENT\nEND:VCALENDAR",
+        "expect": {
+          "uid": "evt-4",
+          "private": true
+        }
+      }
+    ],
+    "roundtrip": [
+      {
+        "event": {
+          "uid": "round-1",
+          "summary": "Physiology final",
+          "start": "2026-12-15T08:00:00Z",
+          "end": "2026-12-15T10:00:00Z",
+          "allDay": false,
+          "description": "Chapters 1-12",
+          "location": "Hall B",
+          "categories": [
+            "EXAM"
+          ],
+          "alarmsMinutes": [
+            60
+          ],
+          "private": true
+        }
+      },
+      {
+        "event": {
+          "uid": "round-2",
+          "summary": "All-day deadline",
+          "start": "2026-11-20",
+          "end": "2026-11-20",
+          "allDay": true,
+          "description": "",
+          "location": ""
+        }
+      }
+    ],
+    "recurrence": [
+      {
+        "name": "weekly-byday-in-window",
+        "event": {
+          "uid": "rec-1",
+          "summary": "Algorithms lecture",
+          "start": "2026-10-05T09:00:00Z",
+          "end": "2026-10-05T11:00:00Z",
+          "allDay": false,
+          "recurrence": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=8"
+        },
+        "window": [
+          "2026-10-12",
+          "2026-10-18"
+        ],
+        "expectStartDays": [
+          "2026-10-12",
+          "2026-10-14"
+        ]
+      },
+      {
+        "name": "daily-until",
+        "event": {
+          "uid": "rec-2",
+          "summary": "Revision",
+          "start": "2026-11-01",
+          "end": "2026-11-01",
+          "allDay": true,
+          "recurrence": "FREQ=DAILY;UNTIL=20261105"
+        },
+        "window": [
+          "2026-11-01",
+          "2026-11-10"
+        ],
+        "expectStartDays": [
+          "2026-11-01",
+          "2026-11-02",
+          "2026-11-03",
+          "2026-11-04",
+          "2026-11-05"
+        ]
+      }
+    ]
+  },
+  "reconcile": [
+    {
+      "name": "new-local-pushes",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "study:p1",
+            "summary": "Essay due",
+            "start": "2026-11-10",
+            "end": "2026-11-10",
+            "allDay": true
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [],
+      "links": [],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "create-remote",
+            "uid": "study:p1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "new-remote-pulls",
+      "local": [],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z"
+        }
+      ],
+      "links": [],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "create-local",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "push-direction-never-pulls",
+      "local": [],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z"
+        }
+      ],
+      "links": [],
+      "args": {
+        "direction": "push",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "local-change-updates-remote-with-identity",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Moved exam",
+            "start": "2026-11-12T11:00:00Z",
+            "end": "2026-11-12T12:00:00Z"
+          },
+          "updatedAt": "2026-11-03T12:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z",
+          "remoteId": "g-1",
+          "etag": "etag-1"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "remoteId": "g-1",
+          "etag": "etag-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "old",
+          "remoteHash": "$remote"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "update-remote",
+            "uid": "remote-1",
+            "remoteId": "g-1",
+            "etag": "etag-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "remote-change-updates-local",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z",
+            "end": "2026-11-12T10:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam moved",
+          "start": "2026-11-12T14:00:00Z",
+          "end": "2026-11-12T15:00:00Z",
+          "updatedAt": "2026-11-03T11:00:00Z"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "$local",
+          "remoteHash": "old"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "update-local",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "conflict-newest-wins-remote",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Local edit",
+            "start": "2026-11-12T09:00:00Z",
+            "end": "2026-11-12T10:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Remote edit",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z",
+          "updatedAt": "2026-11-03T11:00:00Z"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "old",
+          "remoteHash": "old"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true,
+        "conflicts": "newest-wins"
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "update-local",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "conflict-skip",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Local edit",
+            "start": "2026-11-12T09:00:00Z",
+            "end": "2026-11-12T10:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Remote edit",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z",
+          "updatedAt": "2026-11-03T11:00:00Z"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "old",
+          "remoteHash": "old"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "conflicts": "skip",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "conflict",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "deleted-local-propagates",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "deleted": true
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "remoteId": "g-1"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "remoteId": "g-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "$local",
+          "remoteHash": "$remote"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "deletions": "propagate",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "delete-remote",
+            "uid": "remote-1",
+            "remoteId": "g-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "pull-direction-keeps-remote-on-local-delete",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "deleted": true
+        }
+      ],
+      "remote": [
+        {
+          "uid": "remote-1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "remoteId": "g-1"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "remoteId": "g-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "$local",
+          "remoteHash": "$remote"
+        }
+      ],
+      "args": {
+        "direction": "pull",
+        "deletions": "propagate",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "unlink",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "remote-deleted-unlinks",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "remoteId": "g-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "$local",
+          "remoteHash": "$remote"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "deletions": "keep-local",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "unlink",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "accept-filter-ignores-unrelated",
+      "local": [],
+      "remote": [
+        {
+          "uid": "remote-personal",
+          "summary": "Dentist",
+          "start": "2026-11-12T09:00:00Z",
+          "categories": [
+            "PERSONAL"
+          ]
+        },
+        {
+          "uid": "remote-exam",
+          "summary": "Exam",
+          "start": "2026-11-13T09:00:00Z",
+          "categories": [
+            "EXAM"
+          ]
+        }
+      ],
+      "links": [],
+      "args": {
+        "direction": "pull",
+        "acceptCategories": [
+          "EXAM"
+        ],
+        "remoteWritable": false
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "create-local",
+            "uid": "remote-exam"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "steady-state-noop",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "study:plan-item:p1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z",
+            "end": "2026-11-12T10:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "study:plan-item:p1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z",
+          "remoteId": "g-1",
+          "etag": "e-1"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "study:plan-item:p1",
+          "remoteId": "g-1",
+          "etag": "e-1",
+          "localHash": "$local",
+          "remoteHash": "$remote",
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "provider-normalization-is-not-a-change",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "study:plan-item:p1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z",
+            "end": "2026-11-12T10:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "study:plan-item:p1",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "end": "2026-11-12T10:00:00Z",
+          "remoteId": "g-1",
+          "etag": "e-1",
+          "url": "https://calendar.google.com/event?eid=x",
+          "organizer": "me@example.com"
+        }
+      ],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "study:plan-item:p1",
+          "remoteId": "g-1",
+          "etag": "e-1",
+          "localHash": "$local",
+          "remoteHash": "$remote",
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "out-of-window-absent-is-not-deleted",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "old-1",
+            "summary": "Past exam",
+            "start": "2025-01-10",
+            "end": "2025-01-11",
+            "allDay": true
+          },
+          "updatedAt": "2025-01-01T10:00:00Z"
+        }
+      ],
+      "remote": [],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "old-1",
+          "remoteId": "g-1",
+          "etag": "e-1",
+          "localHash": "$local",
+          "remoteHash": "$remote",
+          "updatedAt": "2025-01-01T10:00:00Z"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true,
+        "window": [
+          "2026-11-01",
+          "2026-11-30"
+        ]
+      },
+      "expect": {
+        "actions": [],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "graph-round-trip-identity-via-remote-id",
+      "local": [
+        {
+          "localId": "e1",
+          "event": {
+            "uid": "health:examination:e1",
+            "summary": "Medical appointment",
+            "start": "2026-11-20",
+            "end": "2026-11-21",
+            "allDay": true
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "GRAPH-GENERATED-UID",
+          "summary": "Medical appointment",
+          "start": "2026-11-20",
+          "end": "2026-11-21",
+          "allDay": true,
+          "remoteId": "AAMk-1",
+          "etag": "ck1"
+        }
+      ],
+      "links": [
+        {
+          "localId": "e1",
+          "uid": "health:examination:e1",
+          "remoteId": "AAMk-1",
+          "etag": "ck1",
+          "localHash": "$local",
+          "remoteHash": "$remote",
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [],
+        "skipped": 1
+      }
+    },
+    {
+      "name": "orphan-repair-attaches-instead-of-duplicating",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "study:plan-item:p1",
+            "summary": "Midterm exam",
+            "start": "2026-11-20",
+            "end": "2026-11-21",
+            "allDay": true
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [
+        {
+          "uid": "GRAPH-GENERATED-UID",
+          "summary": "Midterm exam",
+          "start": "2026-11-20",
+          "end": "2026-11-21",
+          "allDay": true,
+          "remoteId": "AAMk-2",
+          "etag": "ck2"
+        }
+      ],
+      "links": [],
+      "args": {
+        "direction": "two-way",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "link-existing",
+            "uid": "study:plan-item:p1",
+            "remoteId": "AAMk-2"
+          }
+        ],
+        "skipped": 0
+      }
+    }
+  ],
+  "files": {
+    "paths": [
+      {
+        "parts": [
+          "a",
+          "b",
+          "c.txt"
+        ],
+        "expect": "a/b/c.txt"
+      },
+      {
+        "parts": [
+          "/a/",
+          "b"
+        ],
+        "expect": "a/b"
+      },
+      {
+        "parts": [
+          "a",
+          "",
+          "b"
+        ],
+        "expect": "a/b"
+      }
+    ],
+    "traversal": [
+      {
+        "parts": [
+          "a",
+          "..",
+          "b"
+        ],
+        "expectError": "invalid"
+      }
+    ],
+    "webdavList": {
+      "xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/remote.php/dav/files/u/study/</d:href><d:propstat><d:prop><d:displayname>study</d:displayname><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response><d:response><d:href>/remote.php/dav/files/u/study/notes.pdf</d:href><d:propstat><d:prop><d:displayname>notes.pdf</d:displayname><d:resourcetype/><d:getcontentlength>1024</d:getcontentlength><d:getcontenttype>application/pdf</d:getcontenttype><d:getlastmodified>Mon, 03 Nov 2026 10:00:00 GMT</d:getlastmodified><d:getetag>\"abc\"</d:getetag></d:prop></d:propstat></d:response></d:multistatus>",
+      "baseUrl": "https://cloud.example.com/remote.php/dav/files/u/study/",
+      "path": "",
+      "expect": [
+        {
+          "name": "notes.pdf",
+          "path": "notes.pdf",
+          "isDir": false,
+          "size": 1024,
+          "etag": "\"abc\""
+        }
+      ]
+    }
+  },
+  "wire": {
+    "googleList": {
+      "response": {
+        "items": [
+          {
+            "id": "opaque-google-handle-9x2",
+            "etag": "\"e1\"",
+            "status": "confirmed",
+            "summary": "Exam",
+            "start": {
+              "dateTime": "2026-11-12T09:00:00Z"
+            },
+            "end": {
+              "dateTime": "2026-11-12T10:00:00Z"
+            },
+            "transparency": "opaque",
+            "updated": "2026-11-03T10:00:00Z",
+            "htmlLink": "https://calendar.google.com/event?eid=x",
+            "iCalUID": "study:plan-item:p1"
+          }
+        ],
+        "nextSyncToken": "sync-2"
+      },
+      "expect": {
+        "count": 1,
+        "uid": "study:plan-item:p1",
+        "start": "2026-11-12T09:00:00Z",
+        "nextSyncToken": "sync-2",
+        "remoteId": "opaque-google-handle-9x2"
+      }
+    },
+    "graphList": {
+      "response": {
+        "value": [
+          {
+            "id": "m-1",
+            "iCalUId": "ical-1",
+            "subject": "Exam",
+            "bodyPreview": "Room 4",
+            "location": {
+              "displayName": "Hall"
+            },
+            "start": {
+              "dateTime": "2026-11-12T09:00:00.0000000",
+              "timeZone": "UTC"
+            },
+            "end": {
+              "dateTime": "2026-11-12T10:00:00.0000000",
+              "timeZone": "UTC"
+            },
+            "isAllDay": false,
+            "showAs": "busy",
+            "categories": [
+              "EXAM"
+            ],
+            "lastModifiedDateTime": "2026-11-03T10:00:00Z"
+          }
+        ],
+        "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendars/c/events/delta?token=x"
+      },
+      "expect": {
+        "count": 1,
+        "uid": "ical-1",
+        "start": "2026-11-12T09:00:00Z",
+        "categories": [
+          "EXAM"
+        ]
+      }
+    },
+    "googleWrite": [
+      {
+        "name": "all-day-exclusive-end",
+        "event": {
+          "uid": "study:plan-item:p1",
+          "summary": "Midterm",
+          "start": "2026-11-20",
+          "end": "2026-11-21",
+          "allDay": true,
+          "categories": [
+            "EXAM"
+          ]
+        },
+        "expect": {
+          "start": {
+            "date": "2026-11-20"
+          },
+          "end": {
+            "date": "2026-11-21"
+          },
+          "iCalUID": "study:plan-item:p1",
+          "extendedProperties.private.nxCategories": "EXAM"
+        }
+      },
+      {
+        "name": "all-day-single-day-shorthand",
+        "event": {
+          "uid": "u2",
+          "summary": "Deadline",
+          "start": "2026-11-20",
+          "end": "2026-11-20",
+          "allDay": true
+        },
+        "expect": {
+          "start": {
+            "date": "2026-11-20"
+          },
+          "end": {
+            "date": "2026-11-21"
+          }
+        }
+      },
+      {
+        "name": "timed-passthrough",
+        "event": {
+          "uid": "u3",
+          "summary": "Lecture",
+          "start": "2026-11-03T09:00:00Z",
+          "end": "2026-11-03T10:00:00Z",
+          "allDay": false
+        },
+        "expect": {
+          "start": {
+            "dateTime": "2026-11-03T09:00:00Z"
+          },
+          "iCalUID": "u3"
+        }
+      },
+      {
+        "name": "recurrence-write-refused",
+        "event": {
+          "uid": "u4",
+          "summary": "Series",
+          "start": "2026-11-03",
+          "end": "2026-11-04",
+          "allDay": true,
+          "recurrence": "FREQ=WEEKLY;COUNT=8"
+        },
+        "expectError": "unsupported"
+      }
+    ],
+    "graphWrite": [
+      {
+        "name": "all-day-exclusive-end",
+        "event": {
+          "uid": "study:plan-item:p1",
+          "summary": "Midterm",
+          "start": "2026-11-20",
+          "end": "2026-11-21",
+          "allDay": true,
+          "categories": [
+            "EXAM"
+          ]
+        },
+        "expect": {
+          "isAllDay": true,
+          "start.dateTime": "2026-11-20T00:00:00",
+          "end.dateTime": "2026-11-21T00:00:00",
+          "categories": [
+            "EXAM"
+          ]
+        }
+      },
+      {
+        "name": "recurrence-write-refused",
+        "event": {
+          "uid": "u4",
+          "summary": "Series",
+          "start": "2026-11-03",
+          "end": "2026-11-04",
+          "allDay": true,
+          "recurrence": "FREQ=WEEKLY;COUNT=8"
+        },
+        "expectError": "unsupported"
+      }
+    ],
+    "graphUrls": [
+      {
+        "calendarId": "",
+        "user": "me",
+        "expect": "https://graph.microsoft.com/v1.0/me"
+      },
+      {
+        "calendarId": "cal-1",
+        "user": "me",
+        "expect": "https://graph.microsoft.com/v1.0/me/calendars/cal-1"
+      },
+      {
+        "calendarId": "cal-1",
+        "user": "a@b.c",
+        "expect": "https://graph.microsoft.com/v1.0/users/a%40b.c/calendars/cal-1"
+      }
+    ],
+    "googleCalendarList": {
+      "response": {
+        "items": [
+          {
+            "id": "primary",
+            "summary": "Work",
+            "primary": true,
+            "accessRole": "owner",
+            "htmlLink": "https://calendar.google.com/calendar?cid=x"
+          },
+          {
+            "id": "abc123@group.calendar.google.com",
+            "summary": "Exams",
+            "primary": false,
+            "accessRole": "reader"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "primary",
+          "name": "Work",
+          "primary": true,
+          "url": "https://calendar.google.com/calendar?cid=x"
+        },
+        {
+          "id": "abc123@group.calendar.google.com",
+          "name": "Exams",
+          "primary": false
+        }
+      ]
+    },
+    "graphCalendarList": {
+      "response": {
+        "value": [
+          {
+            "id": "AAMk...",
+            "name": "Calendar",
+            "isDefaultCalendar": true,
+            "webLink": "https://outlook.office.com/calendar/item/x",
+            "owner": {
+              "name": "me"
+            }
+          },
+          {
+            "id": "BBBk...",
+            "name": "Exams",
+            "isDefaultCalendar": false,
+            "owner": {
+              "name": "me"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "AAMk...",
+          "name": "Calendar",
+          "primary": true,
+          "url": "https://outlook.office.com/calendar/item/x"
+        },
+        {
+          "id": "BBBk...",
+          "name": "Exams",
+          "primary": false
+        }
+      ]
+    }
+  },
+  "attribution": {
+    "rule": "attributable-only (E8): the marker category, a minted uid namespace, or an existing link. Keyword matches are suggestions, never records.",
+    "sourceCategory": "NEURONECTION",
+    "namespaces": [
+      "study:",
+      "health:"
+    ],
+    "cases": [
+      {
+        "name": "marker-category",
+        "event": {
+          "uid": "remote-1",
+          "summary": "whatever",
+          "start": "2026-11-12T09:00:00Z",
+          "categories": [
+            "NEURONECTION",
+            "EXAM"
+          ]
+        },
+        "attributable": true
+      },
+      {
+        "name": "marker-category-case-insensitive",
+        "event": {
+          "uid": "remote-1",
+          "summary": "x",
+          "start": "2026-11-12T09:00:00Z",
+          "categories": [
+            "neuronection"
+          ]
+        },
+        "attributable": true
+      },
+      {
+        "name": "minted-uid-study",
+        "event": {
+          "uid": "study:plan-item:p1",
+          "summary": "Exam",
+          "start": "2026-11-12",
+          "end": "2026-11-13",
+          "allDay": true
+        },
+        "attributable": true
+      },
+      {
+        "name": "minted-uid-health",
+        "event": {
+          "uid": "health:examination:e1",
+          "summary": "Appt",
+          "start": "2026-11-12",
+          "end": "2026-11-13",
+          "allDay": true
+        },
+        "attributable": true
+      },
+      {
+        "name": "keyword-lookalike-is-NOT-attributable",
+        "event": {
+          "uid": "remote-9",
+          "summary": "Midterm exam Friday",
+          "start": "2026-11-12T09:00:00Z"
+        },
+        "attributable": false
+      },
+      {
+        "name": "personal-event-not-attributable",
+        "event": {
+          "uid": "remote-2",
+          "summary": "Dentist",
+          "start": "2026-11-12T09:00:00Z",
+          "categories": [
+            "PERSONAL"
+          ]
+        },
+        "attributable": false
+      },
+      {
+        "name": "kind-category-alone-is-NOT-enough",
+        "event": {
+          "uid": "remote-3",
+          "summary": "Exam",
+          "start": "2026-11-12T09:00:00Z",
+          "categories": [
+            "EXAM"
+          ]
+        },
+        "attributable": false
+      }
+    ]
+  }
+}

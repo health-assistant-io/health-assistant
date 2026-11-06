@@ -6,6 +6,7 @@ from typing import Any
 from app.extensions.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
 
+from ..validation import WebhookPayloadError, validate_payload
 from .base import BaseWebhookParser
 
 logger = logging.getLogger(__name__)
@@ -19,13 +20,21 @@ class BasicParser(BaseWebhookParser):
     ) -> list[ObservationCreate]:
         observations = []
 
-        if not isinstance(payload, dict):
-            logger.warning(f"BasicParser received non-dict payload: {payload}")
-            return []
-
+        payload = validate_payload(payload, parser_id="basic")
         data_type = payload.get("type", "")
         value = payload.get("value")
         timestamp = payload.get("timestamp")
+
+        if not isinstance(data_type, str):
+            raise WebhookPayloadError("basic: 'type' must be a string.")
+        if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+            raise WebhookPayloadError("basic: 'value' must be a number.")
+        if isinstance(timestamp, str) and not timestamp.isdigit():
+            raise WebhookPayloadError("basic: 'timestamp' must be epoch milliseconds.")
+        if data_type not in ("heart_rate", "steps", "weight"):
+            raise WebhookPayloadError(
+                f"basic: unknown metric type {data_type!r} (heart_rate|steps|weight)."
+            )
 
         obs_time = datetime.datetime.now(datetime.UTC)
         if timestamp:
@@ -69,11 +78,11 @@ class HomeAssistantParser(BaseWebhookParser):
     ) -> list[ObservationCreate]:
         observations = []
 
-        if not isinstance(payload, dict):
-            return []
-
+        payload = validate_payload(payload, parser_id="home_assistant")
         entity_id = payload.get("entity_id", "")
         state = payload.get("state")
+        if not isinstance(entity_id, str):
+            raise WebhookPayloadError("home_assistant: 'entity_id' must be a string.")
         obs_time = datetime.datetime.now(datetime.UTC)
 
         if "heart_rate" in entity_id and config.get("track_heart_rate", True):

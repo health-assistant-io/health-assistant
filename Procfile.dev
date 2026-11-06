@@ -18,7 +18,7 @@
 # Run with extra process:  add a line here or use Procfile.dev.local (gitignored)
 #
 # Ports use honcho env expansion (${VAR:-default}) and default to the family
-# dev-port bands (dev/guidelines/dev-ports.md — health is slot 0). The same
+# dev-port bands (the family dev-ports.md standard — health is slot 0). The same
 # vars live in the root .env, so run-dev.sh, --force-stop, and honcho children
 # always agree on the actual ports.
 

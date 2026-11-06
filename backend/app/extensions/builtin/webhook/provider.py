@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from app.extensions.errors import ExtensionError
 from app.extensions.sdk import BaseHealthProvider
 from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
@@ -27,12 +28,16 @@ class WebhookProvider(BaseHealthProvider):
         parser = get_parser(parser_type)
         builder = self.create_observation_builder(integration)
 
+        # Typed failures propagate: the route persists a typed failure row and
+        # answers a machine-readable rejection. A parser bug is wrapped as
+        # ``io`` so it, too, is visible instead of a silent empty result.
         try:
-            observations = parser.parse(payload, config, builder)
-            return observations
+            return parser.parse(payload, config, builder)
+        except ExtensionError:
+            raise
         except Exception as e:
-            logger.error(f"[{self.domain}] Parser {parser_type} failed: {e}", exc_info=True)
-            return []
+            logger.error("[%s] Parser %s crashed: %s", self.domain, parser_type, e, exc_info=True)
+            raise ExtensionError("io", f"Webhook parser {parser_type} failed.") from e
 
     def get_custom_actions(self) -> list[dict[str, str]]:
         return [{"id": "test_webhook", "label": "Get Webhook URL", "style": "primary"}]

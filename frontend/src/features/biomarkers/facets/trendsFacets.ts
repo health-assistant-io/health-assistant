@@ -9,7 +9,7 @@ import { deriveCountedOptions } from './helpers';
  * JSX. Reuses `getFinalStatus` so the status facet is consistent with the
  * existing alerts-only toggle and badge coloring.
  *
- * See `dev/plans/modular-filter-system-2026-07-14.md` §2 Phase 2.
+ * See `local planning notes/modular-filter-system-2026-07-14.md` §2 Phase 2.
  */
 
 /** Filter by computed status: Normal / High / Low (via `getFinalStatus`). */

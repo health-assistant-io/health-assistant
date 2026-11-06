@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.observation_value_validator import (
+from app.services.biomarkers.observation_value_validator import (
     InvalidObservationValue,
     validate_observation_value,
 )

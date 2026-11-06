@@ -127,7 +127,7 @@ class TestNoPrintLeaks:
 class TestGetDocumentTenantScope:
     @pytest.mark.asyncio
     async def test_get_document_filters_by_tenant(self, monkeypatch):
-        from app.services import document_service as svc
+        from app.services.documents import document_service as svc
 
         captured = {}
 
@@ -192,7 +192,7 @@ class TestAnatomySlugSanitization:
 
         from PIL import Image
 
-        from app.services import anatomy_service as anat
+        from app.services.anatomy import anatomy_service as anat
 
         monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
         buf = io.BytesIO()
@@ -213,7 +213,7 @@ class TestAnatomySlugSanitization:
 
         from PIL import Image
 
-        from app.services import anatomy_service as anat
+        from app.services.anatomy import anatomy_service as anat
 
         monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
         buf = io.BytesIO()

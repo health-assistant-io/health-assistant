@@ -1,10 +1,10 @@
 """MCP Client provider.
 
-This integration does not produce FHIR observations. It exposes MCP server
-tools to the chat assistant via the SDK's :meth:`supports_tools` /
-:meth:`get_tools` contract (see ``app.extensions.sdk.base``). The platform
-tool aggregator discovers it generically — no ``mcp_client``-specific code
-in the chat service.
+This integration does not produce FHIR observations. It declares the
+``chat-tools`` capability and exposes MCP server tools to the chat assistant
+through the SDK's ``get_tools`` hook (see ``app.extensions.sdk.base``). The
+platform tool aggregator discovers it generically — no ``mcp_client``-specific
+code in the chat service.
 
 ``pull_data`` is a no-op so the background sync loop skips this domain.
 Tokenless routes (webhook / api proxy) are intentionally closed for tool

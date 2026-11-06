@@ -4,7 +4,7 @@
 # Health Assistant
 ### Self-hosted, privacy-first health records
 
-[![Version](https://img.shields.io/badge/version-v0.8.0-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
+[![Version](https://img.shields.io/badge/version-v0.9.0-blue.svg)](https://github.com/health-assistant-io/health-assistant/releases)
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#scope--limitations)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20Self--Hosted-lightgrey.svg)](#quick-start)
@@ -124,7 +124,7 @@ It is **Beta** software, built for self-hosters and technical users first.
 Health Assistant is self-hosted and privacy-first. But the foundation is the same one hospitals use, so the same installation can grow into a clinic-grade record — or interoperate with one — without a rewrite. You don't need to care about any of this for everyday use; it's here for when you do.
 
 - **HL7 FHIR R4 storage** — clinical data is stored as FHIR-enhanced relational rows and validated on write, so invalid FHIR never lands in the database.
-- **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **19 resources** (Patient, Observation, Condition, EpisodeOfCare, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
+- **FHIR R4 server facade** — a conformant REST API at `/api/v1/fhir/R4/*` exposes **20 resources** (Patient, Observation, Condition, EpisodeOfCare, Encounter, AllergyIntolerance, MedicationStatement, MedicationRequest, Medication, Substance, Immunization, DiagnosticReport, DocumentReference, Device, Communication, Organization, Practitioner, Provenance, CodeSystem, ValueSet) with CapabilityStatement, search Bundles, pagination, Provenance-on-write, and soft-delete tombstones.
 - **Unified clinical catalogs** — biomarkers, medications, allergies, vaccines, anatomy, and a taxonomy/knowledge graph (25 relation types) with recursive multi-hop traversal.
 - **Hard multi-tenant isolation** — every query is tenant-scoped; cross-tenant access is impossible.
 - **Role-based access control** — four roles: System Admin, Admin, Manager, User.
@@ -154,7 +154,7 @@ cd health-assistant
 ./scripts/install.sh    # asks the app URL, generates secure keys, starts the standalone stack
 ```
 
-The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, starts the stack, and prints your URLs plus a one-click first-run setup link.
+The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, checks that the host ports are free, starts the stack, and prints your URLs plus a one-click first-run setup link. It is safe to re-run: it keeps `.env`, refreshes the images, and restarts only what changed. Prefer no clone at all? `curl -fsSL https://health-assistant.io/install.sh | bash` (see the [Installation Guide](docs/INSTALL.md)).
 
 Create your initial admin by opening **http://localhost** — a fresh install auto-redirects to a setup wizard where you pick the email, password, and organization name. There are no default credentials; you choose them.
 
@@ -240,7 +240,7 @@ Health Assistant is **Beta** (`0.8.x`). The points below are honest boundaries �
 - **Mobile data arrives via integrations.** High-frequency telemetry (heart rate, steps, CGM) is stored and charted via the webhook, the bridge SDK, or a FHIR server integration; a first-party phone app is on the roadmap.
 - **Notification channels.** In-app (WebSocket) and Web Push (VAPID) are fully implemented. Email and SMS are stubbed.
 - **FHIR coverage.** 20 R4 resources are exposed on the facade (not the full spec). `_format=xml`, transaction/batch Bundle processing, and `POST /_search` are roadmap. Telemetry data is stored outside strict FHIR (performance tradeoff) and excluded from FHIR exports.
-- **Test coverage.** The backend has 1800+ pytest tests; the frontend has sparse co-located vitest tests; there is no end-to-end suite yet.
+- **Test coverage.** The backend has 3900+ pytest tests; the frontend has 100+ co-located vitest files (775 tests) run in CI; there is no end-to-end suite yet.
 - **No medical certification.** This software is not certified for clinical use, is not HIPAA/GDPR-certified, and must not be relied upon for diagnosis or treatment decisions (see [Disclaimer](#disclaimer)).
 
 ## Highlights
@@ -256,20 +256,20 @@ Health Assistant is **Beta** (`0.8.x`). The points below are honest boundaries �
 
 ## Contributing
 
-Contributions are welcome. To set up a working dev environment, follow [Quick start → Development](#quick-start) and read the [Development Guide](docs/DEVELOPMENT.md) for code style, testing, and the versioning workflow.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), set up a working dev environment via [Quick start → Development](#quick-start), and read the [Development Guide](docs/DEVELOPMENT.md) for code style, testing, and the versioning workflow.
 
-For backend changes, run `ruff check` / `ruff format` and the pytest suite (`cd backend && ./run-tests.sh`) before submitting. For frontend changes, `npm run build` (tsc strict + vite) and `npm run lint` must pass.
+For backend changes, run `ruff check` / `ruff format` and the pytest suite (`cd backend && ./run-tests.sh`) before submitting. For frontend changes, `pnpm run build` (tsc strict + vite) and `pnpm run lint` must pass.
 
 ## Support the project
 
 If Health Assistant has helped you take control of your health data, or if you believe privacy-first health infrastructure should exist, please consider supporting continued development and maintenance.
 
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/healthassistant)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy_Me_A_Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/neuronection)
 
 ## Security
 
-Found a vulnerability? Do not open a public issue — use GitHub's
-[private vulnerability reporting](https://github.com/health-assistant-io/health-assistant/security/advisories/new)
+Found a vulnerability? Do not open a public issue — read [SECURITY.md](SECURITY.md)
+and use GitHub's [private vulnerability reporting](https://github.com/health-assistant-io/health-assistant/security/advisories/new)
 to disclose it responsibly.
 
 <!-- NEURONECTION:ECOSYSTEM:START -->

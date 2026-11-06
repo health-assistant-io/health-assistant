@@ -34,6 +34,7 @@ preserved automatically).
 
 Commands:
     show                     print the current version
+    check                    verify every propagated target matches the version
     set X.Y.Z[-suffix]       set an explicit version (--git/--push optional)
     bump major|minor|patch|rc
     release                  commit/tag/push the version already on disk
@@ -190,6 +191,48 @@ def apply_propagation(cfg: dict, new_version: str) -> list[str]:
     return updated
 
 
+def propagated_version(prop: dict, text: str) -> str | None:
+    ptype = prop.get("type", "regex")
+    if ptype == "json":
+        return json.loads(text).get(prop["field"])
+    if ptype == "npm-lock":
+        data = json.loads(text)
+        return data.get("packages", {}).get("", {}).get("version") or data.get("version")
+    match = re.compile(prop["pattern"]).search(text)
+    if not match:
+        return None
+    if "version" not in match.groupdict():
+        raise ValueError(
+            f"{prop.get('name', prop.get('file', '?'))}: pattern needs a named "
+            "'version' group — e.g. '(?P<version>[^-)]+)'"
+        )
+    value = match.group("version")
+    if prop.get("dash_escape"):
+        value = value.replace("--", "-")
+    return value
+
+
+def check_propagation(cfg: dict, version: str) -> list[str]:
+    problems: list[str] = []
+    for prop in cfg.get("propagate", []):
+        rel = prop["file"]
+        path = ROOT / rel
+        label = prop.get("name", rel)
+        if not path.is_file():
+            problems.append(f"{label}: file not found ({rel})")
+            continue
+        try:
+            current = propagated_version(prop, path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            problems.append(str(exc))
+            continue
+        if current is None:
+            problems.append(f"{label}: version pattern not found in {rel}")
+        elif current != version:
+            problems.append(f"{label}: {current} != {version} ({rel})")
+    return problems
+
+
 def release_paths(cfg: dict) -> list[str]:
     paths = [cfg["version"]["file"]]
     paths += [p["file"] for p in cfg.get("propagate", [])]
@@ -279,6 +322,9 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("show", help="print the current version")
+    subparsers.add_parser(
+        "check", help="verify every propagated target matches the version"
+    )
     set_parser = subparsers.add_parser(
         "set", parents=[git_parser], help="set an explicit version (X.Y.Z or X.Y.Z-suffix)"
     )
@@ -299,6 +345,15 @@ def main() -> None:
     current = read_version(cfg)
     if args.command == "show":
         print(current)
+        return
+    if args.command == "check":
+        problems = check_propagation(cfg, current)
+        if problems:
+            print(f"version: {current}; propagation mismatch:")
+            for problem in problems:
+                print(f"  - {problem}")
+            sys.exit(1)
+        print(f"version: {current}; all propagated targets match")
         return
     try:
         if args.command == "set":

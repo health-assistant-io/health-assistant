@@ -17,7 +17,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
-from app.services.fhir_service import map_observations_to_biomarkers
+from app.services.fhir.fhir_service import map_observations_to_biomarkers
 
 LOINC = "8867-4"  # Heart Rate
 

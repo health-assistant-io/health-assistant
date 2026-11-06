@@ -88,7 +88,7 @@ async def typed_err_ctx():
     api_secret = f"typed-err-{uuid.uuid4().hex}"
 
     from app.core.database import AsyncSessionLocal
-    from app.models.chat_model import ChatMessage, ChatSession
+    from app.models.chat_model import ChatSession
     from app.models.fhir.patient import Patient
     from app.models.tenant_model import TenantModel
     from app.models.user_integration import UserIntegration
@@ -151,30 +151,33 @@ async def typed_err_ctx():
         )
         db.add_all([session_a, session_b])
         await db.flush()
-        db.add(
-            ChatMessage(
-                id=uuid.uuid4(),
-                session_id=session_a.id,
-                role="assistant",
-                content={"text": "Shall I log this as a clinical event?"},
-                tasks=[
-                    {
-                        "proposal_id": "prop-1",
-                        "task_type": "create_clinical_event",
-                        "title": "Log follow-up",
-                        "status": "proposed",
-                        "proposed_payload": {"title": "Follow-up"},
-                    }
-                ],
-                citations=[],
-            )
-        )
         await db.commit()
+        from app.services.chat.chat_session_service import ChatSessionService
+
+        proposal_id = str(uuid.uuid4())
+        await ChatSessionService(db).save_message(
+            session_id=session_a.id,
+            role="assistant",
+            content={"text": "Shall I log this as a clinical event?"},
+            tasks=[
+                {
+                    "schema_version": 1,
+                    "proposal_id": proposal_id,
+                    "task_type": "create_clinical_event",
+                    "title": "Log follow-up",
+                    "status": "proposed",
+                    "proposed_payload": {"title": "Follow-up"},
+                    "context": {"patient_id": str(patient_a)},
+                }
+            ],
+            citations=[],
+        )
         return {
             "integration_id": integration_id,
             "api_secret": api_secret,
             "session_a": session_a.id,
             "session_b": session_b.id,
+            "proposal_id": proposal_id,
         }
 
 
@@ -266,7 +269,9 @@ class TestTypedErrorsThroughTheProxy:
                 first_frames = [frame async for frame in first.body_iterator]
         assert first_frames  # consuming the holder releases the lock
 
-    async def test_double_resolve_is_409_hitl_conflict(self, typed_err_ctx, ai_rate_redis):
+    async def test_conflicting_resolve_is_409_hitl_conflict(self, typed_err_ctx, ai_rate_redis):
+        """A repeat of the recorded outcome is idempotent (200); a different
+        decision on the terminal proposal is the typed 409 conflict."""
         ctx = typed_err_ctx
         from app.core.database import AsyncSessionLocal
 
@@ -274,18 +279,26 @@ class TestTypedErrorsThroughTheProxy:
             ok = await _proxy(
                 db,
                 ctx,
-                f"ai/sessions/{ctx['session_a']}/tasks/prop-1/resolve",
+                f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
                 "POST",
                 payload={"status": "dismissed"},
             )
             assert ok["success"] is True
+            repeated = await _proxy(
+                db,
+                ctx,
+                f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
+                "POST",
+                payload={"status": "dismissed"},
+            )
+            assert repeated["task"]["status"] == "dismissed"
             with pytest.raises(HTTPException) as exc:
                 await _proxy(
                     db,
                     ctx,
-                    f"ai/sessions/{ctx['session_a']}/tasks/prop-1/resolve",
+                    f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
                     "POST",
-                    payload={"status": "dismissed"},
+                    payload={"status": "confirmed"},
                 )
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "hitl_conflict"

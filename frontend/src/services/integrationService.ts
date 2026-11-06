@@ -31,6 +31,19 @@ export interface ActiveIntegration {
   } | null;
 }
 
+/** One row of the system-admin availability list (``GET /admin/integrations``). */
+export interface SystemIntegrationRow {
+  domain: string;
+  name: string;
+  version?: string | null;
+  is_enabled: boolean;
+  on_filesystem: boolean;
+  description?: string | null;
+  categories?: string[];
+  kind?: string | null;
+  capabilities?: string[];
+}
+
 export interface ConfigFlowSchema {
   step_id: string;
   title: string;
@@ -215,6 +228,15 @@ export const integrationService = {
   toggleDebugMode: async (integrationId: string, patientId: string): Promise<any> => {
     const response = await api.post(`/integrations/instance/${integrationId}/toggle-debug?patient_id=${patientId}`);
     return response.data;
+  },
+
+  listSystemIntegrations: async (): Promise<SystemIntegrationRow[]> => {
+    const response = await api.get('/admin/integrations');
+    return response.data;
+  },
+
+  setSystemIntegrationEnabled: async (domain: string, enabled: boolean): Promise<void> => {
+    await api.post(`/admin/integrations/${domain}/${enabled ? 'enable' : 'disable'}`);
   },
 
   oauthStart: async (domain: string, integrationId: string, patientId: string): Promise<{ authorize_url: string; state: string }> => {

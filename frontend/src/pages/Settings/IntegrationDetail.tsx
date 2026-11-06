@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { integrationService, CustomAction } from '../../services/integrationService';
 import { notificationService, type NotificationKindState } from '../../services/notificationService';
@@ -10,16 +11,17 @@ import { Activity, ArrowLeft, RefreshCw, Layers, Database, Clock, Settings, Tras
 import { toast } from 'react-toastify';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsDialog from '../../components/integrations/IntegrationDocsDialog';
-import ActionResultModal from '../../components/integrations/ActionResultModal';
+import ActionResultBlocks from '../../components/integrations/ActionResultBlocks';
 import { BridgeConnectCard } from '../../components/integrations/BridgeConnectCard';
 import PatientPickerModal from '../../components/integrations/PatientPickerModal';
 import { DebugConsole } from '../../components/integrations/DebugConsole';
 import { detailExtension } from '../../components/integrations/integrationViews';
-import { IntegrationCard } from '../../components/ui/integrations';
+import { ActionResultDialog, IntegrationCard } from '../../components/ui/integrations';
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 import type { ActionResult } from '../../services/integrationService';
 
 const IntegrationDetail: React.FC = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -754,10 +756,19 @@ const IntegrationDetail: React.FC = () => {
       )}
 
       {actionResult && (
-        <ActionResultModal
-          result={actionResult.result}
-          actionLabel={actionResult.label}
-          onClose={() => setActionResult(null)}
+        <ActionResultDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setActionResult(null);
+          }}
+          status="ready"
+          labels={{
+            title: actionResult.label
+              ? `${actionResult.label} — ${t('integrations.result.title', 'Result')}`
+              : t('integrations.result.title', 'Result'),
+            closeLabel: t('integrations.result.close', 'Done'),
+          }}
+          renderChrome={() => <ActionResultBlocks result={actionResult.result} />}
         />
       )}
 

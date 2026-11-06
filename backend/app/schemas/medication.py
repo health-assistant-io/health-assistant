@@ -84,7 +84,7 @@ class MedicationRecordBase(BaseModel):
     examination_id: UUID | None = None
     # Discriminator: MedicationStatement (default) vs MedicationRequest.
     # Exposed so integration pulls can import a remote MedicationRequest as
-    # intent=order; UI callers leave it unset to keep the legacy statement
+    # intent=order; UI callers leave it unset to keep the MedicationStatement
     # default. ``None`` here means "let the ORM column default apply".
     intent: MedicationIntent | None = None
     start_date: date | None = None

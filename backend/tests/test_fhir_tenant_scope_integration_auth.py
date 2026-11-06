@@ -58,7 +58,7 @@ def _clear_overrides():
 
 def test_b5_service_signatures_accept_tenant_id():
     """B5: each single-resource service fn must accept an optional tenant_id."""
-    from app.services import fhir_service
+    from app.services.fhir import fhir_service
 
     for fn_name in (
         "get_observation",
@@ -81,7 +81,7 @@ def test_b5_service_signatures_accept_tenant_id():
 @pytest.mark.asyncio
 async def test_b5_get_observation_filters_by_tenant():
     """B5: when tenant_id is supplied, the WHERE clause restricts to that tenant."""
-    from app.services import fhir_service
+    from app.services.fhir import fhir_service
 
     captured = {}
 
@@ -117,7 +117,7 @@ async def test_b5_get_observation_filters_by_tenant():
 @pytest.mark.asyncio
 async def test_b5_get_observation_without_tenant_is_unscoped():
     """B5: legacy callers passing no tenant_id get the unscoped behaviour."""
-    from app.services import fhir_service
+    from app.services.fhir import fhir_service
 
     captured = {}
 

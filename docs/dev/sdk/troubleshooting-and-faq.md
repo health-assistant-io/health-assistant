@@ -10,11 +10,11 @@ plus the FAQ. Symptom → cause → fix.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Instance flips to `ERROR` mid-sync | `pull_data` (or a helper) raised typed `auth` — 401/403 upstream or an exhausted token refresh | Reconnect (re-run the OAuth round-trip); the code is surfaced on the sync-log row |
-| Sync "skipped" right after a 429 | `rate-limited` exhaustion wrote `sync_cooldown:{iid}` (TTL clamped 60 s – 1 h) | Wait out the cooldown or clean the Redis key; mind the surfaced `retry_after_ms` |
+| Sync "skipped" right after a 429 | `rate-limited` exhaustion wrote `integration_sync_state.next_retry_at` (the upstream `Retry-After` or an exponential streak, capped at 1 h) | Wait out the row's `next_retry_at`, or clear it for a manual retry; the surfaced `retry_after_ms` is the provider hint |
 | Sync returns 409 on Sync Now | another sync holds `sync_lock:{iid}` (the 60 s beat beat you to it) | Retry in a moment |
 | `"status": "partial"` + `dropped_invalid > 0` | some observations failed the write-time FHIR validation (bad shape, `value_string` on a STATE biomarker, unknown units) | Fix the malformed payloads; the counts (`pulled` vs `metrics_synced`) localize the damage |
 | Observations "missing" but metrics_synced counts them | telemetry routing — `is_telemetry` biomarkers go to `telemetry_data`, not `/observations` | Check `GET /api/v1/telemetry/data` (or the FHIR `Observation` table for the rest) |
-| Cursor isn't advancing between syncs | provider forgot `set_sync_cursor`, or a hook raised before the stamp | `set_sync_cursor` after persisting; the manual "Reset Sync Cursor" action clears stuck cursors |
+| Cursor isn't advancing between syncs | provider forgot `set_cursor`, or a hook raised before the stamp | call `set_cursor` after persisting; the manual "Reset Sync Cursor" action clears the stuck row (`clear_cursor`) |
 | Sync stops writing after a deploy | the manifest broke registration (envelope rejected) — the extension self-disabled with a logged reason | Backend logs carry `Failed to load manifest for {item} …` — fix the envelope |
 | Engine never calls your new hook | the capability/data class isn't declared in the manifest | Declare it — the engine asked the registry, not the provider |
 

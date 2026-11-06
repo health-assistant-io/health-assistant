@@ -4,14 +4,17 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from sqlalchemy import delete, or_, select, text, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.ai import chat_models
-from app.ai.decide.registry import resolve_decision_candidates
+from app.ai.call_audit import attach_call_audit, context_for_task
 from app.ai.providers.enums import ProviderType, TaskType
-from app.ai.providers.registry import get_llm_builder
-from app.ai.providers.resolution import resolve_active_assignment
+from app.ai.providers.registry import ensure_wired_provider_type, get_llm_builder
+from app.ai.providers.resolution import resolve_task
+from app.ai.providers.task_defs import ensure_task_def, task_def_id
+from app.ai.providers.task_registry import get_task_def
 from app.ai.providers.workflows import build_workflows
 from app.ai.schemas.config import (
     AIConfigSummary,
@@ -126,8 +129,6 @@ class AIProviderService:
             query = query.where(AIProviderModel.is_active == is_active)
 
         if include_models:
-            from sqlalchemy.orm import selectinload
-
             query = query.options(selectinload(AIProviderModel.models))
 
         query = query.order_by(AIProviderModel.name)
@@ -136,6 +137,7 @@ class AIProviderService:
 
     async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
         """Create a new provider. The api_key is encrypted at rest before persistence."""
+        ensure_wired_provider_type(provider_data.provider_type)
         guard_api_base(provider_data.api_base or "")
         from app.core.encryption import encrypt_secret
 
@@ -166,6 +168,9 @@ class AIProviderService:
         from app.core.encryption import encrypt_secret, looks_masked
 
         update_dict = provider_data.model_dump(exclude_unset=True)
+
+        if "provider_type" in update_dict:
+            ensure_wired_provider_type(update_dict["provider_type"])
 
         if "api_base" in update_dict:
             guard_api_base(update_dict["api_base"] or "")
@@ -257,7 +262,14 @@ class AIProviderService:
         return result.scalars().all()
 
     async def create_model(self, model_data: AIModelCreate) -> AIModel:
-        """Create a new model"""
+        """Create a new model under a wired provider."""
+        from app.core.errors import NotFoundError
+
+        provider = await self.get_provider(model_data.provider_id)
+        if provider is None:
+            raise NotFoundError("Provider not found")
+        ensure_wired_provider_type(provider.provider_type)
+
         model = AIModel(**model_data.model_dump())
         self.db.add(model)
         await self.db.commit()
@@ -265,10 +277,16 @@ class AIProviderService:
         return model
 
     async def update_model(self, model_id: UUID, model_data: AIModelUpdate) -> AIModel | None:
-        """Update a model"""
+        """Update a model (refused when its provider type is unwired)."""
         update_dict = model_data.model_dump(exclude_unset=True)
         if not update_dict:
             return await self.get_model(model_id)
+
+        model = await self.get_model(model_id)
+        if model is not None:
+            provider = await self.get_provider(model.provider_id)
+            if provider is not None:
+                ensure_wired_provider_type(provider.provider_type)
 
         await self.db.execute(update(AIModel).where(AIModel.id == model_id).values(**update_dict))
         await self.db.commit()
@@ -293,11 +311,16 @@ class AIProviderService:
         tenant_id: UUID | None = None,
         user_id: UUID | None = None,
         task_type: str | None = None,
-        is_active: bool | None = None,
+        is_active: bool | None = True,
         scope: AIScope | None = None,
     ) -> list[AITaskAssignment]:
-        """Get all task assignments with optional filtering"""
-        query = select(AITaskAssignment)
+        """Get task assignments with optional filtering.
+
+        ``is_active`` is a *derived* filter ("active" = ``revoked_at IS NULL``,
+        the same definition the DB unique index uses); it is never a stored
+        column.
+        """
+        query = select(AITaskAssignment).options(selectinload(AITaskAssignment.task_def))
 
         if scope:
             query = query.where(AITaskAssignment.scope == scope)
@@ -319,19 +342,36 @@ class AIProviderService:
             query = query.where(or_(*conditions))
 
         if task_type:
-            query = query.where(AITaskAssignment.task_type == task_type)
+            definition = get_task_def(task_type)
+            if definition is None:
+                return []
+            query = query.where(AITaskAssignment.task_type_id == task_def_id(definition.id))
         if is_active is not None:
-            query = query.where(AITaskAssignment.is_active == is_active)
+            query = query.where(
+                AITaskAssignment.revoked_at.is_(None)
+                if is_active
+                else AITaskAssignment.revoked_at.is_not(None)
+            )
 
-        query = query.order_by(AITaskAssignment.scope.desc(), AITaskAssignment.priority.desc())
+        query = query.order_by(AITaskAssignment.created_at, AITaskAssignment.id)
         result = await self.db.execute(query)
-        return result.scalars().all()
+        return list(result.scalars().unique().all())
 
     async def create_task_assignment(
         self, assignment_data: AITaskAssignmentCreate
     ) -> AITaskAssignment:
-        """Create a new task assignment"""
-        assignment = AITaskAssignment(**assignment_data.model_dump())
+        """Create a new active task assignment (the DB enforces single-slot)."""
+        definition = get_task_def(assignment_data.task_type)
+        if definition is None:
+            raise ValueError(f"unknown task type '{assignment_data.task_type}'")
+        await ensure_task_def(self.db, definition.id)
+        payload = assignment_data.model_dump()
+        payload.pop("task_type", None)
+        assignment = AITaskAssignment(
+            **payload,
+            task_type_id=task_def_id(definition.id),
+            revoked_at=None,
+        )
         self.db.add(assignment)
         await self.db.commit()
         await self.db.refresh(assignment)
@@ -340,7 +380,7 @@ class AIProviderService:
     async def update_task_assignment(
         self, assignment_id: UUID, assignment_data: AITaskAssignmentUpdate
     ) -> AITaskAssignment | None:
-        """Update a task assignment"""
+        """Update a task assignment's binding (task identity is immutable)."""
         update_dict = assignment_data.model_dump(exclude_unset=True)
         if not update_dict:
             return await self.get_task_assignment(assignment_id)
@@ -353,9 +393,13 @@ class AIProviderService:
         await self.db.commit()
         return await self.get_task_assignment(assignment_id)
 
-    async def delete_task_assignment(self, assignment_id: UUID) -> bool:
-        """Delete a task assignment"""
-        await self.db.execute(delete(AITaskAssignment).where(AITaskAssignment.id == assignment_id))
+    async def revoke_task_assignment(self, assignment_id: UUID) -> bool:
+        """Revoke an assignment — rows are revoked, never deleted."""
+        await self.db.execute(
+            update(AITaskAssignment)
+            .where(AITaskAssignment.id == assignment_id, AITaskAssignment.revoked_at.is_(None))
+            .values(revoked_at=func.now())
+        )
         await self.db.commit()
         return True
 
@@ -365,17 +409,14 @@ class AIProviderService:
         tenant_id: UUID | None = None,
         user_id: UUID | None = None,
     ) -> AITaskAssignment | None:
-        """
-        Get active assignment for a task type with fallback.
-        Resolution Order:
-        1. Specific Task (User -> Tenant -> Global)
-        2. Default Task (User -> Tenant -> Global)
+        """The winning assignment row for a task (see providers.resolution).
 
-        Delegates to ``app.ai.providers.resolution.resolve_active_assignment``
-        so the scope/priority/fallback rule is unit-testable without the
-        service's CRUD surface.
+        Precedence (specialist primary → specialist fallback → capability
+        default) exists once, in ``app.ai.providers.resolution.resolve_task``;
+        this accessor only returns the row for API/read consumers.
         """
-        return await resolve_active_assignment(self.db, task_type, tenant_id, user_id)
+        resolved = await resolve_task(self.db, str(task_type), tenant_id, user_id)
+        return resolved.assignment if resolved is not None else None
 
     async def get_config_summary(
         self,
@@ -399,27 +440,13 @@ class AIProviderService:
             tenant_id=tenant_id, user_id=user_id, scope=scope
         )
 
-        # Get task type assignments. The canonical list of task types now lives
-        # in app.ai.providers.enums.TaskType (single source of truth) — previously
-        # this was a hard-coded inline list that silently drifted from the enum.
-        # ``define_anatomy_graph`` is a member of that enum and is included
-        # automatically via ``TaskType.all_values()``.
-        task_types = TaskType.all_values()
-        task_assignments = {}
+        # Resolve every registry task. The task list is the one registry —
+        # there is no per-task field list to drift (plan 4 W1; this is the
+        # structure that used to hide define_anatomy_graph).
+        task_assignments: dict[str, TaskTypeAssignment] = {}
 
-        for task_type in task_types:
-            if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
-                # D4 slot separation: decision slots + the decision default
-                # resolve their own rows only — NEVER the "default" chat
-                # fallback.
-                decision_rows = await resolve_decision_candidates(
-                    self.db, task_type, tenant_id, user_id
-                )
-                assignment = decision_rows[0] if decision_rows else None
-            else:
-                assignment = await self.get_active_assignment_for_task(
-                    task_type, tenant_id, user_id
-                )
+        for task_type in TaskType.all_values():
+            assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
             if assignment:
                 provider = (
                     await self.get_provider(assignment.provider_id)
@@ -458,27 +485,7 @@ class AIProviderService:
             providers=[AIProviderResponse.model_validate(p) for p in providers],
             models=[AIModelResponse.model_validate(m) for m in visible_models],
             task_assignments=[AITaskAssignmentResponse.model_validate(a) for a in assignments],
-            default=task_assignments.get("default"),
-            ocr=task_assignments.get("ocr"),
-            nlp=task_assignments.get("nlp"),
-            medication_interaction=task_assignments.get("medication_interaction"),
-            anomaly_detection=task_assignments.get("anomaly_detection"),
-            fill_biomarker_form=task_assignments.get("fill_biomarker_form"),
-            fill_medication_form=task_assignments.get("fill_medication_form"),
-            magic_fill_examination=task_assignments.get("magic_fill_examination"),
-            define_biomarker=task_assignments.get("define_biomarker"),
-            define_medication=task_assignments.get("define_medication"),
-            suggest_category_icon=task_assignments.get("suggest_category_icon"),
-            generate_category_icon=task_assignments.get("generate_category_icon"),
-            chat=task_assignments.get("chat"),
-            transcription=task_assignments.get("transcription"),
-            embed=task_assignments.get("embed"),
-            decision_tool_dispatch=task_assignments.get("decision_tool_dispatch"),
-            decision_boolean_gate=task_assignments.get("decision_boolean_gate"),
-            decision_choice=task_assignments.get("decision_choice"),
-            decision_score=task_assignments.get("decision_score"),
-            # ADR-0036: the decision default row rides the summary.
-            decision=task_assignments.get("decision"),
+            tasks=task_assignments,
             workflows=workflows,
             ai_agent_max_iterations=max_iterations,
         )
@@ -550,28 +557,35 @@ class AIProviderService:
         task_type: str,
         tenant_id: UUID | None = None,
         user_id: UUID | None = None,
+        *,
+        patient_id: UUID | None = None,
+        trace_id: str | None = None,
     ) -> BaseChatModel:
-        """Get an initialized LangChain chat model for a specific task"""
+        """Get an initialized LangChain chat model for a specific task.
+
+        Resolution goes through the ONE precedence implementation
+        (``app.ai.providers.resolution.resolve_task``); the returned model
+        carries the per-call audit handler (one ``ai_call_logs`` row per model
+        call).
+        """
         if TaskType.is_decision(task_type) or TaskType.is_decision_default(task_type):
             raise ValueError(
                 f"task '{task_type}' is a decision slot — it resolves through "
                 "the decide funnel, never an LLM builder (D4/D13)"
             )
-        assignment = await self.get_active_assignment_for_task(task_type, tenant_id, user_id)
+        resolved = await resolve_task(self.db, str(task_type), tenant_id, user_id)
 
-        provider = None
-        model = None
+        provider = resolved.provider if resolved is not None else None
+        model = resolved.model if resolved is not None else None
 
-        if assignment:
-            if assignment.provider_id:
-                provider = await self.get_provider(assignment.provider_id)
-            if assignment.model_id:
-                model = await self.get_model(assignment.model_id)
-
+        if resolved is not None:
             logger.info(
-                f"AI Resolution [{task_type}]: Using {assignment.scope} configuration. "
-                f"Provider: {provider.name if provider else 'None'}, "
-                f"Model: {model.model_name if model else 'Default'}"
+                "AI Resolution [%s]: %s hop -> %s. Provider: %s, Model: %s",
+                task_type,
+                resolved.hop.value,
+                resolved.task_id,
+                provider.name if provider else "None",
+                model.model_name if model else "Default",
             )
 
             if provider:
@@ -587,14 +601,25 @@ class AIProviderService:
                 # Unknown/unwired provider types fall back to the OpenAI-compatible
                 # builder (with a logged warning) instead of 500ing.
                 builder = get_llm_builder(provider.provider_type)
-                return builder(
-                    api_key=provider.get_api_key_plaintext(),
-                    base_url=provider.api_base or "https://api.openai.com/v1",
-                    model_name=model.model_name if model else "gpt-4o-mini",
-                    temperature=model.temperature if model else None,
-                    max_tokens=model.max_tokens if model else 65536,
-                    reasoning_effort=_model_reasoning_effort(model),
-                    chat_transport=model.chat_transport if model else None,
+                return attach_call_audit(
+                    builder(
+                        api_key=provider.get_api_key_plaintext(),
+                        base_url=provider.api_base or "https://api.openai.com/v1",
+                        model_name=model.model_name if model else "gpt-4o-mini",
+                        temperature=model.temperature if model else None,
+                        max_tokens=model.max_tokens if model else 65536,
+                        reasoning_effort=_model_reasoning_effort(model),
+                        chat_transport=model.chat_transport if model else None,
+                    ),
+                    context_for_task(
+                        str(task_type),
+                        provider=provider,
+                        model=model,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        patient_id=patient_id,
+                        trace_id=trace_id,
+                    ),
                 )
 
         # Fallback to environment variables
@@ -602,35 +627,40 @@ class AIProviderService:
             f"AI Resolution [{task_type}]: No DB assignment found. Falling back to ENV settings. "
             f"Model: {settings.OPENAI_MODEL or 'gpt-4o-mini'}"
         )
-        return chat_models.build_openai(
-            api_key=settings.OPENAI_API_KEY,
-            base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
-            model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
-            # Unset: the provider default applies (ADR-0038 addendum).
-            temperature=None,
-            max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
-            chat_transport=None,
+        return attach_call_audit(
+            chat_models.build_openai(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_API_BASE or "https://api.openai.com/v1",
+                model_name=settings.OPENAI_MODEL or "gpt-4o-mini",
+                # Unset: the provider default applies (ADR-0038 addendum).
+                temperature=None,
+                max_tokens=settings.OPENAI_MAX_TOKENS or 4096,
+                chat_transport=None,
+            ),
+            context_for_task(
+                str(task_type),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                patient_id=patient_id,
+                trace_id=trace_id,
+            ),
         )
 
     async def get_ocr_processor(self, tenant_id: UUID | None = None, user_id: UUID | None = None):
         """Get a configured OCR processor for the tenant/user"""
         from app.ai.processors.ocr import get_ocr_processor
 
-        assignment = await self.get_active_assignment_for_task("ocr", tenant_id, user_id)
+        resolved = await resolve_task(self.db, TaskType.OCR.value, tenant_id, user_id)
+        provider = resolved.provider if resolved is not None else None
+        model = resolved.model if resolved is not None else None
 
-        provider = None
-        model = None
-
-        if assignment:
-            if assignment.provider_id:
-                provider = await self.get_provider(assignment.provider_id)
-            if assignment.model_id:
-                model = await self.get_model(assignment.model_id)
-
+        if resolved is not None:
             logger.info(
-                f"AI Resolution [ocr]: Using {assignment.scope} configuration. "
-                f"Provider: {provider.name if provider else 'None'}, "
-                f"Model: {model.model_name if model else 'Default'}"
+                "AI Resolution [ocr]: %s hop -> %s. Provider: %s, Model: %s",
+                resolved.hop.value,
+                resolved.task_id,
+                provider.name if provider else "None",
+                model.model_name if model else "Default",
             )
 
             if provider:
@@ -638,14 +668,23 @@ class AIProviderService:
                 # OCR is LLM-backed only when the provider is OpenAI-compatible
                 # today (vision models). Tesseract/etc. skip the LLM entirely.
                 if provider.provider_type == ProviderType.OPENAI.value:
-                    llm = chat_models.build_openai(
-                        api_key=provider.get_api_key_plaintext(),
-                        base_url=provider.api_base or "https://api.openai.com/v1",
-                        model_name=model.model_name if model else "gpt-4o",
-                        temperature=model.temperature if model else None,
-                        max_tokens=model.max_tokens if model else 65536,
-                        reasoning_effort=_model_reasoning_effort(model),
-                        chat_transport=model.chat_transport if model else None,
+                    llm = attach_call_audit(
+                        chat_models.build_openai(
+                            api_key=provider.get_api_key_plaintext(),
+                            base_url=provider.api_base or "https://api.openai.com/v1",
+                            model_name=model.model_name if model else "gpt-4o",
+                            temperature=model.temperature if model else None,
+                            max_tokens=model.max_tokens if model else 65536,
+                            reasoning_effort=_model_reasoning_effort(model),
+                            chat_transport=model.chat_transport if model else None,
+                        ),
+                        context_for_task(
+                            TaskType.OCR.value,
+                            provider=provider,
+                            model=model,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        ),
                     )
 
                 return get_ocr_processor(
@@ -673,21 +712,17 @@ class AIProviderService:
         """Get a configured NLP extractor for the tenant/user"""
         from app.ai.processors.nlp import get_nlp_extractor
 
-        assignment = await self.get_active_assignment_for_task("nlp", tenant_id, user_id)
+        resolved = await resolve_task(self.db, TaskType.NLP.value, tenant_id, user_id)
+        provider = resolved.provider if resolved is not None else None
+        model = resolved.model if resolved is not None else None
 
-        provider = None
-        model = None
-
-        if assignment:
-            if assignment.provider_id:
-                provider = await self.get_provider(assignment.provider_id)
-            if assignment.model_id:
-                model = await self.get_model(assignment.model_id)
-
+        if resolved is not None:
             logger.info(
-                f"AI Resolution [nlp]: Using {assignment.scope} configuration. "
-                f"Provider: {provider.name if provider else 'None'}, "
-                f"Model: {model.model_name if model else 'Default'}"
+                "AI Resolution [nlp]: %s hop -> %s. Provider: %s, Model: %s",
+                resolved.hop.value,
+                resolved.task_id,
+                provider.name if provider else "None",
+                model.model_name if model else "Default",
             )
 
             if provider:
@@ -695,14 +730,23 @@ class AIProviderService:
                 # NLP structured extraction is LLM-backed only for OpenAI-
                 # compatible providers today; spaCy is the rule-based fallback.
                 if provider.provider_type == ProviderType.OPENAI.value:
-                    llm = chat_models.build_openai(
-                        api_key=provider.get_api_key_plaintext(),
-                        base_url=provider.api_base or "https://api.openai.com/v1",
-                        model_name=model.model_name if model else "gpt-4o-mini",
-                        temperature=model.temperature if model else None,
-                        max_tokens=model.max_tokens if model else 65536,
-                        reasoning_effort=_model_reasoning_effort(model),
-                        chat_transport=model.chat_transport if model else None,
+                    llm = attach_call_audit(
+                        chat_models.build_openai(
+                            api_key=provider.get_api_key_plaintext(),
+                            base_url=provider.api_base or "https://api.openai.com/v1",
+                            model_name=model.model_name if model else "gpt-4o-mini",
+                            temperature=model.temperature if model else None,
+                            max_tokens=model.max_tokens if model else 65536,
+                            reasoning_effort=_model_reasoning_effort(model),
+                            chat_transport=model.chat_transport if model else None,
+                        ),
+                        context_for_task(
+                            TaskType.NLP.value,
+                            provider=provider,
+                            model=model,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        ),
                     )
 
                 return get_nlp_extractor(
@@ -744,20 +788,15 @@ class AIProviderService:
         """
         from app.ai.assistance.stt import STTTarget, _resolve_stt_target
 
-        assignment = await self.get_active_assignment_for_task(
-            TaskType.TRANSCRIPTION.value, tenant_id, user_id
-        )
-        provider = None
-        model = None
-        if assignment:
-            if assignment.provider_id:
-                provider = await self.get_provider(assignment.provider_id)
-            if assignment.model_id:
-                model = await self.get_model(assignment.model_id)
+        resolved = await resolve_task(self.db, TaskType.TRANSCRIPTION.value, tenant_id, user_id)
+        provider = resolved.provider if resolved is not None else None
+        model = resolved.model if resolved is not None else None
+        if resolved is not None and provider is not None:
             logger.info(
-                "AI Resolution [transcription]: Using %s configuration. Provider: %s, Model: %s",
-                assignment.scope,
-                provider.name if provider else "None",
+                "AI Resolution [transcription]: %s hop -> %s. Provider: %s, Model: %s",
+                resolved.hop.value,
+                resolved.task_id,
+                provider.name,
                 model.model_name if model else "Default",
             )
             return _resolve_stt_target(provider, model)

@@ -71,6 +71,7 @@ from app.ai.providers.presets import (
     guess_preset_for_key,
 )
 from app.ai.providers.setup import infer_caps
+from app.ai.providers.task_defs import task_def_id
 from app.core.database import AsyncSessionLocal
 from app.models.ai_provider_model import (
     AIModel,
@@ -176,14 +177,12 @@ async def _seed_model(provider_id, model_name, caps) -> AIModel:
 async def _seed_slot(tenant_id, user_id, provider_id, model_id, task_type) -> AITaskAssignment:
     async with AsyncSessionLocal() as session:
         row = AITaskAssignment(
-            task_type=task_type,
+            task_type_id=task_def_id(task_type),
             scope=AIScope.USER,
             tenant_id=tenant_id,
             user_id=user_id,
             provider_id=provider_id,
             model_id=model_id,
-            is_active=True,
-            priority=0,
         )
         session.add(row)
         await session.commit()
@@ -234,14 +233,12 @@ async def slot_of(tenant_id, user_id, task_type) -> AITaskAssignment | None:
         return (
             (
                 await session.execute(
-                    select(AITaskAssignment)
-                    .where(
+                    select(AITaskAssignment).where(
                         AITaskAssignment.tenant_id == tenant_id,
                         AITaskAssignment.user_id == user_id,
-                        AITaskAssignment.task_type == task_type,
-                        AITaskAssignment.is_active.is_(True),
+                        AITaskAssignment.task_type_id == task_def_id(task_type),
+                        AITaskAssignment.revoked_at.is_(None),
                     )
-                    .order_by(AITaskAssignment.priority.desc())
                 )
             )
             .scalars()
@@ -776,21 +773,17 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
         await session.commit()
         await session.refresh(sys_model)
         sys_slot = AITaskAssignment(
-            task_type="default",
+            task_type_id=task_def_id("default"),
             scope=AIScope.SYSTEM,
             provider_id=sys_provider.id,
             model_id=sys_model.id,
-            is_active=True,
-            priority=0,
         )
         tenant_slot = AITaskAssignment(
-            task_type="default",
+            task_type_id=task_def_id("default"),
             scope=AIScope.TENANT,
             tenant_id=tenant_id,
             provider_id=sys_provider.id,
             model_id=sys_model.id,
-            is_active=True,
-            priority=0,
         )
         session.add(sys_slot)
         session.add(tenant_slot)
@@ -815,7 +808,7 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
                 await session.execute(
                     select(AITaskAssignment).where(
                         AITaskAssignment.scope == AIScope.SYSTEM,
-                        AITaskAssignment.task_type == "default",
+                        AITaskAssignment.task_type_id == task_def_id("default"),
                     )
                 )
             )
@@ -831,7 +824,7 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
                     select(AITaskAssignment).where(
                         AITaskAssignment.scope == AIScope.TENANT,
                         AITaskAssignment.tenant_id == tenant_id,
-                        AITaskAssignment.task_type == "default",
+                        AITaskAssignment.task_type_id == task_def_id("default"),
                     )
                 )
             )
@@ -847,8 +840,8 @@ async def test_case_14_setup_never_clobbers_system_tenant_or_other_users(
                     select(AITaskAssignment).where(
                         AITaskAssignment.scope == AIScope.USER,
                         AITaskAssignment.user_id == other_user,
-                        AITaskAssignment.task_type == "default",
-                        AITaskAssignment.is_active.is_(True),
+                        AITaskAssignment.task_type_id == task_def_id("default"),
+                        AITaskAssignment.revoked_at.is_(None),
                     )
                 )
             )
@@ -1043,8 +1036,8 @@ async def test_scope_aware_setup_creates_rows_at_the_requested_scope(
             (
                 await session.execute(
                     select(AITaskAssignment).where(
-                        AITaskAssignment.task_type == "default",
-                        AITaskAssignment.is_active.is_(True),
+                        AITaskAssignment.task_type_id == task_def_id("default"),
+                        AITaskAssignment.revoked_at.is_(None),
                     )
                 )
             )
@@ -1138,14 +1131,12 @@ async def _seed_live_decision_slot(
         session.add(model)
         await session.flush()
         row = AITaskAssignment(
-            task_type=task_type,
+            task_type_id=task_def_id(task_type),
             scope=AIScope.USER,
             tenant_id=tenant_id,
             user_id=user_id,
             provider_id=provider.id,
             model_id=model.id,
-            is_active=True,
-            priority=0,
         )
         session.add(row)
         await session.commit()
@@ -1479,8 +1470,8 @@ async def test_case_21_summary_never_falls_back_to_chat_default(user_ctx) -> Non
             tenant_id=tenant_id, user_id=user_id, scope=AIScope.USER
         )
     for slot in HEALTH_DECISION_SLOTS:
-        assert getattr(summary, slot) is None
-    assert summary.default is not None
+        assert summary.tasks.get(slot) is None
+    assert summary.tasks.get("default") is not None
 
 
 def test_case_22_preset_catalog_decision_data_shape() -> None:

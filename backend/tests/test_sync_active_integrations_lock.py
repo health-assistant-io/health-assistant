@@ -46,18 +46,43 @@ def _integration(provider="withings", integration_id=None):
     return fake
 
 
+def _result(rows):
+    result = MagicMock()
+    result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=rows)))
+    result.all = MagicMock(return_value=rows)
+    result.scalar_one_or_none = MagicMock(return_value=None)
+    return result
+
+
 def _db_with_integrations(integrations):
-    """Build an async-CM mock DB that returns the given integrations list."""
+    """Build an async-CM mock DB that answers per-query.
+
+    The beat first selects the active integrations, then reads the sync-state
+    retry gate and the credential slots (both empty here). Returning the
+    integration rows for every query would make ``backoff_gate`` and the
+    credential gate read them as state rows.
+    """
+
+    async def _execute(stmt, *args, **kwargs):
+        text = str(stmt)
+        if "FROM user_integrations" in text and "integration_sync_state" not in text:
+            return _result(integrations)
+        return _result([])
+
     db = AsyncMock()
     db.add = MagicMock()
     db.commit = AsyncMock()
+    db.flush = AsyncMock()
     db.__aenter__ = AsyncMock(return_value=db)
     db.__aexit__ = AsyncMock(return_value=False)
-    db.execute = AsyncMock(
-        return_value=MagicMock(
-            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=integrations)))
-        )
-    )
+    db.execute = AsyncMock(side_effect=_execute)
+
+    async def _get(model, id_):
+        # The beat re-acquires each row through Session.get before syncing
+        # it (rollback-expiry guard) — identity-map semantics: same object.
+        return next((i for i in integrations if i.id == id_), None)
+
+    db.get = AsyncMock(side_effect=_get)
     return db
 
 
@@ -257,7 +282,7 @@ async def test_sync_active_integrations_degrades_when_redis_down():
         patch.object(worker_tasks, "integration_registry"),
         patch.object(
             __import__(
-                "app.services.integration_sync_service", fromlist=["integration_registry"]
+                "app.extensions.registry", fromlist=["integration_registry"]
             ).integration_registry,
             "has_capability",
             lambda domain, cap: cap == "sync",

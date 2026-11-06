@@ -1,7 +1,7 @@
 /**
  * Instance picker — browse modal (the popup half of `InstancePicker`).
  *
- * The instance counterpart of `CatalogPickerBrowseModal`. Opened by the
+ * The instance counterpart of the catalog picker's browse modal. Opened by the
  * in-input "browse" button. Lets the user pick patient-scoped records from a
  * full, filterable list instead of the inline type-ahead.
  *

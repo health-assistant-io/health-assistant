@@ -2,7 +2,7 @@
 
 The original code wrote ``__table_args`` (single underscore on each side),
 which is just an unused class attribute. SQLAlchemy silently ignored it so
-the composite index ``idx_ai_models_provider_active`` was never declared on
+the composite index ``ix_ai_models_provider_active`` was never declared on
 the model metadata and never created on existing databases.
 
 These tests guard against regression.
@@ -17,14 +17,13 @@ MIGRATIONS_DIR = REPO_ROOT / "backend" / "alembic" / "versions"
 
 
 def test_aimodel_declares_composite_index():
-    """AIModel must list idx_ai_models_provider_active in its table indexes."""
+    """AIModel must list ix_ai_models_provider_active in its table indexes."""
     from app.models.ai_provider_model import AIModel
 
     index_names = {idx.name for idx in AIModel.__table__.indexes}
-    assert "idx_ai_models_provider_active" == "idx_ai_models_provider_active"
-    assert "idx_ai_models_provider_active" in index_names, (
+    assert "ix_ai_models_provider_active" in index_names, (
         "AIModel is missing the composite index declared via __table_args__ "
-        "(the typo regressed). Expected idx_ai_models_provider_active, "
+        "(the typo regressed). Expected ix_ai_models_provider_active, "
         f"got {sorted(index_names)}"
     )
 
@@ -71,11 +70,11 @@ def test_migration_creates_index_idempotently():
     found = False
     for path in candidates:
         src = path.read_text()
-        if "idx_ai_models_provider_active" in src and "create_index" in src:
+        if "ix_ai_models_provider_active" in src and "create_index" in src:
             found = True
             break
     assert found, (
-        "No migration creates idx_ai_models_provider_active. The index "
+        "No migration creates ix_ai_models_provider_active. The index "
         "must be declared in the model __table_args__ AND created in a "
         "migration's upgrade path."
     )

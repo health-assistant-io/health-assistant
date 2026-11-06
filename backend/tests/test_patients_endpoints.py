@@ -176,30 +176,33 @@ async def test_update_patient_success(
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.patients.delete_patient", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.patients.run_erasure", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.patients.check_patient_access", new_callable=AsyncMock)
 async def test_delete_patient_success(
-    mock_access, mock_delete, async_client: AsyncClient, patient_dict
+    mock_access, mock_run_erasure, async_client: AsyncClient, patient_dict
 ):
+    from types import SimpleNamespace
+
     from app.core.security import get_current_user
     from app.main import app
 
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     mock_access.return_value = patient_dict
-    mock_delete.return_value = True
+    mock_run_erasure.return_value = SimpleNamespace(id=uuid4())
 
     response = await async_client.delete(f"/api/v1/patients/{patient_dict['id']}")
     assert response.status_code == 200
     assert response.json()["message"] == "Patient deleted successfully"
+    mock_run_erasure.assert_awaited_once()
 
     app.dependency_overrides = {}
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.patients.delete_patient", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.patients.run_erasure", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.patients.check_patient_access", new_callable=AsyncMock)
 async def test_delete_patient_forbidden_for_unlinked_user(
-    mock_access, mock_delete, async_client: AsyncClient, patient_dict
+    mock_access, mock_run_erasure, async_client: AsyncClient, patient_dict
 ):
     from app.core.security import get_current_user
     from app.main import app
@@ -215,6 +218,6 @@ async def test_delete_patient_forbidden_for_unlinked_user(
 
     response = await async_client.delete(f"/api/v1/patients/{patient_dict['id']}")
     assert response.status_code == 403
-    mock_delete.assert_not_called()
+    mock_run_erasure.assert_not_called()
 
     app.dependency_overrides = {}

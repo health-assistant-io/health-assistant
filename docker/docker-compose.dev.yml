@@ -199,7 +199,12 @@ services:
       backend:
         condition: service_healthy
     logging: *default-logging
-    command: npm run dev -- --host 0.0.0.0 --port 3000
+    # pnpm-only toolchain. The runtime image runs as the unprivileged `serve`
+    # user, so the dev service overrides it: it installs the pinned pnpm into
+    # the mounted source tree and runs Vite. stdin is closed so a prompt is a
+    # hard EOF error, never a hung container.
+    user: "0:0"
+    command: sh -c "npm install -g pnpm@11.22.0 && pnpm install --frozen-lockfile </dev/null && pnpm run dev -- --host 0.0.0.0 --port 3000"
     networks:
       - health-assistant-network
 

@@ -10,7 +10,7 @@ import datetime as _dt
 
 from app.models.clinical_event import ClinicalEvent, ClinicalEventType
 from app.models.enums import ClinicalEventStatus
-from app.services.clinical_event_engine import compute_insights
+from app.services.clinical.clinical_event_engine import compute_insights
 
 NOW = _dt.datetime(2026, 4, 15, tzinfo=_dt.UTC)
 

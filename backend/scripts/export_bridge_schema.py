@@ -2599,7 +2599,7 @@ def build_schema():
             "signedStatus": "BridgeStatus",
             "featureFlags": {
                 "vocabulary": list(provider_mod.BRIDGE_FEATURES),
-                "semantics": "Flags, not semver math, drive client gating; an older server omits bridge_features and clients degrade to legacy paths",
+                "semantics": "Flags, not semver math, drive client gating; an older server omits bridge_features and clients degrade to compatible paths",
             },
             "latestSdks": {
                 "shape": {"python": "semver", "ts": "semver", "kotlin": "semver"},

@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from app.core.database import AsyncSessionLocal
 from app.models.anatomy_model import AnatomyStructure
-from app.services.seed_service import SeedService
+from app.services.seed.service import SeedService
 
 
 @pytest.mark.asyncio

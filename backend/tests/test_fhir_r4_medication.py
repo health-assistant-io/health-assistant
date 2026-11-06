@@ -14,12 +14,12 @@ from uuid import uuid4
 
 from app.models.enums import MedicationIntent, MedicationStatus
 from app.models.fhir.medication import Medication, MedicationCatalog
-from app.services.fhir_converter import (
+from app.services.fhir.fhir_converter import (
     fhir_to_medication_orm,
     fhir_to_medication_request_orm,
     validate_resource,
 )
-from app.services.fhir_helpers import parse_fhir_resource
+from app.services.fhir.fhir_helpers import parse_fhir_resource
 
 
 def _make_med(**overrides) -> Medication:

@@ -130,7 +130,7 @@ def build(ctx: ToolContext) -> list[Any]:
         Returns JSON: [{id, name, category, description, typical_reactions,
         matched_on, snippet}].
         """
-        from app.services.catalog_search_service import search_catalogs as _search
+        from app.services.catalog.catalog_search_service import search_catalogs as _search
 
         results = await _search(
             ctx.db,

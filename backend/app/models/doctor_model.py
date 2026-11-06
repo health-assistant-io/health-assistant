@@ -4,11 +4,18 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
 
 from app.models.associations import examination_doctors, organization_doctors
-from app.models.base import AuditMixin, Base, TenantMixin, UUIDMixin, VersionedMixin
-from app.services.fhir_helpers import build_fhir_resource, build_meta
+from app.models.base import AuditMixin, Base, SystemScopeTenantMixin, UUIDMixin, VersionedMixin
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta
 
 
-class DoctorModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixin):
+class DoctorModel(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, VersionedMixin):
+    """A doctor / practitioner directory entry.
+
+    Retention: clinical-record (retained with the patient record it serves).
+    ``tenant_id`` is nullable because the global (system) doctor directory is
+    seeded with ``tenant_id IS NULL`` alongside tenant-owned entries.
+    """
+
     __tablename__ = "doctors"
 
     user_id = Column(

@@ -32,7 +32,7 @@ from app.schemas.tenant import (
     TenantCreate,
     UpdateTenantUser,
 )
-from app.services.tenant_admin_service import TenantAdminService
+from app.services.tenancy.tenant_admin_service import TenantAdminService
 
 # ---------------------------------------------------------------------------
 # Token-data fixtures
@@ -224,7 +224,7 @@ async def test_create_tenant_auto_generates_slug():
 
     db.add = _add
 
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
+    with patch("app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()):
         tenant = await TenantAdminService(db).create_tenant(
             TenantCreate(name="Acme Health"), actor_id=actor
         )
@@ -243,7 +243,7 @@ async def test_create_tenant_appends_suffix_on_slug_collision():
     captured = {}
     db.add = lambda obj: captured.__setitem__("obj", obj)
 
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
+    with patch("app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()):
         tenant = await TenantAdminService(db).create_tenant(
             TenantCreate(name="Acme"), actor_id=uuid.uuid4()
         )
@@ -260,7 +260,7 @@ async def test_hard_delete_rejects_wrong_confirm_name():
     with pytest.raises(HTTPException) as exc:
         await svc.hard_delete_tenant(tenant.id, confirm_name="wrong", actor_id=uuid.uuid4())
     assert exc.value.status_code == 400
-    # Nothing should have been deleted.
+    # Nothing should have been erased.
     db.delete.assert_not_called()
 
 
@@ -268,12 +268,19 @@ async def test_hard_delete_rejects_wrong_confirm_name():
 async def test_hard_delete_succeeds_with_matching_confirm_name():
     tenant = _tenant_row(name="Acme")
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()) as mock_audit:
+    with (
+        patch(
+            "app.services.tenancy.tenant_admin_service.run_erasure", new=AsyncMock()
+        ) as mock_erase,
+        patch(
+            "app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()
+        ) as mock_audit,
+    ):
         await TenantAdminService(db).hard_delete_tenant(
             tenant.id, confirm_name="Acme", actor_id=uuid.uuid4()
         )
-    db.delete.assert_awaited_once_with(tenant)
-    db.commit.assert_awaited_once()
+    mock_erase.assert_awaited_once()
+    assert mock_erase.await_args.kwargs["subject_id"] == tenant.id
     mock_audit.assert_awaited_once()
     assert mock_audit.call_args.kwargs.get("action") == "tenant.delete"
 
@@ -297,7 +304,7 @@ async def test_switch_into_tenant_mints_scoped_jwt():
     admin = _admin_token_data(user_id=user.id)
     tenant = _tenant_row(is_active=True)
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
+    with patch("app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()):
         result = await TenantAdminService(db).switch_into_tenant(tenant.id, actor=admin)
     # Decode the access token and verify claims.
     from app.core.security import decode_token
@@ -337,7 +344,7 @@ async def test_switch_back_restores_original_tenant():
     )
     tenant = _tenant_row(id=original_tid)
     db = _mock_db_with_results(_scalars_result([tenant]))
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()):
+    with patch("app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()):
         result = await TenantAdminService(db).switch_back(actor=admin)
     from app.core.security import decode_token
 
@@ -405,7 +412,9 @@ async def test_update_tenant_user_writes_audit_log():
     tenant_id = uuid.uuid4()
     user = _user_row(tenant_id=tenant_id, role=Role.USER)
     db = _mock_db_with_results(_scalars_result([user]))
-    with patch("app.services.tenant_admin_service.log_audit_action", new=AsyncMock()) as mock_audit:
+    with patch(
+        "app.services.tenancy.tenant_admin_service.log_audit_action", new=AsyncMock()
+    ) as mock_audit:
         await TenantAdminService(db).update_tenant_user(
             tenant_id,
             user.id,

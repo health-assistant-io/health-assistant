@@ -22,7 +22,7 @@ async def catalogs_ctx():
     """Seed catalogs + diseases + edges, then build a ToolContext."""
     from app.core.database import AsyncSessionLocal
     from app.models.tenant_model import TenantModel
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     tid = uuid.uuid4()
     async with AsyncSessionLocal() as session:
@@ -308,7 +308,7 @@ async def test_traverse_truncation_flag(catalogs_ctx):
 
     from app.models.enums import EdgeEndpointType
     from app.models.fhir.medication import MedicationCatalog
-    from app.services.catalog_graph_service import traverse
+    from app.services.catalog.catalog_graph_service import traverse
 
     metformin_id = await catalogs_ctx.db.scalar(
         select(MedicationCatalog.id).where(

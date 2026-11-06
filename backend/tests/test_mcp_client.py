@@ -380,6 +380,30 @@ class TestExtractResult:
         assert out.startswith("[MCP tool error]")
 
 
+class TestToolInputSchema:
+    def test_prefers_the_snake_case_field(self):
+        from app.extensions.builtin.mcp_client.tool_adapter import _tool_input_schema
+
+        schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+        tool = MagicMock()
+        tool.input_schema = schema
+        tool.inputSchema = {"type": "object", "properties": {"legacy": {}}}
+        assert _tool_input_schema(tool) == schema
+
+    def test_falls_back_to_the_legacy_field(self):
+        from app.extensions.builtin.mcp_client.tool_adapter import _tool_input_schema
+
+        schema = {"type": "object", "properties": {"q": {"type": "string"}}}
+        tool = MagicMock(spec=["inputSchema"])
+        tool.inputSchema = schema
+        assert _tool_input_schema(tool) == schema
+
+    def test_missing_schema_is_none(self):
+        from app.extensions.builtin.mcp_client.tool_adapter import _tool_input_schema
+
+        assert _tool_input_schema(MagicMock(spec=[])) is None
+
+
 class TestDescriptionTruncation:
     def test_long_description_truncated_in_adapter(self):
         pytest.importorskip("fastmcp")
@@ -389,7 +413,7 @@ class TestDescriptionTruncation:
         mcp_tool = MagicMock()
         mcp_tool.name = "tool_with_long_desc"
         mcp_tool.description = long_desc
-        mcp_tool.inputSchema = {"type": "object", "properties": {}}
+        mcp_tool.input_schema = {"type": "object", "properties": {}}
         mcp_tool.tags = None
         mcp_tool.annotations = None
 
@@ -569,7 +593,6 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         mcp_provider = MagicMock()
-        mcp_provider.supports_tools.return_value = True
 
         async def fake_get_tools(integration):
             t = MagicMock()
@@ -607,7 +630,6 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         provider = MagicMock()
-        provider.supports_tools.return_value = True
 
         async def fake_get_tools(integration):
             if integration is bad:
@@ -641,7 +663,6 @@ class TestAggregator:
         db.execute = AsyncMock(return_value=result)
 
         provider = MagicMock()
-        provider.supports_tools.return_value = True
 
         async def fake_get_tools(integration):
             t1 = MagicMock()

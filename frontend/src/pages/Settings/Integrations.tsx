@@ -7,6 +7,7 @@ import { Search, LayoutGrid, Plug, Settings } from 'lucide-react';
 import ConfigFlowModal from '../../components/integrations/ConfigFlowModal';
 import IntegrationDocsDialog from '../../components/integrations/IntegrationDocsDialog';
 import BrowseIntegrationsModal from '../../components/integrations/BrowseIntegrationsModal';
+import CloudCalendarsCard from '../../components/integrations/CloudCalendarsCard';
 import { instanceGroups } from '../../components/integrations/integrationViews';
 import { IntegrationInstancesList } from '../../components/ui/integrations';
 import { NoPatientState } from '../../components/ui/NoPatientState';
@@ -75,6 +76,8 @@ const Integrations: React.FC = () => {
         subtitle={t('integrations.subtitle', 'Manage your connected health data sources.')}
         icon={<Plug className="w-8 h-8" />}
       />
+
+      <CloudCalendarsCard />
 
       {/* Active Integrations — the kit's grouped instances list (G1: one
           extension, N configured occurrences). Details/remove stay app

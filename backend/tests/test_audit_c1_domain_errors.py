@@ -29,7 +29,7 @@ from app.main import domain_error_handler
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
+from app.services.auth.access import check_patient_access
 
 
 def test_hierarchy_status_codes():

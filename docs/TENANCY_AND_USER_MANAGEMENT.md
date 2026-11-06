@@ -172,31 +172,72 @@ python backend/scripts/create_system_admin.py --email admin@example.com --passwo
 
 ## 7. Data Deletion Semantics
 
-The schema enforces cascading deletes so data cannot be orphaned.
+Hard delete is the default (constitution rule 10). Deletion runs through one
+ordered **erasure walker** — children before parents, the subject row last —
+rather than scattered per-table deletes. The walker writes an
+`erasure_requests` row (the **erasure ledger**), offers the subject's export
+first, and stores the per-table impact report (`report` JSONB,
+`report_schema_version`).
+
+### Erasure requests (`/api/v1/data-lifecycle/erasures`)
+- `subject_type` is `user | patient | tenant`; `dry_run` (the default) returns
+  the impact report **without deleting**. Re-submit with `dry_run=false` to
+  execute.
+- RBAC: `USER` may erase themselves and their own patient; `ADMIN` may erase
+  any user/patient in their tenant; `SYSTEM_ADMIN` may erase any tenant.
+  Cross-tenant subjects are a hidden `404` (existence never leaks).
+- Self-service account deletion is `DELETE /api/v1/users/me`; admin deletion
+  is `DELETE /api/v1/users/{id}` and `DELETE /api/v1/patients/{id}`. All three
+  call the same walker.
+- The walker removes, in one transaction: hypertable rows
+  (`telemetry_data`), checkpoint threads, notification/push rows, chat and
+  proposals, documents (files unlinked first), clinical record tables,
+  integration credentials (sealed `sealed_blob` rows **and** the sealed
+  `user_config` `_oauth`/`api_secret`/`webhook_secret` wrappers), and finally
+  the subject row. `audit_events` rows survive as proof-of-existence but their
+  JSONB diff is redacted.
+- `done` rows are the ledger. A restore replays them before serving traffic
+  (`scripts/restore.sh` runs `backend/scripts/replay_erasure_ledger.py` right
+  after `pg_restore`; `POST /api/v1/data-lifecycle/ledger/replay` re-runs it on
+  a live instance), so a backup cannot resurrect an erased subject. `tenant_id` on the ledger is
+  `ON DELETE SET NULL` because a tenant erasure must outlive its tenant.
 
 ### Tenant Deletion
-Deleting a `Tenant` row CASCADEs to **all tenant-owned tables** via
-`tenant_id` foreign keys (`ON DELETE CASCADE`). This includes users,
-patients, observations, medications, examinations, documents,
-notification rules, notifications, AI config, chat sessions, etc.
+Deleting a `Tenant` row (`DELETE /api/v1/admin/tenants/{id}`, typed-name
+confirmation) now runs the tenant walker: every tenant-scoped table,
+hypertable rows, push registrations, checkpoint threads and upload/export
+files are removed, then the tenant row. The old manual-telemetry cleanup
+caveat is gone — `telemetry_data`/`telemetry_anomalies` are deleted by
+`tenant_id`, and the daily `purge_orphaned_lifecycle_rows` job sweeps any
+orphan left by a restore.
 
-**Exception**: `telemetry_data` is a TimescaleDB hypertable where FK
-constraints aren't reliably supported, so its `tenant_id` column carries no
-FK. **Telemetry rows are not purged automatically when a tenant is deleted**
-— if you decommission a tenant and must remove its telemetry for
-data-minimization reasons, delete the rows explicitly
-(`DELETE FROM telemetry_data WHERE tenant_id = '…'`).
+### Patient / user Deletion
+A patient erasure removes that entire clinical record (FHIR rows,
+examinations, documents and their files, clinical events and links,
+telemetry, notifications, chat, proposals, layouts, integration secrets).
+A user erasure additionally removes the account, every patient it owns,
+sessions, push registrations, export/import jobs and artifacts, and
+anonymizes their audit/AI traces.
 
-### Patient Deletion
-Deleting a `Patient` CASCADEs to **their entire clinical record**:
-medications, allergies, clinical events, examinations, documents,
-devices, chat sessions, notification rules, notifications, layouts, and
-user integrations. No patient-owned row is orphaned.
+### Retention
+Bounded retention is **data**, not code: `retention_policies` (scope = class
+or table, action `delete | anonymize`, `days`, `timestamp_column`,
+`enabled`) is seeded at boot and editable by a `SYSTEM_ADMIN` through
+`GET/PATCH /api/v1/data-lifecycle/retention-policies`. The daily
+`apply_retention_policies` job reads those rows; changing a row changes the
+next cutoff. Registry-bounded vocabularies (`ai_task_defs`, `proposal_kinds`)
+carry deliberately disabled rows.
 
 ### Soft-Delete (FHIR Facade)
-The 9 FHIR-exposed models (`Patient`, `Observation`, `DiagnosticReport`,
-`Medication`, `AllergyIntolerance`, `Organization`, `Examination`,
-`ClinicalEvent`, `Document`) mix in `SoftDeleteMixin`. The FHIR facade
-sets `deleted_at = now()` instead of hard-deleting; subsequent reads
-return `410 Gone` (not `404 Not Found`) so callers can distinguish
-"never existed" from "was deleted".
+Hard delete remains the rule. Exactly the declared tombstone set mixes in
+`SoftDeleteMixin` — the FHIR-R4-exposed resources (`Patient`, `Observation`,
+`DiagnosticReport`, `Medication`, `AllergyIntolerance`, `Organization`,
+`Device`, `Communication`, `Examination`, `ClinicalEvent`, `Document`,
+`Concept`, `PatientImmunization`). The FHIR facade sets `deleted_at = now()`
+instead of hard-deleting; reads then return `410 Gone` for a deleted resource
+so callers can distinguish "never existed" from "was deleted". The set is
+pinned by `tests/test_schema_parameters.py::test_tombstone_set_is_exactly_the_declared_one`
+and `tests/test_data_lifecycle.py`. A data-subject erasure is **not** a
+facade delete: it hard-deletes the record and keeps the ledger row as the
+proof instead.
+

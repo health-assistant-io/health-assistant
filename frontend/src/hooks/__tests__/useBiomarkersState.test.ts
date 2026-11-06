@@ -5,7 +5,7 @@
  * Three regression guards:
  *   1. STATE observations populate `value.state` + `value.stateDisplay`
  *      (not `value.raw`).
- *   2. The legacy `parseFloat(b.value) || 0` data-corruption is fixed —
+ *   2. The `parseFloat(b.value) || 0` data-corruption is fixed —
  *      string state values no longer collapse to 0.
  *   3. STATE observations dedup by state code (not the null `value.raw`).
  */
@@ -102,8 +102,8 @@ describe('useBiomarkers — STATE biomarker branch', () => {
     expect(obs.value.state).toBeUndefined();
   });
 
-  it('does not collapse a state display string to 0 (legacy parseFloat corruption regression)', async () => {
-    // Drive the legacy document path (doc.entities.biomarkers without
+  it('does not collapse a state display string to 0 (parseFloat corruption regression)', async () => {
+    // Drive the document path (doc.entities.biomarkers without
     // known_biomarkers) — pre-fix this did `parseFloat(b.value) || 0` and
     // silently destroyed "Positive" → 0.
     const { useBiomarkers } = await import('../useBiomarkers');

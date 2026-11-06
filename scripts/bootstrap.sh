@@ -14,6 +14,18 @@
 # attached — so its interactive questions still reach you even though this
 # script's stdin is the curl pipe.
 #
+# The extracted tree and the published images must describe the SAME contract,
+# so the hand-off passes `--image-tag <release>`: image tags come from the
+# release tag (`v0.9.0` → `0.9.0`), while `latest` is built from main. Without
+# that pin a release install runs main's images and dies at the migrate step
+# (env vars renamed, "no password supplied").
+#
+# Re-running against an existing install does not download or overwrite
+# anything: it finds <dir>/scripts/install.sh and runs it instead (which is
+# idempotent — it keeps .env, pulls, `up -d`, waits for the health check). A
+# tarball install that predates image pinning gets `IMAGE_TAG` pinned for that
+# run (and saved in its .env) so a re-run repairs it.
+#
 # It is a small, readable bootstrap on purpose: the heavy lifting stays in
 # scripts/install.sh, which you can read in the extracted directory before
 # it ever runs. Nothing here prompts for sudo and nothing is installed
@@ -109,6 +121,43 @@ sha256_of() {
     fi
 }
 
+# The published image tag that matches a ref: the publish workflow tags release
+# builds X.Y.Z (docker-publish.yml `type=semver`) and branch builds by branch
+# name, and `latest` only from the default branch. Anything else has no image
+# of its own — return nothing so the caller warns instead of inventing a tag.
+image_tag_for_ref() {
+    case "$1" in
+        v[0-9]*.[0-9]*.[0-9]*) printf '%s' "${1#v}" ;;
+        [0-9]*.[0-9]*.[0-9]*) printf '%s' "$1" ;;
+        main|master) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+# The version an existing install's tree declares (same source of truth as
+# scripts/lib-docker.sh tree_version — this script stays standalone).
+installed_version() { # DIR
+    local CFG="$1/backend/app/core/config.py"
+    [ -f "$CFG" ] || return 1
+    sed -n 's/^[[:space:]]*VERSION:[[:space:]]*str[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CFG" | head -n1
+}
+
+# Persist IMAGE_TAG in an existing install's .env (idempotent; leaves every
+# other line alone). Only used for tarball installs whose own installer
+# predates --image-tag.
+pin_env_file() { # DIR TAG
+    local ENVF="$1/.env" TMP
+    [ -f "$ENVF" ] || return 1
+    TMP="$(mktemp)"
+    awk -v t="$2" '
+        /^IMAGE_TAG=/ { print "IMAGE_TAG=" t; seen = 1; next }
+        { print }
+        END { if (!seen) print "IMAGE_TAG=" t }
+    ' "$ENVF" > "$TMP" || { rm -f "$TMP"; return 1; }
+    cat "$TMP" > "$ENVF"
+    rm -f "$TMP"
+}
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -126,9 +175,49 @@ else
     fi
 fi
 
+PIN="$(image_tag_for_ref "$REF")"
+PIN_ARGS=""
+if [ -n "$PIN" ]; then
+    PIN_ARGS="--image-tag $PIN"
+else
+    warn "Ref '$REF' has no published image tag — images fall back to :latest, which may not match this tree."
+fi
+
+# Existing install: never overwrite it, run its own installer instead (keeps
+# .env, pulls, `up -d`, waits for health). Release trees that predate image
+# pinning get the tag pinned so a re-run repairs the migrate failure.
+if [ -d "$DIR" ] && [ -f "$DIR/scripts/install.sh" ]; then
+    info "Existing install found in $DIR — re-running its installer (nothing downloaded)."
+    if [ -n "$PIN" ] && [ ! -d "$DIR/.git" ]; then
+        TREE_TAG="$(installed_version "$DIR")"
+        if [[ "$TREE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            if [ "$TREE_TAG" != "$PIN" ]; then
+                warn "Installed tree is ${TREE_TAG}, latest release is ${REF} — pinning its own images; update later with ./scripts/update-docker.sh."
+            fi
+            if pin_env_file "$DIR" "$TREE_TAG"; then
+                info "Pinned IMAGE_TAG=${TREE_TAG} in $DIR/.env (matches the installed tree)."
+            fi
+            export IMAGE_TAG="$TREE_TAG"
+        else
+            warn "Could not read the installed tree's version — leaving IMAGE_TAG as it is."
+        fi
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then
+        info "Dry run OK — the installer would run next:"
+        echo "    cd $DIR && bash scripts/install.sh ${FORWARD_ARGS[*]:-}"
+        exit 0
+    fi
+    cd "$DIR"
+    if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then
+        exec bash scripts/install.sh ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"} < /dev/tty
+    fi
+    exec bash scripts/install.sh ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"}
+fi
+
 if [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
-    die "Target directory '$DIR' already exists and is not empty.
-    Re-run an existing install instead:  cd $DIR && ./scripts/install.sh
+    die "Target directory '$DIR' already exists and is not empty, and holds no installer to re-run.
+    Move it aside, then re-run this command:
+      mv $DIR ${DIR}.bak
     Or choose another location:          bash -s -- --dir /new/path"
 fi
 
@@ -156,14 +245,17 @@ cd "$DIR"
 
 if [ "$DRY_RUN" -eq 1 ]; then
     info "Dry run OK — everything above is verified. The installer would run next:"
-    echo "    cd $DIR && bash scripts/install.sh ${FORWARD_ARGS[*]:-}"
+    echo "    cd $DIR && bash scripts/install.sh $PIN_ARGS ${FORWARD_ARGS[*]:-}"
     echo "  Re-run it any time:  cd $DIR && ./scripts/install.sh"
     exit 0
 fi
 
 info "Handing off to the official installer (interactive questions go to your terminal)."
-echo
-if [ ! -t 0 ] && [ -e /dev/tty ]; then
-    exec bash scripts/install.sh ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"} < /dev/tty
+if [ -n "$PIN" ]; then
+    info "Images pinned to $PIN (saved in .env by the installer)."
 fi
-exec bash scripts/install.sh ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"}
+echo
+if [ ! -t 0 ] && { : < /dev/tty; } 2>/dev/null; then
+    exec bash scripts/install.sh $PIN_ARGS ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"} < /dev/tty
+fi
+exec bash scripts/install.sh $PIN_ARGS ${FORWARD_ARGS+"${FORWARD_ARGS[@]}"}

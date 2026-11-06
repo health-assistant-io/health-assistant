@@ -18,6 +18,10 @@ def build_workflows(task_assignments: dict[str, Any]) -> dict[str, list[Any]]:
     each value is a ``TaskTypeAssignment`` (or None). Workflows silently skip
     task types that have no assignment, so a workflow is empty when none of
     its constituent tasks are configured.
+
+    The task keys are registry ids; a workflow that names a non-AI engine task
+    (``medication_interaction``) is a bug — those live in
+    :mod:`app.services.engine.engine_task_registry`.
     """
     return {
         "full_reconstruction": [
@@ -28,7 +32,6 @@ def build_workflows(task_assignments: dict[str, Any]) -> dict[str, list[Any]]:
         "magic_fill": [ta for ta in [task_assignments.get("magic_fill_examination")] if ta],
         "clinical_chat": [ta for ta in [task_assignments.get("chat")] if ta],
         "voice_input": [ta for ta in [task_assignments.get("transcription")] if ta],
-        "medication_audit": [ta for ta in [task_assignments.get("medication_interaction")] if ta],
         "biomarker_definition": [ta for ta in [task_assignments.get("define_biomarker")] if ta],
         "medication_definition": [ta for ta in [task_assignments.get("define_medication")] if ta],
     }

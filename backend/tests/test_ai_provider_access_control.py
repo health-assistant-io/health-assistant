@@ -370,3 +370,250 @@ def test_get_provider_endpoint_calls_verify_provider_access():
     # (one per endpoint above).
     calls = src.count("verify_provider_access(") + src.count("verify_model_access(")
     assert calls >= 7, f"Expected at least 7 verify_*_access calls in ai_config.py, found {calls}"
+
+
+# ---------------------------------------------------------------------------
+# B10: caller-supplied tenant_id/user_id on the resolution endpoints
+# ---------------------------------------------------------------------------
+
+TASK = "ocr"
+
+
+def _make_model(model_id, provider_id):
+    from app.models.ai_provider_model import AIModel
+
+    return AIModel(
+        id=model_id,
+        provider_id=provider_id,
+        name="Resolved model",
+        model_name="gpt-4o",
+        description=None,
+        capabilities=["vision"],
+        is_active=True,
+        max_tokens=4096,
+        temperature=None,
+        is_local=False,
+        settings={},
+    )
+
+
+def _make_assignment(task_type, provider_id=None, model_id=None, tenant_id=None, user_id=None):
+    from app.ai.providers.task_defs import task_def_id
+    from app.models.ai_provider_model import AIScope, AITaskAssignment
+    from app.models.ai_task_model import AITaskDef
+
+    assignment = AITaskAssignment(
+        id=uuid4(),
+        task_type_id=task_def_id(task_type),
+        scope=AIScope.TENANT if tenant_id else AIScope.SYSTEM,
+        provider_id=provider_id,
+        model_id=model_id,
+        phi_allowed=False,
+        tenant_id=tenant_id,
+        user_id=user_id,
+    )
+    assignment.task_def = AITaskDef(
+        id=task_def_id(task_type), code=task_type, label_key=f"settings.ai.task_{task_type}"
+    )
+    return assignment
+
+
+@pytest.mark.asyncio
+async def test_active_assignment_rejects_cross_tenant_read(async_client):
+    """B10: a tenant admin cannot resolve another tenant's active assignment."""
+    admin_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="ADMIN")
+    _override_user(admin_a)
+    try:
+        assignment_b = _make_assignment(TASK, tenant_id=TENANT_B)
+        resolve = AsyncMock(return_value=assignment_b)
+        with patch(
+            "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+            new=resolve,
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/task-assignments/active/{TASK}?tenant_id={TENANT_B}"
+            )
+        assert response.status_code == 403, response.text
+        resolve.assert_not_awaited()
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_active_assignment_rejects_other_users_read(async_client):
+    """B10: a USER cannot resolve another user's active assignment."""
+    from app.models.enums import AIScope
+
+    user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
+    _override_user(user_a)
+    try:
+        assignment_b = _make_assignment(TASK, user_id=USER_B)
+        assignment_b.scope = AIScope.USER
+        resolve = AsyncMock(return_value=assignment_b)
+        with patch(
+            "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+            new=resolve,
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/task-assignments/active/{TASK}?user_id={USER_B}"
+            )
+        assert response.status_code == 403, response.text
+        resolve.assert_not_awaited()
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_active_assignment_allows_own_tenant_and_user(async_client):
+    """B10: same-tenant / same-user resolution keeps working."""
+    from app.models.enums import AIScope
+
+    user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
+    _override_user(user_a)
+    try:
+        assignment = _make_assignment(TASK, tenant_id=TENANT_A)
+        assignment.scope = AIScope.TENANT
+        resolve = AsyncMock(return_value=assignment)
+        with patch(
+            "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+            new=resolve,
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/task-assignments/active/{TASK}"
+                f"?tenant_id={TENANT_A}&user_id={USER_A}"
+            )
+        assert response.status_code == 200, response.text
+        assert response.json()["task_type"] == TASK
+        resolve.assert_awaited_once_with(TASK, TENANT_A, USER_A)
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_active_assignment_system_admin_may_read_any_tenant(async_client):
+    """B10: SYSTEM_ADMIN keeps cross-tenant resolution (admin surface)."""
+    from app.models.enums import AIScope
+
+    sysadmin = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="SYSTEM_ADMIN")
+    _override_user(sysadmin)
+    try:
+        assignment_b = _make_assignment(TASK, tenant_id=TENANT_B)
+        assignment_b.scope = AIScope.TENANT
+        with patch(
+            "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+            new=AsyncMock(return_value=assignment_b),
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/task-assignments/active/{TASK}?tenant_id={TENANT_B}"
+            )
+        assert response.status_code == 200, response.text
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_default_for_task_rejects_cross_tenant_read(async_client):
+    """B10: default-for-task must refuse another tenant's resolved config."""
+    admin_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="ADMIN")
+    _override_user(admin_a)
+    try:
+        provider_b = _make_provider(uuid4(), scope="SYSTEM")
+        assignment_b = _make_assignment(TASK, provider_id=provider_b.id, tenant_id=TENANT_B)
+        resolve = AsyncMock(return_value=assignment_b)
+        with (
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+                new=resolve,
+            ),
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
+                new=AsyncMock(return_value=provider_b),
+            ),
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/default-for-task/{TASK}?tenant_id={TENANT_B}"
+            )
+        assert response.status_code == 403, response.text
+        assert "secret-key-XYZ" not in response.text
+        resolve.assert_not_awaited()
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_default_for_task_rejects_other_users_read(async_client):
+    """B10: default-for-task must refuse another user's resolved config."""
+    user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
+    _override_user(user_a)
+    try:
+        provider_a = _make_provider(uuid4(), scope="SYSTEM")
+        assignment = _make_assignment(TASK, provider_id=provider_a.id, user_id=USER_B)
+        resolve = AsyncMock(return_value=assignment)
+        with (
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+                new=resolve,
+            ),
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
+                new=AsyncMock(return_value=provider_a),
+            ),
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/default-for-task/{TASK}?user_id={USER_B}"
+            )
+        assert response.status_code == 403, response.text
+        resolve.assert_not_awaited()
+    finally:
+        _clear_overrides()
+
+
+@pytest.mark.asyncio
+async def test_default_for_task_allows_own_tenant(async_client):
+    """B10: same-tenant resolution still returns provider + model."""
+    from app.models.enums import AIScope
+
+    user_a = MockUser(tenant_id=TENANT_A, user_id=USER_A, role="USER")
+    _override_user(user_a)
+    try:
+        provider_a = _make_provider(uuid4(), scope=AIScope.TENANT, tenant_id=TENANT_A)
+        model_a = _make_model(uuid4(), provider_a.id)
+        assignment = _make_assignment(
+            TASK, provider_id=provider_a.id, model_id=model_a.id, tenant_id=TENANT_A
+        )
+        assignment.scope = AIScope.TENANT
+        with (
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_active_assignment_for_task",
+                new=AsyncMock(return_value=assignment),
+            ),
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_provider",
+                new=AsyncMock(return_value=provider_a),
+            ),
+            patch(
+                "app.api.v1.endpoints.ai_config.AIProviderService.get_model",
+                new=AsyncMock(return_value=model_a),
+            ),
+        ):
+            response = await async_client.get(
+                f"/api/v1/ai-config/default-for-task/{TASK}?tenant_id={TENANT_A}"
+            )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["provider"]["id"] == str(provider_a.id)
+        assert body["model"]["model_name"] == "gpt-4o"
+        assert "secret-key-XYZ" not in response.text
+    finally:
+        _clear_overrides()
+
+
+def test_resolution_endpoints_call_check_requested_scope():
+    """B10 regression: both resolution endpoints guard caller-supplied scope."""
+    src = inspect.getsource(importlib.import_module("app.api.v1.endpoints.ai_config"))
+    for fn_name in (
+        "async def get_active_task_assignment(",
+        "async def get_default_for_task(",
+    ):
+        body = src.split(fn_name, 1)[1].split("\n@router.", 1)[0]
+        assert "check_requested_scope(" in body, f"{fn_name} lost its scope guard"

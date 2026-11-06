@@ -6,7 +6,7 @@
  * across views and unit-tested without rendering any UI.
  *
  * Layer 1 of the modular filter system — see
- * `dev/plans/modular-filter-system-2026-07-14.md`.
+ * `local planning notes/modular-filter-system-2026-07-14.md`.
  */
 import type { ReactNode } from 'react';
 

@@ -23,7 +23,7 @@ from app.schemas.biomarker import (
     CatalogImportPayload,
     UnitCreate,
 )
-from app.services.catalog_import_service import CatalogImportService
+from app.services.catalog.catalog_import_service import CatalogImportService
 
 SEED_PATH = Path(__file__).resolve().parents[1] / "data" / "seeds" / "default_catalog.json"
 

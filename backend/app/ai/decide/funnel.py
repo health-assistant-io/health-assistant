@@ -1,11 +1,11 @@
 """The decision funnel: resolve → create engine → decide → audit (ADR-0032).
 
-Health adaptation of study's Phase 3 reference: async (health's stack), the
-audit row is a structured log line — health has no per-AI-call table yet
-(ledgered in plan 26 §14) — and ``phi_adjacent`` runs the D17 PHI scope
-guard: a PHI-adjacent dispatch resolves ONLY assignments that carry the
-explicit ``phi_allowed`` opt-in; otherwise the point does not run
-(fail-open, ADR-0020 §6).
+Health adaptation of study's Phase 3 reference: async (health's stack),
+``phi_adjacent`` runs the D17 PHI scope guard (a PHI-adjacent dispatch resolves
+ONLY assignments that carry the explicit ``phi_allowed`` opt-in; otherwise the
+point does not run — fail-open, ADR-0020 §6), and every invocation writes one
+``ai_call_logs`` row (plan 4 W3 — the structured log line stays as a live
+diagnostic, the table is the durable audit).
 """
 
 import asyncio
@@ -13,9 +13,12 @@ import contextlib
 import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID
 
+from app.ai.call_audit import CallAuditContext, record_call
 from app.ai.providers.enums import DecisionTransport
+from app.models.enums import AICallStatus
 
 from .registry import (
     REGISTRATIONS,
@@ -38,6 +41,7 @@ from .types import (
     DecisionToolSchema,
     capability_for_questions,
     decision_band,
+    decision_task_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,10 +107,13 @@ class RunDecisionParams:
 
 @dataclass
 class DecisionFunnelDeps(DecisionEngineDeps):
-    """Funnel-level deps — extends the registry deps with nothing extra in
-    health: the audit record is a structured log line, so there is no
-    session factory to route writes through (study's shape kept the field
-    for its ``AiInteraction`` writes)."""
+    """Funnel-level deps.
+
+    The audit write opens its own short-lived session
+    (:func:`app.ai.call_audit.record_call`) so a decision row lands even when the
+    caller's transaction rolls back — the same fail-soft seam the chat gateway
+    uses.
+    """
 
 
 def resolution_transport(resolution: object) -> DecisionTransport | None:
@@ -143,6 +150,43 @@ def _audit_decision(
     )
 
 
+async def _record_decision_call(
+    deps: DecisionFunnelDeps,
+    task_id: str,
+    meta: AuditMeta,
+    outcome: DecisionOutcome | None,
+    started_at: datetime,
+    latency_ms: int,
+    *,
+    error: BaseException | None = None,
+) -> None:
+    """Write the durable ``ai_call_logs`` row for one decision invocation."""
+    from app.ai.call_audit import classify_error
+
+    usage = outcome.usage if outcome is not None and outcome.usage else None
+    if error is None:
+        status, error_class = AICallStatus.OK, None
+    else:
+        status, error_class = classify_error(error)
+    await record_call(
+        CallAuditContext(
+            task_id=task_id,
+            tenant_id=deps.tenant_id,
+            user_id=deps.user_id,
+            provider_id=meta.provider_id,
+            model_id=meta.model_id,
+            model_name=meta.model,
+        ),
+        started_at=started_at,
+        latency_ms=latency_ms,
+        status=status,
+        prompt_tokens=usage.input_tokens if usage else None,
+        completion_tokens=usage.output_tokens if usage else None,
+        error_class=error_class[:80] if error_class else None,
+        meta={"resolved_model": outcome.resolved_model} if outcome is not None else None,
+    )
+
+
 async def run_decision(deps: DecisionFunnelDeps, params: RunDecisionParams) -> DecisionStatus:
     capability = params.capability
     if capability is None:
@@ -173,16 +217,29 @@ async def run_decision(deps: DecisionFunnelDeps, params: RunDecisionParams) -> D
         system_prompt=params.system_prompt,
         catalog_entities=params.catalog_entities,
     )
-    started_at = time.monotonic()
+    started_at = datetime.now(UTC)
+    started_at_mono = time.monotonic()
     try:
         engine = registration.create(resolution, deps)
         outcome = await asyncio.to_thread(engine.decide, request)
     except Exception as error:
-        latency_ms = int((time.monotonic() - started_at) * 1000)
+        latency_ms = int((time.monotonic() - started_at_mono) * 1000)
         _audit_decision(meta, None, latency_ms, failed=True, reason=str(error))
+        await _record_decision_call(
+            deps,
+            decision_task_type(capability),
+            meta,
+            None,
+            started_at,
+            latency_ms,
+            error=error,
+        )
         return DecisionErrorStatus(reason=str(error)[:500], transport=transport.value)
-    latency_ms = int((time.monotonic() - started_at) * 1000)
+    latency_ms = int((time.monotonic() - started_at_mono) * 1000)
     _audit_decision(meta, outcome, latency_ms, failed=False)
+    await _record_decision_call(
+        deps, decision_task_type(capability), meta, outcome, started_at, latency_ms
+    )
     if (
         outcome.resolved_model
         and outcome.resolved_model != resolution.model.model_name

@@ -10,7 +10,7 @@
  * the per-entity code isolated in adapter modules
  * (`features/instances/adapters/*`).
  *
- * See `dev/plans/instance-browser-unified-picker-2026-07-16.md`.
+ * See `local planning notes/instance-browser-unified-picker-2026-07-16.md`.
  */
 import type { FacetDefinition } from '../ui/filters/types';
 import type React from 'react';

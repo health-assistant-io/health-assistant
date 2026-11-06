@@ -138,7 +138,7 @@ def build_multimodal_content(
     """Build the LangChain ``HumanMessage`` content for a chat turn.
 
     Returns a plain ``str`` when there are no images (the common, cheapest
-    path — identical to legacy behaviour). When one or more validated images
+    path — the pre-vision call shape). When one or more validated images
     are present, returns a list of typed content blocks in the OpenAI vision
     message schema:
 

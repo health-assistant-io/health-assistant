@@ -53,8 +53,8 @@ uv run alembic upgrade head
 Real output (the tail):
 
 ```text
-INFO  [alembic.runtime.migration] Running upgrade c1h2a3t4b5r6 -> d1e2c3i4s5i6, Decision models: transport seam + PHI guard.
-INFO  [alembic.runtime.migration] Running upgrade d1e2c3i4s5i6 -> t1e2m3p4r5o6, Temperature becomes optional.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline, Baseline schema — the single root of the health-assistant migration chain.
+INFO  [alembic.runtime.migration] Running upgrade 0001_baseline -> 0002_telemetry, Telemetry aggregate ladder — created once, frozen.
 INFO  [alembic.runtime.migration] Running upgrade t1e2m3p4r5o6 -> c1h2a4t5t6r, Model rows gain the chat_transport seam.
 ```
 

@@ -39,7 +39,7 @@ published schema's `errors.codes` is extracted from the live code):
 |---|---|---|
 | `not_found` | 404 | A foreign or missing session/exam/document/etc. row — patient-scoped isolation means "someone else's" and "doesn't exist" are indistinguishable by design. |
 | `turn_conflict` | 409 | The session's single-flight turn lock is held (retry with a NEW turn, not a replay). |
-| `hitl_conflict` | 409 | The HITL proposal was already resolved. |
+| `hitl_conflict` | 409 | The HITL proposal records a different outcome (a repeat of the same decision is idempotent, 200). |
 | `validation` | 400 | Malformed input or a failed guard. |
 | `stt_failed` | 502 | The upstream speech-to-text provider failed on `/ai/transcribe`. |
 

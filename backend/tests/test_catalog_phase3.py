@@ -179,10 +179,10 @@ async def test_seed_loader_supports_affects_edges():
     Verifies the seed loader resolves biomarker + anatomy endpoints and creates
     AFFECTS rows. Runs the seed stage directly against the test DB.
     """
-    from app.services.seed_service import seed_service
+    from app.services.seed.service import SeedService
 
     async with AsyncSessionLocal() as db:
-        stats = await seed_service.seed_concept_edges(db)
+        stats = await SeedService().seed_concept_edges(db)
         await db.commit()
     # The extended concept_edges.json must process without errors. (Whether
     # AFFECTS rows land depends on the biomarker/anatomy seeds having run; the

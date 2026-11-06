@@ -218,12 +218,20 @@ async def test_get_integration_details(async_client: AsyncClient):
     mock_res_exams = MagicMock()
     mock_res_exams.scalars().all.return_value = []
 
+    # 6. push-result cursor row, 7. per-stream sync health (plan-8 rows).
+    mock_res_push = MagicMock()
+    mock_res_push.scalar_one_or_none.return_value = None
+    mock_res_streams = MagicMock()
+    mock_res_streams.scalars().all.return_value = []
+
     mock_db.execute.side_effect = [
         mock_res_integration,
         mock_res_logs,
         mock_res_exposed,
         mock_res_recent,
         mock_res_exams,
+        mock_res_push,
+        mock_res_streams,
     ]
 
     async def override_get_db():

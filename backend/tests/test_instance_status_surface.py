@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.services.instance_status import instance_status_surface
+from app.services.instances.instance_status import instance_status_surface
 
 
 def _integration(provider: str = "webhook", config: dict | None = None):

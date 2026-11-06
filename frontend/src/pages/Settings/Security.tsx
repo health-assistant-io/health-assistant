@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
-import { Lock, Shield, ShieldCheck, Smartphone, Loader2 } from 'lucide-react';
+import { Lock, Monitor, Shield, ShieldCheck, Smartphone, Loader2 } from 'lucide-react';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { MFAEnrollmentPanel } from '../../components/auth/MFAEnrollmentPanel';
+import { useAuthStore } from '../../store/slices/authSlice';
+import {
+  listMySessions,
+  revokeMySession,
+  type UserSession,
+} from '../../services/sessionService';
 import {
   getMyMfa,
   enrollMyMfa,
@@ -13,8 +19,15 @@ import {
   type MFAEnrollment,
 } from '../../services/mfaService';
 
+function formatSessionDate(value: string | null): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
+
 function Security() {
   const { t } = useTranslation();
+  const logout = useAuthStore((state) => state.logout);
 
   const [status, setStatus] = useState<MFAStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,6 +37,8 @@ function Security() {
   const [disablePassword, setDisablePassword] = useState('');
   const [showDisable, setShowDisable] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<UserSession[] | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
 
   const refresh = async () => {
     try {
@@ -36,6 +51,35 @@ function Security() {
   };
 
   useEffect(() => { refresh(); }, []);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      setSessions(await listMySessions());
+    } catch (err) {
+      console.error('Failed to load sessions:', err);
+      setSessions([]);
+    }
+  }, []);
+
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  const revokeSession = async (session: UserSession) => {
+    setRevoking(session.id);
+    try {
+      await revokeMySession(session.id);
+      if (session.current) {
+        await logout();
+        return;
+      }
+      toast.success(t('settings.sessions_revoked', 'Session revoked'));
+      await loadSessions();
+    } catch (err) {
+      console.error('Failed to revoke session:', err);
+      toast.error(t('settings.sessions_revoke_failed', 'Could not revoke this session.'));
+    } finally {
+      setRevoking(null);
+    }
+  };
 
   const startEnrollment = async () => {
     setBusy(true);
@@ -220,6 +264,64 @@ function Security() {
     </div>
   );
 
+
+  const sessionsCard = (
+    <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 space-y-4">
+      <div className="flex items-center space-x-3">
+        <Monitor className="w-4 h-4 text-gray-400" />
+        <div>
+          <p className="text-sm font-medium text-gray-900 dark:text-dark-text">
+            {t('settings.sessions_title', 'Active sessions')}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-dark-muted">
+            {t('settings.sessions_desc', 'Devices currently signed in to your account. Revoking one signs that device out.')}
+          </p>
+        </div>
+      </div>
+
+      {sessions === null ? (
+        <div className="flex items-center justify-center py-4 text-gray-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+        </div>
+      ) : sessions.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-dark-muted">
+          {t('settings.sessions_empty', 'No other active sessions.')}
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100 dark:divide-dark-border">
+          {sessions.map((session) => (
+            <li key={session.id} className="py-3 flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-dark-text truncate">
+                  {session.client_label || t('settings.sessions_unknown_device', 'Unknown device')}
+                  {session.current && (
+                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                      {t('settings.sessions_current', 'This device')}
+                    </span>
+                  )}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-dark-muted">
+                  {t('settings.sessions_signed_in', 'Signed in')}: {formatSessionDate(session.created_at)}
+                  {session.expires_at && ` · ${t('settings.sessions_expires', 'Expires')}: ${formatSessionDate(session.expires_at)}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => revokeSession(session)}
+                disabled={revoking === session.id}
+                className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+              >
+                {revoking === session.id
+                  ? t('settings.sessions_revoking', 'Revoking…')
+                  : t('settings.sessions_revoke', 'Revoke')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -249,7 +351,12 @@ function Security() {
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex items-center justify-center text-gray-400">
           <Loader2 className="w-5 h-5 animate-spin" />
         </div>
-      ) : mfaCard}
+      ) : (
+        <>
+          {mfaCard}
+          {sessionsCard}
+        </>
+      )}
     </div>
   );
 }

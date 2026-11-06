@@ -15,7 +15,7 @@ from app.models.base import (
     UUIDMixin,
     VersionedMixin,
 )
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 if TYPE_CHECKING:
     pass
@@ -106,15 +106,15 @@ class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin,
     )
 
     __table_args__ = (
-        Index("idx_doc_tenant_owner", "tenant_id", "owner_id"),
+        Index("ix_doc_tenant_owner", "tenant_id", "owner_id"),
         # GIN index on entities JSONB for filtered queries
-        # (analytics_service queries entities["document_category"]).
+        # (analytics queries entities["document_category"]).
         Index(
             "ix_documents_entities_gin",
             sa_text("entities"),
             postgresql_using="gin",
         ),
-        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_documents_progress_bounds"),
+        CheckConstraint("progress BETWEEN 0 AND 100", name="progress_bounds"),
     )
 
     def to_dict(self) -> dict:

@@ -12,8 +12,8 @@ import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
 from app.models.enums import ConceptRelationType, EdgeApprovalStatus, EdgeEndpointType
-from app.services.concept_endpoint_resolver import resolve_endpoints
-from app.services.concept_service import ConceptService
+from app.services.catalog.concept_endpoint_resolver import resolve_endpoints
+from app.services.catalog.concept_service import ConceptService
 
 
 @pytest_asyncio.fixture

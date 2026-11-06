@@ -2,8 +2,8 @@
 
 The checkpoint tables carry no timestamp columns, so pruning derives thread
 age from the owning chat session (``thread_id`` == session id): stale sessions
-(idle beyond ``AI_CHECKPOINT_RETENTION_DAYS``) and orphan threads (session row
-gone) are pruned; live sessions are untouched.
+(idle beyond the ``checkpoints`` retention-policy row, default 30 days) and
+orphan threads (session row gone) are pruned; live sessions are untouched.
 """
 
 from __future__ import annotations

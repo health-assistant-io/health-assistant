@@ -200,25 +200,14 @@ async def test_get_config_summary(async_client):
         mock_instance = MagicMock()
 
         async def mock_get_config_summary(*args, **kwargs):
-            # Return all required fields for AIConfigSummary
+            # AIConfigSummary is registry-keyed (plan 4): no per-task fields.
             return {
                 "providers": [],
                 "models": [],
                 "task_assignments": [],
-                "default": None,
-                "ocr": None,
-                "nlp": None,
-                "medication_interaction": None,
-                "anomaly_detection": None,
-                "fill_biomarker_form": None,
-                "fill_medication_form": None,
-                "magic_fill_examination": None,
-                "define_biomarker": None,
-                "define_medication": None,
-                "suggest_category_icon": None,
-                "generate_category_icon": None,
-                "chat": None,
-                "transcription": None,
+                "tasks": {},
+                "workflows": {},
+                "ai_agent_max_iterations": 20,
             }
 
         mock_instance.get_config_summary = mock_get_config_summary
@@ -228,7 +217,7 @@ async def test_get_config_summary(async_client):
 
         assert response.status_code == 200
         assert "providers" in response.json()
-        assert "ocr" in response.json()
+        assert response.json()["tasks"] == {}
 
     app.dependency_overrides.clear()
 

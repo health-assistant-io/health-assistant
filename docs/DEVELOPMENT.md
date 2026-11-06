@@ -114,7 +114,7 @@ uvicorn app.main:app --reload
 
 ```bash
 cd frontend
-npm run dev
+pnpm run dev
 ```
 
 #### Celery Worker + Beat + Flower
@@ -148,11 +148,14 @@ The `pytest` suite tests the FastAPI backend endpoints asynchronously.
 ### Frontend
 
 ```bash
+# Unit tests (vitest + jsdom; CI runs exactly this — non-watch)
+pnpm exec vitest run
+
 # Build check
-npm run build
+pnpm run build
 
 # Lint check
-npm run lint
+pnpm run lint
 ```
 
 ## Development Workflow
@@ -169,7 +172,7 @@ npm run lint
 
 ## Seed System
 
-All reference/catalog data (medications, clinical event types, allergies, anatomy, the taxonomy, the default biomarker catalog, biomarker panel memberships) is seeded on every application startup by `SeedService.seed_all()` — a single ordered pipeline (`backend/app/services/seed_service.py`). The order is declared in `_SEED_STAGE_NAMES` so dependencies land first (e.g. `concepts` before `concept_edges`; `body_parts` before `concept_edges` which resolve anatomy slugs).
+All reference/catalog data (medications, clinical event types, allergies, anatomy, the taxonomy, the default biomarker catalog, biomarker panel memberships) is seeded on every application startup by `SeedService.seed_all()` — a single ordered pipeline (`backend/app/services/seed/` — the entity-family modules behind `SeedService`). The order is declared in `_SEED_STAGE_NAMES` so dependencies land first (e.g. `concepts` before `concept_edges`; `body_parts` before `concept_edges` which resolve anatomy slugs).
 
 Each stage returns a standard stats contract `{added, updated, skipped, errors}` and is **idempotent** — re-runs reconcile existing rows to the JSON (including a concept's multi-kind tags), so editing a seed file and restarting is the normal way to evolve catalog data. Seed files live under `backend/data/seeds/` and use a standard `{metadata, items}` envelope.
 
@@ -177,14 +180,14 @@ To re-run a single stage against a running DB (without restarting the app):
 ```bash
 cd backend && # (uv manages the environment)
 export PYTHONPATH=.:../
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_concepts())"
+python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed.service import SeedService; asyncio.run(SeedService().seed_concepts())"
 ```
 (replace `seed_concepts` with any of the `_SEED_STAGE_NAMES` methods.)
 
 **Exporting an instance back to seeds** — the inverse of seeding. Build the
 canonical taxonomy/anatomy/catalog in a running instance (UI + AI), then
 snapshot it into `data/seeds/`. `SeedExportService`
-(`backend/app/services/seed_export_service.py`) emits the slug-keyed format
+(`backend/app/services/seed/seed_export_service.py`) emits the slug-keyed format
 for all seed files; output is deterministic so `git diff` is clean.
 ```bash
 python scripts/export_seeds.py --dry-run           # preview counts
@@ -211,7 +214,7 @@ The clinical events system is metadata-driven. To add new clinical event categor
     ```bash
     cd backend && # (uv manages the environment)
     export PYTHONPATH=$PYTHONPATH:.
-    python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed_service import seed_service; asyncio.run(seed_service.seed_clinical_event_types())"
+    python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed.service import SeedService; asyncio.run(SeedService().seed_clinical_event_types())"
     ```
 3.  **UI Auto-Generation**: The `ClinicalEventModal` will automatically render the new category as a tab and the `DynamicMetadataForm` will generate the input fields based on the schema you defined.
 
@@ -362,7 +365,7 @@ Recipes for the most common extension points. Each lives here so the user-facing
 
 ### Extending the setup wizard
 
-Steps are pluggable evaluators in `backend/app/services/setup_checklist_service.py`:
+Steps are pluggable evaluators in `backend/app/services/setup/setup_checklist_service.py`:
 
 ```python
 async def my_evaluator(db, user: TokenData, scope: dict) -> StepResult:
@@ -379,7 +382,7 @@ async def my_evaluator(db, user: TokenData, scope: dict) -> StepResult:
 
 Add it to the right registry tuple — `ROLE_CHECKLISTS[Role.ADMIN]` for role steps, `ENTITY_CHECKLISTS["patient"]` for patient-entity steps. The endpoint, schema, and frontend pick it up automatically (the wizard is data-driven). Guided multi-page steps use `"external_config"` with a `payload_hint={"sub_steps": [{"id", "done", "route"}, …]}` — the frontend's `GuidedExternalStep` renders the checklist with no frontend code. Add the step's title/description to both `frontend/src/locales/{en,el}/common.json` under `setup.steps` / `setup.step_desc`; `inline_form` steps also register a section component in `components/setup/sections/registry.ts`. Patient-entity steps run after `check_patient_access` (`USER` → own patient only).
 
-Key files: `setup_checklist_service.py` (evaluator registries + extension-catalog builder), `schemas/setup_checklist.py`, `api/v1/endpoints/setup_checklist.py`, `services/fhir_extensions.py`, `data/seeds/omb_race_ethnicity.json`; frontend: `pages/Setup/RoleSetupWizard.tsx`, `pages/Patients/PatientSetupWizard.tsx`, `components/setup/**` (drawer, layout, stepper, step renderers, inline sections + registry), `services/setupService.ts`, `types/setup.ts`.
+Key files: `setup_checklist_service.py` (evaluator registries + extension-catalog builder), `schemas/setup_checklist.py`, `api/v1/endpoints/setup_checklist.py`, `services/fhir/fhir_extensions.py`, `data/seeds/omb_race_ethnicity.json`; frontend: `pages/Setup/RoleSetupWizard.tsx`, `pages/Patients/PatientSetupWizard.tsx`, `components/setup/**` (drawer, layout, stepper, step renderers, inline sections + registry), `services/setupService.ts`, `types/setup.ts`.
 
 ### Adding a new notification source
 
@@ -389,7 +392,7 @@ The unified model means **you don't add new "types of notifications" — you add
 2. Call `emit` from your service:
 
 ```python
-from app.services.notification_service import emit
+from app.services.notifications.notification_service import emit
 from app.models.enums import (
     NotificationSource, NotificationType, NotificationCategory,
     NotificationSeverity, RecipientKind,
@@ -414,4 +417,4 @@ The bell, WebSocket fan-out, inbox, admin feed, delivery log, and detail modals 
 
 ### Taxonomy internals (schema + naming)
 
-The taxonomy schema is part of the consolidated Alembic baseline (`alembic/versions/8ddb7ef7ca4d_consolidated_baseline.py`). Legacy link tables (`biomarker_relationships`, `biomarker_event_correlations`, `anatomy_relations`) were folded into `concept_edges` — biomarker↔biomarker → `CORRELATES_WITH`, biomarker↔event-type → `MONITORS` (with `correlation_type`/`description` on the edge's `properties` JSONB); the clinical-event binding endpoints and the recommended-biomarker insight query `concept_edges`. Concept FK naming is pinned by `backend/tests/test_concept_fk_naming_convention.py`.
+The taxonomy schema is part of the Alembic baseline (`alembic/versions/0001_baseline.py`). Legacy link tables (`biomarker_relationships`, `biomarker_event_correlations`, `anatomy_relations`) were folded into `concept_edges` — biomarker↔biomarker → `CORRELATES_WITH`, biomarker↔event-type → `MONITORS` (with `correlation_type`/`description` on the edge's `properties` JSONB); the clinical-event binding endpoints and the recommended-biomarker insight query `concept_edges`. Concept FK naming is pinned by `backend/tests/test_concept_fk_naming_convention.py`.

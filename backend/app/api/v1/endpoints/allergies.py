@@ -24,12 +24,12 @@ from app.schemas.allergy import (
     AllergyIntoleranceUpdate,
 )
 from app.schemas.user import TokenData
-from app.services import allergy_service
-from app.services.access import (
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import (
     check_allergy_access,
     check_patient_access,
 )
-from app.services.audit_service import audit_read, log_audit_action
+from app.services.clinical import allergy_service
 
 router = APIRouter(prefix="/allergies", tags=["allergies"])
 
@@ -130,7 +130,7 @@ async def reprocess_allergy(
 
 # ---------------------------------------------------------------------------
 # Cross-patient "active alerts" feed (allergy-unique; keeps the dashboard card
-# and the legacy /alerts surface working).
+# and the /alerts surface working).
 # ---------------------------------------------------------------------------
 
 

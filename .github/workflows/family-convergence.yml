@@ -3,29 +3,35 @@ name: Family convergence
 # Family-convergence gate (plan 20 D9 / reference-architecture.md) — tool
 # config parity, prefixed-only env, migrations home, no legacy markers,
 # packaging shape, contract gates. Script must stay byte-identical across
-# family repos (sha-checked by dev/scripts/verify-wiring.sh).
+# family repos (sha-checked by the family wiring verifier).
 
 on:
   push:
     branches: [main]
     paths:
       - 'backend/**'
-      - 'frontend/src/**'
+      - 'frontend/**'
       - 'scripts/**'
       - 'docker/**'
+      - 'docs/**'
+      - 'README.md'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'scripts/check-family-convergence.sh'
+      - 'scripts/check-no-legacy.sh'
       - '.github/workflows/family-convergence.yml'
   pull_request:
     paths:
       - 'backend/**'
-      - 'frontend/src/**'
+      - 'frontend/**'
       - 'scripts/**'
       - 'docker/**'
+      - 'docs/**'
+      - 'README.md'
       - 'pyproject.toml'
       - 'uv.lock'
       - 'scripts/check-family-convergence.sh'
+      - 'scripts/check-no-legacy.sh'
       - '.github/workflows/family-convergence.yml'
   workflow_dispatch:
 
@@ -42,6 +48,18 @@ jobs:
         run: bash scripts/check-extensions-structure.sh --strict
       - name: Run family-convergence gate
         run: bash scripts/check-family-convergence.sh --self
+
+  no-legacy-extras:
+    name: No-legacy extras (plan 9 W6)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gate self-test (planted red hosts)
+        run: bash scripts/check-no-legacy.sh --self-test
+      - name: Run the repo-specific no-legacy gate
+        run: bash scripts/check-no-legacy.sh
 
   extension-conformance:
     name: Extension conformance wall (ADR-0040)

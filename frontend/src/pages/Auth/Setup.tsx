@@ -70,7 +70,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
 
   // If the system is already initialized, there's nothing to set up —
   // bounce to login. This also guards against someone bookmarking /setup.
-  // The status response carries token_mode (setup_url_hint is deprecated —
+  // The status response carries token_mode (setup_url_hint is always null —
   // always null since audit 2026-08 C-1; launchers compose the ?token= URL
   // themselves, which the effect below pre-fills from).
   useEffect(() => {
@@ -88,7 +88,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
         const status = res.data as SetupStatus;
         if (status.initialized) {
           // Embedded in the login node: the caller decides (it flips back
-          // to the login form). Standalone (legacy /setup bookmark): bounce.
+          // to the login form). Standalone (a /setup bookmark): bounce.
           if (embedded) {
             onAlreadyInitialized?.();
           } else {

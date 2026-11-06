@@ -14,7 +14,7 @@ import io
 import pytest
 from fastapi import HTTPException
 
-from app.services.document_service import (
+from app.services.documents.document_service import (
     _read_capped,
     _validate_upload_extension,
     should_serve_inline,

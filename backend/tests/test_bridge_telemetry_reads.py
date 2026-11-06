@@ -33,6 +33,9 @@ from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
 
 LOINC = "http://loinc.org"
+DEVICE_WATCH_1 = uuid.uuid4()
+DEVICE_WATCH_2 = uuid.uuid4()
+DEVICE_WATCH_3 = uuid.uuid4()
 
 
 async def _purge_tenant_data(*tenant_ids: uuid.UUID) -> None:
@@ -81,6 +84,7 @@ async def bridge_with_telemetry():
     """
     tenant_id = uuid.uuid4()
     tenant_b = uuid.uuid4()
+    patient_other_tenant = uuid.uuid4()
     user_id = uuid.uuid4()
     patient_a = uuid.uuid4()
     patient_b = uuid.uuid4()
@@ -177,33 +181,39 @@ async def bridge_with_telemetry():
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-1",
+                device_id=DEVICE_WATCH_1,
                 timestamp=_dt(1, 8),
                 slug="heart-rate",
                 value=72,
+                raw_value=72,
                 unit="bpm",
+                raw_unit="bpm",
                 patient_id=patient_a,
             )
         )
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-1",
+                device_id=DEVICE_WATCH_1,
                 timestamp=_dt(2, 8),
                 slug="heart-rate",
                 value=88,
+                raw_value=88,
                 unit="bpm",
+                raw_unit="bpm",
                 patient_id=patient_a,
             )
         )
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-1",
+                device_id=DEVICE_WATCH_1,
                 timestamp=_dt(3, 8),
                 slug="heart-rate",
                 value=95,
+                raw_value=95,
                 unit="bpm",
+                raw_unit="bpm",
                 patient_id=patient_a,
             )
         )
@@ -211,24 +221,38 @@ async def bridge_with_telemetry():
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-2",
+                device_id=DEVICE_WATCH_2,
                 timestamp=_dt(1, 9),
                 slug="heart-rate",
                 value=130,
+                raw_value=130,
                 unit="bpm",
+                raw_unit="bpm",
                 patient_id=patient_b,
             )
         )
-        # Second-tenant heart-rate (NULL patient_id, single-patient tenant) — cross-tenant isolation.  # noqa: E501 -- long template/message string; reflow when touched
+        db.add(
+            Patient(
+                id=patient_other_tenant,
+                tenant_id=tenant_b,
+                name={"family": "Other", "given": ["Tenant"]},
+                gender="UNKNOWN",
+            )
+        )
+        await db.flush()
+
+        # Second-tenant heart-rate — cross-tenant isolation.
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_b,
-                device_id="watch-3",
+                device_id=DEVICE_WATCH_3,
                 timestamp=_dt(1, 9),
                 slug="heart-rate",
                 value=60,
+                raw_value=60,
                 unit="bpm",
-                patient_id=None,
+                raw_unit="bpm",
+                patient_id=patient_other_tenant,
             )
         )
 
@@ -476,9 +500,8 @@ async def test_latest_respects_merged_limit(bridge_with_telemetry):
 async def _seed_patient_telemetry(n_patients: int) -> dict:
     """Seed a tenant with ``n_patients`` Patient rows, a bridge integration
     bound to the first patient, a telemetry ``heart-rate`` def, and two
-    telemetry rows for the bound patient's slug: one attributed to the bound
-    patient, one legacy (``patient_id=NULL``). Used to exercise the
-    single-patient-tenant fallback in ``_patient_scope_predicate``.
+    telemetry rows on the bound patient's slug: both attributed to the bound
+    patient (``patient_id`` is NOT NULL on the hypertable), one per device.
     """
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
@@ -539,24 +562,28 @@ async def _seed_patient_telemetry(n_patients: int) -> dict:
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-1",
+                device_id=DEVICE_WATCH_1,
                 timestamp=_dt(1, 8),
                 slug=slug,
                 value=72,
+                raw_value=72,
                 unit="bpm",
+                raw_unit="bpm",
                 patient_id=patient_ids[0],
             )
         )
-        # Legacy NULL-patient row (same tenant) — the fallback candidate.
+        # Second device for the same patient/slug — still bound-patient scoped.
         db.add(
             TelemetryDataModel(
                 tenant_id=tenant_id,
-                device_id="watch-0",
+                device_id=DEVICE_WATCH_1,
                 timestamp=_dt(1, 9),
                 slug=slug,
                 value=60,
+                raw_value=60,
                 unit="bpm",
-                patient_id=None,
+                raw_unit="bpm",
+                patient_id=patient_ids[0],
             )
         )
         await db.commit()
@@ -567,49 +594,6 @@ async def _seed_patient_telemetry(n_patients: int) -> dict:
         "bound_patient": patient_ids[0],
         "n_patients": n_patients,
     }
-
-
-@pytest.mark.asyncio
-async def test_legacy_null_patient_telemetry_visible_in_single_patient_tenant():
-    """In a tenant with exactly one patient, the legacy NULL-patient_id row is
-    matched by the single-patient fallback (mirrors migrate_biomarker_data)."""
-    ctx = await _seed_patient_telemetry(n_patients=1)
-    try:
-        integration = await _load_integration(ctx["integration_id"])
-        provider = HealthAssistantBridgeProvider()
-
-        result = await provider.handle_api_request(
-            integration=integration,
-            path="observations",
-            method="GET",
-            request=_get_request({"biomarker": ctx["slug"]}),
-        )
-
-        assert len(result["data"]) == 2, "attributed + legacy NULL row (fallback)"
-    finally:
-        await _purge_tenant_data(ctx["tenant_id"])
-
-
-@pytest.mark.asyncio
-async def test_legacy_null_patient_telemetry_hidden_in_multi_patient_tenant():
-    """In a multi-patient tenant the fallback does NOT apply: only the row
-    attributed to the bound patient is visible (cross-patient isolation)."""
-    ctx = await _seed_patient_telemetry(n_patients=2)
-    try:
-        integration = await _load_integration(ctx["integration_id"])
-        provider = HealthAssistantBridgeProvider()
-
-        result = await provider.handle_api_request(
-            integration=integration,
-            path="observations",
-            method="GET",
-            request=_get_request({"biomarker": ctx["slug"]}),
-        )
-
-        assert len(result["data"]) == 1, "legacy NULL row excluded in multi-patient tenant"
-        assert result["data"][0]["patient_id"] == str(ctx["bound_patient"])
-    finally:
-        await _purge_tenant_data(ctx["tenant_id"])
 
 
 @pytest.mark.asyncio

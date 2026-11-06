@@ -27,7 +27,7 @@ from app.models.base import (
     UUIDMixin,
     VersionedMixin,
 )
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 
 class CommunicationModel(

@@ -31,6 +31,14 @@ curl -fsSL https://health-assistant.io/install.sh | bash -s -- --dir /srv/ha
 The clone-based flow below does exactly the same thing and stays the source
 of truth — the one-liner is a convenience wrapper around it.
 
+Re-running that command is safe: when the install directory already holds an
+install, the bootstrap skips the download and hands off to that install's own
+`scripts/install.sh` — which keeps `.env`, refreshes the images, restarts the
+stack, and waits for the health check. Images are **pinned to the release the
+tarball came from** (`v0.9.0` → `IMAGE_TAG=0.9.0`), because `:latest` is built
+from `main`; a release tree running main images fails at the database
+migration step.
+
 ### Clone-based install
 
 1. **Install Docker and Docker Compose**, then **clone the repository:**
@@ -48,6 +56,8 @@ of truth — the one-liner is a convenience wrapper around it.
 
    The installer:
    - checks that Docker is installed and running,
+   - checks every host port the stack publishes and names the `.env` variable
+     to change when one is taken (``--auto-ports`` picks free ports for you),
    - generates your `.env` file — it asks **one question** (the public app URL — press Enter on this machine to accept `http://localhost`), generates all secure keys and passwords automatically, and skips advanced options you don't need,
    - starts the standalone stack and waits until the backend reports healthy,
    - prints the URLs to open.
@@ -129,7 +139,7 @@ Three `.env` variables redirect the images without editing the compose file:
 **Pin a release** — recommended for production, so an upstream `latest` push can't change your running version. Add to `.env`:
 
 ```bash
-IMAGE_TAG=0.8.0   # example — use a tag published to your registry (see CHANGELOG.md)
+IMAGE_TAG=0.9.0   # example — use a tag published to your registry (see CHANGELOG.md)
 ```
 
 **Run from source** — no registry, offline, or a modified build. Build and tag the images locally first; `docker compose up` then reuses them:
@@ -162,7 +172,7 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Configure firewall rules
 - [ ] Set up database backups — built in: `scripts/backup.sh` / `scripts/restore.sh`, plus the in-app [Export & Import](./EXPORT_IMPORT.md) (FHIR Bundle + ZIP with SHA256 manifest)
 - [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`)
-- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, HSTS)
+- [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, a `Content-Security-Policy`, HSTS); the SPA document gets the same policy from the frontend image (`public/serve.json` → `serve`). If you front the SPA with your own proxy, pass those headers through — do not replace them with a weaker policy
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation); unsigned requests are rejected
 - [ ] Set `HA_TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
@@ -203,7 +213,62 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml pull
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
-The application runs its seed pipeline on every boot, so catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist).
+The application runs its seed pipeline on every boot, so catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist). v0.9.0 is the exception: its migration chain was squash-replaced, so a pre-0.9 database is refused — see [Upgrading from v0.8.0](#upgrading-from-v080).
+
+### Upgrading from v0.8.0
+
+v0.9.0 is a breaking release for existing installations. It replaced the
+published migration chain with a single `0001_baseline`, renamed the
+environment namespace, and moved to PostgreSQL 16. **There is no in-place
+upgrade from v0.8.0.** The migrate service refuses a database created by an
+older release, and `./scripts/upgrade-check.sh` reports the same thing before
+anything is pulled:
+
+```text
+This database was created by Health Assistant v0.8.0 or earlier. v0.9.0
+replaced the migration chain with 0001_baseline, so the recorded revision(s)
+... no longer exist and an in-place upgrade is not supported.
+```
+
+Pick one route:
+
+**1. No data to keep** (a demo or throwaway install): back up `.env`, then
+
+```bash
+./scripts/install.sh --reset --yes
+```
+
+**2. Keep your data** — back up first (`./scripts/backup.sh`), then either:
+
+- **Clinical data:** export from the running v0.8.0 instance
+  (Export & Import → FHIR Bundle or ZIP), start a fresh v0.9.0 install, and
+  import the bundle. This is the supported data-preserving route.
+- **Full database:** a v0.8.0 dump cannot be restored into the v0.9.0 schema
+  as-is (tables, columns, types and constraints changed). Copy rows
+  table-by-table into a fresh v0.9.0 database after it has migrated; there is
+  no automated transform for the pre-0.9 shape.
+
+Environment names renamed in v0.9.0 (a stale name is ignored; the
+`[blocked]`/`[warn]` output of `upgrade-check.sh` names each replacement):
+
+| v0.8.0 | v0.9.0 |
+|---|---|
+| `APP_ENV` | `HA_APP_ENV` |
+| `SECRET_KEY` | `HA_SESSION_KEY` + `HA_REFRESH_KEY` + `HA_DATA_KEY` (separate keys) |
+| `INTEGRATION_SECRET_KEY` | `HA_DATA_KEY` — **same Fernet value** so sealed credentials and MFA stay decryptable |
+| `INTEGRATION_SECRET_KEY_PREVIOUS` | `HA_DATA_KEY_PREVIOUS` |
+| `DATABASE_URL` | `HA_DATABASE_URL` |
+| `UPLOAD_DIR` | `HA_UPLOAD_DIR` |
+| `TRUSTED_PROXY_COUNT` | `HA_TRUSTED_PROXY_COUNT` |
+| `DEMO_MODE` / `DEMO_USER_EMAIL` / `DEMO_USER_PASSWORD` | `HA_DEMO_MODE` / `HA_DEMO_EMAIL` / `HA_DEMO_PASSWORD` |
+| `JWT_EXPIRATION_HOURS` | `HA_AUTH_ACCESS_TTL_MINUTES` (minutes, not hours) |
+| `OAUTH_ISSUER`, `AI_CHECKPOINT_RETENTION_DAYS` | retired |
+
+The PostgreSQL data directory is also not compatible (v0.8.0 ran pg14,
+v0.9.0 runs pg16) — see [`docker/README.md` → "Upgrading from pg14"](../docker/README.md#upgrading-from-pg14).
+
+Re-running the one-line installer repairs the image pin and the `.env`
+contract; it does **not** migrate a pre-0.9 database.
 
 ### From source (development)
 
@@ -222,42 +287,70 @@ cd backend && uv sync
 Frontend:
 
 ```bash
-cd frontend && npm install
+cd frontend && pnpm install
 ```
 
 ## Troubleshooting
 
 ### Port Already in Use
 
-Find what's holding the port (run the one for your port):
+The installer checks every published host port **before** it pulls or starts
+anything, and names the `.env` variable to change:
+
+```
+Port conflict — the stack cannot start:
+  redis: host port 6379 is in use → set REDIS_PORT=<free port> in .env
+```
+
+| Port | Variable | Default |
+|---|---|---|
+| 80 | `HTTP_PORT` | 80 — the single public port (nginx) |
+| 5432 | `POSTGRES_PORT` | 5432 (loopback) |
+| 6379 | `REDIS_PORT` | 6379 (loopback) |
+| 8000 | `BACKEND_PORT` | 8000 (loopback) |
+| 3000 | `FRONTEND_PORT` | 3000 (loopback) |
+| 5555 | `FLOWER_PORT` | 5555 (loopback) |
+
+Change the variable in `.env` and re-run `./scripts/install.sh` (it reuses your
+`.env`), or let the installer pick free ports itself:
 
 ```bash
-lsof -i :80
+./scripts/install.sh --auto-ports
+```
+
+Find what is holding a port:
+
+```bash
+ss -ltnp | grep ':6379'
 ```
 
 ```bash
-lsof -i :8000
+lsof -i :6379
 ```
 
-```bash
-lsof -i :3000
-```
-
-Then kill it, e.g. for port 80:
-
-```bash
-lsof -ti:80 | xargs kill -9
-```
+If the message says the port is a *literal* in
+`docker/docker-compose.standalone.yml`, edit it there — older release tarballs
+hardcode the gateway's port.
 
 ### Backend Not Becoming Healthy (first boot)
 
-The installer waits up to three minutes. If it times out, check the backend logs for the cause:
+The installer waits up to three minutes, and it stops early when a service has
+already exited: it prints the state of every container plus the last log lines
+of the failed ones. When it times out instead, inspect the backend and the
+migration step:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend --tail=100
 ```
 
-Common causes: an existing `.env` with stale or placeholder secrets, or a port conflict (see above). Delete `.env` and re-run `./scripts/install.sh` to regenerate clean secrets.
+```bash
+docker compose --env-file .env -f docker/docker-compose.standalone.yml logs migrate --tail=50
+```
+
+Common causes: a port conflict (see above — normally caught before startup), or
+a database volume left behind by a previous install whose password no longer
+matches `.env` (the installer offers to reset it). Deleting `.env` is not the
+fix — it discards the keys and credentials the data was created with.
 
 ### Backend Import Errors
 

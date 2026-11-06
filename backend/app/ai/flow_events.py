@@ -1,10 +1,10 @@
 # VENDORED FILE — family canonical (ADR-0031, plan 25). Source of truth:
-# dev/contracts/flow_events.py; synced byte-identical to
+# the family flow-event contract; synced byte-identical to
 # backend/app/ai/flow_events.py in study-assistant, health-assistant/core
-# and career-assistant by dev/scripts/sync-flow-events.sh, sha-checked by
-# dev/scripts/verify-wiring.sh. NEVER edit the vendored copy in-repo —
-# change the dev canonical, then re-run the sync (contract changes = one
-# dev commit + one sync run, never per-repo edits).
+# and career-assistant by the family sync tooling, sha-checked by
+# the family wiring verifier. NEVER edit the vendored copy in-repo —
+# change the family canonical, then re-run the sync (contract changes = one
+# canonical commit + one sync run, never per-repo edits).
 """Family chat-flow event vocabulary + builders — the shared core
 (guidelines ai-features §5, plan 25).
 

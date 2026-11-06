@@ -23,7 +23,7 @@ import httpx
 from app.extensions.errors import ExtensionError
 from app.extensions.runtime.http import guarded_request, http_request
 from app.schemas.fhir.observation import ObservationCreate
-from app.services.fhir_helpers import _as_list, _flatten_interpretation
+from app.services.fhir.fhir_helpers import _as_list, _flatten_interpretation
 
 logger = logging.getLogger(__name__)
 

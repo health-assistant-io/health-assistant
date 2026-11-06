@@ -1,14 +1,12 @@
-"""Source-level guard: the bridge provider routes observations through the
-shared ``apply_telemetry_split`` helper rather than inlining a stale copy.
+"""Source-level guard: the bridge routes observations through the one ingest
+funnel rather than inlining a stale split copy.
 
 Regression guard for the bug where ``_process_and_save_sync_data``
 constructed ``TelemetryDataModel(heart_rate=, steps=, calories=, data=)``
 — kwargs removed in the long-format hypertable rewrite (migration
-``t1e2l3o4n5g6``). The model now takes ``slug=, value=, unit=, patient_id=``,
-so the inlined copy raised ``TypeError`` on any wearable record (silently
-swallowed into a ``failed`` sync log). The behavioural correctness of the
-split helper itself is covered by ``test_integration_sync_telemetry_split.py``;
-these tests pin the wiring (bridge → shared helper, no inline construction).
+``0001_baseline``). The funnel (``services/integration_ingest.py``) owns the
+row shape, dedup and mapping-gap recording for every inbound path; these
+tests pin the wiring (bridge → funnel, no inline construction).
 """
 
 import ast
@@ -33,31 +31,31 @@ def _calls_to(name: str) -> list[ast.Call]:
     return out
 
 
-def test_bridge_imports_apply_telemetry_split():
-    """The shared helper is imported and called in the sync path."""
-    inspect.getsource(bridge_module)
-    assert "from app.services.integration_sync_service import apply_telemetry_split", (
-        "bridge must import the shared apply_telemetry_split helper"
-    )
-    assert _calls_to("apply_telemetry_split"), (
-        "bridge must call apply_telemetry_split in its sync path"
+def test_bridge_routes_observations_through_the_ingest_funnel():
+    """The one inbound path is imported and called in the sync path."""
+    source = inspect.getsource(bridge_module)
+    assert (
+        "from app.services.integration.integration_ingest import ingest_observations" in source
+    ), "bridge must import the ingest funnel"
+    assert _calls_to("ingest_observations"), "bridge must call ingest_observations in its sync path"
+    assert "apply_telemetry_split" not in source, (
+        "the bridge must not carry its own split path — the funnel owns it"
     )
 
 
 def test_bridge_does_not_construct_telemetry_model_directly():
     """The bridge must not construct ``TelemetryDataModel(...)`` itself — the
-    shared ``apply_telemetry_split`` helper owns the long-format row shape
-    (``slug=, value=, unit=, patient_id=``). Pre-fix the bridge inlined
-    ``TelemetryDataModel(heart_rate=, steps=, calories=, data=)`` using kwargs
-    removed in migration ``t1e2l3o4n5g6`` → ``TypeError`` on every wearable
-    record. AST inspection (not substring) so explanatory comments referencing
-    the old pattern aren't false positives.
+    ingest funnel owns the long-format row shape (``slug=, value=, unit=,
+    patient_id=``). Pre-fix the bridge inlined ``TelemetryDataModel(heart_rate=,
+    steps=, calories=, data=)`` using kwargs removed by the long-format
+    baseline → ``TypeError`` on every wearable record. AST inspection (not
+    substring) so explanatory comments aren't false positives.
     """
     constructions = _calls_to("TelemetryDataModel")
     assert not constructions, (
         f"bridge must not construct TelemetryDataModel directly "
         f"(found {len(constructions)} call(s)); route through "
-        f"apply_telemetry_split which owns the row shape"
+        f"the ingest funnel which owns the row shape"
     )
 
 

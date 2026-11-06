@@ -1,7 +1,7 @@
 export type CodingSystemType = 'loinc' | 'snomed' | 'custom';
 
 /** Discriminator — every Biomarker is either a numeric measurement
- * (``quantity`` — the legacy default) or a categorical state drawn from a
+ * (``quantity`` — the default) or a categorical state drawn from a
  * controlled vocabulary (``state`` — Positive/Negative/Detected/…). See
  * docs/STATE_BIOMARKERS.md. Drives branch points in ``useBiomarkers``,
  * the dashboard cards, and ``BiomarkerForm``. */

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from app.models.enums import BiomarkerValueType, CodingSystem, Gender
 
 # Safe identifier for biomarker slugs. The slug is interpolated into raw SQL
-# in the telemetry analytics path (see app/services/analytics_service.py), so
+# in the telemetry analytics path (see app/services/analytics/trends.py), so
 # it must be a strict identifier — no quotes, semicolons, spaces, or other
 # characters that could break out of the interpolation context.
 _SLUG_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
@@ -63,7 +63,7 @@ class BiomarkerBase(BaseModel):
     # round-trip through ``biomarker_category_to_concept_slug`` (which only
     # swaps ``_``→``-``), so without this slug the class link is silently
     # dropped on restore. CatalogImportService resolves this ahead of the
-    # legacy ``category`` string when both are present.
+    # ``category`` string when both are present.
     class_concept_slug: str | None = None
     aliases: list[str] = []
     info: str | None = None
@@ -71,7 +71,7 @@ class BiomarkerBase(BaseModel):
     reference_range_max: float | None = None
     is_telemetry: bool | None = False
     # Discriminator (plan state-biomarkers-2026-08-05). QUANTITY = numeric
-    # value + unit + numeric reference ranges (the legacy default). STATE =
+    # value + unit + numeric reference ranges (the default). STATE =
     # categorical value drawn from ``allowed_states`` (the normal set is
     # ``is_normal=True`` rows, replacing numeric ref ranges).
     value_type: BiomarkerValueType = BiomarkerValueType.QUANTITY
@@ -250,7 +250,7 @@ class BiomarkerReferenceRangeBase(BaseModel):
 
     A NULL dimension means "any value" for that axis (NULL ``sex`` → both
     sexes, NULL ``age_*`` → unbounded on that side, NULL ``unit_id`` → any
-    unit). The resolver (``app.services.reference_ranges``) picks the
+    unit). The resolver (``app.services.biomarkers.reference_ranges``) picks the
     most-specific applicable row for a patient.
     """
 

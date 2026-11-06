@@ -18,7 +18,10 @@ def integration_mock():
     integration.patient_id = uuid4()
     integration.provider = "health_assistant_bridge"
     integration.instance_name = "Test Bridge"
-    integration.user_config = {"_sync_state": {"last_timestamp": "2024-06-15T12:00:00Z"}}
+    integration.user_config = {}
+    from app.services.integration import integration_sync_state as sync_state
+
+    sync_state.set_cursor(integration, "telemetry", "2024-06-15T12:00:00Z")
     integration.is_debug_enabled = False
     integration.last_synced_at = datetime.datetime.now(datetime.UTC)
     return integration
@@ -95,7 +98,9 @@ async def test_handle_api_request_sync(mock_save, provider, integration_mock):
 
     assert result["success"] is True
     assert result["metrics_synced"] == 1
-    assert integration_mock.user_config["_sync_state"]["last_timestamp"] == "2024-06-16T12:00:00Z"
+    from app.services.integration import integration_sync_state as sync_state
+
+    assert sync_state.get_cursor(integration_mock, "telemetry") == "2024-06-16T12:00:00Z"
     assert mock_save.called
 
 
@@ -164,7 +169,9 @@ async def test_handle_api_request_sync_examinations(mock_save, provider, integra
 
     assert result["success"] is True
     assert result["metrics_synced"] == 1
-    assert integration_mock.user_config["_sync_state"]["last_timestamp"] == "2024-06-16T12:00:00Z"
+    from app.services.integration import integration_sync_state as sync_state
+
+    assert sync_state.get_cursor(integration_mock, "telemetry") == "2024-06-16T12:00:00Z"
     assert mock_save.called
 
 
@@ -429,9 +436,9 @@ async def test_read_observations_latest_scopes_to_bound_patient(provider, integr
             create=True,
             side_effect=fake_list,
         ),
-        patch("app.services.fhir_service.list_observations_latest", side_effect=fake_list),
+        patch("app.services.fhir.fhir_service.list_observations_latest", side_effect=fake_list),
         patch(
-            "app.services.telemetry_service.get_patient_telemetry_latest",
+            "app.services.telemetry.telemetry_service.get_patient_telemetry_latest",
             side_effect=fake_telemetry,
         ),
     ):
@@ -492,8 +499,13 @@ async def test_create_examination_passes_external_id_for_dedup(provider, integra
     mock_session_local, _ = _mock_session_local()
     with (
         patch("app.core.database.AsyncSessionLocal", mock_session_local),
-        patch("app.services.examination_service.create_examination", side_effect=fake_create),
-        patch("app.services.integration_actor.resolve_integration_actor", return_value=MagicMock()),
+        patch(
+            "app.services.clinical.examination_service.create_examination", side_effect=fake_create
+        ),
+        patch(
+            "app.services.integration.integration_actor.resolve_integration_actor",
+            return_value=MagicMock(),
+        ),
     ):
         result = await provider.handle_api_request(
             integration=integration_mock,

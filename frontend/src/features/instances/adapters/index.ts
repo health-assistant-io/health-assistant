@@ -6,7 +6,7 @@
  * and this barrel gets the full set wired. Per-entity behavior lives in the
  * adapter modules; the generic components stay domain-agnostic.
  *
- * See `dev/plans/instance-browser-unified-picker-2026-07-16.md` (Phase 3).
+ * See `local planning notes/instance-browser-unified-picker-2026-07-16.md` (Phase 3).
  */
 import { registerAdapter } from '../../../components/instances/instanceRegistry';
 import { examinationAdapter } from './examinationAdapter';

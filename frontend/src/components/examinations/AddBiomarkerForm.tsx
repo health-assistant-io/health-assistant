@@ -223,7 +223,7 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
       } else if (formData.measuredDate) {
         // Combine the picker outputs (YYYY-MM-DD + HH:MM) into a UTC ISO
         // timestamp. Treat the picked wall-clock time as the user's local
-        // timezone (the same semantics as the legacy datetime-local input).
+        // timezone (the same semantics as a datetime-local input).
         const combined = new Date(`${formData.measuredDate}T${formData.measuredTime || '00:00'}`);
         observation.effective_datetime = combined.toISOString();
       }

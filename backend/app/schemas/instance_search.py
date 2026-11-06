@@ -5,7 +5,7 @@ record (examination, medication, observation, document, clinical event,
 allergy, vaccine) — enough to render a picker result row without a second
 fetch. The generic frontend ``InstancePicker`` consumes exactly this shape.
 
-See ``dev/plans/instance-browser-unified-picker-2026-07-16.md`` (Phase 2).
+See ``the design notes`` (Phase 2).
 """
 
 from pydantic import BaseModel, ConfigDict

@@ -16,8 +16,8 @@
  * Two render modes (unchanged API):
  *  - `hideHeader` (default in the workspace): body only — the preview pane
  *    already renders the authoritative name + actions.
- *  - full mode: a compact card with name + scope badge + actions (legacy path,
- *    retained for compatibility).
+ *  - full mode: a compact card with name + scope badge + actions (the
+ *    standalone card layout).
  */
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

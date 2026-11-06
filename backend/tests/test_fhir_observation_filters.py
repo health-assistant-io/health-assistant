@@ -58,7 +58,7 @@ def _clear_overrides():
 
 def test_list_observations_signature_accepts_all_filters():
     """A1 regression: the signature must still accept all 4 filter params."""
-    from app.services.fhir_service import list_observations
+    from app.services.fhir.fhir_service import list_observations
 
     sig = inspect.signature(list_observations)
     for param in ("tenant_id", "patient_id", "code", "start_date", "end_date"):
@@ -102,7 +102,7 @@ class _StubSelect:
 @pytest.mark.asyncio
 async def test_list_observations_applies_patient_filter(monkeypatch):
     """A1: when patient_id is provided, the query must contain a subject predicate."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     captured: list[str] = []
 
@@ -151,7 +151,7 @@ async def test_list_observations_applies_patient_filter(monkeypatch):
 @pytest.mark.asyncio
 async def test_list_observations_applies_code_and_date_filters(monkeypatch):
     """A1: code + start_date + end_date must all contribute predicates."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     captured: list[str] = []
 
@@ -200,7 +200,7 @@ async def test_list_observations_applies_code_and_date_filters(monkeypatch):
 @pytest.mark.asyncio
 async def test_list_observations_rejects_invalid_tenant(monkeypatch):
     """A1: invalid tenant_id returns empty without touching the DB."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     monkeypatch.setattr(svc, "DATABASE_AVAILABLE", True)
     result = await svc.list_observations(tenant_id="not-a-uuid")
@@ -210,7 +210,7 @@ async def test_list_observations_rejects_invalid_tenant(monkeypatch):
 @pytest.mark.asyncio
 async def test_list_observations_rejects_invalid_patient(monkeypatch):
     """A1: invalid patient_id returns empty without leaking tenant-wide data."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     monkeypatch.setattr(svc, "DATABASE_AVAILABLE", True)
     result = await svc.list_observations(
@@ -228,7 +228,7 @@ async def test_list_observations_rejects_invalid_patient(monkeypatch):
 
 def test_get_observation_history_signature():
     """A2: the new service function must exist with the right signature."""
-    from app.services.fhir_service import get_observation_history
+    from app.services.fhir.fhir_service import get_observation_history
 
     sig = inspect.signature(get_observation_history)
     for required in ("tenant_id", "patient_id", "code"):
@@ -243,7 +243,7 @@ def test_get_observation_history_signature():
 @pytest.mark.asyncio
 async def test_get_observation_history_invalid_tenant_returns_empty(monkeypatch):
     """B5: invalid tenant_id returns [] without touching the DB."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     monkeypatch.setattr(svc, "DATABASE_AVAILABLE", True)
     result = await svc.get_observation_history(
@@ -257,7 +257,7 @@ async def test_get_observation_history_invalid_tenant_returns_empty(monkeypatch)
 @pytest.mark.asyncio
 async def test_get_observation_history_invalid_patient_returns_empty(monkeypatch):
     """A2: invalid patient_id returns [] without touching the DB."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     monkeypatch.setattr(svc, "DATABASE_AVAILABLE", True)
     result = await svc.get_observation_history(
@@ -271,7 +271,7 @@ async def test_get_observation_history_invalid_patient_returns_empty(monkeypatch
 @pytest.mark.asyncio
 async def test_get_observation_history_compiles_tenant_scoped_query(monkeypatch):
     """B5: the compiled query must contain the tenant_id predicate."""
-    from app.services import fhir_service as svc
+    from app.services.fhir import fhir_service as svc
 
     captured: list[str] = []
 
@@ -320,7 +320,7 @@ def test_get_observation_signature_contract():
     positional arg is still ``observation_id`` so the /Observation/{id}
     endpoint contract is preserved.
     """
-    from app.services.fhir_service import get_observation
+    from app.services.fhir.fhir_service import get_observation
 
     sig = inspect.signature(get_observation)
     params = list(sig.parameters)

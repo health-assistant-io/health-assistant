@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import relationship
@@ -13,7 +13,7 @@ from app.models.base import (
     VersionedMixin,
 )
 from app.models.enums import ClinicalEventStatus, CodingSystem, ScheduleKind
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 
 def _enum_values(enum_cls):
@@ -151,14 +151,12 @@ class EventObservationLink(Base, UUIDMixin, TimestampMixin):
 class ClinicalEventOccurrence(Base, UUIDMixin, TimestampMixin):
     """A discrete episode/point-in-time within a :class:`ClinicalEvent` journey.
 
-    Promotes the legacy untyped ``ClinicalEvent.occurrences`` JSONB array into a
-    queryable first-class model: each row is one occurrence (e.g. a specific
-    migraine with an intensity and a body site). Anatomy is optionally linked
-    to ``anatomy_structures`` so occurrences can be sliced by body region.
+    Each row is one occurrence (e.g. a specific migraine with an intensity and
+    a body site) — the queryable shape of what used to be an untyped JSONB
+    array on the parent event. Anatomy is optionally linked to
+    ``anatomy_structures`` so occurrences can be sliced by body region.
 
-    The legacy ``ClinicalEvent.occurrences`` JSONB column is retained for one
-    cycle as read-back fallback; :meth:`ClinicalEvent.to_dict` sources from
-    ``occurrence_links`` when present.
+    Retention: clinical-record — erased with the event/patient.
     """
 
     __tablename__ = "clinical_event_occurrences"
@@ -187,13 +185,15 @@ class ClinicalEventOccurrence(Base, UUIDMixin, TimestampMixin):
     anatomy = relationship("AnatomyStructure", lazy="selectin")
 
     def to_summary(self) -> dict:
-        """Serialize to a dict that is backward-compatible with the legacy
-        ``occurrences`` JSONB shape (``date``/``intensity``/``notes`` keys)
-        while also exposing the richer model fields."""
+        """Serialize to the wire shape the event API exposes.
+
+        Carries both the canonical field names and the ``date``/``intensity``/
+        ``notes`` aliases the frontend reads for occurrences along with the
+        richer model fields."""
         occurred_iso = self.occurred_at.isoformat() if self.occurred_at else None
         return {
             "id": str(self.id) if self.id else None,
-            # Legacy-compatible keys (what ClinicalEvent.occurrences held).
+            # Alias keys the occurrence UI reads.
             "date": occurred_iso,
             "intensity": self.intensity,
             "notes": self.notes,
@@ -235,9 +235,6 @@ class ClinicalEvent(
 
     onset_date = Column(DateTime(timezone=True), nullable=True, index=True)
     resolved_date = Column(DateTime(timezone=True), nullable=True, index=True)
-
-    # occurrences: JSONB list of events, e.g. [{"date": "2024-03-20", "intensity": 8, "notes": "..."}]  # noqa: E501 -- long template/message string; reflow when touched
-    occurrences = Column(JSONB, nullable=True, default=list)
 
     # event_metadata: JSONB for specific event data like pregnancy LMP, EDD
     event_metadata = Column(JSONB, nullable=True, default=dict)
@@ -281,7 +278,23 @@ class ClinicalEvent(
         cascade="all, delete-orphan",
     )
 
-    __table_args__ = (Index("idx_clinical_event_patient_type", "patient_id", "type_id"),)
+    __table_args__ = (
+        Index("ix_clinical_event_patient_type", "patient_id", "type_id"),
+        # C3 dedup for calendar-sourced rows (plan 52 / ADR-0052). A calendar
+        # binding is deliberately NOT a UserIntegration, so the integration
+        # framework's source_integration_id index cannot be reused — this
+        # partial index mirrors its shape for calendar pulls only. Declared on
+        # the model because the law is model-first (the drift gate enforces it).
+        Index(
+            "uq_clinical_events_calendar_dedup",
+            "tenant_id",
+            "patient_id",
+            "external_id",
+            unique=True,
+            postgresql_where=text("external_id IS NOT NULL AND source_integration_id IS NULL"),
+            sqlite_where=text("external_id IS NOT NULL AND source_integration_id IS NULL"),
+        ),
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -359,23 +372,17 @@ class ClinicalEvent(
         ]
 
     def _serialize_occurrences(self) -> list:
-        """Source ``occurrences`` from the ``ClinicalEventOccurrence`` table
-        when the relationship is loaded and non-empty; otherwise fall back to
-        the legacy JSONB column.
+        """Serialize the ``ClinicalEventOccurrence`` rows of this journey.
 
-        After the Phase-3a backfill migration, every legacy JSONB entry has a
-        corresponding model row, so the model is the source of truth and the
-        JSONB is a stale duplicate we ignore. For rows written through the
-        legacy ``occurrences`` JSONB payload after the migration (no model rows
-        yet), the empty model list triggers the JSONB fallback so nothing is
-        silently dropped. The ``__dict__`` check avoids triggering a lazy load
-        during sync serialization paths (e.g. the FHIR facade's bulk search).
+        The occurrence table is the single source of truth for episodes; the
+        former ``occurrences`` JSONB column was a dual-write duplicate and was
+        deleted when the chain was squashed (constitution rule 11). The
+        ``__dict__`` check avoids triggering a lazy load during sync
+        serialization paths (e.g. the FHIR facade's bulk search).
         """
-        if "occurrence_links" in self.__dict__:
-            model_occs = [o.to_summary() for o in self.occurrence_links]
-            if model_occs:
-                return model_occs
-        return self.occurrences or []
+        if "occurrence_links" not in self.__dict__:
+            return []
+        return [occurrence.to_summary() for occurrence in self.occurrence_links]
 
     def to_fhir_dict(self) -> dict:
         """Project this ClinicalEvent to a FHIR R4B Condition resource.
@@ -546,4 +553,4 @@ class EventAnatomyLink(Base, UUIDMixin, TimestampMixin):
     event = relationship("ClinicalEvent", back_populates="anatomy_links")
     anatomy = relationship("AnatomyStructure", lazy="selectin")
 
-    __table_args__ = (Index("idx_event_anatomy_link", "event_id", "anatomy_id", unique=True),)
+    __table_args__ = (Index("ix_event_anatomy_link", "event_id", "anatomy_id", unique=True),)

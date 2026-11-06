@@ -25,7 +25,7 @@ export const DynamicIcon: React.FC<DynamicIconProps> = ({
     return <HelpCircle className={className} size={size} color={color} />;
   }
 
-  // Handle legacy string icons
+  // Handle string icon names
   if (typeof icon === 'string') {
     const LucideIcon = (LucideIcons as any)[icon] || HelpCircle;
     return <LucideIcon className={className} size={size} color={color} />;

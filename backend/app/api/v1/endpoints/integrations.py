@@ -28,7 +28,7 @@ from app.models.enums import IntegrationStatus
 from app.models.fhir.patient import Patient
 from app.models.user_integration import UserIntegration
 from app.schemas.user import TokenData
-from app.services.system_integration_service import (
+from app.services.integration.system_integration_service import (
     get_disabled_domains,
     is_domain_disabled,
 )
@@ -157,7 +157,10 @@ async def extension_host_profile(
 ) -> dict[str, Any]:
     """The author-visible host profile (plan 37 §6.2.4): what this host
     hosts/honors, its apiVersion ceilings, degrade rules and T2 posture —
-    no secrets, no mutable state."""
+    no secrets, no mutable state. ``t2Isolation`` is DETECTION (plan 39
+    D-39: posture is reported from the platform, never a constant); the
+    charter's per-platform declaration rides along as data."""
+    from app.extensions import isolation
     from app.extensions.registry import _charter, _profile
 
     profile = _profile()
@@ -172,7 +175,8 @@ async def extension_host_profile(
         "surfaces": profile.get("surfaces"),
         "apiVersion": {"envelope": "extension/v1", "connectorKindVersion": 1},
         "degradeRules": _charter()["surfaces"]["degradeRules"],
-        "t2Isolation": "none",
+        "t2Isolation": isolation.posture(),
+        "t2IsolationByPlatform": profile.get("t2IsolationByPlatform", {}),
         "disclosures": ["t3PerimeterDisclosure"],
     }
 
@@ -219,7 +223,7 @@ async def list_active_integrations(
     from sqlalchemy import desc
 
     from app.models.user_integration import IntegrationSyncLog
-    from app.services.instance_status import instance_status_surface
+    from app.services.instances.instance_status import instance_status_surface
 
     surfaces: dict[str, dict[str, Any]] = {}
     if integrations:
@@ -308,7 +312,7 @@ async def get_integration_documentation(
         except Exception as e:
             logger.error(f"Failed to parse docs-tree.json for {domain}: {e}")
 
-    # 2. Check for legacy single-file docs
+    # 2. Check for single-file docs
     doc_paths = [
         os.path.join(base_path, "README.md"),
         os.path.join(base_path, "DOCS.md"),
@@ -506,6 +510,7 @@ async def submit_config_flow(
     if existing is not None:
         existing.user_config = validated_config
         existing.instance_name = instance_name
+        integration_row = existing
     else:
         # Create new integration since we allow multiples
         # Verify the patient belongs to the user or their tenant
@@ -568,6 +573,22 @@ async def submit_config_flow(
             tenant_id=current_user.tenant_id,
         )
         db.add(new_integration)
+        integration_row = new_integration
+
+    # Credential-store slots (plan 8 W1): flows that collect a secret for
+    # ``integration_credentials`` seal it here — after the instance row
+    # exists (the cipher context is the instance id) and before commit, so
+    # the stored user_config never carries credential material. A failure
+    # aborts the whole submit: a credential that cannot be sealed must not
+    # fall back to plaintext storage.
+    try:
+        await config_flow.store_credentials(db, integration_row, validated_config)
+    except RuntimeError as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Credential could not be sealed: {e}")
+    except Exception:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Storing the credential failed.")
 
     await db.commit()
     response_payload: dict[str, Any] = {"message": "Integration configured successfully."}
@@ -756,7 +777,7 @@ async def get_integration_details(
     from sqlalchemy import or_
 
     # Fetch exposed items (distinct biomarkers synced by this integration)
-    # Match on modern Integration UUID reference OR legacy domain display name
+    # Match on the Integration UUID reference OR the domain display name
     obs_stmt = (
         select(
             Observation.biomarker_id,
@@ -879,11 +900,25 @@ async def get_integration_details(
 
     returned_config = mask_wrapped_secrets(returned_config or {}, ("api_secret", "webhook_secret"))
 
-    # Surface the last push result + sync direction for the FHIR server (and any
-    # other integration that writes them). Lives under _sync_state cursors.
-    sync_state = (integration.user_config or {}).get("_sync_state") or {}
+    # Surface the last push result + per-stream sync health. Cursors/health are
+    # rows in ``integration_sync_state`` (plan 8 W1): the old
+    # ``user_config["_sync_state"]`` JSONB bag is gone.
+    from app.models.enums import IntegrationSyncStream
+    from app.models.user_integration import IntegrationSyncState
+    from app.services.integration.integration_sync_state import stream_health
 
-    from app.services.instance_status import instance_status_surface
+    push_row = (
+        await db.execute(
+            select(IntegrationSyncState.cursor_value).where(
+                IntegrationSyncState.user_integration_id == integration.id,
+                IntegrationSyncState.stream == IntegrationSyncStream.OBSERVATIONS,
+                IntegrationSyncState.cursor_key == "push_result",
+            )
+        )
+    ).scalar_one_or_none()
+    push_status = json.loads(push_row) if push_row else None
+
+    from app.services.instances.instance_status import instance_status_surface
 
     return {
         "id": str(integration.id),
@@ -891,13 +926,14 @@ async def get_integration_details(
         "instance_name": integration.instance_name,
         "status": integration.status.value,
         "sync_status": instance_status_surface(integration, sync_logs),
+        "streams": await stream_health(db, integration),
         "user_config": returned_config,
         "is_debug_enabled": integration.is_debug_enabled,
         "last_synced_at": integration.last_synced_at.isoformat()
         if integration.last_synced_at
         else None,
         "sync_direction": (integration.user_config or {}).get("sync_direction"),
-        "push_status": sync_state.get("last_push_result"),
+        "push_status": push_status,
         "sync_history": [
             {
                 "id": str(log.id),
@@ -1081,11 +1117,14 @@ async def execute_custom_action(
         raise HTTPException(status_code=400, detail="Provider does not support custom actions")
 
     try:
-        response = await provider.execute_custom_action(integration, action_id, **(payload or {}))
-        # Commit any changes to user_config (like cursors) made by the action
-        from sqlalchemy.orm.attributes import flag_modified
+        # Cursors/health are rows: hydrate the instance buffer, run the
+        # action, flush the dirty cursor writes in the same transaction.
+        from app.services.integration.integration_sync_state import flush as flush_cursors
+        from app.services.integration.integration_sync_state import hydrate
 
-        flag_modified(integration, "user_config")
+        await hydrate(db, integration)
+        response = await provider.execute_custom_action(integration, action_id, **(payload or {}))
+        await flush_cursors(db, integration)
         await db.commit()
         return response
     except NotImplementedError as e:
@@ -1215,25 +1254,25 @@ async def list_integration_proposals(
 ) -> Any:
     """List HITL proposals for an integration instance.
 
-    Optional ``status`` filter accepts a ``HitlTaskStatus`` value
-    (``proposed`` / ``confirmed`` / ``dismissed`` / ``failed``). The
-    endpoint returns proposals regardless of integration state so a
-    paused integration's pending queue is still reviewable.
+    Optional ``status`` filter accepts a ``ProposalStatus`` value (``proposed``
+    / ``approved`` / ``applied`` / ``rejected`` / ``failed`` / ``expired`` /
+    ``superseded``). The endpoint returns proposals regardless of integration
+    state so a paused integration's pending queue is still reviewable.
     """
-    from app.models.enums import HitlTaskStatus
-    from app.schemas.integration_proposal import IntegrationProposalResponse
-    from app.services import integration_proposal_service as proposal_svc
+    from app.models.enums import ProposalStatus
+    from app.schemas.integration_proposal import proposal_response
+    from app.services.integration import integration_proposal_service as proposal_svc
 
     integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
 
-    status_filter: HitlTaskStatus | None = None
+    status_filter: ProposalStatus | None = None
     if status is not None:
         try:
-            status_filter = HitlTaskStatus(status.lower())
+            status_filter = ProposalStatus(status.lower())
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=(f"Unknown status {status!r}. Valid: {[s.value for s in HitlTaskStatus]}"),
+                detail=(f"Unknown status {status!r}. Valid: {[s.value for s in ProposalStatus]}"),
             )
 
     proposals = await proposal_svc.list_proposals(
@@ -1243,9 +1282,7 @@ async def list_integration_proposals(
         limit=limit,
         offset=offset,
     )
-    return [
-        IntegrationProposalResponse.model_validate(p).model_dump(mode="json") for p in proposals
-    ]
+    return [proposal_response(p) for p in proposals]
 
 
 @router.get(
@@ -1259,8 +1296,8 @@ async def get_integration_proposal(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Fetch one HITL proposal by id (scoped to the owned integration)."""
-    from app.schemas.integration_proposal import IntegrationProposalResponse
-    from app.services import integration_proposal_service as proposal_svc
+    from app.schemas.integration_proposal import proposal_response
+    from app.services.integration import integration_proposal_service as proposal_svc
 
     integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
     try:
@@ -1273,7 +1310,7 @@ async def get_integration_proposal(
     )
     if proposal is None:
         raise HTTPException(status_code=404, detail="Proposal not found")
-    return IntegrationProposalResponse.model_validate(proposal).model_dump(mode="json")
+    return proposal_response(proposal)
 
 
 @router.post(
@@ -1299,19 +1336,27 @@ async def resolve_integration_proposal(
           "note": "free-text reason"   // optional audit note
         }
 
-    - ``approve`` → apply the (possibly-edited) payload through
-      :func:`catalog_proposal_service.apply_proposal`. Status transitions
-      to ``confirmed`` on success, ``failed`` on apply error.
-    - ``reject`` / ``cancel`` → status ``dismissed``, no apply.
+    - ``approve`` → validate the payload against the kind's contract schema,
+      then apply it through the kind's server-side resolver (catalog service or
+      the canonical clinical service). ``applied`` on success, ``failed`` on an
+      apply error.
+    - ``reject`` / ``cancel`` → ``rejected``, no apply.
 
-    Re-resolve from a terminal state returns 409 (idempotent contract).
+    Idempotent: repeating the recorded outcome returns the stored result (200);
+    a conflicting decision on a terminal row returns 409.
     """
     from app.models.enums import Role
     from app.schemas.integration_proposal import (
         IntegrationProposalResolveRequest,
-        IntegrationProposalResponse,
+        proposal_response,
     )
-    from app.services import integration_proposal_service as proposal_svc
+    from app.services.integration import integration_proposal_service as proposal_svc
+    from app.services.proposals.proposal_resolvers import ProposalApplyError
+    from app.services.proposals.proposal_service import ProposalPayloadInvalid, UnknownProposalKind
+    from app.services.proposals.proposal_state import (
+        IllegalProposalTransition,
+        ProposalConflict,
+    )
 
     integration = await _load_owned_integration(integration_id, current_user=current_user, db=db)
     try:
@@ -1325,15 +1370,12 @@ async def resolve_integration_proposal(
         raise HTTPException(status_code=400, detail=f"Invalid resolve body: {exc}")
 
     # Catalog writes (biomarker / medication / concept / edge) require
-    # ADMIN+ under the catalog policy. USER-role callers can list + view
-    # but not resolve — surface as 403 so the UI can hide the buttons.
+    # ADMIN+ under the catalog policy. Patient-record writes are gated by the
+    # same rule (a USER can review but not approve a write).
     if req.action == "approve" and current_user.role == Role.USER.value:
         raise HTTPException(
             status_code=403,
-            detail=(
-                "Approving catalog proposals requires ADMIN or higher. "
-                "Ask a tenant admin to review."
-            ),
+            detail=("Approving proposals requires ADMIN or higher. Ask a tenant admin to review."),
         )
 
     provider = integration_registry.get_provider(integration.provider)
@@ -1351,13 +1393,19 @@ async def resolve_integration_proposal(
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="Proposal not found")
+    except ProposalConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (
+        IllegalProposalTransition,
+        ProposalPayloadInvalid,
+        UnknownProposalKind,
+        ProposalApplyError,
+    ) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except ValueError as exc:
-        # Terminal-state re-resolve → 409 (caller already decided).
-        if "terminal state" in str(exc):
-            raise HTTPException(status_code=409, detail=str(exc))
         raise HTTPException(status_code=400, detail=str(exc))
 
-    response = IntegrationProposalResponse.model_validate(result.proposal).model_dump(mode="json")
+    response = proposal_response(result.proposal)
     response["applied_entity_id"] = (
         str(result.applied_entity_id) if result.applied_entity_id else None
     )
@@ -1479,7 +1527,7 @@ async def sync_integration(
                 status_code=401,
                 detail="Integration authentication failed. Please re-authenticate.",
             )
-        if result.error_type == "rate_limit":
+        if result.error_type == "rate-limited":
             raise HTTPException(
                 status_code=429,
                 detail="Third-party API rate limit exceeded. Try again later.",
@@ -1573,6 +1621,7 @@ def _verify_webhook_signature(secret: str, raw_body: bytes, provided_signature: 
       - ``X-Webhook-Signature``: ``<hex digest>``
       - ``X-Webhook-Signature-256``: ``<hex digest>``
       - ``X-Hub-Signature-256`` (GitHub): ``sha256=<hex digest>``
+      - ``X-Signature`` (Life Dashboard Companion): ``sha256=<hex digest>``
 
     Returns True iff the computed HMAC matches the provided signature.
 
@@ -1699,6 +1748,7 @@ async def integration_webhook(
         request.headers.get("X-Webhook-Signature")
         or request.headers.get("X-Webhook-Signature-256")
         or request.headers.get("X-Hub-Signature-256")
+        or request.headers.get("X-Signature")
     )
     provided_ts = request.headers.get("X-Webhook-Timestamp")
 
@@ -1727,68 +1777,78 @@ async def integration_webhook(
         )
         raise HTTPException(status_code=401, detail="Webhook signature verification failed")
 
+    from app.models.enums import IntegrationSyncErrorClass
     from app.models.user_integration import IntegrationSyncLog
+    from app.services.integration.integration_sync_state import flush as flush_cursors
+    from app.services.integration.integration_sync_state import (
+        hydrate,
+        record_failure,
+        restore_identity,
+    )
 
     try:
         payload = raw_body.decode("utf-8") if raw_body else ""
         import json as _json
 
         payload = _json.loads(payload) if payload else {}
-    except Exception:
-        payload = {}  # Maybe it's a form or empty body, let the provider handle it
+    except Exception as exc:
+        # A machine surface must reject, never guess: an unparseable body is
+        # a typed protocol rejection, not an empty payload handed to a parser.
+        await record_failure(db, integration, IntegrationSyncErrorClass.PROTOCOL)
+        db.add(
+            IntegrationSyncLog(
+                integration_id=integration.id,
+                tenant_id=integration.tenant_id,
+                status="failed",
+                records_synced=0,
+                started_at=datetime.datetime.now(datetime.UTC),
+                error_class=IntegrationSyncErrorClass.PROTOCOL,
+                error_message="[protocol] Malformed JSON webhook payload",
+            )
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "protocol", "message": "Malformed JSON webhook payload"},
+        ) from exc
 
     try:
         start_time = datetime.datetime.now(datetime.UTC)
+        # Cursors/health are rows (plan 8 W1): hydrate the buffer, then flush
+        # whatever the handler advanced.
+        await hydrate(db, integration)
         observations_data = await provider.handle_webhook(integration, payload, request)
         count = 0
         # Initialized here so the post-sync notification dispatch below has
         # real per-channel counts regardless of whether the provider returned
         # any observations.
-        telemetry_records: list = []
-        fhir_records: list = []
+        telemetry_count = 0
+        fhir_count = 0
+        webhook_status = "success"
+        webhook_error_class = None
+        webhook_error_message = None
         if observations_data:
-            from app.models.fhir import Observation
+            # The ingest funnel is the one inbound path (plan 8 W2): mapping,
+            # dedup, the FHIR/telemetry split and mapping-gap recording all
+            # live there, so webhook deliveries are idempotent on re-delivery.
+            from app.services.integration.integration_ingest import ingest_observations
 
-            # Convert to ORM models BEFORE passing to mapping
-            observations = []
-            for obs_data in observations_data:
-                obs_dict = (
-                    obs_data.model_dump(exclude_unset=True)
-                    if hasattr(obs_data, "model_dump")
-                    else obs_data.dict(exclude_unset=True)
-                    if hasattr(obs_data, "dict")
-                    else obs_data
-                )
-                observations.append(Observation(**obs_dict))
-
-            # audit B3: sync relational patient_id with the FHIR subject ref
-            # (the SDK ObservationCreate carries only ``subject``).
-            from app.services.fhir_helpers import coerce_observation_patient_ids
-
-            coerce_observation_patient_ids(observations)
-
-            from app.services.fhir_service import map_observations_to_biomarkers
-
-            await map_observations_to_biomarkers(db, observations)
-
-            # Deduped split: the manual-sync and background-sync paths both
-            # route through ``apply_telemetry_split`` (audit A4); the webhook
-            # path used to inline a copy that had already diverged (subtle
-            # slug-match differences, missing performer.reference, and
-            # post_sync_notifications was always called with
-            # telemetry_persisted=0). Routing through the shared helper keeps
-            # all three entry points identical.
-            from app.services.integration_sync_service import apply_telemetry_split
-
-            telemetry_records, fhir_records = await apply_telemetry_split(
+            ingest_report = await ingest_observations(
                 db,
-                observations,
-                tenant_id=integration.tenant_id,
-                instance_name=integration.instance_name,
+                integration,
+                observations_data,
                 provider_name=integration.provider,
-                integration_id=integration.id,
+                instance_name=integration.instance_name,
             )
-            count += len(telemetry_records) + len(fhir_records)
+            count += ingest_report.written
+            telemetry_count = ingest_report.written_by_stream.get("telemetry", 0)
+            fhir_count = ingest_report.written_by_stream.get("observations", 0)
+            webhook_status = ingest_report.status
+            if ingest_report.has_mapping_gaps:
+                webhook_error_class = "mapping_gap"
+                webhook_error_message = ingest_report.summary()
+            elif ingest_report.rejected:
+                webhook_error_message = ingest_report.summary()
 
         integration.last_synced_at = datetime.datetime.now(datetime.UTC)
 
@@ -1796,12 +1856,15 @@ async def integration_webhook(
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
-            status="success",
+            status=webhook_status,
             records_synced=count,
+            error_class=webhook_error_class,
+            error_message=webhook_error_message,
             started_at=start_time,
             completed_at=integration.last_synced_at,
         )
         db.add(sync_log)
+        await flush_cursors(db, integration)
 
         await db.commit()
         # Best-effort notification dispatch (baseline + provider-authored).
@@ -1816,9 +1879,9 @@ async def integration_webhook(
                 provider,
                 integration,
                 pulled=count,
-                fhir_persisted=len(fhir_records),
-                telemetry_persisted=len(telemetry_records),
-                status="success",
+                fhir_persisted=fhir_count,
+                telemetry_persisted=telemetry_count,
+                status=webhook_status,
                 started_at=start_time,
                 completed_at=integration.last_synced_at,
                 observations=observations_data or [],
@@ -1830,8 +1893,47 @@ async def integration_webhook(
                 webhook_notif_err,
             )
         return {"message": "Webhook processed successfully", "metrics_synced": count}
+    except ExtensionError as typed_error:
+        # Typed parser rejection (plan 8 W4): the payload was schema-invalid
+        # for this parser, so the delivery is refused with a machine code and
+        # a typed failure row — never a silent empty result.
+        await db.rollback()
+        await restore_identity(db, integration)
+        logger.warning(
+            "Webhook payload rejected for %s (Integration: %s): [%s] %s",
+            domain,
+            integration_id,
+            typed_error.code,
+            typed_error.detail,
+        )
+        failure_completed = datetime.datetime.now(datetime.UTC)
+        error_class = (
+            typed_error.code
+            if typed_error.code in {c.value for c in IntegrationSyncErrorClass}
+            else IntegrationSyncErrorClass.INVALID.value
+        )
+        await record_failure(db, integration, error_class)
+        db.add(
+            IntegrationSyncLog(
+                integration_id=integration.id,
+                tenant_id=integration.tenant_id,
+                status="failed",
+                records_synced=0,
+                started_at=start_time,
+                completed_at=failure_completed,
+                error_class=error_class,
+                error_message=f"[{typed_error.code}] {typed_error.detail}"[:2000],
+            )
+        )
+        await db.commit()
+        status_code = 400 if typed_error.code == "invalid" else 422
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": typed_error.code, "message": typed_error.detail},
+        )
     except Exception as e:
         await db.rollback()
+        await restore_identity(db, integration)
         logger.error(f"Webhook failed for {domain} (Integration: {integration_id}): {e}")
         # Audit 2026-10-18 F22: this is a machine surface. Persist/echo a
         # typed code + capped detail, never the raw exception string. The
@@ -1846,6 +1948,12 @@ async def integration_webhook(
 
         # Log failure
         failure_completed = datetime.datetime.now(datetime.UTC)
+        error_class = (
+            failure["code"]
+            if failure["code"] in {c.value for c in IntegrationSyncErrorClass}
+            else IntegrationSyncErrorClass.IO.value
+        )
+        await record_failure(db, integration, error_class)
         sync_log = IntegrationSyncLog(
             integration_id=integration.id,
             tenant_id=integration.tenant_id,
@@ -1853,6 +1961,7 @@ async def integration_webhook(
             records_synced=0,
             started_at=start_time,
             completed_at=failure_completed,
+            error_class=error_class,
             error_message=f"[{failure['code']}] {failure['detail']}",
         )
         db.add(sync_log)
@@ -2000,6 +2109,12 @@ async def integration_api_proxy(
         )
 
     try:
+        # Cursors are rows (plan 8 W1): hydrate before the handler runs so its
+        # ``get_cursor`` sees stored values, and flush what it advances.
+        from app.services.integration.integration_sync_state import flush as flush_cursors
+        from app.services.integration.integration_sync_state import hydrate
+
+        await hydrate(db, integration)
         response_data = await provider.handle_api_request(
             integration=integration, path=path, method=request.method, request=request
         )
@@ -2010,10 +2125,7 @@ async def integration_api_proxy(
 
         if isinstance(response_data, _StreamingResponse):
             return response_data
-        # Commit any configuration changes the provider made (e.g., sync cursor update)
-        from sqlalchemy.orm.attributes import flag_modified
-
-        flag_modified(integration, "user_config")
+        await flush_cursors(db, integration)
         await db.commit()
         return response_data
     except NotImplementedError:
@@ -2032,7 +2144,7 @@ async def integration_api_proxy(
             detail={"code": e.code, "message": str(e)},
         )
     except ValueError:
-        # Bare ValueErrors are the legacy validation class. Answer the typed
+        # Bare ValueErrors are the service-level validation class. Answer the typed
         # envelope with a stable message — the raw text may carry internal
         # detail (audit 2026-10-18 F22). Providers that need a specific
         # client message raise BridgeError.

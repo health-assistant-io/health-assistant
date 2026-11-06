@@ -35,7 +35,7 @@ class KnownBiomarkerExtract(BaseModel):
     matched_slug: str = Field(
         description="The slug from the provided catalog that matches this biomarker"
     )
-    # Numeric path (the legacy default). Optional now — STATE biomarkers
+    # Numeric path (the default). Optional now — STATE biomarkers
     # populate ``value_state_*`` instead. The validator below enforces that
     # exactly one of (value, value_state_code) is set so the OCR pipeline
     # never emits a half-formed numeric-or-state result.

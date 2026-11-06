@@ -36,7 +36,7 @@ from app.core.totp import (
 from app.models.audit_model import AuditEvent
 from app.models.enums import Role
 from app.models.user_model import UserModel
-from app.services import mfa_service
+from app.services.auth import mfa_service
 from tests._auth_helpers import auth_headers, create_tenant, create_user
 
 # ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ async def test_wrong_code_counter_resets_on_challenge(
 ):
     """The counter resets when the password succeeds (challenge issued),
     so MFA failures count from zero — documented H5 lockout decision."""
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     await _enroll_and_confirm(mfa_user)
     # Burn one wrong password attempt first.
@@ -326,7 +326,7 @@ async def test_wrong_code_counter_resets_on_challenge(
 async def test_lockout_resets_after_successful_verify(
     async_client: AsyncClient, mfa_user, fast_recovery_hashing, no_rate_limit
 ):
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     data = await _enroll_and_confirm(mfa_user)
     resp = await _login(async_client, mfa_user, "correct-password-123")
@@ -390,7 +390,7 @@ async def test_recovery_code_login_and_single_use(
     assert ok2.status_code == 200
 
     # Exactly 6 hashes remain on the row.
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     user = await get_user_by_id(mfa_user.id)
     assert len(json.loads(user.mfa_recovery_codes)) == 6
@@ -406,7 +406,7 @@ async def test_secret_encrypted_at_rest(mfa_user):
     """Real bcrypt for recovery hashes + Fernet for the secret — the raw
     row must never carry plaintext."""
     data = await _enroll_and_confirm(mfa_user)
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     user = await get_user_by_id(mfa_user.id)
     assert is_encrypted(user.mfa_secret_enc)

@@ -432,7 +432,7 @@ describe('adaptClinicalEventToEvents — schedule_kind (Phase 4) priority', () =
     // Phase 8a: schedule_kind is NOT NULL on the wire, so a missing value here
     // is a runtime safety net for synthetic test rows / partially-loaded data.
     const event = makeEvent({
-      id: 'synthetic-legacy',
+      id: 'synthetic-row',
       status: ClinicalEventStatus.ACTIVE,
       onset_date: '2026-03-01',
       schedule_kind: undefined,

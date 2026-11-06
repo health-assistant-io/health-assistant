@@ -46,8 +46,8 @@ from app.models.notification import (
     NotificationRecipient,
 )
 from app.models.user_model import UserModel
-from app.services import notification_rule_service, notification_service
-from app.services.notification_targets import resolve_targets
+from app.services.notifications import notification_rule_service, notification_service
+from app.services.notifications.notification_targets import resolve_targets
 
 # ---------------------------------------------------------------------------
 # Helpers

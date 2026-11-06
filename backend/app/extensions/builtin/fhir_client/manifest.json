@@ -1,0 +1,44 @@
+{
+  "apiVersion": "extension/v1",
+  "kindVersion": 1,
+  "kind": "connector",
+  "id": "fhir-client",
+  "version": "1.0.0",
+  "description": "Pull-only FHIR R4 client for an external server that issues a static access token. Reads the bound patient's Observations, DiagnosticReports, MedicationStatements and Encounters into the ingest funnel with per-resource cursors and sealed credentials; unmapped codes land raw with the mapping gap recorded. Push and SMART-on-FHIR live in the FHIR Server connector.",
+  "docs": "docs/docs-tree.json",
+  "author": "Health Assistant Core",
+  "license": "Apache-2.0",
+  "categories": ["data"],
+  "capabilities": ["sync", "secrets"],
+  "itemSchema": {
+    "type": "object",
+    "properties": {
+      "observation": { "type": "string", "title": "FHIR Observation (pull)" },
+      "lab_report": { "type": "string", "title": "FHIR DiagnosticReport (labs stream)" },
+      "medication": { "type": "string", "title": "FHIR MedicationStatement" },
+      "examination": { "type": "string", "title": "FHIR Encounter (appointments stream)" }
+    }
+  },
+  "supportsIncremental": true,
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "fhir_base_url": { "type": "string", "title": "FHIR server base URL" },
+      "auth_mode": { "type": "string", "title": "api_key (bearer credential slot) or none (tokenless)" },
+      "api_key": { "type": "string", "title": "Access token", "x-secret": true },
+      "remote_patient_id": { "type": "string", "title": "Remote FHIR patient binding (required)" }
+    }
+  },
+  "secrets": [
+    { "id": "api-key", "purpose": "Static bearer/API-key token for the remote FHIR server, sealed in integration_credentials" }
+  ],
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": {
+        "title": "FHIR Client (Keyed Pull)",
+        "summary": "Pull-only FHIR R4 sync from a token-issuing external server."
+      }
+    }
+  }
+}

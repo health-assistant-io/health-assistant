@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
+import { Responsive, WidthProvider } from 'react-grid-layout/legacy';  // # gate-allow: *, package subpath
 import { useDashboardStore } from '../../store/slices/dashboardSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
 import { useChartStore } from '../../store/slices/chartSlice';

@@ -357,6 +357,7 @@ def build_mock(
     temperature: float,
     max_tokens: int,
     reasoning_effort: str | None = None,
+    chat_transport: str | None = None,
 ) -> BaseChatModel:
     """Build the deterministic mock chat model (provider_type ``"mock"``).
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # dev-common.sh — shared helpers for the Neuronection assistant family dev scripts.
 #
-# Canonical copy lives in the dev repo (templates/scripts/lib/) and is
-# distributed to the product repos via dev/scripts/sync-dev-lib.sh — edit the
-# canonical copy only, never a synced copy (ADR-0004, amended by ADR-0034).
+# Canonical copy is maintained with the family standards and distributed to
+# product repos as a byte-identical copy — edit the canonical copy only, never
+# a synced copy.
 #
 # This file is SOURCED, never executed. All public helpers are prefixed `dc_`
 # so they cannot collide with project-local names. It is written to work under

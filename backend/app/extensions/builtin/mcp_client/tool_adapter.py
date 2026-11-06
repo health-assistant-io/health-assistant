@@ -9,8 +9,9 @@ Key behaviors:
 - Namespacing: tools are renamed ``mcp__{instance_slug}__{original_name}``
   to avoid collisions with the built-in ``ChatbotTools`` and across MCP
   instances.
-- The MCP tool's JSON-Schema ``inputSchema`` is converted to a Pydantic
-  ``args_schema`` via ``pydantic.create_model``.
+- The MCP tool's JSON-Schema ``input_schema`` (``inputSchema`` on older
+  MCP SDKs) is converted to a Pydantic ``args_schema`` via
+  ``pydantic.create_model``.
 - Tool calls are routed through :class:`McpConnectionManager` with per-call
   timeout, concurrency cap, and result-size truncation (T4, T6).
 - Tool names are sanitized to prevent namespace spoofing (no ``__`` in the
@@ -70,6 +71,20 @@ def _truncate_description(desc: str | None) -> str:
     if len(desc) > MAX_DESCRIPTION_LEN:
         return desc[:MAX_DESCRIPTION_LEN] + "…[truncated]"
     return desc
+
+
+def _tool_input_schema(mcp_tool: Any) -> dict[str, Any] | None:
+    """Return the tool's input JSON Schema across MCP SDK generations.
+
+    MCP SDK v2 renamed ``Tool.inputSchema`` to ``input_schema``; reading
+    the old name emits a deprecation warning, so prefer the new field and
+    fall back only when it is absent or not a plain schema mapping.
+    """
+    schema = getattr(mcp_tool, "input_schema", None)
+    if not isinstance(schema, dict):
+        alt_schema = getattr(mcp_tool, "inputSchema", None)
+        schema = alt_schema if isinstance(alt_schema, dict) else None
+    return schema
 
 
 def _json_schema_to_pydantic(name: str, schema: dict[str, Any] | None, depth: int = 0):
@@ -202,7 +217,7 @@ def adapt_tool(
     if not description:
         description = f"MCP tool '{original_name}' from instance '{instance_slug}'."
 
-    args_schema = _json_schema_to_pydantic(f"{namespaced}_args", mcp_tool.inputSchema)
+    args_schema = _json_schema_to_pydantic(f"{namespaced}_args", _tool_input_schema(mcp_tool))
 
     config = integration.user_config or {}
     enabled = set(config.get("enabled_tools") or [])

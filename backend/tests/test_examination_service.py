@@ -20,7 +20,7 @@ import pytest
 from app.core.errors import NotFoundError
 from app.schemas.examination import ExaminationCreate
 from app.schemas.user import TokenData
-from app.services import examination_service as svc
+from app.services.clinical import examination_service as svc
 
 TENANT = uuid4()
 PATIENT = uuid4()
@@ -332,7 +332,7 @@ def test_endpoint_routes_through_service_chokepoint():
     from app.api.v1.endpoints import examinations as endpoint_mod
 
     src = inspect.getsource(endpoint_mod.create_examination)
-    assert "from app.services.examination_service import" in src, (
+    assert "from app.services.clinical.examination_service import" in src, (
         "POST /examinations must delegate to examination_service.create_examination"
     )
     # The inline-implementation markers that used to live here — direct

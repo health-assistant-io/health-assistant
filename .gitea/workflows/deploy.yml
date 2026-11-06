@@ -142,6 +142,12 @@ jobs:
           export PYTHONPATH="$(cd .. && pwd):$(pwd)"
           uv run pytest
 
+      # The repo-specific no-legacy extras (plan 9 W6): zero-importer
+      # components, one lockfile, documented counts, retired shapes, deleted
+      # surfaces, one SW registration + real 404, retired supports_* probes.
+      - name: Repo-specific no-legacy gate
+        run: bash scripts/check-no-legacy.sh
+
       - name: Stop database services
         if: always()
         run: docker rm -f ha-test-postgres ha-test-redis 2>/dev/null || true
@@ -155,23 +161,38 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # pnpm-only toolchain (one lockfile: frontend/pnpm-lock.yaml). The
+      # runner image ships npm but not pnpm; install the pinned major up
+      # front so setup-node's pnpm cache can resolve the store path.
+      - name: Set up pnpm
+        run: npm install -g pnpm@11.22.0
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install Frontend Dependencies
+        # stdin closed: a prompt is a hard EOF error, never a hung job.
         run: |
           cd frontend
-          npm ci
+          pnpm install --frozen-lockfile </dev/null
 
       - name: Run Frontend Lint & Build Test
         run: |
           cd frontend
-          npm run lint
-          npm run build
+          pnpm run lint
+          pnpm run build
+
+      # The deploy gate's twin of the GitHub `test-frontend-unit` job: the
+      # vitest suite (frontend/src/**/*.test.{ts,tsx}) must be green before
+      # an image is built, not only in the public mirror's CI.
+      - name: Run Frontend Unit Tests (vitest)
+        run: |
+          cd frontend
+          pnpm exec vitest run
 
   # Gitea 28.1.0 (server upgraded 2026-10-08) rejects the `secrets` context
   # in job-level `if:` at workflow-parse time ("Unrecognized named-value:

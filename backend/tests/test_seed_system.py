@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.seed_service import SeedService
+from app.services.seed.service import SeedService
 
 
 @pytest.mark.asyncio
@@ -48,7 +48,7 @@ async def test_seed_biomarker_panels_creates_membership_edges():
     from app.core.database import AsyncSessionLocal
     from app.models.concept_model import ConceptEdge
     from app.models.enums import ConceptRelationType, EdgeEndpointType
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     # Prerequisites: panels (concepts) + biomarker definitions (default catalog).
@@ -86,7 +86,7 @@ async def test_seed_body_parts_reads_split_anatomy_files():
     from app.models.anatomy_model import AnatomyStructure
     from app.models.concept_model import ConceptEdge
     from app.models.enums import EdgeEndpointType
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     svc = SeedService()
     stats = await svc.seed_body_parts()

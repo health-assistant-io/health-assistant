@@ -1,0 +1,32 @@
+# Deleted surfaces that must never come back (plan 9 W1/W2/W5 resurrection pins).
+#
+# One repo-relative path per line. Blank lines and `#` comments are ignored.
+# Adding a file here means its deletion was a decision, not an accident; the
+# no-legacy gate fails if it reappears.
+frontend/package-lock.json
+frontend/src/components/biomarkers/BiomarkerConfigPanel.tsx
+frontend/src/components/catalog/CatalogItemSelector.tsx
+frontend/src/components/catalog/CatalogItemSwitcher.tsx
+frontend/src/components/charts/BarChart.tsx
+frontend/src/components/charts/ReferenceRangeChart.tsx
+frontend/src/components/charts/index.ts
+frontend/src/components/events/DashboardEventCard.tsx
+frontend/src/components/events/EventFilterToolbar.tsx
+frontend/src/components/events/ResolvedEventItem.tsx
+frontend/src/components/instances/index.ts
+frontend/src/components/integrations/ActionResultModal.tsx
+frontend/src/components/layout/index.ts
+frontend/src/components/setup/SubWizardShell.tsx
+frontend/src/components/setup/index.ts
+frontend/src/components/ui/AnatomyTypeahead.tsx
+frontend/src/components/ui/Card.tsx
+frontend/src/components/ui/EmptyState.tsx
+frontend/src/components/ui/IconButton.tsx
+frontend/src/components/ui/Input.tsx
+frontend/src/components/ui/Table.tsx
+frontend/src/components/ui/TaxonomyTypeahead.tsx
+frontend/src/components/ui/index.ts
+frontend/src/components/vaccinations/index.ts
+frontend/src/pages/Settings/Preferences.tsx
+frontend/src/services/bodyPartService.ts
+backend/app/services/integrations

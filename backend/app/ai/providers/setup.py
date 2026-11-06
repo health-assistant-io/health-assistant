@@ -1,6 +1,6 @@
 """§15 BYOK one-click provider setup — scope-aware orchestration.
 
-Uniform family semantics (dev/guidelines/ai-features.md §15, frozen
+Uniform family semantics (the family AI standard §15, frozen
 2026-09-19; Python reference: study ``app/ai/providers/setup.py``):
 
 * fetch-first validation — the key is validated by fetching the vendor's
@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.decide.systemone.probe import DecisionProbeInput, probe_decision_provider
@@ -54,7 +54,10 @@ from app.ai.providers.capabilities import required_capabilities_for_task
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.errors import ClassifiedProviderError, classify_provider_error
 from app.ai.providers.presets import ALL_PRESETS, decision_probe_model_id
+from app.ai.providers.registry import ensure_wired_provider_type
 from app.ai.providers.service import guard_api_base
+from app.ai.providers.task_defs import ensure_task_def, task_def_id
+from app.ai.providers.task_registry import setup_slot_task_id
 from app.core.encryption import decrypt_secret, encrypt_secret
 from app.models.ai_provider_model import (
     AIModel,
@@ -65,14 +68,6 @@ from app.models.ai_provider_model import (
 from app.models.enums import AIModelCapability
 
 logger = logging.getLogger(__name__)
-
-#: Family slot → health's USER-scope task slot (plan 17 Phase 3 delta).
-_SLOT_TASK_TYPES: dict[str, str] = {
-    "chat": TaskType.DEFAULT.value,
-    "vision": TaskType.OCR.value,
-    "stt": TaskType.TRANSCRIPTION.value,
-    "embeddings": TaskType.EMBED.value,
-}
 
 
 class UnknownPresetError(Exception):
@@ -345,13 +340,13 @@ async def _slot_alive(
     user_id: Any,
     task_type: str,
 ) -> tuple[AITaskAssignment | None, AIModel | None]:
-    """The slot for a task at the given scope: its highest-priority active
-    row + the assigned model if that row is live (model present and
-    existing)."""
+    """The slot for a task at the given scope: its active row (the DB's
+    single-slot unique index guarantees at most one) + the assigned model if
+    that row is live (model present and existing)."""
     filters = [
         AITaskAssignment.scope == scope,
-        AITaskAssignment.task_type == task_type,
-        AITaskAssignment.is_active.is_(True),
+        AITaskAssignment.task_type_id == task_def_id(task_type),
+        AITaskAssignment.revoked_at.is_(None),
     ]
     filters.append(
         AITaskAssignment.tenant_id.is_(None)
@@ -363,17 +358,8 @@ async def _slot_alive(
         if user_id is None
         else AITaskAssignment.user_id == user_id
     )
-    row = (
-        (
-            await db.execute(
-                select(AITaskAssignment)
-                .where(*filters)
-                .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
-            )
-        )
-        .scalars()
-        .first()
-    )
+    statement = select(AITaskAssignment).where(*filters).order_by(AITaskAssignment.created_at)
+    row = (await db.execute(statement)).scalars().first()
     if row is None:
         return None, None
     if row.model_id is None:
@@ -396,43 +382,33 @@ async def _bind_slot(
     """Bind a slot at the given scope, deactivating sibling active rows
     (mirrors the CRUD surface's one-active-assignment invariant). Never
     touches rows of another scope."""
+    await ensure_task_def(db, task_type)
     filters = [
         AITaskAssignment.scope == scope,
         AITaskAssignment.tenant_id == tenant_id,
         AITaskAssignment.user_id == user_id,
-        AITaskAssignment.task_type == task_type,
-        AITaskAssignment.is_active.is_(True),
+        AITaskAssignment.task_type_id == task_def_id(task_type),
+        AITaskAssignment.revoked_at.is_(None),
     ]
-    siblings = (
-        (
-            await db.execute(
-                select(AITaskAssignment)
-                .where(*filters)
-                .order_by(AITaskAssignment.priority.desc(), AITaskAssignment.created_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
+    siblings = (await db.execute(select(AITaskAssignment).where(*filters))).scalars().unique().all()
     row = siblings[0] if siblings else None
     if row is None:
         row = AITaskAssignment(
-            task_type=task_type,
+            task_type_id=task_def_id(task_type),
             scope=scope,
             tenant_id=tenant_id,
             user_id=user_id,
             provider_id=provider.id,
             model_id=model.id,
-            is_active=True,
-            priority=0,
+            revoked_at=None,
         )
         db.add(row)
     else:
         row.provider_id = provider.id
         row.model_id = model.id
-        row.is_active = True
+        row.revoked_at = None
     for stale in siblings[1:]:
-        stale.is_active = False
+        stale.revoked_at = func.now()
     await db.flush()
 
 
@@ -558,6 +534,7 @@ async def setup_provider_from_preset(
         raise UnknownPresetError(f"unknown provider preset '{preset_key}'")
 
     decision_only = preset["wire_type"] == "decision"
+    ensure_wired_provider_type(preset["type"])
     guard_api_base(preset["base_url"])
 
     existing = await _resolve_target_row(db, preset_key, preset, scope, tenant_id, user_id)
@@ -669,7 +646,7 @@ async def setup_provider_from_preset(
     else:
         assignment_vision_capable = False
 
-    _, chat_model = await _slot_alive(db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["chat"])
+    _, chat_model = await _slot_alive(db, scope, tenant_id, user_id, setup_slot_task_id("chat"))
     vision_candidate_id: str | None = None
     vision_capable_flag = False
     chat_wire_id = (
@@ -691,13 +668,13 @@ async def setup_provider_from_preset(
             scope,
             tenant_id,
             user_id,
-            _SLOT_TASK_TYPES["chat"],
+            setup_slot_task_id("chat"),
             provider,
             by_wire_id[assignment_candidate_id],
         )
     if options.bind_vision and vision_candidate_id and vision_capable_flag:
         _, vision_model = await _slot_alive(
-            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["vision"]
+            db, scope, tenant_id, user_id, setup_slot_task_id("vision")
         )
         if vision_model is None:
             assigned["vision"] = vision_candidate_id
@@ -706,7 +683,7 @@ async def setup_provider_from_preset(
                 scope,
                 tenant_id,
                 user_id,
-                _SLOT_TASK_TYPES["vision"],
+                setup_slot_task_id("vision"),
                 provider,
                 by_wire_id[vision_candidate_id],
             )
@@ -724,7 +701,7 @@ async def setup_provider_from_preset(
             None,
         )
     if options.bind_stt and stt_resolved_id:
-        _, stt_model = await _slot_alive(db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["stt"])
+        _, stt_model = await _slot_alive(db, scope, tenant_id, user_id, setup_slot_task_id("stt"))
         if stt_model is None:
             assigned["stt"] = stt_resolved_id
             await _bind_slot(
@@ -732,7 +709,7 @@ async def setup_provider_from_preset(
                 scope,
                 tenant_id,
                 user_id,
-                _SLOT_TASK_TYPES["stt"],
+                setup_slot_task_id("stt"),
                 provider,
                 by_wire_id[stt_resolved_id],
             )
@@ -755,7 +732,7 @@ async def setup_provider_from_preset(
         )
     if options.bind_embeddings and embeddings_resolved_id:
         _, embeddings_model = await _slot_alive(
-            db, scope, tenant_id, user_id, _SLOT_TASK_TYPES["embeddings"]
+            db, scope, tenant_id, user_id, setup_slot_task_id("embeddings")
         )
         if embeddings_model is None:
             assigned["embed"] = embeddings_resolved_id
@@ -764,7 +741,7 @@ async def setup_provider_from_preset(
                 scope,
                 tenant_id,
                 user_id,
-                _SLOT_TASK_TYPES["embeddings"],
+                setup_slot_task_id("embeddings"),
                 provider,
                 by_wire_id[embeddings_resolved_id],
             )

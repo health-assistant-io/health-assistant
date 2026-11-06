@@ -14,7 +14,7 @@ from app.models.base import (
     VersionedMixin,
 )
 from app.models.enums import OrganizationType
-from app.services.fhir_helpers import _as_list, build_fhir_resource, build_meta
+from app.services.fhir.fhir_helpers import _as_list, build_fhir_resource, build_meta
 
 
 class OrganizationModel(
@@ -102,4 +102,4 @@ class OrganizationModel(
             },
         )
 
-    __table_args__ = (Index("idx_organization_tenant_name", "tenant_id", "name"),)
+    __table_args__ = (Index("ix_organization_tenant_name", "tenant_id", "name"),)

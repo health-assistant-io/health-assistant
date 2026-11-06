@@ -27,9 +27,7 @@ raise the charter ``auth`` code, malformed server responses ``protocol``.
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
-import hashlib
 import json
 import logging
 import secrets
@@ -125,14 +123,22 @@ def generate_pkce(verifier_bytes: int = 48) -> tuple[str, str, str]:
             f"Generated PKCE verifier length {len(verifier)} is outside the "
             "RFC 7636 §4.1 range (43-128)."
         )
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
-    return verifier, challenge, "S256"
+    # The S256 derivation has ONE implementation in the family
+    # (nx_auth.oauth.code_challenge — RFC 7636 vector pinned in its tests).
+    # Two copies of PKCE math is exactly the drift the family law forbids.
+    from nx_auth.oauth import code_challenge
+
+    return verifier, code_challenge(verifier), "S256"
 
 
 def generate_state() -> str:
-    """Opaque CSRF ``state`` value for the authorize round-trip."""
-    return secrets.token_urlsafe(32)
+    """Opaque CSRF ``state`` value for the authorize round-trip.
+
+    Delegates to ``nx_auth.oauth.new_state`` — one nonce generator, 256 bits.
+    """
+    from nx_auth.oauth import new_state
+
+    return new_state()
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +386,8 @@ class OAuthTokenStore:
     ``context`` — a copied ``_oauth`` blob fails to decrypt in another row
     (audit 2026-10-18 F21). Other fields (``expires_at``, ``patient``,
     ``scope``, ``client_id``) are stored in plaintext. The caller is
-    responsible for persisting the ``user_config`` mutation (the SDK's
-    ``set_sync_cursor`` / the endpoint's ``flag_modified`` + commit).
+    responsible for persisting the ``user_config`` mutation (the endpoint's
+    ``flag_modified`` + commit).
     """
 
     def __init__(self, cipher: SecretCipher | None = None) -> None:

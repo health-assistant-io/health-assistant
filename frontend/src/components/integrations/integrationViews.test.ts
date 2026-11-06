@@ -54,7 +54,7 @@ describe('integrationViews (wire → kit mapping)', () => {
     expect(tierFor([])).toBe('T0');
   });
 
-  it('maps family status first with the legacy string as fallback', () => {
+  it('maps family status first with the raw string as fallback', () => {
     expect(statusOf({ status: 'degraded' }, 'ACTIVE')).toBe('degraded');
     expect(statusOf({ status: 'mystery' }, 'ACTIVE')).toBe('ok');
     expect(statusOf(null, 'ERROR')).toBe('failing');
@@ -198,7 +198,7 @@ describe('integrationViews (wire → kit mapping)', () => {
       },
     };
     expect(docsNodes(tree, 'de')[0].title).toBe('Erste Schritte');
-    expect(docsNodes(tree, 'de')[0].children[0].title).toBe('Server verbinden');
+    expect(docsNodes(tree, 'de')[0].children?.[0]?.title).toBe('Server verbinden');
     expect(docsNodes(tree, 'fr')[0].title).toBe('Getting Started'); // defaultLocale fallback
     // a category without any i18n/title falls back to the inline title,
     // and one without either to the title-cased slug

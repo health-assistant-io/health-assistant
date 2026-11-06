@@ -214,7 +214,7 @@ async def test_b14_bad_threshold_falls_back_to_default(bad_value):
     """B14: any non-finite or out-of-[0,1] value falls back to the safe default."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from app.services.catalog_search_service import (
+    from app.services.catalog.catalog_search_service import (
         DEFAULT_THRESHOLD,
         _set_similarity_threshold,
     )
@@ -240,7 +240,7 @@ async def test_b14_valid_threshold_is_inlined(good_value):
     """B14: a valid float in [0, 1] is passed through to the SET statement."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from app.services.catalog_search_service import _set_similarity_threshold
+    from app.services.catalog.catalog_search_service import _set_similarity_threshold
 
     db = MagicMock()
     db.execute = AsyncMock()
@@ -256,7 +256,7 @@ async def test_b14_threshold_uses_set_statement():
     """B14: the function still emits a pg_trgm similarity_threshold SET."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from app.services.catalog_search_service import _set_similarity_threshold
+    from app.services.catalog.catalog_search_service import _set_similarity_threshold
 
     db = MagicMock()
     db.execute = AsyncMock()

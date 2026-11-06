@@ -16,12 +16,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/registration-failures")
+async def list_registration_failures(
+    current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
+) -> dict[str, str]:
+    """Bundled registrations that self-disabled with a reason (plan 37 6.1)
+    — a surfaced answer, never only a log line. Empty = all admitted."""
+    from app.extensions.lifecycle import registration_failures
+
+    return registration_failures()
+
+
 @router.get("", response_model=list[dict[str, Any]])
 async def list_system_integrations(
     current_user: TokenData = Depends(RoleChecker([Role.SYSTEM_ADMIN])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     """List all system integration configurations, including newly discovered ones."""
+    from app.api.v1.endpoints.integrations import _render_wire_manifest
     from app.extensions.registry import domain_of, integration_registry
 
     # Get all discovered manifests from the filesystem
@@ -36,20 +48,23 @@ async def list_system_integrations(
 
     # First, list all discovered integrations (combining DB state if it exists).
     # Integrations are ENABLED BY DEFAULT: a missing DB row means enabled.
+    # Each row carries the wire-manifest identity fields (capabilities,
+    # categories, kind…) so the admin surface can render the same catalog
+    # primitives as the user-facing one — availability only differs by
+    # ``is_enabled`` and by not hiding disabled domains.
     discovered_domains = set()
     for manifest in manifests:
         ext_id = manifest.get("id")
         if ext_id:
             domain = domain_of(str(ext_id))
-            title = (manifest.get("i18n") or {}).get("locales", {}).get("en", {}).get("title")
+            wire = _render_wire_manifest(manifest)
             discovered_domains.add(domain)
             db_record = db_integrations.get(domain)
             response.append(
                 {
-                    "domain": domain,
-                    "name": title or domain,
-                    "version": manifest.get("version", "Unknown"),
+                    **wire,
                     "is_enabled": db_record.is_enabled if db_record else True,
+                    "on_filesystem": True,
                 }
             )
 
@@ -60,8 +75,14 @@ async def list_system_integrations(
                 {
                     "domain": domain,
                     "name": domain,
-                    "version": "Unknown (Not on filesystem)",
+                    "version": None,
+                    "integration_type": [],
+                    "description": None,
+                    "categories": [],
+                    "kind": None,
+                    "capabilities": [],
                     "is_enabled": record.is_enabled,
+                    "on_filesystem": False,
                 }
             )
 

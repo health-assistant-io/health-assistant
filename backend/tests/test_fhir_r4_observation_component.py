@@ -72,7 +72,7 @@ def test_observation_to_dict_emits_component():
 
 def test_import_bundle_preserves_component():
     """The fhir_to_observation_orm converter passes component through."""
-    from app.services.fhir_converter import fhir_to_observation_orm
+    from app.services.fhir.fhir_converter import fhir_to_observation_orm
 
     component = [{"code": {"coding": [{"code": "8480-6"}]}, "valueQuantity": {"value": 120}}]
     out = fhir_to_observation_orm(

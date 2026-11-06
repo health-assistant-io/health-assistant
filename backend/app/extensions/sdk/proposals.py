@@ -1,51 +1,56 @@
-"""SDK specs for the integration HITL-proposal flow (workstream G).
+"""SDK specs + server-side resolvers for the integration HITL-proposal flow.
 
-Providers opt into human-in-the-loop catalog proposals by:
+Providers opt into human-in-the-loop proposals by:
 
-1. Overriding :meth:`BaseHealthProvider.supports_hitl_proposals` to return
-   ``True`` (lands in G.3).
+1. Declaring the ``hitl_proposal`` data class in the manifest's
+   ``itemSchema`` (declared data, gated at registration).
 2. Implementing :meth:`BaseHealthProvider.pull_hitl_proposals` to return a
-   list of :class:`IntegrationProposalSpec` objects (G.3).
+   list of :class:`IntegrationProposalSpec` objects.
 3. Optionally implementing :meth:`BaseHealthProvider.handle_proposal_resolution`
    to react when the user resolves a proposal (advance a cursor so the
    next sync doesn't re-propose, log audit, etc.) — default no-op.
 
-The platform's ``run_sync`` (engine wiring in G.4) calls
-``pull_hitl_proposals``, persists each spec as a PROPOSED
-:class:`~app.models.integration_proposal.IntegrationProposal` row, and
-fires an HITL notification. The user resolves via
-``/api/v1/integrations/instance/{id}/proposals/{proposal_id}/resolve``;
-on approve, the resolver delegates to
-:func:`app.services.catalog_proposal_service.apply_proposal` — the same
-write path F.3 auto-applies through.
+The platform's ``run_sync`` calls ``pull_hitl_proposals``, persists each spec
+as a PROPOSED row in the one ``proposals`` table (plan 5), and fires an HITL
+notification. The user resolves via
+``/api/v1/integrations/instance/{id}/proposals/{proposal_id}/resolve``; on
+approve, the resolver validates the user-approved ``final_payload`` against
+the kind's contract schema and then writes through the same services the UI
+uses:
 
-This module mirrors :mod:`integrations.sdk.catalog` (Pydantic specs with
-``Literal`` discriminators) and :mod:`integrations.sdk.notifications`
+* catalog kinds → :func:`app.services.catalog.catalog_proposal_service.apply_proposal`;
+* patient-record kinds (``create_event``, ``create_examination``,
+  ``add_medication``, ``add_biomarker_to_examination``) → the resolvers in
+  this module, which route through the canonical clinical services.
+
+This module mirrors :mod:`app.extensions.sdk.catalog` (Pydantic specs with
+``Literal`` discriminators) and :mod:`app.extensions.sdk.notifications`
 (spec + builder style).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 # ---------------------------------------------------------------------------
-# proposal_type discriminator
+# proposal_type (kind id) discriminator
 # ---------------------------------------------------------------------------
 
-#: The four catalog-proposal ``proposal_type`` values the resolver supports
-#: today. Names mirror the chat-side ``task_type`` strings
-#: (``create_*_definition``) so a future unified review UI can render both
-#: sources identically. Patient-record types (``create_event``,
-#: ``create_examination``, ``add_medication``, ``add_biomarker_to_examination``)
-#: are deferred — the resolver raises ``NotImplementedError`` for them. Note:
-#: the chat-side tool *function* names were renamed to ``propose_define_*`` /
-#: ``propose_prescribe_*`` / ``propose_record_*`` for clarity, but the
-#: ``task_type`` and ``proposal_type`` strings stay stable to preserve SDK
-#: alignment.
+#: The proposal-kind vocabulary an integration may emit. Kind ids are the
+#: contract ids in ``hitl-proposal-kinds.json`` (seeded into
+#: ``proposal_kinds``); the chat-side card keys live in the kind's
+#: ``card_variant``. The first four write to the patient record; the last four
+#: contribute to the catalog.
 IntegrationProposalType = Literal[
+    "create_event",
+    "create_examination",
+    "add_medication",
+    "add_biomarker_to_examination",
     "create_biomarker_definition",
     "create_medication_definition",
     "create_concept",
@@ -62,7 +67,7 @@ class IntegrationProposalSpec(BaseModel):
     """One HITL proposal from an integration.
 
     The platform's ``run_sync`` pipeline calls
-    :func:`app.services.integration_proposal_service.create_proposal` to
+    :func:`app.services.integration.integration_proposal_service.create_proposal` to
     persist each spec as a PROPOSED row + fires an HITL notification.
     Re-emitting the same spec on consecutive syncs is a no-op (idempotent
     on the dedup key derived from ``(proposal_type, proposed_payload)``).
@@ -326,12 +331,173 @@ def edge_hitl_proposal(
     )
 
 
+# ---------------------------------------------------------------------------
+# Server-side patient-record resolvers (plan 5 W3)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PatientRecordWrite:
+    """Outcome of applying one patient-record proposal."""
+
+    kind: str
+    entity_id: UUID
+    detail: str | None = None
+
+
+def _require_patient_id(payload: dict[str, Any], kind: str) -> UUID:
+    raw = payload.get("patient_id")
+    if raw in (None, ""):
+        raise ValueError(f"{kind} proposal requires a patient_id (row scope or payload)")
+    return UUID(str(raw))
+
+
+async def resolve_create_event(
+    db: Any,
+    actor: Any,
+    payload: dict[str, Any],
+    *,
+    integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> PatientRecordWrite:
+    """Apply a ``create_event`` proposal through ``clinical_event_service``."""
+    from app.extensions.sdk.proposal_schemas import CreateEventPayload
+    from app.schemas.clinical_event import ClinicalEventCreate
+    from app.services.clinical.clinical_event_service import create_event
+
+    validated = CreateEventPayload.model_validate(payload).model_dump(mode="json")
+    patient_id = _require_patient_id(validated, "create_event")
+    event_data = {**validated, "patient_id": patient_id}
+    created = await create_event(
+        db,
+        actor,
+        ClinicalEventCreate(**event_data),
+        source_integration_id=integration_id,
+        external_id=external_id,
+    )
+    return PatientRecordWrite(
+        kind="create_event",
+        entity_id=UUID(str(created["id"])),
+        detail=created.get("title"),
+    )
+
+
+async def resolve_create_examination(
+    db: Any,
+    actor: Any,
+    payload: dict[str, Any],
+    *,
+    integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> PatientRecordWrite:
+    """Apply a ``create_examination`` proposal through ``examination_service``."""
+    from app.extensions.sdk.proposal_schemas import CreateExaminationPayload
+    from app.schemas.examination import ExaminationCreate
+    from app.services.clinical.examination_service import create_examination
+
+    validated = CreateExaminationPayload.model_validate(payload).model_dump(mode="json")
+    patient_id = _require_patient_id(validated, "create_examination")
+    exam_data = {**validated, "patient_id": patient_id}
+    created = await create_examination(
+        db,
+        actor,
+        ExaminationCreate(**exam_data),
+        source_integration_id=integration_id,
+        external_id=external_id,
+    )
+    return PatientRecordWrite(
+        kind="create_examination",
+        entity_id=created.id,
+        detail=created.notes,
+    )
+
+
+async def resolve_add_medication(
+    db: Any,
+    actor: Any,
+    payload: dict[str, Any],
+    *,
+    integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> PatientRecordWrite:
+    """Apply an ``add_medication`` proposal through ``medication_service``."""
+    from app.extensions.sdk.proposal_schemas import AddMedicationPayload
+    from app.schemas.medication import MedicationRecordCreate
+    from app.services.clinical.medication_service import add_patient_medication
+
+    validated = AddMedicationPayload.model_validate(payload).model_dump(mode="json")
+    patient_id = _require_patient_id(validated, "add_medication")
+    medication_data = {**validated, "patient_id": patient_id}
+    created = await add_patient_medication(
+        db,
+        actor,
+        MedicationRecordCreate(**medication_data),
+        source_integration_id=integration_id,
+        external_id=external_id,
+    )
+    return PatientRecordWrite(
+        kind="add_medication",
+        entity_id=created.id,
+        detail=(created.code or {}).get("text"),
+    )
+
+
+async def resolve_add_biomarker_to_examination(
+    db: Any,
+    actor: Any,
+    payload: dict[str, Any],
+    *,
+    integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> PatientRecordWrite:
+    """Apply an ``add_biomarker_to_examination`` proposal as an Observation.
+
+    Routes through ``fhir_service.create_observation`` — the same service the
+    ``POST /observations`` endpoint uses — after an explicit tenant-scoped
+    patient access check (the observation service has no actor parameter).
+    """
+    from app.extensions.sdk.proposal_schemas import AddBiomarkerPayload
+    from app.services.auth.access import check_patient_access
+    from app.services.fhir.fhir_service import create_observation
+
+    validated = AddBiomarkerPayload.model_validate(payload).model_dump(mode="json")
+    patient_id = _require_patient_id(validated, "add_biomarker_to_examination")
+    await check_patient_access(patient_id, actor, db)
+    observation_data = {**validated, "patient_id": patient_id}
+    if external_id is not None:
+        observation_data.setdefault("external_id", external_id)
+    created = await create_observation(observation_data, actor.tenant_id)
+    if created is None:
+        raise ValueError("add_biomarker_to_examination: observation write failed")
+    return PatientRecordWrite(
+        kind="add_biomarker_to_examination",
+        entity_id=created.id,
+        detail=(created.code or {}).get("text"),
+    )
+
+
+#: Patient-record kind → resolver. The catalog kinds route through
+#: ``catalog_proposal_service`` instead (see ``proposal_resolvers``).
+PATIENT_RECORD_RESOLVERS: dict[str, Callable[..., Any]] = {
+    "create_event": resolve_create_event,
+    "create_examination": resolve_create_examination,
+    "add_medication": resolve_add_medication,
+    "add_biomarker_to_examination": resolve_add_biomarker_to_examination,
+}
+
+
 __all__ = [
+    "PATIENT_RECORD_RESOLVERS",
     "IntegrationProposalSpec",
     "IntegrationProposalType",
+    "PatientRecordWrite",
     "ProposalOutcome",
     "biomarker_hitl_proposal",
     "concept_hitl_proposal",
     "edge_hitl_proposal",
     "medication_hitl_proposal",
+    "resolve_add_biomarker_to_examination",
+    "resolve_add_medication",
+    "resolve_create_event",
+    "resolve_create_examination",
 ]

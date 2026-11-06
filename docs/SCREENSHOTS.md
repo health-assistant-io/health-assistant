@@ -16,7 +16,7 @@ Welcome to the visual tour of Health Assistant. These reproducible screenshots s
 
 _Patient dashboard with the draggable react-grid-layout widgets._
 
-![dashboard desktop](images/dashboard-desktop.png)
+![dashboard — Patient dashboard with the draggable react-grid-layout widgets.](images/dashboard-desktop.png)
 
 ## Clinical data
 
@@ -24,43 +24,43 @@ _Patient dashboard with the draggable react-grid-layout widgets._
 
 _Patient list — tenant-scoped, paginated, with search._
 
-![patients desktop](images/patients-desktop.png)
+![patients — Patient list — tenant-scoped, paginated, with search.](images/patients-desktop.png)
 
 ### patient-detail
 
 _Patient detail view — demographics, timeline, and linked resources._
 
-![patient-detail desktop](images/patient-detail-desktop.png)
+![patient-detail — Patient detail view — demographics, timeline, and linked resources.](images/patient-detail-desktop.png)
 
 ### biomarkers
 
 _Biomarker catalog — definitions, units, and reference ranges._
 
-![biomarkers desktop](images/biomarkers-desktop.png)
+![biomarkers — Biomarker catalog — definitions, units, and reference ranges.](images/biomarkers-desktop.png)
 
 ### documents
 
 _Document list — uploaded exams/reports routed through the OCR pipeline._
 
-![documents desktop](images/documents-desktop.png)
+![documents — Document list — uploaded exams/reports routed through the OCR pipeline.](images/documents-desktop.png)
 
 ### examinations
 
 _Examination list — tracking patient visits, consults, and related diagnoses._
 
-![examinations desktop](images/examinations-desktop.png)
+![examinations — Examination list — tracking patient visits, consults, and related diagnoses.](images/examinations-desktop.png)
 
 ### examination-detail
 
 _Examination detail view — structured clinical notes and linked entities._
 
-![examination-detail desktop](images/examination-detail-desktop.png)
+![examination-detail — Examination detail view — structured clinical notes and linked entities.](images/examination-detail-desktop.png)
 
 ### biomarker-detail
 
 _Biomarker detail view — longitudinal trends and clinical significance._
 
-![biomarker-detail desktop](images/biomarker-detail-desktop.png)
+![biomarker-detail — Biomarker detail view — longitudinal trends and clinical significance.](images/biomarker-detail-desktop.png)
 
 ## AI assistant
 
@@ -68,4 +68,4 @@ _Biomarker detail view — longitudinal trends and clinical significance._
 
 _Agentic AI chat — tools, SSE streaming, and HITL task cards._
 
-![ai-chat desktop](images/ai-chat-desktop.png)
+![ai-chat — Agentic AI chat — tools, SSE streaming, and HITL task cards.](images/ai-chat-desktop.png)

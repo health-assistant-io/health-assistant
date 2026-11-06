@@ -8,7 +8,7 @@ cross-tenant viewer), and wires the missing surfaces.
 
 Pinned here:
 
-1. Migration ``a1u2d3i4t5e6`` round-trips (rename + ``outcome``).
+1. The head shape is ``audit_events`` (not ``audit_logs``) with ``outcome``.
 2. Denied reads (403 ownership, 404 cross-tenant) land with
    ``outcome="denied"``; granted reads with ``outcome="ok"``.
 3. Auth events: login ok / login denied / refresh reuse.
@@ -45,7 +45,7 @@ async def _audit_rows(
     outcome: str | None = None,
 ) -> list[AuditEvent]:
     """Read the audit stream for the given filters (real test DB)."""
-    from app.services.audit_service import _coerce_uuid
+    from app.services.audit.audit_service import _coerce_uuid
 
     stmt = select(AuditEvent)
     if action is not None:
@@ -157,33 +157,6 @@ def test_h2_migration_applied_shape():
     cols = _columns("audit_events")
     assert "outcome" in cols
     assert "'ok'" in (cols["outcome"] or "")
-
-
-def test_h2_migration_round_trip():
-    """a1u2d3i4t5e6 downgrades to h1c2o3n4t5r6 (audit_logs, no outcome)
-    and upgrades back — the rename must survive a round-trip."""
-    import logging
-
-    from alembic.config import Config
-
-    from alembic import command
-
-    logging.getLogger("alembic").setLevel(logging.WARNING)
-    cfg = Config("alembic.ini")
-
-    try:
-        command.downgrade(cfg, "h1c2o3n4t5r6")
-        tables = _table_names()
-        assert "audit_logs" in tables, "downgrade must restore audit_logs"
-        assert "audit_events" not in tables
-        assert "outcome" not in _columns("audit_logs")
-    finally:
-        command.upgrade(cfg, "head")
-
-    tables = _table_names()
-    assert "audit_events" in tables
-    assert "audit_logs" not in tables
-    assert "outcome" in _columns("audit_events")
 
 
 # ---------------------------------------------------------------------------

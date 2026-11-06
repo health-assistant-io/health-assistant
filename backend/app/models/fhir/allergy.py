@@ -17,7 +17,7 @@ from app.models.enums import (
     AllergyCriticality,
     CatalogScope,
 )
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_helpers import (
     _enum_value,
     build_fhir_resource,
     build_meta,
@@ -32,10 +32,10 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     category = Column(Enum(AllergyCategory), nullable=False)
     description = Column(Text, nullable=True)
     typical_reactions = Column(JSONB, nullable=True)  # List of common symptoms
-    # Taxonomy classification (Phase 2): the allergen-class concept. Follows the
-    # established ``class_concept_id`` convention. The legacy ``category`` enum
-    # is RETAINED — it backs the FHIR AllergyIntolerance.category closed value
-    # set on the instance projection (AllergyIntolerance.to_fhir_dict).
+    # Taxonomy classification: the allergen-class concept. Follows the
+    # established ``class_concept_id`` convention. ``category`` is a distinct
+    # FHIR field — it backs the AllergyIntolerance.category closed value set on
+    # the instance projection (AllergyIntolerance.to_fhir_dict).
     class_concept_id = Column(
         UUID(as_uuid=True),
         ForeignKey("concepts.id", ondelete="SET NULL"),

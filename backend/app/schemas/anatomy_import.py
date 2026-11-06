@@ -8,7 +8,7 @@ from app.models.enums import CodingSystem, ConceptRelationType
 class AnatomyImportNode(BaseModel):
     slug: str
     name: str
-    # Accepts either a concept slug (legacy ``category`` enum value mapped to
+    # Accepts either a concept slug (the pre-concepts ``category`` enum value mapped to
     # lowercase: ``organ``, ``system``, ``region``, ``organ-part``, ``tissue``,
     # ``joint``, ``other-anatomy``) or None. The import service resolves it to
     # a ``class_concept_id``.

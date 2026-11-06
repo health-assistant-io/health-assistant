@@ -21,7 +21,7 @@ export type AnatomyRelationType =
 export type CodingSystem = 'loinc' | 'snomed' | 'custom';
 
 export interface AnatomyMapMarker {
-  /** @deprecated The figure slug now encodes the view; retained for back-compat. */
+  /** Superseded by the figure slug, which encodes the view. */
   view?: 'front' | 'back';
   /** Normalized x (0–1) within the figure's viewBox. */
   nx: number;
@@ -73,7 +73,7 @@ export interface AnatomyStructure {
   slug: string;
   category: AnatomyCategory;
   /** Anatomy-class concept (lowercase slug, e.g. ``organ``). Projected by the
-   * backend alongside the legacy uppercase ``category``. */
+   * backend alongside the uppercase ``category``. */
   class_concept_id?: string | null;
   class_concept_slug?: string | null;
   class_concept_name?: string | null;
@@ -180,7 +180,7 @@ export const CATEGORY_COLORS: Record<AnatomyCategory, string> = {
 
 /**
  * Lowercase anatomy-class concept slug → color/label. The canonical form now
- * that the legacy uppercase ``AnatomyCategory`` enum is dropped on the backend
+ * that the uppercase ``AnatomyCategory`` enum is dropped on the backend
  * (items carry ``class_concept_slug``). Mirrors the uppercase map's palette.
  */
 export const CLASS_COLORS: Record<string, string> = {

@@ -66,7 +66,7 @@ async def admin_headers():
         )
         await session.commit()
 
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     headers = await auth_headers(await get_user_by_id(user_id))
     yield headers, tenant_id

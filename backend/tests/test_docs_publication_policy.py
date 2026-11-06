@@ -48,7 +48,9 @@ MOVED_OUT_DOCS = (
     "TASK_DEBUGGING.md",
 )
 
-REPO_ONLY_DOCS = {"UI_CAPTURE_PIPELINE.md"}
+# Docs landing page: published in the repo (and rendered by the forge), not a
+# navigation entry — the nav's own "Introduction" points at the top-level README.
+REPO_ONLY_DOCS = {"UI_CAPTURE_PIPELINE.md", "README.md"}
 
 
 def _public_surfaces() -> list[Path]:

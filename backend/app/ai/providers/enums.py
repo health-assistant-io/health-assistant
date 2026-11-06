@@ -4,15 +4,30 @@ These are the single source of truth replacing the hard-coded string lists that
 previously lived inside ``ai_provider_service.get_config_summary`` and the
 scattered ``provider_type == "openai"`` comparisons.
 
-Both enums inherit ``(str, Enum)`` so their members are plain strings: the DB
-columns (``ai_providers.provider_type``, ``ai_task_assignments.task_type``)
-remain plain ``String`` columns and need NO migration. ``TaskType.CHAT == "chat"``
-and ``TaskType.CHAT.value == "chat"`` both hold.
+``TaskType`` is GENERATED from the one task registry
+(:mod:`app.ai.providers.task_registry`) into ``task_types.py`` by
+``scripts/sync-task-registry.mjs``; this module re-exports it so
+``app.ai.providers.enums.TaskType`` stays the stable import path. The provider
+enum below is hand-written (provider types are a closed behavioral vocabulary).
+
+Both enums inherit ``str`` (``StrEnum``) so their members are plain strings: the
+DB columns (``ai_providers.provider_type``) remain plain ``String`` columns and
+need NO migration.
 """
 
 from __future__ import annotations
 
 import enum
+
+from app.ai.providers.task_types import TaskType
+
+__all__ = [
+    "DecisionCapability",
+    "DecisionTransport",
+    "ProviderType",
+    "SystemOneErrorKind",
+    "TaskType",
+]
 
 
 class ProviderType(enum.StrEnum):
@@ -24,7 +39,8 @@ class ProviderType(enum.StrEnum):
 
     Reserved members (``ANTHROPIC``, ``OLLAMA``, ``AZURE_OPENAI``, ``BEDROCK``)
     are not yet wired to an LLM builder — their factories raise
-    ``NotImplementedError`` until the matching SDK is added.
+    ``NotImplementedError`` until the matching SDK is added, and provider/model
+    write paths refuse them up front (``provider_type_unwired``, 422).
     """
 
     # --- LLM-capable providers (routed through the provider registry) ---
@@ -113,87 +129,3 @@ class SystemOneErrorKind(enum.StrEnum):
     VALIDATION = "validation"
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
-
-
-class TaskType(enum.StrEnum):
-    """Canonical AI task types.
-
-    Values match the ``task_type`` string column on ``ai_task_assignments`` and
-    the frontend ``AIConfigSummary`` field keys verbatim — no renames, no
-    migration. New task types are added here (single source of truth) and
-    automatically surface in the config summary via :meth:`all_values`.
-    """
-
-    DEFAULT = "default"
-    OCR = "ocr"
-    NLP = "nlp"
-    MEDICATION_INTERACTION = "medication_interaction"
-    ANOMALY_DETECTION = "anomaly_detection"
-    FILL_BIOMARKER_FORM = "fill_biomarker_form"
-    FILL_MEDICATION_FORM = "fill_medication_form"
-    MAGIC_FILL_EXAMINATION = "magic_fill_examination"
-    DEFINE_BIOMARKER = "define_biomarker"
-    DEFINE_MEDICATION = "define_medication"
-    DEFINE_ANATOMY_GRAPH = "define_anatomy_graph"
-    SUGGEST_CATEGORY_ICON = "suggest_category_icon"
-    GENERATE_CATEGORY_ICON = "generate_category_icon"
-    CHAT = "chat"
-    TRANSCRIPTION = "transcription"
-    #: Embedding vectors (§15 family ``embeddings`` capability) — the embed
-    #: slot the setup gap-fill binds the preset's docs-verified default into.
-    EMBED = "embed"
-
-    # --- Decision slots (plan 26 / ADR-0032; D17: PHI scope guard applies) ---
-    #: Health's storage of the family ``decision:<cap>`` slots (§3 contract
-    #: table); fallback = ``priority`` ordering across the scope cascade.
-    #: Resolution NEVER falls back to ``default`` (D4 slot separation).
-    DECISION_TOOL_DISPATCH = "decision_tool_dispatch"
-    DECISION_BOOLEAN_GATE = "decision_boolean_gate"
-    DECISION_CHOICE = "decision_choice"
-    DECISION_SCORE = "decision_score"
-
-    # --- Decision default (ADR-0036 §1; D17 PHI scope guard applies) ---
-    #: The ``decision`` default slot joins the vocabulary beside the kind
-    #: overrides: resolution order is kind override → decision default →
-    #: unavailable — never a hop onto ``default`` (D4 slot separation).
-    #: Single-slot per ADR-0037 (no fallback of its own).
-    DECISION = "decision"
-
-    @classmethod
-    def all_values(cls) -> list[str]:
-        """Ordered list of task_type string values.
-
-        Replaces the hard-coded list that used to live inline in
-        ``AIProviderService.get_config_summary``.
-        """
-        return [member.value for member in cls]
-
-    @classmethod
-    def from_string(cls, value: str | None) -> TaskType | None:
-        """Tolerant lookup; returns ``None`` for unknown values."""
-        if value is None:
-            return None
-        try:
-            return cls(value)
-        except ValueError:
-            return None
-
-    @classmethod
-    def is_decision_default(cls, value: str | None) -> bool:
-        """True for the ``decision`` default slot (ADR-0036)."""
-        return value == cls.DECISION.value
-
-    @classmethod
-    def is_decision(cls, value: str | None) -> bool:
-        """True for the four ``decision_*`` slots (plan 26 / ADR-0032).
-
-        Decision slots live in the same table as every other assignment but
-        obey D4 slot separation: they resolve only decision-capable models
-        and never fall back to the ``default`` task.
-        """
-        return value in (
-            cls.DECISION_TOOL_DISPATCH.value,
-            cls.DECISION_BOOLEAN_GATE.value,
-            cls.DECISION_CHOICE.value,
-            cls.DECISION_SCORE.value,
-        )

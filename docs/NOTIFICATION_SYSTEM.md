@@ -36,17 +36,17 @@ Two supporting tables:
 | `SCHEDULED` | Medication / exam reminder (`NotificationTrigger` fires via Celery beat) | `reminder` | `NotificationManager.fire_notification` → `emit` |
 | `RULE` | Biomarker threshold crossed on observation ingestion | `alert` | `notification_rule_service.evaluate_and_fire` ← `fhir_service.create_observation` |
 | `AGENT` | HITL proposal created by the AI agent | `hitl` | `_notify_hitl_proposal` helper in `ai/tools/hitl_proposals.py` (called from all 6 propose tools) |
-| `INTEGRATION` | Wearable/lab sync outcome (baseline) **+ provider-authored rich events** (threshold alerts, HITL prompts, daily summaries, etc.) | `integration` / `alert` / `hitl` / `agent` / `system` | `_notify_sync_outcome` (baseline) + `_emit_provider_notifications` (opt-in via `supports_notifications`) — both called from `integration_sync_service.post_sync_notifications` after `run_sync` AND after webhook processing |
+| `INTEGRATION` | Wearable/lab sync outcome (baseline) **+ provider-authored rich events** (threshold alerts, HITL prompts, daily summaries, etc.) | `integration` / `alert` / `hitl` / `agent` / `system` | `_notify_sync_outcome` (baseline) + `_emit_provider_notifications` (opt-in via the declared `notify` capability) — both called from `integration_sync_service.post_sync_notifications` after `run_sync` AND after webhook processing |
 | `CLINICAL` | Clinical event created | `clinical_event` | `POST /clinical-events` → `emit` to the care team |
 | `SYSTEM` | Admin broadcast (`POST /admin/notifications/broadcast`) | `system` | admin endpoint → `emit` with `TENANT` or `SYSTEM` targets |
 
 ## Integration-driven notifications (provider-opt-in)
 
-Beyond the baseline "synced N records / sync failed" notification that fires for every integration, providers can emit rich, event-driven notifications by overriding SDK hooks on `BaseHealthProvider`. The pattern mirrors `supports_tools` / `get_tools` and `get_custom_actions` / `execute_custom_action` — safe defaults, opt-in override, no per-domain code in any endpoint.
+Beyond the baseline "synced N records / sync failed" notification that fires for every integration, providers that declare the `notify` capability can emit rich, event-driven notifications by implementing SDK hooks on `BaseHealthProvider`. The pattern mirrors `chat-tools` / `get_tools` and `get_custom_actions` / `execute_custom_action` — declared capability, safe hook defaults, no per-domain code in any endpoint.
 
 | Hook | Default | When called |
 |---|---|---|
-| `supports_notifications() → bool` | `False` | Feature gate. Returning True opts the provider in. |
+| manifest `capabilities: ["notify"]` | — | Feature gate: the registry answers `has_capability(domain, "notify")`; no provider method is probed. |
 | `get_notification_types() → list[NotificationTypeSpec]` | `[]` | Static declaration — called by the platform to enumerate the integration's addressable notification kinds (surfaced via `GET /notifications/preferences` and rendered in the IntegrationDetail "Notifications" tab + the `/notifications/settings` hub). |
 | `get_notifications(integration, *, observations, context) → list[NotificationSpec]` | `[]` | After every successful pull sync (`run_sync`) AND after every successful webhook that persists ≥1 observation. |
 | `handle_notification_action(integration, action_id, payload) → ActionResult` | `NotImplementedError` | When a user clicks an action button of `type="post"` on one of the provider's notifications. Routed via `POST /integrations/{domain}/notification-action/{iid}/{action_id}`. |
@@ -89,7 +89,7 @@ Set `digest_key` on any spec that may fire repeatedly inside a TTL window — mo
 - On a digest hit, `emit()` returns the existing row as-is — **no new row, no re-fan-out, no re-push**. After `dedup_expires_at` passes, the next emit creates a fresh row (so a daily summary can be emitted once per day, not once ever).
 - **No unique partial index** (unlike every other dedup pattern in the codebase). Postgres partial indexes can't reference `now()` in the predicate, and the TTL semantics require multiple historical rows per key. The lookup is a SELECT-then-INSERT on the non-unique composite index `ix_notification_dedup_lookup` — the race window is benign (worst case: two notifications emitted instead of one, the pre-digest behaviour).
 
-**Worked reference**: `integrations/dev_dummy/provider.py` overrides `supports_notifications() → True`, declares **4 NotificationTypeSpecs** (alert/warning, hitl/warning, system/info, agent/critical), tags every emitted spec with the matching `type_id`, tags the elevated-HR spec with `digest_key="dev_dummy:elevated_heart_rate:patient/{uuid}"` so consecutive syncs collapse, and implements `handle_notification_action` for the Acknowledge / Dismiss buttons. Read it as a copy-paste recipe for the full type-declaration + runtime-link + digest + action-handler round-trip.
+**Worked reference**: `backend/app/extensions/builtin/dev_dummy/provider.py` declares the `notify` capability, declares **4 NotificationTypeSpecs** (alert/warning, hitl/warning, system/info, agent/critical), tags every emitted spec with the matching `type_id`, tags the elevated-HR spec with `digest_key="dev_dummy:elevated_heart_rate:patient/{uuid}"` so consecutive syncs collapse, and implements `handle_notification_action` for the Acknowledge / Dismiss buttons. Read it as a copy-paste recipe for the full type-declaration + runtime-link + digest + action-handler round-trip.
 
 ### Three-layer preference filter
 
@@ -105,7 +105,7 @@ A notification fires only if it passes **all three** layers. All enforced server
 
 ### The unified kind model (single source of truth)
 
-All three layers are exposed through one abstraction — the **notification kind** — owned by `backend/app/services/notification_kind_registry.py`. Every kind carries `kind_id` / `label` / `manage_url` / `mutable` / `default_enabled`:
+All three layers are exposed through one abstraction — the **notification kind** — owned by `backend/app/services/notifications/notification_kind_registry.py`. Every kind carries `kind_id` / `label` / `manage_url` / `mutable` / `default_enabled`:
 
 - `source:{SOURCE}` — the 6 per-source toggles.
 - `channel:{CHANNEL}` — the per-channel toggles (EMAIL is `mutable=false` until SMTP lands).
@@ -128,10 +128,10 @@ These replace the former `GET /integrations/notification-types` + `PUT /integrat
 
 ## The unified emit API (`notification_service.emit`)
 
-**Single entry point every source calls.** Lives in `backend/app/services/notification_service.py`.
+**Single entry point every source calls.** Lives in `backend/app/services/notifications/notification_service.py`.
 
 ```python
-from app.services.notification_service import emit
+from app.services.notifications.notification_service import emit
 from app.models.enums import (
     NotificationSource, NotificationType, NotificationCategory,
     NotificationSeverity, RecipientKind, NotificationChannel,

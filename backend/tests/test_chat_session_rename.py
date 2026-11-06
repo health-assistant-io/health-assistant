@@ -10,7 +10,7 @@ import uuid
 
 from app.core.database import AsyncSessionLocal
 from app.models.enums import Role
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 from tests._auth_helpers import auth_headers, create_tenant, create_user
 
 

@@ -349,7 +349,9 @@ async def authenticate_session_token(token: str) -> TokenData:
         # health is a server product and never runs open.
         _deny("Invalid or expired token")
 
-    if not await token_store.is_session_active(str(user_id), str(jti)):
+    if not await token_store.is_session_active(
+        str(user_id), str(jti), str(payload.get("fid")) if payload.get("fid") else None
+    ):
         _deny("Token has been revoked")
 
     try:
@@ -358,7 +360,7 @@ async def authenticate_session_token(token: str) -> TokenData:
         _deny()
 
     # §5/§18.9 + §8 — verified against the live user row.
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
 
     user = await get_user_by_id(str(user_id))
     if user is None or not getattr(user, "is_active", False):
@@ -699,7 +701,7 @@ async def get_api_principal(
     try:
         return TokenData(**payload)
     except Exception:
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},

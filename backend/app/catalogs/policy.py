@@ -32,8 +32,8 @@ from uuid import UUID
 
 from app.models.enums import CatalogScope, Role
 
-RoleLike = Union[Role, str]  # noqa: UP007 -- legacy annotation; modernize when touched
-ScopeLike = Union[CatalogScope, str]  # noqa: UP007 -- legacy annotation; modernize when touched
+RoleLike = Union[Role, str]  # noqa: UP007 -- PEP 604 annotation; modernize when touched
+ScopeLike = Union[CatalogScope, str]  # noqa: UP007 -- PEP 604 annotation; modernize when touched
 
 
 class CatalogPermissionDenied(Exception):

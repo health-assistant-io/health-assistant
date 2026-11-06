@@ -17,7 +17,7 @@ import pytest
 from app.models.enums import Gender, MedicationStatus
 from app.models.fhir.medication import Medication
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_helpers import (
     FhirSerializationError,
     _enum_value,
     assert_valid_fhir,

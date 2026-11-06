@@ -31,7 +31,7 @@ from app.schemas.concept import (
     NeighborResponse,
 )
 from app.schemas.user import TokenData
-from app.services.concept_service import ConceptService
+from app.services.catalog.concept_service import ConceptService
 
 router = APIRouter(prefix="/concepts", tags=["Concepts"])
 
@@ -97,7 +97,7 @@ async def search_concepts(
     db: AsyncSession = Depends(get_db),
 ):
     """Ranked trigram + alias search over concepts."""
-    from app.services.catalog_search_service import search_concepts as _search
+    from app.services.catalog.catalog_search_service import search_concepts as _search
 
     results = await _search(
         db,
@@ -117,7 +117,7 @@ async def create_concept(
 ):
     """Create a concept. Global (tenant_scoped=False) requires SYSTEM_ADMIN.
 
-    Accepts ``kinds: [...]`` (preferred) or legacy ``kind: "..."``; at least
+    Accepts ``kinds: [...]`` (preferred) or a single ``kind: "..."``; at least
     one kind must be supplied.
     """
     svc = ConceptService(db)
@@ -129,11 +129,11 @@ async def create_concept(
             raise HTTPException(400, f"Invalid kind '{k}'")
     if body.kind is not None:
         try:
-            legacy = ConceptKind(body.kind)
+            single_kind = ConceptKind(body.kind)
         except ValueError:
             raise HTTPException(400, f"Invalid kind '{body.kind}'")
-        if legacy not in resolved_kinds:
-            resolved_kinds.append(legacy)
+        if single_kind not in resolved_kinds:
+            resolved_kinds.append(single_kind)
     if not resolved_kinds:
         raise HTTPException(400, "at least one kind is required")
 

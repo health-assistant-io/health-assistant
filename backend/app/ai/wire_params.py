@@ -1,12 +1,12 @@
 # VENDORED FILE — family canonical (ADR-0031 / ADR-0038). Source of truth:
-# dev/contracts/wire_params.py; synced byte-identical to
+# the family wire-parameter contract; synced byte-identical to
 # backend/app/ai/wire_params.py in study-assistant, health-assistant/core
-# and career-assistant by dev/scripts/sync-wire-params.sh, sha-checked by
-# dev/scripts/verify-wiring.sh, accepted by the shared fixture table
-# (dev/contracts/wire-params.fixtures.json — vendored alongside, loaded by
+# and career-assistant by the family sync tooling, sha-checked by
+# the family wiring verifier, accepted by the shared fixture table
+# (the family contract canonical/wire-params.fixtures.json — vendored alongside, loaded by
 # every repo's wire-params contract test). NEVER edit the vendored copy
-# in-repo — change the dev canonical, then re-run the sync (contract
-# changes = one dev commit + one sync run, never per-repo edits).
+# in-repo — change the family canonical, then re-run the sync (contract
+# changes = one canonical commit + one sync run, never per-repo edits).
 """Family wire-parameter policy (ADR-0038) — the shared core.
 
 One canonical implementation of the rules every model factory applies
@@ -14,7 +14,7 @@ when turning configuration into provider payloads:
 
 * **The token cap routes by endpoint, never by model id.**
   ``api.openai.com`` speaks ``max_completion_tokens`` (accepted by every
-  OpenAI chat model, old and new — ``max_tokens`` is deprecated and
+  OpenAI chat model, old and new — ``max_tokens`` is being retired and
   hard-rejected on the gpt-5 family and everything after it); every
   other base URL keeps ``max_tokens``, the OpenAI-compatible lingua
   franca (Ollama, LM Studio, llama.cpp, LocalAI, vLLM, OpenRouter…).
@@ -130,7 +130,7 @@ def token_cap_kwargs(provider_type: str, cap: int, base_url: str | None = None) 
 #: Provider-facing transport knob (ADR-0039): which OpenAI API surface a
 #: model's chat requests ride. ``auto`` (default) = chat completions —
 #: today's behavior everywhere; ``responses`` opts a row into the
-#: Responses API; ``completions`` pins the legacy wire explicitly.
+#: Responses API; ``completions`` pins the completions wire explicitly.
 ChatTransportOverride = Literal["auto", "completions", "responses"]
 
 
@@ -148,7 +148,7 @@ def resolve_chat_transport(
     /responses keeps reasoning + tools working for every current and
     future family without per-model configuration. Everywhere else the
     completions wire is the default (OpenAI-compatible servers don't
-    implement ``/responses``). ``completions`` pins the legacy wire
+    implement ``/responses``). ``completions`` pins the completions wire
     explicitly; ``responses`` opts a row in regardless of endpoint
     (still only honored on OpenAI's API).
 

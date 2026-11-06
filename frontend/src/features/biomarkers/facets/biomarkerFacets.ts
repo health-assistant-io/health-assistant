@@ -7,7 +7,7 @@ import { deriveCountedOptions } from './helpers';
  * `/catalogs?type=biomarker` view. Pure data/functions, no JSX, so both the
  * catalog toolbar and unit tests can consume them without rendering.
  *
- * See `dev/plans/modular-filter-system-2026-07-14.md` §2 Phase 2.
+ * See `local planning notes/modular-filter-system-2026-07-14.md` §2 Phase 2.
  */
 
 /** Filter by biomarker `category` (e.g. Lipids, Glucose, Hormones). */

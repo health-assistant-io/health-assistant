@@ -5,7 +5,7 @@ Maps a failed setup fetch onto the family i18n error enum
 timeout | local_not_running | unknown``) plus the ``suspected_vendor``
 mis-paste hint from the most-specific-first prefix table.
 
-Canonical text: dev/guidelines/ai-features.md §15 ("Error routing").
+Canonical text: the family AI standard §15 ("Error routing").
 Endpoints surface ``code`` + ``suspected_vendor`` verbatim — clients route
 them through i18n; the raw vendor message never replaces the enum.
 """

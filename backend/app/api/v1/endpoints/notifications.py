@@ -1,4 +1,4 @@
-# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
 """Notification inbox + admin endpoints.
 
 Role-aware scoping (the established pattern: ``get_current_user`` +
@@ -9,7 +9,7 @@ Role-aware scoping (the established pattern: ``get_current_user`` +
 * ``SYSTEM_ADMIN`` sees a cross-tenant feed (and may pass ``tenant_id``).
 
 Tenant isolation: every read/mutation helper in
-:mod:`app.services.notification_service` is constrained by ``user_id`` +
+:mod:`app.services.notifications.notification_service` is constrained by ``user_id`` +
 ``tenant_id``; cross-tenant calls are no-ops surfaced as 404.
 """
 
@@ -42,10 +42,10 @@ from app.schemas.notification import (
     UnreadCountResponse,
 )
 from app.schemas.user import TokenData
-from app.services import notification_service
-from app.services.access import check_patient_access
-from app.services.notification_manager import NotificationManager
-from app.services.notification_preferences_service import (
+from app.services.auth.access import check_patient_access
+from app.services.notifications import notification_service
+from app.services.notifications.notification_manager import NotificationManager
+from app.services.notifications.notification_preferences_service import (
     NotificationPreferencesService,
 )
 
@@ -62,7 +62,7 @@ def _coerce_uuid(value: str, field: str) -> UUID:
 
 
 # ---------------------------------------------------------------------------
-# Web Push subscription (retained from the legacy API)
+# Web Push subscription
 # ---------------------------------------------------------------------------
 
 

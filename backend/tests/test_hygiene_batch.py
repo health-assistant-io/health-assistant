@@ -85,7 +85,7 @@ def test_b14_check_observation_access_handles_missing_reference():
     """A subject dict without 'reference' must not raise AttributeError."""
     src = inspect.getsource(
         __import__(
-            "app.services.access", fromlist=["check_observation_access"]
+            "app.services.auth.access", fromlist=["check_observation_access"]
         ).check_observation_access
     )
     # The fix uses .get("reference", "") (or equivalent defensive pattern)

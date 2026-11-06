@@ -1,0 +1,85 @@
+name: Release install smoke
+
+# Guards the release-skew class (2026-11-03): the published one-liner extracts
+# the release tarball but the compose file defaults to `:latest`, which is
+# built from main. A release tree running main images dies at `alembic upgrade
+# head` (renamed env vars → "no password supplied"). This job proves, on the
+# published artifact, that the bootstrap pins the tag, that the installer
+# persists it, and that the rendered stack never falls back to `:latest`.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to smoke-test (e.g. v0.9.0)
+        required: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+
+      - name: Bootstrap pins the release image tag
+        run: |
+          set -eu
+          version="${TAG#v}"
+          out="$(bash scripts/bootstrap.sh --ref "$TAG" --dir "$RUNNER_TEMP/ha-smoke" --dry-run)"
+          printf '%s\n' "$out"
+          grep -q -- "--image-tag ${version}" <<< "$out"
+
+      - name: Installer persists the pin and no :latest leaks into the stack
+        run: |
+          set -eu
+          version="${TAG#v}"
+          cd "$RUNNER_TEMP/ha-smoke"
+          python3 scripts/setup_env.py --mode=1 </dev/null >/dev/null
+          bash scripts/install.sh --env-only --image-tag "$version" >/dev/null
+          grep -qE "^IMAGE_TAG=${version}$" .env
+          docker compose --env-file .env -f docker/docker-compose.standalone.yml config \
+            | grep -E '^[[:space:]]+image:' | sort -u | tee "$RUNNER_TEMP/images.txt"
+          grep -qE ":${version}$" "$RUNNER_TEMP/images.txt"
+          if grep -qE ':latest$' "$RUNNER_TEMP/images.txt"; then
+            echo "::error::rendered stack still uses :latest — a release tree must pin its images"
+            exit 1
+          fi
+
+      - name: Published images exist for this tag
+        run: |
+          set -eu
+          version="${TAG#v}"
+          if [ -n "${GHCR_TOKEN:-}" ]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin >/dev/null
+          fi
+          # The release is created as soon as the tag is pushed, while the
+          # images are built by the test-gated docker-publish workflow afterwards.
+          # Wait (bounded) instead of going red on a registry that is still
+          # catching up.
+          for image in backend frontend; do
+            ref="ghcr.io/health-assistant-io/health-assistant/health-assistant-${image}:${version}"
+            attempt=1
+            while [ "$attempt" -le 30 ]; do
+              if docker manifest inspect "$ref" >/dev/null 2>&1; then
+                echo "ok: ${image}:${version}"
+                break
+              fi
+              if [ "$attempt" -eq 30 ]; then
+                echo "::error::${ref} is still missing after 30 minutes — docker-publish failed or was skipped"
+                exit 1
+              fi
+              echo "waiting for ${ref} (attempt ${attempt}/30)"
+              attempt=$((attempt + 1))
+              sleep 60
+            done
+          done
+        env:
+          GHCR_TOKEN: ${{ github.token }}

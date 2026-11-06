@@ -8,7 +8,7 @@ import { useTenantStore } from '../../store/slices/tenantSlice';
 import { listPatients } from '../../services/patientService';
 import { PatientSelect } from '../patients';
 import { Search, Settings, Menu, X, Sparkles, ArrowLeft, Link as LinkIcon, Info, UserCircle, ListChecks } from 'lucide-react';
-import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useIsDesktop, useIsMobile } from '../../hooks/useMediaQuery';
 import { useSyncStatus } from '../ui/SyncIndicator';
 import { UserMenu, type UserMenuItem, type UserMenuStatus } from '../ui/user-menu';
 import { NotificationBell } from './NotificationBell';
@@ -24,6 +24,11 @@ function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  // Compact-header space budget: below lg the trigger drops to avatar-only
+  // and the search launcher to icon-only, so the page title keeps its space
+  // instead of being starved into a sliver by low-value chrome. Full identity
+  // (name/email) stays in the menu panel; email returns to the trigger at lg+.
+  const isDesktop = useIsDesktop();
   const { setPatients, setCurrentPatient } = usePatientStore();
   const { language, setLanguage, theme, setTheme } = useSettingsStore();
   const loadCurrentTenant = useTenantStore((s) => s.loadCurrentTenant);
@@ -155,8 +160,9 @@ function Header() {
           {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
 
-        {/* Dynamic Header Section (Title/Icon/Back) */}
-        <div className="flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-3 sm:pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-xs shadow-xs min-w-0 max-w-sm sm:max-w-md">
+        {/* Dynamic Header Section (Title/Icon/Back) — hidden on phones where
+            there is no room for a title; truncates (never wraps) from sm up. */}
+        <div className="hidden sm:flex items-center bg-gray-50/50 dark:bg-dark-bg/30 p-1.5 pr-3 sm:pr-4 rounded-2xl border border-gray-100/50 dark:border-dark-border/20 backdrop-blur-xs shadow-xs min-w-0 sm:min-w-32 max-w-sm sm:max-w-md">
           {pageHeaderConfig?.showBackButton && (
             <>
               <button 
@@ -189,21 +195,17 @@ function Header() {
                   />
                 </div>
               )}
-              <h1 className="text-sm sm:text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none wrap-break-word">
+              <h1 className="text-sm sm:text-base md:text-lg font-black text-brand-navy dark:text-dark-text tracking-tight leading-tight sm:leading-none truncate" title={getPageTitle()}>
                 {getPageTitle()}
               </h1>
               {pageHeaderConfig?.subtitle && (
-                <div className="hidden md:block text-gray-400 dark:text-dark-muted text-[9px] font-bold uppercase tracking-[0.2em] mt-1 opacity-70 leading-normal" title={typeof pageHeaderConfig.subtitle === 'string' ? pageHeaderConfig.subtitle : undefined}>
+                <div className="hidden md:block truncate text-gray-400 dark:text-dark-muted text-[9px] font-bold uppercase tracking-[0.2em] mt-1 opacity-70 leading-normal" title={typeof pageHeaderConfig.subtitle === 'string' ? pageHeaderConfig.subtitle : undefined}>
                   {pageHeaderConfig.subtitle}
                 </div>
               )}
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Center Section: Removed old global search to save space */}
-      <div className="flex-1 max-w-2xl mx-6 hidden md:flex items-center justify-center">
       </div>
 
       {/* Right Section: Global Tools ONLY (Actions moved to Toolbar) */}
@@ -258,7 +260,7 @@ function Header() {
                 title={t('common.search', 'Search')}
               >
                 <Search className="w-4 h-4 group-hover:text-blue-500 transition-colors" />
-                <span className="text-xs font-medium mr-1">{t('common.search', 'Search...')}</span>
+                <span className="hidden lg:inline text-xs font-medium mr-1">{t('common.search', 'Search...')}</span>
               </button>
             )}
           </div>
@@ -278,7 +280,7 @@ function Header() {
           <NotificationBell />
 
           <UserMenu
-            user={{ email: user?.email, role: user?.role }}
+            user={isDesktop ? { email: user?.email, role: user?.role } : { role: user?.role }}
             roleBadge={roleBadgeLabel}
             labels={{ openMenu: t('common.account'), account: t('common.account') }}
             switcher={

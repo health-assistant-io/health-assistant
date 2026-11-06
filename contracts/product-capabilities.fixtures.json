@@ -1,0 +1,366 @@
+{
+  "schema": 1,
+  "contract": "product-capabilities",
+  "valid": [
+    {
+      "name": "minimal-shipped",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field, skill and lifestyle.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-with-metric-links",
+      "doc": {
+        "version": 1,
+        "project": "health",
+        "updated": "2026-10-26",
+        "capabilities": [
+          {
+            "id": "interaction-check",
+            "verb": "Catch dangerous interactions",
+            "summary": "Cross-checks every medication in your list before you combine them.",
+            "category": "analyze",
+            "audience": "user",
+            "status": "shipped",
+            "proofs": [
+              "Checks drug-drug, drug-food and duplicate-therapy conflicts",
+              "Severity-ranked, with the source guideline linked per finding"
+            ],
+            "metric": {
+              "value": "2s",
+              "label": "per check"
+            },
+            "links": [
+              {
+                "kind": "guide",
+                "href": "docs/health/user/features"
+              },
+              {
+                "kind": "source",
+                "href": "https://github.com/health-assistant-io/health-assistant",
+                "label": "GitHub"
+              }
+            ],
+            "platforms": [
+              "selfhosted",
+              "local"
+            ],
+            "order": 1,
+            "visual": "images/components/interaction-check.png"
+          },
+          {
+            "id": "sdk-authoring",
+            "verb": "Extend it with your own tools",
+            "summary": "The extension SDK lets dev capabilities ship as versioned, validated bundles.",
+            "category": "developer",
+            "audience": "dev",
+            "status": "beta",
+            "links": [
+              {
+                "kind": "api",
+                "href": "docs/health/sdk/overview"
+              }
+            ],
+            "platforms": [
+              "selfhosted"
+            ],
+            "order": 90
+          }
+        ],
+        "useCases": [
+          "Compare cholesterol across two labs — drop both PDFs, read one normalized trend",
+          "Pull your hospital record onto your own server over SMART-on-FHIR"
+        ]
+      }
+    },
+    {
+      "name": "with-i18n-overrides",
+      "doc": {
+        "version": 1,
+        "project": "study",
+        "capabilities": [
+          {
+            "id": "study-plan",
+            "verb": "Turn any PDF into a study plan",
+            "summary": "Upload course material and get a dated revision schedule.",
+            "category": "automate",
+            "status": "shipped",
+            "order": 5,
+            "i18n": {
+              "de": {
+                "verb": "Aus jedem PDF einen Lernplan machen",
+                "summary": "Lade Kursmaterial hoch und erhalte einen terminierten Wiederholungsplan.",
+                "proofs": [
+                  "Aus jeder Hochgeladenen Datei wird ein Terminplan"
+                ]
+              },
+              "el": {
+                "verb": "Μετατρέψτε οποιοδήποτε PDF σε πλάνο μελέτης"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "free-form-category",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "superpowers",
+            "status": "shipped",
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "feature-name-not-verb",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "interaction-check",
+            "verb": "Checker",
+            "summary": "Cross-checks every medication in your list before you combine them.",
+            "category": "analyze",
+            "status": "shipped",
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "extra-property-on-capability",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10,
+            "screenshotUrl": "https://example.com/x.png"
+          }
+        ]
+      }
+    },
+    {
+      "name": "http-link-not-https",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "links": [
+              {
+                "kind": "guide",
+                "href": "http://example.com/guide"
+              }
+            ],
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "bad-i18n-locale-key",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10,
+            "i18n": {
+              "english please": {
+                "verb": "…"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-capabilities",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": []
+      }
+    },
+    {
+      "name": "missing-status",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "beta-with-proofs",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "beta",
+            "proofs": [
+              "Only shipped capabilities may claim proofs"
+            ],
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "use-cases-overrun",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10
+          }
+        ],
+        "useCases": [
+          "One",
+          "Two",
+          "Three",
+          "Four",
+          "Five",
+          "Six — the contract allows at most five use cases per manifest"
+        ]
+      }
+    },
+    {
+      "name": "use-case-too-short",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10
+          }
+        ],
+        "useCases": [
+          "Too short"
+        ]
+      }
+    },
+    {
+      "name": "duplicate-capability-id",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10
+          },
+          {
+            "id": "explore-careers",
+            "verb": "Browse the whole career catalog",
+            "summary": "The same id twice: the semantics checker rejects this tree.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 20
+          }
+        ]
+      }
+    },
+    {
+      "name": "project-mismatch-with-repo",
+      "expectProject": "career",
+      "doc": {
+        "version": 1,
+        "project": "study",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "order": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "visual-path-traversal",
+      "doc": {
+        "version": 1,
+        "project": "career",
+        "capabilities": [
+          {
+            "id": "explore-careers",
+            "verb": "Discover careers you didn't know exist",
+            "summary": "A structured job catalog you can browse by field and skill.",
+            "category": "discover",
+            "status": "shipped",
+            "visual": "../backend/secret.png",
+            "order": 10
+          }
+        ]
+      }
+    }
+  ]
+}

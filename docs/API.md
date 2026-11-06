@@ -18,7 +18,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 > This reference documents every router module mounted under
 > `backend/app/api/v1/endpoints/`. Each section mirrors the FastAPI tag/grouping.
-> 330+ HTTP/WS handlers across 41 router modules (incl. `oauth` client management). For
+> 371 HTTP/WS handlers across 45 router modules (incl. `oauth` client management). For
 > the always-current OpenAPI rendering, visit `http://localhost:8000/docs` while
 > the server is running.
 
@@ -31,11 +31,11 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 - [Patient clinical record](#patient-clinical-record) — `patients`, `patients/{id}/layouts`, `observations`, `examinations`, `documents`, `clinical-events`
 - [Treatments & alerts](#treatments--alerts) — `medications`, `allergies`, `vaccines`, `notifications`, `notification-rules`
 - [Catalogs & reference data](#catalogs--reference-data) — `catalogs`, `biomarkers`, `concepts`+`concept-edges`, `anatomy`, `search`+`instances`
-- [Analytics](#analytics) — `analytics`, `telemetry`
+- [Analytics](#analytics) — `analytics` (read surface), `telemetry` (ingest seam)
 - [AI](#ai) — `ai-config`, `ai-assistance`
 - [Integrations](#integrations) — discovery, OAuth, instances, inbound webhooks / API proxy
 - [Operations](#operations) — `task-monitor`, `ws`, `export`, `import`, `doctors`, `organizations`
-- [FHIR R4 facade](#fhir-r4-facade) — canonical interop surface (19 resource types)
+- [FHIR R4 facade](#fhir-r4-facade) — canonical interop surface (20 resource types)
 - [Error handling](#error-handling) — domain exceptions, status code table
 - [See also](#see-also)
 
@@ -120,13 +120,13 @@ For patient-scoped endpoints (anything that takes a `patient_id`), a `USER`-role
 caller must additionally be the patient's linked user
 (`Patient.user_id == current_user.user_id`); `ADMIN` and `MANAGER` see all
 patients in their tenant. The canonical check is `check_patient_access` in
-`app/services/access.py`.
+`app/services/auth/access.py`.
 
 ### Rate limiting
 
 The auth endpoints are rate-limited per client IP via Redis fixed-window counters
 (`app/core/rate_limit.py`). Degrades open if Redis is unreachable. The client IP
-honors `X-Forwarded-For` **only** up to `TRUSTED_PROXY_COUNT` (default `0` = direct
+honors `X-Forwarded-For` **only** up to `HA_TRUSTED_PROXY_COUNT` (default `0` = direct
 exposure, header ignored) — set it to your proxy-chain depth so spoofed headers
 can't mint fresh buckets.
 
@@ -561,7 +561,7 @@ All routes `SYSTEM_ADMIN`-only.
 
 | Method | Path | Response | Notes |
 |---|---|---|---|
-| `GET` | `/admin/integrations` | `List[{domain, name, version, is_enabled}]` | Merges on-disk manifests with DB state. |
+| `GET` | `/admin/integrations` | `List[{domain, name, version, is_enabled, on_filesystem, description, categories, kind, capabilities}]` | Merges on-disk wire manifests (identity fields included) with DB state; stale DB-only domains carry `on_filesystem: false`. |
 | `POST` | `/admin/integrations/{domain}/enable` | `{message}` | Enable globally; creates `SystemIntegration` row + re-initializes the registry. |
 | `POST` | `/admin/integrations/{domain}/disable` | `{message}` | Disable globally. |
 
@@ -921,24 +921,23 @@ figure writes/deletes and bulk import are `SYSTEM_ADMIN`.
 | `GET` | `/analytics/dashboard` | any | `patient_id?`, `period="last-30-days"` | dashboard data | `USER` without `patient_id` → `{items:[], total:0}`. |
 | `GET` | `/analytics/summary` | any | `patient_id?`, `period="last-year"` | summary dict |  |
 | `GET` | `/analytics/trends` | any | `biomarker_codes?`, `period="last-6-months"`, `aggregation?`, `patient_id?` | trends | `biomarker_codes` is expanded against the definition catalog (names, aliases, codes) so both mapped and unmapped observations are included. `aggregation` is a telemetry bucket (e.g. `15 minutes`, `1 day`, `1 week`). |
-| `GET` | `/analytics/anomalies` | any | `biomarker_codes?`, `patient_id?` | `{anomalies}` | Statistical outlier + reference-range violation detection. |
+| `GET` | `/analytics/anomalies` | any | `biomarker_codes?`, `patient_id?` | `{anomalies}` | Telemetry anomalies from the one CAgg-based engine (rolling hourly baseline). Events persist to `telemetry_anomalies` and dedup on `(tenant, patient, device, slug, window_start, kind)`; `kind` is `spike`/`drop`, and resolved events carry `resolved_at`. |
 | `GET` | `/analytics/reference-ranges` | any | — | `{slug → {min, max, unit}}` | Reads each visible biomarker's default reference range from the catalog (not a hardcoded table). Stratified ranges live under `/biomarkers/{id}/reference-ranges`. |
 | `GET` | `/analytics/available-categories` | any | `patient_id?` | `{categories}` | Categories that have completed-document data for the caller/patient. |
 | `GET` | `/analytics/category/{category_name}` | any | `patient_id?` | category data | Per-category rollup. |
 
-### `telemetry` — high-frequency wearable/device data
+### `telemetry` — high-frequency wearable/device ingest
 
 Mobile-device sync (Health Connect / HealthKit) and per-instance integration
-telemetry live here. Tenant-scoped via `current_user.tenant_id`. The TimescaleDB
-telemetry split + OHLC aggregation are documented in
+telemetry enter here. Tenant-scoped via `current_user.tenant_id`. This router is
+**ingest only**: reads live under `analytics` (web) and the bridge's
+schema-pinned sub-API. The TimescaleDB telemetry split, device registry,
+canonical units + provenance, and CAgg anomaly engine are documented in
 [TELEMETRY_AND_AGGREGATION.md](TELEMETRY_AND_AGGREGATION.md).
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/telemetry/data` | any | `TelemetrySyncPayload` `{device_id, points: [...]}` | `{uploaded, device_id, message}` |  |
-| `GET` | `/telemetry/data` | any | `device_id` *, `start_date` *, `end_date` *, `metrics?` (CSV) | `{device_id, data}` |  |
-| `GET` | `/telemetry/data/summary` | any | `date` *, `device_id?` | summary dict |  |
-| `GET` | `/telemetry/anomalies` | any | `device_id` *, `metric` *, `period_days=30` (1..365) | `{device_id, metric, anomalies}` |  |
+| `POST` | `/telemetry/data` | any | `TelemetrySyncPayload` `{device_id, source?, device_label?, points: [...]}` | `{uploaded, device_id, message}` | Every slug must resolve to a visible `is_telemetry` biomarker (typed 400 otherwise); the device reference resolves to a `telemetry_devices` row; `value`/`unit` store canonical units beside `raw_value`/`raw_unit`. |
 
 ---
 
@@ -968,14 +967,15 @@ telemetry split + OHLC aggregation are documented in
 | `PUT` | `/ai-config/models/{model_id}` | `verify_model_access` | `AIModelUpdate` | `AIModelResponse` |
 | `DELETE` | `/ai-config/models/{model_id}` | `verify_model_access` | — | `204` |
 | `POST` | `/ai-config/task-assignments` | `check_scope_access` | `AITaskAssignmentCreate` | `AITaskAssignmentResponse` (`201`) |
-| `GET` | `/ai-config/task-assignments` | any | `tenant_id?`, `user_id?`, `scope?`, `task_type?`, `is_active?=true` | `List[AITaskAssignmentResponse]` |
+| `GET` | `/ai-config/task-assignments` | any | `tenant_id?`, `user_id?`, `scope?`, `task_type?`, `include_revoked?=false` | `List[AITaskAssignmentResponse]` |
 | `GET` | `/ai-config/task-assignments/{assignment_id}` | `check_scope_access` | — | `AITaskAssignmentResponse` |
 | `PUT` | `/ai-config/task-assignments/{assignment_id}` | `check_scope_access` | `AITaskAssignmentUpdate` | `AITaskAssignmentResponse` |
-| `DELETE` | `/ai-config/task-assignments/{assignment_id}` | `check_scope_access` | — | `204` |
+| `DELETE` | `/ai-config/task-assignments/{assignment_id}` | `check_scope_access` | — | `204` — revokes (`revoked_at`), the row is never deleted |
 | `GET` | `/ai-config/task-assignments/active/{task_type}` | any | `tenant_id?`, `user_id?` | `AITaskAssignmentResponse` |
 | `GET` | `/ai-config/summary` | any | `tenant_id?`, `user_id?`, `scope?` | `AIConfigSummary` |
 | `PUT` | `/ai-config/settings` | `check_scope_access` | `AIConfigUpdate` (query: `tenant_id?`, `user_id?`, `scope?=tenant`) | `204` |
 | `GET` | `/ai-config/default-for-task/{task_type}` | any | `tenant_id?`, `user_id?` | `{provider, model?}` |
+| `GET` | `/ai-config/usage` | ADMIN / SYSTEM_ADMIN | `window_days?=30`, `tenant_id?` | `AIUsageResponse` | `ai_call_logs` aggregates per task: calls, errors, tokens, `cost_micros`, avg latency. |
 
 ### `ai-assistance` — chatbot, Magic Fill, HITL, transcription
 
@@ -996,7 +996,7 @@ telemetry split + OHLC aggregation are documented in
 | `GET` | `/ai-assistance/sessions/{session_id}/tree` | any | — | `ChatTreeSchema` | Read-only `{active_root_id, nodes[]}` branch-tree projection. |
 | `DELETE` | `/ai-assistance/sessions/{session_id}` | any (ownership verified in service) | — | `{success: true}` |  |
 | `GET` | `/ai-assistance/tools` | any | query: `patient_id` *, `examination_id?` | `List[AIAssistanceToolSchema]` | Built-in tools + integration-aggregated tools (failures logged, not raised). |
-| `POST` | `/ai-assistance/sessions/{session_id}/tasks/{proposal_id}/resolve` | any | `HitlResolutionRequest` (CONFIRMED/DISMISSED) | `{success, task}` | HITL resolution. Idempotent: 409 if already resolved. Does NOT perform the underlying write (frontend commits via canonical REST). |
+| `POST` | `/ai-assistance/sessions/{session_id}/tasks/{proposal_id}/resolve` | any | `HitlResolutionRequest` (CONFIRMED/DISMISSED) | `{success, task}` | HITL resolution into the `proposals` row. Idempotent: repeating the recorded outcome returns the stored card (200); a conflicting decision on a terminal proposal is 409. Does NOT perform the underlying write (the frontend commits via canonical REST). |
 | `POST` | `/ai-assistance/sessions/{session_id}/resume` | any | `HitlResumeRequest` | SSE `text/event-stream` | Agent continuation after one or more HITL task cards are resolved. Guards: session ownership, target message must exist + have tasks, all tasks must be terminal. |
 | `POST` | `/ai-assistance/transcribe` | any | multipart: `file` | `{text, success}` | Speech-to-text. MIME allowlist (webm/ogg/mp4/mpeg/x-m4a/wav/x-wav/flac) + size guard (`AI_STT_MAX_AUDIO_BYTES`, default 20 MiB). Audio is **ephemeral** — never persisted. Resolves a `transcription` task assignment (model advertising `audio_input`). 415 / 400 / 413 / 502 error codes. |
 
@@ -1039,13 +1039,18 @@ systems that don't carry the platform JWT.
 
 ### HITL proposals (review + resolve)
 
-Approve delegates to `catalog_proposal_service.apply_proposal` — the same write path the auto-apply hook uses. See [HITL proposals](dev/sdk/authoring-and-configuration.md#hitl-proposals-human-review).
+Approve validates the payload against the kind's contract schema, then delegates
+to the kind's server-side resolver — `catalog_proposal_service.apply_proposal`
+for catalog kinds, or the canonical clinical service for the four
+patient-record kinds (`create_event`, `create_examination`, `add_medication`,
+`add_biomarker_to_examination`). See
+[HITL proposals](dev/sdk/authoring-and-configuration.md#hitl-proposals-human-review).
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/integrations/instance/{integration_id}/proposals` | owner | `status?=proposed\|confirmed\|dismissed\|failed`, `limit?=100`, `offset?=0` | `List[IntegrationProposalResponse]` | Newest-first; deterministic `(created_at, id)` tiebreaker. |
-| `GET` | `/integrations/instance/{integration_id}/proposals/{proposal_id}` | owner | — | `IntegrationProposalResponse` | 404 if proposal doesn't exist or belongs to another integration. |
-| `POST` | `/integrations/instance/{integration_id}/proposals/{proposal_id}/resolve` | ADMIN+ for `action=approve`; USER can `reject`/`cancel` | `{action: "approve"\|"reject"\|"cancel", payload?: Dict, note?: str}` | `IntegrationProposalResponse` (+ `applied_entity_id`, `error`) | 409 if proposal is already in a terminal state. On `approve`, the resolver runs `apply_proposal` server-side; `applied_entity_id` is the created/updated catalog row's UUID. `payload` overrides `proposed_payload` (user edits in the review modal). |
+| `GET` | `/integrations/instance/{integration_id}/proposals` | owner | `status?=proposed\|approved\|applied\|rejected\|failed\|expired\|superseded`, `limit?=100`, `offset?=0` | `List[IntegrationProposalResponse]` | Newest-first; deterministic `(created_at, id)` tiebreaker. |
+| `GET` | `/integrations/instance/{integration_id}/proposals/{proposal_id}` | owner | — | `IntegrationProposalResponse` | 404 if proposal doesn't exist or belongs to another integration. Response carries `kind`, `card_variant`, `payload` (+ `payload_schema_version`), `final_payload`, `resolution_trace`. |
+| `POST` | `/integrations/instance/{integration_id}/proposals/{proposal_id}/resolve` | ADMIN+ for `action=approve`; USER can `reject`/`cancel` | `{action: "approve"\|"reject"\|"cancel", payload?: Dict, note?: str}` | `IntegrationProposalResponse` (+ `applied_entity_id`, `error`) | Idempotent: repeating the recorded outcome returns 200 with the stored result; a conflicting decision on a terminal row (or a superseded proposal) returns 409. A payload that fails the kind schema (or retargets another patient) is 400 before any write. On `approve`, `applied_entity_id` is the written row's UUID; an apply error records `failed`. |
 
 ### Notifications (actionable push)
 
@@ -1053,7 +1058,7 @@ Per-integration-instance notification preferences are managed via the unified [`
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `POST` | `/integrations/{domain}/notification-action/{integration_id}/{action_id}` | any (tenant-scoped; caller must own the integration) | JSON passthrough | provider ActionResult | Dispatches a clicked action button (`type="post"`) on an integration-authored notification to `provider.handle_notification_action`. 400 if provider lacks `supports_notifications`. |
+| `POST` | `/integrations/{domain}/notification-action/{integration_id}/{action_id}` | any (tenant-scoped; caller must own the integration) | JSON passthrough | provider ActionResult | Dispatches a clicked action button (`type="post"`) on an integration-authored notification to `provider.handle_notification_action`. 400 if the extension does not declare the `notify` capability. |
 
 ### Inbound machine routes (HMAC — secrets are mandatory)
 
@@ -1115,7 +1120,7 @@ See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec
 | `POST` | `/import/backup` | `get_current_user` | multipart: `file` *, `auto_map_biomarkers?`, `use_ai_normalization?` | `ImportJobResponse` | Enqueues Celery. Accepts ZIP or bare FHIR Bundle / catalog JSON. |
 | `POST` | `/import/fhir` | `get_current_user` | multipart: `file` (`.json`), `patient_id?`, `validate?`, `auto_map_biomarkers?`, `use_ai_normalization?` | dict | Synchronous FHIR Bundle import (smaller bundles). |
 | `POST` | `/import/csv` | `get_current_user` | multipart: `file` (`.csv`), `patient_id?`, `delimiter?`, `has_header?` | dict | Synchronous CSV import (legacy). |
-| `POST` | `/import/ocr` | `get_current_user` | multipart: `file`, `patient_id?`, `model_name?`, `api_base?`, `extract_tables?` | dict | OCR import (legacy). |
+| `POST` | `/import/ocr` | `get_current_user` | multipart: `file`, `patient_id?` | dict | OCR extraction. Provider/model/key resolve from the `ocr` AI task assignment (scoped resolution + BYOK key) — no model configuration crosses the request. |
 | `GET` | `/import/jobs` | any | `limit?=50` | `ImportJobListResponse` | List import jobs for the caller's tenant, newest first. |
 | `GET` | `/import/jobs/{job_id}` | any | — | `ImportJobResponse` | Status + `restore_result` (created/updated counts, `manifest_verified`, `fhir_validated`). |
 
@@ -1177,7 +1182,7 @@ Errors flow through one global handler in `app/main.py` that returns
 `{message, detail, correlation_id}` and logs server-side. The global handler
 maps the domain exception hierarchy (`DomainError`, `NotFoundError`,
 `AuthorizationError`, `ValidationError`, `ConflictError`, `ConcurrencyError`) to
-their HTTP statuses; access-check helpers in `app/services/access.py` raise these.
+their HTTP statuses; access-check helpers in `app/services/auth/access.py` raise these.
 
 Example shape (HTTP 500, `DEBUG=False`):
 
@@ -1205,7 +1210,7 @@ text for easier debugging.
 | 403 | Forbidden (role/tenant/patient-access/scope denied — `AuthorizationError` / `CatalogPermissionDenied`) |
 | 404 | Not Found (also returned for cross-tenant calls — no leak) |
 | 405 | Method Not Allowed (read-only catalog adapter writes) |
-| 409 | Conflict (`ConflictError` — e.g. catalog promote permission denied; sync already running; HITL task already resolved) |
+| 409 | Conflict (`ConflictError` — e.g. catalog promote permission denied; sync already running; a conflicting HITL decision on a terminal proposal) |
 | 410 | Gone (FHIR R4 facade: tombstone of a soft-deleted resource) |
 | 412 | Precondition Failed (FHIR R4 facade: `If-Match` version mismatch) |
 | 413 | Payload Too Large (upload exceeds `MAX_UPLOAD_SIZE`) |

@@ -103,7 +103,7 @@ link; now they are **one concept row** carrying three `concept_kind_tags`.
 > separate concepts — one is anatomy, the other pharmacology. Link them with
 > a `CORRELATES_WITH` edge rather than merging.
 
-## Service layer (`backend/app/services/concept_service.py`)
+## Service layer (`backend/app/services/catalog/concept_service.py`)
 
 `ConceptService` enforces tenancy, RBAC, and the soft-delete-with-retire
 lifecycle:

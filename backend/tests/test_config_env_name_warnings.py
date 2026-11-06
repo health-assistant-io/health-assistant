@@ -3,14 +3,16 @@
 ``extra="ignore"`` on the Settings model silently drops unknown env vars —
 an operator's typo'd ``APP_ENV=production`` boots in development with zero
 signal. The ``_warn_unknown_env_names`` validator makes that class loud:
-warning-only, never a refusal (the family's refusal gates are the boot
-guards). These tests pin the four contract points:
+warning telemetry. The one rename that silently *downgrades* a production
+install is refused by ``_refuse_stale_app_env`` instead (v0.9.0 upgrade
+guard). These tests pin the contract points:
 
 * a known-RENAMED name warns naming its replacement;
 * an unknown ``HA_*`` name warns;
 * a fully valid environment warns nothing;
-* production boot behavior is unchanged (guards still refuse, telemetry
-  never does).
+* a stale non-dev ``APP_ENV`` with no ``HA_APP_ENV`` refuses the boot;
+* an explicit ``HA_APP_ENV`` keeps the other guards in charge (telemetry
+  itself never refuses).
 """
 
 from __future__ import annotations
@@ -51,9 +53,9 @@ def _telemetry_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogReco
 
 
 def test_renamed_app_env_warns_naming_the_correct_name(monkeypatch, caplog):
-    """The audit's origin story: typo'd APP_ENV=production must not be silent."""
+    """Any stale APP_ENV warns (the production value is refused separately)."""
     _scrub_env(monkeypatch)
-    monkeypatch.setenv("APP_ENV", "production")  # gate-allow: APP_ENV
+    monkeypatch.setenv("APP_ENV", "development")  # gate-allow: APP_ENV
     with caplog.at_level(logging.WARNING):
         settings_factory.dev_settings()
     messages = [r.getMessage() for r in _telemetry_records(caplog)]
@@ -110,8 +112,8 @@ def test_tooling_env_names_are_exempt(monkeypatch, caplog):
 
 
 def test_telemetry_never_refuses_and_boot_guards_still_do(monkeypatch, caplog):
-    """Production boot behavior unchanged: typos warn AND boot; real guard
-    misconfiguration still refuses. Telemetry is not a gate."""
+    """Explicit HA_APP_ENV keeps the boot guards in charge: typos warn AND
+    boot; a weak key still refuses. Telemetry itself is not a gate."""
     _scrub_env(monkeypatch)
     monkeypatch.setenv("APP_ENV", "production")  # gate-allow: APP_ENV
     monkeypatch.setenv("HA_FOO_BAR", "1")
@@ -123,3 +125,48 @@ def test_telemetry_never_refuses_and_boot_guards_still_do(monkeypatch, caplog):
     # The refusal gates keep their edge (a weak key still refuses to boot).
     with pytest.raises(ValidationError):
         settings_factory.prod_settings(HA_SESSION_KEY="weak")
+
+
+def test_stale_app_env_production_refuses_development_boot(monkeypatch):
+    """The v0.9.0 upgrade guard: APP_ENV=production with no HA_APP_ENV must
+    not silently boot development defaults (ephemeral keys)."""
+    _scrub_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "production")  # gate-allow: APP_ENV
+    with pytest.raises(ValidationError) as exc:
+        settings_factory.dev_settings()
+    assert "HA_APP_ENV" in str(exc.value)
+    assert "APP_ENV" in str(exc.value)
+
+
+def test_stale_app_env_staging_also_refuses(monkeypatch):
+    _scrub_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "staging")  # gate-allow: APP_ENV
+    with pytest.raises(ValidationError):
+        settings_factory.dev_settings()
+
+
+def test_stale_app_env_development_is_harmless(monkeypatch):
+    """A dev shell that still exports APP_ENV=development keeps working."""
+    _scrub_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "development")  # gate-allow: APP_ENV
+    assert settings_factory.dev_settings().HA_APP_ENV == "development"
+
+
+def test_explicit_ha_app_env_overrides_the_stale_value(monkeypatch):
+    """An install that already renamed the var is never refused."""
+    _scrub_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "production")  # gate-allow: APP_ENV
+    monkeypatch.setenv("HA_APP_ENV", "production")
+    assert settings_factory.prod_settings().HA_APP_ENV == "production"
+
+
+def test_integration_secret_key_hint_names_data_key(monkeypatch, caplog):
+    """The full v0.8.0 rename map: the sealing key keeps its replacement."""
+    _scrub_env(monkeypatch)
+    monkeypatch.setenv("INTEGRATION_SECRET_KEY", "x" * 44)
+    with caplog.at_level(logging.WARNING):
+        settings_factory.dev_settings()
+    messages = [r.getMessage() for r in _telemetry_records(caplog)]
+    assert len(messages) == 1, messages
+    assert "INTEGRATION_SECRET_KEY" in messages[0]
+    assert "HA_DATA_KEY" in messages[0]

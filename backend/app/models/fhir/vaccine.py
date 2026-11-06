@@ -7,7 +7,7 @@ patient-instance record (a dose administered). Both project to FHIR R4:
 - ``VaccineCatalog.to_fhir_dict()`` → FHIR ``Medication`` (the product).
 - ``PatientImmunization.to_fhir_dict()`` → FHIR ``Immunization`` (the dose).
 
-See ``dev/plans/unified-catalog-architecture-2026-07-08.md`` Phase 5.
+See ``the design notes`` Phase 5.
 """
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Text
@@ -24,7 +24,7 @@ from app.models.base import (
     VersionedMixin,
 )
 from app.models.enums import CatalogScope, ImmunizationStatus
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_helpers import (
     _enum_value,
     build_fhir_resource,
     build_meta,

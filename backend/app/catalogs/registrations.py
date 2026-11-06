@@ -4,11 +4,9 @@ Imported once via :mod:`app.catalogs.__init__`. Adding a catalog = appending one
 ``CatalogRegistry.register(...)`` call here (plus, for a new table, one model
 + one resolver function).
 
-Phase 0 scope: the five existing catalogs. Vaccines (Phase 5) and diseases-as-
-concepts (Phase 6) register here when they land. Resolvers for
-medication/allergy/clinical_event_type arrive in Phase 2; until then their
-``resolver`` stays ``None`` and the graph falls back to the ``{type}:{id}``
-label.
+Six catalog types are registered (biomarker, medication, allergy, anatomy,
+vaccine, concept); each declares its service adapter, RBAC policy, UI metadata
+and concept-graph resolver.
 """
 
 from __future__ import annotations
@@ -32,7 +30,7 @@ from app.models.enums import EdgeEndpointType
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.vaccine import VaccineCatalog
-from app.services.concept_endpoint_resolver import (
+from app.services.catalog.concept_endpoint_resolver import (
     _resolve_allergies,
     _resolve_anatomy,
     _resolve_biomarkers,

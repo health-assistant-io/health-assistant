@@ -30,7 +30,7 @@ class PatientLayoutModel(Base, UUIDMixin, TenantMixin, AuditMixin, VersionedMixi
     # Format: [{"id": "card1", "type": "biomarker", "config": {"biomarker": "Glucose"}}, ...]
     cards_config = Column(JSONB, nullable=False, default=list)
 
-    __table_args__ = (Index("idx_layout_user_patient", "user_id", "patient_id"),)
+    __table_args__ = (Index("ix_layout_user_patient", "user_id", "patient_id"),)
 
     def to_dict(self):
         return {

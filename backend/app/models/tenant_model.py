@@ -31,7 +31,7 @@ class TenantModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin):
         index=True,
     )
     owner_id = Column(
-        ForeignKey("users.id", ondelete="SET NULL"),
+        ForeignKey("users.id", ondelete="SET NULL", use_alter=True),
         nullable=True,
         index=True,
     )

@@ -76,8 +76,6 @@ const assignments: AITaskAssignment[] = [
     scope: 'USER',
     provider_id: 'prov-1',
     model_id: 'm-chat',
-    is_active: true,
-    priority: 0,
     user_id: 'u1',
   },
 ];
@@ -88,8 +86,6 @@ const decisionAssignment: AITaskAssignment = {
   scope: 'USER',
   provider_id: 'prov-ts',
   model_id: 'm-jev',
-  is_active: true,
-  priority: 0,
   phi_allowed: false,
   user_id: 'u1',
 };
@@ -117,33 +113,32 @@ const STRINGS: Record<string, string> = {
   'settings.ai.section_decision': 'Decision models',
   'settings.ai.decision_privacy':
     'Decision models run in the cloud: your prompt and the candidate tools for the step are sent to the assigned provider (e.g. TypeSafe or OpenRouter). Your API key stays on this device.',
-  'settings.ai.slot_decision_tool_dispatch': 'Tool dispatch',
+  'settings.ai.task_decision_tool_dispatch': 'Tool dispatch',
   'settings.ai.slot_decision_tool_dispatch_hint': 'Picks the tool (if any) a step should use',
-  'settings.ai.slot_decision_boolean_gate': 'Boolean gate',
+  'settings.ai.task_decision_boolean_gate': 'Boolean gate',
   'settings.ai.slot_decision_boolean_gate_hint': 'Yes/no checks that guard a step',
-  'settings.ai.slot_decision_choice': 'Choice',
+  'settings.ai.task_decision_choice': 'Choice',
   'settings.ai.slot_decision_choice_hint': 'Picks one option from a known set',
-  'settings.ai.slot_decision_score': 'Score',
+  'settings.ai.task_decision_score': 'Score',
   'settings.ai.slot_decision_score_hint': 'Rates input against a rubric',
   'settings.ai.phi_override': 'Allow PHI-adjacent dispatch (patient data may be sent to this decision provider)',
   'settings.ai.section_tasks': 'Other tasks',
-  'settings.ai.task_default': 'Global Default Fallback',
-  'settings.ai.task_ocr': 'Document Parsing (OCR)',
-  'settings.ai.task_nlp': 'Text Analysis & Extraction (NLP)',
-  'settings.ai.task_medication_interaction': 'Medication Interaction Check',
-  'settings.ai.task_anomaly_detection': 'Anomaly Detection',
-  'settings.ai.task_fill_biomarker_form': 'Biomarker Form Auto-Fill',
-  'settings.ai.task_fill_medication_form': 'Medication Form Auto-Fill',
-  'settings.ai.task_magic_fill_examination': 'Magic Fill Examination',
-  'settings.ai.task_define_biomarker': 'Define New Biomarker',
-  'settings.ai.task_define_medication': 'Define New Medication',
-  'settings.ai.task_suggest_category_icon': 'Suggest Category Icon',
-  'settings.ai.task_generate_category_icon': 'Generate Custom SVG Icon',
-  'settings.ai.task_chat': 'Assistant Chat',
-  'settings.ai.task_transcription': 'Voice Input (Speech-to-Text)',
-  'settings.ai.task_embed': 'Text Embeddings',
+  'settings.ai.task_default': 'Default model',
+  'settings.ai.task_ocr': 'OCR',
+  'settings.ai.task_nlp': 'Text extraction',
+  'settings.ai.task_fill_biomarker_form': 'Biomarker form fill',
+  'settings.ai.task_fill_medication_form': 'Medication form fill',
+  'settings.ai.task_magic_fill_examination': 'Examination smart fill',
+  'settings.ai.task_define_biomarker': 'Biomarker definition',
+  'settings.ai.task_define_medication': 'Medication definition',
+  'settings.ai.task_define_anatomy_graph': 'Anatomy graph definition',
+  'settings.ai.task_suggest_category_icon': 'Category icon suggestion',
+  'settings.ai.task_generate_category_icon': 'Category icon design',
+  'settings.ai.task_chat': 'Assistant chat',
+  'settings.ai.task_transcription': 'Transcription',
+  'settings.ai.task_embed': 'Embeddings',
   // plan 29 / ADR-0036: the decision default row + Decision kinds group.
-  'settings.ai.task_decision_default': 'Default decision model',
+  'settings.ai.task_decision': 'Default decision model',
   'settings.ai.task_decision_default_hint':
     'One decision model serves all four kinds until a kind needs its own override.',
   'settings.ai.section_decision_kinds': 'Decision kinds',
@@ -195,12 +190,12 @@ afterEach(() => {
 describe('TaskAssignment', () => {
   it('renders the default row as a single primary picker and the task sections (ADR-0037)', () => {
     render(<TaskAssignment scope="user" userId="u1" />);
-    expect(screen.getAllByText('Global Default Fallback').length).toBeGreaterThan(0);
-    expect(screen.getByText('Document Parsing (OCR)')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Global Default Fallback' })).toBeInTheDocument();
+    expect(screen.getAllByText('Default model').length).toBeGreaterThan(0);
+    expect(screen.getByText('OCR')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Default model' })).toBeInTheDocument();
     // ADR-0037: the default row is single-picker — no fallback pickers
     // anywhere on the defaults rows.
-    expect(screen.queryByRole('combobox', { name: 'Fallback — Global Default Fallback' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Fallback — Default model' })).not.toBeInTheDocument();
   });
 
   it('groups the modality slots (defaults) ahead of the derived tasks (§15 IA)', () => {
@@ -210,14 +205,14 @@ describe('TaskAssignment', () => {
     expect(defaults.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // vision + transcription live in the defaults group; chat is a derived task
     const defaultsGroup = defaults.closest('div')?.parentElement ?? document.body;
-    expect(within(defaultsGroup).getByText('Document Parsing (OCR)')).toBeInTheDocument();
-    expect(within(defaultsGroup).getByText('Voice Input (Speech-to-Text)')).toBeInTheDocument();
+    expect(within(defaultsGroup).getByText('OCR')).toBeInTheDocument();
+    expect(within(defaultsGroup).getByText('Transcription')).toBeInTheDocument();
   });
 
   it('shows the stored default in its primary picker and inherit hints on unassigned tasks', () => {
     render(<TaskAssignment scope="user" userId="u1" />);
     expect(
-      within(screen.getByRole('combobox', { name: 'Global Default Fallback' })).getByText('GPT-4o Clinical'),
+      within(screen.getByRole('combobox', { name: 'Default model' })).getByText('GPT-4o Clinical'),
     ).toBeInTheDocument();
     expect(screen.getAllByText(/the organization default fallback/).length).toBeGreaterThan(0);
   });
@@ -225,7 +220,7 @@ describe('TaskAssignment', () => {
   it('creates a new assignment scoped to the current user', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(screen.getByRole('combobox', { name: 'Assistant Chat' }));
+    await user.click(screen.getByRole('combobox', { name: 'Assistant chat' }));
     await user.click(await screen.findByRole('option', { name: 'GPT-4o Clinical' }));
     await waitFor(() =>
       expect(store.createTaskAssignment).toHaveBeenCalledWith(
@@ -243,7 +238,7 @@ describe('TaskAssignment', () => {
   it('filters the ocr picker to vision-capable models via requires', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(screen.getByRole('combobox', { name: 'Document Parsing (OCR)' }));
+    await user.click(screen.getByRole('combobox', { name: 'OCR' }));
     const listbox = await screen.findByRole('listbox');
     expect(within(listbox).getByRole('option', { name: 'GPT-4o Vision' })).toBeInTheDocument();
     expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
@@ -252,7 +247,7 @@ describe('TaskAssignment', () => {
   it('updates the default through its own picker (ADR-0037: single-slot)', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(screen.getByRole('combobox', { name: 'Global Default Fallback' }));
+    await user.click(screen.getByRole('combobox', { name: 'Default model' }));
     await user.click(await screen.findByRole('option', { name: 'GPT-4o Clinical' }));
     await waitFor(() =>
       expect(store.updateTaskAssignment).toHaveBeenCalledWith(
@@ -272,13 +267,11 @@ describe('TaskAssignment', () => {
         scope: 'USER',
         provider_id: 'prov-1',
         model_id: 'm-chat',
-        is_active: true,
-        priority: 0,
         user_id: 'u1',
       },
     ];
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(screen.getByRole('button', { name: 'Clear assignment — Assistant Chat' }));
+    await user.click(screen.getByRole('button', { name: 'Clear assignment — Assistant chat' }));
     await waitFor(() => expect(store.deleteTaskAssignment).toHaveBeenCalledWith('a-chat'));
     store.taskAssignments = assignments;
   });
@@ -314,8 +307,6 @@ describe('TaskAssignment', () => {
         scope: 'USER',
         provider_id: 'prov-ts',
         model_id: 'm-jev',
-        is_active: true,
-        priority: 0,
         user_id: 'u1',
       },
     ];
@@ -405,12 +396,12 @@ describe('TaskAssignment', () => {
   it('renders the embed slot in the defaults group and filters it to embeddings-capable models (§15 embeddings wave)', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    expect(screen.getByText('Text Embeddings')).toBeInTheDocument();
+    expect(screen.getByText('Embeddings')).toBeInTheDocument();
     const defaults = screen.getByText('Default models');
     const defaultsGroup = defaults.closest('div')?.parentElement ?? document.body;
-    expect(within(defaultsGroup).getByText('Text Embeddings')).toBeInTheDocument();
+    expect(within(defaultsGroup).getByText('Embeddings')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('combobox', { name: 'Text Embeddings' }));
+    await user.click(screen.getByRole('combobox', { name: 'Embeddings' }));
     const listbox = await screen.findByRole('listbox');
     expect(within(listbox).getByRole('option', { name: 'Embed Small' })).toBeInTheDocument();
     expect(within(listbox).queryByRole('option', { name: 'GPT-4o Clinical' })).not.toBeInTheDocument();
@@ -419,7 +410,7 @@ describe('TaskAssignment', () => {
   it('creates an embed assignment through the new slot', async () => {
     const user = userEvent.setup();
     render(<TaskAssignment scope="user" userId="u1" />);
-    await user.click(screen.getByRole('combobox', { name: 'Text Embeddings' }));
+    await user.click(screen.getByRole('combobox', { name: 'Embeddings' }));
     await user.click(await screen.findByRole('option', { name: 'Embed Small' }));
     await waitFor(() =>
       expect(store.createTaskAssignment).toHaveBeenCalledWith(

@@ -33,8 +33,8 @@ from app.facade.search_params import (
     parse_search_params,
 )
 from app.models.base import SoftDeleteMixin
-from app.services.fhir_facade_service import build_capability_statement, get_software_version
-from app.services.fhir_helpers import parse_fhir_resource
+from app.services.fhir.fhir_facade_service import build_capability_statement, get_software_version
+from app.services.fhir.fhir_helpers import parse_fhir_resource
 
 # ---------------------------------------------------------------------------
 # SoftDeleteMixin

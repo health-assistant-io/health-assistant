@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { X, Siren, TrendingUp, TrendingDown, AlertTriangle, ArrowUpRight, ArrowDownRight, Check } from 'lucide-react';
+import { X, Siren, TrendingUp, TrendingDown, AlertTriangle, Check } from 'lucide-react';
 import { usePatientStore } from '../../../store/slices/patientSlice';
 import { getAnomalies, BiomarkerAnomaly } from '../../../services/analyticsService';
 import { formatBiomarkerValue, formatUnit } from '../../../utils/biomarkerUtils';
@@ -14,11 +14,9 @@ const severityConfig: Record<string, { icon: React.ReactNode; classes: string }>
   info: { icon: <Siren className="w-4 h-4" />, classes: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-900/30 text-blue-700 dark:text-blue-400' },
 };
 
-const typeIcon = (type: string) => {
-  if (type === 'upward_trend') return <TrendingUp className="w-3.5 h-3.5" />;
-  if (type === 'downward_trend') return <TrendingDown className="w-3.5 h-3.5" />;
-  if (type === 'above_reference') return <ArrowUpRight className="w-3.5 h-3.5" />;
-  if (type === 'below_reference') return <ArrowDownRight className="w-3.5 h-3.5" />;
+const typeIcon = (kind?: string) => {
+  if (kind === 'spike') return <TrendingUp className="w-3.5 h-3.5" />;
+  if (kind === 'drop') return <TrendingDown className="w-3.5 h-3.5" />;
   return <AlertTriangle className="w-3.5 h-3.5" />;
 };
 
@@ -104,7 +102,7 @@ export const AnomalyCard = React.forwardRef((props: any, ref: any) => {
             <div key={i} className={`p-3 rounded-xl border transition-all ${cfg.classes}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start space-x-2 min-w-0">
-                  <span className="shrink-0 mt-0.5">{typeIcon(anomaly.type)}</span>
+                  <span className="shrink-0 mt-0.5">{typeIcon(anomaly.kind)}</span>
                   <div className="min-w-0">
                     {anomaly.biomarker && (
                       <p className="font-bold text-sm truncate">

@@ -440,7 +440,7 @@ async def test_schema_endpoint_rejects_bad_type(async_client, system_admin_heade
 def test_all_endpoint_types_have_resolvers():
     """After the Phase 1 backfill, no EdgeEndpointType should fall through to
     the ``"{type}:{id-prefix}"`` fallback label."""
-    from app.services.concept_endpoint_resolver import _RESOLVERS
+    from app.services.catalog.concept_endpoint_resolver import _RESOLVERS
 
     missing = [et for et in EdgeEndpointType if et not in _RESOLVERS]
     assert not missing, f"endpoint types without a resolver: {missing}"

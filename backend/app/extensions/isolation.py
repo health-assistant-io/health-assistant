@@ -1,7 +1,7 @@
 """isolation — the graded T2 containment builders (plan 39 v2).
 
-Vendored byte-identically from ``dev/contracts/isolation.py`` (ADR-0031
-data-once). The LAW is ``dev/contracts/sandbox-isolation.md``; the escape
+Vendored byte-identically from ``the family isolation contract`` (ADR-0031
+data-once). The LAW is ``the family sandbox-isolation standard``; the escape
 matrix is ``sandbox-isolation.fixtures.json`` (the wall every backend
 must pass). Stdlib-only so contract walls can import the module without
 host dependencies.
@@ -156,8 +156,7 @@ def process_spawn_options(
     network or filesystem at the kernel and the disclosure must say so.
     """
     clean_env = {
-        key: (env or {}).get(key, os.environ.get(key, ""))
-        for key in PROCESS_ENV_ALLOWLIST
+        key: (env or {}).get(key, os.environ.get(key, "")) for key in PROCESS_ENV_ALLOWLIST
     }
     clean_env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
 

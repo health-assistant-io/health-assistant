@@ -5,9 +5,45 @@ from typing import Any
 from app.extensions.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
 
+from ..validation import SectionSpec, validate_payload, validate_sections
 from .base import BaseWebhookParser
 
 logger = logging.getLogger(__name__)
+
+_SECTIONS: dict[str, SectionSpec] = {
+    "steps": SectionSpec({"count": "number"}),
+    "distance": SectionSpec({"meters": "number"}),
+    "active_calories": SectionSpec({"calories": "number"}),
+    "total_calories": SectionSpec({"calories": "number"}),
+    "weight": SectionSpec({"kilograms": "number"}),
+    "height": SectionSpec({"meters": "number"}),
+    "body_temperature": SectionSpec({"celsius": "number"}),
+    "body_fat": SectionSpec({"percentage": "number"}),
+    "lean_body_mass": SectionSpec({"kilograms": "number"}),
+    "bone_mass": SectionSpec({"kilograms": "number"}),
+    "body_water_mass": SectionSpec({"kilograms": "number"}),
+    "heart_rate": SectionSpec({"bpm": "number"}),
+    "resting_heart_rate": SectionSpec({"bpm": "number"}),
+    "heart_rate_variability": SectionSpec({"heart_rate_variability_millis": "number"}),
+    "blood_pressure": SectionSpec({"systolic": "number", "diastolic": "number"}),
+    "blood_glucose": SectionSpec({"mmol_per_liter": "number"}),
+    "oxygen_saturation": SectionSpec({"percentage": "number"}),
+    "respiratory_rate": SectionSpec({"rate": "number"}),
+    "sleep": SectionSpec({"duration_seconds": "number", "stages": "list"}),
+    "hydration": SectionSpec({"liters": "number"}),
+    "nutrition": SectionSpec(
+        {
+            "calories": "number",
+            "protein_grams": "number",
+            "carbs_grams": "number",
+            "fat_grams": "number",
+        }
+    ),
+    "mindfulness": SectionSpec({"duration_seconds": "number", "title": "text"}),
+    "screen_time": SectionSpec({"total_screen_time_minutes": "number", "date": "text"}),
+}
+
+_SOURCES = ("health_connect", "screen_time")
 
 
 class LifeDashboardParser(BaseWebhookParser):
@@ -27,10 +63,15 @@ class LifeDashboardParser(BaseWebhookParser):
     ) -> list[ObservationCreate]:
         observations = []
 
-        if not isinstance(payload, dict):
-            return []
-
+        payload = validate_payload(payload, parser_id="life_dashboard")
+        validate_sections(payload, _SECTIONS, parser_id="life_dashboard")
         source = payload.get("source")
+        if source not in _SOURCES:
+            from ..validation import WebhookPayloadError
+
+            raise WebhookPayloadError(
+                f"life_dashboard: 'source' must be one of {', '.join(_SOURCES)} (got {source!r})."
+            )
 
         if source == "health_connect":
             # Activity

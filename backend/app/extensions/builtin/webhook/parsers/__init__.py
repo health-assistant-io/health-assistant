@@ -1,3 +1,4 @@
+from ..validation import WebhookConfigError
 from .base import BaseWebhookParser
 from .basic import BasicParser, HomeAssistantParser
 from .custom import CustomJSONPathParser
@@ -14,4 +15,11 @@ PARSERS = {
 
 
 def get_parser(parser_type: str) -> BaseWebhookParser:
-    return PARSERS.get(parser_type, PARSERS["life_dashboard"])
+    """Resolve a configured parser id; an unknown id is a typed config error."""
+    parser = PARSERS.get(parser_type)
+    if parser is None:
+        raise WebhookConfigError(
+            f"Unknown webhook parser {parser_type!r} "
+            f"(configured ids: {', '.join(sorted(PARSERS))})."
+        )
+    return parser

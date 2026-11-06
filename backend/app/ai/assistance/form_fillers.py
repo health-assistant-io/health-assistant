@@ -1,4 +1,4 @@
-# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """AI-assisted form fillers: biomarker entry, medication entry, examination.
 
 Extracted from ``AIAssistanceService`` (Phase 6c). Each handler uses
@@ -135,7 +135,7 @@ async def magic_fill_examination(
 
     from app.models.concept_model import Concept
     from app.models.enums import ConceptKind
-    from app.services.concept_service import concepts_with_kind
+    from app.services.catalog.concept_service import concepts_with_kind
 
     # Fetch examination-category concepts from the database
     cat_res = await db.execute(

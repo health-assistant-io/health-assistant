@@ -18,9 +18,10 @@ class PatientBase(BaseModel):
     - ``telecom`` is ``0..*`` (list of ``ContactPoint``).
 
     The ORM column on ``PatientModel`` tolerates both single-dict and list
-    shapes via ``_coerce_*`` helpers (defensive against legacy data), but
-    the REST schema must match the FHIR R4 spec so that canonical FHIR JSON
-    (``"name": [{"family": "Doe"}]``) is accepted rather than 422'd.
+    shapes via ``_coerce_*`` helpers (defensive against rows written in the
+    single-dict era), but the REST schema must match the FHIR R4 spec so that
+    canonical FHIR JSON (``"name": [{"family": "Doe"}]``) is accepted rather
+    than 422'd.
     """
 
     name: list[dict[str, Any]] = Field(
@@ -36,7 +37,7 @@ class PatientBase(BaseModel):
         description=(
             "Local-keyed FHIR R4 extensions map (race / ethnicity / "
             "preferred_language / insurance_provider). Validated against the "
-            "registry in app.services.fhir_extensions."
+            "registry in app.services.fhir.fhir_extensions."
         ),
     )
 

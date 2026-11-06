@@ -224,7 +224,7 @@ async def test_audit_failure_does_not_abort_create(async_client, monkeypatch):
     async def _boom(*args, **kwargs):
         raise RuntimeError("audit DB is down")
 
-    monkeypatch.setattr("app.services.catalog_audit_service.record_from_obj", _boom)
+    monkeypatch.setattr("app.services.catalog.catalog_audit_service.record_from_obj", _boom)
 
     _, headers, _, _ = await _tenant_and_headers("ADMIN")
     resp = await async_client.post(

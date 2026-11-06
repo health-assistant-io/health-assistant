@@ -6,9 +6,25 @@ from typing import Any
 from app.extensions.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
 
+from ..validation import (
+    SectionSpec,
+    WebhookPayloadError,
+    validate_payload,
+    validate_sections,
+)
 from .base import BaseWebhookParser
 
 logger = logging.getLogger(__name__)
+
+_SECTIONS: dict[str, SectionSpec] = {
+    "steps": SectionSpec({"count": "number"}),
+    "heart_rate": SectionSpec({"bpm": "number"}),
+    "resting_heart_rate": SectionSpec({"bpm": "number"}),
+    "weight": SectionSpec({"kilograms": "number"}),
+    "sleep": SectionSpec({"duration_seconds": "number", "stages": "list"}),
+    "oxygen_saturation": SectionSpec({"percentage": "number"}),
+    "heart_rate_variability": SectionSpec({"rmssd_millis": "number"}),
+}
 
 
 class HcWebhookParser(BaseWebhookParser):
@@ -29,18 +45,17 @@ class HcWebhookParser(BaseWebhookParser):
     ) -> list[ObservationCreate]:
         observations = []
 
-        if not isinstance(payload, dict):
-            return []
+        payload = validate_payload(payload, parser_id="hc_webhook")
+        validate_sections(payload, _SECTIONS, parser_id="hc_webhook")
 
-        # The app might send "source": "health_connect", but the test payload might omit it.
-        # We'll loosen the restriction to process if any expected keys exist or if it's explicitly "test": true
-        if (
-            payload.get("source") != "health_connect"
-            and not payload.get("test")
-            and "steps" not in payload
-            and "heart_rate" not in payload
-        ):
+        # Explicit test deliveries are acknowledged as no-ops; anything else
+        # without one recognizable section is a schema rejection, not silence.
+        if payload.get("test"):
             return []
+        if not any(section in payload for section in _SECTIONS):
+            raise WebhookPayloadError(
+                f"hc_webhook: payload carries no recognized section ({', '.join(_SECTIONS)})."
+            )
 
         # Parse Steps
         if config.get("track_steps", True):

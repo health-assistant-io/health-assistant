@@ -3,8 +3,8 @@ import uuid
 import pytest
 
 from app.models.enums import ExportScope
-from app.services import fhir_converter as fc
-from app.services import fhir_helpers as fh
+from app.services.fhir import fhir_converter as fc
+from app.services.fhir import fhir_helpers as fh
 
 # ---------- ORM-shape dict fixtures (for reverse-direction reference) ----------
 

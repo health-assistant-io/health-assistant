@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.schemas.biomarker import CatalogImportPayload
-from app.services.catalog_import_service import CatalogImportService
+from app.services.catalog.catalog_import_service import CatalogImportService
 
 
 async def main():

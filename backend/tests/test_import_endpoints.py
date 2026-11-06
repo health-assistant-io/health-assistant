@@ -119,7 +119,7 @@ async def test_import_fhir_endpoint_restores_bundle(async_client: AsyncClient, t
 
     bundle = '{"resourceType":"Bundle","type":"transaction","entry":[]}'
     with patch(
-        "app.services.import_service.ImportService.import_from_fhir",
+        "app.services.imports.service.ImportService.import_from_fhir",
         new=AsyncMock(
             return_value={
                 "job_id": "",

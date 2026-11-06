@@ -31,15 +31,15 @@ from app.core.security import RoleChecker, TokenData
 from app.models.enums import Role
 from app.schemas.biomarker import CatalogImportPayload
 from app.schemas.tenant import AuditEntryResponse, AuditListResponse
-from app.services.audit_service import (
+from app.services.audit.audit_service import (
     OUTCOME_DENIED,
     OUTCOME_ERROR,
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.catalog_import_service import CatalogImportService
-from app.services.seed_export_service import SeedExportService
-from app.services.tenant_admin_service import TenantAdminService
+from app.services.catalog.catalog_import_service import CatalogImportService
+from app.services.seed.seed_export_service import SeedExportService
+from app.services.tenancy.tenant_admin_service import TenantAdminService
 from app.workers.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
@@ -217,7 +217,7 @@ async def broadcast_notification(
         NotificationType,
         RecipientKind,
     )
-    from app.services.notification_service import emit
+    from app.services.notifications.notification_service import emit
 
     is_system_admin = current_user.role == Role.SYSTEM_ADMIN.value
     if severity not in {s.value for s in NotificationSeverity}:

@@ -10,28 +10,29 @@ Capabilities demonstrated (search for the §N markers in this file):
 
 §A  ``pull_data`` — pull → ``List[ObservationCreate]``
 §B  Exception mapping — the charter typed errors (``auth`` / ``rate-limited``)
-§C  Cursor-based delta sync — ``get_sync_cursor`` / ``set_sync_cursor``
+§C  Cursor-based delta sync — ``get_cursor`` / ``set_cursor`` (rows in
+    ``integration_sync_state``)
 §D  Debug logging — ``log_debug_payload`` (no-op unless debug enabled)
 §E  Quantitative + categorical observations — ``set_value`` / ``set_value_string``
 §F  Custom UI actions — ``get_custom_actions`` / ``execute_custom_action``
-§G  Notifications (rich, actionable) — ``supports_notifications`` +
+§G  Notifications (rich, actionable) — the declared ``notify`` capability +
     ``get_notification_types`` + ``get_notifications`` +
     ``handle_notification_action``
 §H  Webhook ingest — ``handle_webhook`` with HMAC validation
 §I  Two-way API proxy — ``handle_api_request`` for headless clients
-§J  Chat tools — ``supports_tools`` / ``get_tools`` (LangChain)
-§K  Clinical events — ``supports_clinical_events`` / ``pull_clinical_events``
-§L  Examinations — ``supports_examinations`` / ``pull_examinations``
-§M  Catalog proposals (auto-apply) — ``supports_catalog_proposals``
-§N  HITL proposals (human review) — ``supports_hitl_proposals`` +
+§J  Chat tools — the declared ``chat-tools`` capability / ``get_tools`` (LangChain)
+§K  Clinical events — the declared ``clinical_event`` data class / ``pull_clinical_events``
+§L  Examinations — the declared ``examination`` data class / ``pull_examinations``
+§M  Catalog proposals (auto-apply) — the declared ``catalog_proposal`` data class
+§N  HITL proposals (human review) — the declared ``hitl_proposal`` data class +
     ``handle_proposal_resolution``
-§O  Documents — ``supports_documents`` / ``pull_documents``
+§O  Documents — the declared ``document`` data class / ``pull_documents``
 §P  Lifecycle — ``push_data`` / ``close`` / ``revoke``
 
-Not demonstrated here (see ``integrations/fhir_server/`` for live examples):
-  - Phase 4 treatment hooks: ``supports_medications`` / ``pull_medications``,
-    ``supports_allergies`` / ``pull_allergies``,
-    ``supports_immunizations`` / ``pull_immunizations``
+Not demonstrated here (see ``app/extensions/builtin/fhir_server/`` for live
+examples):
+  - Treatment data classes: ``medication`` / ``pull_medications``,
+    ``allergy`` / ``pull_allergies``, ``immunization`` / ``pull_immunizations``
   - OAuth / SMART-on-FHIR cloud connect (``SmartOAuth``)
 """
 
@@ -59,7 +60,7 @@ from app.extensions.sdk import (
     verify_hmac_signature,
 )
 from app.extensions.sdk.display import action_result, kv_block, list_block, table_block
-from app.models.enums import ClinicalEventStatus, CodingSystem
+from app.models.enums import ClinicalEventStatus, CodingSystem, IntegrationSyncStream
 from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
 
@@ -170,14 +171,14 @@ class DevDummyProvider(BaseHealthProvider):
         """
         if action_id == "reset_cursor":
             # §C — cursor write
-            self.set_sync_cursor(integration, "last_timestamp", None)
+            self.clear_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
             return action_result(
                 message="Sync cursor reset. Next sync will pull historical data.",
                 results=[
                     kv_block(
                         "Cursor",
                         {
-                            "Key": "last_timestamp",
+                            "Key": "observations",
                             "New value": "None (delta-sync will start from scratch)",
                             "Instance": integration.instance_name or self.domain,
                         },
@@ -187,9 +188,21 @@ class DevDummyProvider(BaseHealthProvider):
 
         if action_id == "show_status":
             # §C — cursor read + display blocks
-            cursor = self.get_sync_cursor(integration, "last_timestamp", default="<never>")
-            ack_hr = self.get_sync_cursor(integration, "ack_ack_hr_at", default="<never>")
-            proposals_resolved = self.get_sync_cursor(integration, "hitl_resolved_count", default=0)
+            cursor = self.get_cursor(
+                integration, IntegrationSyncStream.OBSERVATIONS, default="<never>"
+            )
+            ack_hr = self.get_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                key="ack:ack_hr",
+                default="<never>",
+            )
+            proposals_resolved = self.get_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                key="hitl_resolved_count",
+                default=0,
+            )
             return action_result(
                 message=f"Status for {integration.instance_name or self.domain}",
                 results=[
@@ -384,7 +397,12 @@ class DevDummyProvider(BaseHealthProvider):
         if action_id in ("ack_hr", "ack_bp"):
             # §C — cursor write. Real providers might call out to an
             # external API or write to a clinical record.
-            self.set_sync_cursor(integration, f"ack_{action_id}_at", datetime.now(UTC).isoformat())
+            self.set_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                datetime.now(UTC).isoformat(),
+                key=f"ack:{action_id}",
+            )
             return action_result(
                 message=f"Acknowledged ({action_id}). Future occurrences will be muted for this session.",
                 results=[
@@ -567,16 +585,16 @@ class DevDummyProvider(BaseHealthProvider):
                 "domain": self.domain,
                 "instance_id": str(integration.id),
                 "instance_name": integration.instance_name,
-                "cursor": self.get_sync_cursor(integration, "last_timestamp"),
+                "cursor": self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS),
                 "capabilities": list(self._enabled_capabilities(integration)),
                 "debug_enabled": bool(integration.is_debug_enabled),
             }
 
         if path == "cursor" and method == "GET":
-            return {"cursor": self.get_sync_cursor(integration, "last_timestamp")}
+            return {"cursor": self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)}
 
         if path == "reset" and method == "POST":
-            self.set_sync_cursor(integration, "last_timestamp", None)
+            self.clear_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
             return {"ok": True, "cursor": None}
 
         if path == "echo" and method == "POST":
@@ -642,7 +660,9 @@ class DevDummyProvider(BaseHealthProvider):
             pass
 
         async def _cursor_state() -> str:
-            cursor = self.get_sync_cursor(integration, "last_timestamp", default="<never>")
+            cursor = self.get_cursor(
+                integration, IntegrationSyncStream.OBSERVATIONS, default="<never>"
+            )
             return (
                 f"[dev_dummy {instance_label}] cursor={cursor!r} "
                 f"(integration_id={cursor_holder['integration_id']})"
@@ -687,7 +707,7 @@ class DevDummyProvider(BaseHealthProvider):
 
         # Make the onset date drift with the cursor so a real test against
         # the canonical ``create_event`` service looks lifelike.
-        cursor_iso = self.get_sync_cursor(integration, "last_timestamp")
+        cursor_iso = self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
         onset = self._parse_dt(cursor_iso) or datetime.now(UTC)
         onset = onset - timedelta(days=7)
 
@@ -697,8 +717,8 @@ class DevDummyProvider(BaseHealthProvider):
                 title="Influenza-like illness (dev_dummy demo)",
                 description=(
                     "Sample clinical event synthesised by the dev_dummy integration "
-                    "to exercise the supports_clinical_events / pull_clinical_events "
-                    "engine path."
+                    "to exercise the declared clinical_event data class / "
+                    "pull_clinical_events engine path."
                 ),
                 onset_date=onset,
                 status=ClinicalEventStatus.ACTIVE,
@@ -727,7 +747,7 @@ class DevDummyProvider(BaseHealthProvider):
         if not integration.patient_id:
             return []
 
-        cursor_iso = self.get_sync_cursor(integration, "last_timestamp")
+        cursor_iso = self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
         exam_date = (self._parse_dt(cursor_iso) or datetime.now(UTC)).date()
 
         return [
@@ -792,18 +812,21 @@ class DevDummyProvider(BaseHealthProvider):
         """Queue a 'Stress Index' concept for human review.
 
         Unlike §M (auto-apply), the platform persists each spec as a
-        PROPOSED ``IntegrationProposal`` row + fires an HITL
+        PROPOSED row in the one ``proposals`` table + fires an HITL
         notification. The user resolves via the
         ``/api/v1/integrations/instance/{id}/proposals/.../resolve``
         endpoint. Re-emitting the same spec on consecutive syncs is a
-        no-op (idempotent on ``(proposal_type, proposed_payload)``).
+        no-op (tenant-scoped dedup on ``(proposal_type, proposed_payload)``).
         """
         if not (integration.user_config or {}).get("enable_hitl_proposals", True):
             return []
 
         # Don't re-queue once the user has resolved one — advances cursor.
-        already_resolved = self.get_sync_cursor(
-            integration, "hitl_stress_index_resolved", default=False
+        already_resolved = self.get_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            key="hitl_stress_index_resolved",
+            default=False,
         )
         if already_resolved:
             return []
@@ -840,9 +863,29 @@ class DevDummyProvider(BaseHealthProvider):
         We advance a cursor so we don't keep re-proposing the same thing
         on every sync.
         """
-        self.set_sync_cursor(integration, "hitl_stress_index_resolved", True)
-        prev = int(self.get_sync_cursor(integration, "hitl_resolved_count", default=0) or 0)
-        self.set_sync_cursor(integration, "hitl_resolved_count", prev + 1)
+        self.set_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            True,
+            key="hitl_stress_index_resolved",
+            kind="commit",
+        )
+        prev = int(
+            self.get_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                key="hitl_resolved_count",
+                default=0,
+            )
+            or 0
+        )
+        self.set_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            prev + 1,
+            key="hitl_resolved_count",
+            kind="commit",
+        )
         await self.log_debug_payload(
             integration,
             "HITL proposal resolved",
@@ -870,10 +913,15 @@ class DevDummyProvider(BaseHealthProvider):
         """
         if not (integration.user_config or {}).get("enable_documents", True):
             return []
-        if self.get_sync_cursor(integration, "doc_demo_delivered", default=False):
+        if self.get_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            key="doc_demo_delivered",
+            default=False,
+        ):
             return []
 
-        cursor_iso = self.get_sync_cursor(integration, "last_timestamp")
+        cursor_iso = self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
         report_date = (self._parse_dt(cursor_iso) or datetime.now(UTC)).isoformat()
         text = (
             "DEV DUMMY DEMO LAB REPORT\n"
@@ -881,7 +929,8 @@ class DevDummyProvider(BaseHealthProvider):
             "Patient: (synthetic)\n"
             "\n"
             "This is a plain-text document synthesised by the dev_dummy integration\n"
-            "to demonstrate the supports_documents / pull_documents engine path.\n"
+            "to demonstrate the declared document data class / pull_documents\n"
+            "engine path.\n"
             "The platform routes it through document_service.ingest_document_bytes\n"
             "(the same write path the UI upload endpoint uses) and fires the OCR\n"
             "Celery task because include_in_extraction=True.\n"
@@ -890,7 +939,13 @@ class DevDummyProvider(BaseHealthProvider):
 
         # Mark delivered so we don't redeliver on every sync. Per the
         # contract, the provider owns document idempotency.
-        self.set_sync_cursor(integration, "doc_demo_delivered", True)
+        self.set_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            True,
+            key="doc_demo_delivered",
+            kind="commit",
+        )
 
         return [
             DocumentPull(
@@ -903,7 +958,7 @@ class DevDummyProvider(BaseHealthProvider):
                 # upstream id lets the platform dedup at the DB layer
                 # via ``(tenant, patient, source_integration_id,
                 # external_id)``. Without this, the provider owns
-                # idempotency via set_sync_cursor (which we also do,
+                # idempotency via set_cursor (which we also do,
                 # belt + braces).
                 external_id="dev_dummy_demo_report_v1",
                 # Optional: catalog concept slug for the document category.
@@ -958,7 +1013,7 @@ class DevDummyProvider(BaseHealthProvider):
         # Always-on capabilities.
         caps.extend(
             [
-                "supports_notifications",
+                "notify (declared capability)",
                 "handle_api_request",
                 "push_data",
             ]
@@ -1083,9 +1138,9 @@ class DevDummyProvider(BaseHealthProvider):
 
         now = datetime.now(UTC)
         # §C — cursor read
-        last_sync_iso = self.get_sync_cursor(
+        last_sync_iso = self.get_cursor(
             integration,
-            "last_timestamp",
+            IntegrationSyncStream.OBSERVATIONS,
             default=(now - timedelta(hours=1)).isoformat(),
         )
         last_sync = self._parse_dt(last_sync_iso) or (now - timedelta(hours=1))
@@ -1146,7 +1201,7 @@ class DevDummyProvider(BaseHealthProvider):
                 )
 
         # §C — cursor write (the worker commits user_config mutations)
-        self.set_sync_cursor(integration, "last_timestamp", current_time.isoformat())
+        self.set_cursor(integration, IntegrationSyncStream.OBSERVATIONS, current_time.isoformat())
         return observations
 
     # ==================================================================

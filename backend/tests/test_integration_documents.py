@@ -83,8 +83,8 @@ async def tenant_user_patient_integration():
 
 def test_documents_riding_the_declared_data_class():
     """The documents pull leg is gated on the ``document`` data class
-    declared in the manifest's ``itemSchema`` (D18 — the supports_documents
-    probing hook is gone). The SDK base keeps the safe ``pull_documents``
+    declared in the manifest's ``itemSchema`` (D18 — the method-probe era
+    is gone). The SDK base keeps the safe ``pull_documents``
     default so providers that don't declare it are unaffected."""
     from app.extensions.registry import IntegrationRegistry
     from app.extensions.sdk.base import BaseHealthProvider as SDKBaseProvider
@@ -121,16 +121,25 @@ def test_document_pull_is_reexported_from_sdk():
 # ---------------------------------------------------------------------------
 
 
+def _run_sync_pipeline_src() -> str:
+    """run_sync's text plus its legs — the pipeline spans both modules."""
+    import inspect
+
+    from app.services import integration_sync_service as svc
+    from app.services.integration import sync_legs
+
+    return inspect.getsource(svc.run_sync) + inspect.getsource(sync_legs)
+
+
 def test_run_sync_wires_documents_opt_in_hook():
-    """``run_sync`` must call ``provider.pull_documents`` gated on
-    ``provider.supports_documents()``, then route each returned spec
+    """``run_sync`` must call ``provider.pull_documents`` gated on the
+    declared ``document`` data class, then route each returned spec
     through ``document_service.ingest_document_bytes``. Mirrors the
     earlier workstream guards."""
-    from app.services import integration_sync_service as svc
 
-    src = inspect.getsource(svc.run_sync)
-    assert "supports_documents" in src, (
-        "run_sync must probe supports_documents — the opt-in gate for the documents pull hook"
+    src = _run_sync_pipeline_src()
+    assert '_declared(provider, "document")' in src, (
+        "run_sync must gate pull_documents on the declared document data class"
     )
     assert "pull_documents" in src, "run_sync must call pull_documents on providers that opt in"
     assert "ingest_document_bytes" in src, (
@@ -140,14 +149,16 @@ def test_run_sync_wires_documents_opt_in_hook():
 
 
 def test_run_sync_enforces_documents_caps():
-    """``run_sync`` must honor BOTH the per-sync item-count cap and the
+    """The ingest funnel must honor BOTH the per-sync item-count cap and the
     byte-total cap so a runaway provider can't exhaust catalog/disk/RAM."""
     from app.services import integration_sync_service as svc
+    from app.services.integration import integration_ingest
 
     assert svc.INTEGRATION_MAX_DOCS_PER_SYNC > 0
     assert svc.INTEGRATION_MAX_DOC_BYTES_PER_SYNC > 0
+    assert svc.INTEGRATION_MAX_DOCS_PER_SYNC == integration_ingest.INTEGRATION_MAX_DOCS_PER_SYNC
 
-    src = inspect.getsource(svc.run_sync)
+    src = inspect.getsource(integration_ingest.ingest_documents)
     assert "INTEGRATION_MAX_DOCS_PER_SYNC" in src
     assert "INTEGRATION_MAX_DOC_BYTES_PER_SYNC" in src
 
@@ -157,9 +168,8 @@ def test_run_sync_resolves_examination_external_id_via_hoisted_map():
     examinations block and surface it to the documents block so
     ``DocumentPull.examination_external_id`` can be resolved against an
     exam just pulled."""
-    from app.services import integration_sync_service as svc
 
-    src = inspect.getsource(svc.run_sync)
+    src = _run_sync_pipeline_src()
     assert "exam_by_external_id" in src, (
         "run_sync must build + consult the exam_by_external_id map so "
         "DocumentPull.examination_external_id can be linked"
@@ -230,15 +240,19 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
 
         # Mock the OCR dispatch so the test doesn't need a broker, and let
         # the declared-data-class gate see `document` for this ad-hoc domain.
+        from app.extensions.registry import (
+            integration_registry as integration_registry_singleton,
+        )
+
         with (
             patch("app.workers.ai_tasks.ocr_document.apply_async"),
             patch.object(
-                svc.integration_registry,
+                integration_registry_singleton,
                 "declared_data_classes",
                 lambda domain: frozenset({"document"}) if domain == "test_docs" else frozenset(),
             ),
             patch.object(
-                svc.integration_registry,
+                integration_registry_singleton,
                 "has_capability",
                 lambda domain, cap: False,
             ),

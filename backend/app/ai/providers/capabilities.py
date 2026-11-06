@@ -1,11 +1,11 @@
 """Map AI tasks to the model capabilities they require.
 
 A model advertises a SET of capabilities (``AIModelCapability``: the §15 family
-vocabulary text / vision / tools / stt / tts / embeddings) on its JSONB
-``capabilities`` column. Each task type needs at least one specific capability;
-this module is the single source of truth for that mapping so the
-task-assignment picker only offers eligible models and the runtime factories
-can sanity-check their resolved model.
+vocabulary text / vision / tools / stt / tts / embeddings / decision) on its
+JSONB ``capabilities`` column. Each task type needs one specific capability;
+the task registry (:mod:`app.ai.providers.task_registry`) is the single source
+of truth for that mapping — this module only translates it into the
+``AIModelCapability`` enum and provides the shared eligibility helpers.
 
 Examples:
   * ``chat``        → needs ``text``
@@ -20,37 +20,21 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from app.ai.providers.enums import TaskType
+from app.ai.providers.task_registry import required_capability
 from app.models.enums import AIModelCapability
-
-# The capability each task type REQUIRES (a model must advertise it to be
-# eligible). Tasks not listed default to {TEXT} (the baseline modality every
-# model carries) — EXCEPT the decision slots, which are listed explicitly so
-# they can never silently fall into the text baseline (D4 slot separation).
-# Kept as TaskType keys so renames are caught at import time.
-TASK_REQUIRED_CAPABILITY: dict = {
-    TaskType.CHAT: {AIModelCapability.TEXT},
-    TaskType.OCR: {AIModelCapability.VISION},
-    TaskType.TRANSCRIPTION: {AIModelCapability.STT},
-    TaskType.EMBED: {AIModelCapability.EMBEDDINGS},
-    TaskType.DECISION_TOOL_DISPATCH: {AIModelCapability.DECISION},
-    TaskType.DECISION_BOOLEAN_GATE: {AIModelCapability.DECISION},
-    TaskType.DECISION_CHOICE: {AIModelCapability.DECISION},
-    TaskType.DECISION_SCORE: {AIModelCapability.DECISION},
-    # ADR-0036: the decision default slot — decision-capable models only.
-    TaskType.DECISION: {AIModelCapability.DECISION},
-}
 
 
 def required_capabilities_for_task(task_type: object) -> set[AIModelCapability]:
     """Return the set of capabilities a model must have to serve ``task_type``.
 
-    Unknown/unmapped task types (the long tail of text-generation tasks) fall
-    back to ``{TEXT}``. Decision slots are explicit members of the map above —
-    they require ``decision`` and nothing else.
+    Derived from the task registry — there is no hand-maintained map. Unknown
+    task types (a stray DB row, a caller spelling a task wrong) fall back to
+    the text baseline, matching the historical tolerant behaviour.
     """
-    key = TaskType.from_string(str(task_type)) if task_type is not None else None
-    return set(TASK_REQUIRED_CAPABILITY.get(key, {AIModelCapability.TEXT}))
+    capability = required_capability(None if task_type is None else str(task_type))
+    if capability is None:
+        return {AIModelCapability.TEXT}
+    return {AIModelCapability(capability)}
 
 
 def normalize_capabilities(values: Iterable[object] | None) -> set[str]:

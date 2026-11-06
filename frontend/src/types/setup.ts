@@ -6,7 +6,7 @@
  * renderer component. The `completed` bit is authoritative (backend-derived
  * from live data, design D2 — no onboarding-state table).
  *
- * See `dev/audits/setup-wizard-design.md` and `docs/SETUP_WIZARD.md`.
+ * See `the family audit notes/setup-wizard-design.md` and `docs/SETUP_WIZARD.md`.
  */
 
 export type SetupStepKind = 'redirect' | 'inline_form' | 'external_config' | 'derived';
@@ -36,7 +36,7 @@ export interface SetupStep {
   /** True only when completion is via a manual user override (not the
    * evaluator). The UI uses this to render an "undo" affordance + a
    * "marked manually" hint. Stays false when the evaluator already agreed.
-   * Optional on the client for legacy mock fixtures; the backend always
+   * Optional on the client for mock fixtures; the backend always
    * sends it. */
   manually_completed?: boolean;
   /** Optional steps do not count toward `completion`. */

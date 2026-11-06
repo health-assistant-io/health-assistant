@@ -9,7 +9,7 @@ first-run setup wizard started calling it.
 
 import pytest
 
-from app.services.tenant_service import create_tenant
+from app.services.tenancy.tenant_service import create_tenant
 from app.utils.slug import slugify
 
 
@@ -40,7 +40,7 @@ async def test_create_tenant_generates_non_null_slug():
         assert tenant.slug == "acme-clinic"
         assert tenant.name == "Acme Clinic"
     finally:
-        from app.services.tenant_service import delete_tenant
+        from app.services.tenancy.tenant_service import delete_tenant
 
         await delete_tenant(tenant.id)
 
@@ -55,7 +55,7 @@ async def test_create_tenant_disambiguates_duplicate_slugs():
         assert t2.slug.startswith("dup-org-")
         assert t2.slug != t1.slug
     finally:
-        from app.services.tenant_service import delete_tenant
+        from app.services.tenancy.tenant_service import delete_tenant
 
         await delete_tenant(t1.id)
         await delete_tenant(t2.id)

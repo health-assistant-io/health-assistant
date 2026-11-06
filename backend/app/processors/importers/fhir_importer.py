@@ -144,7 +144,7 @@ class FHIRImporter:
 
             return resource
         except Exception as e:
-            raise ValueError(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+            raise ValueError(  # noqa: B904 -- bare raise; add explicit chaining when touched
                 f"Failed to process {resource.get('resourceType', 'unknown')}: {e!s}"
             )
 

@@ -154,9 +154,14 @@ class ComparisonOperator(enum.StrEnum):
 
 
 class HitlTaskStatus(enum.StrEnum):
-    """Status of a human-in-the-loop task card proposed by the AI assistant.
-    Values are lowercase to match the JSONB payload contract consumed by the
-    frontend (registry.tsx HITL_STATUS_META keys)."""
+    """ADR-0015 wire status of a human-in-the-loop task card.
+
+    This is the **card contract** vocabulary the frontend renders
+    (``registry.tsx`` ``HITL_STATUS_META`` keys). It is deliberately not the
+    persistence vocabulary: ``proposals.status`` is a seven-state machine
+    (:class:`ProposalStatus`) and the mapping lives in one module
+    (``app.services.proposal_state``). Values are lowercase to match the wire.
+    """
 
     PROPOSED = "proposed"
     CONFIRMED = "confirmed"
@@ -168,6 +173,70 @@ class HitlTaskStatus(enum.StrEnum):
         """Return the set of statuses that block a resume continuation turn
         (i.e. the user has finished acting on the proposal)."""
         return frozenset({cls.CONFIRMED, cls.DISMISSED, cls.FAILED})
+
+
+class ProposalSource(enum.StrEnum):
+    """Where a proposal entered the system (``proposals.source``).
+
+    Closed behavioral vocabulary (constitution rule 7a): the column is a
+    varchar + mirrored CHECK. ``source_ref`` names the origin row in that
+    source's vocabulary — ``chat_message_id`` / ``user_integration_id`` /
+    ``background_job_id``.
+    """
+
+    CHAT = "chat"
+    EXTENSION = "extension"
+    AUTOMATION = "automation"
+
+
+class ProposalStatus(enum.StrEnum):
+    """The one HITL proposal state machine (``proposals.status``, plan 5).
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK, widened by a migration in the same commit as a new state. The legal
+    transitions live in exactly one module — :mod:`app.services.proposals.proposal_state`
+    — which raises typed errors for illegal moves (never a silent write).
+    """
+
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    APPLIED = "applied"
+    FAILED = "failed"
+    EXPIRED = "expired"
+    SUPERSEDED = "superseded"
+
+    @classmethod
+    def terminal(cls) -> frozenset["ProposalStatus"]:
+        """States from which nothing can be applied any more."""
+        return frozenset(
+            {
+                cls.REJECTED,
+                cls.APPLIED,
+                cls.FAILED,
+                cls.EXPIRED,
+                cls.SUPERSEDED,
+            }
+        )
+
+    @classmethod
+    def pending(cls) -> frozenset["ProposalStatus"]:
+        """States a resolver/sweeper may still act on."""
+        return frozenset({cls.PROPOSED, cls.APPROVED})
+
+
+class TelemetryAnomalyKind(enum.StrEnum):
+    """Direction of a telemetry anomaly (``telemetry_anomalies.kind``).
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK. The CAgg rolling-stats engine classifies the latest bucket by the
+    sign of its z-score — above the trailing baseline is a spike, below is a
+    drop. Detection never branches on a slug; every metric uses the same
+    engine.
+    """
+
+    SPIKE = "spike"
+    DROP = "drop"
 
 
 class TriggerType(enum.StrEnum):
@@ -218,6 +287,37 @@ class AIScope(enum.StrEnum):
     ORGANIZATION = "ORGANIZATION"
 
 
+class AICallRoute(enum.StrEnum):
+    """The call shape recorded on ``ai_call_logs.route``.
+
+    Closed behavioral vocabulary (constitution rule 7a): the DB column is a
+    native PG enum carrying exactly these values, widened by a migration in the
+    same commit as a new member. Mirrors
+    :class:`app.ai.providers.task_registry.TaskRoute`.
+    """
+
+    CHAT = "chat"
+    DECISION = "decision"
+    EMBED = "embed"
+    STT = "stt"
+    OCR = "ocr"
+    EXTRACT = "extract"
+
+
+class AICallStatus(enum.StrEnum):
+    """Outcome of one audited AI call (``ai_call_logs.status``).
+
+    ``cancelled`` = the caller went away (client disconnect / task cancelled);
+    ``timeout`` = the abort/timeout family fired; ``error`` = every other
+    failure, with ``error_class`` carrying the typed machine class.
+    """
+
+    OK = "ok"
+    ERROR = "error"
+    TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
+
+
 class AIModelCapability(enum.StrEnum):
     """The input/output modalities a model supports (its "features").
 
@@ -233,7 +333,7 @@ class AIModelCapability(enum.StrEnum):
       * ``VISION``      — image input (multimodal chat, vision-based OCR).
       * ``TOOLS``       — tool/function calling.
       * ``STT``         — speech-to-text (``whisper-1``; the ``transcription``
-                          task). Replaces the legacy ``audio_input`` value.
+                          task).
       * ``TTS``         — text-to-speech (no health task consumes it yet).
       * ``EMBEDDINGS``  — embedding vectors (the ``embed`` task; setup
                           gap-fills the slot from the preset default).
@@ -402,6 +502,83 @@ class IntegrationStatus(enum.StrEnum):
     ERROR = "ERROR"
 
 
+class IntegrationCredentialKind(enum.StrEnum):
+    """Credential shape held by one ``integration_credentials`` row.
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK. ``oauth2`` is a refreshable access/refresh token pair, ``api_key``
+    a long-lived bearer/API token, ``signed`` the HMAC material inbound
+    machine routes verify. The sealed payload is opaque to the engine; only
+    the owning connector interprets it.
+    """
+
+    OAUTH2 = "oauth2"
+    API_KEY = "api_key"
+    SIGNED = "signed"
+
+
+class IntegrationSyncStream(enum.StrEnum):
+    """Typed data streams of the connector framework (plan 8 §2.2/§2.3).
+
+    Closed behavioral vocabulary: adding a stream changes what the sync
+    engine routes, so it is a StrEnum + mirrored CHECK (one migration in the
+    same commit). ``cursor_key`` names a provider-scoped sub-cursor inside a
+    stream (a FHIR server pulls several resource types under
+    ``observations``); the empty string is the stream's primary cursor.
+    """
+
+    OBSERVATIONS = "observations"
+    DOCUMENTS = "documents"
+    APPOINTMENTS = "appointments"
+    LABS = "labs"
+    TELEMETRY = "telemetry"
+
+
+class IntegrationCursorKind(enum.StrEnum):
+    """Where a sync cursor advances to.
+
+    Closed behavioral vocabulary. ``timestamp`` is an ISO-8601 instant,
+    ``page_token`` an opaque provider pagination token, ``etag`` a
+    representation validator, ``commit`` an opaque source commit/checkpoint
+    token (JSON text when structured).
+    """
+
+    TIMESTAMP = "timestamp"
+    PAGE_TOKEN = "page_token"
+    ETAG = "etag"
+    COMMIT = "commit"
+
+
+class IntegrationSyncErrorClass(enum.StrEnum):
+    """Typed failure class recorded on sync-state and sync-log rows.
+
+    Closed behavioral vocabulary = the charter's 15 extension error codes
+    (``app.extensions.polite_http.ERROR_CODES`` — one source, pinned by a
+    parity test) plus the two engine-only classes: ``mapping_gap`` (an
+    observation that could not be mapped to a catalog biomarker and was
+    stored raw) and ``credential`` (a missing/revoked/unreadable credential —
+    the fail-closed auth gate).
+    """
+
+    NOT_READY = "not-ready"
+    NEEDS_SECRET = "needs-secret"
+    INVALID = "invalid"
+    UNSUPPORTED = "unsupported"
+    IO = "io"
+    NOT_FOUND = "not-found"
+    PATH_DENIED = "path-denied"
+    NET_DENIED = "net-denied"
+    AUTH = "auth"
+    RATE_LIMITED = "rate-limited"
+    UNREACHABLE = "unreachable"
+    PROTOCOL = "protocol"
+    PROVIDER = "provider"
+    BUDGET = "budget"
+    CANCELED = "canceled"
+    MAPPING_GAP = "mapping_gap"
+    CREDENTIAL = "credential"
+
+
 class ExportScope(enum.StrEnum):
     PATIENT = "patient"
     GROUP = "group"
@@ -420,23 +597,6 @@ class JobStatus(enum.StrEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     PARTIAL = "PARTIAL"
-
-
-class AnatomyRelationType(enum.StrEnum):
-    """.. deprecated:: Migrated into :class:`ConceptRelationType`.
-
-    Retained as a thin alias so schema/endpoint code that still references it
-    by name compiles during the transition. All anatomy hierarchy edges now
-    live in ``concept_edges`` with these same string values.
-    """
-
-    PART_OF = "PART_OF"
-    BRANCH_OF = "BRANCH_OF"
-    DRAINS_INTO = "DRAINS_INTO"
-    ARTICULATES_WITH = "ARTICULATES_WITH"
-    INNERVATED_BY = "INNERVATED_BY"
-    SUPPLIED_BY = "SUPPLIED_BY"
-    CONTINUOUS_WITH = "CONTINUOUS_WITH"
 
 
 class ConceptKind(enum.StrEnum):
@@ -526,8 +686,8 @@ class MetadataFieldType(enum.StrEnum):
     Drives the frontend renderer switch in ``DynamicMetadataForm``. Each value
     maps 1:1 to a render branch — the union is exhaustive (TS ``never`` guard),
     so adding a new field type without a renderer branch is a compile error
-    (closes the legacy dead-branch class of bugs where ``select``/``code``
-    silently rendered nothing).
+    (closes the dead-branch class of bugs where ``select``/``code`` silently
+    rendered nothing).
 
     Values are lowercase kebab to match the JSONB wire format consumed verbatim
     by the frontend ``MetadataFieldType`` literal union.
@@ -562,7 +722,7 @@ class CatalogRelationType(enum.StrEnum):
     """How a picked catalog item in a ``CATALOG_SELECT`` field relates to the
     clinical event.
 
-    Generalizes the legacy ``EventAnatomyLink.relation_type`` free-text values
+    Generalizes the ``EventAnatomyLink.relation_type`` free-text values
     (``primary_site``/``radiates_to``/``referred_to``) into an enum, and adds
     the semantic medical-knowledge relations so a non-anatomy field can declare
     its binding semantics (e.g. a biomarker field ``relation=monitors``).
@@ -615,3 +775,124 @@ class ConceptRelationType(enum.StrEnum):
     MONITORS = "MONITORS"
     RISK_OF = "RISK_OF"
     SCREENS_FOR = "SCREENS_FOR"
+
+
+class ErasureSubjectType(enum.StrEnum):
+    """The erased subject kind (``erasure_requests.subject_type``).
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK. ``user`` erases the account and every patient it owns, ``patient``
+    erases one clinical record, ``tenant`` erases the whole isolation boundary.
+    """
+
+    USER = "user"
+    PATIENT = "patient"
+    TENANT = "tenant"
+
+
+class ErasureStatus(enum.StrEnum):
+    """Erasure request lifecycle (``erasure_requests.status``).
+
+    ``queued`` → ``running`` → ``done`` (or ``failed``); a dry run ends at
+    ``dry_run_done`` and never deletes. ``done`` rows are the erasure ledger
+    replayed against every restore (plan 6 §2.7).
+    """
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    DRY_RUN_DONE = "dry_run_done"
+
+
+class RetentionScope(enum.StrEnum):
+    """What a retention policy governs (``retention_policies.scope``)."""
+
+    CLASS = "class"
+    TABLE = "table"
+
+
+class RetentionAction(enum.StrEnum):
+    """What a retention job does at the cutoff (``retention_policies.action``).
+
+    ``delete`` removes rows; ``anonymize`` keeps the row but clears its
+    payload (the audit-retention shape). Company retention law picks the
+    action — see SECURITY.md's erasure/retention subsection.
+    """
+
+    DELETE = "delete"
+    ANONYMIZE = "anonymize"
+
+
+class ExtensionSourceKind(enum.StrEnum):
+    """Where imported extension content comes from (``extension_sources.kind``).
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK. ``git`` resolves a repository ref, ``registry`` an index entry,
+    ``file`` a local/dev source descriptor (the charter's
+    ``localSourceDescriptor`` — production boots fail it closed).
+    """
+
+    GIT = "git"
+    FILE = "file"
+    REGISTRY = "registry"
+
+
+class ExtensionSourceTrustTier(enum.StrEnum):
+    """The trust tier a source's lane imports (``extension_sources.trust_tier``).
+
+    The source lane carries **imported code only** (plan 7): ``T2`` sandboxed
+    capability-RPC content and ``T3`` external MCP processes. Declarative T0
+    data never rides this lane (the charter's envelope-only file import), and
+    bundled T1 content has no source. Tier is provenance — the value gates
+    which lanes an import may claim; ``contract.derive_tier`` still derives
+    the artifact's real tier at registration.
+    """
+
+    T2 = "T2"
+    T3 = "T3"
+
+
+class ExtensionTier(enum.StrEnum):
+    """The charter's tier ladder (``extension_isolation_posture`` tier columns).
+
+    Closed behavioral vocabulary mirroring the charter's ``tiers``. The
+    posture row records ``requested_tier`` (the source's lane claim) next to
+    ``derived_tier`` (``contract.derive_tier`` — the one derivation), so a
+    contradiction is queryable evidence, never a silent retier.
+    """
+
+    T0 = "T0"
+    T1 = "T1"
+    T2 = "T2"
+    T3 = "T3"
+
+
+class ExtensionVersionStatus(enum.StrEnum):
+    """The immutable content-version state machine
+    (``extension_source_versions.status``).
+
+    ``pending`` (resolved, not yet reviewed) → ``approved`` (the digest an
+    instance may run) or ``rejected`` (registration problems — the typed
+    reason lives in the row, never only a log). ``revoked`` pulls an
+    already-approved digest back. Content columns never change: a digest
+    change is a NEW row requiring re-approval (the consent anchor).
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REVOKED = "revoked"
+
+
+class ExtensionConsentDecision(enum.StrEnum):
+    """One principal's decision on one capability of one content digest
+    (``extension_consents.decision``).
+
+    Consent binds to a manifest DIGEST (via ``version_id``): an upgraded
+    extension re-prompts for what is new; unchanged capabilities carry their
+    grant forward as new rows (browser-permission model, ADR-0040).
+    """
+
+    GRANTED = "granted"
+    DENIED = "denied"

@@ -10,7 +10,7 @@
  * modules and their consumers. This is the same "polymorphic workspace, typed
  * adapter" pattern the catalog side uses.
  *
- * See `dev/plans/instance-browser-unified-picker-2026-07-16.md`.
+ * See `local planning notes/instance-browser-unified-picker-2026-07-16.md`.
  */
 import type { InstanceAdapter, InstanceType } from './types';
 

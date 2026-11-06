@@ -39,13 +39,38 @@ set -uo pipefail
 
 GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEV_ROOT="$(cd "$GATE_DIR/.." && pwd)"
-WORKSPACE="$(dirname "$DEV_ROOT")"
 PATTERNS_DIR="$GATE_DIR/gate-patterns"
+
+# The family root (the directory holding the product repos) is NOT always
+# one level above this copy: the dev canonical lives at <family>/dev, while
+# the vendored copy in health-assistant/core lives at
+# <family>/health-assistant/core. Guessing with dirname() resolved
+# <family>/health-assistant/health-assistant from a product copy, where the
+# health-assistant/core entry missed and the scan reported a false
+# "FAIL C5: missing backend/pyproject.toml" on a conformant tree. Probe both
+# depths and take the one that actually carries the repos (the self-test
+# covers both layouts plus the lone-copy failure).
+family_root() {
+  local cand n best="" best_n=0 entry
+  for cand in "$(dirname "$DEV_ROOT")" "$(dirname "$(dirname "$DEV_ROOT")")"; do
+    [ "$cand" = "$best" ] && continue
+    n=0
+    for entry in "${REPOS[@]}"; do
+      [ -d "$cand/${entry%%:*}" ] && n=$((n + 1))
+    done
+    if [ "$n" -gt "$best_n" ]; then best="$cand"; best_n="$n"; fi
+  done
+  [ -n "$best" ] && { echo "$best"; return 0; }
+  return 1
+}
 
 # Declared scan exclusions (plan 23 D2/D3) — the ONLY lines the scans skip:
 #   * the gate's own artifacts, whose contents *define* the patterns (a
 #     marker literal in them is structural, not a violation);
-#   * generated/vendored noise.
+#   * generated/vendored noise (`dist` is build output: study's backend/dist
+#     alone is 1.8G/156k files, which turned a family scan into a
+#     many-minute read of artifacts generated from already-scanned source —
+#     same exclusion set as the sibling check-ai-alignment.sh scan).
 # Every entry is a hiding-spot candidate: the self-test covers the
 # gate-artifact exclusion (T1) and the marker-completeness loop (T2) proves
 # declared ⇒ detected outside these paths. Never add product code here.
@@ -54,6 +79,7 @@ SCAN_EXCLUDES=(
   "/venv/"
   "/.venv/"
   "node_modules"
+  "dist"
   "alembic/versions"
   "scripts/check-family-convergence.sh"
   "scripts/check-family-convergence.selftest.sh"
@@ -67,6 +93,8 @@ REPOS=(
   "health-assistant/core:backend/pyproject.toml"
   "auth-kit:pyproject.toml"
 )
+
+WORKSPACE="$(family_root)" || WORKSPACE=""
 
 CANON_RUFF=''   # first repo's normalized ruff block becomes canonical
 REPO_FAIL=0
@@ -373,9 +401,20 @@ main() {
   fi
 
   local fail_total=0 entry repo
+  if [ -z "$WORKSPACE" ]; then
+    echo "family convergence: cannot locate the family root above $DEV_ROOT" >&2
+    echo "  (no sibling product repos found; run --self for this copy's repo)" >&2
+    return 2
+  fi
+  echo "== family root: $WORKSPACE"
   for entry in "${REPOS[@]}"; do
     repo="${entry%%:*}"
     echo "== family convergence: $repo"
+    if [ ! -d "$WORKSPACE/$repo" ]; then
+      echo "FAIL C5: repo not checked out at $WORKSPACE/$repo"
+      fail_total=1
+      continue
+    fi
     check_repo "$WORKSPACE/$repo" "${entry#*:}"
     [ "$REPO_FAIL" = 1 ] && fail_total=1
   done

@@ -1,9 +1,11 @@
-"""End-to-end API tests for the integration-proposal HITL endpoints (G.2).
+"""End-to-end API tests for the extension HITL-proposal endpoints (plan 5).
 
-Exercises the full HTTP path — auth, ownership scoping, RBAC, resolver
-state transitions, and the provider-callback contract. Uses real DB +
-``async_client`` so the test database runs through the actual FastAPI
-stack (matching the convention in ``test_concept_fk_integration.py``).
+Exercises the full HTTP path — auth, ownership scoping, RBAC, the unified state
+machine (idempotent resolve), contract-payload validation before any write, and
+the server-side resolver dispatch for catalog + patient-record kinds.
+
+Uses the real DB + ``async_client`` so the test database runs through the actual
+FastAPI stack.
 """
 
 import uuid
@@ -15,37 +17,27 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.extensions.sdk.proposals import biomarker_hitl_proposal
 from app.models.biomarker_model import BiomarkerDefinition
-from app.models.enums import HitlTaskStatus, Role
-from app.models.fhir.medication import MedicationCatalog
-from app.models.fhir.patient import Patient
+from app.models.enums import ProposalStatus, Role
+from app.models.fhir.medication import Medication, MedicationCatalog
+from app.models.proposal import Proposal
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
 from app.models.user_model import UserModel
-from app.services import integration_proposal_service as proposal_svc
-from app.services.user_service import get_user_by_id
+from app.services.integration import integration_proposal_service as proposal_svc
+from app.services.tenancy.user_service import get_user_by_id
 from tests._auth_helpers import auth_headers
 
 
 @pytest_asyncio.fixture
 async def owner_headers_and_integration():
-    """Create an isolated tenant + ADMIN owner + patient + integration.
-
-    Returns ``(headers, tenant_id, user_id, integration_id)``. Headers
-    carry a real JWT so the auth path runs end-to-end.
-    """
+    """Create an isolated tenant + ADMIN owner + patient + integration."""
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
     patient_id = uuid.uuid4()
     integration_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        db.add(
-            TenantModel(
-                id=tenant_id,
-                name="HITL API T.",
-                slug=f"hitlapi-{tenant_id.hex[:8]}",
-            )
-        )
+        db.add(TenantModel(id=tenant_id, name="HITL API T.", slug=f"hitlapi-{tenant_id.hex[:8]}"))
         await db.flush()
         db.add(
             UserModel(
@@ -56,6 +48,8 @@ async def owner_headers_and_integration():
             )
         )
         await db.flush()
+        from app.models.fhir.patient import Patient
+
         db.add(
             Patient(
                 id=patient_id,
@@ -78,17 +72,13 @@ async def owner_headers_and_integration():
         )
         await db.commit()
 
-    from app.services.user_service import get_user_by_id
-
     user_row = await get_user_by_id(user_id)
     headers = await auth_headers(user_row)
-    return headers, tenant_id, user_id, integration_id
+    return headers, tenant_id, user_id, patient_id, integration_id
 
 
 @pytest_asyncio.fixture
 async def other_user_headers(owner_headers_and_integration):
-    """Headers for a different user in a different tenant — used to prove
-    the ownership check refuses cross-tenant reads / writes."""
     tenant_id, user_id = uuid.uuid4(), uuid.uuid4()
     async with AsyncSessionLocal() as db:
         db.add(TenantModel(id=tenant_id, name="Other T.", slug=f"oth-{tenant_id.hex[:8]}"))
@@ -102,14 +92,10 @@ async def other_user_headers(owner_headers_and_integration):
             )
         )
         await db.commit()
-    from app.services.user_service import get_user_by_id
-
-    user_row = await get_user_by_id(user_id)
-    return await auth_headers(user_row)
+    return await auth_headers(await get_user_by_id(user_id))
 
 
-async def _seed_proposal(integration_id, tenant_id, user_id, spec=None):
-    """Insert a PROPOSED proposal directly via the service. Returns the row."""
+async def _seed_proposal(integration_id, tenant_id, user_id, spec=None, **kwargs):
     if spec is None:
         spec = biomarker_hitl_proposal(
             title=f"Define: TestBiomarker-{uuid.uuid4().hex[:6]}",
@@ -121,10 +107,11 @@ async def _seed_proposal(integration_id, tenant_id, user_id, spec=None):
             db,
             integration_id=integration_id,
             tenant_id=tenant_id,
-            proposal_type=spec.proposal_type,
-            title=spec.title,
-            proposed_payload=spec.proposed_payload,
-            context=spec.context,
+            proposal_type=kwargs.get("proposal_type", spec.proposal_type),
+            title=kwargs.get("title", spec.title),
+            proposed_payload=kwargs.get("proposed_payload", spec.proposed_payload),
+            context=kwargs.get("context", spec.context),
+            patient_id=kwargs.get("patient_id", spec.patient_id),
             created_by=user_id,
         )
         await db.commit()
@@ -138,38 +125,30 @@ async def _seed_proposal(integration_id, tenant_id, user_id, spec=None):
 
 @pytest.mark.asyncio
 async def test_list_proposals_returns_owner_proposals(async_client, owner_headers_and_integration):
-    """The owner can list their integration's proposals; an unrelated user
-    gets 404 (the ownership check refuses before any row is read)."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _patient_id, integration_id = owner_headers_and_integration
     await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.get(
-        f"/api/v1/integrations/instance/{integration_id}/proposals",
-        headers=headers,
+        f"/api/v1/integrations/instance/{integration_id}/proposals", headers=headers
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert len(data) == 1
-    assert data[0]["proposal_type"] == "create_biomarker_definition"
-    assert data[0]["status"] == HitlTaskStatus.PROPOSED.value
+    assert data[0]["kind"] == "create_biomarker_definition"
+    assert data[0]["card_variant"] == "create_biomarker_definition"
+    assert data[0]["status"] == ProposalStatus.PROPOSED.value
+    assert data[0]["source"] == "extension"
+    assert data[0]["payload"]["proposed_payload"]["slug"]
 
 
 @pytest.mark.asyncio
 async def test_list_proposals_status_filter(async_client, owner_headers_and_integration):
-    """``?status=proposed`` filters out terminal rows."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _patient_id, integration_id = owner_headers_and_integration
     a = await _seed_proposal(integration_id, tenant_id, user_id)
     b = await _seed_proposal(integration_id, tenant_id, user_id)
-    # Flip b to DISMISSED directly. Re-fetch within the session so the
-    # mutation actually persists (b was loaded in _seed_proposal's now-
-    # closed session; mutating the detached ORM object wouldn't commit).
     async with AsyncSessionLocal() as db:
-        from app.models.integration_proposal import IntegrationProposal
-
-        fresh_b = (
-            await db.execute(select(IntegrationProposal).where(IntegrationProposal.id == b.id))
-        ).scalar_one()
-        fresh_b.status = HitlTaskStatus.DISMISSED
+        fresh_b = (await db.execute(select(Proposal).where(Proposal.id == b.id))).scalar_one()
+        fresh_b.status = ProposalStatus.REJECTED
         await db.commit()
 
     resp = await async_client.get(
@@ -179,14 +158,12 @@ async def test_list_proposals_status_filter(async_client, owner_headers_and_inte
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 1
-    assert data[0]["id"] == str(a.id)
+    assert [row["id"] for row in data] == [str(a.id)]
 
 
 @pytest.mark.asyncio
 async def test_list_proposals_rejects_unknown_status(async_client, owner_headers_and_integration):
-    """Unknown ``status`` value → 400 (not 500)."""
-    headers, _t, _u, integration_id = owner_headers_and_integration
+    headers, _t, _u, _p, integration_id = owner_headers_and_integration
     resp = await async_client.get(
         f"/api/v1/integrations/instance/{integration_id}/proposals",
         headers=headers,
@@ -199,8 +176,7 @@ async def test_list_proposals_rejects_unknown_status(async_client, owner_headers
 async def test_list_proposals_404_for_non_owner(
     async_client, owner_headers_and_integration, other_user_headers
 ):
-    """A user in a different tenant gets 404, not the proposals list."""
-    _h, _t, _u, integration_id = owner_headers_and_integration
+    _h, _t, _u, _p, integration_id = owner_headers_and_integration
     resp = await async_client.get(
         f"/api/v1/integrations/instance/{integration_id}/proposals",
         headers=other_user_headers,
@@ -215,7 +191,7 @@ async def test_list_proposals_404_for_non_owner(
 
 @pytest.mark.asyncio
 async def test_get_proposal_returns_full_row(async_client, owner_headers_and_integration):
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.get(
@@ -225,33 +201,28 @@ async def test_get_proposal_returns_full_row(async_client, owner_headers_and_int
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == str(row.id)
-    assert data["proposed_payload"] == row.proposed_payload
+    assert data["payload"] == row.payload
+    assert data["payload_schema_version"] == 1
 
 
 @pytest.mark.asyncio
 async def test_get_proposal_404_for_unknown_id(async_client, owner_headers_and_integration):
-    headers, *_ = owner_headers_and_integration
-    bogus = uuid.uuid4()
+    headers, *_rest = owner_headers_and_integration
     resp = await async_client.get(
-        f"/api/v1/integrations/instance/{uuid.uuid4()}/proposals/{bogus}",
+        f"/api/v1/integrations/instance/{uuid.uuid4()}/proposals/{uuid.uuid4()}",
         headers=headers,
     )
     assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# Resolve endpoint
+# Resolve endpoint — catalog kinds
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
-    async_client, owner_headers_and_integration
-):
-    """The canonical happy path: approve → ``catalog_proposal_service.apply_proposal``
-    writes the biomarker → status transitions to CONFIRMED with
-    ``applied_entity_id`` set."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+async def test_resolve_approve_creates_biomarker(async_client, owner_headers_and_integration):
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     resp = await async_client.post(
@@ -261,15 +232,12 @@ async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["status"] == HitlTaskStatus.CONFIRMED.value
-    assert data["resolved_by"] == str(user_id)
-    assert data["resolved_at"] is not None
-    # The applied biomarker id is surfaced both in resolved_payload and as
-    # the top-level applied_entity_id field.
+    assert data["status"] == ProposalStatus.APPLIED.value
+    assert data["applied_at"] is not None
+    assert data["resolution_trace"]["resolved_by"] == str(user_id)
     assert data["applied_entity_id"] is not None
-    assert data["resolved_payload"]["_applied_entity_id"] == data["applied_entity_id"]
+    assert data["resolution_trace"]["result"]["entity_id"] == data["applied_entity_id"]
 
-    # The biomarker actually landed in the DB.
     async with AsyncSessionLocal() as db:
         bio = (
             await db.execute(
@@ -284,91 +252,53 @@ async def test_resolve_approve_creates_biomarker_and_marks_confirmed(
 
 
 @pytest.mark.asyncio
-async def test_resolve_approve_with_edited_payload(async_client, owner_headers_and_integration):
-    """The user can edit the payload before approving — ``payload`` in the
-    request body overrides the original ``proposed_payload``."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
-    row = await _seed_proposal(integration_id, tenant_id, user_id)
-    original_name = row.proposed_payload["name"]
-    edited_name = f"{original_name} (edited)"
-
-    resp = await async_client.post(
-        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
-        headers=headers,
-        json={
-            "action": "approve",
-            "payload": {**row.proposed_payload, "name": edited_name},
-        },
-    )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-
-    async with AsyncSessionLocal() as db:
-        bio = (
-            await db.execute(
-                select(BiomarkerDefinition).where(
-                    BiomarkerDefinition.id == uuid.UUID(data["applied_entity_id"])
-                )
-            )
-        ).scalar_one()
-    assert bio.name == edited_name
-
-
-@pytest.mark.asyncio
-async def test_resolve_reject_marks_dismissed_without_applying(
+async def test_resolve_is_idempotent_for_the_same_outcome(
     async_client, owner_headers_and_integration
 ):
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    """Plan 5 W4: re-resolving an applied proposal returns the stored outcome
+    (200) — 409 is reserved for a conflicting decision."""
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
-    # Capture the proposed payload so we can verify nothing landed.
-    proposed_slug = row.proposed_payload.get("slug")
 
-    resp = await async_client.post(
+    first = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
         headers=headers,
-        json={"action": "reject", "note": "duplicate"},
+        json={"action": "approve"},
     )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-    assert data["status"] == HitlTaskStatus.DISMISSED.value
-    assert data["resolution_note"] == "duplicate"
-    assert data["applied_entity_id"] is None
+    assert first.status_code == 200
+    first_data = first.json()
 
-    # No biomarker landed.
+    second = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=headers,
+        json={"action": "approve"},
+    )
+    assert second.status_code == 200, second.text
+    second_data = second.json()
+    assert second_data["status"] == first_data["status"]
+    assert second_data["applied_entity_id"] == first_data["applied_entity_id"]
+
     async with AsyncSessionLocal() as db:
-        rows = (
+        count = len(
             (
                 await db.execute(
-                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == proposed_slug)
+                    select(BiomarkerDefinition).where(
+                        BiomarkerDefinition.slug
+                        == first_data["payload"]["proposed_payload"]["slug"]
+                    )
                 )
             )
             .scalars()
             .all()
         )
-    assert rows == []
+    assert count == 1, "the idempotent repeat must not write a second biomarker"
 
 
 @pytest.mark.asyncio
-async def test_resolve_cancel_marks_dismissed(async_client, owner_headers_and_integration):
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
-    row = await _seed_proposal(integration_id, tenant_id, user_id)
-
-    resp = await async_client.post(
-        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
-        headers=headers,
-        json={"action": "cancel"},
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["status"] == HitlTaskStatus.DISMISSED.value
-
-
-@pytest.mark.asyncio
-async def test_resolve_on_terminal_proposal_returns_409(
+async def test_resolve_conflicting_decision_returns_409(
     async_client, owner_headers_and_integration
 ):
-    """Re-resolve from a terminal state must return 409 — idempotent
-    contract so the UI doesn't let a user double-approve."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
     first = await async_client.post(
@@ -387,105 +317,144 @@ async def test_resolve_on_terminal_proposal_returns_409(
 
 
 @pytest.mark.asyncio
+async def test_resolve_approve_with_edited_payload(async_client, owner_headers_and_integration):
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(integration_id, tenant_id, user_id)
+    original_name = row.payload["proposed_payload"]["name"]
+    edited_name = f"{original_name} (edited)"
+
+    resp = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=headers,
+        json={
+            "action": "approve",
+            "payload": {**row.payload["proposed_payload"], "name": edited_name},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["final_payload"]["name"] == edited_name
+
+    async with AsyncSessionLocal() as db:
+        bio = (
+            await db.execute(
+                select(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id == uuid.UUID(data["applied_entity_id"])
+                )
+            )
+        ).scalar_one()
+    assert bio.name == edited_name
+
+
+@pytest.mark.asyncio
+async def test_resolve_reject_marks_rejected_without_applying(
+    async_client, owner_headers_and_integration
+):
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(integration_id, tenant_id, user_id)
+    proposed_slug = row.payload["proposed_payload"].get("slug")
+
+    resp = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=headers,
+        json={"action": "reject", "note": "duplicate"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == ProposalStatus.REJECTED.value
+    assert data["resolution_trace"]["note"] == "duplicate"
+    assert data["applied_entity_id"] is None
+
+    async with AsyncSessionLocal() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(BiomarkerDefinition).where(BiomarkerDefinition.slug == proposed_slug)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert rows == []
+
+
+@pytest.mark.asyncio
 async def test_resolve_user_role_forbidden(async_client, owner_headers_and_integration):
-    """USER role can list + view but not approve catalog proposals (which
-    require ADMIN+ under the catalog policy)."""
-    _headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    _headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
 
-    user_token_headers = await auth_headers(
+    user_headers = await auth_headers(
         await get_user_by_id(user_id), extra_claims={"role": Role.USER.value}
     )
-    user_headers = user_token_headers
-
     resp = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
         headers=user_headers,
         json={"action": "approve"},
     )
     assert resp.status_code == 403
-    # The proposal row was not mutated.
     async with AsyncSessionLocal() as db:
         fresh = await proposal_svc.get_proposal(
             db, integration_id=integration_id, proposal_id=row.id
         )
-    assert fresh.status == HitlTaskStatus.PROPOSED
+    assert fresh.status == ProposalStatus.PROPOSED
 
 
 @pytest.mark.asyncio
 async def test_resolve_records_failed_when_apply_errors(
     async_client, owner_headers_and_integration
 ):
-    """When apply_proposal raises (e.g. a permission error), the resolver
-    records status=FAILED + an error message rather than 500'ing. The
-    proposal stays around for retry / re-review."""
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
-    # Build a proposal with an empty name → apply_proposal will raise
-    # ValueError before any DB write (biomarker router's first check).
-    async with AsyncSessionLocal() as db:
-        row, _c = await proposal_svc.create_proposal(
-            db,
-            integration_id=integration_id,
-            tenant_id=tenant_id,
-            proposal_type="create_biomarker_definition",
-            title="bad proposal",
-            proposed_payload={"name": ""},  # invalid → apply raises
-            created_by=user_id,
-        )
-        await db.commit()
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(
+        integration_id,
+        tenant_id,
+        user_id,
+        proposal_type="create_biomarker_definition",
+        title="bad proposal",
+        proposed_payload={"name": ""},
+    )
 
     resp = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
         headers=headers,
         json={"action": "approve"},
     )
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-    assert data["status"] == HitlTaskStatus.FAILED.value
-    assert data["error"] is not None
-    assert "non-empty 'name'" in data["error"]
+    assert resp.status_code == 400, resp.text
+    assert "name" in resp.text.lower()
+
+    async with AsyncSessionLocal() as db:
+        fresh = await proposal_svc.get_proposal(
+            db, integration_id=integration_id, proposal_id=row.id
+        )
+    assert fresh.status == ProposalStatus.PROPOSED, (
+        "a payload rejected by the kind contract must never reach a write or a "
+        "state transition (trust boundary)"
+    )
 
 
 @pytest.mark.asyncio
 async def test_resolve_unknown_action_returns_400(async_client, owner_headers_and_integration):
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     row = await _seed_proposal(integration_id, tenant_id, user_id)
-
     resp = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
         headers=headers,
         json={"action": "frob"},
     )
-    # Pydantic's Literal validation rejects unknown action values. The
-    # endpoint constructs IntegrationProposalResolveRequest manually and
-    # catches the ValidationError → 400.
     assert resp.status_code == 400
 
 
 @pytest.mark.asyncio
-async def test_resolve_medication_proposal_writes_catalog(
+async def test_resolve_medication_definition_writes_catalog(
     async_client, owner_headers_and_integration
 ):
-    """Non-biomarker kinds route through apply_proposal too — verify with
-    a medication proposal."""
     from app.extensions.sdk.proposals import medication_hitl_proposal
 
-    headers, tenant_id, user_id, integration_id = owner_headers_and_integration
+    headers, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
     spec = medication_hitl_proposal(
         title=f"Define Med: TestMol-{uuid.uuid4().hex[:6]}",
         name=f"TestMol-{uuid.uuid4().hex[:8]}",
     )
-    async with AsyncSessionLocal() as db:
-        row, _c = await proposal_svc.create_proposal(
-            db,
-            integration_id=integration_id,
-            tenant_id=tenant_id,
-            proposal_type=spec.proposal_type,
-            title=spec.title,
-            proposed_payload=spec.proposed_payload,
-            created_by=user_id,
-        )
-        await db.commit()
+    row = await _seed_proposal(integration_id, tenant_id, user_id, spec=spec)
 
     resp = await async_client.post(
         f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
@@ -494,7 +463,7 @@ async def test_resolve_medication_proposal_writes_catalog(
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["status"] == HitlTaskStatus.CONFIRMED.value
+    assert data["status"] == ProposalStatus.APPLIED.value
     assert data["applied_entity_id"] is not None
 
     async with AsyncSessionLocal() as db:
@@ -507,3 +476,115 @@ async def test_resolve_medication_proposal_writes_catalog(
         ).scalar_one()
     assert med.tenant_id == tenant_id
     assert med.created_by == user_id
+
+
+# ---------------------------------------------------------------------------
+# Resolve endpoint — patient-record kinds (plan 5 W3)
+# ---------------------------------------------------------------------------
+
+
+def _medication_payload(name: str) -> dict:
+    return {
+        "status": "active",
+        "code": {"text": name},
+        "dosage": "500 mg",
+        "frequency": {"type": "daily", "frequency": 1, "period": 1, "period_unit": "day"},
+        "reason": "test indication",
+    }
+
+
+@pytest.mark.asyncio
+async def test_resolve_add_medication_writes_patient_record(
+    async_client, owner_headers_and_integration
+):
+    headers, tenant_id, user_id, patient_id, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(
+        integration_id,
+        tenant_id,
+        user_id,
+        proposal_type="add_medication",
+        title="Add Medication",
+        proposed_payload=_medication_payload("Metformin"),
+        patient_id=patient_id,
+    )
+
+    resp = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=headers,
+        json={"action": "approve"},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["status"] == ProposalStatus.APPLIED.value
+    assert data["applied_entity_id"] is not None
+    assert data["final_payload"]["patient_id"] == str(patient_id)
+
+    async with AsyncSessionLocal() as db:
+        medication = (
+            await db.execute(
+                select(Medication).where(Medication.id == uuid.UUID(data["applied_entity_id"]))
+            )
+        ).scalar_one()
+    assert medication.patient_id == patient_id
+    assert medication.tenant_id == tenant_id
+    assert medication.code["text"] == "Metformin"
+
+
+@pytest.mark.asyncio
+async def test_adversarial_final_payload_is_rejected_before_any_write(
+    async_client, owner_headers_and_integration
+):
+    """A malformed/unknown-field payload fails the kind contract before the
+    service is ever called — no row, no status change."""
+    headers, tenant_id, user_id, patient_id, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(
+        integration_id,
+        tenant_id,
+        user_id,
+        proposal_type="add_medication",
+        title="Add Medication",
+        proposed_payload=_medication_payload("BadMol"),
+        patient_id=patient_id,
+    )
+
+    resp = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=headers,
+        json={
+            "action": "approve",
+            "payload": {**_medication_payload("BadMol"), "patient_id": str(uuid.uuid4())},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert "patient" in resp.text.lower()
+
+    async with AsyncSessionLocal() as db:
+        fresh = await proposal_svc.get_proposal(
+            db, integration_id=integration_id, proposal_id=row.id
+        )
+        meds = (
+            (await db.execute(select(Medication).where(Medication.patient_id == patient_id)))
+            .scalars()
+            .all()
+        )
+    assert fresh.status == ProposalStatus.PROPOSED
+    assert meds == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_proposal_from_another_tenant_is_unresolvable(
+    async_client, owner_headers_and_integration, other_user_headers
+):
+    _h, tenant_id, user_id, _p, integration_id = owner_headers_and_integration
+    row = await _seed_proposal(integration_id, tenant_id, user_id)
+    resp = await async_client.post(
+        f"/api/v1/integrations/instance/{integration_id}/proposals/{row.id}/resolve",
+        headers=other_user_headers,
+        json={"action": "approve"},
+    )
+    assert resp.status_code == 404
+    async with AsyncSessionLocal() as db:
+        fresh = await proposal_svc.get_proposal(
+            db, integration_id=integration_id, proposal_id=row.id
+        )
+    assert fresh.status == ProposalStatus.PROPOSED

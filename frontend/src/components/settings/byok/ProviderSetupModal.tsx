@@ -17,6 +17,7 @@ import {
 import { SetupReview, type SetupReviewOptions } from '@neuronection/assistant-ui/setup-review';
 import { SetupSteps } from '@neuronection/assistant-ui/setup-steps';
 import { SetupAssignments } from '@neuronection/assistant-ui/setup-assignments';
+import { defaultName } from '../defaultName';
 import {
   aiConfigApi,
   DECISION_DEFAULT_TASK_TYPE,
@@ -309,6 +310,7 @@ export const ProviderSetupModal: React.FC<{
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
   const createProvider = useAIConfigStore((state) => state.createProvider);
+  const providers = useAIConfigStore((state) => state.providers);
   // Live "now:" context for the review's assignment rows — the store's
   // summary is refreshed by the connect call itself, so entering the
   // review reads post-connect assignments and model display names.
@@ -365,7 +367,11 @@ export const ProviderSetupModal: React.FC<{
 
   const openForm = (key: string) => {
     setPresetKey(key);
-    setName('');
+    // Connection name auto-seed (family contract): the preset label,
+    // numbered when taken — the backend only applies the name on create,
+    // so a re-setup keeps the stored name regardless.
+    const label = presets?.[key]?.name ?? key;
+    setName(defaultName(label, providers.map((provider) => provider.name)));
     setApiKey('');
     setAdvancedBase(presets?.[key]?.base_url ?? '');
     setIsLocal(presets?.[key]?.local ?? false);
@@ -517,7 +523,7 @@ export const ProviderSetupModal: React.FC<{
       (configSummary?.models ?? []).map((model) => [model.model_name, model.name || model.model_name]),
     );
     const nowLabel = (slotTask: string) => {
-      const model = configSummary?.[slotTask as 'default']?.model;
+      const model = configSummary?.tasks?.[slotTask]?.model;
       const label = model ? (modelLabels[model.model_name] ?? model.model_name) : null;
       return t('settings.ai.setup.review.now', {
         model: label ?? t('settings.ai.setup.review.unset'),

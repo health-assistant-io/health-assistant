@@ -125,3 +125,9 @@ secrets.json
 
 # OpenChamber session artifacts (screenshots, captures)
 .openchamber/
+
+# Python virtualenv (when a local tool uses one)
+.venv/
+
+# keep the value-free template
+!.env.example

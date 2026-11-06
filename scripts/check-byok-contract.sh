@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-byok-contract — BYOK setup contract gate (family plan 17, Layer "Gate tooling").
-# Master: dev/scripts/check-byok-contract.sh (vendored copies stay byte-identical;
+# Master: the family contract gate (vendored copies stay byte-identical;
 # drift is caught by dev's verify-wiring.sh).
 #
 # Rules:
@@ -212,7 +212,7 @@ if [ -f "$ROOT/contracts/ai-presets.json" ]; then
   if [ -z "$BYOK_SCHEMA" ]; then
     bad "R6 contracts/ai-presets.json declares no schema version (expected >= 2, the plan 26 presets v2 wave)"
   elif [ "$BYOK_SCHEMA" -lt 2 ]; then
-    bad "R6 contracts/ai-presets.json is schema $BYOK_SCHEMA (pre-decision) — re-vendor the dev canonical + sync script (plan 26 / ADR-0032 presets v2)"
+    bad "R6 contracts/ai-presets.json is schema $BYOK_SCHEMA (pre-decision) — re-vendor the family canonical + sync script (plan 26 / ADR-0032 presets v2)"
   elif ! grep -q '"decision"' "$ROOT/contracts/ai-presets.json"; then
     bad "R6 contracts/ai-presets.json lacks the 'decision' capability (D1 vocabulary freeze)"
   else

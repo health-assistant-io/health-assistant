@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ProviderManager } from './ProviderManager';
-import type { AIProvider } from '../../api/aiConfig';
+import { aiConfigApi, type AIProvider } from '../../api/aiConfig';
 
 const providers: AIProvider[] = [
   {
@@ -64,6 +64,9 @@ vi.mock('../../store/slices/uiSlice', () => ({
 const STRINGS: Record<string, string> = {
   'settings.ai.providers_hint': 'Manage the AI providers.',
   'settings.ai.add_provider': 'Add Provider',
+  'settings.ai.first_run_title': 'Connect your first AI provider',
+  'settings.ai.enable': 'Enable',
+  'settings.ai.disable': 'Disable',
   'settings.ai.edit_provider': 'Edit Provider',
   'settings.ai.delete_provider': 'Delete Provider',
   'settings.ai.delete_provider_confirm': 'Are you sure?',
@@ -130,6 +133,7 @@ const openActionsMenu = async (name: string) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  store.providers = providers;
   store.models = [{ id: 'm-1', provider_id: 'prov-1', name: 'GPT 4o', model_name: 'gpt-4o' }];
 });
 
@@ -251,5 +255,127 @@ describe('ProviderManager', () => {
     expect(showConfirmation).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Delete Provider', confirmVariant: 'danger' }),
     );
+  });
+
+  it('toggles is_active from the actions menu', async () => {
+    render(<ProviderManager scope="user" userId="u1" />);
+    const user = await openActionsMenu('OpenAI Main');
+    await user.click(await screen.findByRole('menuitem', { name: 'Disable' }));
+    expect(store.updateProvider).toHaveBeenCalledWith('prov-1', { is_active: false });
+  });
+
+  it('re-enables a disabled provider from the actions menu', async () => {
+    store.providers = [{ ...providers[0], is_active: false }];
+    render(<ProviderManager scope="user" userId="u1" />);
+    const user = await openActionsMenu('OpenAI Main');
+    await user.click(await screen.findByRole('menuitem', { name: 'Enable' }));
+    expect(store.updateProvider).toHaveBeenCalledWith('prov-1', { is_active: true });
+  });
+
+  it('renders the first-run card with a working setup CTA when no provider exists', async () => {
+    store.providers = [];
+    const user = userEvent.setup();
+    render(<ProviderManager scope="user" userId="u1" />);
+    const card = await screen.findByText('Connect your first AI provider');
+    expect(card.closest('section')).not.toBeNull();
+    const cta = within(card.closest('section') as HTMLElement).getByRole('button', {
+      name: 'Add Provider',
+    });
+    await user.click(cta);
+    expect(await screen.findByText('Add a provider')).toBeInTheDocument();
+  });
+
+  it('creates from the engine catalog in the manual form, seeding name and defaults', async () => {
+    (
+      aiConfigApi.listProviderPresets as unknown as Mock
+    ).mockResolvedValue({
+      order: ['groq'],
+      presets: {
+        groq: {
+          key: 'groq',
+          name: 'Groq',
+          provider_type: 'openai',
+          wire_type: 'openai_compatible',
+          base_url: 'https://api.groq.com/openai/v1',
+          fixed_base: true,
+          local: false,
+        },
+      },
+      disabled: {},
+    });
+    const user = userEvent.setup();
+    render(<ProviderManager scope="user" userId="u1" />);
+    await user.click(screen.getByRole('button', { name: 'Add Provider' }));
+    await user.click(await screen.findByText('Custom'));
+    const dialog = await screen.findByRole('dialog');
+    // the catalog select renders the backend engines, the app-declared
+    // tesseract entry and the built-in custom option
+    const select = within(dialog).getByLabelText('Provider Type');
+    const optionLabels = within(select)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(optionLabels).toEqual(['Groq', 'Tesseract (OCR)', 'Custom']);
+    await user.selectOptions(select, 'Groq');
+    // name auto-seeds from the engine label; base + hosting apply
+    const nameInput = within(dialog).getByLabelText('Friendly Name');
+    expect(nameInput).toHaveValue('Groq');
+    expect(within(dialog).getByLabelText('API Base URL')).toHaveValue(
+      'https://api.groq.com/openai/v1',
+    );
+    // a user-typed name is never clobbered by switching engines
+    await user.clear(nameInput);
+    await user.type(nameInput, 'My relay');
+    await user.selectOptions(select, 'Tesseract (OCR)');
+    expect(within(dialog).getByLabelText('Friendly Name')).toHaveValue('My relay');
+    await user.selectOptions(select, 'Groq');
+    expect(within(dialog).getByLabelText('Friendly Name')).toHaveValue('My relay');
+    expect(within(dialog).getByLabelText('API Base URL')).toHaveValue(
+      'https://api.groq.com/openai/v1',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Create Provider' }));
+    await waitFor(() =>
+      expect(store.createProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My relay',
+          provider_type: 'openai',
+          api_base: 'https://api.groq.com/openai/v1',
+          is_local: false,
+        }),
+      ),
+    );
+    (
+      aiConfigApi.listProviderPresets as unknown as Mock
+    ).mockResolvedValue({ order: [], presets: {}, disabled: {} });
+  });
+
+  it('numbers the manual form’s seeded name when the engine label is taken', async () => {
+    store.providers = [{ ...providers[0], name: 'Groq' }];
+    (
+      aiConfigApi.listProviderPresets as unknown as Mock
+    ).mockResolvedValue({
+      order: ['groq'],
+      presets: {
+        groq: {
+          key: 'groq',
+          name: 'Groq',
+          provider_type: 'openai',
+          wire_type: 'openai_compatible',
+          base_url: 'https://api.groq.com/openai/v1',
+          fixed_base: true,
+          local: false,
+        },
+      },
+      disabled: {},
+    });
+    const user = userEvent.setup();
+    render(<ProviderManager scope="user" userId="u1" />);
+    await user.click(screen.getByRole('button', { name: 'Add Provider' }));
+    await user.click(await screen.findByText('Custom'));
+    const dialog = await screen.findByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText('Provider Type'), 'Groq');
+    expect(within(dialog).getByLabelText('Friendly Name')).toHaveValue('Groq 2');
+    (
+      aiConfigApi.listProviderPresets as unknown as Mock
+    ).mockResolvedValue({ order: [], presets: {}, disabled: {} });
   });
 });

@@ -19,8 +19,8 @@ from sqlalchemy import select, text
 from app.core.database import AsyncSessionLocal
 from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
-from app.services.fhir_converter import fhir_to_observation_orm
-from app.services.import_service import ImportService
+from app.services.fhir.fhir_converter import fhir_to_observation_orm
+from app.services.imports.service import ImportService
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 
@@ -96,7 +96,7 @@ async def test_value_codeable_concept_round_trips_through_fhir_import():
         svc = ImportService(session)
         action, _ = await svc._upsert_observation(
             orm,
-            old_id_str=fhir_obs["id"],
+            source_id_str=fhir_obs["id"],
             tenant_id=tenant_id,
             id_remap={},
         )

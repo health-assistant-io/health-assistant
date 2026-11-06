@@ -35,8 +35,8 @@ from app.schemas.clinical_event import (
     EventObservationLinkBase,
 )
 from app.schemas.user import TokenData
-from app.services import clinical_event_service as ce_service
-from app.services.audit_service import audit_read, log_audit_action
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.clinical import clinical_event_service as ce_service
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ async def get_correlated_biomarkers(
     """Get all biomarkers correlated with this clinical event type.
 
     Resolved from the concept_edges graph (biomarker MONITORS clinical_event_type)
-    — replaces the legacy BiomarkerEventCorrelation table (Phase 3).
+    — replaces the BiomarkerEventCorrelation table (Phase 3).
     """
     edge_rows = (
         (

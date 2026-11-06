@@ -4,7 +4,7 @@ Each adapter wraps a catalog's existing storage and exposes the uniform
 :class:`~app.catalogs.protocol.CatalogServiceProtocol` (CRUD + search, returning
 JSON-serializable dicts). Reads tenant-scope via the standard
 ``or_(tenant_id == caller, tenant_id IS NULL)`` idiom — including biomarkers,
-whose legacy domain endpoint leaked across tenants (that domain endpoint is
+whose own domain endpoint leaked across tenants (that endpoint is
 fixed in Phase 1; the adapter did the right thing from the start).
 
 Write methods enforce RBAC via the descriptor's
@@ -13,7 +13,7 @@ Write methods enforce RBAC via the descriptor's
 global handler in ``main.py``). Creates are tenant-scoped (ADMIN/MANAGER+);
 updates/deletes of global rows (``tenant_id IS NULL``) require SYSTEM_ADMIN.
 Models with a ``to_fhir_dict()`` additionally pass the write-time FHIR gate
-(:func:`~app.services.fhir_helpers.assert_valid_fhir`) before commit.
+(:func:`~app.services.fhir.fhir_helpers.assert_valid_fhir`) before commit.
 
 The shared query/tenant/count/pagination/CRUD logic lives in
 :class:`BaseCatalogAdapter`; subclasses declare the model, search columns,
@@ -41,7 +41,7 @@ from app.models.concept_model import Concept, ConceptKindTag
 from app.models.enums import CatalogScope, ConceptKind
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
-from app.services.fhir_helpers import assert_valid_fhir
+from app.services.fhir.fhir_helpers import assert_valid_fhir
 
 # Columns that must never be set directly from a write payload (mass-assignment
 # guard). ``tenant_id`` is set explicitly by the adapter from the actor token.
@@ -101,7 +101,7 @@ class BaseCatalogAdapter:
         """
         import logging as _logging
 
-        from app.services.catalog_audit_service import record_from_obj
+        from app.services.catalog.catalog_audit_service import record_from_obj
 
         try:
             await record_from_obj(
@@ -133,7 +133,7 @@ class BaseCatalogAdapter:
         """Best-effort audit record for a deleted item (obj no longer loaded)."""
         import logging as _logging
 
-        from app.services.catalog_audit_service import record
+        from app.services.catalog.catalog_audit_service import record
 
         try:
             await record(
@@ -225,9 +225,9 @@ class BaseCatalogAdapter:
         too-short queries return ``[]``.
 
         Catalogs without a registered spec (none today) fall back to the
-        legacy trigram-only path.
+        plain trigram-only path.
         """
-        from app.services.catalog_search_service import (
+        from app.services.catalog.catalog_search_service import (
             _hybrid_search_one,
             _specs_by_type,
         )
@@ -238,7 +238,7 @@ class BaseCatalogAdapter:
             return [{"id": str(h.row_id), "label": h.label} for h in hits]
 
         # Legacy fallback (trigram + ilike over search_columns).
-        from app.services.catalog_search_service import (
+        from app.services.catalog.catalog_search_service import (
             DEFAULT_THRESHOLD,
             _normalize,
             _set_similarity_threshold,
@@ -629,7 +629,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
     """Specialised: joins ``Unit`` for ``preferred_unit_symbol`` and hand-builds
     the dict (``BiomarkerDefinition`` has no ``to_dict()`` / ``to_fhir_dict()``).
 
-    Output keys match the legacy ``GET /biomarkers/`` endpoint so the meta-layer
+    Output keys match the ``GET /biomarkers/`` endpoint so the meta-layer
     is a faithful delegate. No FHIR gate (biomarker definitions are not FHIR
     resources; their values surface on FHIR ``Observation``).
 
@@ -711,7 +711,7 @@ class BiomarkerCatalogAdapter(BaseCatalogAdapter):
         /info/aliases via FTS, so "TSH" matches the alias of "Thyroid
         Stimulating Hormone".
         """
-        from app.services.catalog_search_service import (
+        from app.services.catalog.catalog_search_service import (
             _hybrid_search_one,
             _specs_by_type,
         )

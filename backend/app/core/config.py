@@ -51,8 +51,10 @@ def _resolve_env_file() -> str | None:
 # operator's typo'd ``APP_ENV=production`` boots in development with zero
 # signal — the exact class that made the ``HA_APP_ENV`` rename's tests
 # vacuous (plan 20 F1). The ``_warn_unknown_env_names`` validator below is
-# the loud counterpart: warning-only telemetry, never a refusal (the
-# family's refusal gates are the boot guards; this is typo signal).
+# the loud counterpart: warning-only telemetry. The separate
+# ``_refuse_stale_app_env`` guard refuses the one rename that silently
+# downgrades a production install (``APP_ENV=production`` -> development
+# defaults), because a warning is not enough there.
 #
 # Highest-value hint: names that WERE read once. A stale ``APP_ENV`` /
 # ``SECRET_KEY`` in a .env or compose environment keeps "working" silently
@@ -64,6 +66,17 @@ RENAMED_ENV_HINTS: dict[str, str] = {
     # names the config owned; prefixed-only, no compat aliases.
     "DATABASE_URL": "HA_DATABASE_URL",
     "UPLOAD_DIR": "HA_UPLOAD_DIR",
+    # The remaining v0.8.0 field names retired by v0.9.0 — a stale .env or
+    # systemd unit otherwise keeps "working" as a silently ignored value.
+    "INTEGRATION_SECRET_KEY": "HA_DATA_KEY (same Fernet value; sealed rows keep decrypting)",
+    "INTEGRATION_SECRET_KEY_PREVIOUS": "HA_DATA_KEY_PREVIOUS",
+    "DEMO_MODE": "HA_DEMO_MODE",
+    "DEMO_USER_EMAIL": "HA_DEMO_EMAIL",
+    "DEMO_USER_PASSWORD": "HA_DEMO_PASSWORD",
+    "TRUSTED_PROXY_COUNT": "HA_TRUSTED_PROXY_COUNT",
+    "JWT_EXPIRATION_HOURS": "HA_AUTH_ACCESS_TTL_MINUTES (minutes, not hours)",
+    "OAUTH_ISSUER": "retired — iss is the product slug 'health'",
+    "AI_CHECKPOINT_RETENTION_DAYS": "retired (no replacement)",
 }
 
 # HA_-namespace names owned by launcher/tooling, not Settings — read via
@@ -85,7 +98,7 @@ TOOLING_ENV_NAMES: frozenset[str] = frozenset(
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
-    VERSION: str = "0.8.0"
+    VERSION: str = "0.9.0"
     HA_APP_ENV: str = "development"
     DEBUG: bool = False
 
@@ -150,6 +163,36 @@ class Settings(BaseSettings):
                     "(Settings extra='ignore').",
                     name,
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _refuse_stale_app_env(self) -> "Settings":
+        """Refuse a production ``APP_ENV`` that would boot development.
+
+        ``APP_ENV`` -> ``HA_APP_ENV`` is silently ignored by
+        ``extra="ignore"``. A bare-metal/systemd install that still sets
+        ``APP_ENV=production`` would then boot the development defaults:
+        ephemeral signing/data keys, the plaintext-secret fallback and no
+        production boot guards. The instance looks alive, but sealed
+        integration credentials and MFA enrolments stop decrypting on the
+        next restart. Fires only when the effective environment is
+        development and ``HA_APP_ENV`` was not set explicitly, so dev
+        shells/tests that pin either are unaffected.
+        """
+        stale = os.environ.get("APP_ENV", "").strip().lower()
+        if (
+            self.HA_APP_ENV in ("development", "test", "testing")
+            and "HA_APP_ENV" not in os.environ
+            and stale in ("production", "prod", "staging")
+        ):
+            raise ValueError(
+                "APP_ENV is set to a non-development value but HA_APP_ENV is "
+                "unset. v0.9.0 renamed APP_ENV to HA_APP_ENV, so this would "
+                "boot development defaults (ephemeral keys, no production "
+                "guards) and sealed credentials would stop decrypting. Rename "
+                "APP_ENV to HA_APP_ENV (same value) and restart — see "
+                "docs/INSTALL.md -> Updates -> 'Upgrading from v0.8.0'."
+            )
         return self
 
     # Database
@@ -242,7 +285,7 @@ class Settings(BaseSettings):
     # and the pre-H4 INTEGRATION_SECRET_KEY env names are gone with it
     # (rename them in .env — same values, the sealed ring keeps
     # decrypting; the boot guards below refuse missing/weak/placeholder/
-    # cross-purpose values, so a stale legacy .env fails loudly, not
+    # cross-purpose values, so a stale pre-rename .env fails loudly, not
     # silently). Dev/test fall back to per-process ephemeral keys
     # (logins do not survive a restart).
     HA_SESSION_KEY: str | None = None
@@ -257,7 +300,7 @@ class Settings(BaseSettings):
     # integrations/sdk/secrets.py and app/core/encryption.py).
     HA_DATA_KEY_PREVIOUS: str = ""
 
-    # First-run setup-token guard — see dev/audits/setup-token-modes.md.
+    # First-run setup-token guard — see the family audit notes/setup-token-modes.md.
     # ``log``     (default) — print one-time token to container logs; required
     #                          for non-localhost, non-dev requests.
     # ``env``     — seed the token from SETUP_BOOTSTRAP_TOKEN (no random mint);
@@ -524,6 +567,18 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     APP_URL: str = "http://localhost:8000"
 
+    # Calendar connector OAuth client ids (ADR-0052 §3 / plan 52 P2): a JSON
+    # object mapping provider id → registered public client id.
+    # CALENDAR_OAUTH_CLIENT_SECRETS is its twin for providers registered as a
+    # confidential *web application* (Google, whose server-side callback
+    # redirect forces that client type). The secret is sent only to the token
+    # endpoint and is never persisted in a binding slot. A provider with a
+    # public client (Microsoft "Mobile and desktop") needs no secret entry and
+    # keeps a pure-PKCE exchange. Deployment configuration, never catalog data;
+    # a missing id for a provider is a typed needs-config refusal, never a crash.
+    CALENDAR_OAUTH_CLIENT_IDS: str = ""
+    CALENDAR_OAUTH_CLIENT_SECRETS: str = ""
+
     # Audit 2026-08 API-L1: API docs (Swagger/Redoc) are dev-only unless an
     # operator explicitly enables them (e.g. behind an authenticated gateway).
     ENABLE_API_DOCS: bool = False
@@ -557,11 +612,6 @@ class Settings(BaseSettings):
 
     # AI Agent
     AI_AGENT_MAX_ITERATIONS: int = 20
-    # AI Graphs (LangGraph) — checkpoint retention for the prune beat job.
-    # Checkpoint rows have no timestamp columns (langgraph-checkpoint-postgres
-    # 3.x), so age is derived from the owning chat session's last activity:
-    # threads whose session is idle (or deleted) longer than this are pruned.
-    AI_CHECKPOINT_RETENTION_DAYS: int = 30
 
     # AI Chat — multimodal image attachments (vision models). Limits protect
     # against oversized payloads (base64 in JSON) and token blowups.
@@ -657,6 +707,10 @@ class Settings(BaseSettings):
     MCP_REQUEST_TIMEOUT: float = 30.0
     MCP_TOOL_RESULT_MAX_BYTES: int = 65536
     INTEGRATION_MAX_TOOLS_PER_SESSION: int = 20
+    # Extension source lane (plan 7): the local dev/test source kind is
+    # fail-closed — resolved paths must sit under one of these roots AND the
+    # boot must be non-production. Empty (the default) disables the kind.
+    HA_EXTENSION_LOCAL_SOURCE_ROOTS: str = ""
     # Polite-runtime escape hatches (the historical env names, now routed
     # through Settings into the vendored guard's injectable config — the
     # runtime module itself reads no environment; D5):

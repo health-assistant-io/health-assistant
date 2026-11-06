@@ -1,8 +1,9 @@
 # ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Examination tools for the agentic chat.
 
-Extracted from ``ChatbotTools`` (Phase 3). Includes the only write tool
-(``update_examination_notes``).
+Extracted from ``ChatbotTools`` (Phase 3). Read-only: every write-shaped
+action in the chatbot goes through the ``propose_*`` HITL cards, which are
+committed by the canonical REST endpoint only after human approval.
 """
 
 import json
@@ -131,24 +132,4 @@ def build(ctx: ToolContext) -> list[Any]:
 
         return json.dumps(summary)
 
-    @tool
-    async def update_examination_notes(examination_id: str, notes: str) -> str:
-        """Update the clinician notes for a specific examination."""
-        result = await ctx.db.execute(
-            select(ExaminationModel).where(
-                and_(
-                    ExaminationModel.id == UUID(examination_id),
-                    ExaminationModel.tenant_id == ctx.tenant_id,
-                    ExaminationModel.patient_id == ctx.patient_id,
-                )
-            )
-        )
-        exam = result.scalars().first()
-        if not exam:
-            return "Examination not found or access denied."
-
-        exam.notes = notes
-        await ctx.db.commit()
-        return f"Successfully updated notes for examination on {exam.examination_date}."
-
-    return [get_recent_examinations, get_examination_details, update_examination_notes]
+    return [get_recent_examinations, get_examination_details]

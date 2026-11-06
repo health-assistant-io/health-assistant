@@ -1,7 +1,7 @@
 """contract — the extension manifest envelope: constants, secret-field
 helpers and the one draft-2020-12 validator (ADR-0040 clause 5 / D11).
 
-Vendored byte-identical from ``dev/contracts/contract.py`` (ADR-0031
+Vendored byte-identical from ``the family extension contract`` (ADR-0031
 sync-and-gate; never edited in-repo). Stdlib-only so any host (and the
 dev contract walls) can import it without dependencies.
 

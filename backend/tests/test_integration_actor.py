@@ -1,4 +1,4 @@
-"""Unit tests for ``app.services.integration_actor``.
+"""Unit tests for ``app.services.integration.integration_actor``.
 
 The actor resolver is what lets Celery / webhook / api-proxy contexts call
 the same service-layer functions (``clinical_event_service.create_event``,
@@ -16,7 +16,7 @@ import pytest
 
 from app.core.errors import NotFoundError
 from app.schemas.user import TokenData
-from app.services.integration_actor import resolve_integration_actor
+from app.services.integration.integration_actor import resolve_integration_actor
 
 
 class _FakeUser:

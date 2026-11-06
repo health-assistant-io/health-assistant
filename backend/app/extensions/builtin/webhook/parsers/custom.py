@@ -8,6 +8,7 @@ from jsonpath_ng.ext import parse as parse_jsonpath
 from app.extensions.sdk.observation_builder import ObservationBuilder
 from app.schemas.fhir.observation import ObservationCreate
 
+from ..validation import WebhookConfigError, validate_payload
 from .base import BaseWebhookParser
 
 logger = logging.getLogger(__name__)
@@ -51,13 +52,16 @@ class CustomJSONPathParser(BaseWebhookParser):
     ) -> list[ObservationCreate]:
         observations = []
 
+        payload = validate_payload(payload, parser_id="custom")
+
         # Load the custom mapping configuration string provided by the user
         mapping_str = config.get("custom_mapping_json", "{}")
         try:
             mapping = json.loads(mapping_str)
-        except json.JSONDecodeError:
-            logger.error("Invalid custom_mapping_json configuration. Must be valid JSON.")
-            return []
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise WebhookConfigError("custom: 'custom_mapping_json' must be valid JSON.") from exc
+        if not isinstance(mapping, dict):
+            raise WebhookConfigError("custom: 'custom_mapping_json' must be a JSON object.")
 
         # Example Mapping format:
         # {

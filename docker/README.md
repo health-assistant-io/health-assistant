@@ -177,6 +177,12 @@ supported path is dump → fresh volume → restore (the exact steps above);
 upgrade route. The extension set (timescaledb, pgcrypto, pg_trgm) is
 available on the `latest-pg16` tag, so nothing else changes.
 
+A v0.8.0 database also predates the v0.9.0 migration squash, so restoring it
+as-is is not enough: `alembic upgrade head` refuses it by design. Recreate the
+volume and follow [INSTALL.md → Upgrading from v0.8.0](../docs/INSTALL.md#upgrading-from-v080)
+for the supported data routes; `scripts/upgrade-check.sh` reports both the
+pg14 volume and the old revision before anything is pulled.
+
 ## Dev infrastructure (host-based development)
 
 ```bash
@@ -187,7 +193,7 @@ docker compose --env-file .env -f docker/docker-compose.dev-db.yml up -d
 ```
 
 - Ports come from the root `.env` (`POSTGRES_PORT` / `REDIS_PORT`; this
-  machine's family slot is 5435/6382 — see `dev/guidelines/dev-ports.md`).
+  machine's family slot is 5435/6382 — see the family dev-port bands).
   Both bind **loopback only** (audit 2026-08 CFG-M2).
 - The init scripts create the `neuronection_health` database, the family roles,
   and the companion `neuronection_health_test` database (pytest refuses any DB
@@ -238,6 +244,18 @@ python3 scripts/setup_env.py          # or copy .env.example → .env and edit
 docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile backup up -d
 # → http://localhost  (nginx routes / → SPA, /api/ → backend, /flower/ → Flower)
 ```
+
+- **`IMAGE_TAG` must match the tree.** The publish workflow tags release
+  builds `X.Y.Z` and tags `latest` only from the default branch (`main`), so a
+  release checkout running `:latest` gets main's images against its own
+  env/compose contract — the migrate step then fails with a renamed-env
+  warning and `no password supplied`. `scripts/install.sh --image-tag X.Y.Z`
+  persists the pin in `.env`; the one-line bootstrap derives it from the
+  release it extracted; `scripts/update-docker.sh` moves a semver pin forward
+  with the tree. `latest` / `main` pins are left alone (deliberate).
+- **Published host ports are pre-flighted**: `install.sh` renders the compose
+  model and aborts, naming the `.env` variable, when a port is held by
+  something that is not this stack (`--auto-ports` picks free ones instead).
 
 - Migrations run automatically: the one-shot `migrate` service (owner role)
   gates every app service via `service_completed_successfully` — never a

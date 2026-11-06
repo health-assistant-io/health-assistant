@@ -34,12 +34,12 @@ from app.models.enums import (
 )
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services import notification_service
-from app.services.notification_kind_registry import (
+from app.services.notifications import notification_service
+from app.services.notifications.notification_kind_registry import (
     enumerate_for_user,
     resolve_kind,
 )
-from app.services.notification_preferences_service import (
+from app.services.notifications.notification_preferences_service import (
     NotificationPreferencesService,
 )
 
@@ -278,7 +278,7 @@ async def test_emit_does_not_crash_when_registry_fails():
     async def _boom(*args, **kwargs):
         raise RuntimeError("registry down")
 
-    with patch("app.services.notification_service.resolve_kind", side_effect=_boom):
+    with patch("app.services.notifications.notification_service.resolve_kind", side_effect=_boom):
         notif = await notification_service.emit(
             source=NotificationSource.SYSTEM,
             type=NotificationType.SYSTEM_BROADCAST,

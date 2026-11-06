@@ -48,10 +48,11 @@ from app.core.rate_limit import rate_limit_user
 from app.core.security import get_current_user
 from app.models.enums import HitlTaskStatus  # noqa: F401 -- re-exported for schema consumers
 from app.schemas.user import TokenData
-from app.services.chat_session_service import ChatSessionService, is_internal_message
-from app.services.hitl_resolver import (
+from app.services.chat.chat_session_service import ChatSessionService, is_internal_message
+from app.services.proposals.hitl_resolver import (
     HitlResolutionConflict,
     HitlResolutionError,
+    HitlResolutionNotFound,
     resolve_chat_task,
 )
 from app.utils.prompt_guard import check_user_input_safety
@@ -66,7 +67,7 @@ async def _validate_owned_session(context: dict, current_user: TokenData, db: As
     sid = context.get("session_id")
     if not sid:
         return
-    from app.services.chat_session_service import ChatSessionService
+    from app.services.chat.chat_session_service import ChatSessionService
 
     session = await ChatSessionService(db).get_owned_session(
         UUID(sid), current_user.user_id, current_user.tenant_id
@@ -84,7 +85,7 @@ async def _validate_patient_context(
     """API-H3 (audit 2026-08): a client-supplied patient_id is access-checked
     before any AI tool pipeline binds it. Previously a USER could chat about
     (and export via tools) any tenant patient's PHI."""
-    from app.services.access import check_patient_access
+    from app.services.auth.access import check_patient_access
 
     pid = context_or_id.get("patient_id") if isinstance(context_or_id, dict) else context_or_id
     if pid:
@@ -485,9 +486,11 @@ async def resolve_hitl_task(
 
     The frontend commits the actual write through the canonical REST endpoint
     (e.g. POST /clinical-events) BEFORE calling this. This endpoint only records
-    the outcome into the task JSONB (for audit + agent awareness); it does not
-    perform the write itself. Idempotent: a second resolve on the same proposal
-    returns 409.
+    the outcome into the proposal row (for audit + agent awareness); it does not
+    perform the write itself.
+
+    Idempotent (plan 5 W4): repeating the recorded outcome returns the stored
+    card (200); a conflicting decision on a terminal proposal returns 409.
 
     The logic lives in ``app.services.hitl_resolver`` (shared with the
     health-assistant bridge, R7 Phase 1); this endpoint maps its typed
@@ -511,14 +514,10 @@ async def resolve_hitl_task(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         ) from e
+    except HitlResolutionNotFound as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except HitlResolutionError as e:
-        message = str(e)
-        status_code = (
-            status.HTTP_400_BAD_REQUEST
-            if message.startswith("status must be")
-            else status.HTTP_404_NOT_FOUND
-        )
-        raise HTTPException(status_code=status_code, detail=message) from e
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     return {"success": True, "task": task}
 
@@ -536,13 +535,13 @@ async def resume_hitl_session(
 
     Returns an SSE stream (same family vocabulary as `/stream`). The agent
     receives a structured `[HITL RESOLUTION FEEDBACK]` user message built
-    from the target message's resolved tasks (read from `tasks` JSONB on
-    the server — never trusted from the request body).
+    from the target message's proposal rows (read on the server — never
+    trusted from the request body).
 
     Guards:
       * Session ownership verified (user_id + tenant_id).
-      * Target message must exist and have tasks.
-      * Every task on the target message must be in a terminal state.
+      * Target message must exist and carry proposals.
+      * Cards left unanswered are labelled "not yet answered" (partial resume).
       * One streaming turn per session (the shared single-flight turn
         lock): while any turn streams on the session, resume answers 409.
     """
@@ -645,7 +644,7 @@ async def transcribe(
             tenant_id=current_user.tenant_id, user_id=current_user.user_id
         )
     except TranscriptionError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))  # noqa: B904 -- bare raise; add explicit chaining when touched
 
     try:
         text = await transcribe_audio(

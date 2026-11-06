@@ -352,49 +352,70 @@ async def test_resume_endpoint_passes_message_id_selector(async_client):
 # ---------------------------------------------------------------------------
 
 
+def _transient_proposal(task_type: str, title: str, proposed_payload: dict):
+    """A real Proposal object with its kind relationship, never persisted."""
+    from app.extensions.proposal_kinds import get_kind, proposal_kind_id
+    from app.models.enums import ProposalSource, ProposalStatus
+    from app.models.proposal import Proposal, ProposalKind
+
+    kind = get_kind(task_type)
+    assert kind is not None
+    row = Proposal(
+        tenant_id=uuid4(),
+        source=ProposalSource.CHAT,
+        source_ref=uuid4(),
+        ordinal=0,
+        kind_id=proposal_kind_id(kind.id),
+        status=ProposalStatus.PROPOSED,
+        payload={
+            "title": title,
+            "context": {},
+            "proposed_payload": proposed_payload,
+        },
+        payload_schema_version=1,
+        resolution_trace={},
+    )
+    row.kind = ProposalKind(
+        id=proposal_kind_id(kind.id),
+        code=kind.id,
+        tier=kind.tier,
+        schema_ref=kind.schema_ref,
+        resolver=kind.resolver,
+        card_variant=kind.card_variant,
+    )
+    return row
+
+
 @pytest.mark.asyncio
 async def test_resolve_audit_note_ask_user_says_answered_not_saved(async_client):
-    """The audit note appended after /resolve must NOT say 'saved' for an
-    ask_user task — those tasks perform no REST write; the user only
-    answered questions. Saying 'saved' confused the LLM into thinking the
-    card title WAS the saved item (it ignored the structured feedback).
-    See dev/plans/ai-ask-user-questions-2026-07-21.md."""
+    """The resolve path appends an audit note; ask_user says "answered" (no
+    write happened)."""
     from app.api.v1.endpoints import ai_assistance as ep
+    from app.services.proposals import hitl_resolver
 
     captured_messages: list = []
+    row = _transient_proposal(
+        "ask_user", "Select biomarker to add to examination", {"questions": []}
+    )
 
-    fake_message = MagicMock()
-    fake_message.tasks = [
-        {
-            "proposal_id": "p1",
-            "task_type": "ask_user",
-            "title": "Select biomarker to add to examination",
-            "status": "proposed",
-            "proposed_payload": {"summary": "Pick one", "questions": []},
-            "resolved": None,
-        }
-    ]
+    async def _get_chat_proposal(*args, **kwargs):
+        return row, MagicMock()
 
-    async def _no_op_update_tasks(msg, tasks):
-        return None
-
-    async def _capture_save(**kwargs):
-        captured_messages.append(kwargs)
-
-    with patch.object(ep, "ChatSessionService") as mock_cls:
+    with (
+        patch.object(hitl_resolver.proposal_service, "get_chat_proposal", _get_chat_proposal),
+        patch.object(ep, "ChatSessionService") as mock_cls,
+    ):
         inst = mock_cls.return_value
-        inst.find_message_by_proposal = AsyncMock(return_value=fake_message)
-        inst.update_message_tasks = AsyncMock(side_effect=_no_op_update_tasks)
-        inst.save_message = AsyncMock(side_effect=_capture_save)
+        inst.db = MagicMock(commit=AsyncMock(), refresh=AsyncMock())
+        inst.save_message = AsyncMock(side_effect=lambda **kw: captured_messages.append(kw))
 
         session_id = uuid4()
         resp = await async_client.post(
-            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/p1/resolve",
+            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/{uuid4()}/resolve",
             json={"status": "confirmed", "final_payload": {"answers": {"q": "x"}}},
         )
 
     assert resp.status_code == 200, resp.text
-    # Exactly one audit-note assistant message saved after the resolve.
     assert len(captured_messages) == 1
     text = captured_messages[0]["content"]["text"]
     assert "answered" in text.lower()
@@ -408,38 +429,34 @@ async def test_resolve_audit_note_ask_user_says_answered_not_saved(async_client)
 
 @pytest.mark.asyncio
 async def test_resolve_audit_note_propose_says_saved(async_client):
-    """For propose_* tasks (write actions), the audit note must KEEP the
-    'Confirmed and saved' wording — those tasks really do save via the
-    canonical REST endpoint."""
+    """For propose_* cards (write actions) the audit note keeps the
+    "Confirmed and saved" wording — the UI already committed the write."""
     from app.api.v1.endpoints import ai_assistance as ep
+    from app.services.proposals import hitl_resolver
 
     captured_messages: list = []
+    row = _transient_proposal(
+        "create_event", "Create Clinical Event: Pregnancy", {"title": "Pregnancy"}
+    )
 
-    fake_message = MagicMock()
-    fake_message.tasks = [
-        {
-            "proposal_id": "p1",
-            "task_type": "create_clinical_event",
-            "title": "Create Clinical Event: Pregnancy",
-            "status": "proposed",
-            "proposed_payload": {"title": "Pregnancy"},
-            "resolved": None,
-        }
-    ]
+    async def _get_chat_proposal(*args, **kwargs):
+        return row, MagicMock()
 
-    with patch.object(ep, "ChatSessionService") as mock_cls:
+    with (
+        patch.object(hitl_resolver.proposal_service, "get_chat_proposal", _get_chat_proposal),
+        patch.object(ep, "ChatSessionService") as mock_cls,
+    ):
         inst = mock_cls.return_value
-        inst.find_message_by_proposal = AsyncMock(return_value=fake_message)
-        inst.update_message_tasks = AsyncMock(return_value=None)
+        inst.db = MagicMock(commit=AsyncMock(), refresh=AsyncMock())
         inst.save_message = AsyncMock(side_effect=lambda **kw: captured_messages.append(kw))
 
         session_id = uuid4()
         resp = await async_client.post(
-            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/p1/resolve",
-            json={"status": "confirmed"},
+            f"/api/v1/ai-assistance/sessions/{session_id}/tasks/{uuid4()}/resolve",
+            json={"status": "confirmed", "final_payload": {"title": "Pregnancy"}},
         )
 
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert len(captured_messages) == 1
     text = captured_messages[0]["content"]["text"]
     assert "Confirmed and saved" in text
@@ -455,7 +472,7 @@ def test_is_internal_message_flags_hitl_feedback():
     """The [HITL RESOLUTION FEEDBACK] user message persisted by the resume
     continuation must be hidden from the UI. Recognized both by the explicit
     ``kind`` tag (new rows) and the text prefix (rows saved before the tag)."""
-    from app.services.chat_session_service import is_internal_message
+    from app.services.chat.chat_session_service import is_internal_message
 
     # New rows: explicit kind tag.
     assert (

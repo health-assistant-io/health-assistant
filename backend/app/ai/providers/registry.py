@@ -58,3 +58,52 @@ def get_llm_builder(provider_type: str | None) -> LLMBuilder:
         )
         return DEFAULT_BUILDER
     return PROVIDER_FACTORIES[pt]
+
+
+#: Provider types registered only as reserved stubs: their builder raises
+#: ``NotImplementedError`` on first call, so a provider row carrying one is
+#: inert configuration. Write paths reject them
+#: (:func:`ensure_wired_provider_type`); ``tests/test_ai_enums_registry.py``
+#: pins this set to the stub builders so the two cannot drift.
+UNWIRED_PROVIDER_TYPES: frozenset[ProviderType] = frozenset(
+    {
+        ProviderType.ANTHROPIC,
+        ProviderType.OLLAMA,
+        ProviderType.AZURE_OPENAI,
+        ProviderType.BEDROCK,
+    }
+)
+
+
+def unwired_provider_type(provider_type: str | None) -> ProviderType | None:
+    """The reserved provider type, or ``None`` when it is wired/unknown."""
+    pt = ProviderType.from_string(provider_type)
+    if pt is not None and pt in UNWIRED_PROVIDER_TYPES:
+        return pt
+    return None
+
+
+def ensure_wired_provider_type(provider_type: str | None) -> None:
+    """Refuse a reserved (not-yet-wired) provider type at write time.
+
+    Raises ``ValidationError`` (HTTP 422) carrying the API's typed machine
+    error vocabulary — ``{"code": "provider_type_unwired", "message": ...}`` —
+    instead of persisting a row whose first LLM call would raise
+    ``NotImplementedError``.
+    """
+    from app.core.errors import ValidationError
+
+    unwired = unwired_provider_type(provider_type)
+    if unwired is None:
+        return
+    raise ValidationError(
+        {
+            "code": "provider_type_unwired",
+            "message": (
+                f"provider type '{unwired.value}' is reserved and not wired yet; "
+                "create an OpenAI-compatible provider (provider_type 'openai') "
+                "or wait until its builder lands"
+            ),
+        },
+        status_code=422,
+    )

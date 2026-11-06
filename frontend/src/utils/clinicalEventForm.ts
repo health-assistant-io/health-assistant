@@ -14,7 +14,7 @@ import { ClinicalEventStatus, ScheduleKind, ClinicalEventType } from '../service
  * type so `schedule_kind` is required on every loaded row, but this helper
  * still accepts a possibly-null/unloaded type (e.g. while the type catalog
  * is being fetched) and falls back to `STATE` (the safest default — never
- * expands per-day). The fallback is a runtime safety net, not a legacy wire
+ * expands per-day). The fallback is a runtime safety net, not a wire-format
  * case.
  */
 export function getScheduleKind(type?: ClinicalEventType | null): ScheduleKind {

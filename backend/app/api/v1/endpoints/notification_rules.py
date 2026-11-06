@@ -21,8 +21,8 @@ from app.schemas.notification import (
     NotificationRuleUpdate,
 )
 from app.schemas.user import TokenData
-from app.services import notification_rule_service
-from app.services.access import check_patient_access
+from app.services.auth.access import check_patient_access
+from app.services.notifications import notification_rule_service
 
 logger = logging.getLogger(__name__)
 

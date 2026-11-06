@@ -17,7 +17,7 @@ import pytest
 from app.ai.assistance import turns as turns_mod
 from app.api.v1.endpoints import ai_assistance as ai_assistance_ep
 from app.models.enums import Role
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 from tests._auth_helpers import auth_headers, create_tenant, create_user
 from tests.test_turn_lock import FakeRedis
 

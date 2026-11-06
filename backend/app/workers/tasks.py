@@ -1,4 +1,4 @@
-# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 import asyncio
 import datetime
 import functools
@@ -194,8 +194,8 @@ async def deliver_notification(notification_id: str):
 
             # Lazy-imported so a missing httpx dep on a worker that doesn't
             # serve mobile push doesn't break Web Push delivery.
-            from app.services.mobile_push_service import dispatch as dispatch_mobile
-            from app.services.webpush_service import (
+            from app.services.notifications.mobile_push_service import dispatch as dispatch_mobile
+            from app.services.notifications.webpush_service import (
                 SubscriptionExpired,
                 send_web_push,
             )
@@ -283,7 +283,7 @@ async def deliver_notification(notification_id: str):
 @async_task
 async def check_notification_triggers():
     """Periodic task to process scheduled and recurring triggers."""
-    from app.services.notification_manager import NotificationManager
+    from app.services.notifications.notification_manager import NotificationManager
 
     db, _engine = get_async_session()
     try:
@@ -293,6 +293,29 @@ async def check_notification_triggers():
             # connections are bound to a different/closed event loop in a
             # prefork worker → "Future attached to a different loop").
             await NotificationManager.process_due_triggers(session=db)
+    finally:
+        await db.close()
+
+
+@celery_app.task(name="app.workers.tasks.expire_proposals")
+@async_task
+async def expire_proposals():
+    """Resolve stale HITL proposals to ``expired`` (plan 5 W4).
+
+    A pending proposal past its ``expires_at`` is no longer actionable: the
+    sweep closes it through the same state machine every resolve uses (a typed
+    transition + ``resolution_trace`` entry), so the audit trail is complete and
+    a late approve answers 409 instead of applying a months-old draft.
+    """
+    from app.services.proposals.proposal_service import expire_stale_proposals
+
+    db, _engine = get_async_session()
+    try:
+        async with db:
+            expired = await expire_stale_proposals(db)
+            await db.commit()
+            if expired:
+                logger.info("Expired %d stale HITL proposal(s).", expired)
     finally:
         await db.close()
 
@@ -329,63 +352,79 @@ async def sync_active_integrations(self):
 
             logger.info(f"Found {len(active_integrations)} active integrations to sync.")
 
-            for integration in active_integrations:
+            # Backoff is DATA (plan 8 W3): every stream row carries
+            # ``next_retry_at``. One query tells the cycle which integrations
+            # an upstream (or a failure streak) asked us to leave alone; no
+            # Redis key, no code-embedded cooldown state.
+            from app.services.integration.integration_sync_state import backoff_gate
+
+            retry_gate = await backoff_gate(db, [i.id for i in active_integrations])
+
+            # Snapshot the loop-decision fields before any sync runs:
+            # ``run_sync``'s error paths roll the session back, and a
+            # rollback expires EVERY object in the identity map
+            # (``expire_on_commit=False`` only covers commits) — the next
+            # iteration's plain attribute read then attempts sync IO on
+            # the async session outside greenlet context (MissingGreenlet)
+            # and killed the rest of the cycle. Decide on plain values.
+            snapshots = [
+                (i.id, i.provider, i.user_id, i.user_config, i.last_synced_at)
+                for i in active_integrations
+            ]
+
+            for integration_id, provider_slug, user_id, user_config, last_synced_at in snapshots:
                 start_time = datetime.datetime.now(datetime.UTC)
 
-                # Rate-limit cooldown (item 1 of the integrations-sdk-
-                # improvements plan): when an upstream returned 429 with a
-                # Retry-After hint, ``run_sync`` wrote a Redis cooldown key
-                # via ``set_rate_limit_cooldown``. While it exists, skip
-                # this integration entirely — the upstream told us to back
-                # off and re-hitting it every 60 s just makes it worse.
-                from app.services.integration_sync_service import is_rate_limited
-
-                try:
-                    if await is_rate_limited(integration.id):
-                        logger.debug(
-                            "Skipping sync for %s (user %s): rate-limit cooldown active",
-                            integration.provider,
-                            integration.user_id,
-                        )
-                        continue
-                except Exception:
-                    # Redis down — degrade to "not rate limited" so the
-                    # sync proceeds; the upstream will re-raise if it's
-                    # still closed and the cooldown will be re-set.
-                    pass
+                retry_at = retry_gate.get(integration_id)
+                if retry_at is not None:
+                    logger.debug(
+                        "Skipping sync for %s (user %s): next_retry_at=%s",
+                        provider_slug,
+                        user_id,
+                        retry_at.isoformat(),
+                    )
+                    continue
 
                 # Check if it's time to sync based on user config interval (default to 15 if missing)
                 sync_interval = 15
-                if integration.user_config and "sync_interval" in integration.user_config:
-                    sync_interval = int(integration.user_config["sync_interval"])
+                if user_config and "sync_interval" in user_config:
+                    sync_interval = int(user_config["sync_interval"])
 
-                if integration.last_synced_at:
-                    next_sync = integration.last_synced_at + datetime.timedelta(
+                if last_synced_at:
+                    next_sync = last_synced_at + datetime.timedelta(
                         minutes=sync_interval
                     )
                     # Add a small buffer (e.g. 10 seconds) to avoid missing cycles due to slight execution delays
                     if start_time < (next_sync - datetime.timedelta(seconds=10)):
                         logger.debug(
-                            f"Skipping sync for {integration.provider} (user {integration.user_id}). Next sync at {next_sync}"
+                            f"Skipping sync for {provider_slug} (user {user_id}). Next sync at {next_sync}"
                         )
                         continue
 
-                provider = integration_registry.get_provider(integration.provider)
+                provider = integration_registry.get_provider(provider_slug)
                 if not provider:
-                    logger.warning(f"Provider not found for integration {integration.provider}")
+                    logger.warning(f"Provider not found for integration {provider_slug}")
                     continue
 
                 logger.info(
-                    f"Syncing integration {integration.provider} for user {integration.user_id}"
+                    f"Syncing integration {provider_slug} for user {user_id}"
                 )
+
+                # Re-acquire the row through the async API: a previous
+                # iteration's rollback may have expired it, and
+                # ``Session.get`` refreshes expired identity-map entries
+                # via the awaitable path instead of tripping MissingGreenlet.
+                integration = await db.get(UserIntegration, integration_id)
+                if integration is None:
+                    logger.warning(
+                        f"Integration {integration_id} ({provider_slug}) vanished mid-cycle; skipping."
+                    )
+                    continue
 
                 # Delegate to the shared sync pipeline (acquires the Redis
                 # dedup lock internally, handles the 3-tier error contract,
-                # writes the IntegrationSyncLog).
-                from app.services.integration_sync_service import (
-                    run_sync,
-                    set_rate_limit_cooldown,
-                )
+                # writes the IntegrationSyncLog + typed stream health).
+                from app.services.integration_sync_service import run_sync
 
                 result = await run_sync(db, integration, provider, source="background")
                 if result.status == "skipped":
@@ -401,12 +440,8 @@ async def sync_active_integrations(self):
                         integration.user_id,
                         result.error,
                     )
-                    # If the upstream told us to wait, honour it so the
-                    # next beat skips this integration until the cooldown
-                    # expires. No-op when ``retry_after_seconds`` is None
-                    # (manual raises / unknown upstream behaviour).
-                    if result.retry_after_seconds is not None:
-                        await set_rate_limit_cooldown(integration.id, result.retry_after_seconds)
+                    # ``run_sync`` already persisted the retry gate on the
+                    # stream rows (``next_retry_at``) — nothing to write here.
                 else:
                     logger.info(
                         "Sync %s for %s: pulled=%d fhir=%d telemetry=%d dropped=%d",
@@ -521,6 +556,12 @@ async def migrate_biomarker_data(
 
                         telemetry_records = []
                         obs_ids_to_delete = []
+                        from app.services.telemetry.telemetry_ingest import (
+                            build_telemetry_row,
+                            resolve_telemetry_device,
+                        )
+
+                        device_cache = {}
 
                         for obs in observations:
                             val = (
@@ -532,28 +573,45 @@ async def migrate_biomarker_data(
                                     else None
                                 )
                             )
-                            if val is None:
+                            if (
+                                val is None
+                                or getattr(obs, "patient_id", None) is None
+                                or obs.tenant_id is None
+                            ):
                                 # Long-format hypertable requires NOT NULL
-                                # value; skip non-numeric observations.
+                                # value + patient attribution; skip rows that
+                                # cannot fill both.
                                 continue
 
                             unit = None
                             if getattr(obs, "value_quantity", None):
                                 unit = obs.value_quantity.get("unit")
 
+                            device_uuid = device_cache.get(obs.patient_id)
+                            if device_uuid is None:
+                                device_uuid = await resolve_telemetry_device(
+                                    db,
+                                    tenant_id=obs.tenant_id,
+                                    patient_id=obs.patient_id,
+                                    source="fhir_migration",
+                                    external_ref="fhir_migration",
+                                )
+                                device_cache[obs.patient_id] = device_uuid
+
                             # Long-format: one row per measurement, slug on
                             # the row. ``patient_id`` is carried over from
-                            # the source observation so the inverse direction
-                            # can attribute rows without device-id resolution.
+                            # the source observation.
                             telemetry_records.append(
                                 TelemetryDataModel(
-                                    tenant_id=obs.tenant_id,
-                                    device_id="fhir_migration",
-                                    timestamp=obs.effective_datetime,
-                                    slug=slug,
-                                    value=float(val),
-                                    unit=unit,
-                                    patient_id=getattr(obs, "patient_id", None),
+                                    **build_telemetry_row(
+                                        tenant_id=obs.tenant_id,
+                                        patient_id=obs.patient_id,
+                                        device_id=device_uuid,
+                                        timestamp=obs.effective_datetime,
+                                        definition=db_biomarker,
+                                        value=float(val),
+                                        unit=unit,
+                                    )
                                 )
                             )
                             obs_ids_to_delete.append(obs.id)
@@ -601,7 +659,7 @@ async def migrate_biomarker_data(
                     symbol = u_res.scalar_one_or_none() or ""
 
                     # Single-patient-tenant fallback for rows that lack a
-                    # persisted patient_id (e.g. legacy mobile uploads that
+                    # persisted patient_id (e.g. older mobile uploads that
                     # didn't send one). Only safe when the tenant has exactly
                     # one patient.
                     single_patient_res = await db.execute(
@@ -741,7 +799,7 @@ async def export_backup(self, job_id_str: str):
     """Run an export/backup job (FHIR-only, full ZIP, or catalog-only)."""
     from uuid import UUID
 
-    from app.services.export_service import ExportService
+    from app.services.export.export_service import ExportService
 
     job_id = UUID(job_id_str)
     db, _engine = get_async_session()
@@ -767,7 +825,7 @@ async def import_backup(
     from uuid import UUID
 
     from app.schemas.import_data import FHIRImportConfig
-    from app.services.import_service import ImportService
+    from app.services.imports.service import ImportService
 
     job_id = UUID(job_id_str)
     owner_id = UUID(owner_id_str)

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "category": "overview",
+      "items": [
+        {
+          "id": "overview",
+          "file": "overview.md",
+          "title": "Overview",
+          "description": "Withings for Health Assistant, the self-hosted, open-source health records platform. An OAuth2 wearable connector that pulls your Withings scale, blood-pressure monitor and activity-tracker measurements into the Biomarker Engine's telemetry store.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "setup",
+      "items": [
+        {
+          "id": "connection",
+          "file": "connection.md",
+          "title": "Connection & Authorization",
+          "description": "Connect a Withings account through your own Withings partner app: client id, the sealed client secret, the OAuth consent round-trip, the account binding, and what Check Connection validates.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "usage",
+      "items": [
+        {
+          "id": "pull",
+          "file": "pull.md",
+          "title": "Pull (Streams, Cursors & Canonical Units)",
+          "description": "What the connector pulls and where it lands: every measure category into the telemetry store with canonical units and a registered device — with the measure cursor, dedup and mapping-gap recording; sleep and activity are flagged as not wired.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "security",
+      "items": [
+        {
+          "id": "security",
+          "file": "security.md",
+          "title": "Security",
+          "description": "Where the OAuth credentials live (one sealed slot, instance-bound, rotatable, with maintained expiry columns), the fail-closed refresh rule, tenant isolation of pulled data, and what the connector deliberately does not do.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "troubleshooting",
+      "items": [
+        {
+          "id": "troubleshooting",
+          "file": "troubleshooting.md",
+          "title": "Troubleshooting",
+          "description": "Diagnose a Withings integration: reconnect prompts after a revoked authorization, a pending instance that never authorizes, empty pulls, unmapped measure types, hostile-payload rejections and rate-limit backoff.",
+          "audience": "user"
+        }
+      ]
+    }
+  ]
+}

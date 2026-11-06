@@ -125,7 +125,7 @@ def test_bundled_manifests_validate_against_the_envelope():
     )
     base = Path(__file__).resolve().parents[1] / "app" / "extensions" / "builtin"
     shipped = [d for d in base.iterdir() if (d / "manifest.json").exists()]
-    assert len(shipped) == 5
+    assert len(shipped) == 7
     for d in sorted(shipped):
         doc = json.loads((d / "manifest.json").read_text(encoding="utf-8"))
         # schema-first — the same order the registry gate uses (the

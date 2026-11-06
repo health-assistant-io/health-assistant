@@ -1,4 +1,9 @@
 import api from './axios';
+import {
+  AI_DECISION_DEFAULT_TASK_ID,
+  AI_DECISION_TASK_IDS,
+  isDecisionTask,
+} from '../generated/taskRegistry';
 
 export interface AIProvider {
   id: string;
@@ -75,8 +80,11 @@ export interface AITaskAssignment {
   provider_name?: string;
   model_id?: string;
   model_name?: string;
-  is_active: boolean;
-  priority: number;
+  /** Specialist fallback pair (capability defaults cannot declare one — ADR-0037). */
+  fallback_provider_id?: string | null;
+  fallback_model_id?: string | null;
+  /** Rows are revoked, never deleted: active means exactly `revoked_at == null`. */
+  revoked_at?: string | null;
   /** D17 PHI scope guard (decision_* assignments; explicit opt-in). */
   phi_allowed?: boolean;
   tenant_id?: string;
@@ -119,8 +127,8 @@ export interface AITaskAssignmentCreate {
   scope?: 'SYSTEM' | 'TENANT' | 'USER';
   provider_id?: string;
   model_id?: string;
-  is_active?: boolean;
-  priority?: number;
+  fallback_provider_id?: string | null;
+  fallback_model_id?: string | null;
   /** D17 PHI scope guard (decision_* assignments only; explicit opt-in). */
   phi_allowed?: boolean;
   tenant_id?: string;
@@ -204,46 +212,24 @@ export interface ProviderSetupErrorDetail {
 }
 
 /** The four decision slots (plan 26 / ADR-0032) — D4 slot separation and
- *  the D17 PHI scope guard key off these health task types. */
-export const DECISION_SLOT_TASK_TYPES = [
-  'decision_tool_dispatch',
-  'decision_boolean_gate',
-  'decision_choice',
-  'decision_score',
-] as const;
+ *  the D17 PHI scope guard key off these health task types. Generated from the
+ *  one TaskDef registry (`backend/app/ai/providers/task_registry.py`) — never
+ *  hand-maintained here (plan 4 W1). */
+export const DECISION_KIND_TASK_IDS = AI_DECISION_TASK_IDS;
 
 /** ADR-0036: the decision default slot joins the vocabulary beside the
  *  kind overrides (kind override → decision default → unavailable). */
-export const DECISION_DEFAULT_TASK_TYPE = 'decision';
+export const DECISION_DEFAULT_TASK_TYPE = AI_DECISION_DEFAULT_TASK_ID;
 
-export const isDecisionSlot = (taskType: string): boolean =>
-  (DECISION_SLOT_TASK_TYPES as readonly string[]).includes(taskType);
+export const isDecisionSlot = (taskType: string): boolean => isDecisionTask(taskType);
 
 export interface AIConfigSummary {
   providers: AIProvider[];
   models: AIModel[];
   task_assignments: AITaskAssignment[];
-  default?: TaskAssignment;
-  ocr?: TaskAssignment;
-  nlp?: TaskAssignment;
-  medication_interaction?: TaskAssignment;
-  anomaly_detection?: TaskAssignment;
-  fill_biomarker_form?: TaskAssignment;
-  fill_medication_form?: TaskAssignment;
-  magic_fill_examination?: TaskAssignment;
-  define_biomarker?: TaskAssignment;
-  define_medication?: TaskAssignment;
-  suggest_category_icon?: TaskAssignment;
-  generate_category_icon?: TaskAssignment;
-  chat?: TaskAssignment;
-  transcription?: TaskAssignment;
-  embed?: TaskAssignment;
-  decision_tool_dispatch?: TaskAssignment;
-  decision_boolean_gate?: TaskAssignment;
-  decision_choice?: TaskAssignment;
-  decision_score?: TaskAssignment;
-  /** ADR-0036: the decision default row rides the summary. */
-  decision?: TaskAssignment;
+  /** Registry-keyed: one entry per resolved task (plan 4 W1 — no per-task
+   *  fields to drift when a task is added). */
+  tasks: Record<string, TaskAssignment>;
   workflows?: Record<string, TaskAssignment[]>;
   ai_agent_max_iterations: number;
 }
@@ -351,14 +337,14 @@ export const aiConfigApi = {
     tenant_id?: string,
     user_id?: string,
     task_type?: string,
-    is_active?: boolean,
+    include_revoked?: boolean,
     scope?: string
   ): Promise<AITaskAssignment[]> => {
     const params = new URLSearchParams();
     if (tenant_id) params.append('tenant_id', tenant_id);
     if (user_id) params.append('user_id', user_id);
     if (task_type) params.append('task_type', task_type);
-    if (is_active !== undefined) params.append('is_active', String(is_active));
+    if (include_revoked) params.append('include_revoked', 'true');
     if (scope) params.append('scope', scope);
     
     const response = await api.get(`/ai-config/task-assignments?${params}`);

@@ -25,6 +25,11 @@ TABLES_WITHOUT_FK = {
     "catalog_audit_log",
 }
 
+# tenant_id FKs that deliberately do NOT cascade: the erasure ledger must
+# outlive its subject, so a tenant erasure sets the ledger's tenant_id NULL
+# (the restore-replay hook needs the row). Declared once, test-pinned.
+SET_NULL_TENANT_FKS = {"erasure_requests"}
+
 
 def _get_tenant_tables():
     """Return {table_name: has_fk} for every table with a tenant_id column."""
@@ -37,15 +42,19 @@ def _get_tenant_tables():
                     """
                     SELECT
                         c.table_name,
-                        CASE WHEN tc.constraint_name IS NOT NULL
-                             THEN True ELSE False END AS has_fk
+                        EXISTS (
+                            SELECT 1
+                            FROM information_schema.table_constraints tc
+                            JOIN information_schema.key_column_usage kcu
+                              ON kcu.constraint_name = tc.constraint_name
+                             AND kcu.table_name = tc.table_name
+                             AND kcu.table_schema = tc.table_schema
+                            WHERE tc.constraint_type = 'FOREIGN KEY'
+                              AND tc.table_schema = 'public'
+                              AND tc.table_name = c.table_name
+                              AND kcu.column_name = 'tenant_id'
+                        ) AS has_fk
                     FROM information_schema.columns c
-                    LEFT JOIN information_schema.key_column_usage kcu
-                        ON kcu.table_name = c.table_name
-                        AND kcu.column_name = 'tenant_id'
-                    LEFT JOIN information_schema.table_constraints tc
-                        ON kcu.constraint_name = tc.constraint_name
-                        AND tc.constraint_type = 'FOREIGN KEY'
                     WHERE c.column_name = 'tenant_id'
                         AND c.table_schema = 'public'
                     ORDER BY c.table_name
@@ -99,7 +108,7 @@ def test_tenant_fk_uses_on_delete_cascade():
                     """
                 )
             ).all()
-            non_cascade = [row[0] for row in rows]
+            non_cascade = [row[0] for row in rows if row[0] not in SET_NULL_TENANT_FKS]
             assert not non_cascade, f"Tables with tenant_id FK NOT using CASCADE: {non_cascade}"
     finally:
         engine.dispose()

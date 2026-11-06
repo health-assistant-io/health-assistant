@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, FileText, AudioLines, Cpu, Sparkles } from 'lucide-react';
 import {
+  ErrorBanner,
   ModelRegistry,
   type CapabilityDescriptor,
   type ModelRegistryDraft,
@@ -256,15 +257,17 @@ export const ModelsTab: React.FC = () => {
         addDraftLabel={t('settings.ai.add_model')}
       />
       {error ? (
-        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-100 p-3 dark:border-red-900/50 dark:bg-red-900/30">
-          <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
-          <button
-            onClick={clearError}
-            className="px-2 py-1 text-xs font-bold underline"
-          >
-            {t('settings.ai.dismiss')}
-          </button>
-        </div>
+        <ErrorBanner
+          message={error}
+          action={
+            <button
+              onClick={clearError}
+              className="px-2 py-1 text-xs font-bold underline"
+            >
+              {t('settings.ai.dismiss')}
+            </button>
+          }
+        />
       ) : null}
     </div>
   );

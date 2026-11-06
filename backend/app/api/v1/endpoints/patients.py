@@ -1,15 +1,17 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.enums import Role
+from app.models.enums import ErasureSubjectType, Role
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
-from app.services.audit_service import audit_read, log_audit_action
-from app.services.fhir_service import (
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import check_patient_access
+from app.services.data_lifecycle.erasure import ErasureError, run_erasure
+from app.services.fhir.fhir_service import (
     create_patient,
-    delete_patient,
     list_patients,
     update_patient,
     update_patient_layout,
@@ -83,7 +85,7 @@ async def update_patient_layout_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update patient dashboard layout (legacy single-layout slot on Patient.dashboard_layout).
+    """Update patient dashboard layout (the single-layout slot on Patient.dashboard_layout).
 
     Distinct from the per-user multi-layout routes at
     ``/patients/{patient_id}/layouts/*`` (``patient_layout.py``).
@@ -128,23 +130,39 @@ async def delete_patient_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete patient and all associated clinical data"""
+    """Erase a patient record and every owned row (data-subject erasure).
+
+    This is not a facade ``DELETE`` — the erasure walker hard-deletes the
+    record in children-before-parents order, removes files/telemetry/secrets,
+    and writes the audit ledger row. A dry-run impact report is available at
+    ``POST /data-lifecycle/erasures`` with ``dry_run=true``.
+    """
     patient = await check_patient_access(patient_id, current_user, db)
 
     if current_user.role not in [Role.SYSTEM_ADMIN.value, Role.ADMIN.value]:  # noqa: SIM102 -- nested conditional; merge when touched
         if str(patient.user_id) != str(current_user.user_id):
             raise HTTPException(status_code=403, detail="Access denied")
 
-    old_snapshot = patient.to_dict() if hasattr(patient, "to_dict") else None
-    success = await delete_patient(patient_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    prior_snapshot = patient.to_dict() if hasattr(patient, "to_dict") else None
+    try:
+        request = await run_erasure(
+            db,
+            subject_type=ErasureSubjectType.PATIENT,
+            subject_id=UUID(patient_id),
+            requested_by=current_user.user_id,
+            dry_run=False,
+        )
+    except ErasureError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.detail},
+        ) from exc
     await log_audit_action(
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_patient",
         resource_type="Patient",
         resource_id=patient_id,
-        old_value=old_snapshot,
+        old_value=prior_snapshot,  # gate-allow: *, audit diff
     )
-    return {"message": "Patient deleted successfully"}
+    return {"message": "Patient deleted successfully", "erasure_id": str(request.id)}

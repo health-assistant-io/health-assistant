@@ -275,6 +275,40 @@ async def test_bearer_still_works_end_to_end_user_client(async_client: AsyncClie
     assert dead.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_logout_revokes_via_auth_sessions_when_redis_is_down(
+    async_client: AsyncClient, monkeypatch
+):
+    """The DB family row is authoritative: a Redis outage must not keep a
+    logged-out access token alive (the old degrade-open posture)."""
+    from app.core import token_store
+
+    class _DownRedis:
+        async def exists(self, *_args, **_kwargs):
+            raise ConnectionError("redis down")
+
+        async def delete(self, *_args, **_kwargs):
+            raise ConnectionError("redis down")
+
+    user = await create_user()
+    issued = await sign_in(user)
+
+    monkeypatch.setattr(token_store, "redis_client", _DownRedis())
+
+    logout = await async_client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {issued.access_token}"},
+        json={"refresh_token": issued.refresh_token},
+    )
+    assert logout.status_code == 200, logout.text
+
+    dead = await async_client.get(
+        "/api/v1/auth/validate",
+        headers={"Authorization": f"Bearer {issued.access_token}"},
+    )
+    assert dead.status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # refresh: cookie presentation + cookie rotation
 # ---------------------------------------------------------------------------

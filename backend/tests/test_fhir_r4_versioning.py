@@ -234,7 +234,7 @@ async def test_update_if_match_version_check_unit():
 def test_capability_statement_versioning_is_no_version():
     """F5 headline: CapabilityStatement per-resource versioning must be
     'no-version' (we don't implement vread / history-instance)."""
-    from app.services.fhir_facade_service import build_capability_statement
+    from app.services.fhir.fhir_facade_service import build_capability_statement
 
     cs = build_capability_statement("https://host/api/v1/fhir/R4")
     for rsc in cs["rest"][0]["resource"]:

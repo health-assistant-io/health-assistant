@@ -72,9 +72,82 @@ separately, never papered over.
 | Trust boundaries | **Browser SPA ↔ backend:** §10 cookies + CSRF; deny-by-default CORS (`FRONTEND_URL` in prod, LAN regex in dev); `TrustedHostMiddleware` pins the Host header against redirect-uri poisoning; security headers (`nosniff`, `X-Frame-Options: DENY`, Referrer-Policy, HSTS) on every response; WS handshakes authenticate from the `nx_access` cookie (or `Sec-WebSocket-Protocol: ["bearer", token]` for §9 clients — the `?token=` query fallback is removed) **and** verify `Origin` against `HA_WS_ALLOWED_ORIGINS`/APP_URL/FRONTEND_URL/same-host (1008 otherwise); `/api/v1/ws/tasks` subscribes by tenant, `/api/v1/ws/notifications` by user id — server-side derived, never client-chosen. **User ↔ agent/AI:** model output is untrusted input — pydantic schema validation on every provider response, allowlisted tools, prompt-injection guard (`app/utils/prompt_guard.py`, high-risk patterns block by default), OCR/extraction results land as proposals/validated records, and BYOK provider keys are Fernet-sealed at rest and never echoed (masked on read). **Service class:** external systems use OAuth2 client-credentials (`POST /oauth/token`, client secret + registrable SMART scopes) and may only touch the FHIR facade (`aud`-checked `api` tokens, `require_fhir_scopes("read"/"write")` per route, `patient/`-scoped clients bound to one patient) — `api` tokens are 401'd on every domain route, session tokens are 401'd on the facade. **Machine/device class (the headline, identity-auth §9 third row):** the integrations HMAC bridge — `ANY /api/v1/integrations/{domain}/api/{integration_id}/{path}` (GET/POST/PUT/DELETE) and `POST /{domain}/webhook/{integration_id}`. Credential: a per-instance `api_secret`/`webhook_secret` (256-bit `token_urlsafe(32)`), **provisioned automatically at instance creation, shown exactly once**, stored Fernet-sealed inside `user_integrations.user_config` as `{"_encrypted", "_kid"}` with the instance id as context binding (cut-and-paste between rows fails), rotatable by the owner (`POST /integrations/instance/{id}/rotate-secret` — new secret returns once, old one dies instantly). Request auth: `X-Api-Signature` = HMAC-SHA256 over `METHOD\n<path>[?query]\n<timestamp>\n<raw_body>` (both leading-slash path forms accepted), constant-time compare, **`X-Api-Timestamp` mandatory**, ±5-min skew (300 s) folded into the MAC — no unlimited replays; the MAC covers the query string; bodies read once under a 40 MB cap; per-IP **and** per-integration rate limits. Fail-closed: no secret configured ⇒ 401 (the integration UUID is an identifier, never a credential — the pre-audit "UUID-only" mode is gone; provisioning without a Fernet key yields an instance the machine routes refuse). `GET /status` unsigned stays the QR-pairing connectivity probe but returns only `{status, server_time}`. Pairing: the UI's "Show pairing code" rotates the secret and renders a QR carrying `base|instance|secret` (three-segment form the Android app parses) — no user token ever reaches the device. Blast radius: the `user_integrations` row is bound to exactly one patient (`patient_id`) and one owner (`user_id`); the provider resolves its actor via `resolve_integration_actor` — the **owner's** identity with the role **re-fetched from the DB on every call**, so every bridge write goes through the same service layer, `check_patient_access` gate, tenant scoping, and audit provenance as an interactive request (integration-driven writes are auditable to a real person; no service account exists). Webhooks: same secret discipline — HMAC over the raw body (timestamped canonical form preferred; bare body-MAC + Redis replay guard accepted), no secret ⇒ 401. **Doc drift:** `integrations/health_assistant_bridge/docs/authentication.md` still sells "Mode 1 — UUID-only (default)" and "leave the secret blank to revert" — the platform rejects both; see known gaps. |
 | Data isolation | Multi-tenant by construction: `tenants` + `TenantMixin.tenant_id` on every domain row (FK `ON DELETE CASCADE`; hypertable tables drop the FK and rely on app-level cleanup), and **every query filters `tenant_id`** — the cross-tenant case is a hidden **404** (`check_patient_access` and friends select by id AND tenant; existence never leaks). Roles: `SYSTEM_ADMIN`/`ADMIN`/`MANAGER`/`USER` (`RoleChecker` — SYSTEM_ADMIN passes every gate); `USER` is additionally restricted to rows reachable through `fhir_patients.user_id` ownership (`check_*_access` raise 404 cross-tenant, 403 for an in-tenant but unowned patient). Invite-only registration: single-use jti-consumed invite JWTs bound to tenant (+optional email), `SYSTEM_ADMIN` ungrantable by invite (refused at mint **and** at verify — bootstrap is the only grantor). Tenant switching: `POST /admin/tenants/{id}/switch` mints a scoped token (`role=SYSTEM_ADMIN`, `tenant_id`=target, `original_tenant_id` preserved; no nested switches; target re-validated on refresh; the **demo principal is refused** — H7). FHIR facade: SMART scopes (`patient/*.rs` etc.) enforced per route, `patient/`-compartment clients bound to one patient; api-vs-session kind separation both directions (see trust boundaries). There is **no profile layer** in health (Class S extension): the care context is patient ownership, not `X-Profile-Id`. |
 | Secrets at rest | Per-purpose key families (identity-auth §8, plan 16 H4): `HA_SESSION_KEY` signs all session-family JWTs (session/api/invite/download/mfa_challenge), `HA_REFRESH_KEY` signs refresh only, `HA_DATA_KEY` (legacy alias `INTEGRATION_SECRET_KEY`) is the Fernet at-rest key and **never signs**; no key derived from another; verification is family-locked so cross-family tokens fail. Server boot guards: non-dev `APP_ENV` refuses to boot without strong env-pinned `HA_SESSION_KEY`/`HA_REFRESH_KEY` (≥32 chars, non-placeholder, non-trivial), partial pins (exactly one of the two) fail closed in **every** environment, weak database credentials are refused outside dev (compose additionally makes `POSTGRES`/`REDIS`/`FLOWER` passwords required). Rotation ring: `HA_DATA_KEY_PREVIOUS` (alias `INTEGRATION_SECRET_KEY_PREVIOUS`, comma-separated) decrypts-only so rotated ciphertext keeps working; `_kid` tags identify values awaiting re-sealing. Sealed at rest under the DATA family with row-context binding: integration `api_secret`/`webhook_secret` (instance-id context), `ai_providers.api_key` (`enc::` prefix, masked on read), TOTP `mfa_secret_enc`. OS keyring: N/A — server product; the family's keyring rule is replaced by env+boot-guard per §8. **Disk-thief story:** the DB alone gets bcrypt password hashes, sha256 refresh-jti hashes, and ciphertext it cannot open (no `HA_DATA_KEY`); the DB **plus** the env/`.env` (all three keys) additionally gets token forgery for any live session (until `ver`/rotation) and every sealed integration/AI secret; the `uploads/` volume holds **unencrypted original documents** (PDFs/images — the raw PHI, protect the volume and backups together); Redis holds only jti/rate-limit/pub-sub state, not secrets. |
-| Audit | `audit_events` (actor `user_id`, `action`, `resource_type`/`resource_id`, `tenant_id`, `outcome` ok/denied/error, JSONB `old_value`/`new_value` diffs, timestamp) written through the single best-effort chokepoint `log_audit_action` — own short-lived session (the row commits even if the caller rolls back), never raises (failures log WARNING with traceback). Covered: sensitive clinical **reads** via the `@audit_read` decorator on single-record GETs (Patient, Observation, Document, Examination, Medication, Allergy, Immunization/Vaccine, ClinicalEvent — denials incl. hidden-404s recorded with outcome `denied`); all clinical **writes** (create/update/delete + layout/import/sync paths with before/after diffs); every **admin action** (tenant CRUD/switch, tenant-user role/active changes, MFA forcing, invites, user deletion, catalog imports, broadcasts); and **auth events** including denials (login ok/invalid/locked/disabled, demo-login, MFA challenge/verify, refresh-reuse `auth.refresh_reuse`, logout, register, setup). Readers: `GET /admin/audit` (SYSTEM_ADMIN — full cross-tenant stream incl. system-level rows) and `GET /admin/tenants/{id}/audit` (SYSTEM_ADMIN, per-tenant view; tenant ADMINs have no audit reader). Erasure: no API edits or deletes audit rows — only direct DB access (or `pg_restore`/backup retention). One cascade caveat: tenant hard-delete (`DELETE /admin/tenants/{id}` + confirm name) purges that tenant's rows via `ON DELETE CASCADE`, leaving only the system-level `tenant.delete` tombstone written with `tenant_id=NULL`. |
+| Audit | `audit_events` (actor `user_id`, `action`, `resource_type`/`resource_id`, `tenant_id`, `outcome` ok/denied/error, JSONB `old_value`/`new_value` diffs, timestamp) written through the single best-effort chokepoint `log_audit_action` — own short-lived session (the row commits even if the caller rolls back), never raises (failures log WARNING with traceback). Covered: sensitive clinical **reads** via the `@audit_read` decorator on single-record GETs (Patient, Observation, Document, Examination, Medication, Allergy, Immunization/Vaccine, ClinicalEvent — denials incl. hidden-404s recorded with outcome `denied`); all clinical **writes** (create/update/delete + layout/import/sync paths with before/after diffs); every **admin action** (tenant CRUD/switch, tenant-user role/active changes, MFA forcing, invites, user deletion, catalog imports, broadcasts); and **auth events** including denials (login ok/invalid/locked/disabled, demo-login, MFA challenge/verify, refresh-reuse `auth.refresh_reuse`, logout, register, setup). Readers: `GET /admin/audit` (SYSTEM_ADMIN — full cross-tenant stream incl. system-level rows) and `GET /admin/tenants/{id}/audit` (SYSTEM_ADMIN, per-tenant view; tenant ADMINs have no audit reader). Erasure: subject erasure keeps audit rows as proof-of-existence but redacts their JSONB diff (`old_value`/`new_value` → NULL); the erasure ledger (`erasure_requests`) records what was erased and replays on restore. Tenant hard-delete (`DELETE /admin/tenants/{id}` + confirm name) runs the tenant walker (all tenant rows, hypertable rows, files, checkpoints) and leaves the system-level `tenant.delete` audit tombstone with `tenant_id=NULL`. |
 | Admin surface | Bootstrap: the **first SYSTEM_ADMIN** is created by the first-run wizard `POST /auth/setup` (or the `create_system_admin.py` CLI) — one-time setup token per `SETUP_TOKEN_MODE` (`log` = minted + logged once; `env` = launcher-injected; `time` = grace window then token; `disabled` = firewalled deployments only), advisory-lock race guard, 410 once initialized, token cleared after. There is **no open registration path to admin**: `/auth/register` requires an invite that can grant at most `ADMIN`; SYSTEM_ADMIN is refused at invite mint and verify (defense in depth). Privilege changes: `PATCH /admin/tenants/{tid}/users/{uid}` (role ∈ USER/MANAGER/ADMIN, `is_active`) — SYSTEM_ADMIN can neither be granted nor demoted from this surface; `PATCH .../users/{uid}/mfa` forces TOTP MFA (the member enrolls at next login; enforced accounts cannot self-disable MFA without the password). ADMIN/MANAGER are tenant-scoped (own tenant only); SYSTEM_ADMIN is cross-tenant and can switch into tenants with scoped tokens (demo principal refused). Blast radius of SYSTEM_ADMIN: read the full cross-tenant audit stream, manage tenants/users/invites/integrations, import catalogs, broadcast notifications; of ADMIN: everything within the tenant incl. demoting/deactivating members and forcing MFA (audit reads are SYSTEM_ADMIN-only). Guard rails **not** implemented: no last-ADMIN protection (an ADMIN can demote/deactivate the tenant's last admin — recovery requires SYSTEM_ADMIN) and no self-action blocks; role changes do **not** bump `token_version` (new role takes effect at next refresh; access tokens ≤60 min). Admin user deletion revokes all tokens immediately. |
 | Deployment exposure | Server product — no loopback mode; the backend binds `0.0.0.0:8000` inside the compose networks and is fronted by nginx. Stacks (`docker/`): `docker-compose.standalone.yml` (canonical single-host: app services + **bundled nginx**, TLS-ready, backup sidecar behind `--profile backup`) and `docker-compose.prod.yml` (no bundled nginx — BYO proxy); datastore is TimescaleDB `timescale/timescaledb:latest-pg16`, database `neuronection_health` (test: `neuronection_health_test`), with split roles — `neuronection_health_owner` (runs migrations) vs least-privilege `neuronection_health_app` (runtime DML; created by `init-roles.sh`, required env forces strong passwords). TLS: the default `nginx.conf` is **HTTP-only** (loopback/VPN/dev) — internet-facing deployments must mount `nginx-TLS.conf` (certbot webroot ACME, HSTS, TLSv1.2/1.3, 60 MB body cap) and set `HA_COOKIE_SECURE=true`; `HA_TRUSTED_PROXY_COUNT` must match the proxy chain or per-IP rate limits key on the proxy. Flower (Celery dashboard) runs behind nginx at `/flower/` with `--basic-auth` (`FLOWER_USER`/`FLOWER_PASSWORD`, required). Backups: `backup` sidecar takes scheduled `pg_dump -Fc` of `neuronection_health` + the uploads volume to the `backups/` bind mount (`BACKUP_INTERVAL_HOURS`/`BACKUP_KEEP`); archives are **unencrypted** — protect them like the database; the documented restore drill (`docker/README.md` → "Backup & restore drill": stop stack, fresh volume, `scripts/restore.sh <archive> --yes`, verify login) is the supported path (in-place volume downgrade is refused). API docs are disabled in production unless `ENABLE_API_DOCS=true` (the authenticated surface is not advertised). Demo: the public demo stack lives **outside this repo** (`../demo/docker-compose.demo.yml`): database `neuronection_health_demo`, `demo-net` is `internal: true` (**zero egress** — no OpenAI/FHIR/SMTP/MCP outbound), AI/OCR off, `APP_ENV=production` + `HA_DEMO_MODE=true` admitted only via the explicit `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in, seeded synthetic-only by `scripts/seed_demo.py` (refuses any target not named `*_demo` or not demo-flagged), reset daily by cron, never restored into production. |
+
+## Data lifecycle: erasure, retention, backups
+
+This section is the operator contract for data-subject erasure and bounded
+retention (plan 6; constitution rule 10).
+
+**Guarantees**
+
+- Every mapped table carries a lifecycle class (`record | operational |
+  transient`) in `contracts/data-model.lifecycle.txt`, mirrored in
+  `app/core/data_lifecycle.py`. Gate D6 fails any unclassified table.
+- Erasure is one ordered cascade walker (`app/services/erasure.py`), never
+  per-table ad-hoc deletes: children before parents, subject row last, one
+  transaction. Dry-run returns the per-table impact report without deleting;
+  the real run's counts are pinned equal to the dry run by tests.
+- Covered end-to-end for `user`, `patient` and `tenant` subjects: FHIR and
+  clinical rows, documents (files unlinked), the `telemetry_data` hypertable,
+  notifications + Web Push/mobile registrations, LangGraph checkpoint
+  threads, chat/proposals, export artifacts, `integration_credentials`, and
+  the sealed `user_config` secret wrappers (`_oauth`, `api_secret`,
+  `webhook_secret`).
+- Audit proof-of-existence survives erasure: `audit_events` rows are kept but
+  their JSONB diff is redacted; AI call rows keep token/cost history with the
+  subject id nulled. The erasure ledger (`erasure_requests` `done` rows) is
+  the durable record of what was erased.
+- **Backups:** the ledger is replayed against every restore before traffic is
+  served — `scripts/restore.sh` runs
+  `backend/scripts/replay_erasure_ledger.py` right after `pg_restore`, and
+  `POST /api/v1/data-lifecycle/ledger/replay` (SYSTEM_ADMIN) re-runs it on a
+  live instance — so a restored backup cannot resurrect an erased subject.
+  Crypto-shred removes sealed ciphertext references; residual backup copies
+  age out under the backup TTL.
+
+**Operator knobs**
+
+- `retention_policies` is data. A `SYSTEM_ADMIN` edits it through
+  `GET/PATCH /api/v1/data-lifecycle/retention-policies` or directly in the
+  DB; the daily `apply_retention_policies` job reads the rows. Action is
+  `delete` or `anonymize`; scope is a lifecycle class or one table; a disabled
+  row is an explicit "no pruning". `proposals` prunes terminal rows only and
+  `audit_events` anonymizes its diff.
+- Checkpoint pruning reads the `checkpoints` policy row (default 30 days).
+  The old `AI_CHECKPOINT_RETENTION_DAYS` env var is retired — there is no
+  env/table dual source.
+- The daily `purge_orphaned_lifecycle_rows` job removes telemetry and push
+  rows whose tenant/patient/user is gone (the hypertable has no FK).
+- **Erasure SLA vs backup TTL:** a request erases the live database
+  synchronously (dry-run and real run are one request each). Backups are kept
+  by `BACKUP_KEEP` archives at `BACKUP_INTERVAL_HOURS` (defaults: 14 daily
+  backups ≈ 14 days), **below the erasure SLA**: after one TTL window no
+  backup copy contains the subject, and any restore inside the window is
+  neutralised by the ledger replay. Operators with a shorter erasure SLA must
+  lower `BACKUP_KEEP` (or delete archives) so the TTL never exceeds it.
+- **Legal assumption (stated once):** erasing a patient's clinical record is
+  permitted where the operator deploys. Where record-retention law applies,
+  the operator sets the applicable retention/erasure action to `anonymize`
+  instead of `delete` (the vocabulary carries both) or disables the delete
+  row; the baseline implementation anonymizes audit diffs and keeps the
+  record when the action is `anonymize`, so a jurisdiction that requires the
+  clinical payload retained should not schedule a `delete` policy at all.
+
+**Known limits**
+
+- The erasure ledger stores the subject id and the impact report; the
+  report's counts are metadata, not record content.
+- `anonymize` currently has a payload adapter for audit diffs (`old_value`/
+  `new_value`); other tables fall back to "no anonymizable payload columns"
+  and are skipped (logged) rather than half-anonymized. Do not rely on
+  `anonymize` for clinical-record retention until a payload adapter exists —
+  disable the delete instead.
+- Uploaded document files and export archives are plain files on disk: an
+  erasure unlinks them, but filesystem snapshots taken before the erasure
+  follow the same TTL rule as database backups.
 
 Known gaps (documented, not papered over):
 
@@ -94,11 +167,12 @@ Known gaps (documented, not papered over):
    `GET /observations`, `GET /documents`, …) and `/search` return clinical
    data without an audit row — a tenant member can enumerate without a
    trail beyond access logs.
-4. **No self-serve password change, no admin password reset, no account
-   self-deletion.** `PATCH /me/password`, admin reset-password, and
-   `DELETE /me` from the §12 table do not exist; the only password paths
-   are initial set (setup/register) and MFA-disable confirmation. A
-   forgotten password requires direct DB intervention today.
+4. **No self-serve password change, no admin password reset.** Account
+   self-deletion **does** exist (`DELETE /api/v1/users/me` → the erasure
+   walker + token revocation), but `PATCH /me/password` and an admin
+   reset-password path do not; the only password paths are initial set
+   (setup/register) and MFA-disable confirmation. A forgotten password
+   requires direct DB intervention today.
 5. **No admin force-logout / role-change token invalidation.** There is no
    `POST /admin/users/{id}/force-logout`, and `update_tenant_user` does
    not bump `token_version` — a demoted or deactivated user keeps their

@@ -213,7 +213,7 @@ async def test_create_observation_persists_orm_shape_input():
     persists value_quantity / effective_datetime and flattens a FHIR interpretation
     list to the single string the Observation.interpretation column stores.
     """
-    from app.services import fhir_service
+    from app.services.fhir import fhir_service
 
     class FakeSession:
         def __init__(self):
@@ -237,7 +237,7 @@ async def test_create_observation_persists_orm_shape_input():
     with (
         patch.object(fhir_service, "AsyncSessionLocal", return_value=fake_session),
         patch(
-            "app.services.notification_rule_service.evaluate_and_fire",
+            "app.services.notifications.notification_rule_service.evaluate_and_fire",
             new=AsyncMock(),
         ),
     ):

@@ -1,9 +1,8 @@
 {
   "schema": 1,
   "contract": "settings-map",
-  "updated": "2026-10-16",
+  "updated": "2026-11-06",
   "purpose": "One family taxonomy for settings surfaces: what a setting IS decides where it LIVES. Canonical per ADR-0033 / ADR-0031 (sync-and-gate): this file is the master; product repos vendor it byte-identical under contracts/ and scripts/verify-wiring.sh flags drift. A setting may not ship (or move) in any product without a domain entry (or adopter line) here.",
-
   "groups": {
     "ai": {
       "title": "AI — model access & assignment",
@@ -22,44 +21,70 @@
       "membership": "Settings about the product rather than the assistant's capabilities: general/appearance/language, account & security, data (backup/export/trash), users (admin), developer/diagnostics, voice I/O, hotkeys, commands, mini-apps, notifications. Family-constrained only by the naming and i18n rules; product-specific tabs are declared per product below."
     }
   },
-
   "domains": [
     {
       "id": "ai.providers",
       "group": "ai",
       "title": "AI providers (BYOK)",
       "definition": "Provider rows: endpoint + API key per model API. Preset-driven one-click setup (ai-presets.json contract).",
-      "home": { "tab": "ai", "section": "providers" },
+      "home": {
+        "tab": "ai",
+        "section": "providers"
+      },
       "secrets": "product secret store (OS keyring / Fernet atrest) — never a plaintext column",
       "scope": "user (web) / profile (desktop)",
-      "adopters": { "desktop-assistant": "aligned", "study-assistant": "aligned", "career-assistant": "aligned", "health-assistant/core": "aligned" }
+      "adopters": {
+        "desktop-assistant": "aligned",
+        "study-assistant": "aligned",
+        "career-assistant": "aligned",
+        "health-assistant/core": "aligned"
+      }
     },
     {
       "id": "ai.models",
       "group": "ai",
       "title": "Models",
       "definition": "Model rows per provider: external id, label, capabilities, decision transport seam.",
-      "home": { "tab": "ai", "section": "models" },
+      "home": {
+        "tab": "ai",
+        "section": "models"
+      },
       "secrets": "none",
       "scope": "user / profile",
-      "adopters": { "desktop-assistant": "aligned", "study-assistant": "aligned", "career-assistant": "aligned", "health-assistant/core": "aligned" }
+      "adopters": {
+        "desktop-assistant": "aligned",
+        "study-assistant": "aligned",
+        "career-assistant": "aligned",
+        "health-assistant/core": "aligned"
+      }
     },
     {
       "id": "ai.tasks",
       "group": "ai",
       "title": "Task assignments",
       "definition": "Capability/task → model slots (text/vision/stt/tts/embeddings), the decision default slot (decision) and its decision:<kind> override slots, primary + fallback — resolution per ADR-0036 (kind override → decision default → unassigned). Capability defaults are single-slot per ADR-0037 (fallbacks live only on specialist assignments: task rows and decision:<kind> overrides). Includes the decision-group privacy note.",
-      "home": { "tab": "ai", "section": "tasks" },
+      "home": {
+        "tab": "ai",
+        "section": "tasks"
+      },
       "secrets": "none",
       "scope": "user > system fallback (web) / profile (desktop)",
-      "adopters": { "desktop-assistant": "aligned", "study-assistant": "aligned", "career-assistant": "aligned", "health-assistant/core": "aligned" }
+      "adopters": {
+        "desktop-assistant": "aligned",
+        "study-assistant": "aligned",
+        "career-assistant": "aligned",
+        "health-assistant/core": "aligned"
+      }
     },
     {
       "id": "tools.web-search",
       "group": "tools",
       "title": "Web search",
       "definition": "Web search provider(s) behind the assistant's search/fetch tools: flavor/type, base URL, key, ordering/fallback.",
-      "home": { "tab": "tools", "section": "web-search" },
+      "home": {
+        "tab": "tools",
+        "section": "web-search"
+      },
       "secrets": "product secret store — never a plaintext column",
       "scope": "user (web) / profile (desktop)",
       "adopters": {
@@ -74,7 +99,10 @@
       "group": "tools",
       "title": "Discovery",
       "definition": "Discovery sources & toggles: built-in channels (web, youtube) and site presets (site:<domain> with kind).",
-      "home": { "tab": "tools", "section": "discovery" },
+      "home": {
+        "tab": "tools",
+        "section": "discovery"
+      },
       "secrets": "none (rides the web-search provider's key)",
       "scope": "user",
       "adopters": {
@@ -89,7 +117,10 @@
       "group": "tools",
       "title": "Web sources",
       "definition": "Periodically scanned external sources (rss, youtube_channel, youtube_playlist, site_search) with scan intervals.",
-      "home": { "tab": "tools", "section": "web-sources" },
+      "home": {
+        "tab": "tools",
+        "section": "web-sources"
+      },
       "secrets": "none",
       "scope": "user",
       "adopters": {
@@ -101,62 +132,92 @@
       "group": "tools",
       "title": "Local indexing",
       "definition": "Local content processing for retrieval: semantic-search (embeddings) toggle, OCR image limits.",
-      "home": { "tab": "tools", "section": "indexing" },
+      "home": {
+        "tab": "tools",
+        "section": "indexing"
+      },
       "secrets": "none",
       "scope": "user",
-      "adopters": { "study-assistant": "aligned" }
+      "adopters": {
+        "study-assistant": "aligned"
+      }
     },
     {
       "id": "tools.translation",
       "group": "tools",
       "title": "Translation",
       "definition": "Translation provider config.",
-      "home": { "tab": "tools", "section": "translation" },
+      "home": {
+        "tab": "tools",
+        "section": "translation"
+      },
       "secrets": "product secret store",
       "scope": "profile",
-      "adopters": { "desktop-assistant": "aligned (section id 'translation')" }
+      "adopters": {
+        "desktop-assistant": "aligned (section id 'translation')",
+        "career-assistant": "n/a (no provider surface: the TRANSLATE gateway task and offline local-model batches cover generation — plan 121; the catalog-overlay review queue lives in the Taxonomy admin page, not settings)"
+      }
     },
     {
       "id": "tools.decisions",
       "group": "tools",
       "title": "Decision behavior",
       "definition": "How the assistant decides: act/confirm thresholds, scope, route tools, prompt steer, rules, version pinning. Setup (provider/model/assignment) is ai.* (ADR-0032) — only behavior lives here.",
-      "home": { "tab": "tools", "section": "decisions" },
+      "home": {
+        "tab": "tools",
+        "section": "decisions"
+      },
       "secrets": "none",
       "scope": "profile",
-      "adopters": { "desktop-assistant": "aligned (section id 'decisions')" }
+      "adopters": {
+        "desktop-assistant": "aligned (section id 'decisions')"
+      }
     },
     {
       "id": "tools.memories",
       "group": "tools",
       "title": "Memories",
       "definition": "Memory stores the assistant reads/writes at run time.",
-      "home": { "tab": "tools", "section": "memories" },
+      "home": {
+        "tab": "tools",
+        "section": "memories"
+      },
       "secrets": "none",
       "scope": "profile",
-      "adopters": { "desktop-assistant": "aligned (section id 'memories')" }
+      "adopters": {
+        "desktop-assistant": "aligned (section id 'memories')"
+      }
     },
     {
       "id": "tools.catalog",
       "group": "tools",
       "title": "Tool catalog",
       "definition": "The tool surface itself: enable/disable per tool, risk classes, verification, folders, usage.",
-      "home": { "tab": "tools", "section": "catalog" },
+      "home": {
+        "tab": "tools",
+        "section": "catalog"
+      },
       "secrets": "none",
       "scope": "profile",
-      "adopters": { "desktop-assistant": "aligned (sections 'tools'/'folders'/'usage')" }
+      "adopters": {
+        "desktop-assistant": "aligned (sections 'tools'/'folders'/'usage')"
+      }
     },
     {
       "id": "tools.connectors",
       "group": "tools",
-      "title": "Connectors (MCP client + job sources)",
-      "definition": "External tool servers the assistant can call (MCP client connectors) AND job-source connectors (posting ingestion sources with catalog-driven config; plan 32 Phase 1 / ADR-0040) — one connectors section covers both connector-kind surfaces.",
-      "home": { "tab": "tools", "section": "connectors" },
+      "title": "Connectors — the MCP server surface",
+      "definition": "The MCP server section: endpoint + transport, the write-access switch, client tokens (sealed, shown once), the live tool catalog and the recent-call audit.",
+      "home": {
+        "tab": "tools",
+        "section": "mcp"
+      },
       "secrets": "product secret store — never a plaintext column",
       "scope": "user",
       "adopters": {
         "study-assistant": "aligned (connectors section manages MCP server instances — D19 rows with keyring token/env slots, per-tool allowlists, explicit refresh — plus the read-only MCP resource-server info card, ADR-0012; plan 32 Phase 7)",
-        "career-assistant": "aligned (admin tools tab → connectors section: MCP GitHub token + job-source connector instances with x-secret slots and per-source probes, plan 32 Phase 1; extension sources — git import, consent, pins — ride the same section since Phase 3)"
+        "career-assistant": "aligned (plan 148: MCP-only after sources split off)",
+        "health-assistant/core": "n/a (data-source connectors — the extension integrations — live in the user-tier Integrations page: config-flow instances with sealed credential slots, not the tools tab; the tools tab hosts only tools.agent)"
       }
     },
     {
@@ -164,7 +225,10 @@
       "group": "tools",
       "title": "Skills",
       "definition": "Skill packs: import/enable skill bundles the assistant can use.",
-      "home": { "tab": "tools", "section": "skills" },
+      "home": {
+        "tab": "tools",
+        "section": "skills"
+      },
       "secrets": "none",
       "scope": "user",
       "adopters": {
@@ -176,7 +240,10 @@
       "group": "tools",
       "title": "Agent behavior",
       "definition": "Agentic run knobs that are not model assignment (e.g. max reasoning iterations).",
-      "home": { "tab": "tools", "section": "agent" },
+      "home": {
+        "tab": "tools",
+        "section": "agent"
+      },
       "secrets": "none",
       "scope": "scope cascade (system/tenant/user)",
       "adopters": {
@@ -188,16 +255,94 @@
       "group": "automations",
       "title": "Automations",
       "definition": "Scheduled autonomous runs: prompt/mini-app schedules with interval/daily/weekly/cron rhythms, timezone, enable, last-run.",
-      "home": { "tab": "automations", "section": null },
+      "home": {
+        "tab": "automations",
+        "section": null
+      },
       "secrets": "none",
       "scope": "profile (desktop) / user (web)",
       "adopters": {
         "desktop-assistant": "aligned (tab id 'automation')",
         "career-assistant": "aligned (tab id 'automations' since plan 27 Phase 3; legacy /settings/scheduler redirects)"
       }
+    },
+    {
+      "id": "app.updates",
+      "group": "app",
+      "title": "Update checks",
+      "definition": "Update-channel selection (stable/beta) and manual checks against the family version API (neuronection.com /api/v1/versions). Check-only: apply stays consent-gated and out of scope until plan-48 W5 (ADR-0048).",
+      "home": {
+        "tab": "about",
+        "section": "updates"
+      },
+      "scope": "device-local (desktop)",
+      "adopters": {
+        "desktop-assistant": "aligned"
+      }
+    },
+    {
+      "id": "tools.job-sources",
+      "group": "tools",
+      "title": "Job sources — posting ingestion",
+      "definition": "Job-source connector instances (catalog-driven, sealed secrets, probes, query plans, presets).",
+      "home": {
+        "tab": "tools",
+        "section": "job-sources"
+      },
+      "secrets": "product secret store — sealed at rest, shown as hints only",
+      "scope": "instance (admin)",
+      "adopters": {
+        "career-assistant": "aligned (plan 154: split from tools.connectors; plan 186: extension sources split off)"
+      }
+    },
+    {
+      "id": "tools.extensions",
+      "group": "tools",
+      "title": "Extension sources — third-party source bundles",
+      "definition": "Extension sources imported from git (digest-pinned, consent-gated, managed spawns): third-party posting bundles an admin installs onto a running instance.",
+      "home": {
+        "tab": "tools",
+        "section": "extensions"
+      },
+      "secrets": "product secret store — sealed at rest, shown as hints only",
+      "scope": "instance (admin)",
+      "adopters": {
+        "career-assistant": "aligned (plan 186: split from the combined sources domain)"
+      }
+    },
+    {
+      "id": "tools.retrieval",
+      "group": "tools",
+      "title": "Retrieval index",
+      "definition": "Vector-store operations: active space/model/dim, backend, coverage, reindex, cutover, index maintenance. Model assignment stays ai.tasks.",
+      "home": {
+        "tab": "tools",
+        "section": "retrieval"
+      },
+      "secrets": "none",
+      "scope": "instance (admin)",
+      "adopters": {
+        "career-assistant": "aligned (plan 51 Q2)",
+        "study-assistant": "aligned",
+        "health-assistant/core": "n/a (no vector store yet)"
+      }
+    },
+    {
+      "id": "tools.mappings",
+      "group": "tools",
+      "title": "Job mappings",
+      "definition": "Job-post → job-type mapping operations: coverage funnel (active/described/extracted/mapped/accounted-for), unmapped triage with typed outcomes, per-source and per-job-type breakdowns, decision trace, extraction and re-decide run controls. The mapping behavior switches stay in Taxonomy; the embeddings index stays tools.retrieval.",
+      "home": {
+        "tab": "tools",
+        "section": "mappings"
+      },
+      "secrets": "none",
+      "scope": "instance (admin)",
+      "adopters": {
+        "career-assistant": "aligned (plan 205)"
+      }
     }
   ],
-
   "invariants": [
     "INV-1: An 'aligned' surface hosts only domains whose group matches its tab's group. The AI tab hosts exactly ai.* domains.",
     "INV-2: Web search provider config (tools.web-search) never appears under AI providers, models, or tasks.",
@@ -208,92 +353,394 @@
     "INV-7: A product's declared nav (products block) matches its actual UI arrays — enforced by a per-product conformance test against the vendored copy of this file.",
     "INV-8: New settings classify here before the UI ships: the PR adds the domain entry (or an adopter line) in the same wave."
   ],
-
   "products": {
     "desktop-assistant": {
       "reference": true,
       "tabs": [
-        { "id": "general", "group": "app" },
-        { "id": "api", "group": "ai", "sections": [
-          { "id": "providers", "domains": ["ai.providers"] },
-          { "id": "models", "domains": ["ai.models"] },
-          { "id": "tasks", "domains": ["ai.tasks"] }
-        ] },
-        { "id": "voice", "group": "app", "note": "audio I/O + STT/TTS surface (ADR-0018); model choice rides ai.tasks" },
-        { "id": "tools", "group": "tools", "sections": [
-          { "id": "tools", "domains": ["tools.catalog"] },
-          { "id": "folders", "domains": ["tools.catalog"] },
-          { "id": "memories", "domains": ["tools.memories"] },
-          { "id": "usage", "domains": ["tools.catalog"] },
-          { "id": "search", "domains": ["tools.web-search"], "note": "section id 'search' predates the contract; label is 'Web search'" },
-          { "id": "translation", "domains": ["tools.translation"] },
-          { "id": "decisions", "domains": ["tools.decisions"] }
-        ] },
-        { "id": "apps", "group": "app", "note": "mini-app packs (ADR-0029); hosts the extension Sources block since plan 32 Phase 8 (git/local import, consent with origin chips, pins/updates/park)" },
-        { "id": "automation", "group": "automations", "domains": ["automations.runs"] },
-        { "id": "commands", "group": "app" },
-        { "id": "hotkeys", "group": "app" },
-        { "id": "about", "group": "app" }
+        {
+          "id": "general",
+          "group": "app"
+        },
+        {
+          "id": "api",
+          "group": "ai",
+          "sections": [
+            {
+              "id": "providers",
+              "domains": [
+                "ai.providers"
+              ]
+            },
+            {
+              "id": "models",
+              "domains": [
+                "ai.models"
+              ]
+            },
+            {
+              "id": "tasks",
+              "domains": [
+                "ai.tasks"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "voice",
+          "group": "app",
+          "note": "audio I/O + STT/TTS surface (ADR-0018); model choice rides ai.tasks"
+        },
+        {
+          "id": "tools",
+          "group": "tools",
+          "sections": [
+            {
+              "id": "tools",
+              "domains": [
+                "tools.catalog"
+              ]
+            },
+            {
+              "id": "folders",
+              "domains": [
+                "tools.catalog"
+              ]
+            },
+            {
+              "id": "memories",
+              "domains": [
+                "tools.memories"
+              ]
+            },
+            {
+              "id": "usage",
+              "domains": [
+                "tools.catalog"
+              ]
+            },
+            {
+              "id": "search",
+              "domains": [
+                "tools.web-search"
+              ],
+              "note": "section id 'search' predates the contract; label is 'Web search'"
+            },
+            {
+              "id": "translation",
+              "domains": [
+                "tools.translation"
+              ]
+            },
+            {
+              "id": "decisions",
+              "domains": [
+                "tools.decisions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "apps",
+          "group": "app",
+          "note": "Integrations umbrella (plan 38 D1): subsection 'MCP apps' (tool apps, T3 external process), 'Packs' (mini-app packs, ADR-0029) and 'Commands' (custom + command packs); hosts the extension Sources block since plan 32 Phase 8 (git/local import, consent with origin chips, pins/updates/park)"
+        },
+        {
+          "id": "notifications",
+          "group": "app",
+          "note": "Inbox (plan 42 S2): persisted notification records, unread filter, mark-read/clear, and the closed click-action deep links; the tray badge rides the same records"
+        },
+        {
+          "id": "automation",
+          "group": "automations",
+          "domains": [
+            "automations.runs"
+          ]
+        },
+        {
+          "id": "commands",
+          "group": "app"
+        },
+        {
+          "id": "hotkeys",
+          "group": "app"
+        },
+        {
+          "id": "about",
+          "group": "app",
+          "sections": [
+            {
+              "id": "updates",
+              "domains": [
+                "app.updates"
+              ]
+            }
+          ]
+        }
       ]
     },
     "study-assistant": {
       "tabs": [
-        { "id": "general", "group": "app" },
-        { "id": "ai", "group": "ai", "sections": [
-          { "id": "providers", "domains": ["ai.providers"] },
-          { "id": "models", "domains": ["ai.models"] },
-          { "id": "tasks", "domains": ["ai.tasks"] }
-        ], "note": "hosts exactly ai.* since plan 27 Phase 2 — legacy ?section=skills|mcp deep links redirect to the tools tab" },
-        { "id": "tools", "group": "tools", "sections": [
-          { "id": "web-search", "domains": ["tools.web-search"] },
-          { "id": "discovery", "domains": ["tools.discovery"] },
-          { "id": "web-sources", "domains": ["tools.web-sources"] },
-          { "id": "connectors", "domains": ["tools.connectors"] },
-          { "id": "indexing", "domains": ["tools.indexing"] },
-          { "id": "skills", "domains": ["tools.skills"] }
-        ], "note": "assembled across plan 27 Phases 1–2: cards that used to sit under AI providers + the former top-level 'search' tab + the former AI skills/mcp sections" },
-        { "id": "data", "group": "app" },
-        { "id": "users", "group": "app", "admin": true },
-        { "id": "developer", "group": "app" }
+        {
+          "id": "general",
+          "group": "app"
+        },
+        {
+          "id": "ai",
+          "group": "ai",
+          "sections": [
+            {
+              "id": "providers",
+              "domains": [
+                "ai.providers"
+              ]
+            },
+            {
+              "id": "models",
+              "domains": [
+                "ai.models"
+              ]
+            },
+            {
+              "id": "tasks",
+              "domains": [
+                "ai.tasks"
+              ]
+            }
+          ],
+          "note": "hosts exactly ai.* since plan 27 Phase 2 — legacy ?section=skills|mcp deep links redirect to the tools tab"
+        },
+        {
+          "id": "tools",
+          "group": "tools",
+          "sections": [
+            {
+              "id": "web-search",
+              "domains": [
+                "tools.web-search"
+              ]
+            },
+            {
+              "id": "discovery",
+              "domains": [
+                "tools.discovery"
+              ]
+            },
+            {
+              "id": "web-sources",
+              "domains": [
+                "tools.web-sources"
+              ]
+            },
+            {
+              "id": "connectors",
+              "domains": [
+                "tools.connectors"
+              ]
+            },
+            {
+              "id": "indexing",
+              "domains": [
+                "tools.indexing",
+                "tools.retrieval"
+              ],
+              "note": "study hosts the admin retrieval controls inside Indexing (plan 51 Q3b); the tools.retrieval domain's canonical home section is not a separate tab here"
+            },
+            {
+              "id": "skills",
+              "domains": [
+                "tools.skills"
+              ]
+            }
+          ],
+          "note": "assembled across plan 27 Phases 1–2: cards that used to sit under AI providers + the former top-level 'search' tab + the former AI skills/mcp sections"
+        },
+        {
+          "id": "data",
+          "group": "app"
+        },
+        {
+          "id": "users",
+          "group": "app",
+          "admin": true
+        },
+        {
+          "id": "developer",
+          "group": "app"
+        }
       ]
     },
     "career-assistant": {
       "tabs": [
-        { "id": "account", "group": "app" },
-        { "id": "ai", "group": "ai", "sections": [
-          { "id": "providers", "domains": ["ai.providers"] },
-          { "id": "models", "domains": ["ai.models"] },
-          { "id": "tasks", "domains": ["ai.tasks"] }
-        ], "note": "hosts exactly ai.* since plan 27 Phase 3 — the former admin 'web' tab moved to tools; legacy ?tab=web redirects" },
-        { "id": "tools", "group": "tools", "admin": true, "sections": [
-          { "id": "web-search", "domains": ["tools.web-search"] },
-          { "id": "connectors", "domains": ["tools.connectors"] }
-        ], "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token); plan 32 Phase 1 broadened connectors to also host job-source connector instances (manifest catalog + x-secret slots + probes)" },
-        { "id": "automations", "group": "automations", "domains": ["automations.runs"], "note": "renamed from 'scheduler' in plan 27 Phase 3; legacy route redirects" },
-        { "id": "notifications", "group": "app" },
-        { "id": "taxonomy", "group": "app", "admin": true },
-        { "id": "users", "group": "app", "admin": true },
-        { "id": "audit", "group": "app", "admin": true }
+        {
+          "id": "account",
+          "group": "app",
+          "note": "Appearance section (plan 121): UI language switcher (en/de/el); admins also set the instance default locale here"
+        },
+        {
+          "id": "notifications",
+          "group": "app",
+          "note": "plan 117: email + webhook channel configs (sealed secrets, double opt-in / test delivery), feed tokens (.ics/RSS lifecycle), per-kind routing + quiet hours, follow-up channel overrides (plan 116). Plan 148 moved the tab next to radar: the app rail groups tabs into display sections and notifications belongs to the personal block"
+        },
+        {
+          "id": "ai",
+          "group": "ai",
+          "sections": [
+            {
+              "id": "providers",
+              "domains": [
+                "ai.providers"
+              ]
+            },
+            {
+              "id": "models",
+              "domains": [
+                "ai.models"
+              ]
+            },
+            {
+              "id": "tasks",
+              "domains": [
+                "ai.tasks"
+              ]
+            }
+          ],
+          "note": "hosts exactly ai.* since plan 27 Phase 3 — the former admin 'web' tab moved to tools; legacy ?tab=web redirects"
+        },
+        {
+          "id": "tools",
+          "group": "tools",
+          "admin": true,
+          "sections": [
+            {
+              "id": "web-search",
+              "domains": [
+                "tools.web-search"
+              ]
+            },
+            {
+              "id": "mcp",
+              "domains": [
+                "tools.connectors"
+              ]
+            },
+            {
+              "id": "sources",
+              "domains": [
+                "tools.job-sources",
+                "tools.extensions"
+              ],
+              "note": "plan 186 split the domains; the section id stays 'sources' until the UI split ships (plan 186 step 3) — one section hosting both domains keeps INV-7 true in the interim"
+            },
+            {
+              "id": "retrieval",
+              "domains": [
+                "tools.retrieval"
+              ]
+            },
+            {
+              "id": "mappings",
+              "domains": [
+                "tools.mappings"
+              ]
+            }
+          ],
+          "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token); plan 32 Phase 1 broadened connectors to also host job-source connector instances (manifest catalog + x-secret slots + probes); plan 119 added the MCP server section (endpoint + token lifecycle, per-scope tool/resource visibility, opt-in write switch); plan 154 split the connectors section into mcp (the MCP server surface) and sources (job-source + extension ingestion); plan 186 split the sources domains into tools.job-sources + tools.extensions (section split pending)"
+        },
+        {
+          "id": "automations",
+          "group": "automations",
+          "domains": [
+            "automations.runs"
+          ],
+          "note": "renamed from 'scheduler' in plan 27 Phase 3; legacy route redirects"
+        },
+        {
+          "id": "taxonomy",
+          "group": "app",
+          "admin": true
+        },
+        {
+          "id": "companies",
+          "group": "app",
+          "admin": true,
+          "note": "plan 135: the company-matching review surface (aliases with provenance/state, never-link exclusions, the gray-band queue, merge suggestions, matcher thresholds) — an admin review surface after the taxonomy-tab precedent, not a behavior-knob settings group; the thresholds are matcher rules, not tools.* sections"
+        },
+        {
+          "id": "users",
+          "group": "app",
+          "admin": true
+        },
+        {
+          "id": "audit",
+          "group": "app",
+          "admin": true
+        }
       ]
     },
     "health-assistant/core": {
       "tabs": [
-        { "id": "user-nav", "group": "app", "note": "profile/preferences/security/appearance/ai-config/integrations/export-import" },
-        { "id": "ai-config", "group": "ai", "sections": [
-          { "id": "providers", "domains": ["ai.providers"] },
-          { "id": "models", "domains": ["ai.models"] },
-          { "id": "tasks", "domains": ["ai.tasks"] }
-        ], "note": "scope-tiered navs (user/tenant/system) stay product-specific; hosts exactly ai.* since plan 27 Phase 4 — legacy ?tab=agent redirects to the tier's tools page" },
-        { "id": "tools", "group": "tools", "admin": true, "sections": [
-          { "id": "agent", "domains": ["tools.agent"] }
-        ], "note": "plan 27 Phase 4: agent behavior out of AI config; tenant + system tiers only (the setting is tier-scoped)" },
-        { "id": "integrations", "group": "app" },
-        { "id": "anatomy-atlas", "group": "app", "admin": true }
+        {
+          "id": "user-nav",
+          "group": "app",
+          "note": "profile/preferences/security/appearance/ai-config/integrations/export-import"
+        },
+        {
+          "id": "ai-config",
+          "group": "ai",
+          "sections": [
+            {
+              "id": "providers",
+              "domains": [
+                "ai.providers"
+              ]
+            },
+            {
+              "id": "models",
+              "domains": [
+                "ai.models"
+              ]
+            },
+            {
+              "id": "tasks",
+              "domains": [
+                "ai.tasks"
+              ]
+            }
+          ],
+          "note": "scope-tiered navs (user/tenant/system) stay product-specific; hosts exactly ai.* since plan 27 Phase 4 — legacy ?tab=agent redirects to the tier's tools page"
+        },
+        {
+          "id": "tools",
+          "group": "tools",
+          "admin": true,
+          "sections": [
+            {
+              "id": "agent",
+              "domains": [
+                "tools.agent"
+              ]
+            }
+          ],
+          "note": "plan 27 Phase 4: agent behavior out of AI config; tenant + system tiers only (the setting is tier-scoped)"
+        },
+        {
+          "id": "integrations",
+          "group": "app"
+        },
+        {
+          "id": "anatomy-atlas",
+          "group": "app",
+          "admin": true
+        }
       ]
     },
     "world-knowledge-assistant": {
       "tabs": [
-        { "id": "settings", "group": "app", "note": "connection + preferences only (localStorage); out of scope until it grows BYOK (plan 26 §12)" }
+        {
+          "id": "settings",
+          "group": "app",
+          "note": "connection + preferences only (localStorage); out of scope until it grows BYOK (plan 26 §12)"
+        }
       ]
     }
   }

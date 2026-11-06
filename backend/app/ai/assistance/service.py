@@ -60,11 +60,11 @@ from app.ai.providers.service import AIProviderService
 from app.core.config import settings
 from app.models.system_setting import SystemSetting
 from app.models.tenant_model import TenantModel
-from app.services.chat_branching import (
+from app.services.chat.chat_branching import (
     branch_thread_key,
     regenerate_thread_key,
 )
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 from app.utils.prompt_guard import check_user_input_safety
 
 # Re-exported for backward compatibility — tests import the HITL helpers from
@@ -290,7 +290,7 @@ class AIAssistanceService:
                 owner_user_id=user_id,
             )
 
-        # Branch thread key (plan 11 §6): the legacy bare session id on the
+        # Branch thread key (plan 11 §6): the bare session id on the
         # un-branched spine, ``{session_id}:{branch_tip_id}`` otherwise.
         thread_key_value: str | None = None
         if session_id:

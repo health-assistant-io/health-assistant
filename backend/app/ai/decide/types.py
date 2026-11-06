@@ -2,9 +2,11 @@
 Python reference — per-repo copy, drift-guarded by the conformance suite).
 
 Health deltas: the family ``decision:<cap>`` slots are stored as
-``AITaskAssignment.task_type`` values (``decision_tool_dispatch`` &c., §3
-contract table) with ``priority``-ordered fallback across the scope cascade;
-resolution NEVER falls back to the ``default`` task (D4 slot separation).
+``ai_task_defs.code`` values referenced by ``AITaskAssignment.task_type_id``
+(``decision_tool_dispatch`` &c., §3 contract table). Resolution runs through the
+one precedence chain in ``app.ai.providers.resolution`` (kind primary → kind
+fallback columns → the ``decision`` capability default → unavailable) and NEVER
+falls back to the ``default`` chat task (D4 slot separation).
 """
 
 from collections.abc import Mapping

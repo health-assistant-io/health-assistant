@@ -22,7 +22,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.chat_model import ChatMessage, ChatSession
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 
 # §18.8 (health mapping): the profile layer is the care/subject context —
 # ownership isolation through health's own access layer (guideline §6/§17).

@@ -135,7 +135,8 @@ class HitlResolutionRequest(BaseModel):
 class HitlResumeRequest(BaseModel):
     """Body for triggering a HITL continuation turn after the user has resolved
     one or more proposed task cards. Selectors only — outcomes are read from
-    the session's tasks JSONB on the server (never trusted from the client)."""
+    the session's ``proposals`` rows on the server (never trusted from the
+    client)."""
 
     message_id: UUID | None = Field(
         None,

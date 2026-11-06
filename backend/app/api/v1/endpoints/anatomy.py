@@ -25,8 +25,8 @@ from app.schemas.anatomy import (
     AnatomyStructureUpdate,
 )
 from app.schemas.anatomy_import import AnatomyImportPayload
-from app.services import anatomy_service
-from app.services.anatomy_import_service import AnatomyImportService
+from app.services.anatomy import anatomy_service
+from app.services.anatomy.anatomy_import_service import AnatomyImportService
 
 router = APIRouter()
 
@@ -220,7 +220,7 @@ async def create_anatomy_figure(
             )
         ).to_dict()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(status_code=400, detail=str(e))  # noqa: B904 -- bare raise; add explicit chaining when touched
 
 
 @router.patch("/figures/{slug}", response_model=AnatomyFigureResponse, dependencies=[_admin_only])

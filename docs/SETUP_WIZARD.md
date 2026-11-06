@@ -179,4 +179,4 @@ The patient wizard covers US Core demographics via a FHIR R4 `extensions` JSONB 
 | Preferred language | IHE PCD extension | `extensions['preferred_language']` |
 | Insurance provider | HA custom | `extensions['insurance_provider']` |
 
-The registry lives in `backend/app/services/fhir_extensions.py`. `Patient.to_fhir_dict()` projects the local map onto a canonical FHIR `extension[]` array. The client renders the extension inputs from `GET /setup/extension-catalog` (data-driven CDC OMB code lists).
+The registry lives in `backend/app/services/fhir/fhir_extensions.py`. `Patient.to_fhir_dict()` projects the local map onto a canonical FHIR `extension[]` array. The client renders the extension inputs from `GET /setup/extension-catalog` (data-driven CDC OMB code lists).

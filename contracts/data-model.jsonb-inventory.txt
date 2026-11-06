@@ -1,0 +1,156 @@
+# JSONB inventory — health-assistant/core (constitution rule 6 / guidelines/data-model.md §5)
+#
+# Format: `table.column :: keep-open|typed-out   <reason>`
+# Gate D5 (scripts/check-data-model.sh) reads this file: every JSON/JSONB
+# model column must appear exactly once with a verdict, and every entry's
+# table must exist. Adding a JSONB column = adding its row in the same commit.
+#
+# Reasoning record (the human-readable table lives in plan 2 §4):
+#  * keep-open  — genuinely open payload: LLM content blocks, FHIR R4
+#                 structures (spec-open Extension[]/CodeableConcept/...),
+#                 extension-owned config, wire captures, layout documents,
+#                 per-type metadata blueprints driven by a schema column.
+#  * typed-out  — the app filters/joins/constrains it, or its shape is a
+#                 contract that belongs in typed columns; a named plan
+#                 rewrites it.
+#
+
+# --- audit ---
+audit_events.new_value :: keep-open   write diff
+audit_events.old_value :: keep-open   write diff
+catalog_audit_log.details :: keep-open   audit detail payload
+
+# --- ai ---
+ai_call_logs.meta :: keep-open   per-call audit payload (no prompts/completions; meta_schema_version guards shape)
+ai_models.capabilities :: keep-open   provider capability flags
+ai_models.settings :: keep-open   provider-specific model options
+ai_providers.settings :: keep-open   provider-specific connection options
+
+# --- catalog ---
+allergy_catalog.typical_reactions :: keep-open   catalog payload
+anatomy_structures.display :: keep-open   render hints
+biomarker_definitions.aliases :: keep-open   synonym list
+biomarker_definitions.meta_data :: keep-open   catalog metadata
+concept_edges.evidence :: keep-open   edge evidence
+concept_edges.properties :: keep-open   edge attributes
+concepts.aliases :: keep-open   synonym list (GIN-indexed)
+concepts.icon :: keep-open   render hints
+concepts.meta_data :: keep-open   catalog metadata
+medication_catalog.side_effects :: keep-open   catalog payload
+units.dashboard_config :: keep-open   render hints
+vaccine_catalog.dose_schedule :: keep-open   catalog payload
+vaccine_catalog.side_effects :: keep-open   catalog payload
+vaccine_catalog.target_diseases :: keep-open   catalog payload
+
+# --- clinical ---
+clinical_event_occurrences.metadata :: keep-open   per-type occurrence metadata
+clinical_event_types.icon :: keep-open   render hints
+clinical_event_types.metadata_schema :: keep-open   per-type field blueprint
+clinical_event_types.milestones :: keep-open   per-type blueprint document
+clinical_event_types.phases :: keep-open   per-type blueprint document
+clinical_event_types.severity_scale :: keep-open   per-type blueprint document
+clinical_events.event_metadata :: keep-open   per-type blueprint metadata (metadata_schema)
+doctors.address :: keep-open   FHIR Address
+doctors.telecom :: keep-open   FHIR ContactPoint[]
+documents.entities :: keep-open   extraction payload (GIN-indexed document)
+examinations.diagnoses :: keep-open   open payload
+patient_immunizations.vaccine_code :: keep-open   FHIR CodeableConcept
+
+# --- chat ---
+chat_messages.citations :: keep-open   retrieval citations
+chat_messages.content :: keep-open   LLM content blocks
+chat_messages.tool_calls :: keep-open   LLM tool-call blocks
+chat_sessions.metadata_json :: keep-open   free-form session meta
+
+# --- fhir ---
+fhir_allergy_intolerances.code :: keep-open   open payload
+fhir_allergy_intolerances.reactions :: keep-open   open payload
+fhir_communications.category :: keep-open   open payload
+fhir_communications.payload :: keep-open   open payload
+fhir_communications.recipient :: keep-open   open payload
+fhir_communications.sender :: keep-open   open payload
+fhir_communications.topic :: keep-open   open payload
+fhir_devices.device_name :: keep-open   open payload
+fhir_devices.identifier :: keep-open   open payload
+fhir_devices.type :: keep-open   open payload
+fhir_diagnostic_reports.category :: keep-open   open payload
+fhir_diagnostic_reports.code :: keep-open   open payload
+fhir_diagnostic_reports.conclusion_code :: keep-open   open payload
+fhir_diagnostic_reports.performer :: keep-open   open payload
+fhir_diagnostic_reports.presented_form :: keep-open   open payload
+fhir_diagnostic_reports.subject :: keep-open   open payload
+fhir_medications.code :: keep-open   open payload
+fhir_medications.frequency :: keep-open   open payload
+fhir_medications.subject :: keep-open   open payload
+fhir_observations.category :: keep-open   open payload
+fhir_observations.code :: keep-open   open payload
+fhir_observations.component :: keep-open   open payload
+fhir_observations.interpretation :: keep-open   open payload
+fhir_observations.lab_reference_range :: keep-open   open payload
+fhir_observations.performer :: keep-open   open payload
+fhir_observations.reference_range :: keep-open   open payload
+fhir_observations.subject :: keep-open   open payload
+fhir_observations.value_codeableConcept :: keep-open   open payload
+fhir_observations.value_quantity :: keep-open   open payload
+fhir_organizations.address :: keep-open   open payload
+fhir_organizations.alias :: keep-open   open payload
+fhir_organizations.contact :: keep-open   open payload
+fhir_organizations.telecom :: keep-open   open payload
+fhir_organizations.type :: keep-open   open payload
+fhir_patients.address :: keep-open   open payload
+fhir_patients.dashboard_layout :: keep-open   open payload
+fhir_patients.emergency_contact :: keep-open   open payload
+fhir_patients.extensions :: keep-open   open payload
+fhir_patients.name :: keep-open   open payload
+fhir_patients.telecom :: keep-open   open payload
+fhir_provenance.activity :: keep-open   open payload
+fhir_provenance.agent :: keep-open   open payload
+fhir_provenance.entity :: keep-open   open payload
+fhir_provenance.target :: keep-open   open payload
+
+# --- integrations ---
+integration_debug_logs.payload :: keep-open   open payload
+system_integrations.global_config :: keep-open   extension-owned config (config_schema_version, plan 7)
+user_integrations.user_config :: typed-out   typed config columns + integration_sync_state (plan 8)
+
+# --- jobs ---
+erasure_requests.report :: keep-open   ordered-walker impact report (report_schema_version guards shape; never queried by shape)
+export_jobs.patient_ids :: keep-open   job scope list
+export_jobs.resource_counts :: keep-open   export summary
+import_jobs.errors :: keep-open   import failure list
+import_jobs.restore_result :: keep-open   restore summary
+import_jobs.warnings :: keep-open   import warning list
+task_logs.data :: keep-open   task detail payload
+
+# --- proposals ---
+proposals.final_payload :: keep-open   user-approved kind payload (validated against the kind schema before any write; plan 5)
+proposals.payload :: keep-open   versioned HITL card document (payload_schema_version; plan 5)
+proposals.resolution_trace :: keep-open   audit trace — who resolved what when (plan 5)
+
+# --- telemetry ---
+telemetry_anomalies.payload :: keep-open   CAgg anomaly diagnostics (baseline stats); payload_schema_version guards the shape (plan 3)
+
+# --- notifications ---
+notification_rules.targets :: keep-open   fan-out target list
+notification_subscriptions.subscription_data :: keep-open   webpush subscription blob
+notification_triggers.config :: keep-open   threshold config
+notifications.payload :: keep-open   notification content
+notifications.source_ref :: keep-open   source reference tuple
+
+# --- settings ---
+patient_layouts.cards_config :: keep-open   layout document
+patient_layouts.layout_config :: keep-open   layout document
+system_settings.value :: keep-open   typed per-setting value envelope
+tenants.settings :: keep-open   tenant settings
+users.mfa_pending :: keep-open   pending TOTP enrolment
+users.settings :: keep-open   user settings
+
+# --- extension source lane (plan 7) ---
+extension_source_versions.envelope :: keep-open   the charter envelope manifest (open charter payload; capabilities read as data)
+extension_consents.scope_json :: keep-open   per-capability consent scope (charter-open payload)
+extension_isolation_posture.posture :: keep-open   graded isolation DETECTION evidence (schema_version embeds the shape guard)
+
+# --- cloud calendar lane (0009_calendar_bindings) ---
+calendar_bindings.options :: keep-open   provider bind options from the catalog (validated at bind time)
+calendar_bindings.scopes :: keep-open   granted OAuth scopes (provider-defined list)
+calendar_sync_logs.counts :: keep-open   per-run counters (source-dependent shape)

@@ -20,8 +20,8 @@ from sqlalchemy import func, select
 from app.core.database import AsyncSessionLocal
 from app.models.concept_model import Concept
 from app.models.enums import ConceptKind
-from app.services.concept_service import concepts_with_kind
-from app.services.seed_service import SeedService
+from app.services.catalog.concept_service import concepts_with_kind
+from app.services.seed.service import SeedService
 
 
 def _seed_items():

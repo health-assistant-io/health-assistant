@@ -42,20 +42,43 @@
 # migration lands (ai-features §10).
 #
 # Usage:
-#   ./check-ai-alignment.sh                 # family scan from the dev repo
+#   ./check-ai-alignment.sh                 # family scan (any cwd, any copy)
 #   ./check-ai-alignment.sh --strict        # fail on every repo (post-migration)
 #   ./check-ai-alignment.sh --self [--mode transition|strict]
 #                                            # self-check one repo from its
 #                                            # root (vendored copy in product
 #                                            # CI — ADR-0003/0004 compliant)
+#   ./check-ai-alignment.sh --self-test     # path-resolution regression suite
 #
 # Vendored copies in product repos must stay byte-identical to this file
 # (sha-checked by scripts/verify-wiring.sh). The per-repo mode table below
 # only applies to the family scan; --self defaults to strict.
 set -uo pipefail
 
-DEV_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORKSPACE="$(dirname "$DEV_ROOT")"
+SELF_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+DEV_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# The family root (the directory holding the product repos) is NOT always
+# one level above this copy: the dev canonical lives at <family>/dev, while
+# the vendored copy in health-assistant/core lives at
+# <family>/health-assistant/core. Guessing with dirname() put the scan at
+# <family>/health-assistant/health-assistant, where every table entry missed
+# and each repo printed "SKIP (no backend/app)" — a vacuous green from the
+# very repo the gate was running in. Probe both depths and take the one that
+# actually carries the repos (the --self-test covers both layouts).
+family_root() {
+  local cand n best="" best_n=0 entry
+  for cand in "$(dirname "$DEV_ROOT")" "$(dirname "$(dirname "$DEV_ROOT")")"; do
+    [ "$cand" = "$best" ] && continue
+    n=0
+    for entry in "${REPOS[@]}"; do
+      [ -d "$cand/${entry%%:*}" ] && n=$((n + 1))
+    done
+    if [ "$n" -gt "$best_n" ]; then best="$cand"; best_n="$n"; fi
+  done
+  [ -n "$best" ] && { echo "$best"; return 0; }
+  return 1
+}
 
 # repo (relative to workspace) : mode : tests dir (repo-relative) : kind
 # All four repos run strict since plan 26 Phase 6 (career's grand port and
@@ -69,14 +92,17 @@ REPOS=(
   "desktop-assistant:strict:tests:js"
 )
 
-STRICT_ALL=0; SELF=0; MODE_OVERRIDE=""
+WORKSPACE="$(family_root)" || WORKSPACE=""
+
+STRICT_ALL=0; SELF=0; SELF_TEST=0; MODE_OVERRIDE=""
 for arg in "$@"; do
   case "$arg" in
     --strict) STRICT_ALL=1 ;;
     --self) SELF=1 ;;
+    --self-test) SELF_TEST=1 ;;
     --mode) : ;;  # value consumed below
     transition|strict) [ "$MODE_OVERRIDE" = "" ] || MODE_OVERRIDE="$arg"; MODE_OVERRIDE="$arg" ;;
-    *) echo "unknown arg: $arg (use --strict, --self, --mode transition|strict)" >&2; exit 2 ;;
+    *) echo "unknown arg: $arg (use --strict, --self, --self-test, --mode transition|strict)" >&2; exit 2 ;;
   esac
 done
 
@@ -94,7 +120,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     GRAPHS_DIR="src/main/ai/graphs"
     GRAPH_RE='StateGraph|createAgent\b'
     if [ ! -d "$backend" ]; then
-      echo "SKIP (no src/main — not an electron product)"
+      echo "FAIL (no src/main — not an electron product)"; REPO_FAIL=1
       return
     fi
     SCAN_ARGS=(--include='*.ts' --include='*.js' --include='*.mts' -rIlnE
@@ -109,7 +135,7 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
     FACTORY="backend/app/ai/chat_models.py"
     GRAPHS_DIR="backend/app/ai/graphs"
     if [ ! -d "$backend/app" ]; then
-      echo "SKIP (no backend/app — not a product backend)"
+      echo "FAIL (no backend/app — not a product backend)"; REPO_FAIL=1
       return
     fi
     SCAN_ARGS=(--include='*.py' -rIlnE
@@ -234,24 +260,151 @@ check_repo() {  # dir mode tests_dir kind -> sets REPO_FAIL=1 on strict findings
   fi
 }
 
+# --self-test: path-resolution regression suite (no sibling repos needed).
+# Covers the misresolution class twice over — the dev-canonical layout
+# (<family>/dev) and the vendored layout (<family>/health-assistant/core) —
+# and asserts the loud-failure paths that replaced the vacuous SKIP.
+selftest_fixture_repo() {  # dir kind
+  local d="$1" kind="${2:-python}"
+  if [ "$kind" = "js" ]; then
+    mkdir -p "$d/src/main/ai"
+    printf 'export const MODEL = "mock";\n' > "$d/src/main/ai/factory.ts"
+    printf 'export const BOOT = 1;\n' > "$d/src/main/index.ts"
+  else
+    mkdir -p "$d/backend/app/ai" "$d/backend/tests"
+    printf 'VALUE = 1\n' > "$d/backend/app/main.py"
+    printf 'def build_chat_model():\n    return None\n' > "$d/backend/app/ai/chat_models.py"
+    printf 'def test_ok():\n    assert True\n' > "$d/backend/tests/test_ok.py"
+  fi
+}
+
+selftest_family() {  # dir -> four product repos (the REPOS table's shapes)
+  local fam="$1"
+  selftest_fixture_repo "$fam/study-assistant"
+  selftest_fixture_repo "$fam/career-assistant"
+  selftest_fixture_repo "$fam/health-assistant/core"
+  selftest_fixture_repo "$fam/desktop-assistant" js
+  mkdir -p "$fam/dev/scripts" "$fam/health-assistant/core/scripts"
+  cp "$SELF_PATH" "$fam/dev/scripts/check-ai-alignment.sh"
+  cp "$SELF_PATH" "$fam/health-assistant/core/scripts/check-ai-alignment.sh"
+}
+
+run_selftest() {
+  local work fam lone out rc pass=0 failed=0
+  work="$(mktemp -d)"
+  fam="$work/family"
+  selftest_family "$fam"
+
+  echo "== ai-alignment gate self-test =="
+
+  case_ok() { pass=$((pass + 1)); echo "ok   $1"; }
+  case_fail() { failed=$((failed + 1)); echo "FAIL $1"; echo "$2" | sed 's/^/     /'; }
+
+  # 1. vendored copy (two levels below the family root): no-arg scans the
+  #    repo it lives in instead of printing SKIP + a vacuous green.
+  out="$(cd "$work" && bash "$fam/health-assistant/core/scripts/check-ai-alignment.sh" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ] && grep -qE '^health-assistant/core +OK$' <<<"$out" \
+    && ! grep -q 'SKIP' <<<"$out" && [ "$(grep -cE 'OK$' <<<"$out")" -ge 4 ]; then
+    case_ok "vendored copy no-arg resolves the family root and scans its own repo"
+  else
+    case_fail "vendored copy no-arg resolves the family root and scans its own repo" "rc=$rc
+$out"
+  fi
+
+  # 2. dev-canonical copy (one level below the family root): same scan.
+  out="$(cd "$work" && bash "$fam/dev/scripts/check-ai-alignment.sh" 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ] && grep -qE '^health-assistant/core +OK$' <<<"$out" \
+    && ! grep -q 'SKIP' <<<"$out" && ! grep -q 'health-assistant/health-assistant' <<<"$out"; then
+    case_ok "dev-canonical copy no-arg resolves the family root"
+  else
+    case_fail "dev-canonical copy no-arg resolves the family root" "rc=$rc
+$out"
+  fi
+
+  # 3. --self from a repo root still checks that repo (CI path).
+  out="$(cd "$fam/health-assistant/core" && bash scripts/check-ai-alignment.sh --self 2>&1)"; rc=$?
+  if [ "$rc" -eq 0 ] && grep -q 'self (strict, python)  OK' <<<"$out"; then
+    case_ok "--self from the repo root checks that repo"
+  else
+    case_fail "--self from the repo root checks that repo" "rc=$rc
+$out"
+  fi
+
+  # 4. --self outside a repo fails loud (was: vacuous "no strict violations").
+  out="$(cd "$work" && bash "$fam/dev/scripts/check-ai-alignment.sh" --self 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q 'not a repo root' <<<"$out" && ! grep -q 'no strict violations' <<<"$out"; then
+    case_ok "--self outside a repo fails loud"
+  else
+    case_fail "--self outside a repo fails loud" "rc=$rc
+$out"
+  fi
+
+  # 5. a repo named in the table but not checked out is a loud failure, not
+  #    a skipped entry.
+  rm -rf "$fam/desktop-assistant"
+  out="$(cd "$work" && bash "$fam/dev/scripts/check-ai-alignment.sh" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q 'repo not checked out' <<<"$out"; then
+    case_ok "missing family repo is a loud failure"
+  else
+    case_fail "missing family repo is a loud failure" "rc=$rc
+$out"
+  fi
+
+  # 6. a lone copy with no siblings cannot run a family scan: loud failure.
+  lone="$work/lone/core"
+  selftest_fixture_repo "$lone"
+  mkdir -p "$lone/scripts"
+  cp "$SELF_PATH" "$lone/scripts/check-ai-alignment.sh"
+  out="$(cd "$work" && bash "$lone/scripts/check-ai-alignment.sh" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ] && grep -q 'cannot locate the family root' <<<"$out" \
+    && ! grep -q 'no strict violations' <<<"$out"; then
+    case_ok "lone copy no-arg fails loud instead of skipping every repo"
+  else
+    case_fail "lone copy no-arg fails loud instead of skipping every repo" "rc=$rc
+$out"
+  fi
+
+  rm -rf "$work"
+  echo "--"
+  echo "self-test: $pass passed, $failed failed"
+  [ "$failed" -eq 0 ]
+}
+
 fail=0
-if [ "$SELF" -eq 1 ]; then
+if [ "$SELF_TEST" -eq 1 ]; then
+  run_selftest || exit 1
+  exit 0
+elif [ "$SELF" -eq 1 ]; then
   mode="${MODE_OVERRIDE:-strict}"
   if [ -d "$(pwd)/src/main" ]; then
     kind=js; tests_dir=tests
-  else
+  elif [ -d "$(pwd)/backend/app" ]; then
     kind=python; tests_dir=backend/tests
+  else
+    echo "FAIL (no backend/app or src/main under $(pwd) — not a repo root)" >&2
+    echo "ai alignment: FAILURES above (see guidelines/ai-features.md, ADR-0008/0018)" >&2
+    exit 1
   fi
   printf 'self (%s, %s)  ' "$mode" "$kind"
   check_repo "$(pwd)" "$mode" "$tests_dir" "$kind"
   [ "$REPO_FAIL" -eq 1 ] && fail=1
 else
+  if [ -z "$WORKSPACE" ]; then
+    echo "ai alignment: cannot locate the family root above $DEV_ROOT" >&2
+    echo "  (no sibling product repos found; run --self for a single repo)" >&2
+    exit 2
+  fi
+  echo "family root: $WORKSPACE"
   for entry in "${REPOS[@]}"; do
     repo="${entry%%:*}"; rest="${entry#*:}"
     mode="${rest%%:*}"; tests_dir_kind="${rest#*:}"
     tests_dir="${tests_dir_kind%%:*}"; kind="${tests_dir_kind##*:}"
     [ -n "$MODE_OVERRIDE" ] && mode="$MODE_OVERRIDE"
     printf '%-28s ' "$repo"
+    if [ ! -d "$WORKSPACE/$repo" ]; then
+      echo "FAIL (repo not checked out at $WORKSPACE/$repo)"; fail=1
+      continue
+    fi
     check_repo "$WORKSPACE/$repo" "$mode" "$tests_dir" "$kind"
     [ "$REPO_FAIL" -eq 1 ] && fail=1
   done

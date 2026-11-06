@@ -93,6 +93,16 @@ def test_webhook_bridge_mcp_are_not_pushers():
         assert "push" not in manifest["capabilities"], domain
 
 
+def _run_sync_pipeline_src() -> str:
+    """run_sync's text plus its legs — the pipeline spans both modules."""
+    import inspect
+
+    from app.services import integration_sync_service as svc
+    from app.services.integration import sync_legs
+
+    return inspect.getsource(svc.run_sync) + inspect.getsource(sync_legs)
+
+
 def test_run_sync_gates_push_on_the_declared_capability():
     """Source-level guard: the engine's push block gates on the declared
     ``push`` capability via ``_declared`` — never an unconditional call,
@@ -100,12 +110,13 @@ def test_run_sync_gates_push_on_the_declared_capability():
     import inspect
 
     from app.services import integration_sync_service as svc
+    from app.services.integration import sync_legs
 
-    src = inspect.getsource(svc)
-    assert '_declared(provider, "supports_push")' in src, (
+    src = inspect.getsource(svc) + inspect.getsource(sync_legs)
+    assert '_declared(provider, "push")' in src, (
         "run_sync must gate push_data behind the declared push capability"
     )
-    assert "supports_push()" not in src, "the supports_push hook probe is gone"
+    assert "supports_push" not in src, "the supports_push hook probe is gone"
 
 
 def test_domain_alias_mapping():

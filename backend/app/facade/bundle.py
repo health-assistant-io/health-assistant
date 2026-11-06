@@ -131,7 +131,7 @@ def build_search_bundle(
     if meta is not None:
         bundle["meta"] = meta
     else:
-        from app.services.fhir_helpers import build_meta
+        from app.services.fhir.fhir_helpers import build_meta
 
         bundle["meta"] = build_meta(provenance=False)
     return bundle
@@ -169,7 +169,7 @@ def _with_page(pairs: list[tuple], offset: int, count: int) -> list[tuple]:
     (self/first/last/previous/next). We emit ``page=N`` (1-based) because
     it's the most common convention (Vonk/Firely, and most REST APIs).
     The parser also accepts ``_page`` (HAPI style) and ``_offset``
-    (0-based legacy) on input, so clients using any of these forms can
+    (0-based offset) on input, so clients using any of these forms can
     follow our pagination links correctly.
 
     Passing ``offset=0`` emits ``page=1`` (the first page).

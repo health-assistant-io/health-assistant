@@ -11,7 +11,7 @@ A4: The background Celery task ``sync_active_integrations`` (runs every 60s)
 The fix introduces ``integration_sync_service.apply_telemetry_split`` and
 wires it into both the background task and the manual sync endpoint.
 
-The long-format rewrite (migration ``t1e2l3o4n5g6``) collapses the
+The long-format shape (``0001_baseline``) collapses the
 slug→column branching: every telemetry observation becomes one
 ``TelemetryDataModel(slug=..., value=..., unit=..., patient_id=...)`` row.
 These tests pin that contract.
@@ -25,13 +25,14 @@ from uuid import UUID, uuid4
 import pytest
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
+PATIENT_A = UUID("22222222-2222-2222-2222-222222222222")
 
 
 class _FakeObservation:
     """Stand-in for the ORM Observation class so test routing checks can
     distinguish it from TelemetryDataModel via ``type(x).__name__``."""
 
-    def __init__(self, biomarker_id, value=70.0, code_loinc="8867-4", patient_id=None):
+    def __init__(self, biomarker_id, value=70.0, code_loinc="8867-4", patient_id=PATIENT_A):
         self.id = uuid4()
         self.biomarker_id = biomarker_id
         self.effective_datetime = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -48,7 +49,7 @@ _FakeObservation.__name__ = "Observation"
 _FakeObservation.__qualname__ = "Observation"
 
 
-def _make_obs(biomarker_id, value=70.0, code_loinc="8867-4", patient_id=None):
+def _make_obs(biomarker_id, value=70.0, code_loinc="8867-4", patient_id=PATIENT_A):
     """Build a fake Observation ORM object for the split helper."""
     return _FakeObservation(biomarker_id, value, code_loinc, patient_id)
 
@@ -58,7 +59,19 @@ def _make_biomarker(b_id, slug, is_telemetry):
     b.id = b_id
     b.slug = slug
     b.is_telemetry = is_telemetry
+    b.preferred_unit = None
     return b
+
+
+@pytest.fixture(autouse=True)
+def _stub_device_resolution(monkeypatch):
+    """Device identity is a DB concern; these tests pin the split routing."""
+    from app.services import integration_sync_service as svc
+
+    async def _resolve(_db, **_kwargs):
+        return uuid4()
+
+    monkeypatch.setattr(svc, "resolve_telemetry_device", _resolve)
 
 
 class _FakeResult:
@@ -128,7 +141,8 @@ async def test_split_routes_telemetry_flagged_to_hypertable():
     row = telemetry_records[0]
     assert row.slug == "heart-rate"
     assert row.value == 72.0
-    assert row.unit == "{beats}/min"
+    assert row.unit == "bpm"
+    assert row.raw_unit == "{beats}/min"
     assert not hasattr(row, "heart_rate"), (
         "Long-format TelemetryDataModel must not carry dedicated metric columns"
     )
@@ -289,6 +303,30 @@ async def test_split_carries_patient_id_onto_telemetry_row():
 
 
 @pytest.mark.asyncio
+async def test_split_skips_telemetry_obs_without_patient_attribution():
+    """The hypertable stores ``patient_id`` NOT NULL: a telemetry observation
+    with no patient attribution is skipped instead of raising on insert."""
+    from app.services.integration_sync_service import apply_telemetry_split
+
+    b_id = uuid4()
+    b_def = _make_biomarker(b_id, "heart-rate", is_telemetry=True)
+    session = _FakeSession([b_def])
+
+    obs = _make_obs(b_id, value=72.0, patient_id=None)
+
+    telemetry_records, fhir_records = await apply_telemetry_split(
+        session,
+        [obs],
+        tenant_id=TENANT_A,
+        instance_name="fitbit-1",
+        provider_name="fitbit",
+        integration_id=uuid4(),
+    )
+    assert telemetry_records == [], "unattributed telemetry rows cannot be stored"
+    assert fhir_records == []
+
+
+@pytest.mark.asyncio
 async def test_split_skips_telemetry_obs_with_no_numeric_value():
     """Long-format hypertable requires NOT NULL ``value``; a telemetry obs
     we can't extract a numeric value from is skipped (the FHIR path is the
@@ -337,15 +375,28 @@ def test_sync_active_integrations_uses_run_sync():
     )
 
 
-def test_run_sync_calls_apply_telemetry_split():
-    """The shared pipeline must call apply_telemetry_split."""
-    from app.services import integration_sync_service
+def _run_sync_pipeline_src() -> str:
+    """run_sync's text plus its legs — the pipeline spans both modules."""
+    import inspect
 
-    src = inspect.getsource(integration_sync_service.run_sync)
-    assert "apply_telemetry_split" in src, (
-        "run_sync does not invoke apply_telemetry_split — telemetry would "
+    from app.services import integration_sync_service as svc
+    from app.services.integration import sync_legs
+
+    return inspect.getsource(svc.run_sync) + inspect.getsource(sync_legs)
+
+
+def test_run_sync_routes_through_the_ingest_funnel():
+    """The shared pipeline must call the ingest funnel (which splits)."""
+
+    src = _run_sync_pipeline_src()
+    assert "ingest_observations" in src, (
+        "run_sync does not invoke the ingest funnel — telemetry would "
         "again land in fhir_observations"
     )
+    funnel_src = inspect.getsource(
+        __import__("app.services.integration.integration_ingest", fromlist=["x"])
+    )
+    assert "apply_telemetry_split" in funnel_src
 
 
 def test_manual_sync_endpoint_uses_run_sync():
@@ -369,12 +420,11 @@ def _webhook_handler_source() -> str:
     return inspect.getsource(integrations.integration_webhook)
 
 
-def test_webhook_endpoint_uses_apply_telemetry_split():
-    """The webhook handler must call ``apply_telemetry_split``."""
+def test_webhook_endpoint_uses_the_ingest_funnel():
+    """The webhook handler must route through the one ingest funnel."""
     src = _webhook_handler_source()
-    assert "apply_telemetry_split" in src, (
-        "webhook handler must route through apply_telemetry_split"
-    )
+    assert "ingest_observations" in src, "webhook handler must route through ingest_observations"
+    assert "apply_telemetry_split" not in src, "webhook handler must not carry its own split path"
 
 
 def test_webhook_endpoint_no_longer_inlines_telemetry_loop():
@@ -383,15 +433,15 @@ def test_webhook_endpoint_no_longer_inlines_telemetry_loop():
     assert '"calories" in slug' not in src
     assert "TelemetryDataModel(" not in src, (
         "webhook handler must not construct TelemetryDataModel directly — "
-        "apply_telemetry_split owns that"
+        "the ingest funnel owns that"
     )
 
 
 def test_webhook_endpoint_passes_real_per_channel_counts_to_notifications():
     """post_sync_notifications must receive the real per-channel counts."""
     src = _webhook_handler_source()
-    assert "fhir_persisted=len(fhir_records)" in src
-    assert "telemetry_persisted=len(telemetry_records)" in src
+    assert "fhir_persisted=fhir_count" in src
+    assert "telemetry_persisted=telemetry_count" in src
 
 
 # ---------------------------------------------------------------------------
@@ -424,13 +474,15 @@ def test_apply_telemetry_split_has_no_slug_to_column_branching():
 
 
 def test_run_sync_wires_clinical_events_opt_in_hook():
-    from app.services import integration_sync_service as svc
+    from app.services.integration import integration_ingest
 
-    src = inspect.getsource(svc.run_sync)
-    assert "supports_clinical_events" in src
+    src = _run_sync_pipeline_src()
+    assert '_declared(provider, "clinical_event")' in src
     assert "pull_clinical_events" in src
-    assert "create_event" in src
-    assert "source_integration_id=integration.id" in src
+    assert "ingest_appointments" in src
+    funnel_src = inspect.getsource(integration_ingest.ingest_appointments)
+    assert "create_event" in funnel_src
+    assert "source_integration_id=integration.id" in funnel_src
 
 
 def test_declared_helper_reads_the_registry(monkeypatch):
@@ -442,39 +494,36 @@ def test_declared_helper_reads_the_registry(monkeypatch):
     reg = IntegrationRegistry()
     reg._load_manifests()
 
-    import app.services.integration_sync_service as svc
-
-    class _Bare:
-        pass
+    import app.services.integration.sync_support as sync_support
 
     # a real bundled domain answers from its manifest (patch the singleton —
     # at runtime the app's startup initialize() populates it)
-    real = svc.integration_registry
-    svc.integration_registry = reg
+    real = sync_support.integration_registry
+    sync_support.integration_registry = reg
     try:
-        assert _declared(type("P", (), {"domain": "fhir_server"})(), "supports_documents") is True
+        assert _declared(type("P", (), {"domain": "fhir_server"})(), "document") is True
     finally:
-        svc.integration_registry = real
+        sync_support.integration_registry = real
     # a domain with no such declaration answers False
-    assert _declared(type("P", (), {"domain": "webhook"})(), "supports_documents") is False
+    assert _declared(type("P", (), {"domain": "webhook"})(), "document") is False
     # no domain attribute -> nothing declared
-    assert _declared(_Bare(), "supports_documents") is False
+    assert _declared(type("B", (), {})(), "document") is False
 
 
 def test_run_sync_wires_examinations_opt_in_hook():
-    from app.services import integration_sync_service as svc
+    from app.services.integration import integration_ingest
 
-    src = inspect.getsource(svc.run_sync)
-    assert "supports_examinations" in src
+    src = _run_sync_pipeline_src()
+    assert '_declared(provider, "examination")' in src
     assert "pull_examinations" in src
-    assert "create_examination" in src
+    assert "ingest_appointments" in src
+    assert "create_examination" in inspect.getsource(integration_ingest.ingest_appointments)
 
 
 def test_run_sync_wires_catalog_proposals_opt_in_hook():
-    from app.services import integration_sync_service as svc
 
-    src = inspect.getsource(svc.run_sync)
-    assert "supports_catalog_proposals" in src
+    src = _run_sync_pipeline_src()
+    assert '_declared(provider, "catalog_proposal")' in src
     assert "pull_catalog_proposals" in src
     assert "apply_proposal" in src
 
@@ -483,7 +532,7 @@ def test_run_sync_enforces_proposals_per_sync_cap():
     from app.services import integration_sync_service as svc
 
     assert svc.INTEGRATION_MAX_PROPOSALS_PER_SYNC > 0
-    src = inspect.getsource(svc.run_sync)
+    src = _run_sync_pipeline_src()
     assert "INTEGRATION_MAX_PROPOSALS_PER_SYNC" in src
 
 
@@ -496,10 +545,9 @@ def test_sync_result_carries_proposal_counts():
 
 
 def test_run_sync_wires_hitl_proposals_opt_in_hook():
-    from app.services import integration_sync_service as svc
 
-    src = inspect.getsource(svc.run_sync)
-    assert "supports_hitl_proposals" in src
+    src = _run_sync_pipeline_src()
+    assert '_declared(provider, "hitl_proposal")' in src
     assert "pull_hitl_proposals" in src
     assert "create_proposal" in src
 
@@ -508,14 +556,13 @@ def test_run_sync_enforces_hitl_proposals_per_sync_cap():
     from app.services import integration_sync_service as svc
 
     assert svc.INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC > 0
-    src = inspect.getsource(svc.run_sync)
+    src = _run_sync_pipeline_src()
     assert "INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC" in src
 
 
 def test_run_sync_emits_hitl_proposal_notification_on_insert():
-    from app.services import integration_sync_service as svc
 
-    src = inspect.getsource(svc.run_sync)
+    src = _run_sync_pipeline_src()
     assert "_emit_hitl_proposal_notification" in src
 
 

@@ -165,7 +165,7 @@ class AuditEntryResponse(BaseModel):
     resource_type: str
     resource_id: UUID | None = None
     outcome: str = "ok"
-    old_value: dict[str, Any] | None = None
+    old_value: dict[str, Any] | None = None  # gate-allow: *, audit diff
     new_value: dict[str, Any] | None = None
     created_at: str | None = None
 

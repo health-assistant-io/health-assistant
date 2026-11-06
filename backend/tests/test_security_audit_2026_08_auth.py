@@ -112,7 +112,7 @@ async def test_manager_cannot_set_system_admin_role(async_client: AsyncClient, m
 
 @pytest.mark.asyncio
 async def test_service_update_user_refuses_system_admin():
-    from app.services import user_service
+    from app.services.tenancy import user_service
 
     result = await user_service.update_user(
         uuid.uuid4(), role="SYSTEM_ADMIN", tenant_id=uuid.uuid4()

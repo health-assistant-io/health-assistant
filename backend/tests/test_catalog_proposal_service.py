@@ -1,4 +1,4 @@
-"""Tests for ``app.services.catalog_proposal_service.apply_proposal``.
+"""Tests for ``app.services.catalog.catalog_proposal_service.apply_proposal``.
 
 Workstream F.1 covers the ``kind="biomarker"`` router only; F.2 will
 extend this file with medication / concept / edge cases. These are
@@ -25,7 +25,7 @@ from app.models.biomarker_model import BiomarkerDefinition
 from app.models.enums import CatalogScope
 from app.models.tenant_model import TenantModel
 from app.schemas.user import TokenData
-from app.services.catalog_proposal_service import ApplyResult, apply_proposal
+from app.services.catalog.catalog_proposal_service import ApplyResult, apply_proposal
 
 
 @pytest_asyncio.fixture
@@ -387,7 +387,7 @@ async def test_apply_edge_proposal_creates_edge_with_integration_provenance(
         EdgeApprovalStatus,
         EdgeEndpointType,
     )
-    from app.services.concept_service import ConceptService
+    from app.services.catalog.concept_service import ConceptService
 
     tenant_id, actor, p = tenant_and_actor
     async with AsyncSessionLocal() as db:
@@ -440,7 +440,7 @@ async def test_apply_edge_proposal_creates_edge_with_integration_provenance(
 async def test_apply_edge_proposal_idempotent_on_endpoints(tenant_and_actor):
     """Re-applying an edge with the same endpoints + relation is a no-op."""
     from app.models.enums import ConceptKind
-    from app.services.concept_service import ConceptService
+    from app.services.catalog.concept_service import ConceptService
 
     tenant_id, actor, p = tenant_and_actor
     async with AsyncSessionLocal() as db:

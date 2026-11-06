@@ -29,8 +29,8 @@ from app.models.enums import (
     ConceptStatus,
     EdgeEndpointType,
 )
-from app.services.catalog_graph_service import count_relations_both_directions
-from app.services.concept_service import ConceptService
+from app.services.catalog.catalog_graph_service import count_relations_both_directions
+from app.services.catalog.concept_service import ConceptService
 
 
 @pytest_asyncio.fixture
@@ -550,7 +550,7 @@ async def test_whole_concept_graph_returns_nodes_and_edges(clean_concept_namespa
         await session.commit()
 
     async with AsyncSessionLocal() as session:
-        from app.services.catalog_graph_service import whole_concept_graph
+        from app.services.catalog.catalog_graph_service import whole_concept_graph
 
         # Use a kind filter to narrow the result set (the test DB accumulates
         # concepts across runs; the default limit_nodes=1000 would cut off
@@ -604,7 +604,7 @@ async def test_whole_concept_graph_kind_filter_narrows(clean_concept_namespace):
         await session.commit()
 
     async with AsyncSessionLocal() as session:
-        from app.services.catalog_graph_service import whole_concept_graph
+        from app.services.catalog.catalog_graph_service import whole_concept_graph
 
         result = await whole_concept_graph(session, tenant_id=None, kinds=["disease", "symptom"])
         node_ids = {n["id"] for n in result["nodes"]}

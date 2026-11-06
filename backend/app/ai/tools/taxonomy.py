@@ -45,11 +45,11 @@ def build(ctx: ToolContext):
 
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
-        from app.services.catalog_search_service import (
+        from app.services.catalog.catalog_search_service import (
             _hybrid_search_one,
             _specs_by_type,
         )
-        from app.services.concept_service import concepts_with_kind
+        from app.services.catalog.concept_service import concepts_with_kind
 
         resolved_kind = None
         if kind:
@@ -127,7 +127,7 @@ def build(ctx: ToolContext):
         """
         from uuid import UUID
 
-        from app.services.concept_service import ConceptService
+        from app.services.catalog.concept_service import ConceptService
 
         svc = ConceptService(ctx.db)
         try:
@@ -182,7 +182,7 @@ def build(ctx: ToolContext):
         from uuid import UUID
 
         from app.models.enums import ConceptRelationType, EdgeEndpointType
-        from app.services.concept_service import ConceptService
+        from app.services.catalog.concept_service import ConceptService
 
         try:
             et = EdgeEndpointType(entity_type)

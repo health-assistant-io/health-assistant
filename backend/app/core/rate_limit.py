@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Any
 
 from fastapi import Depends, HTTPException, Request, status
 from nx_auth.ratelimit import RateLimitPolicy, RedisCounter, client_ip
@@ -46,12 +47,28 @@ logger = logging.getLogger(__name__)
 # (`nx_auth.ratelimit.BUCKETS`) — product copies are drift-gated.
 
 
+class _KitRedisSlice:
+    """The kit's ``_RedisLike`` slice over this app's redis client.
+
+    The kit protocol predates redis-py 8.x parameter names, so the raw
+    client no longer satisfies it structurally; this adapter keeps the
+    counter typed without a cast, reading the module binding per call
+    exactly like ``_LazyRedisCounter`` does (tests swap it with a fake).
+    """
+
+    async def incr(self, key: str) -> int:
+        return await redis_client.incr(key)
+
+    async def expire(self, key: str, ttl: int) -> Any:
+        return await redis_client.expire(key, ttl)
+
+
 class _LazyRedisCounter:
     """Bridge to the kit's RedisCounter, reading this module's
     ``redis_client`` binding per call (tests swap it with a fake)."""
 
     async def incr(self, key: str, window: int) -> int:
-        return await RedisCounter(redis_client).incr(key, window)
+        return await RedisCounter(_KitRedisSlice()).incr(key, window)
 
 
 #: The family limiter policy (plan 21): ceilings stay product-side (the

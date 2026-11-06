@@ -17,6 +17,9 @@ function DemoBanner() {
   const { t } = useTranslation();
   const isDemoMode = useAuthStore((s) => s.isDemoMode);
 
+  // Marketing stills must not wear the demo badge: the capture pipeline sets
+  // this flag before any page script runs (ui-capture config windowFlag).
+  if (window.__HA_SCREENSHOT_CAPTURE__) return null;
   if (!isDemoMode) return null;
 
   return (

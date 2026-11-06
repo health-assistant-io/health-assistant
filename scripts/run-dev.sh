@@ -141,7 +141,7 @@ if [[ "$NO_BOOTSTRAP" = false ]]; then
   fi
   cd ..
 
-  dc_ensure_node_deps frontend npm
+  dc_ensure_node_deps frontend pnpm
 fi
 
 # Make the venv's honcho/alembic/python resolvable even with --no-bootstrap.

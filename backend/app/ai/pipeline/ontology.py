@@ -18,7 +18,7 @@ from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.enums import QuantityType
 from app.models.fhir.medication import MedicationCatalog
 from app.schemas.biomarker import sanitize_slug
-from app.services.concept_service import resolve_biomarker_class_concept
+from app.services.catalog.concept_service import resolve_biomarker_class_concept
 
 logger = logging.getLogger(__name__)
 

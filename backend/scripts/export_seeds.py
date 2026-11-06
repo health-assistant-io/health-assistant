@@ -3,7 +3,7 @@
 The inverse of SeedService: serializes DB rows into the slug-keyed
 data/seeds/*.json format so a curator can build the canonical set via the UI +
 AI and snapshot it into the shipped seeds. See
-dev/plans/seed-export-service-2026-07-07.md.
+the design notes
 
 Usage (run from backend/ with the venv active, PYTHONPATH covering the repo):
 
@@ -27,7 +27,7 @@ from uuid import UUID
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
-from app.services.seed_export_service import SeedExportService
+from app.services.seed.seed_export_service import SeedExportService
 
 
 def _parse_source(raw: str):

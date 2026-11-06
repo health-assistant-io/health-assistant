@@ -61,7 +61,7 @@ async def test_primary_and_related_each_looked_up():
         return []
 
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(side_effect=_fake_search),
     ):
         raw = await discover.ainvoke(
@@ -166,7 +166,7 @@ async def test_bad_related_item_shape_surfaces_per_item_error():
         return []  # nothing matches
 
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(side_effect=_fake_search),
     ):
         raw = await discover.ainvoke(
@@ -210,7 +210,7 @@ async def test_search_failure_degrades_to_empty_matches():
         return []
 
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(side_effect=_fake_search),
     ):
         raw = await discover.ainvoke(
@@ -260,7 +260,7 @@ async def test_trims_matches_to_relevant_fields_only():
     ]
 
     with patch(
-        "app.services.catalog_search_service.search_catalogs",
+        "app.services.catalog.catalog_search_service.search_catalogs",
         new=AsyncMock(return_value=big_hit),
     ):
         raw = await discover.ainvoke(

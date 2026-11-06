@@ -35,7 +35,7 @@ def _token(role, tenant_id, user_id):
 
 @pytest.mark.asyncio
 async def test_restore_documents_sanitizes_filename_extension(tmp_path):
-    from app.services.import_service import ImportService
+    from app.services.imports.service import ImportService
 
     svc = ImportService.__new__(ImportService)  # no real DB needed
     svc.db = MagicMock()
@@ -54,9 +54,9 @@ async def test_restore_documents_sanitizes_filename_extension(tmp_path):
     tenant_id = "11111111-1111-1111-1111-111111111111"
     upload_dir = tmp_path / "uploads"
     with (
-        patch("app.services.document_service.HA_UPLOAD_DIR", upload_dir),
+        patch("app.services.documents.document_service.HA_UPLOAD_DIR", upload_dir),
         patch(
-            "app.services.document_service.ALLOWED_UPLOAD_EXTENSIONS",
+            "app.services.documents.document_service.ALLOWED_UPLOAD_EXTENSIONS",
             frozenset({".pdf", ".txt", ".png"}),
         ),
     ):
@@ -104,7 +104,9 @@ async def test_export_validates_patient_ids():
 
     current_user = _token(Role.USER.value, tenant, user)
 
-    with patch("app.services.access.check_patient_access", new_callable=AsyncMock) as mock_check:
+    with patch(
+        "app.services.auth.access.check_patient_access", new_callable=AsyncMock
+    ) as mock_check:
         await _validate_patient_scoping(
             ExportScope.PATIENT, [other_patient], current_user, db=MagicMock()
         )
@@ -116,7 +118,7 @@ async def test_export_denies_foreign_patient():
     from uuid import uuid4
 
     from app.api.v1.endpoints.export import _validate_patient_scoping
-    from app.services.access import AuthorizationError
+    from app.services.auth.access import AuthorizationError
 
     tenant = uuid4()
     user = uuid4()
@@ -124,7 +126,7 @@ async def test_export_denies_foreign_patient():
     async def deny(pid, cu, db):
         raise AuthorizationError("nope")
 
-    with patch("app.services.access.check_patient_access", new=deny):
+    with patch("app.services.auth.access.check_patient_access", new=deny):
         with pytest.raises(AuthorizationError):
             await _validate_patient_scoping(
                 ExportScope.PATIENT,

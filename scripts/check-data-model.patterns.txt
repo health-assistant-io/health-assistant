@@ -1,0 +1,30 @@
+# check-data-model.patterns.txt — D7 vocabulary (no legacy naming).
+#
+# Format mirrors scripts/gate-patterns/*.txt (plan 23 D2: patterns are
+# data, not code): one python regex per line; blank lines and `#` comments
+# are ignored. An optional self-test witness may follow `::` — the string
+# the marker-completeness loop plants to prove "declared ⇒ detected".
+# When omitted the witness defaults to the pattern itself.
+#
+# The data-model gate builds its D7 matcher from this file at runtime; the
+# gate script contains no marker literals, so it can never match its own
+# patterns. Matching is plain re.search per line — each entry carries its
+# own boundaries. A line may declare `# gate-allow: <pattern-text>` (or
+# `*`) to suppress entries verbatim, same pragma semantics as
+# check-family-convergence.sh C2/C4.
+#
+# Doctrine (guidelines/data-model.md §7 / schema-future-proofing master
+# §2 rule 11): a concept that is current is named without these words —
+# there is no allowlist of "good" legacy names.
+
+# legacy/deprecated naming anywhere (identifiers, strings, comments)
+legacy :: legacy
+deprecated :: deprecated
+
+# old_* / *_v2 naming. The look-behind keeps old_ from firing inside
+# innocent words (household_id, threshold_value — both contain "old_").
+(?<![A-Za-z0-9_])old_[a-z] :: old_marker
+_v2\b :: thing_v2
+
+# the retired ai-refactor ordering hack marker
+TODO\(ai-refactor\) :: TODO(ai-refactor)

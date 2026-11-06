@@ -11,6 +11,1122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.9.0] - 2026-11-06
+
+### Security (dependency advisories cleared, 2026-11-07)
+- **The v0.9.0 image ships without known runtime advisories.** Backend:
+  authlib 1.9.5, tornado 6.6, dnspython 2.9.2, joserfc 1.8.0,
+  langgraph-sdk 0.4.14 — `pip-audit` over the PyPI set reports no known
+  vulnerabilities. Frontend: axios 1.21.0 with follow-redirects 1.16.2 —
+  `pnpm audit --prod` is clean at moderate+.
+- The security workflow now audits the PyPI surface strictly (the SHA-pinned
+  family auth-kit is filtered — `pip-audit` cannot audit a VCS package) and
+  separates the runtime dependency set (blocking) from dev/build tooling
+  (visible, non-blocking). The remaining dev-only glob/minimatch majors are
+  tracked for 0.9.1.
+
+### Fixed (auth — logout survives a Redis outage, 2026-11-07)
+- **A logged-out access token no longer stays valid while Redis is
+  unreachable.** Session validation falls back to the authoritative
+  `auth_sessions` family row, so a revoked family rejects the token even
+  during an outage (the old path degraded open for up to the 60-minute
+  access-token lifetime).
+
+### Changed (upgrade path — v0.8.0 installs are refused with a runbook, 2026-11-06)
+- **v0.9.0 is fresh-install-only from v0.8.0, and says so.** The baseline
+  squash replaced the published chain, so a v0.8.0 database records a
+  revision that no longer exists. `alembic/env.py` now refuses such a
+  database before any DDL with one message naming both supported routes
+  (reset when there is no data; or back up and restore into a fresh pg16
+  database), instead of Alembic's `Can't locate revision identified by ...`.
+  The same check runs before an update pulls images
+  (`scripts/upgrade-check.sh`, wired into `install.sh`/`update-docker.sh`)
+  and also reports a pg14 volume and every retired v0.8.0 env name.
+- **`APP_ENV=production` with no `HA_APP_ENV` now refuses to boot** instead
+  of silently starting development defaults (ephemeral keys, no production
+  guards, unreadable sealed credentials). A retired
+  `INTEGRATION_SECRET_KEY` without `HA_DATA_KEY`, or `SECRET_KEY` without the
+  new key pair, is reported before an update starts.
+- Docs: `docs/INSTALL.md` gained "Upgrading from v0.8.0" (supported routes,
+  the full rename table, pg14 -> pg16), and the "migrations apply on
+  container start" line now names the exception. New
+  `scripts/upgrade-check.selftest.sh` covers the env classification in CI.
+- **The GitHub release body actually carries the changelog.** The extractor
+  matched `[0.9.0]` only, while the file writes `[v0.9.0]`, so every release
+  (including v0.8.0) published a one-line stub. It now matches both forms and
+  fails the release instead of falling back to a stub when the section is
+  missing — which also puts this upgrade note in front of users.
+
+### Fixed (AI — the chat assistant is propose-only, 2026-11-06)
+- **The last direct clinical write from a chat tool is gone.**
+  `update_examination_notes` committed clinician notes without a review card
+  and without an audit row, contradicting the published "proposes, never
+  writes" capability (`docs/capabilities.json`). The tool is removed; every
+  write-shaped action now goes through a `propose_*` HITL card, and
+  `tests/test_ai_tools_no_direct_write.py` fails if any `@tool` function
+  commits the session again.
+
+### Fixed (installer — release image pin, port pre-flight, re-run, 2026-11-06)
+- **A published-release install could never boot.** The one-line bootstrap
+  extracted the release tarball while the compose file defaulted to
+  `IMAGE_TAG=latest` — and `latest` is built from `main`, whose images ignore
+  the release's `DATABASE_URL`/`APP_ENV` contract, so `migrate` died with
+  `fe_sendauth: no password supplied`. The bootstrap now derives the tag from
+  the release it extracted (`v0.8.0` → `0.8.0`) and hands `--image-tag` to the
+  installer; `install.sh` persists the pin in `.env` and aborts when a semver
+  pin disagrees with the tree's `VERSION`; `update-docker.sh` moves a semver
+  pin forward with the tree. Re-running the one-liner repairs the image pin
+  and the `.env` contract for an existing install; it does **not** migrate a
+  pre-0.9 database (see "upgrade path" above).
+- **Port conflicts abort before anything is pulled or started.** `install.sh`
+  renders the compose model, checks every published host port and names the
+  `.env` variable to change (`--auto-ports` moves them to free ports,
+  `--no-ports` skips). Previously a taken port surfaced as a raw daemon error
+  halfway through `up`.
+- **A failed boot names its culprit.** The health wait stops early when a
+  service exits non-zero and prints the container table plus the failed
+  services' last log lines — instead of waiting three minutes and pointing at
+  the backend while redis is the thing that died.
+- **Re-running the one-liner adopts an existing install**: it runs that
+  install's `scripts/install.sh` (keeps `.env`, refreshes, restarts, waits for
+  health) instead of refusing a non-empty directory with no way forward.
+- New `scripts/install.selftest.sh` (offline: fake Docker, real bound socket)
+  runs in the `install-scripts` workflow, and `release-smoke` proves a
+  published release pins its own images and never renders `:latest`.
+
+### Fixed (calendar identity, delta safety + schema law)
+- **Link identity and orphan repair** as above: the link stores the LOCAL uid,
+  the remote is matched by its write handle, and `LINK_EXISTING` attaches
+  instead of duplicating.
+- **A delta cursor is a probe, never the remote view** — it was being passed
+  into the windowed listing, so a delta result (changed events only) became
+  the reconcile's remote set and would have unlinked every unchanged event.
+  The stale-cursor fallback also referenced a retired error code and was dead.
+- **Vocabulary columns are enums** (`native_enum=False`) with their CHECK
+  constraints derived from them, and the four calendar tables are registered
+  in the data-lifecycle registry and inventory.
+- The bind form is rendered from the catalog's `setupFields` — the
+  `provider.protocol` branches are gone.
+- **Web deployments can use a confidential OAuth client** — a server-side
+  callback forces a Web-application registration, whose token exchange needs a
+  client secret. It is read from deployment configuration
+  (`CALENDAR_OAUTH_CLIENT_SECRETS`) at exchange and refresh time and is never
+  written into the binding slot; a public client still runs pure PKCE.
+
+### Security (cloud calendars — connector hardening, 2026-11-03)
+- **Cloud calendar bindings hardened per the family connector plan's
+  independent security review**
+  (bind-CSRF, secret custody, inbound trust, one-writer, SSRF). Security
+  fixes; the settings surface itself is unchanged apart from an
+  authentication-kind picker on providers that accept more than one:
+  - **Bind flow is session-bound** — the OAuth callback now requires the
+    signed-in user who started the flow; a `state` issued to another
+    principal is refused (403) and burned (single-use, ~10-minute TTL),
+    so an attacker's authorization code can never complete against a
+    victim's binding.
+  - **No token in error surfaces** — every provider error that reaches
+    `last_error`, a sync-log audit row, a log line or an API response is
+    scrubbed of URL query strings and userinfo first (a private ICS
+    feed's URL is a bearer credential; the full address lives only in
+    the sealed slot, the row keeps scheme+host+path).
+  - **Consent copy follows the chosen authentication kind** — a
+    token-authenticated private feed no longer shows "needs no
+    credential".
+  - **Pulled events are untrusted** — they arrive as `origin='calendar'`
+    records flagged unverified and enter the clinical record only through
+    a confirm/dismiss surface; dedup rides a new partial unique index.
+    Inbound acceptance is opt-in (`accept_categories` / explicit
+    `accept_all`) — never the whole personal calendar.
+  - **One writer per remote calendar** — a second writable binding over
+    the same remote calendar is refused (409 + unique index);
+    read-only subscriptions may share.
+  - **All calendar fetches run behind the SSRF guard** — resolve-then-pin
+    address validation on every redirect hop, a response size cap, and
+    typed refusals for internal addresses.
+  - **Refresh-failure posture** — `invalid_grant` stops the binding as
+    `needs-auth` (notified once), `403 insufficient_scope` asks for
+    re-consent (`needs-secret`), transient failures degrade with bounded
+    retries before stopping.
+
+### Fixed (header title shattering into one-letter-per-line stacks, 2026-11-02)
+- **The top-bar page title no longer breaks vertically at narrow window
+  sizes — and keeps its space instead of starving** — the header's title
+  block was the only element in the row willing to shrink below its
+  content (`min-w-0`) while its `h1` used `wrap-break-word`, so whenever
+  the window got tighter than title + right-side controls, flexbox
+  squeezed the block under its longest word's width and
+  `overflow-wrap: break-word` started breaking mid-word: "Patient Health
+  Overview" rendered one letter per line (same for the uppercase
+  subtitle). Two fixes, applied together:
+  - **Space budget** — below `lg` the header drops its lowest-value
+    pixels: the UserMenu trigger goes avatar-only (full identity stays in
+    the menu panel; the email returns to the trigger at `lg+`) and the
+    search launcher goes icon-only (the launcher itself is unchanged).
+    The ~260px that frees is what the title actually needed — at `md`
+    widths it now renders nearly in full.
+  - **Graceful degradation** — the title and subtitle truncate to a
+    single line with an ellipsis (never mid-word stacks; full text on
+    hover via `title`), the block is hidden below `sm` where there is no
+    room for a title at all (everything else inside it was already
+    `hidden` there), and a `sm:min-w-32` floor keeps it legible from
+    `sm` up. The dead empty center spacer (a fixed 48px of `mx-6` that
+    added squeeze pressure at `md` widths) is removed.
+  Verified in the running app at 390 / 768 / 1440 px.
+
+### Fixed (catalog graph unstyled and unresponsive, 2026-10-29)
+- **The Catalogs graph view renders and responds again** — `ConceptGraphView`
+  (the shared React Flow canvas behind the catalog ontology graph, relation
+  graphs and the picker's Graph view) never imported
+  `reactflow/dist/style.css`; the sheet loaded only as a global side effect
+  of `AnatomyGraphView`'s own import, so whether the graph worked depended
+  on module load order. With that order reshuffled (dev-link library
+  overlay + a cleared Vite dep cache), sessions that never opened the
+  anatomy graph got an unstyled React Flow: nodes displaced to the corner,
+  pan/zoom dead, and the unstyled pane/panels swallowing clicks across the
+  toolbar. The stylesheet now imports once in `main.tsx` before the app
+  stylesheets, so every current and future React Flow consumer is covered
+  regardless of mount order.
+
+### Fixed (backend unbootable since the seed-service split, 2026-10-29)
+- **The backend starts again** — the seed-service split (212f5688,
+  2026-10-25) renamed the `seed_service` singleton into the `SeedService`
+  class but updated `app/main.py`'s import to keep the dead name, so every
+  boot since then died in the lifespan with `ImportError: cannot import
+  name 'seed_service'` right after the stuck-extraction cleanup. Masked
+  for four days because the import is function-level: `conftest` imports
+  `app.main` (module level) without ever running the lifespan, and the
+  long-lived dev process predated the refactor. `main.py` and the
+  `scripts/seed_{anatomy,medications,allergies}.py` operator tools now
+  construct `SeedService()` per use (the refactor's intended contract),
+  and a new AST-based regression test (`test_boot_imports_resolve.py`)
+  resolves every import in `main.py` + the seed scripts — the
+  function-level ones no test import ever executes.
+
+### Fixed (integration sync cycle dies on rollback expiry, 2026-10-29)
+- **One failing integration no longer aborts the whole background sync
+  cycle** — `run_sync`'s error paths roll the session back, and an
+  AsyncSession rollback expires every object in the identity map
+  (`expire_on_commit=False` only covers commits), so the beat loop's next
+  plain attribute read on a not-yet-synced `UserIntegration` attempted
+  sync IO outside greenlet context and killed the cycle with
+  "greenlet_spawn has not been called; can't call await_()"
+  (sqlalche.me/e/21/xd2s) while the task still reported success. The loop
+  now decides on snapshotted plain values and re-acquires each row via
+  `Session.get` (the awaitable refresh path) before handing it to
+  `run_sync`; regression test pins that a failing first sync no longer
+  blocks the rest.
+
+### Fixed (dev bootstrap reinstall loop, 2026-10-29)
+- **`run-dev.sh` installs frontend dependencies with pnpm** — the helper
+  call still hardcoded npm after the frontend went pnpm-only (4c8e856a),
+  and since there is no `package-lock.json` the helper fell back to
+  treating `package.json` as the lockfile while the pnpm-managed
+  `node_modules` carries no npm stamp: every start decided the "lockfile
+  changed" and ran `npm install`, which (with no npm lockfile) re-resolved
+  the whole tree against the registry for minutes while ignoring the
+  security `overrides` in `pnpm-workspace.yaml`, rewriting the pnpm
+  symlink layout and dropping a `package-lock.json` that re-triggered the
+  same path on the next start.
+
+### Changed (catalog picker on the family picker module, 2026-10-27)
+- **The catalog item picker runs on the shared
+  `@neuronection/assistant-ui` `multi-select-picker` module** — the
+  "type-ahead + browse modal" pattern (inline debounced search, selection
+  chips, browse modal with type filter / Add-Added rows / pagination /
+  selection count) now has exactly one implementation across the family.
+  `CatalogItemPicker` becomes a thin adapter (same props, same
+  `CatalogSelection` model, same relation binding on chips) and the
+  browse-modal catalog chrome — icon type dropdown, scope filter, per-type
+  facet chips, rich rows and the List|Graph selection view — rides the
+  module's host slots (the modal keeps its previous size and the
+  clear-filters affordance; its rows are server-ordered now — the sortable
+  browser stays in the catalog workspace). Rows gain the family keyboard
+  navigation + combobox ARIA of the shared type-ahead. The rich
+  `displayMode="cards"` rendering (and its per-card footer slot) is
+  unchanged.
+
+### Fixed (Life Dashboard webhook intake, 2026-10-27)
+- **The webhook route accepts the `X-Signature` header the Life Dashboard
+  Companion app signs every delivery with** — since webhook secrets became
+  mandatory (6e8b1cf, 2026-08-23) every delivery from the app got a 401:
+  the route only read `X-Webhook-Signature(-256)` and `X-Hub-Signature-256`,
+  and the app queues everything behind a 401 without retrying. The app's
+  `sha256=<hex>` HMAC-SHA256 form verifies exactly like the accepted headers
+  (constant-time compare, same secret), so nothing else changes. Community
+  fix by [@owen282000](https://github.com/owen282000) (PR #152), maintainer
+  of the Life Dashboard Companion app — thanks! Setup note: paste the
+  integration's webhook secret into the app's HMAC signing secret field
+  (see the webhook extension README, step 6).
+
+### Changed (provider settings on the family modules, 2026-10-26)
+- **The AI provider screens close the last hand-rolled gaps to the family
+  provider-settings pattern** (`@neuronection/assistant-ui`): the manual
+  create dialog now picks the engine from the **backend preset catalog**
+  (the same §15 surface the setup tiles render, plus the processor-only
+  Tesseract OCR entry and the built-in Custom option) instead of a
+  hardcoded two-option select, and seeds the **connection name** from the
+  engine label — numbered (`Groq 2`) when taken; the setup wizard seeds it
+  the same way. Provider cards gain **Enable/Disable** in the `⋯` menu
+  (previously buried in the edit dialog), the empty state renders the
+  library **SetupFirstRunCard** CTA, store errors render through the
+  library **ErrorBanner**, and form errors move onto `ProviderForm`'s
+  `error` prop with the country picker's search labels. The setup wizard's
+  bind-less connect now sends the seeded name (applied on create only —
+  re-setup keeps the stored name).
+
+### Security (Dependabot remediation, 2026-10-25)
+- **Backend lock picks up the patched releases** — Pillow 12.3.0 → 13.0.0
+  (closes 41 image-parsing advisories, 5 critical), certifi
+  2026.7.22 → 2026.10.23 (critical), aiohttp 3.14.3 → 3.14.5, filelock
+  4.0.8 → 4.2.4, FastMCP 4.0.10 → 4.1.3, opentelemetry-api 1.45.0 →
+  1.45.1, langgraph-checkpoint-postgres 3.1.2 → 3.2.0, setuptools
+  84.0.0 → 84.2.1; `backend/pyproject.toml` raises the direct floors
+  (`pillow>=13.0.0`, `fastmcp>=4.1.2`,
+  `langgraph-checkpoint-postgres>=3.1.3`) so a future refresh cannot
+  regress. `pip-audit --strict` reports no known vulnerabilities.
+- **The MCP tool adapter reads the MCP SDK v2 schema field** — FastMCP
+  4.1.3 renames `Tool.inputSchema` to `input_schema` (the old name now
+  emits a deprecation warning); the adapter prefers the new field and
+  keeps a legacy fallback, with unit coverage for both.
+- **Frontend advisories close through version pins** — direct:
+  dompurify 3.4.17, vite 8.3.5, vitest 5.0.5; transitive (pnpm
+  `overrides` in `frontend/pnpm-workspace.yaml`): quill 2.0.2 (2.0.3 has
+  no patched release and carries the HTML-export XSS), katex 0.19.1,
+  postcss-selector-parser 7.1.6, brace-expansion
+  1.1.21/2.1.7/5.0.12, undici 8.12.2, fast-uri 3.1.9,
+  follow-redirects 1.16.1, serialize-javascript 7.1.3,
+  source-map-js 1.2.2, markdown-it 14.3.3. `pnpm audit` is clean; build,
+  lint and the 780-test vitest suite pass.
+- **The npm-style `overrides` block in `frontend/package.json` was inert**
+  under pnpm and moved to `pnpm-workspace.yaml` — its pins are now
+  actually applied (that is why quill had resolved back to 2.0.3).
+- **nltk's model-artifact advisory (GHSA-8mgp-746c-j5xp) is dismissed,
+  not patched** — no fixed release exists; the trigger (caller-controlled
+  model paths under `pathsec` enforcement) is not reachable from app code,
+  and nltk only lives in the optional `local-ai` extra.
+
+### Fixed (CI drift closure, 2026-10-25)
+- **The published bridge schema regenerates cleanly again** — the
+  backend-naming sweep changed one `bridge_features.semantics` wording
+  (`older paths` → `legacy paths`) without the same-commit regeneration
+  the drift gate requires; the committed artifact now matches the live
+  provider surface (all three `--check` gates green).
+- **The backend type-check step is green again** — a typed adapter
+  bridges the shared identity kit's counter protocol over redis-py 8.x
+  parameter names (no behavior change; rate limiting and its
+  degrade-open rule are untouched).
+
+### Changed (services layer packaging, 2026-10-25)
+- **`backend/app/services/` is domain-packaged** — the flat 70-module
+  directory is now 21 `services/<domain>/` packages (fhir · catalog ·
+  biomarkers · clinical · documents · notifications · proposals ·
+  integration · tenancy · auth · audit · data_lifecycle · instances · chat ·
+  telemetry · setup · anatomy · seed · export · engine · patients) with all
+  imports updated repo-wide. Module names, behavior, routes and the OpenAPI
+  surface are unchanged (byte-identical regenerated spec, seeded export).
+  The four oversized services (`import_service`, `analytics_service`,
+  `integration_sync_service`, `seed_service`) stay flat until their own
+  staged splits.
+- **`analytics_service` (1,545) is the `services/analytics/` package** —
+  the free-function module splits along its real seams (status helpers,
+  dashboard, trends, insights, state history) with the package
+  re-exporting the function face; the engine-task registry entrypoint
+  now names the defining module.
+- **`seed_service` (1,286) splits into entity-family modules under
+  `services/seed/`** (clinical events, medications, anatomy, vaccines,
+  allergies, concepts, catalogs, system vocabulary) behind the composed
+  `SeedService`; the startup seed pipeline and its declared stage order
+  are unchanged.
+- **`integration_sync_service` (1,509) decomposes to 562** — the ten
+  per-source sync legs move to `integration/sync_legs.py` and the
+  notification emitters to `integration/sync_notifications.py` (shared
+  constants + `SyncResult` in `sync_support.py`); the orchestrator file
+  stays resident with `run_sync` calling the legs in the same order.
+  All moves are AST-verbatim; the OpenAPI surface is unchanged across
+  every stage (byte-identical seeded export).
+- **`import_service` (3,029 lines) is the `services/imports/` package** —
+  the restore engine split along its section seams (job lifecycle,
+  manifest verification, FHIR bundle restore, verb routing, G8 upserts,
+  sidecar, taxonomy/anatomy, documents, orchestrator, CSV/OCR legacy)
+  into ten modules under the band plus a composition root; all 51
+  methods moved AST-verbatim and the public `ImportService` face is
+  unchanged (mixin composition).
+
+### Updated (extension source lane docs, 2026-10-24)
+- **Docs to the current law** — `docs/INTEGRATIONS_FRAMEWORK.md`
+  now frames the framework as the family extension charter implementation
+  (tier ladder, declared capabilities) and documents the imported-extension
+  source lane end to end: sources (https-only by structure, the gated local
+  dev kind, secret-slot credentials), immutable digest-pinned versions with
+  explicit approval and no auto-apply, digest-bound consent with the 8C
+  change-summary and verbatim disclosures, and the isolation posture
+  reported from detection. `docs/user/integration-security.md` gains the
+  consent section: what an import asks, when an upgrade re-asks, and why
+  credentials re-bind per version.
+
+### Added (extension source lane: isolation wiring, 2026-10-24)
+- **The parked sandbox engine starts ** — the host-profile
+  surface (`GET /api/v1/integrations/host-profile`) now reports
+  `t2Isolation` from DETECTION (`isolation.posture()` — bubblewrap present
+  ⇒ `kernel`, else `none`), never the old hardcoded constant, with the
+  charter's per-platform declaration riding alongside as data. The new
+  runtime spawn seam (`app/extensions/runtime/sandbox.py`) composes the
+  three laws into one typed answer: tier is provenance (`derive_tier`
+  decides what may spawn), the host profile is policy (health's current
+  `linux: none` declaration answers the typed `unsupported` with the
+  reason — never a silent spawn), and detection is truth (a declared
+  `kernel` without the primitive still refuses, with the remedy). Every
+  spawn attempt records the `extension_isolation_posture` row — runtime
+  evidence, refused or not. The host isolation wall
+  (`tests/test_extension_isolation.py`) pins the vendored escape-matrix
+  contract, the detection-honesty of the profile surface, and the hostile
+  spawn cases.
+
+### Added (extension source lane: consent, 2026-10-24)
+- **Version-bound consent + the 8C change-summary ** — consent
+  rows bind one user's per-capability decision to a content digest
+  (`/api/v1/integrations/consents`: `pending` inbox, `versions/{id}/delta`
+  change-summary, echo-verified `POST versions/{id}`). A version bump with
+  a NEW capability forces the re-prompt (the added capability has no grant
+  until decided); unchanged capabilities carry their grants forward as new
+  rows bound to the incoming digest; a forged consent echo or an undeclared
+  capability is refused with the typed `invalid`. The consent surface
+  serves the tier's charter disclosure VERBATIM (`disclosureKey`), and the
+  frontend `ConsentDeltaView` renders exactly that delta — new capabilities
+  each get Grant/Deny, kept grants are shown as carried, removed ones are
+  reported without re-prompting. x-secret slots seal PER VERSION: the
+  sealed payload stamps the digest it was sealed for, so an upgrade reads
+  `stale` and re-binds instead of silently reusing secret material.
+
+### Added (extension source lane: registration seam, 2026-10-24)
+- **Imports register through rows, not logs ** — new admin
+  surface `POST/GET /api/v1/extensions/sources` (+ `/{id}/sync`,
+  `/versions/{id}/approve|revoke|posture`): a schema-validated source
+  descriptor (https git by structure; the local dev kind is
+  production-gated and allowlist-contained) resolves content into a
+  digest-pinned version row through the one registration decision.
+  Rejected registrations keep their typed reasons IN the version row (a
+  tier claim contradicting the provenance derivation is the typed
+  `provenance derives tier …` problem — visible, never a log-and-skip),
+  bundled registration failures surface at
+  `GET /api/v1/admin/integrations/registration-failures`, and a changed
+  content digest is a NEW pending version — the running instance never
+  auto-upgrades. Git/registry transports answer a typed `not-ready` until
+  their lane lands; local sources import end-to-end on a dev box.
+
+### Added (extension source lane, 2026-10-24)
+- **The imported-extension source lane ** — persistence for
+  third-party imported extensions (the extension charter): `extension_sources` (registered
+  git/file/registry origins with a pinned ref, a secret-slot reference and
+  the `T2|T3` trust tier), `extension_source_versions` (immutable,
+  digest-pinned content — a changed digest is a new row requiring
+  re-approval, never an in-place update), `extension_consents`
+  (per-user, per-capability decisions bound to a content digest, so an
+  upgrade re-prompts for what is new) and `extension_isolation_posture`
+  (per-version sandbox-grade evidence from detection, with the derived tier
+  recorded next to the claimed one). No user-facing surface changes yet —
+  the seams land in the following commits.
+
+### Added (Withings OAuth wearable connector, 2026-10-24)
+- **New bundled integration `Withings`** — the first OAuth wearable
+  connector: connects a Withings account through your own Withings
+  partner app and pulls the measure categories (weight, body
+  composition, blood pressure, heart rate, SpO2, temperature) into the
+  ingest funnel on every sync. Sleep and activity series are not wired
+  yet (no catalog mappers) — flagged, not half-wired.
+- **OAuth2 done fail-closed**: the client secret and the access/refresh
+  token pair live in ONE sealed `oauth2` credential slot with maintained
+  expiry columns — `user_config` carries only the non-secret client id
+  and the account binding. The access token **refreshes before every
+  pull** and the refresh reseals the slot in place (rotation stamped, a
+  revoked slot cleared); a failed refresh (e.g. access revoked on the
+  Withings side) and a missing or revoked slot both stop the sync
+  **before any data call** — the instance flips to an error state with a
+  reconnect prompt. The authorization round-trip uses the one-shot
+  OAuth `state` store; every HTTP call rides the guarded transport.
+- **Pulls are cursor-scoped and deduped**: the measure cursor (the
+  newest group creation stamp) lives in `integration_sync_state`, so a
+  sync only asks for new groups; a full re-pull writes zero duplicates.
+  Mapped measure types land in the telemetry store with canonical units
+  and a registered device; unmapped Withings measure types land as raw
+  observations with the mapping gap recorded — never dropped. Hostile
+  payloads (oversized, wrong-typed, broken values) are rejected with
+  typed counters, and a "no data" answer from Withings is a successful
+  empty pull, not an error.
+- **Telemetry re-sync dedup fixed in the ingest funnel**: an observation
+  that became a telemetry row is not an Observation row, so a re-pulled
+  group could insert a duplicate hypertable row on every sync. The
+  funnel now dedups the telemetry split's output on the telemetry
+  natural key (patient, device, slug, timestamp) — a re-sync writes zero
+  duplicates for every connector.
+- Docs: the connector ships its extension documentation set (overview,
+  connection/authorization, pull/cursors/canonical units, security,
+  troubleshooting); the integration catalog and a new OAuth-connectors
+  section in `docs/user/connect-integrations.md` cover the partner-app
+  consent round-trip and the fail-closed refresh rule.
+
+### Added (inbound FHIR R4 client connector, 2026-10-24)
+- **New bundled integration `FHIR Client (Keyed Pull)`** — the read-side
+  twin of the FHIR Server connector: pulls the bound patient's
+  Observations, DiagnosticReports, MedicationStatements and Encounters
+  from an external FHIR R4 server that issues a static access token.
+  Every search is patient-scoped and `_lastUpdated`-incremental with a
+  **per-resource cursor** (`integration_sync_state` — a slow lab backlog
+  never delays medication pulls); all writes funnel through the one
+  ingest path with dedup (a full re-pull writes zero duplicates) and
+  unmapped codes land raw with the mapping gap recorded — never dropped.
+- **Credentials live in the sealed credential store**: the access token
+  is sealed into `integration_credentials` (encrypted, instance-bound) —
+  never in the instance configuration. Rotation on re-submit, blank
+  keeps the current token, and a missing/revoked credential **fails
+  closed before any pull** (the instance errors instead of running
+  unauthenticated). SMART-on-FHIR stays with the FHIR Server connector —
+  this client deliberately ships the keyed mode only.
+- **Engine surface**: `BaseHealthProvider.pull_labs` (opt-in
+  `lab_report` data class → the `labs` stream through
+  `ingest_labs`, deduped on tenant/patient/code/effective) and
+  `BaseConfigFlow.store_credentials` (seal-after-instance-exists hook —
+  a credential that cannot be sealed aborts the submit instead of
+  falling back to plaintext). Default implementations are no-ops, so
+  existing providers and config flows are unaffected.
+- **Labs dedup tightened**: `ingest_labs` dedups on the natural key
+  (tenant, patient, code, effective) — a re-pull writes nothing twice
+  while a genuinely new report of the same panel still lands.
+- Docs: the connector ships its extension documentation set (overview,
+  connection, pull/cursors, security, troubleshooting); the integration
+  catalog and the secrets section of `docs/user/connect-integrations.md`
+  cover the sealed-token flow.
+
+### Changed (no-legacy sweep — pnpm-only frontend toolchain + the repo-specific gate, 2026-10-22)
+- **`pnpm` is the one package manager**: `frontend/package-lock.json` is
+  deleted; GitHub CI, the Gitea deploy pipeline, the frontend Dockerfile, the
+  dev compose service, `version_manager.toml` and the install docs all use
+  `pnpm` with `--frozen-lockfile` against `frontend/pnpm-lock.yaml`. The stale
+  pnpm lock entry that pinned assistant-ui 0.65.0 while `package.json` already
+  asked for ^0.68.0 is resolved (regenerated deterministically; only that one
+  dependency changed).
+- **New gate `scripts/check-no-legacy.sh`** (repo-specific extras only — D7
+  keeps the legacy-naming vocabulary): zero-importer component scan, one
+  lockfile, documented-count assertions, the plans 3–5 deletion pins, the
+  deleted-surface resurrection pins, the single-SW/real-404 pins and the
+  retired `supports_*` vocabulary. Wired into `family-convergence.yml` and
+  the Gitea deploy pipeline; its self-test plants one red host per check.
+
+### Docs (no-legacy sweep — documented counts pinned to the code, 2026-10-22)
+- **README** says 20 FHIR resources (was 19, missing `Substance`) with the
+  list matching the facade registry, and 3900+ pytest tests.
+- **`docs/API.md`** states the real counts: 20 registered resource types,
+  347 HTTP/WS handlers across 42 router modules.
+- **`backend/tests/test_docs_counts.py`** +
+  **`backend/scripts/check_docs_counts.py`** derive every one of those numbers
+  from the source tree, so a code change without the doc update is red
+  (generated API types remain the planned retirement for the hand-maintained
+  tables).
+- **`docs/ARCHITECTURE.md`** no longer calls `integrations/` the source of
+  truth for integrations (it is the bridge client-SDK home; the extension
+  subsystem lives in `backend/app/extensions/`) and its bridge link now
+  resolves.
+- **`docs/MOBILE_SYNC.md`**'s three wire-contract links point at
+  `backend/app/extensions/builtin/health_assistant_bridge/docs/`.
+- **`docs/INTEGRATIONS_FRAMEWORK.md` / `NOTIFICATION_SYSTEM.md` / extension
+  doc sets** describe declared capabilities and data classes instead of the
+  retired `supports_*` probes.
+
+### Changed (no-legacy sweep — one surface per preference, active sessions, 2026-10-22)
+- **One action-result dialog**: the hand-rolled
+  `components/integrations/ActionResultModal.tsx` is replaced by the family
+  kit's `ActionResultDialog`; health keeps only the payload renderer
+  (`ActionResultBlocks`, the `renderChrome` slot).
+- **One system-integrations surface**: `/admin/system/integrations` is rebuilt
+  on the kit `IntegrationCard` over a typed service
+  (`integrationService.listSystemIntegrations` /
+  `setSystemIntegrationEnabled`) instead of a raw `api.get` inside the page.
+  The admin endpoint now returns the wire-manifest identity fields
+  (capabilities, categories, kind, description) so the card shows what
+  enabling means; stale DB-only domains are flagged instead of rendered as
+  "Unknown".
+- **One localization surface**: `/settings/preferences` is deleted — the
+  settings registry's `localization` category (`/settings/appearance`,
+  backed by the one `localization.*` store keys) is the only language/unit
+  editor.
+- **One notification-preferences surface**: the Notification Center
+  (`/notifications/settings`) owns every user-facing notification
+  preference. The generic user settings panel no longer re-renders the
+  `notifications` category (admins still set tenant/system defaults there)
+  and points to the canonical page; the duplicate `notifications.enabled`
+  device definition is removed (the master toggle lives in the store the
+  Notification Center writes).
+- **Active sessions in Settings → Security**: `GET/DELETE /me/sessions` now
+  have their UI — the device list (label, sign-in time, "this device") with
+  revoke. Revoking the current family signs the browser out.
+
+### Changed (no-legacy sweep — dead code deleted, retired probe vocabulary, one service worker, 2026-10-22)
+- **Dead frontend code deleted** (every file verified zero-importer, tests
+  included): `BiomarkerConfigPanel`,
+  `CatalogItemSelector`, `CatalogItemSwitcher`, `DashboardEventCard`,
+  `EventFilterToolbar`, `ResolvedEventItem`, `SubWizardShell`,
+  `AnatomyTypeahead`, `TaxonomyTypeahead`, `IconButton`, the unused
+  `components/ui/` barrel + `Card`/`Input`/`Table` re-export shims, the
+  consumerless `charts`/`instances`/`layout`/`setup`/`vaccinations` barrels,
+  the `BarChart`/`ReferenceRangeChart` charts and
+  `services/bodyPartService.ts`.
+- **Dead backend surface deleted**: the empty `app/services/integrations/`
+  package; the stale "Phase 0 — reads only" catalog contract/registration
+  docstrings now describe the implemented CRUD + RBAC.
+- **`supports_*` provider probing vocabulary retired in code and docs**: the
+  sync engine's capability gate now speaks the registry's vocabulary
+  (`push` / `notify` capabilities, declared data classes such as `document`)
+  with no hook-name translation table; provider docs and docstrings describe
+  declared capabilities instead of the removed probe methods
+  (`supports_notifications`, `supports_tools`, …).
+- **Double service-worker registration removed** — one `useRegisterSW` in
+  `App.tsx` keeps the update/offline toast; the catch-all route now renders a
+  real **NotFound** page instead of silently showing the Dashboard for
+  unknown paths.
+
+
+### Docs (no-legacy sweep — documented counts pinned to the code, 2026-10-22)
+- **README** says 20 FHIR resources (was 19, missing `Substance`) with the
+  list matching the facade registry, and 3900+ pytest tests.
+- **`docs/API.md`** states the real counts: 20 registered resource types,
+  347 HTTP/WS handlers across 42 router modules.
+- **`backend/tests/test_docs_counts.py`** +
+  **`backend/scripts/check_docs_counts.py`** derive every one of those numbers
+  from the source tree, so a code change without the doc update is red
+  (generated API types remain the planned retirement for the hand-maintained
+  tables).
+- **`docs/ARCHITECTURE.md`** no longer calls `integrations/` the source of
+  truth for integrations (it is the bridge client-SDK home; the extension
+  subsystem lives in `backend/app/extensions/`) and its bridge link now
+  resolves.
+- **`docs/MOBILE_SYNC.md`**'s three wire-contract links point at
+  `backend/app/extensions/builtin/health_assistant_bridge/docs/`.
+- **`docs/INTEGRATIONS_FRAMEWORK.md` / `NOTIFICATION_SYSTEM.md` / extension
+  doc sets** describe declared capabilities and data classes instead of the
+  retired `supports_*` probes.
+
+### Changed (no-legacy sweep — one surface per preference, active sessions, 2026-10-22)
+- **One action-result dialog**: the hand-rolled
+  `components/integrations/ActionResultModal.tsx` is replaced by the family
+  kit's `ActionResultDialog`; health keeps only the payload renderer
+  (`ActionResultBlocks`, the `renderChrome` slot).
+- **One system-integrations surface**: `/admin/system/integrations` is rebuilt
+  on the kit `IntegrationCard` over a typed service
+  (`integrationService.listSystemIntegrations` /
+  `setSystemIntegrationEnabled`) instead of a raw `api.get` inside the page.
+  The admin endpoint now returns the wire-manifest identity fields
+  (capabilities, categories, kind, description) so the card shows what
+  enabling means; stale DB-only domains are flagged instead of rendered as
+  "Unknown".
+- **One localization surface**: `/settings/preferences` is deleted — the
+  settings registry's `localization` category (`/settings/appearance`,
+  backed by the one `localization.*` store keys) is the only language/unit
+  editor.
+- **One notification-preferences surface**: the Notification Center
+  (`/notifications/settings`) owns every user-facing notification
+  preference. The generic user settings panel no longer re-renders the
+  `notifications` category (admins still set tenant/system defaults there)
+  and points to the canonical page; the duplicate `notifications.enabled`
+  device definition is removed (the master toggle lives in the store the
+  Notification Center writes).
+- **Active sessions in Settings → Security**: `GET/DELETE /me/sessions` now
+  have their UI — the device list (label, sign-in time, "this device") with
+  revoke. Revoking the current family signs the browser out.
+
+### Changed (no-legacy sweep — dead code deleted, retired probe vocabulary, one service worker, 2026-10-22)
+- **Dead frontend code deleted** (every file verified zero-importer, tests
+  included): `BiomarkerConfigPanel`,
+  `CatalogItemSelector`, `CatalogItemSwitcher`, `DashboardEventCard`,
+  `EventFilterToolbar`, `ResolvedEventItem`, `SubWizardShell`,
+  `AnatomyTypeahead`, `TaxonomyTypeahead`, `IconButton`, the unused
+  `components/ui/` barrel + `Card`/`Input`/`Table` re-export shims, the
+  consumerless `charts`/`instances`/`layout`/`setup`/`vaccinations` barrels,
+  the `BarChart`/`ReferenceRangeChart` charts and
+  `services/bodyPartService.ts`.
+- **Dead backend surface deleted**: the empty `app/services/integrations/`
+  package; the stale "Phase 0 — reads only" catalog contract/registration
+  docstrings now describe the implemented CRUD + RBAC.
+- **`supports_*` provider probing vocabulary retired in code and docs**: the
+  sync engine's capability gate now speaks the registry's vocabulary
+  (`push` / `notify` capabilities, declared data classes such as `document`)
+  with no hook-name translation table; provider docs and docstrings describe
+  declared capabilities instead of the removed probe methods
+  (`supports_notifications`, `supports_tools`, …).
+- **Double service-worker registration removed** — one `useRegisterSW` in
+  `App.tsx` keeps the update/offline toast; the catch-all route now renders a
+  real **NotFound** page instead of silently showing the Dashboard for
+  unknown paths.
+
+
+### Changed (no-legacy sweep — one surface per preference, active sessions, 2026-10-22)
+- **One action-result dialog**: the hand-rolled
+  `components/integrations/ActionResultModal.tsx` is replaced by the family
+  kit's `ActionResultDialog`; health keeps only the payload renderer
+  (`ActionResultBlocks`, the `renderChrome` slot).
+- **One system-integrations surface**: `/admin/system/integrations` is rebuilt
+  on the kit `IntegrationCard` over a typed service
+  (`integrationService.listSystemIntegrations` /
+  `setSystemIntegrationEnabled`) instead of a raw `api.get` inside the page.
+  The admin endpoint now returns the wire-manifest identity fields
+  (capabilities, categories, kind, description) so the card shows what
+  enabling means; stale DB-only domains are flagged instead of rendered as
+  "Unknown".
+- **One localization surface**: `/settings/preferences` is deleted — the
+  settings registry's `localization` category (`/settings/appearance`,
+  backed by the one `localization.*` store keys) is the only language/unit
+  editor.
+- **One notification-preferences surface**: the Notification Center
+  (`/notifications/settings`) owns every user-facing notification
+  preference. The generic user settings panel no longer re-renders the
+  `notifications` category (admins still set tenant/system defaults there)
+  and points to the canonical page; the duplicate `notifications.enabled`
+  device definition is removed (the master toggle lives in the store the
+  Notification Center writes).
+- **Active sessions in Settings → Security**: `GET/DELETE /me/sessions` now
+  have their UI — the device list (label, sign-in time, "this device") with
+  revoke. Revoking the current family signs the browser out.
+
+### Changed (no-legacy sweep — dead code deleted, retired probe vocabulary, one service worker, 2026-10-22)
+- **Dead frontend code deleted** (every file verified zero-importer, tests
+  included): `BiomarkerConfigPanel`,
+  `CatalogItemSelector`, `CatalogItemSwitcher`, `DashboardEventCard`,
+  `EventFilterToolbar`, `ResolvedEventItem`, `SubWizardShell`,
+  `AnatomyTypeahead`, `TaxonomyTypeahead`, `IconButton`, the unused
+  `components/ui/` barrel + `Card`/`Input`/`Table` re-export shims, the
+  consumerless `charts`/`instances`/`layout`/`setup`/`vaccinations` barrels,
+  the `BarChart`/`ReferenceRangeChart` charts and
+  `services/bodyPartService.ts`.
+- **Dead backend surface deleted**: the empty `app/services/integrations/`
+  package; the stale "Phase 0 — reads only" catalog contract/registration
+  docstrings now describe the implemented CRUD + RBAC.
+- **`supports_*` provider probing vocabulary retired in code and docs**: the
+  sync engine's capability gate now speaks the registry's vocabulary
+  (`push` / `notify` capabilities, declared data classes such as `document`)
+  with no hook-name translation table; provider docs and docstrings describe
+  declared capabilities instead of the removed probe methods
+  (`supports_notifications`, `supports_tools`, …).
+- **Double service-worker registration removed** — one `useRegisterSW` in
+  `App.tsx` keeps the update/offline toast; the catch-all route now renders a
+  real **NotFound** page instead of silently showing the Dashboard for
+  unknown paths.
+
+
+### Changed (schema — legacy-naming closure: gate D7 green, data-model gate strict, 2026-10-22)
+- **Data-model gate is strict for this repo.** `scripts/check-data-model.sh
+  --self` reports `RESULT: OK` with zero findings — D1–D7 all green, and
+  `health-assistant/core` now runs **strict** in the family-scan mode table
+  (the vendored gate copy is byte-identical to the family canonical). The
+  legacy-naming sweep (D7) left no `legacy`/`deprecated`/`old_*`/`*_v2`/
+  `TODO(ai-refactor)` occurrences under `backend/app` + `frontend/src`: every
+  occurrence was either renamed to the current name or rewritten as an honest
+  comment, with no behavior or wire change.
+- **`audit_events` diff fields keep their names.** `old_value`/`new_value`
+  are the change-record contract ("previous/updated value"), not a legacy
+  shape; their lines carry a scoped `# gate-allow: *, audit diff` pragma
+  instead of a rename that would have moved the admin audit wire.
+- **`residual_token_columns`** replaces `legacy_token_columns` in the erasure
+  impact report (`report.secrets`): the key counts tokens still sealed in the
+  pre-`integration_credentials` columns, which is what it always measured.
+- **MCP client copy**: the SSE transport label reads "Server-Sent Events
+  (older remote servers)".
+- **Retired shapes stay dead** — `tests/test_retired_shapes.py` pins that
+  `chat_messages.tasks`, `ai_task_assignments.priority` and a stored
+  `is_active` column are absent from both the models and the migrated schema,
+  that the JSONB cursor helpers never come back, and that the hand-maintained
+  task maps stay generated from the one registry.
+
+### Added (schema — data lifecycle: erasure, retention, tombstone doctrine, 2026-10-22)
+- **`erasure_requests`** — first-class, auditable data-subject erasure for
+  `user | patient | tenant`: `subject_id`, `requested_by`, `status`
+  (`queued|running|done|failed|dry_run_done`), a `dry_run` flag, the
+  versioned ordered-walker impact report (`report` +
+  `report_schema_version`) and run timestamps. `done` rows are the **erasure
+  ledger**: a restore replays them before serving traffic, so a backup
+  cannot resurrect an erased subject. `tenant_id` is `ON DELETE SET NULL` so
+  a tenant erasure outlives its tenant.
+- **`POST/GET /api/v1/data-lifecycle/erasures`** — dry-run first (the
+  per-table impact report, no deletion), then `dry_run=false` executes. RBAC:
+  `USER` erases self/own patient, `ADMIN` erases users/patients in their
+  tenant, `SYSTEM_ADMIN` erases a tenant; cross-tenant subjects are a hidden
+  `404`. `DELETE /api/v1/users/me` (new self-service account deletion),
+  `DELETE /api/v1/users/{id}` and `DELETE /api/v1/patients/{id}` all call the
+  same walker.
+- **Ordered cascade walker** (`services/erasure.py`) — children before
+  parents, subject last, one transaction. It owns the awkward shapes:
+  hypertable rows (`telemetry_data`), LangGraph checkpoint threads, document
+  and export files, JSONB-held references (`fhir_provenance`,
+  `export_jobs.patient_ids`, chat-message references in
+  `proposals.source_ref`), and **crypto-shred** of both secret locations
+  (`integration_credentials.sealed_blob` and the sealed `user_config`
+  `_oauth`/`api_secret`/`webhook_secret` wrappers, F12). Audit rows survive
+  with their JSONB diff redacted; AI call rows keep history with the subject
+  id nulled.
+- **`retention_policies`** — retention as operator-editable data: scope
+  `class | table`, action `delete | anonymize`, `days`, `timestamp_column`,
+  `enabled`; seeded defaults, insert-missing on boot. `GET/PATCH
+  /api/v1/data-lifecycle/retention-policies` (SYSTEM_ADMIN edits) and
+  `POST /api/v1/data-lifecycle/retention/run`. The daily
+  `apply_retention_policies` job enforces it for `ai_call_logs`, integration
+  sync/debug logs, notifications, `task_logs`, `catalog_audit_log`,
+  `export/import_jobs`, `auth_sessions`, telemetry, `proposals` (terminal
+  rows only) and audit diffs (`anonymize`). The checkpoint pruner now reads
+  the `checkpoints` policy row — `AI_CHECKPOINT_RETENTION_DAYS` is retired
+  (one source).
+- **Named orphan job** — `purge_orphaned_lifecycle_rows` (daily beat) purges
+  `telemetry_data`/`telemetry_anomalies`/`telemetry_devices` and push
+  registrations whose tenant/patient/user no longer exists: the
+  `models/base.py` hypertable-cleanup promise made code.
+- **Complete lifecycle classification** — `app/core/data_lifecycle.py` and
+  `contracts/data-model.lifecycle.txt` now classify every mapped table
+  (record 49 / operational 22 / transient 1); gate **D6 is green**. Gate test
+  asserts a new model without a class turns D6 red. Tombstone doctrine swept:
+  `SoftDeleteMixin` is exactly the declared FHIR-R4 `410 Gone` set.
+- **Export-before-erase** — `export_before_erase=true` produces the subject's
+  `full_backup` artifact before deletion; erasure afterwards scrubs export
+  artifacts that referenced the subject (files unlinked, `file_path`/
+  `manifest_path`/`patient_ids` cleared; user/tenant erasure removes the job
+  rows too).
+- Migration `0007_data_lifecycle`; downgrade drops both tables and restores
+  the previous shape. Docs: `SECURITY.md` (“Data lifecycle: erasure,
+  retention, backups” — guarantees, operator knobs, erasure SLA vs backup
+  TTL, the legal/anonymize assumption), `EXPORT_IMPORT.md`,
+  `TENANCY_AND_USER_MANAGEMENT.md`, `docs/ARCHITECTURE.md` lifecycle + model
+  tables.
+
+### Added (schema — connector framework: typed credentials, sync state, ingest funnel, 2026-10-22)
+- **`integration_credentials`** — one sealed credential slot per
+  `(integration instance, kind)` (`oauth2|api_key|signed`): the at-rest cipher
+  wrapper (`sealed_blob` + `kid`), `scopes`, access/refresh expiry, and
+  `rotated_at`/`revoked_at`. Rotation reseals in place under the current key's
+  `_kid`; revocation makes reads fail closed (`auth`), so a revoked source
+  stops syncing instead of running unauthenticated. Secrets no longer belong
+  in `user_integrations.user_config`.
+- **`integration_sync_state`** — cursors and sync health as rows:
+  `stream` (`observations|documents|appointments|labs|telemetry`),
+  `cursor_key` (provider-scoped sub-cursor; empty = the stream's primary),
+  `cursor_kind` (`timestamp|page_token|etag|commit`), `cursor_value`,
+  `last_success_at`/`last_error_at`/`last_error_class`,
+  `consecutive_failures` and `next_retry_at`. The beat reads
+  `next_retry_at` — backoff (`Retry-After` or an exponential streak) is data,
+  not a Redis cooldown key. The SDK's JSONB `get_sync_cursor`/`set_sync_cursor`
+  methods are deleted; providers use the row-backed
+  `get_cursor`/`set_cursor`/`clear_cursor` API.
+- **`services/integration_ingest.py`** — the one inbound funnel. Observations
+  are validated, biomarker-mapped, deduped and split (FHIR vs the S6 telemetry
+  seam); unmapped values are stored as raw observations with the mapping gap
+  recorded; telemetry readings resolve the slug registry/device identity and
+  canonical units; documents ride the canonical document pipeline (OCR through
+  the AI gateway); appointments write examinations and clinical events.
+  Documents/exams/events dedup on `(tenant, patient, source_integration_id,
+  external_id)`; observations and telemetry rows dedup on their natural key, so
+  a re-sync with the same cursor writes zero duplicates.
+- **`integration_sync_logs.error_class`** — typed failure class (charter codes
+  plus the engine-only `mapping_gap`/`credential`), so routing never parses a
+  message.
+- **Webhook hardening** — each bundled parser schema-validates its payload
+  (bounded size/depth/node count, section lists of objects, declared field
+  types). Invalid deliveries are typed `protocol`/`invalid` rejections with a
+  failure row and a `4xx` `{code, message}` response; the
+  `except Exception: return []` silence is gone (a parser crash is an `io`
+  failure, not an empty sync).
+- Migration `0006_connector_framework`; its downgrade drops both tables and the
+  log column (the discarded JSONB cursors are deliberately not resurrected).
+  Data-model lifecycle inventory gains `integration_credentials :: record` and
+  `integration_sync_state :: operational`.
+
+
+### Changed (schema — one telemetry contract, device registry, CAgg anomalies, 2026-10-22)
+- **One analytical contract.** `/api/v1/analytics/*` is the single web-facing
+  read surface; the bridge reads through its schema-pinned sub-API
+  (`observations`, `observations/latest`). The `/telemetry/data`,
+  `/telemetry/data/summary`, and `/telemetry/anomalies` **read routes are
+  deleted**; `POST /telemetry/data` remains the one ingest seam.
+- **One CAgg-based anomaly engine.** Detection is SQL-side over
+  `telemetry_hourly` (rolling baseline per patient/device/slug), persisted to
+  the new `telemetry_anomalies` table and deduplicated on
+  `(tenant_id, patient_id, device_id, slug, window_start, kind)` — patient and
+  device are both in the key, so same-slug series never collide. `kind` is the
+  closed `spike`/`drop` vocabulary, and recovery closes the event
+  (`resolved_at`). The Python raw-rows detector is deleted; `/analytics/anomalies`
+  now reports these persisted events instead of reference-range violations.
+- **`telemetry_devices` replaces free-string device ids.** Ingest resolves the
+  client's opaque `device_id` to a row identified by
+  `(tenant, patient, source, external_ref)`; `telemetry_data.device_id` is now a
+  UUID (no FK — hypertable constraint, same tenant/patient cleanup contract).
+- **Canonical units with provenance.** `telemetry_data.value`/`unit` store the
+  canonical measurement; `raw_value`/`raw_unit` keep exactly what the source
+  sent, so conversion-table fixes re-derive canonical values without
+  re-ingest. Unknown or non-telemetry slugs are typed ingest rejections.
+- Migration `0005_telemetry_unified` rewrites the hypertable shape and
+  re-installs the frozen ladder; its downgrade restores the previous
+  string-device shape. Data-model inventories gain
+  `telemetry_anomalies.payload` (keep-open) and lifecycle rows for both new
+  tables.
+
+### Changed (schema — one HITL proposal store, versioned payloads, idempotent resolve, 2026-10-21)
+- **One `proposals` table replaces the two HITL stores.** Chat cards
+  (`chat_messages.tasks` JSONB) and extension proposals
+  (`integration_proposals`) are now rows in `proposals`: `source`
+  (`chat|extension|automation`, CHECK-mirrored) + `source_ref` (message /
+  integration instance / job) + `ordinal` (card order), `kind_id` FK → the
+  seeded `proposal_kinds` vocabulary, a versioned card document (`payload` +
+  `payload_schema_version`), the user-approved `final_payload`, a tenant-unique
+  `dedup_key`, `expires_at`/`resolved_at`/`applied_at`, an audit-grade
+  `resolution_trace` and `superseded_by`. `chat_messages.tasks` is **dropped
+  with no replacement column** — message→cards is a query ordered by
+  `ordinal`; the family HITL card-contract `tasks` array is now an in-memory projection, so
+  the card contract is unchanged. Migration `0004_proposals_unified`.
+- **Proposal kinds are contract data.** `contracts/hitl-proposal-kinds.json`
+  (canonical in the shared family contract set, vendored byte-identically at
+  `backend/app/extensions/hitl-proposal-kinds.json`, drift-gated) declares
+  `{id, tier, schema_ref, resolver, card_variant}` per kind and seeds the
+  `proposal_kinds` lookup at boot (deterministic uuid5 ids) — a new kind is a
+  contract entry plus a row, never a migration and never a CHECK. The four
+  patient-record kinds (`create_event`, `create_examination`,
+  `add_medication`, `add_biomarker_to_examination`) ship from day one, with
+  strict pydantic payload schemas (`backend/app/extensions/sdk/proposal_schemas.py`).
+- **The four patient-record resolvers land.** Extension authors can now
+  propose writes to the health record: approving one validates `final_payload`
+  against the kind schema **before any write**, enforces the proposal's patient
+  scope, and routes through the same services the UI uses (clinical events,
+  examinations, patient medications, observations). The former
+  "resolver doesn't support this type" dead end is gone.
+- **Resolve is idempotent and bounded.** The closed state machine
+  (`proposed|approved|rejected|applied|failed|expired|superseded`) lives in
+  one module (`app/services/proposal_state.py`) with typed errors; repeating a
+  recorded outcome returns the stored result (200) instead of the old
+  409-on-retry, and 409 is reserved for genuine conflicts (a different
+  decision on a terminal row, superseded). A 15-minute beat job
+  (`app.workers.tasks.expire_proposals`) resolves stale pending proposals to
+  `expired`.
+- **Screening seam for resume feedback.** User-edited `final_payload`
+  values enter resume/feedback prompts only through `screen_hitl_value`
+  (control-character strip, whitespace collapse, length bounds,
+  prompt-injection neutralization) — closing the unscreened-embed finding.
+- Gate evidence: `scripts/check-data-model.sh --self` D5 clean with
+  `proposals.payload` / `.final_payload` / `.resolution_trace` classified (D6
+  gains `proposals`, `proposal_kinds`; D6/D7 findings do not grow),
+  `alembic check` empty, `alembic upgrade head` on a fresh DB and
+  `downgrade base` / `downgrade 0003_ai_task_registry` both restore the
+  previous shape.
+
+### Changed (AI — one task registry, DB-level assignment law, per-AI-call audit, 2026-10-21)
+- **One TaskDef registry replaces five drifting task structures.**
+  `backend/app/ai/providers/task_registry.py` declares every AI task once
+  (`{id, label_key, capability, trigger, phi_class, accepts_priority,
+  decision_kinds?, enabled, route, capability_default}`); `TaskType`
+  (`backend/app/ai/providers/task_types.py`), the capability map, the BYOK setup
+  slot map and the AI-settings task list
+  (`frontend/src/generated/taskRegistry.ts`) are **generated** from it by
+  `scripts/sync-task-registry.mjs`. `TASK_REQUIRED_CAPABILITY`,
+  `_SLOT_TASK_TYPES` and the frontend `OTHER_TASKS` list are deleted. A
+  completeness wall (`backend/tests/test_ai_task_registry.py`) asserts every
+  task has a label key in every shipped locale, a declared capability default,
+  and a row in the generated TypeScript — so a task can no longer exist in the
+  enum while being invisible and unassignable (`define_anatomy_graph` was).
+  CI gate: `scripts/check-task-registry.sh` (`.github/workflows/task-registry.yml`).
+- **The AI-settings labels are uniform** (`settings.ai.task_<id>` everywhere):
+  "Global Default Fallback" → "Default model", "Document Parsing (OCR)" → "OCR",
+  "Voice Input (Speech-to-Text)" → "Transcription" (en + el), plus a label for
+  `define_anatomy_graph`.
+- **Task vocabulary is now a seeded lookup, not a string.** New table
+  `ai_task_defs` (+ `ai_task_assignments.task_type_id` FK) is seeded at boot
+  from the registry — adding a task is a registry entry, never a migration.
+  Migration `0003_ai_task_registry`.
+- **Single-slot law enforced by the database.** `ai_task_assignments` rows are
+  **revoked, never deleted** (`revoked_at`; `is_active` dropped) and a partial
+  unique index (`UNIQUE NULLS NOT DISTINCT (tenant_id, user_id, task_type_id)
+  WHERE revoked_at IS NULL`) makes a second active row for the same scope key
+  impossible — a duplicate create is `409 assignment_conflict`. `priority` is
+  deleted from the model, the schemas and the API (no shim). Specialist
+  fallbacks are now `fallback_provider_id`/`fallback_model_id` columns on the
+  assignment row. Resolution precedence (specialist primary → specialist
+  fallback → capability default → unavailable) lives once, in
+  `providers/resolution.py`, with one test matrix
+  (`tests/test_ai_resolution_matrix.py`); the alphabetical-scope `TODO` hack and
+  the decision funnel's second chain are gone. **Requires Postgres 15+**
+  (`NULLS NOT DISTINCT`); CI's service image now matches dev/prod (PG16).
+- **Per-AI-call audit.** New table `ai_call_logs` (task FK, route, provider/model
+  with `SET NULL`, timings, tokens, integer `cost_micros`, status, typed
+  `error_class`, `trace_id`, versioned `meta`) is written by a LangChain callback
+  handler attached at the one chat-model factory seam and by the decision funnel
+  — one row per model call, including failures/timeouts/cancellations, never a
+  prompt or completion. `GET /ai-config/usage?window_days=N` (tenant-scoped,
+  admin-only) aggregates calls/tokens/cost/errors per task. Writes are fail-soft.
+- **Taxonomy fix.** `medication_interaction` (RxNorm) and `anomaly_detection`
+  (analytics) are no longer AI tasks: they move to
+  `backend/app/services/engine_task_registry.py` as non-LLM background engine
+  tasks, the `medication_audit` workflow and the misleading AI badge on the
+  biomarker-insights tab are removed. `define_anatomy_graph` is now assignable
+  and labelled.
+- **Config summary + API reshape (no compatibility shims):** `AIConfigSummary`
+  carries a registry-keyed `tasks` map instead of ~19 per-task fields;
+  task-assignment responses expose `revoked_at` + the fallback ids and no longer
+  `priority`/`is_active`; deleting an assignment revokes it.
+- Docs: `docs/AI_SYSTEM.md` (registry, resolution, assignment law, the audit
+  section — the "no per-AI-call table" admission is gone), `docs/ARCHITECTURE.md`
+  migration notes, and `contracts/data-model.{jsonb,lifecycle}` inventories
+  (the lifecycle file is created; plan 6 completes it).
+- **Recreate/upgrade your dev DB**: `alembic upgrade head` upgrades in place;
+  `alembic downgrade 0002_telemetry` restores the pre-plan-4 shape.
+
+### Changed (schema — baseline squash: 28 revisions → `0001_baseline` + `0002_telemetry`, 2026-10-21)
+- **The alembic chain is squashed to one baseline.** `backend/alembic/versions/`
+  now holds `0001_baseline.py` (65 tables, reproducing the cleaned models
+  exactly, plus the `telemetry_data` hypertable, extensions and the raw-SQL
+  search/per-tenant indexes) and `0002_telemetry.py` (the frozen aggregate
+  ladder). All 28 mnemonic-id revisions are deleted; history stays in git.
+  Revision ids are sequential `NNNN_slug` from here on, and the two
+  migration round-trip tests that pinned deleted ids
+  (`test_byok_migration`, `test_decision_models_migration`) are gone with
+  them — their shapes are part of the baseline now.
+- **`Base.metadata` carries the family five-key `naming_convention`**
+  (`pk_`/`fk_`/`ck_`/`uq_`/`ix_`). Model constraint names are the short form
+  (`"progress_bounds"`), the convention renders the prefixed name. Explicit
+  `idx_*` index names are normalized to `ix_*`.
+- **The CAGG ladder is created once** by `0002_telemetry`: `telemetry_hourly`
+  / `_daily` / `_monthly` with `materialized_only = false` (realtime), a
+  refresh policy per view, the 2-year retention policy, and an explicit 7-day
+  chunk interval. The baseline carries no CAGG shape, and the ad-hoc
+  policy-flip churn of the old chain is gone.
+- **Legacy carve-outs dropped.** `telemetry_data.patient_id` and
+  `tenant_id` are `NOT NULL`; `TenantMixin` is `NOT NULL` for tenant-owned
+  tables with `SystemScopeTenantMixin` as the named exception for tables that
+  genuinely mix system rows (concepts, catalogs, global doctors,
+  `audit_events`); `laboratories.tenant_id` is `NOT NULL`;
+  `clinical_events.occurrences` (the JSONB dual-write duplicate of
+  `clinical_event_occurrences`) is deleted, and the clinical-event
+  create/update/import paths write occurrence rows instead; the retired
+  `AnatomyRelationType` alias enum is deleted.
+- **New schema gates in the suite**: model⇄DB drift
+  (`tests/test_schema_drift_gate.py`), enum/CHECK parity
+  (`tests/test_enum_check_parity.py`), schema doctrine — naming convention,
+  tombstone set, migration-lane indexes, tenancy nullability, retired naming
+  (`tests/test_schema_parameters.py`), and the CAGG ladder
+  (`tests/test_telemetry_caggs.py`). `contracts/data-model.jsonb-inventory.txt`
+  classifies every JSONB column for gate D5.
+- **Dev/test databases must be recreated** — this is the sanctioned
+  destructive squash (owner-approved: the release is fresh-install-only for
+  pre-0.9 databases). Run `./scripts/reset-dev-db.sh -y --migrate`, or
+  recreate the two databases and `alembic upgrade head`. A v0.8.0 database
+  records a revision this chain no longer contains and is refused by the
+  `env.py` preflight (see "upgrade path" at the top of this release).
+  `alembic downgrade base` returns an empty database (the owner-approved
+  baseline carve-out from the family migration rule).
+- Docs: `docs/ARCHITECTURE.md` gained the *Schema governance* section and
+  refreshed the telemetry/clinical-event model descriptions.
+
+### Changed (gates — family root resolution is truthful from any repo copy, 2026-10-21)
+- **`check-ai-alignment.sh` and `check-family-convergence.sh` no longer
+  misresolve the family root from a vendored copy.** Both derived the
+  workspace with `dirname()` of the script's parent, which is right for the
+  dev canonical (`<family>/dev`) and wrong for every product copy — from
+  `health-assistant/core` it produced `<family>/health-assistant`, so the AI
+  gate printed a vacuous `SKIP (no backend/app)` + `no strict violations` +
+  exit 0 for the very repo it was running in, and the convergence gate
+  reported a false `FAIL C5: missing backend/pyproject.toml` on a conformant
+  tree. Both now probe the two candidate depths and pick the one that
+  actually carries the table's repos, and the failures that used to hide as
+  SKIPs are loud: a table repo that is not checked out is a named failure, a
+  lone copy with no family around it exits non-zero, and `--self` outside a
+  repo root fails instead of reporting `no strict violations`. Both scripts
+  also print the resolved `family root:` line so the answer is auditable.
+  `check-family-convergence.sh` additionally excludes `dist` from its code
+  scans (generated build output, matching the AI gate's own exclusions —
+  study's `backend/dist` alone is 1.8G/156k files, which turned a family
+  scan into a >20-minute read of artifacts generated from source the gate
+  already scans; it now finishes in ~1 minute). Canonical copies fixed in
+  the `dev` repo and re-vendored byte-identically into `core`, career,
+  study, desktop and auth-kit. Regression coverage:
+  `check-family-convergence.selftest.sh` gained T18 (both copy depths, lone
+  copy, missing repo → 82/82), and `check-ai-alignment.sh --self-test` is
+  new (6 cases over both layouts and the loud-failure paths) and now runs in
+  the `ai-alignment` CI job.
+
+### Changed (CI — the frontend vitest suite actually runs, 2026-10-21)
+- **CI now runs the frontend unit suite.** `frontend/src` carries 101 test
+  files / 775 tests, green locally, but no workflow executed them: `test.yml`
+  only ran `npm run lint` + `npm run build`. New `test-frontend-unit` job
+  (`npx vitest run`, non-watch, non-zero exit on any failure) mirrors the
+  existing frontend job's Node 24 + `npm ci` setup, so it installs from the
+  same `frontend/package-lock.json` CI already uses (the package-lock vs
+  pnpm-lock duality is a separate pending change, deliberately untouched);
+  the self-hosted Gitea deploy gate gains the same step in `test-frontend`.
+  Docs: `docs/CI_CD_SETUP.md` §1/§2 and `docs/DEVELOPMENT.md` testing section.
+
+### Fixed (security — unwired provider types are refused at write time)
+- **Provider/model writes reject the reserved provider types whose builders
+  raise `NotImplementedError`** (`anthropic`, `azure_openai`, `bedrock`,
+  `ollama`). The API previously saved such rows (and their models) happily —
+  through the manual provider form, the BYOK setup path and the task
+  assignment surface — leaving configuration that could only fail on the
+  first LLM call, and the docs advertised Anthropic as supported. Writes now
+  return the typed machine error
+  `422 {"code": "provider_type_unwired", "message": …}`
+  (`app/ai/providers/registry.py`: `UNWIRED_PROVIDER_TYPES` +
+  `ensure_wired_provider_type`, enforced in `create_provider`,
+  `update_provider`, `create_model`, `update_model` and the setup entry
+  point); wired types (`openai`, `mock`, `tesseract`, `spacy`, `decision`) are
+  unaffected, and the reserved preset tiles keep their recorded disabled
+  reasons. `docs/AI_SYSTEM.md` §2/§3 corrected (Anthropic was documented as
+  supported). Tests: `tests/test_ai_provider_type_writes.py` (all four types
+  refused on create + update, wired types still create models, model writes
+  under a seeded reserved row refused, and the refusal set pinned to the stub
+  builders).
+
+### Fixed (security — a real Content-Security-Policy is served everywhere)
+- **The app now serves a Content-Security-Policy.** `HeaderPolicy(web_csp=None)`
+  claimed the CSP lived in nginx, but `docker/nginx.conf` carried no
+  `add_header` and the SPA is served by `serve` (which emitted nothing) — so
+  no CSP existed anywhere. The policy body is now single-sourced per serving
+  layer: `backend/app/core/csp.py` (`DOCUMENT_CSP`, emitted on every API
+  response by the kit middleware), `frontend/public/serve.json` (applied by
+  `serve` in the production frontend image, passed through by the bundled
+  nginx, which deliberately does not duplicate it), and the HMR-compatible dev
+  variant in `frontend/vite.config.ts` (`'unsafe-inline'` scripts for the
+  React Refresh preamble + `ws:` connect for HMR — never in production).
+  The inline dark-theme bootstrap moved out of `index.html` into
+  `public/theme-init.js`, loaded as a **blocking same-origin** script (no
+  inline script, no deferred module — the class is on `<html>` before the
+  first paint) so `script-src 'self'` holds. Health's two deliberate
+  deviations from the family template: `blob:` for `img-src`/`media-src`/
+  `worker-src` (browser-built document/DICOM previews) and
+  `frame-ancestors 'self'` (same-origin inline PDF preview, matching its
+  per-route `X-Frame-Options: SAMEORIGIN`). Tests:
+  `backend/tests/test_csp_headers.py` (header present + scoped, no external
+  origins, prod serve.json ↔ API policy drift gate, no inline script in
+  `index.html`, dev variant pinned) and `frontend/src/config/csp.test.ts` +
+  `frontend/src/theme-init.test.ts` (vitest).
+
+### Fixed (security — the OCR import path obeys the AI gateway)
+- **`POST /import/ocr` no longer builds its own chat model.** The import
+  service accepted caller-supplied `api_key`/`api_base`/`model` values (fed
+  from `settings.OPENAI_*` by the endpoint) and constructed a LangChain chat
+  model directly — bypassing the scoped `ocr` task resolution and the cached
+  BYOK key every other model consumer uses. `ImportService.import_from_ocr`
+  now resolves the processor through
+  `AIProviderService.get_ocr_processor(tenant_id, user_id)` (the gateway, which
+  also owns the env fallback), and the endpoint's model-configuration form
+  fields (`model_name`, `extract_tables`) plus the settings key plumbing are
+  gone. Tests: `tests/test_import_ocr_gateway.py` (gateway resolution, failure
+  surfacing, signature + source guards that no chat model is constructed on
+  this path, endpoint forwards the caller's tenant/user).
+
+### Fixed (security — AI config resolution endpoints were cross-tenant readable)
+- **`GET /ai-config/task-assignments/active/{task_type}` and
+  `GET /ai-config/default-for-task/{task_type}` now scope-check their
+  caller-supplied `tenant_id`/`user_id` query parameters.** Both accepted
+  them and passed them straight into task resolution, so any authenticated
+  caller could read another tenant's (or another user's) active AI
+  assignment and the resolved provider + model configuration — unlike every
+  sibling `/ai-config` endpoint. The new `check_requested_scope` guard
+  (SYSTEM_ADMIN: any layer; every other role: own tenant only; non-self
+  `user_id` refused) runs before resolution and returns 403; same-tenant and
+  own-user resolution is unchanged. Tests:
+  `tests/test_ai_provider_access_control.py` (cross-tenant/cross-user
+  refusal for both endpoints, same-tenant success, SYSTEM_ADMIN pass-through,
+  plus a source-level guard regression test).
+
 ### Changed (extensions — per-extension documentation is a validated contract)
 - **The four builtin doc trees migrated to the family `extensionDocsTree`
   form (the extension-docs contract's 'Per-extension documentation'

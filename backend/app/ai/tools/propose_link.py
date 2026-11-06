@@ -292,7 +292,7 @@ async def _fetch_endpoint_by_id(
     Returns None if no row exists for that id (NOT a fallback payload)."""
     # Local import keeps the module import-light (avoids pulling the entire
     # model graph at module-load time when this is imported by hitl_proposals).
-    from app.services.concept_endpoint_resolver import _RESOLVERS
+    from app.services.catalog.concept_endpoint_resolver import _RESOLVERS
 
     resolver = _RESOLVERS.get(etype)
     if resolver is None:
@@ -315,7 +315,7 @@ async def _resolve_endpoint_by_text(
     if catalog_type is None:
         return None
     try:
-        from app.services.catalog_search_service import search_catalogs
+        from app.services.catalog.catalog_search_service import search_catalogs
     except ImportError:
         logger.exception("catalog_search_service unavailable")
         return None

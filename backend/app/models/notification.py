@@ -35,6 +35,7 @@ from sqlalchemy.orm import relationship
 from app.models.base import (
     AuditMixin,
     Base,
+    SystemScopeTenantMixin,
     TenantMixin,
     TimestampMixin,
     UUIDMixin,
@@ -58,7 +59,7 @@ def _enum_values(enum_cls):
     return [e.value for e in enum_cls]
 
 
-class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
+class NotificationTrigger(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, TimestampMixin):
     """Defines when a scheduled/recurring/event notification should fire."""
 
     __tablename__ = "notification_triggers"
@@ -105,7 +106,7 @@ class NotificationTrigger(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMix
         }
 
 
-class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
+class Notification(Base, UUIDMixin, SystemScopeTenantMixin, TimestampMixin):
     """The immutable notification event (what happened).
 
     Fan-out targets live on :class:`NotificationRecipient`; per-channel
@@ -202,7 +203,7 @@ class Notification(Base, UUIDMixin, TenantMixin, TimestampMixin):
         }
 
 
-class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
+class NotificationRecipient(Base, UUIDMixin, SystemScopeTenantMixin, TimestampMixin):
     """Per-user inbox state for a notification (the fan-out result).
 
     One row per resolved human recipient. ``user_id`` is the delivery
@@ -254,7 +255,7 @@ class NotificationRecipient(Base, UUIDMixin, TenantMixin, TimestampMixin):
         }
 
 
-class NotificationDelivery(Base, UUIDMixin, TenantMixin, TimestampMixin):
+class NotificationDelivery(Base, UUIDMixin, SystemScopeTenantMixin, TimestampMixin):
     """Per-recipient, per-channel delivery attempt log."""
 
     __tablename__ = "notification_deliveries"
@@ -410,34 +411,33 @@ class MobilePushTarget(Base, UUIDMixin, TenantMixin, TimestampMixin):
 
 # Indices for performance
 Index(
-    "idx_notification_recipient_user_status",
+    "ix_notification_recipient_user_status",
     NotificationRecipient.user_id,
     NotificationRecipient.status,
 )
 Index(
-    "idx_notification_recipient_tenant_status",
+    "ix_notification_recipient_tenant_status",
     NotificationRecipient.tenant_id,
     NotificationRecipient.status,
 )
 Index(
-    "idx_notification_delivery_lookup",
+    "ix_notification_delivery_lookup",
     NotificationDelivery.notification_id,
     NotificationDelivery.channel,
 )
 Index(
-    "idx_trigger_next_run",
+    "ix_trigger_next_run",
     NotificationTrigger.next_trigger,
     NotificationTrigger.enabled,
 )
 # MobilePushTarget: dispatch lookup is by (user_id, is_active); the unique
 # constraint on (user_id, device_id) makes re-registration an upsert.
 Index(
-    "idx_mobile_push_targets_user_active",
+    "ix_mobile_push_targets_user_active",
     MobilePushTarget.user_id,
     MobilePushTarget.is_active,
 )
 UniqueConstraint(
     MobilePushTarget.user_id,
     MobilePushTarget.device_id,
-    name="uq_mobile_push_targets_user_device",
 )

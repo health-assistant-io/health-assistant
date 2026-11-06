@@ -57,7 +57,7 @@ class McpClientConfigFlow(BaseConfigFlow):
                                 "Local subprocess (e.g. npx, python). Server runs on this machine."
                             ),
                             TRANSPORT_HTTP: "Streamable HTTP (recommended for remote servers).",
-                            TRANSPORT_SSE: "Server-Sent Events (legacy remote servers).",
+                            TRANSPORT_SSE: "Server-Sent Events (older remote servers).",
                         },
                         "default": TRANSPORT_HTTP,
                     },

@@ -215,7 +215,7 @@ class ClinicalEventResponse(ClinicalEventBase):
     type_details: ClinicalEventTypeResponse | None = None
     # Resolved rendering hint — populated by ClinicalEvent.to_dict() from the
     # type blueprint. Phase 8a: required (NOT NULL on the wire). A missing
-    # value here is a backend bug, not a legacy case.
+    # value here is a backend bug, not an input-tolerance case.
     schedule_kind: ScheduleKind
     examinations: list[dict[str, Any]] = []
     observations: list[dict[str, Any]] = []

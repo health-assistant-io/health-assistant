@@ -142,6 +142,12 @@
         "description": "The integrations catalog, instances, the config flow, OAuth authorize, and sync — how connections work in the app."
       },
       {
+        "id": "cloud-calendars",
+        "file": "CALENDARS.md",
+        "title": "Cloud calendars",
+        "description": "Publish examinations and clinical events to your own calendar. Redacted by default; inbound is attributable-only; credentials never leave the sealed store."
+      },
+      {
         "id": "integration-security",
         "file": "user/integration-security.md",
         "title": "What you grant when you connect",
@@ -158,6 +164,12 @@
         "file": "MOBILE_SYNC.md",
         "title": "Mobile Sync (Android)",
         "description": "How the self-hosted, open-source Health Assistant Android app reads Health Connect data (heart rate, steps, weight, SpO2, sleep) and pushes it through the Bridge integration to your server — offline-first, privacy-first, no third-party cloud."
+      },
+      {
+        "id": "cloud-calendars-dev",
+        "file": "dev/cloud-calendars.md",
+        "title": "Cloud calendars — implementation",
+        "description": "Health host map for ADR-0052: vendored engines, mapping law, security invariants, test map and gotchas."
       }
     ]
   },

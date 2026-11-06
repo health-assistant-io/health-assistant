@@ -21,7 +21,7 @@ from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.enums import HitlTaskStatus
 from app.models.examination_model import ExaminationModel
-from app.services import anatomy_service
+from app.services.anatomy import anatomy_service
 
 
 async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
@@ -38,7 +38,7 @@ async def _notify_hitl_proposal(ctx: ToolContext, task: dict) -> None:
             NotificationType,
             RecipientKind,
         )
-        from app.services.notification_service import emit
+        from app.services.notifications.notification_service import emit
 
         await emit(
             source=NotificationSource.AGENT,
@@ -431,7 +431,7 @@ def build(ctx: ToolContext) -> list[Any]:
                 tool result). Links are committed to the medication **catalog**
                 entry, not the patient prescription row.
         """
-        from app.services.catalog_search_service import search_medications as _search
+        from app.services.catalog.catalog_search_service import search_medications as _search
 
         # Resolve the catalog entry (tenant-scoped + globals).
         matches = await _search(ctx.db, ctx.tenant_id, medication_name, limit=5)
@@ -757,7 +757,7 @@ def build(ctx: ToolContext) -> list[Any]:
                 reported in the tool result). Links are committed to the
                 allergy **catalog** entry, not the patient intolerance row.
         """
-        from app.services.catalog_search_service import search_allergies as _search
+        from app.services.catalog.catalog_search_service import search_allergies as _search
 
         # Resolve the catalog entry (tenant-scoped + globals).
         matches = await _search(ctx.db, ctx.tenant_id, allergen_name, limit=5)

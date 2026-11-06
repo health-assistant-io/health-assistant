@@ -33,11 +33,11 @@ def setup_logging(log_name: str = "latest", debug: bool = False):
     current_log = log_dir / f"{log_name}.log"
 
     # Clean up old-style timestamped logs to transition to the new rotating system
-    old_timestamped_logs = glob.glob(str(log_dir / f"{log_name}_*.log"))
-    old_timestamped_logs.extend(glob.glob(str(log_dir / "log_*.log")))
-    for old_log in old_timestamped_logs:
+    stale_timestamped_logs = glob.glob(str(log_dir / f"{log_name}_*.log"))
+    stale_timestamped_logs.extend(glob.glob(str(log_dir / "log_*.log")))
+    for stale_log in stale_timestamped_logs:
         with contextlib.suppress(Exception):
-            os.remove(old_log)
+            os.remove(stale_log)
 
     # Define format
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -1,13 +1,13 @@
 """Notification rules — user-configurable checks that emit notifications.
 
 A rule is evaluated against incoming data (currently :class:`Observation`
-values via :mod:`app.services.notification_rule_service`). When the
-condition holds, :func:`app.services.notification_service.emit` creates a
+values via :mod:`app.services.notifications.notification_rule_service`). When the
+condition holds, :func:`app.services.notifications.notification_service.emit` creates a
 ``Notification`` event with ``source = RULE`` and fans it out to the
 rule's targets.
 
-This supersedes the legacy ``AlertModel`` (config-only, no operator, no
-biomarker link, no evaluator).
+Retention: notification_config (record) — rules live with their tenant and
+hard-delete with it.
 """
 
 from sqlalchemy import (
@@ -111,13 +111,13 @@ class NotificationRule(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin)
 
 
 Index(
-    "idx_notification_rule_lookup",
+    "ix_notification_rule_lookup",
     NotificationRule.tenant_id,
     NotificationRule.biomarker_id,
     NotificationRule.enabled,
 )
 Index(
-    "idx_notification_rule_patient",
+    "ix_notification_rule_patient",
     NotificationRule.patient_id,
     NotificationRule.enabled,
 )

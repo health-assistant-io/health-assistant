@@ -1,14 +1,18 @@
 # ruff: noqa: B904 -- long immutable strings; reflow when touched
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers import setup as byok_setup
 from app.ai.providers.enums import ProviderType, TaskType
 from app.ai.providers.service import AIProviderService
+from app.ai.providers.task_registry import get_task_def
 from app.ai.schemas.config import (
     AIConfigSummary,
     AIConfigUpdate,
@@ -22,6 +26,8 @@ from app.ai.schemas.config import (
     AITaskAssignmentCreate,
     AITaskAssignmentResponse,
     AITaskAssignmentUpdate,
+    AIUsageResponse,
+    AIUsageTaskRow,
     ProviderPresetResponse,
     ProviderPresetsResponse,
     ProviderSetDefaultRequest,
@@ -32,7 +38,8 @@ from app.ai.schemas.config import (
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.ai_provider_model import AIModel, AIProviderModel, AIScope
-from app.models.enums import AIModelCapability, Role
+from app.models.ai_task_model import AICallLog, AITaskDef
+from app.models.enums import AICallStatus, AIModelCapability, Role
 from app.schemas.user import TokenData
 
 router = APIRouter(prefix="/ai-config", tags=["AI Configuration"])
@@ -67,6 +74,29 @@ def check_scope_access(
         raise HTTPException(
             status_code=403,
             detail="Not authorized to manage this user's configuration",
+        )
+
+
+def check_requested_scope(
+    current_user: TokenData,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> None:
+    """Refuse a caller-supplied read scope outside the caller's authority.
+
+    Resolution endpoints accept ``tenant_id``/``user_id`` to read a broader
+    layer's configuration. Without this guard those query parameters resolve
+    another tenant's or another user's active assignment — and its provider
+    + model ids. System admins may inspect any layer; tenant admins their own
+    tenant; every other role only its own tenant and user.
+    """
+    if current_user.role == Role.SYSTEM_ADMIN.value:
+        return
+    if tenant_id is not None and str(tenant_id) != str(current_user.tenant_id):
+        raise HTTPException(status_code=403, detail="Cannot read configuration for another tenant")
+    if user_id is not None and str(user_id) != str(current_user.user_id):
+        raise HTTPException(
+            status_code=403, detail="Not authorized to read this user's configuration"
         )
 
 
@@ -493,6 +523,20 @@ def _guard_phi_allowed(task_type: str, phi_allowed: bool) -> None:
         )
 
 
+def _guard_fallback(task_type: str, fallback_model_id: UUID | None) -> None:
+    """ADR-0037: a capability default IS the fallback — it cannot declare one.
+
+    Fallbacks live only on specialist assignments; the capability default slot's
+    own fallback hop is the resolution chain itself.
+    """
+    definition = get_task_def(task_type)
+    if definition is not None and definition.capability_default and fallback_model_id is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="A capability default cannot declare a fallback (ADR-0037)",
+        )
+
+
 # Task assignment endpoints
 @router.post(
     "/task-assignments",
@@ -504,10 +548,11 @@ async def create_task_assignment(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a new task assignment"""
+    """Create a new task assignment (the DB enforces the single-slot law)."""
     service = AIProviderService(db)
 
     _guard_phi_allowed(assignment_data.task_type, assignment_data.phi_allowed)
+    _guard_fallback(assignment_data.task_type, assignment_data.fallback_model_id)
     check_scope_access(
         assignment_data.scope,
         current_user,
@@ -521,21 +566,23 @@ async def create_task_assignment(
     if assignment_data.scope == AIScope.USER and not assignment_data.user_id:
         assignment_data.user_id = current_user.user_id
 
-    # Check if trying to set as active - ensure only one active per task type per scope
-    if assignment_data.is_active:
-        existing_active = await service.get_task_assignments(
-            tenant_id=assignment_data.tenant_id,
-            user_id=assignment_data.user_id,
-            task_type=assignment_data.task_type,
-            is_active=True,
-            scope=assignment_data.scope,
+    try:
+        assignment = await service.create_task_assignment(assignment_data)
+    except IntegrityError:
+        # uq_ai_task_assignments_scope_task: one ACTIVE row per scope key.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "assignment_conflict",
+                "message": (
+                    "An active assignment already exists for this scope and task — "
+                    "update it instead of creating a second one."
+                ),
+            },
         )
-        for existing in existing_active:
-            await service.update_task_assignment(
-                existing.id, AITaskAssignmentUpdate(is_active=False)
-            )
-
-    assignment = await service.create_task_assignment(assignment_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     return AITaskAssignmentResponse.model_validate(assignment)
 
 
@@ -545,11 +592,11 @@ async def get_task_assignments(
     user_id: UUID | None = None,
     scope: AIScope | None = None,
     task_type: str | None = None,
-    is_active: bool | None = True,
+    include_revoked: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get task assignments with optional filtering"""
+    """Get task assignments with optional filtering (active by default)."""
     service = AIProviderService(db)
 
     # Security: validate requested scope
@@ -571,7 +618,7 @@ async def get_task_assignments(
         tenant_id=search_tenant_id,
         user_id=search_user_id,
         task_type=task_type,
-        is_active=is_active,
+        is_active=None if include_revoked else True,
         scope=scope,
     )
     return [AITaskAssignmentResponse.model_validate(a) for a in assignments]
@@ -607,7 +654,7 @@ async def update_task_assignment(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update a task assignment"""
+    """Update a task assignment's binding (task identity is immutable)."""
     service = AIProviderService(db)
 
     assignment = await service.get_task_assignment(assignment_id)
@@ -615,7 +662,9 @@ async def update_task_assignment(
         raise HTTPException(status_code=404, detail="Assignment not found")
 
     if assignment_data.phi_allowed is not None:
-        _guard_phi_allowed(assignment.task_type, assignment_data.phi_allowed)
+        _guard_phi_allowed(assignment.task_type or "", assignment_data.phi_allowed)
+    if "fallback_model_id" in assignment_data.model_fields_set:
+        _guard_fallback(assignment.task_type or "", assignment_data.fallback_model_id)
 
     check_scope_access(
         assignment.scope,
@@ -623,21 +672,6 @@ async def update_task_assignment(
         tenant_id=assignment.tenant_id,
         user_id=assignment.user_id,
     )
-
-    # Check if trying to set as active - ensure only one active per task type per tenant/user/system
-    if assignment_data.is_active:
-        existing_active = await service.get_task_assignments(
-            tenant_id=assignment.tenant_id,
-            user_id=assignment.user_id,
-            task_type=assignment.task_type,
-            is_active=True,
-            scope=assignment.scope,
-        )
-        for existing in existing_active:
-            if existing.is_active and existing.id != assignment_id:
-                await service.update_task_assignment(
-                    existing.id, AITaskAssignmentUpdate(is_active=False)
-                )
 
     updated = await service.update_task_assignment(assignment_id, assignment_data)
 
@@ -648,12 +682,12 @@ async def update_task_assignment(
 
 
 @router.delete("/task-assignments/{assignment_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task_assignment(
+async def revoke_task_assignment(
     assignment_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Delete a task assignment"""
+    """Revoke a task assignment (rows are revoked, never deleted)."""
     service = AIProviderService(db)
 
     assignment = await service.get_task_assignment(assignment_id)
@@ -667,7 +701,7 @@ async def delete_task_assignment(
         user_id=assignment.user_id,
     )
 
-    await service.delete_task_assignment(assignment_id)
+    await service.revoke_task_assignment(assignment_id)
     return None
 
 
@@ -679,8 +713,15 @@ async def get_active_task_assignment(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get the active assignment for a specific task type"""
+    """Get the active assignment for a specific task type.
+
+    Tenant/user scoped (``check_requested_scope``): the query parameters
+    select which configuration layer resolves — never a layer the caller
+    cannot read.
+    """
     service = AIProviderService(db)
+
+    check_requested_scope(current_user, tenant_id=tenant_id, user_id=user_id)
 
     # Use explicitly requested user_id or fall back to current user
     search_user_id = user_id or current_user.user_id
@@ -768,8 +809,15 @@ async def get_default_for_task(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Get the default provider and model for a specific task type"""
+    """Get the default provider and model for a specific task type.
+
+    Tenant/user scoped (``check_requested_scope``): a caller can only resolve
+    the layers it may read, so another tenant's resolved provider/model
+    configuration is unreachable.
+    """
     service = AIProviderService(db)
+
+    check_requested_scope(current_user, tenant_id=tenant_id, user_id=user_id)
 
     search_user_id = user_id or current_user.user_id
     search_tenant_id = tenant_id or current_user.tenant_id
@@ -788,6 +836,81 @@ async def get_default_for_task(
         "provider": AIProviderResponse.model_validate(provider),
         "model": AIModelResponse.model_validate(model) if model else None,
     }
+
+
+@router.get("/usage", response_model=AIUsageResponse)
+async def get_ai_usage(
+    window_days: int = 30,
+    tenant_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Tenant-scoped AI usage: per-task calls, tokens, cost and errors.
+
+    Admin-only (tenant admins for their tenant, system admins for any). The
+    window is bounded to the audit table's declared retention class
+    (``operational``) — this endpoint proves ``ai_call_logs`` earns its keep.
+    """
+    if current_user.role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
+        raise HTTPException(status_code=403, detail="Admin role required")
+    window_days = max(1, min(window_days, 365))
+    target_tenant = tenant_id or current_user.tenant_id
+    if target_tenant is None:
+        raise HTTPException(status_code=422, detail="tenant_id is required")
+    if current_user.role != Role.SYSTEM_ADMIN.value and str(target_tenant) != str(
+        current_user.tenant_id
+    ):
+        raise HTTPException(status_code=403, detail="Cannot read another tenant's usage")
+
+    since = datetime.now(UTC) - timedelta(days=window_days)
+    calls = func.count(AICallLog.id)
+    errors = func.count(AICallLog.id).filter(AICallLog.status != AICallStatus.OK)
+    prompt_tokens = func.coalesce(func.sum(AICallLog.prompt_tokens), 0)
+    completion_tokens = func.coalesce(func.sum(AICallLog.completion_tokens), 0)
+    cost = func.coalesce(func.sum(AICallLog.cost_micros), 0)
+    avg_latency = func.avg(AICallLog.latency_ms)
+    last_call = func.max(AICallLog.started_at)
+
+    rows = (
+        await db.execute(
+            select(
+                AITaskDef.code,
+                calls,
+                errors,
+                prompt_tokens,
+                completion_tokens,
+                cost,
+                avg_latency,
+                last_call,
+            )
+            .join(AITaskDef, AITaskDef.id == AICallLog.task_type_id)
+            .where(AICallLog.tenant_id == target_tenant, AICallLog.started_at >= since)
+            .group_by(AITaskDef.code)
+            .order_by(calls.desc())
+        )
+    ).all()
+
+    task_rows = [
+        AIUsageTaskRow(
+            task_type=code,
+            calls=int(count or 0),
+            errors=int(error_count or 0),
+            prompt_tokens=int(prompt or 0),
+            completion_tokens=int(completion or 0),
+            cost_micros=int(cost_micros or 0),
+            avg_latency_ms=float(avg) if avg is not None else None,
+            last_call_at=last,
+        )
+        for code, count, error_count, prompt, completion, cost_micros, avg, last in rows
+    ]
+    return AIUsageResponse(
+        window_days=window_days,
+        since=since,
+        total_calls=sum(row.calls for row in task_rows),
+        total_errors=sum(row.errors for row in task_rows),
+        total_cost_micros=sum(row.cost_micros for row in task_rows),
+        tasks=task_rows,
+    )
 
 
 # BYOK one-click setup (§15) — scope-aware (SYSTEM / TENANT / USER)

@@ -20,17 +20,27 @@ class TelemetryDataPoint(BaseModel):
     )
     value: float = Field(..., description="Numeric measurement value")
     unit: str | None = Field(None, description="Optional unit symbol (e.g. 'bpm', 'count', '%')")
-    patient_id: UUID | None = Field(
-        None,
+    patient_id: UUID = Field(
+        ...,
         description=(
-            "Optional patient attribution. When omitted, the row is "
-            "attributed later via the device_id → UserIntegration chain."
+            "Patient the measurement belongs to. Required: telemetry rows are "
+            "always patient-attributed (the hypertable stores ``patient_id`` "
+            "NOT NULL; there is no device-only attribution path)."
         ),
     )
 
 
 class TelemetrySyncPayload(BaseModel):
-    device_id: str = Field(..., description="Unique identifier for the mobile device or watch")
+    device_id: str = Field(..., description="Opaque device reference (for example a watch serial)")
+    source: str = Field(
+        "bridge",
+        description=(
+            "Device source family; with ``device_id`` it identifies the telemetry device row"
+        ),
+    )
+    device_label: str | None = Field(
+        None, description="Human-readable device label (defaults to the device reference)"
+    )
     points: list[TelemetryDataPoint] = Field(
         ..., description="Array of long-format telemetry points to sync"
     )

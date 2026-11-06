@@ -19,7 +19,7 @@ from app.models.fhir.medication import Medication
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services.instance_search_service import search_instances
+from app.services.instances.instance_search_service import search_instances
 
 
 async def _tenant():
@@ -54,7 +54,7 @@ async def _headers(tenant_id: uuid.UUID, role: str, user_id: uuid.UUID | None = 
     instead of re-inserting it (create_user always INSERTs — same id twice
     violates users_pkey).
     """
-    from app.services.user_service import get_user_by_id
+    from app.services.tenancy.user_service import get_user_by_id
     from tests._auth_helpers import auth_headers, create_user
 
     if user_id is not None:

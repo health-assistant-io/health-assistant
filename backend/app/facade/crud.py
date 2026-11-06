@@ -26,9 +26,9 @@ from app.facade.bundle import build_search_bundle
 from app.facade.registry import ResourceEntry
 from app.facade.search_params import parse_search_params
 from app.schemas.user import TokenData
-from app.services.fhir_converter import fhir_to_orm
-from app.services.fhir_helpers import FhirSerializationError, assert_valid_fhir
-from app.services.provenance_service import (
+from app.services.fhir.fhir_converter import fhir_to_orm
+from app.services.fhir.fhir_helpers import FhirSerializationError, assert_valid_fhir
+from app.services.fhir.provenance_service import (
     RECORD_CREATE,
     RECORD_DELETE,
     RECORD_UPDATE,
@@ -639,7 +639,7 @@ def _build_resource_filter(model, key: str, value: str):
         type_name = col_type.__name__ if col_type is not None else ""
         if type_name == "JSONB":
             # Try list-shape containment first (most categories are lists);
-            # fall back to single-CodeableConcept shape (some legacy rows).
+            # fall back to single-CodeableConcept shape (some rows store one object).
             pred = _jsonb_codeable_concept_match(col, value, is_list=True)
         else:
             # Scalar column (Enum / String) — direct case-insensitive equality.
@@ -709,7 +709,7 @@ def _build_resource_filter(model, key: str, value: str):
         return not_(pred) if negate else pred
     if base_key in ("name", "family", "given"):
         # Patient/Practitioner name search. Stored as JSONB list of HumanName
-        # (or legacy single dict). Match via substring on the text-cast of the
+        # (or a single dict). Match via substring on the text-cast of the
         # whole name blob — pragmatic v1 that catches any family/given token;
         # we don't distinguish family vs given here (defer).
         col = getattr(model, "name", None)

@@ -1,4 +1,4 @@
-# ruff: noqa: B904 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
 import io
 import logging
 from pathlib import Path

@@ -211,7 +211,8 @@ export async function getAvailableCategories(patientId?: string): Promise<string
 }
 
 export interface BiomarkerAnomaly {
-  type: 'statistical_anomaly' | 'upward_trend' | 'downward_trend' | 'below_reference' | 'above_reference';
+  type: 'statistical_anomaly';
+  kind?: 'spike' | 'drop';
   message: string;
   severity: 'info' | 'warning' | 'critical';
   biomarker?: string;
@@ -219,6 +220,11 @@ export interface BiomarkerAnomaly {
   biomarker_id?: string;
   value?: number;
   unit?: string;
+  z_score?: number;
+  window_start?: string;
+  window_end?: string;
+  detected_at?: string;
+  resolved_at?: string | null;
 }
 
 export async function getAnomalies(patientId?: string, biomarkerCodes?: string): Promise<BiomarkerAnomaly[]> {

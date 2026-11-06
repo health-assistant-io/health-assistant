@@ -1,7 +1,7 @@
 """Tests for the telemetry OHLC aggregation path — long-format edition.
 
 Originally pinned audit item A8 (double-wrapping aggregates + unsafe INTERVAL
-interpolation). The long-format rewrite (migration ``t1e2l3o4n5g6``) also
+interpolation). The long-format baseline also
 collapses the slug→column branching: every metric is queried via
 ``WHERE slug = :slug`` against a uniform ``value`` column (raw hypertable) or
 ``avg_val``/``max_val``/``min_val`` columns (continuous aggregates).
@@ -27,7 +27,7 @@ def test_a8_no_double_wrapped_avg_in_source():
     """A8: the SQL template must not wrap AVG(AVG(...)) or MAX(MAX(...))."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert "AVG({avg_col})" not in src, "analytics_service still double-wraps AVG(AVG(...))."
@@ -46,7 +46,7 @@ def test_raw_table_path_uses_uniform_value_column():
     columns (``AVG(heart_rate)`` etc.) anywhere in the source."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     # The uniform raw-table aggregates.
@@ -73,7 +73,7 @@ def test_cagg_path_uses_generic_pre_aggregated_columns():
     metric-specific ``heart_rate_avg`` / ``steps_max`` columns."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert '"AVG(avg_val)"' in src, (
@@ -97,7 +97,7 @@ def test_sql_filters_by_slug_bind_parameter():
     (bind parameter) — not slug→column branching, not JSONB key existence."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert "slug = :slug" in src, "Telemetry SQL must filter via slug = :slug (bind parameter)."
@@ -114,7 +114,7 @@ def test_sql_execute_passes_slug_parameter():
     """The SQL execute call must pass ``slug`` in the bind parameters."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert '"slug": slug' in src, "Telemetry SQL execute must pass slug as a bind parameter."
@@ -127,7 +127,7 @@ def test_sql_execute_passes_slug_parameter():
 
 def test_a8_bucket_whitelist_exists():
     """A8: a strict whitelist must guard the INTERVAL f-string interpolation."""
-    from app.services.analytics_service import _ALLOWED_TELEMETRY_BUCKETS
+    from app.services.analytics import _ALLOWED_TELEMETRY_BUCKETS
 
     assert isinstance(_ALLOWED_TELEMETRY_BUCKETS, frozenset)
     for expected in ("1 minute", "15 minutes", "1 hour", "1 day", "1 week", "1 month"):
@@ -138,7 +138,7 @@ def test_a8_bucket_whitelist_exists():
 
 def test_a8_bucket_whitelist_rejects_injection():
     """A8: a SQL-injection attempt in the bucket parameter must not pass the whitelist."""
-    from app.services.analytics_service import _ALLOWED_TELEMETRY_BUCKETS
+    from app.services.analytics import _ALLOWED_TELEMETRY_BUCKETS
 
     bad_values = [
         "1'; DROP TABLE telemetry_data; --",
@@ -157,7 +157,7 @@ def test_a8_sql_uses_safe_bucket_variable():
     """A8: the SQL template must use safe_bucket (validated), not the raw bucket."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert "safe_bucket" in src
@@ -234,7 +234,7 @@ def test_is_safe_slug_guard_still_present():
     parameter (no SQL-injection surface). Sanity check on input."""
     import inspect
 
-    from app.services import analytics_service
+    from app.services.analytics import trends as analytics_service
 
     src = inspect.getsource(analytics_service)
     assert "is_safe_slug(slug)" in src, (

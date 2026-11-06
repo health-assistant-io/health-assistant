@@ -2,7 +2,7 @@
 
 Each entity module defines an ``async def search(db, tenant_id, patient_id, q,
 limit) -> list[dict]`` and registers it via :func:`register_instance_search`.
-The dispatcher (:func:`app.services.instance_search_service.search_instances`)
+The dispatcher (:func:`app.services.instances.instance_search_service.search_instances`)
 resolves the requested types through this registry.
 
 A runtime registry (rather than a static switch) keeps the set open for

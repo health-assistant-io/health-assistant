@@ -5,7 +5,7 @@ The audit (C2) found a layer inversion: ``clinical_event_service`` imported the
 service layer to the router (and to ``HTTPException``), which made the service
 unusable from Celery / import / facade contexts.
 
-The fix moved all seven helpers to ``app.services.access`` (raising domain
+The fix moved all seven helpers to ``app.services.auth.access`` (raising domain
 exceptions instead of ``HTTPException``) and deleted the router-layer
 ``endpoints/utils.py``. These tests pin the invariant so the inversion can't
 silently return: no module under ``app/services/`` (or ``app/ai/``,
@@ -20,14 +20,15 @@ from pathlib import Path
 
 import pytest
 
-import app.services.access as access_module
+import app.services as services_package
+import app.services.auth.access as access_module
 
-_SERVICES_ROOT = Path(access_module.__file__).resolve().parent
+_SERVICES_ROOT = Path(services_package.__file__).resolve().parent
 # Layer-inversion boundary: these packages are BELOW the router and must never
 # reach up into ``app.api.v1.endpoints``.
 _FORBIDDEN_PREFIXES = ("app.api.v1.endpoints", "app.api.v1.endpoints.")
 _LOWER_PACKAGES = [
-    _SERVICES_ROOT,  # app/services
+    _SERVICES_ROOT,  # app/services (the domain packages included)
     _SERVICES_ROOT.parent / "ai",  # app/ai
     _SERVICES_ROOT.parent / "workers",  # app/workers
     _SERVICES_ROOT.parent / "facade",  # app/facade
@@ -68,7 +69,7 @@ def _iter_python_files(roots: list[Path]):
 
 
 def test_access_module_defines_all_seven_helpers():
-    """``app.services.access`` must own every canonical access helper."""
+    """``app.services.auth.access`` must own every canonical access helper."""
     expected = {
         "check_patient_access",
         "check_examination_access",
@@ -93,7 +94,7 @@ def test_endpoints_utils_module_removed():
     utils_path = Path(endpoints_pkg.__file__).parent / "utils.py"
     assert not utils_path.exists(), (
         "app/api/v1/endpoints/utils.py was resurrected — the access helpers "
-        "must live in app/services/access.py (audit C2)"
+        "must live in app/services/auth/access.py (audit C2)"
     )
 
 
@@ -111,7 +112,7 @@ def test_no_lower_layer_imports_from_router(file: Path):
 
 def test_clinical_event_service_uses_access_module():
     """The original offender must now resolve its access helpers from services."""
-    import app.services.clinical_event_service as svc
+    import app.services.clinical.clinical_event_service as svc
 
     # The four helpers it needs must resolve to the access-module objects
     # (same identity), proving it no longer pulls them from the router.
@@ -122,12 +123,12 @@ def test_clinical_event_service_uses_access_module():
         "check_patient_access",
     ):
         assert getattr(svc, name) is getattr(access_module, name), (
-            f"clinical_event_service.{name} is not app.services.access.{name}"
+            f"clinical_event_service.{name} is not app.services.auth.access.{name}"
         )
 
 
 def test_endpoints_still_resolve_helpers():
-    """Endpoint modules must resolve the helpers via app.services.access."""
+    """Endpoint modules must resolve the helpers via app.services.auth.access."""
 
     examinations = importlib.import_module("app.api.v1.endpoints.examinations")
     assert examinations.check_patient_access is access_module.check_patient_access

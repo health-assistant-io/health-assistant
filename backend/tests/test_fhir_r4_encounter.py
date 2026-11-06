@@ -16,8 +16,8 @@ from uuid import uuid4
 import pytest
 
 from app.models.examination_model import ExaminationModel
-from app.services.fhir_converter import fhir_to_encounter_orm, validate_resource
-from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resource
+from app.services.fhir.fhir_converter import fhir_to_encounter_orm, validate_resource
+from app.services.fhir.fhir_helpers import FhirSerializationError, parse_fhir_resource
 
 
 def _make_exam(**overrides) -> ExaminationModel:
@@ -247,7 +247,7 @@ def test_canonical_encounter_validates():
 
 def test_invalid_encounter_rejected():
     """Malformed Encounter (class is a string, not a Coding) should be rejected."""
-    from app.services.fhir_helpers import build_fhir_resource
+    from app.services.fhir.fhir_helpers import build_fhir_resource
 
     with pytest.raises(FhirSerializationError):
         build_fhir_resource(

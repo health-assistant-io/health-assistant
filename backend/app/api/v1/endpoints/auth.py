@@ -71,21 +71,21 @@ from app.schemas.auth import (
     UserRegister,
 )
 from app.schemas.user import PublicUser, TokenData, UserResponse
-from app.services import mfa_service
-from app.services.audit_service import (
+from app.services.audit.audit_service import (
     OUTCOME_DENIED,
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.auth_session_service import (
+from app.services.auth import mfa_service
+from app.services.auth.auth_session_service import (
     device_hint,
     issue_session,
     revoke_all_for_user,
     revoke_family,
     sha256_hex,
 )
-from app.services.tenant_service import create_tenant, get_tenant
-from app.services.user_service import (
+from app.services.tenancy.tenant_service import create_tenant, get_tenant
+from app.services.tenancy.user_service import (
     bump_token_version,
     get_user_by_email,
     get_user_by_id,
@@ -93,7 +93,7 @@ from app.services.user_service import (
     reset_login_failures,
     set_login_failures,
 )
-from app.services.user_service import (
+from app.services.tenancy.user_service import (
     create_user as service_create_user,
 )
 
@@ -190,7 +190,7 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
 
     No auth: the frontend must be able to call this before any user exists.
     ``initialized`` reflects whether a SYSTEM_ADMIN has been created (via
-    the wizard, the CLI script, or the legacy register path).
+    the wizard, the CLI script, or the register path).
     ``setup_token_required`` tells the wizard whether to collect the
     one-time setup token (per-mode: see ``app/core/setup_token.py``).
 
@@ -1031,7 +1031,7 @@ async def refresh_token(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    from app.services.auth_session_service import get_family
+    from app.services.auth.auth_session_service import get_family
 
     family = await get_family(family_id) if family_id else None
     if family is None or str(family.user_id) != str(user.id) or family.revoked_at is not None:

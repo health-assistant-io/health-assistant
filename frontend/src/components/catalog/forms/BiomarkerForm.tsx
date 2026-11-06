@@ -8,7 +8,7 @@
  * Single source of truth for biomarker-catalog creation/editing. Used by:
  *  - The Catalog workspace (`/catalogs?type=biomarker` → New/Edit)
  *  - The HITL `propose_define_biomarker` handler (AI-proposed definitions)
- *  - The legacy `CreateBiomarkerModal` (manual create from the examinations page)
+ *  - The `CreateBiomarkerModal` (manual create from the examinations page)
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';

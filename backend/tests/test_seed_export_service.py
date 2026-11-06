@@ -33,7 +33,7 @@ from app.models.enums import (
     ConceptRelationType,
     EdgeEndpointType,
 )
-from app.services.seed_service import SeedService
+from app.services.seed.service import SeedService
 
 
 def _uslug(base: str) -> str:
@@ -225,7 +225,7 @@ async def test_export_concepts_preserves_seeded_data(seeded_db):
     """Every shipped concept slug is exported with matching name + kinds (as a
     set — order is not semantically meaningful). Proves the export doesn't
     lose or corrupt the curated taxonomy."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_concepts()
     shipped = _load_shipped("concepts.json")["items"]
@@ -240,7 +240,7 @@ async def test_export_concepts_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_concept_edges_preserves_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_concept_edges()
     shipped = _load_shipped("concept_edges.json")["items"]
@@ -254,7 +254,7 @@ async def test_export_diseases_preserves_seeded_data(seeded_db):
     """Every shipped disease concept is exported with matching coding_system +
     code. Also verifies diseases are NOT duplicated into concepts.json (the
     export keeps the two files as the true inverse of the seed pipeline)."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_diseases()
     shipped = _load_shipped("diseases.json")["items"]
@@ -275,7 +275,7 @@ async def test_export_diseases_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_anatomy_preserves_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     svc = SeedExportService(seeded_db)
     out = await svc.export_anatomy_structures()
@@ -296,7 +296,7 @@ async def test_export_anatomy_relations_preserves_seeded_data(seeded_db):
     """The export function queries concept_edges for anatomy→anatomy edges
     (the anatomy_relations table is dropped; edges were merged into
     concept_edges.json)."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     svc = SeedExportService(seeded_db)
     out = await svc.export_anatomy_relations()
@@ -315,7 +315,7 @@ async def test_export_anatomy_relations_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_default_catalog_preserves_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_default_catalog()
     shipped = json.loads((_shipped_seeds_dir() / "default_catalog.json").read_text())
@@ -335,7 +335,7 @@ async def test_export_default_catalog_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_biomarker_panels_preserves_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_biomarker_panels()
     shipped = _load_shipped("biomarker_panels.json")["items"]
@@ -346,7 +346,7 @@ async def test_export_biomarker_panels_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_clinical_event_types_preserves_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     out = await SeedExportService(seeded_db).export_clinical_event_types()
     shipped = _load_shipped("clinical_event_types.json")["items"]
@@ -361,7 +361,7 @@ async def test_export_clinical_event_types_preserves_seeded_data(seeded_db):
 
 @pytest.mark.asyncio
 async def test_export_medications_and_allergies_preserve_seeded_data(seeded_db):
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     svc = SeedExportService(seeded_db)
     meds = await svc.export_medications()
@@ -376,7 +376,7 @@ async def test_export_medications_and_allergies_preserve_seeded_data(seeded_db):
 async def test_export_is_deterministic(seeded_db):
     """Two exports of the same state produce identical item payloads. Makes git
     diffs on re-export clean."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     svc = SeedExportService(seeded_db)
     a = await svc.export_all()
@@ -395,7 +395,7 @@ async def test_export_concepts_then_reingest_is_idempotent(db):
     exporting and feeding the export back through the ingest path does NOT
     duplicate the rows (every slug still resolves to exactly one row). Scoped
     rather than global so shared-DB state from other test files can't flake it."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     parent = _make_concept(_uslug("rt-parent"), "RT Parent", [ConceptKind.SPECIALTY])
     child = _make_concept(_uslug("rt-child"), "RT Child", [ConceptKind.SPECIALTY])
@@ -430,7 +430,7 @@ async def test_export_anatomy_emits_class_concept_slug_for_non_legacy(db):
     """Lossless-field guard: an anatomy structure whose class concept is NOT in
     the legacy enum map exports ``class_concept_slug`` (the legacy ``category``
     cannot represent it, so the slug is the only path back)."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     niche = _make_concept(_uslug("lymphatic-class"), "Lymphatic", [ConceptKind.ANATOMY_CLASS])
     db.add(niche)
@@ -458,7 +458,7 @@ async def test_export_anatomy_emits_class_concept_slug_for_non_legacy(db):
 async def test_write_all_safety_pipeline_backs_up_and_writes(tmp_path, seeded_db):
     """The filesystem writer stages, backs up existing files, and writes the
     new ones atomically. Originals survive in a timestamped backup dir."""
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     seeds = tmp_path / "seeds"
     seeds.mkdir()
@@ -574,7 +574,7 @@ async def test_build_zip_bytes_produces_valid_zip_with_all_files(seeded_db):
     seed file and each parses as the expected envelope."""
     import zipfile
 
-    from app.services.seed_export_service import SeedExportService
+    from app.services.seed.seed_export_service import SeedExportService
 
     data = await SeedExportService(seeded_db).build_zip_bytes()
     assert data[:2] == b"PK"  # ZIP magic
@@ -598,7 +598,7 @@ async def test_seeds_export_endpoint_system_admin_200(monkeypatch):
     from app.core.security import get_current_user
     from app.main import app
     from app.schemas.user import TokenData
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     # Seed the global taxonomy so the export has content.
     svc = SeedService()

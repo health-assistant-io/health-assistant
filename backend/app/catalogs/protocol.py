@@ -5,9 +5,8 @@ vaccines, diseases) conforms to :class:`CatalogServiceProtocol` so that the
 ``/catalogs`` meta-layer, the search dispatcher, the graph service, and the LLM
 tools can treat them uniformly.
 
-Phase 0 implements only the read paths (``list`` / ``get``). Write methods are
-declared on the protocol so the contract is complete, but adapters raise
-``NotImplementedError`` until Phase 1 wires them with the RBAC policy.
+Reads and writes are both implemented: every adapter serves the full CRUD +
+search contract, and writes enforce the descriptor's RBAC policy.
 """
 
 from __future__ import annotations

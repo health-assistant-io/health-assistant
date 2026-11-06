@@ -33,12 +33,12 @@ class MedicalProcessingService:
 
     async def resolve_category(self, category_input: str, tenant_id: UUID):
         """Resolve a category slug/name to a Concept (kind=examination_category),
-        creating it if needed. Replaces the legacy ExaminationCategory upsert."""
+        creating it if needed. Replaces the ExaminationCategory upsert."""
         import re
 
         from app.models.concept_model import Concept, ConceptKindTag
         from app.models.enums import ConceptKind, ConceptStatus
-        from app.services.concept_service import concepts_with_kind
+        from app.services.catalog.concept_service import concepts_with_kind
 
         # Normalize input to slug format (kebab-case)
         target_slug = re.sub(r"[^a-z0-9]+", "-", category_input.lower()).strip("-")
@@ -153,7 +153,7 @@ class MedicalProcessingService:
         """Extract high-level examination details from aggregated text"""
         from app.models.concept_model import Concept
         from app.models.enums import ConceptKind
-        from app.services.concept_service import concepts_with_kind
+        from app.services.catalog.concept_service import concepts_with_kind
 
         # Fetch existing examination-category concepts to help the LLM match
         cat_res = await self.db.execute(

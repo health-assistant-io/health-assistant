@@ -219,7 +219,7 @@ def test_create_returns_201_and_location(client, override_auth, override_db, mon
 
 def test_create_invalid_returns_400(client, override_auth, override_db, monkeypatch):
     from app.facade import crud
-    from app.services.fhir_helpers import FhirSerializationError
+    from app.services.fhir.fhir_helpers import FhirSerializationError
 
     monkeypatch.setattr(crud, "create", AsyncMock(side_effect=FhirSerializationError("bad")))
     r = client.post("/api/v1/fhir/R4/Patient", json={"resourceType": "Patient"})

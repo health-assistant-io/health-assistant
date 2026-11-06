@@ -11,7 +11,7 @@ from app.core.security import get_current_user
 from app.models.enums import ExportScope, Role
 from app.schemas.backup import BackupRequest, ExportJobListResponse, ExportJobResponse
 from app.schemas.user import TokenData
-from app.services.export_service import ExportService
+from app.services.export.export_service import ExportService
 
 router = APIRouter(prefix="/export", tags=["data-export"])
 
@@ -47,7 +47,7 @@ async def _validate_patient_scoping(
     current_user: TokenData,
     db: AsyncSession,
 ) -> list[str] | None:
-    from app.services.access import check_patient_access
+    from app.services.auth.access import check_patient_access
 
     if scope == ExportScope.PATIENT:
         if not patient_ids:

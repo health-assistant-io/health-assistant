@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "namespace": "https://neuronection.com/hitl/proposal-kinds",
+  "description": "The HITL proposal-kind vocabulary (ADR-0015, schema plan 5). Seeded into proposal_kinds at boot (constitution rule 7b: extensible domain vocabulary = seeded lookup + FK, never a CHECK). id is the durable vocabulary value referenced by proposals.kind_id; card_variant is the ADR-0015 wire card key the chat UI registers a handler under; schema_ref names the pydantic model that validates final_payload before any write (trust boundary); resolver names the server-side apply path (client_committed = the UI already wrote through the canonical REST endpoint, record_only = nothing is written). Adding a kind is an entry here + a row, never a migration.",
+  "kinds": [
+    {
+      "id": "create_event",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CreateEventPayload",
+      "resolver": "create_event",
+      "card_variant": "create_clinical_event"
+    },
+    {
+      "id": "create_examination",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CreateExaminationPayload",
+      "resolver": "create_examination",
+      "card_variant": "create_examination"
+    },
+    {
+      "id": "add_medication",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:AddMedicationPayload",
+      "resolver": "add_medication",
+      "card_variant": "add_medication"
+    },
+    {
+      "id": "add_biomarker_to_examination",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:AddBiomarkerPayload",
+      "resolver": "add_biomarker_to_examination",
+      "card_variant": "add_biomarker_to_examination"
+    },
+    {
+      "id": "create_biomarker_definition",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CatalogBiomarkerPayload",
+      "resolver": "catalog_biomarker",
+      "card_variant": "create_biomarker_definition"
+    },
+    {
+      "id": "create_medication_definition",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CatalogMedicationPayload",
+      "resolver": "catalog_medication",
+      "card_variant": "create_medication_definition"
+    },
+    {
+      "id": "create_concept",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CatalogConceptPayload",
+      "resolver": "catalog_concept",
+      "card_variant": "create_concept"
+    },
+    {
+      "id": "create_edge",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:CatalogEdgePayload",
+      "resolver": "catalog_edge",
+      "card_variant": "create_edge"
+    },
+    {
+      "id": "add_allergy",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:ClientCommittedPayload",
+      "resolver": "client_committed",
+      "card_variant": "add_allergy"
+    },
+    {
+      "id": "create_allergy_definition",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:ClientCommittedPayload",
+      "resolver": "client_committed",
+      "card_variant": "create_allergy_definition"
+    },
+    {
+      "id": "generate_anatomy_graph",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:ClientCommittedPayload",
+      "resolver": "client_committed",
+      "card_variant": "generate_anatomy_graph"
+    },
+    {
+      "id": "ask_user",
+      "tier": 1,
+      "schema_ref": "app.extensions.sdk.proposal_schemas:AskUserPayload",
+      "resolver": "record_only",
+      "card_variant": "ask_user"
+    }
+  ]
+}

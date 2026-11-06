@@ -16,8 +16,8 @@ from uuid import uuid4
 import pytest
 
 from app.models.document_model import DocumentModel
-from app.services.fhir_converter import fhir_to_document_reference_orm, validate_resource
-from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resource
+from app.services.fhir.fhir_converter import fhir_to_document_reference_orm, validate_resource
+from app.services.fhir.fhir_helpers import FhirSerializationError, parse_fhir_resource
 
 
 def _make_doc(**overrides) -> DocumentModel:
@@ -289,7 +289,7 @@ def test_canonical_doc_ref_validates():
 
 def test_invalid_doc_ref_rejected():
     """DocumentReference requires status + content. Drop content to fail."""
-    from app.services.fhir_helpers import build_fhir_resource
+    from app.services.fhir.fhir_helpers import build_fhir_resource
 
     with pytest.raises(FhirSerializationError):
         build_fhir_resource(

@@ -25,8 +25,8 @@ from app.models.base import (
     VersionedMixin,
 )
 from app.models.enums import Gender
-from app.services.fhir_extensions import to_fhir_extension_list as _patient_fhir_extension_list
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_extensions import to_fhir_extension_list as _patient_fhir_extension_list
+from app.services.fhir.fhir_helpers import (
     _as_list,
     _clean_quantity,
     _coerce_human_name_list,
@@ -68,7 +68,7 @@ class Patient(
     dashboard_layout = Column(JSONB, nullable=True)  # Custom dashboard layout
 
     # FHIR R4 extensions stored as a local-keyed JSONB map (see
-    # app/services/fhir_extensions.py for the registry + canonical
+    # app/services/fhir/fhir_extensions.py for the registry + canonical
     # FHIR conversion). Holds race / ethnicity / preferred language /
     # insurance provider and any future US Core-ish demographic
     # extensions without bloating the relational schema.
@@ -76,8 +76,8 @@ class Patient(
 
     # Indexes for common queries
     __table_args__ = (
-        Index("idx_patient_tenant_mrn", "tenant_id", "mrn"),
-        Index("idx_patient_tenant_name", "tenant_id", "name"),
+        Index("ix_patient_tenant_mrn", "tenant_id", "mrn"),
+        Index("ix_patient_tenant_name", "tenant_id", "name"),
         # FHIR sort: Patient?_sort=birthdate
         Index("ix_fhir_patients_birth_date", "birth_date"),
         # Prevent empty-string MRNs — Postgres treats NULLs as distinct
@@ -231,7 +231,7 @@ class Observation(
     raw_unit = relationship("Unit", lazy="selectin")
 
     def to_dict(self):
-        from app.services.fhir_helpers import _flatten_interpretation
+        from app.services.fhir.fhir_helpers import _flatten_interpretation
 
         return {
             "id": str(self.id),
@@ -282,7 +282,7 @@ class Observation(
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B Observation resource via fhir.resources (validated)."""
-        from app.services.fhir_helpers import _normalize_interpretation, fhir_isoformat
+        from app.services.fhir.fhir_helpers import _normalize_interpretation, fhir_isoformat
 
         return build_fhir_resource(
             "Observation",
@@ -309,9 +309,9 @@ class Observation(
 
     # Indexes for common queries
     __table_args__ = (
-        Index("idx_observation_tenant_patient", "tenant_id", "subject"),
-        Index("idx_observation_tenant_code", "tenant_id", "code"),
-        Index("idx_observation_tenant_date", "tenant_id", "effective_datetime"),
+        Index("ix_observation_tenant_patient", "tenant_id", "subject"),
+        Index("ix_observation_tenant_code", "tenant_id", "code"),
+        Index("ix_observation_tenant_date", "tenant_id", "effective_datetime"),
         # Expression index on the extracted JSONB path — the most-used query
         # pattern in the codebase (12+ call sites do
         # ``subject["reference"].astext == "Patient/<uuid>"``). Without this
@@ -356,8 +356,8 @@ class DiagnosticReport(
 
     # Indexes for common queries
     __table_args__ = (
-        Index("idx_diagnostic_report_tenant_patient", "tenant_id", "subject"),
-        Index("idx_diagnostic_report_tenant_date", "tenant_id", "effective_datetime"),
+        Index("ix_diagnostic_report_tenant_patient", "tenant_id", "subject"),
+        Index("ix_diagnostic_report_tenant_date", "tenant_id", "effective_datetime"),
         Index(
             "ix_fhir_diagnostic_reports_subject_ref",
             text("(subject->>'reference')"),
@@ -385,7 +385,7 @@ class DiagnosticReport(
 
     def to_fhir_dict(self) -> dict:
         """Serialize to a FHIR R4B DiagnosticReport resource via fhir.resources (validated)."""
-        from app.services.fhir_helpers import fhir_isoformat
+        from app.services.fhir.fhir_helpers import fhir_isoformat
 
         return build_fhir_resource(
             "DiagnosticReport",

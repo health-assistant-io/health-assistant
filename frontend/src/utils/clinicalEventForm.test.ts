@@ -19,7 +19,7 @@ describe('getScheduleKind', () => {
   it('falls back to STATE when schedule_kind is missing or the type is unloaded', () => {
     // Phase 8a: schedule_kind is required on the wire (NOT NULL), so a missing
     // value here is a runtime safety net for partial loads / synthetic rows,
-    // not a legacy wire-format case.
+    // not a wire-format case.
     expect(getScheduleKind({} as any)).toBe(ScheduleKind.STATE);
     expect(getScheduleKind(null)).toBe(ScheduleKind.STATE);
     expect(getScheduleKind(undefined)).toBe(ScheduleKind.STATE);

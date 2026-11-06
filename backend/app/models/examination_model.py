@@ -25,7 +25,7 @@ from app.models.base import (
     UUIDMixin,
     VersionedMixin,
 )
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 if TYPE_CHECKING:
     pass
@@ -124,10 +124,10 @@ class ExaminationModel(
     )
 
     __table_args__ = (
-        Index("idx_exam_tenant_patient", "tenant_id", "patient_id"),
+        Index("ix_exam_tenant_patient", "tenant_id", "patient_id"),
         CheckConstraint(
             "extraction_progress BETWEEN 0 AND 100",
-            name="ck_examinations_extraction_progress_bounds",
+            name="extraction_progress_bounds",
         ),
     )
 

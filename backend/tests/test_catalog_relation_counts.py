@@ -64,7 +64,7 @@ async def _add_edge(src_id: str, dst_id: str, relation: str = "CORRELATES_WITH")
 async def test_count_relations_directly():
     """count_relations returns per-item totals + by_relation breakdown."""
     from app.models.enums import EdgeEndpointType
-    from app.services.catalog_graph_service import count_relations
+    from app.services.catalog.catalog_graph_service import count_relations
 
     a = await _create_medication("RC-A")
     b = await _create_medication("RC-B")

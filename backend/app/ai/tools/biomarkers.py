@@ -117,11 +117,11 @@ def build(ctx: ToolContext) -> list[Any]:
         Returns JSON: [{id, name, slug, category, is_telemetry, preferred_unit,
                         coding_system, code, matched_on, snippet}].
         """
-        from app.services.catalog_search_service import search_catalogs as _search
+        from app.services.catalog.catalog_search_service import search_catalogs as _search
 
         if not search_term or len(search_term.strip()) < 2:
             # Short/empty query: list biomarkers alphabetically.
-            from app.services.catalog_search_service import search_biomarkers
+            from app.services.catalog.catalog_search_service import search_biomarkers
 
             biomarkers = await search_biomarkers(ctx.db, ctx.tenant_id, None, limit=20)
             summary = []
@@ -182,7 +182,7 @@ def build(ctx: ToolContext) -> list[Any]:
         Returns up to the `limit` most recent aggregated records within the range to protect context size."""
         from datetime import datetime
 
-        from app.services.analytics_service import get_biomarker_trends
+        from app.services.analytics import get_biomarker_trends
 
         start_date = None
         end_date = None

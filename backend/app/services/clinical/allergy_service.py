@@ -1,0 +1,483 @@
+"""Allergy catalog + patient-instance intolerance service.
+
+Mirrors :mod:`app.services.clinical.medication_service`: db-injected async functions
+with Pydantic-schema params (not raw dicts), write-time FHIR validation gate,
+and scope+ownership RBAC on catalog mutations. Adds the parity surface that
+was missing vs medications — single-instance fetch, cross-patient usage, and
+AI reprocess.
+"""
+
+import logging
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.schemas.allergy import (
+    AllergyCatalogCreate,
+    AllergyCatalogUpdate,
+    AllergyIntoleranceCreate,
+    AllergyIntoleranceUpdate,
+)
+from app.schemas.user import TokenData
+from app.services.auth.access import check_patient_access
+from app.services.fhir.fhir_helpers import assert_valid_fhir
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Catalog
+# ---------------------------------------------------------------------------
+
+
+async def get_allergy_catalog(
+    db: AsyncSession, tenant_id: UUID, search: str | None = None
+) -> list[AllergyCatalog]:
+    """Search the global + tenant allergy catalog (hybrid search)."""
+    from app.services.catalog.catalog_search_service import search_allergies
+
+    return await search_allergies(db, tenant_id, search)
+
+
+async def get_catalog_allergy(
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
+) -> AllergyCatalog | None:
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
+
+
+async def create_catalog_allergy(
+    db: AsyncSession, actor, data: AllergyCatalogCreate
+) -> AllergyCatalog:
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    new_entry = AllergyCatalog(**data.model_dump())
+    DEFAULT_CATALOG_POLICY.assign_create_scope(
+        actor.role, new_entry, actor.tenant_id, actor.user_id
+    )
+    # Write-time FHIR gate (parity with medication_service). AllergyCatalog
+    # projects to FHIR Substance; invalid shapes never persist.
+    assert_valid_fhir(new_entry)
+    db.add(new_entry)
+    await db.commit()
+    await db.refresh(new_entry)
+    return new_entry
+
+
+async def update_catalog_allergy(
+    db: AsyncSession,
+    catalog_id: UUID,
+    actor,
+    data: AllergyCatalogUpdate,
+) -> AllergyCatalog | None:
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == actor.tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        entry.scope,
+        item_created_by=entry.created_by,
+        actor_user_id=actor.user_id,
+    )
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(entry, key, value)
+
+    assert_valid_fhir(entry)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+async def delete_catalog_allergy(
+    db: AsyncSession,
+    catalog_id: UUID,
+    actor,
+) -> bool:
+    """Delete an allergy catalog entry (scope + ownership enforced).
+
+    Returns ``False`` if the entry is missing or out of tenant scope.
+    Raises :class:`CatalogPermissionDenied` (→ HTTP 403) on insufficient role.
+    """
+    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == actor.tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return False
+
+    DEFAULT_CATALOG_POLICY.check_modify(
+        actor.role,
+        entry.scope,
+        item_created_by=entry.created_by,
+        actor_user_id=actor.user_id,
+    )
+
+    await db.delete(entry)
+    await db.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Patient-instance intolerances
+# ---------------------------------------------------------------------------
+
+
+async def get_patient_allergies(
+    db: AsyncSession, patient_id: UUID, tenant_id: UUID
+) -> list[AllergyIntolerance]:
+    query = (
+        select(AllergyIntolerance)
+        .where(
+            AllergyIntolerance.patient_id == patient_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+        .order_by(
+            AllergyIntolerance.clinical_status.asc(),
+            AllergyIntolerance.onset_date.desc().nullslast(),
+            AllergyIntolerance.created_at.desc(),
+        )
+    )
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_allergy(
+    db: AsyncSession, allergy_id: UUID, tenant_id: UUID
+) -> AllergyIntolerance | None:
+    """Fetch one patient-instance allergy, tenant-scoped + non-deleted."""
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def add_patient_allergy(
+    db: AsyncSession,
+    current_user: TokenData,
+    data: AllergyIntoleranceCreate,
+    *,
+    source_integration_id: UUID | None = None,
+    external_id: str | None = None,
+) -> AllergyIntolerance:
+    """Create a patient intolerance (allergy).
+
+    Refactored to the canonical write-chokepoint shape shared with
+    ``clinical_event_service.create_event`` /
+    ``examination_service.create_examination`` /
+    ``medication_service.add_patient_medication``: takes the request actor
+    (``TokenData``) so patient-access checks, tenant scoping, and
+    ``created_by`` audit provenance live here once. Called by the
+    ``POST /allergies/patient/{id}`` endpoint and the integration-sync
+    engine (Phase 4 of the fhir-server multi-resource sync plan, when a
+    provider declares the ``allergy`` data class).
+
+    Integration-sourced dedup: when **both** ``source_integration_id`` and
+    ``external_id`` are supplied, returns the existing row instead of
+    duplicating (mirrors events / exams / docs / meds / immunizations).
+    """
+    if data.patient_id is None:
+        raise ValueError("AllergyIntoleranceCreate.patient_id is required.")
+    await check_patient_access(data.patient_id, current_user, db)
+
+    effective_external_id = external_id or data.external_id
+
+    if source_integration_id is not None and effective_external_id is not None:
+        existing = await _find_integration_allergy(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=data.patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            logger.info(
+                "add_patient_allergy: returning existing %s (dedup hit on "
+                "source_integration_id=%s external_id=%r)",
+                existing.id,
+                source_integration_id,
+                effective_external_id,
+            )
+            return existing
+
+    new_record = AllergyIntolerance(
+        **data.model_dump(exclude={"external_id", "patient_id"}),
+        patient_id=data.patient_id,
+        tenant_id=current_user.tenant_id,
+        created_by=current_user.user_id,
+        source_integration_id=source_integration_id,
+        external_id=effective_external_id,
+    )
+    # Write-time FHIR gate (audit C13): invalid FHIR never persists.
+    assert_valid_fhir(new_record)
+    db.add(new_record)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Race window — the partial unique index
+        # ``uq_allergy_intolerance_integration_dedup`` caught a concurrent
+        # insert. Roll back and return the winner.
+        await db.rollback()
+        existing = await _find_integration_allergy(
+            db,
+            tenant_id=current_user.tenant_id,
+            patient_id=data.patient_id,
+            source_integration_id=source_integration_id,
+            external_id=effective_external_id,
+        )
+        if existing is not None:
+            return existing
+        raise
+    await db.commit()
+    await db.refresh(new_record)
+    return new_record
+
+
+async def _find_integration_allergy(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    source_integration_id: UUID,
+    external_id: str,
+) -> AllergyIntolerance | None:
+    """Look up an existing integration-sourced allergy by dedup key.
+
+    Backed by the partial unique index
+    ``uq_allergy_intolerance_integration_dedup`` (migration f1m2u3l4t5i6).
+    """
+    stmt = select(AllergyIntolerance).where(
+        AllergyIntolerance.tenant_id == tenant_id,
+        AllergyIntolerance.patient_id == patient_id,
+        AllergyIntolerance.source_integration_id == source_integration_id,
+        AllergyIntolerance.external_id == external_id,
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def update_patient_allergy(
+    db: AsyncSession,
+    allergy_id: UUID,
+    tenant_id: UUID,
+    data: AllergyIntoleranceUpdate,
+) -> AllergyIntolerance | None:
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return None
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Merge code partially so a text-only update doesn't wipe catalog_id (and
+    # vice versa) — mirrors medication_service.update_patient_medication.
+    if update_data.get("code"):
+        current_code = record.code or {}
+        record.code = {**current_code, **update_data["code"]}
+        del update_data["code"]
+
+    for key, value in update_data.items():
+        setattr(record, key, value)
+
+    assert_valid_fhir(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
+async def delete_patient_allergy(db: AsyncSession, allergy_id: UUID, tenant_id: UUID) -> bool:
+    """Hard-delete the row (parity with medication_service.delete_patient_medication).
+
+    Note: the FHIR R4 facade soft-deletes via ``deleted_at`` (audit C5). This
+    domain endpoint removes the row entirely, matching the medications path.
+    """
+    result = await db.execute(
+        select(AllergyIntolerance).where(
+            AllergyIntolerance.id == allergy_id,
+            AllergyIntolerance.tenant_id == tenant_id,
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record is None:
+        return False
+    await db.delete(record)
+    await db.commit()
+    return True
+
+
+async def get_active_allergies_by_tenant(db: AsyncSession, tenant_id: UUID) -> list[dict[str, Any]]:
+    """All ACTIVE intolerances in the tenant + the patient display name.
+
+    Used by the dashboard ``AllergyAlertsCard`` and the cross-patient
+    alerts feed (now reachable at ``/allergies/active``).
+    """
+    from app.models.enums import AllergyClinicalStatus
+    from app.models.fhir.patient import Patient
+
+    query = (
+        select(AllergyIntolerance, Patient.name.label("patient_name"))
+        .join(Patient, AllergyIntolerance.patient_id == Patient.id)
+        .where(
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+        .order_by(AllergyIntolerance.criticality.desc())
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    output: list[dict[str, Any]] = []
+    for allergy, p_name in rows:
+        data = allergy.to_dict()
+        data["patient_name_display"] = f"{p_name.get('given', [''])[0]} {p_name.get('family', '')}"
+        output.append(data)
+    return output
+
+
+async def get_allergy_usage(
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
+) -> list[dict[str, Any]]:
+    """All patient intolerances pointing at the given allergy catalog entry.
+
+    Mirrors ``medication_service.get_medication_usage``: drives the "patients
+    affected" tab on the allergy detail page and surfaces cross-patient
+    impact for clinicians reviewing the allergen.
+    """
+    from app.models.fhir.patient import Patient
+
+    query = (
+        select(AllergyIntolerance, Patient)
+        .join(Patient, AllergyIntolerance.patient_id == Patient.id)
+        .where(
+            AllergyIntolerance.code["catalog_id"].astext == str(catalog_id),
+            AllergyIntolerance.tenant_id == tenant_id,
+            AllergyIntolerance.deleted_at.is_(None),
+        )
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    usage: list[dict[str, Any]] = []
+    for allergy, patient in rows:
+        usage.append(
+            {
+                "allergy": allergy.to_dict(),
+                "patient": {
+                    "id": str(patient.id),
+                    "name": patient.name,
+                    "mrn": patient.mrn,
+                },
+            }
+        )
+    return usage
+
+
+async def reprocess_allergy(
+    db: AsyncSession, catalog_id: UUID, tenant_id: UUID
+) -> AllergyCatalog | None:
+    """AI re-enrich an existing allergy catalog entry's description and
+    typical_reactions.
+
+    Parity with ``medication_service.reprocess_medication``: pulls the catalog
+    row, runs the NLP extractor's pass-2 allergen enrichment, and writes the
+    enriched fields back. Falls back gracefully (returns the unchanged row)
+    when AI is unavailable, the extractor has no allergen enrichment method,
+    or it returns nothing. This keeps the endpoint usable today while leaving
+    a seam for future NLP enrichment.
+    """
+    query = select(AllergyCatalog).where(
+        AllergyCatalog.id == catalog_id,
+        or_(
+            AllergyCatalog.tenant_id.is_(None),
+            AllergyCatalog.tenant_id == tenant_id,
+        ),
+    )
+    result = await db.execute(query)
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        return None
+
+    try:
+        from app.ai.processors.nlp import get_nlp_extractor_from_db
+
+        nlp = await get_nlp_extractor_from_db(db, task_type="nlp", tenant_id=tenant_id)
+    except Exception as exc:
+        logger.warning("Allergy reprocess: NLP extractor unavailable (%s).", exc)
+        return entry
+
+    # The allergen-enrichment pass is optional on the extractor contract; only
+    # invoke it when the configured backend implements it.
+    enrich = getattr(nlp, "parse_document_pass_2_allergies", None)
+    if enrich is None:
+        logger.info("Allergy reprocess: extractor has no allergen enrichment; no-op.")
+        return entry
+
+    try:
+        new_defs = await enrich([{"raw_name": entry.name}])
+    except Exception as exc:
+        logger.warning("Allergy reprocess: NLP pass-2 raised %s", exc)
+        return entry
+
+    definitions = getattr(new_defs, "definitions", None) or []
+    if not definitions:
+        return entry
+
+    enriched = definitions[0]
+    if getattr(enriched, "description", None):
+        entry.description = enriched.description
+    typical = getattr(enriched, "typical_reactions", None)
+    if typical:
+        entry.typical_reactions = list(typical)
+    category_raw = getattr(enriched, "category", None)
+    if category_raw:
+        try:
+            from app.models.enums import AllergyCategory
+
+            entry.category = AllergyCategory(str(category_raw).upper())
+        except (ValueError, KeyError):
+            pass
+
+    await db.commit()
+    await db.refresh(entry)
+    return entry

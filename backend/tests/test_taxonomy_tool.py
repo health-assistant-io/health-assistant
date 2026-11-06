@@ -15,7 +15,7 @@ async def taxonomy_ctx():
     """Create a tenant + seed concepts + build a ToolContext."""
     from app.core.database import AsyncSessionLocal
     from app.models.tenant_model import TenantModel
-    from app.services.seed_service import SeedService
+    from app.services.seed.service import SeedService
 
     tid = uuid.uuid4()
     async with AsyncSessionLocal() as session:

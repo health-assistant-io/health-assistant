@@ -10,6 +10,7 @@ from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.anatomy import router as anatomy_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.biomarkers import router as biomarkers_router
+from app.api.v1.endpoints.calendar import router as calendar_router
 from app.api.v1.endpoints.catalogs import router as catalogs_router
 from app.api.v1.endpoints.clinical_events import router as clinical_events_router
 from app.api.v1.endpoints.concepts import (
@@ -18,10 +19,13 @@ from app.api.v1.endpoints.concepts import (
 from app.api.v1.endpoints.concepts import (
     router as concepts_router,
 )
+from app.api.v1.endpoints.data_lifecycle import router as data_lifecycle_router
 from app.api.v1.endpoints.doctors import router as doctors_router
 from app.api.v1.endpoints.documents import router as documents_router
 from app.api.v1.endpoints.examinations import router as examinations_router
 from app.api.v1.endpoints.export import router as export_router
+from app.api.v1.endpoints.extension_consents import router as extension_consents_router
+from app.api.v1.endpoints.extension_sources import router as extension_sources_router
 from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
 from app.api.v1.endpoints.import_data import router as import_router
 from app.api.v1.endpoints.instances import router as instances_router
@@ -73,6 +77,7 @@ session_gated_router.include_router(users_router)
 session_gated_router.include_router(documents_router)
 session_gated_router.include_router(examinations_router)
 session_gated_router.include_router(patients_router)
+session_gated_router.include_router(data_lifecycle_router)
 session_gated_router.include_router(observations_router)
 session_gated_router.include_router(telemetry_router)
 session_gated_router.include_router(notifications_router)
@@ -97,8 +102,15 @@ session_gated_router.include_router(admin_tenants_router)
 session_gated_router.include_router(
     integrations_router, prefix="/integrations", tags=["Integrations"]
 )
+session_gated_router.include_router(calendar_router, prefix="/calendar", tags=["Calendar"])
 session_gated_router.include_router(
     admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"]
+)
+session_gated_router.include_router(
+    extension_sources_router, prefix="/extensions/sources", tags=["Extension Sources"]
+)
+session_gated_router.include_router(
+    extension_consents_router, prefix="/integrations/consents", tags=["Extension Consents"]
 )
 session_gated_router.include_router(search_router, prefix="/search", tags=["Search"])
 session_gated_router.include_router(instances_router)

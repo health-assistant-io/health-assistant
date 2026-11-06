@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neuronection.dev/contracts/product-capabilities.schema.json",
+  "title": "Product capability showcase (docs/capabilities.json)",
+  "$comment": "The family capability-showcase contract (plan 43). One per product repo, at docs/capabilities.json: WHAT THE PRODUCT CAN DO, codified so the hub site can render it (compact strip, detail view, capability page) and every agent that ships a feature updates it in the same change. v1.3 (plan 46) removed the family matrix and the preview-widget hints. v1.4 (plan 47) removed `shot`: the hub shows product captures on ONE surface only (the visual tour) — repeating them in feature rows and capability pages read as filler. NOT the extension-manifest `capabilities` flags (net/sync/…, extension-manifest.schema.json) and NOT the capability RPC (capability-rpc.schema.json) — those describe extension runtime surface; this file describes product-level user-facing capabilities. Discipline mirrors docs-tree.schema.json: draft 2020-12, only the keyword subset scripts/lib/docs-tree-validate.mjs implements, closed vocabularies as enums with $comment rationales, additionalProperties:false everywhere. Content is verifiable FACTS + short English labels (plan 43 §1.4): persuasion copy lives on the website; per-locale prose rides the optional i18n map. A field that cannot be verified does not belong here.",
+  "type": "object",
+  "required": [
+    "version",
+    "project",
+    "capabilities"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "$comment": "Contract version. Bumping is a family decision (the family product-capabilities contract first, re-vendor everywhere)."
+    },
+    "project": {
+      "$ref": "#/$defs/projectSlug",
+      "$comment": "Must match the product repo it lives in — the hub's sync cross-checks it against the manifest slug."
+    },
+    "updated": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "$comment": "ISO date the capability list was last REVIEWED against the shipped product (content date, hand-maintained — never the sync date)."
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    },
+    "useCases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "minLength": 20,
+        "maxLength": 160
+      },
+      "$comment": "Concrete scenarios a visitor recognizes themselves in ('Compare cholesterol across two labs after switching providers — …'), verb-first, one per line. Optional; when present the hub renders them as the 'what you can do with it' section on the capability page. These are REPRESENTATIVE, not exhaustive — pick the five that best say what the product is for."
+    }
+  },
+  "$defs": {
+    "projectSlug": {
+      "enum": [
+        "health",
+        "career",
+        "study",
+        "desktop"
+      ],
+      "$comment": "Closed family roster. A new product ADDS a slug here (canonical-first + re-vendor) — it never forks the vocabulary. Mirrors src/data/projects.ts on the hub."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 3,
+      "maxLength": 48,
+      "$comment": "Stable kebab-case slug. It is the anchor (#cap-<id>), the i18n key and the deep-link target — once shipped, an id is renamed only with a redirect note, never reused for a different capability."
+    },
+    "verb": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 80,
+      "$comment": "Verb-first, present tense, user's outcome ('Catch dangerous interactions') — NOT a feature name ('Interaction checker'). This is the first-minute line; it must read standalone."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 220,
+      "$comment": "One sentence, how it works for the user. Facts only — no marketing adjectives, no superlatives."
+    },
+    "category": {
+      "enum": [
+        "discover",
+        "analyze",
+        "automate",
+        "integrate",
+        "ai",
+        "privacy",
+        "developer"
+      ],
+      "$comment": "Closed grouping vocabulary for the detail view and filter chips. discover = find/explore things; analyze = insights, charts, understanding; automate = flows, background jobs, shortcuts; integrate = connectors, import/export, extensions; ai = chat/LLM-powered; privacy = local-first, security, data control; developer = SDK/API/scripting. A capability that fits none of these EXTENDS this enum (family decision, canonical-first)."
+    },
+    "audience": {
+      "enum": [
+        "user",
+        "dev"
+      ],
+      "$comment": "Mirrors the docs.md audience split, closed. Absent = 'user'."
+    },
+    "status": {
+      "enum": [
+        "shipped",
+        "beta",
+        "planned"
+      ],
+      "$comment": "Closed lifecycle. Only 'shipped' capabilities may claim metrics/proofs; 'planned' ones render dimmed and must not be counted in the headline strip. (A structure gate is not a truth gate — pin the semantics repo-side.)"
+    },
+    "proof": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 140,
+      "$comment": "One verifiable statement ('Runs fully offline — nothing leaves the device'). Claims like 'best' or 'blazing fast' fail the spirit of this contract even though the schema cannot smell them."
+    },
+    "metricValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "$comment": "The number itself, verbatim ('2s', '40+', '100%'). No units prose — units go in metric.label."
+    },
+    "metricLabel": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32
+    },
+    "metric": {
+      "type": "object",
+      "required": [
+        "value",
+        "label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/metricValue"
+        },
+        "label": {
+          "$ref": "#/$defs/metricLabel"
+        }
+      },
+      "$comment": "At most one proof number per capability, shown as a chip. Absent = no chip (never invent a metric to fill the slot)."
+    },
+    "linkKind": {
+      "enum": [
+        "guide",
+        "api",
+        "screenshots",
+        "source",
+        "demo",
+        "download",
+        "website",
+        "blog"
+      ],
+      "$comment": "Closed door vocabulary. 'guide'/'api' hrefs point at hub docs routes or upstream docs; 'source' at the repository. The hub maps unknown-to-it targets through the same tolerant rules as extension links — a link that cannot resolve is a gate failure, never a dead door."
+    },
+    "link": {
+      "type": "object",
+      "required": [
+        "kind",
+        "href"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/linkKind"
+        },
+        "href": {
+          "type": "string",
+          "pattern": "^(https://[^\\s]+|docs/[a-z][a-z0-9-]*/(user|dev|sdk)/[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*)$",
+          "minLength": 1,
+          "maxLength": 300,
+          "$comment": "Two shapes only: an absolute https:// URL (repo, product site, demo), or a locale-less HUB DOCS ROUTE 'docs/<project>/<audience>/<slug>' resolved against the hub's vendored docs at render time. No http:// (CSP forbids external non-https origins), no free-form relative paths — a href that cannot resolve is a gate failure, never a dead door."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "$comment": "Optional display override; absent = the kind's i18n label on the hub."
+        }
+      }
+    },
+    "platform": {
+      "enum": [
+        "selfhosted",
+        "local",
+        "web",
+        "desktop",
+        "hotkey",
+        "ai"
+      ],
+      "$comment": "Mirrors the hub's PlatformIcon vocabulary (src/data/projects.ts), closed. Where the capability actually runs — not the product's whole platform list."
+    },
+    "localeCode": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$",
+      "$comment": "BCP-47-ish, mirrors the hub locale codes (en, el, de, es, fr, pt-BR, it, pl, tr)."
+    },
+    "capStrings": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 4,
+      "properties": {
+        "verb": {
+          "$ref": "#/$defs/verb"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "proofs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/proof"
+          },
+          "$comment": "When present, replaces the English proofs 1:1 (same length, same order)."
+        }
+      },
+      "$comment": "Per-locale override of the English strings. Absent locales fall back to the English fields (graceful degradation — the hub renders English until a translation lands)."
+    },
+    "i18n": {
+      "type": "object",
+      "maxProperties": 16,
+      "propertyNames": {
+        "$ref": "#/$defs/localeCode"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/capStrings"
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "id",
+        "verb",
+        "summary",
+        "category",
+        "status",
+        "order"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "verb": {
+          "$ref": "#/$defs/verb"
+        },
+        "summary": {
+          "$ref": "#/$defs/summary"
+        },
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "audience": {
+          "$ref": "#/$defs/audience"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "proofs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/proof"
+          }
+        },
+        "metric": {
+          "$ref": "#/$defs/metric"
+        },
+        "links": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/platform"
+          }
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 999,
+          "$comment": "Sort weight, ascending; ties break on id. The FIRST-MINUTE STRIP takes the lowest-order shipped capabilities (the hub asks for 3). Write them in the order you would tell a new user about them."
+        },
+        "i18n": {
+          "$ref": "#/$defs/i18n"
+        },
+        "visual": {
+          "$ref": "#/$defs/visualPath",
+          "$comment": "Optional component capture (alpha) shown floating in the feature row. One per capability — it appears exactly once on the whole site."
+        }
+      }
+    },
+    "visualPath": {
+      "type": "string",
+      "pattern": "^(?!.*\\.\\.)images/components/[a-z0-9][a-z0-9-]*\\.(png|webp)$",
+      "maxLength": 120,
+      "$comment": "COMPONENT CAPTURE: the capability's UI element ISOLATED as it really renders (element crop, never the page — no window chrome, no desktop). PNG or WebP, ~2x density, 480–900 px on the long edge, named after the capability id, path relative to this manifest (docs/images/components/<id>.png). Produced by the product's own capture pipeline; scenes with `tour: false` + `capture: \"element\"` write it (guidelines/component-captures.md). Transparency is optional: floating components capture with alpha (rendered with a drop-shadow), surfaced cards keep their own surface (rendered as a framed card). Rendered ONCE, in the project page feature rows."
+    }
+  }
+}

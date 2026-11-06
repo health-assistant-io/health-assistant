@@ -83,7 +83,7 @@ export const ReRunSetupDialog: React.FC<{
   const [pending, setPending] = useState(false);
 
   const nowLabel = (slotTask: string) => {
-    const model = configSummary?.[slotTask as 'default']?.model;
+    const model = configSummary?.tasks?.[slotTask]?.model;
     return t('settings.ai.setup.review.now', {
       model: model?.model_name ?? t('settings.ai.setup.review.unset'),
     });

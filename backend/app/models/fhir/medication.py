@@ -12,7 +12,7 @@ from app.models.base import (
     VersionedMixin,
 )
 from app.models.enums import CatalogScope, MedicationIntent, MedicationStatus
-from app.services.fhir_helpers import (
+from app.services.fhir.fhir_helpers import (
     _enum_value,
     _normalize_timing,
     build_fhir_resource,

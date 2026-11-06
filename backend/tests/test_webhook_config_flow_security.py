@@ -172,6 +172,8 @@ async def test_webhook_failure_is_typed_and_never_echoes_the_exception():
     )
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
 
     provider = MagicMock()
     provider.handle_webhook = AsyncMock(

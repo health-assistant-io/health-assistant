@@ -1,4 +1,4 @@
-"""First-run setup token — four modes (see dev/audits/setup-token-modes.md).
+"""First-run setup token — four modes (see the family audit notes/setup-token-modes.md).
 
 The decision "is this deployment exposed?" is a **deployment-time choice**,
 not a runtime guess. Operators choose one of four modes through
@@ -20,7 +20,7 @@ not a runtime guess. Operators choose one of four modes through
 - ``disabled``           — never required. Logs a security warning on boot.
                            Only safe behind a firewall / VPN / 127.0.0.1 bind.
 
-Hosts that already bypass the token — localhost requests and dev/test envs —
+Hosts that already bypass the token — localhost requests and the family standards/test envs —
 keep bypassing in every mode (these are not deployment-target decisions).
 
 State is module-level: the standalone HTTP stack is a single uvicorn process
@@ -115,7 +115,7 @@ def validate(token: str | None) -> bool:
     """True if the supplied token matches the current setup token.
 
     An empty/None current token (already consumed, or never set in disabled /
-    time-within-grace / dev) is only valid when the request does not require
+    time-within-grace / the family standards) is only valid when the request does not require
     a token at all — callers must gate on :func:`is_setup_token_required`
     first.
     """
@@ -181,9 +181,9 @@ def _ensure_post_grace_token() -> None:
 def is_setup_token_required(request: Request) -> bool:
     """Whether the setup wizard must present the setup token.
 
-    Decision tree (see dev/audits/setup-token-modes.md §D1):
+    Decision tree (see the design notes §D1):
 
-    1. Localhost request OR dev/test env → never required (escape hatch).
+    1. Localhost request OR the family standards/test env → never required (escape hatch).
     2. Mode dispatch:
        - ``log``      → required (the active token was minted+logged on boot).
        - ``env``      → required (token was seeded from SETUP_BOOTSTRAP_TOKEN).

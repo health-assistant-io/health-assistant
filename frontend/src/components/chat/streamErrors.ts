@@ -11,7 +11,7 @@ export type TranslateFn = (key: string, options?: Record<string, unknown>) => st
  * "Connection error.") never reaches the user. Soft guard violations use
  * ``errorType === 'guard'`` with the user-facing message in ``error``.
  *
- * Falls back to the raw ``error`` text (legacy/unguarded) or a generic
+ * Falls back to the raw ``error`` text (unguarded) or a generic
  * localized message so we never render an empty bubble.
  */
 export function resolveStreamErrorMessage(

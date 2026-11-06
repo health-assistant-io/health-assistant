@@ -74,7 +74,7 @@ def build(ctx: ToolContext):
         (e.g. ["name", "alias", "text"]); ``snippet`` is a short excerpt
         showing the match context when the description/info matched.
         """
-        from app.services.catalog_search_service import search_catalogs as _search
+        from app.services.catalog.catalog_search_service import search_catalogs as _search
 
         results = await _search(
             ctx.db,
@@ -120,7 +120,7 @@ def build(ctx: ToolContext):
         ``relations`` / ``types`` / lower ``max_depth`` when set.
         """
         from app.models.enums import ConceptRelationType, EdgeEndpointType
-        from app.services.catalog_graph_service import traverse
+        from app.services.catalog.catalog_graph_service import traverse
 
         # Catalog type names (as exposed by the registry / search results) →
         # EdgeEndpointType enum values. "vaccine" is the catalog type but the
@@ -228,7 +228,7 @@ def build(ctx: ToolContext):
         missing, or did I name it slightly differently?").
         """
         from app.ai.tools.ask_user import ALLOWED_CATALOG_TYPES
-        from app.services.catalog_search_service import search_catalogs as _search
+        from app.services.catalog.catalog_search_service import search_catalogs as _search
 
         # Validate primary_type against the catalog whitelist.
         if primary_type not in ALLOWED_CATALOG_TYPES:

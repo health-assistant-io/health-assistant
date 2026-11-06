@@ -11,7 +11,7 @@ so the wizard's extension section renders the correct inputs without
 hardcoding keys or CDC codes.
 
 Iteration 1 ships only the ``patient`` entity; the wizard UI lands in a
-later iteration on the same branch. See ``dev/audits/setup-wizard-design.md``.
+later iteration on the same branch. See ``the design notes``.
 """
 
 from uuid import UUID
@@ -28,7 +28,7 @@ from app.schemas.setup_checklist import (
     StepResult,
 )
 from app.schemas.user import TokenData
-from app.services.setup_checklist_service import (
+from app.services.setup.setup_checklist_service import (
     SUPPORTED_ENTITIES,
     SetupChecklistService,
 )

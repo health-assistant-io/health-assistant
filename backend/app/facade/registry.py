@@ -3,7 +3,7 @@
 Each FHIR resource type exposed by the facade registers a :class:`ResourceEntry`
 here. The registry is consumed by:
 
-* :mod:`app.services.fhir_facade_service` — to build the CapabilityStatement
+* :mod:`app.services.fhir.fhir_facade_service` — to build the CapabilityStatement
 * :mod:`app.facade.search` — to dispatch search/read by resource type
 * :mod:`app.api.v1.endpoints.fhir_r4` — to wire up the HTTP routes
 
@@ -118,7 +118,7 @@ def register_all() -> None:
     from app.models.fhir.patient import DiagnosticReport, Observation, Patient
     from app.models.fhir.provenance import ProvenanceModel
     from app.models.fhir.vaccine import PatientImmunization
-    from app.services.fhir_converter import (
+    from app.services.fhir.fhir_converter import (
         fhir_to_allergy_orm,
         fhir_to_communication_orm,
         fhir_to_condition_orm,

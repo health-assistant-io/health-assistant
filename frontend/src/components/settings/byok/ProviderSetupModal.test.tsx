@@ -11,6 +11,7 @@ const storeState = {
   setupProvider,
   setProviderDefault,
   createProvider,
+  providers: [] as Array<Record<string, unknown>>,
   configSummary: {
     models: [
       {
@@ -31,10 +32,13 @@ const storeState = {
       },
     ],
     // Live "now:" context for the review's assignment rows — the text
-    // default is taken, vision/transcription are unset.
-    default: {
-      task_type: 'default',
-      model: { id: 'm0', provider_id: 'prov-0', name: 'GPT-4o legacy', model_name: 'gpt-4o-legacy', is_active: true },
+    // default is taken, vision/transcription are unset (registry-keyed since
+    // plan 4).
+    tasks: {
+      default: {
+        task_type: 'default',
+        model: { id: 'm0', provider_id: 'prov-0', name: 'GPT-4o starter', model_name: 'gpt-4o-starter', is_active: true },
+      },
     },
   },
 };
@@ -230,6 +234,7 @@ function renderModal(onManual = vi.fn()) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  storeState.providers = [];
   listProviderPresets.mockResolvedValue(PRESETS);
   getProviderWithModels.mockResolvedValue({
     models: [
@@ -304,11 +309,12 @@ describe('ProviderSetupModal', () => {
     await user.type(await screen.findByLabelText('API Key'), '  sk-test  ');
     await user.click(screen.getByRole('button', { name: 'Set up automatically' }));
 
-    // connect is bind-less — the review step decides what registers/binds
+    // connect is bind-less — the review step decides what registers/binds;
+    // the name rides the auto-seeded preset label
     await waitFor(() =>
       expect(setupProvider).toHaveBeenCalledWith('openai', {
         api_key: 'sk-test',
-        name: null,
+        name: 'OpenAI',
         scope: 'USER',
         options: { bind_chat: false, bind_vision: false, bind_stt: false, bind_decision: false },
       }),
@@ -321,7 +327,7 @@ describe('ProviderSetupModal', () => {
     // terra serves chat and vision — both rows name it; the live text
     // default rides the chat row's now-context
     expect(await screen.findAllByText(/fills: gpt-5\.6-terra/)).toHaveLength(2);
-    expect(screen.getByText(/now: gpt-4o-legacy · fills: gpt-5\.6-terra/)).toBeInTheDocument();
+    expect(screen.getByText(/now: gpt-4o-starter · fills: gpt-5\.6-terra/)).toBeInTheDocument();
     // whisper keeps its own card → its own candidate
     expect(screen.getByText(/fills: whisper-1/)).toBeInTheDocument();
 
@@ -492,6 +498,21 @@ describe('ProviderSetupModal', () => {
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Choose another provider' }));
     expect(await screen.findByText('OpenAI')).toBeInTheDocument();
+  });
+
+  it('seeds the connection name with the preset label', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByText('OpenAI'));
+    expect(await screen.findByLabelText('Connection name')).toHaveValue('OpenAI');
+  });
+
+  it('numbers the seeded connection name when the label is taken', async () => {
+    storeState.providers = [{ id: 'p0', name: 'OpenAI' }];
+    const user = userEvent.setup();
+    renderModal();
+    await user.click(await screen.findByText('OpenAI'));
+    expect(await screen.findByLabelText('Connection name')).toHaveValue('OpenAI 2');
   });
 
   it('custom tile routes to the manual form and closes the modal', async () => {

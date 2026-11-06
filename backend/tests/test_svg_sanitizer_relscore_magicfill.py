@@ -111,7 +111,7 @@ class _FakeObs:
 @pytest.mark.asyncio
 async def test_a9_interior_score_is_normal():
     """A9: a strictly-interior relative_score (0 < s < 1) is Normal."""
-    from app.services.analytics_service import _get_observation_status
+    from app.services.analytics import _get_observation_status
 
     obs = _FakeObs(relative_score=0.5)
     assert await _get_observation_status("glucose", 100, obs) == "Normal"
@@ -121,7 +121,7 @@ async def test_a9_interior_score_is_normal():
 async def test_a9_high_boundary_defers_to_range_check_high():
     """A9: score clamped to 1.0 must NOT short-circuit to Normal — defer to
     the reference-range comparison which can detect the genuinely-high value."""
-    from app.services.analytics_service import _get_observation_status
+    from app.services.analytics import _get_observation_status
 
     obs = _FakeObs(
         relative_score=1.0,  # clamped — value at or above the high bound
@@ -137,7 +137,7 @@ async def test_a9_high_boundary_defers_to_range_check_high():
 @pytest.mark.asyncio
 async def test_a9_low_boundary_defers_to_range_check_low():
     """A9: score clamped to 0.0 must defer to the range check for a low value."""
-    from app.services.analytics_service import _get_observation_status
+    from app.services.analytics import _get_observation_status
 
     obs = _FakeObs(
         relative_score=0.0,
@@ -150,7 +150,7 @@ async def test_a9_low_boundary_defers_to_range_check_low():
 @pytest.mark.asyncio
 async def test_a9_boundary_at_exactly_low_bound_is_normal():
     """A9: value exactly at the low bound is still Normal (not Low)."""
-    from app.services.analytics_service import _get_observation_status
+    from app.services.analytics import _get_observation_status
 
     obs = _FakeObs(
         relative_score=0.0,
@@ -163,7 +163,7 @@ async def test_a9_boundary_at_exactly_low_bound_is_normal():
 @pytest.mark.asyncio
 async def test_a9_no_score_uses_range():
     """A9: absent relative_score falls through to the range check unchanged."""
-    from app.services.analytics_service import _get_observation_status
+    from app.services.analytics import _get_observation_status
 
     obs = _FakeObs(
         relative_score=None,

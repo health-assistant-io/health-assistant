@@ -55,9 +55,7 @@ class ExportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_export_jobs_progress_bounds"),
-    )
+    __table_args__ = (CheckConstraint("progress BETWEEN 0 AND 100", name="progress_bounds"),)
 
     def to_dict(self) -> dict:
         return {
@@ -108,9 +106,7 @@ class ImportJobModel(Base, UUIDMixin, TenantMixin, AuditMixin, TimestampMixin):
     error_message = Column(Text, nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        CheckConstraint("progress BETWEEN 0 AND 100", name="ck_import_jobs_progress_bounds"),
-    )
+    __table_args__ = (CheckConstraint("progress BETWEEN 0 AND 100", name="progress_bounds"),)
 
     def to_dict(self) -> dict:
         return {

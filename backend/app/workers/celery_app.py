@@ -13,7 +13,7 @@ celery_app = Celery(
     "health_assistant_workers",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.workers.tasks", "app.workers.ai_tasks"],
+    include=["app.workers.tasks", "app.workers.ai_tasks", "app.workers.lifecycle"],
 )
 
 celery_app.conf.update(
@@ -38,9 +38,21 @@ celery_app.conf.update(
             "task": "app.workers.tasks.sync_active_integrations",
             "schedule": 60.0,  # 1 minute
         },
+        "expire-proposals-every-15-minutes": {
+            "task": "app.workers.tasks.expire_proposals",
+            "schedule": 900.0,  # 15 minutes
+        },
         "prune-checkpoints-daily": {
             "task": "app.workers.ai_tasks.prune_checkpoint_threads",
             "schedule": 86400.0,  # daily — checkpoint rows grow unboundedly
+        },
+        "apply-retention-policies-daily": {
+            "task": "app.workers.lifecycle.apply_retention_policies",
+            "schedule": 86400.0,  # daily — policy rows own every cutoff
+        },
+        "purge-orphaned-lifecycle-rows-daily": {
+            "task": "app.workers.lifecycle.purge_orphaned_lifecycle_rows",
+            "schedule": 86400.0,  # daily — hypertable/push orphan cleanup
         },
     },
 )

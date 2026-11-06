@@ -143,7 +143,7 @@ def test_categorical_observation_passes_fhir_validation():
     the corrected builder path.
     """
     from app.models.fhir import Observation
-    from app.services.fhir_helpers import assert_valid_fhir
+    from app.services.fhir.fhir_helpers import assert_valid_fhir
 
     obs_create = (
         ObservationBuilder(TENANT, PATIENT)
@@ -266,7 +266,7 @@ def test_value_codeable_concept_passes_fhir_validation():
     """The built observation round-trips through assert_valid_fhir and
     projects as a FHIR Observation with valueCodeableConcept."""
     from app.models.fhir import Observation
-    from app.services.fhir_helpers import assert_valid_fhir
+    from app.services.fhir.fhir_helpers import assert_valid_fhir
 
     obs_create = (
         ObservationBuilder(TENANT, PATIENT)

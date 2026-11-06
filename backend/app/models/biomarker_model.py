@@ -50,9 +50,7 @@ class Unit(Base, UUIDMixin, AuditMixin, TimestampMixin):
     base_unit = relationship("Unit", remote_side="[Unit.id]")
 
     __table_args__ = (
-        CheckConstraint(
-            "conversion_multiplier > 0", name="ck_units_positive_conversion_multiplier"
-        ),
+        CheckConstraint("conversion_multiplier > 0", name="positive_conversion_multiplier"),
     )
 
 
@@ -138,18 +136,18 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
             "reference_range_min IS NULL "
             "OR reference_range_max IS NULL "
             "OR reference_range_min <= reference_range_max",
-            name="ck_biomarker_definitions_ref_range_order",
+            name="ref_range_order",
         ),
         # STATE biomarkers cannot be telemetry (telemetry_data.value is
         # Float NOT NULL — categorical values have nowhere to go).
         CheckConstraint(
             "is_telemetry = FALSE OR value_type != 'state'",
-            name="ck_biomarker_definitions_state_not_telemetry",
+            name="state_not_telemetry",
         ),
         # STATE biomarkers have no unit (categorical values are unitless).
         CheckConstraint(
             "value_type != 'state' OR preferred_unit_id IS NULL",
-            name="ck_biomarker_definitions_state_no_unit",
+            name="state_no_unit",
         ),
     )
 
@@ -172,9 +170,9 @@ class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):
     Each row applies to a sub-population; a NULL dimension means "any value for
     that axis" (NULL ``sex`` → both sexes, NULL ``age_min``/``age_max`` → all
     ages, NULL ``unit_id`` → any unit). The resolver
-    (:func:`app.services.reference_ranges.resolve_reference_range`) picks the
+    (:func:`app.services.biomarkers.reference_ranges.resolve_reference_range`) picks the
     most-specific matching row for a given patient, falling back to the
-    biomarker's legacy global range when no stratified row matches.
+    biomarker's own reference range when no stratified row matches.
     """
 
     __tablename__ = "biomarker_reference_ranges"
@@ -206,12 +204,12 @@ class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):
     __table_args__ = (
         CheckConstraint(
             "low IS NULL OR high IS NULL OR low <= high",
-            name="ck_biomarker_reference_ranges_low_le_high",
+            name="low_le_high",
         ),
         # Enforce sane age windows at the DB layer.
         CheckConstraint(
             "age_min IS NULL OR age_max IS NULL OR age_min <= age_max",
-            name="ck_biomarker_reference_ranges_age_window",
+            name="age_window",
         ),
     )
 
@@ -255,7 +253,7 @@ class BiomarkerState(Base, UUIDMixin, AuditMixin, TimestampMixin):
     __table_args__ = (
         # A code is unique within its code system (POS in v3-OI is unambiguous;
         # a different POS in another system would be a different concept).
-        UniqueConstraint("code", "system", name="uq_biomarker_states_code_system"),
+        UniqueConstraint("code", "system"),
     )
 
 
@@ -294,25 +292,26 @@ class BiomarkerAllowedState(Base, UUIDMixin):
 
     __table_args__ = (
         # A biomarker lists each state at most once.
-        UniqueConstraint("biomarker_id", "state_id", name="uq_biomarker_allowed_states"),
+        UniqueConstraint("biomarker_id", "state_id"),
     )
 
 
 class Laboratory(Base, UUIDMixin, AuditMixin, TimestampMixin, TenantMixin):
+    """A laboratory a tenant sends samples to.
+
+    Retention: catalog record, hard-deleted with its tenant (no system-scope
+    rows — ``tenant_id`` is ``NOT NULL`` via :class:`TenantMixin`).
+    """
+
     __tablename__ = "laboratories"
 
     name = Column(String(255), nullable=False)
     location = Column(String(255), nullable=True)
     standard_rating = Column(Float, nullable=True)
-    tenant_id = Column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=True,
-    )
 
 
 # NOTE (Phase 3): ``BiomarkerRelationship`` and ``BiomarkerEventCorrelation``
 # were dropped — their data migrated into the polymorphic ``concept_edges``
 # graph (CORRELATES_WITH for biomarker↔biomarker, MONITORS for
-# biomarker↔clinical_event_type). See ``dev/plans/unified-catalog-
+# biomarker↔clinical_event_type). See ``local planning notes/unified-catalog-
 # architecture-2026-07-08.md`` §3.5.

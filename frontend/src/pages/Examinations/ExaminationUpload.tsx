@@ -75,7 +75,7 @@ function ExaminationUpload() {
     }
   }, [isBulkMode, isSmartMode]);
 
-  // Sync legacy files with bulkFiles whenever legacy files change
+  // Sync the manual file list with bulkFiles whenever the manual list changes
   useEffect(() => {
     if (files.length > 0) {
       const bulkFileNames = new Set(bulkFiles.map(f => f.file.name));
@@ -93,11 +93,11 @@ function ExaminationUpload() {
     }
   }, [files, isSmartMode, bulkGroups]);
 
-  // Sync back from bulkFiles to legacy files when in manual mode
+  // Sync back from bulkFiles to the manual file list when in manual mode
   useEffect(() => {
     if (!isSmartMode && !isBulkMode && bulkFiles.length > 0) {
-      const legacyFileNames = new Set(files.map(f => f.file.name));
-      const newToSync = bulkFiles.filter(f => !legacyFileNames.has(f.file.name));
+      const manualFileNames = new Set(files.map(f => f.file.name));
+      const newToSync = bulkFiles.filter(f => !manualFileNames.has(f.file.name));
       
       if (newToSync.length > 0) {
         const newLegacyFiles = newToSync.map(f => ({

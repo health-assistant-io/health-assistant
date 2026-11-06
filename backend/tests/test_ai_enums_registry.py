@@ -17,6 +17,8 @@ from app.ai.providers.registry import (
     PROVIDER_FACTORIES,
     get_llm_builder,
 )
+from app.ai.providers.task_registry import TASK_IDS, TASKS, get_task_def
+from app.services.engine.engine_task_registry import ENGINE_TASKS
 
 # ---------------------------------------------------------------------------
 # TaskType
@@ -28,40 +30,34 @@ class TestTaskType:
         assert TaskType.CHAT == "chat"
         assert TaskType.CHAT.value == "chat"
 
-    def test_all_values_matches_canonical_contract(self):
-        # This is the exact list that used to be hard-coded inline in
-        # AIProviderService.get_config_summary. Locking it in as a contract:
-        # adding/removing a task type is an intentional, reviewed change.
-        assert TaskType.all_values() == [
-            "default",
-            "ocr",
-            "nlp",
-            "medication_interaction",
-            "anomaly_detection",
-            "fill_biomarker_form",
-            "fill_medication_form",
-            "magic_fill_examination",
-            "define_biomarker",
-            "define_medication",
-            "define_anatomy_graph",
-            "suggest_category_icon",
-            "generate_category_icon",
-            "chat",
-            "transcription",
-            # §15 embeddings wave: the embed slot (setup gap-fills it from
-            # the preset's docs-verified embeddings default).
-            "embed",
-            # Plan 26 / ADR-0032: the four decision slots (explicitly
-            # reviewed additions — the summary resolves them without the
-            # default chat fallback, and the PHI scope guard applies).
-            "decision_tool_dispatch",
-            "decision_boolean_gate",
-            "decision_choice",
-            "decision_score",
-            # ADR-0036: the decision default slot (kind override → default
-            # → unavailable; PHI scope guard applies; single-slot per 0037).
-            "decision",
-        ]
+    def test_task_types_are_the_registry(self):
+        """Parity: the generated TaskType ≡ the TaskDef registry (plan 4 W1).
+
+        The registry is the source of truth; this asserts the generated enum was
+        regenerated (``node scripts/sync-task-registry.mjs --py …``) and that no
+        one hand-edited either side. Adding a task is a registry edit + a
+        regeneration, never a second list.
+        """
+        assert TaskType.all_values() == list(TASK_IDS)
+        for task_id in TASK_IDS:
+            assert TaskType(task_id).value == task_id
+            assert get_task_def(task_id) is not None
+
+    def test_engine_tasks_are_not_llm_tasks(self):
+        """Plan 4 W4: RxNorm / analytics work is not an AI task.
+
+        ``medication_interaction`` and ``anomaly_detection`` moved to
+        ``app.services.engine.engine_task_registry`` — they must never reappear as LLM
+        task ids (no slot, no assignment, no audit route).
+        """
+        assert "medication_interaction" not in TaskType.all_values()
+        assert "anomaly_detection" not in TaskType.all_values()
+        for task in ENGINE_TASKS:
+            assert task.id not in TaskType.all_values()
+
+    def test_every_task_declares_the_single_slot_law(self):
+        """ADR-0037: no task accepts priority — the knob is gone from the schema."""
+        assert all(task.accepts_priority is False for task in TASKS)
 
     def test_default_is_first(self):
         # get_config_summary relies on "default" being present (fallback target).

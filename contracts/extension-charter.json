@@ -707,7 +707,8 @@
         "product": "desktop-assistant",
         "class": "L",
         "kinds": [
-          "mini-app"
+          "mini-app",
+          "connector"
         ],
         "tiers": [
           "T0",
@@ -716,9 +717,9 @@
         ],
         "miniApp": "reference host",
         "miniAppRendering": "pack-report",
-        "connector": "later",
+        "connector": "T1 (bundled native connectors; ADR-0042/0052 — no imported connector code)",
         "gitImport": "local-file import upgraded onto the sources pipeline (Phase 8 — file source or git source, one code path)",
-        "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy",
+        "notes": "pack contract unchanged (the mini-app kind); T2 per ADR-0030; default-off user-import policy; T1 connector instances are bundled, polite-runtime scoped to catalog domains",
         "honors": [
           "fs-read",
           "fs-write-quarantine",
@@ -727,7 +728,9 @@
           "run",
           "report",
           "propose",
-          "ui:window"
+          "ui:window",
+          "net",
+          "secrets"
         ],
         "honorsByTier": {
           "T0": [
@@ -739,6 +742,11 @@
             "report",
             "propose",
             "ui:window"
+          ],
+          "T1": [
+            "net",
+            "secrets",
+            "chat-tools"
           ],
           "T2": [
             "state",
@@ -757,7 +765,7 @@
           "darwin": "none",
           "win32": "none"
         },
-        "honorsNote": "Capabilities the desktop host implements for imported mini-app packs. T0: the full assessment pipeline (scan→classify→decide→compose→propose) + the report surface + the ui:window host surface. T2: the sandbox grant set (state, secrets, ui:chat-card, ui:settings). Anything else self-disables at the envelope-mapping seam with a reason — net is the exfiltration-class rejection (T0 never grants it); declarative page/panel surfaces are not hosted for imports yet, so packKind surface envelopes self-disable (D17 degrade law: page→panel chains to no honored target ⇒ self-disable, never half-install).",
+        "honorsNote": "Capabilities the desktop host implements for imported mini-app packs. T0: the full assessment pipeline (scan→classify→decide→compose→propose) + the report surface + the ui:window host surface. T2: the sandbox grant set (state, secrets, ui:chat-card, ui:settings). Anything else self-disables at the envelope-mapping seam with a reason — net is the exfiltration-class rejection (T0 never grants it); declarative page/panel surfaces are not hosted for imports yet, so packKind surface envelopes self-disable (D17 degrade law: page→panel chains to no honored target ⇒ self-disable, never half-install). T1 connectors (ADR-0042/0052) are bundled and receive net (scoped to the provider catalog domains through the polite runtime) + secrets; chat tools keep their ADR-0011 risk classes. No imported connector code exists on this host.",
         "surfaces": [
           "window"
         ]

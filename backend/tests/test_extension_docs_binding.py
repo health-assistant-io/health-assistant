@@ -400,7 +400,7 @@ async def test_documentation_endpoint_applies_landing_rule_and_strips_html(monke
 
 def test_builtin_trees_validate_the_extension_docs_form():
     trees = sorted(BUILTIN_DIR.glob("*/docs/docs-tree.json"))
-    assert len(trees) == 4, "the four documented builtins (webhook ships no tree)"
+    assert len(trees) == 6, "the six documented builtins (webhook ships no tree)"
     for tp in trees:
         doc = json.loads(tp.read_text(encoding="utf-8"))
         err = contract.validate(DOCS_TREE_SCHEMA, doc, DOCS_TREE_SCHEMA)

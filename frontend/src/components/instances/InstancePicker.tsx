@@ -24,7 +24,7 @@
  * Controlled: `value: InstanceSelection[]` + `onChange`. Selected chips render
  * below the input with a remove (X) each.
  *
- * See `dev/plans/instance-browser-unified-picker-2026-07-16.md`.
+ * See `local planning notes/instance-browser-unified-picker-2026-07-16.md`.
  */
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

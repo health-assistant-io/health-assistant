@@ -57,8 +57,7 @@ def _profile() -> dict:
         if profile.get("product") == "health-assistant":
             return profile
     raise RuntimeError(
-        "no health-assistant host profile in the vendored charter — "
-        "registration fails closed"
+        "no health-assistant host profile in the vendored charter — registration fails closed"
     )
 
 

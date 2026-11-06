@@ -32,7 +32,7 @@ from app.models.enums import (
 from app.models.notification import Notification
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services.notification_service import (
+from app.services.notifications.notification_service import (
     _DIGEST_TTL_CEILING_SECONDS,
     _DIGEST_TTL_FLOOR_SECONDS,
     _compute_dedup_expires_at,
@@ -181,7 +181,7 @@ async def test_emit_creates_new_row_after_ttl_expires(tenant_and_user, monkeypat
                 raise record.exc_info[1]
 
     handler = _RaisingHandler(level=logging.ERROR)
-    logger = logging.getLogger("app.services.notification_service")
+    logger = logging.getLogger("app.services.notifications.notification_service")
     logger.addHandler(handler)
     try:
         tenant_id, user_id = tenant_and_user
@@ -307,7 +307,7 @@ def test_digest_ttl_reads_settings_default():
     """The documented operator knob ``NOTIFICATION_DEFAULT_DIGEST_TTL_SECONDS``
     exists on Settings and drives the fallback TTL (clamped to [60s, 7d])."""
     from app.core.config import Settings
-    from app.services.notification_service import (
+    from app.services.notifications.notification_service import (
         _DIGEST_TTL_CEILING_SECONDS,
         _DIGEST_TTL_FLOOR_SECONDS,
         _resolve_digest_ttl,

@@ -11,7 +11,8 @@ from app.models.enums import JobStatus
 from app.models.export_import_job import ImportJobModel
 from app.models.fhir.patient import Patient
 from app.schemas.backup import BackupManifest, ManifestFile
-from app.services.import_service import BundleRestoreResult, ImportService
+from app.services.imports.service import ImportService
+from app.services.imports.types import BundleRestoreResult
 
 
 @pytest.fixture(autouse=True)
@@ -954,8 +955,24 @@ async def test_g9_collision_warning_surfaces_in_bundle_result():
 
 
 @pytest.mark.asyncio
-async def test_restore_sidecar_telemetry_inserts_rows():
+async def test_restore_sidecar_telemetry_inserts_rows(monkeypatch):
+    from app.services.telemetry import telemetry_ingest
+
+    class _Definition:
+        slug = "heart-rate"
+        preferred_unit = None
+
+    async def _resolve_definition(_db, _tenant, _slug):
+        return _Definition()
+
+    async def _resolve_device(_db, **_kwargs):
+        return uuid.uuid4()
+
+    monkeypatch.setattr(telemetry_ingest, "resolve_telemetry_definition", _resolve_definition)
+    monkeypatch.setattr(telemetry_ingest, "resolve_telemetry_device", _resolve_device)
+
     tid = uuid.uuid4()
+    pid = uuid.uuid4()
     db = AsyncMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
@@ -967,12 +984,14 @@ async def test_restore_sidecar_telemetry_inserts_rows():
             "slug": "heart-rate",
             "value": 72.0,
             "unit": "bpm",
+            "patient_id": str(pid),
         },
         {
             "device_id": "d1",
             "timestamp": "2026-06-18T10:01:00+00:00",
             "slug": "steps",
             "value": 10.0,
+            "patient_id": str(pid),
         },
     ]
     created, errors, _warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
@@ -982,10 +1001,27 @@ async def test_restore_sidecar_telemetry_inserts_rows():
 
 
 @pytest.mark.asyncio
-async def test_restore_sidecar_telemetry_skips_rows_missing_required_fields():
-    """Long-format rows must carry ``slug`` + ``value``; rows missing either
-    are skipped with a warning (no crash)."""
+async def test_restore_sidecar_telemetry_skips_rows_missing_required_fields(monkeypatch):
+    """Long-format rows must carry ``slug`` + ``value`` + ``patient_id``;
+    rows missing any are skipped (no crash) — the hypertable stores
+    ``patient_id`` NOT NULL."""
+    from app.services.telemetry import telemetry_ingest
+
+    class _Definition:
+        slug = "heart-rate"
+        preferred_unit = None
+
+    async def _resolve_definition(_db, _tenant, _slug):
+        return _Definition()
+
+    async def _resolve_device(_db, **_kwargs):
+        return uuid.uuid4()
+
+    monkeypatch.setattr(telemetry_ingest, "resolve_telemetry_definition", _resolve_definition)
+    monkeypatch.setattr(telemetry_ingest, "resolve_telemetry_device", _resolve_device)
+
     tid = uuid.uuid4()
+    pid = str(uuid.uuid4())
     db = AsyncMock()
     db.add = MagicMock()
     db.flush = AsyncMock()
@@ -995,17 +1031,26 @@ async def test_restore_sidecar_telemetry_skips_rows_missing_required_fields():
             "device_id": "d1",
             "timestamp": "2026-06-18T10:00:00+00:00",
             "slug": "heart-rate",
+            "patient_id": pid,
         },  # missing value
         {
             "device_id": "d1",
             "timestamp": "2026-06-18T10:01:00+00:00",
             "value": 10.0,
+            "patient_id": pid,
         },  # missing slug
+        {
+            "device_id": "d1",
+            "timestamp": "2026-06-18T10:01:30+00:00",
+            "slug": "heart-rate",
+            "value": 70.0,
+        },  # missing patient_id
         {
             "device_id": "d1",
             "timestamp": "2026-06-18T10:02:00+00:00",
             "slug": "steps",
             "value": 5.0,
+            "patient_id": pid,
         },  # ok
     ]
     created, errors, _warnings = await svc.restore_sidecar("telemetry.json", payload, tid, {})
@@ -1133,7 +1178,7 @@ async def test_run_import_zip_path_calls_restore_and_completes(tmp_path, monkeyp
     )
     monkeypatch.setattr(svc, "restore_sidecar", AsyncMock(return_value=({}, [], [])))
     monkeypatch.setattr(svc, "restore_documents", AsyncMock(return_value=0))
-    monkeypatch.setattr("app.services.import_service.validate_bundle", lambda b: (True, []))
+    monkeypatch.setattr("app.services.imports.orchestrator.validate_bundle", lambda b: (True, []))
 
     result = await svc.run_import(jid, str(zip_path), uid)
 
@@ -1171,7 +1216,7 @@ async def test_run_import_bare_bundle_json(tmp_path, monkeypatch):
         "restore_fhir_bundle",
         AsyncMock(return_value=BundleRestoreResult(created={"Observation": 2})),
     )
-    monkeypatch.setattr("app.services.import_service.validate_bundle", lambda b: (True, []))
+    monkeypatch.setattr("app.services.imports.orchestrator.validate_bundle", lambda b: (True, []))
 
     result = await svc.run_import(jid, str(path), uid)
 
@@ -1237,7 +1282,7 @@ async def test_run_import_fail_job_on_exception(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "_complete_job", AsyncMock())
     monkeypatch.setattr(svc, "_fail_job", fake_fail)
     monkeypatch.setattr(svc, "restore_fhir_bundle", AsyncMock(side_effect=RuntimeError("boom")))
-    monkeypatch.setattr("app.services.import_service.validate_bundle", lambda b: (True, []))
+    monkeypatch.setattr("app.services.imports.orchestrator.validate_bundle", lambda b: (True, []))
 
     zip_path = tmp_path / "b.zip"
     payload = b'{"resourceType":"Bundle","type":"transaction","entry":[]}'

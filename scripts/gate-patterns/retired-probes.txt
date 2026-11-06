@@ -1,0 +1,11 @@
+# Retired `supports_*` provider-probe vocabulary (semantic half of the
+# no-legacy rule; D7 in check-data-model.patterns.txt owns the naming half).
+#
+# The family extension charter replaced method probing with manifest-declared
+# capabilities/data classes. This anchored regex matches only the retired hook
+# names — `supports_multi_state` (a biomarker domain field) and
+# `supports_incremental` (a connector capability) are legitimate and must not
+# match.
+#
+# Lines containing a `gate-allow:` pragma are skipped (family convention).
+supports_(push|notifications|tools|clinical_events|examinations|catalog_proposals|hitl_proposals|documents|medications|allergies|immunizations)\b

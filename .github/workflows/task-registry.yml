@@ -1,0 +1,48 @@
+name: AI task registry
+
+# Plan 4 W1 drift gate: ONE task list (backend/app/ai/providers/task_registry.py)
+# and generated projections (TaskType, frontend/src/generated/taskRegistry.ts).
+# R1/R1b projection drift, R2 hand-maintained maps, R3 label keys per locale,
+# R4 non-LLM engine tasks kept out of the AI layer.
+#
+# The DB half (ai_task_defs seed ≡ registry, migration rows ≡ registry) runs in
+# the backend suite (backend/tests/test_ai_task_registry.py), which needs a
+# migrated database.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/app/ai/**'
+      - 'backend/app/services/engine_task_registry.py'
+      - 'frontend/src/generated/taskRegistry.ts'
+      - 'frontend/src/locales/**'
+      - 'scripts/check-task-registry.sh'
+      - 'scripts/sync-task-registry.mjs'
+      - '.github/workflows/task-registry.yml'
+  pull_request:
+    paths:
+      - 'backend/app/ai/**'
+      - 'backend/app/services/engine_task_registry.py'
+      - 'frontend/src/generated/taskRegistry.ts'
+      - 'frontend/src/locales/**'
+      - 'scripts/check-task-registry.sh'
+      - 'scripts/sync-task-registry.mjs'
+      - '.github/workflows/task-registry.yml'
+  workflow_dispatch:
+
+jobs:
+  task-registry:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run AI task registry gate
+        run: bash scripts/check-task-registry.sh --self

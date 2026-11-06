@@ -6,6 +6,27 @@ import Integrations from './Integrations';
 import { integrationService } from '../../services/integrationService';
 import type { ActiveIntegration, IntegrationManifest } from '../../services/integrationService';
 
+vi.mock('../../api/axios', () => ({
+  default: {
+    get: vi.fn().mockImplementation((url: string) =>
+      Promise.resolve({
+        data:
+          url === '/calendar/bindings'
+            ? []
+            : {
+                providers: [],
+                redactionProfiles: [],
+                redactionDefault: 'neutral',
+                directions: ['push'],
+                accountStates: [],
+              },
+      })
+    ),
+    post: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
 vi.mock('../../services/integrationService', () => ({
   integrationService: {
     getAvailable: vi.fn(),
@@ -16,9 +37,10 @@ vi.mock('../../services/integrationService', () => ({
   },
 }));
 
-vi.mock('../../store/slices/patientSlice', () => ({
-  usePatientStore: () => ({ currentPatient: { id: 'pat-1' } }),
-}));
+vi.mock('../../store/slices/patientSlice', () => {
+  const patient = { id: 'pat-1' };
+  return { usePatientStore: () => ({ currentPatient: patient }) };
+});
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, fallback?: string) => fallback ?? key }),

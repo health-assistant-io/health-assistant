@@ -87,7 +87,7 @@ export interface AuditEntry {
   action: string;
   resource_type: string;
   resource_id?: string | null;
-  old_value?: Record<string, any> | null;
+  old_value?: Record<string, any> | null;  // # gate-allow: *, audit diff
   new_value?: Record<string, any> | null;
   created_at?: string | null;
 }

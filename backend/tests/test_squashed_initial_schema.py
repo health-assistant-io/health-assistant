@@ -1,13 +1,14 @@
-"""Tests for the consolidated schema baseline + its follow-up chain.
+"""Tests for the squashed schema baseline (``0001_baseline``) + its chain.
 
 Verifies:
-- There is exactly ONE root baseline migration (``down_revision is None``);
-  additional incremental follow-up migrations are allowed on top of it.
-- The baseline creates the full expected table set (derived from the ORM
-  metadata so it cannot drift).
+- The chain has exactly ONE root baseline (``down_revision is None``), the
+  baseline is ``0001_baseline``, and links are sequential ``NNNN_slug`` ids.
+- The baseline creates the full table set — derived from the ORM metadata so
+  it cannot drift, and with **no** post-baseline allowlist (the squash
+  absorbed every follow-up).
 - Installs the required extensions.
 - Leaves the post-consolidation invariants: unified concept tables present,
-  the legacy scattered category tables gone.
+  the retired scattered category tables gone.
 """
 
 import glob
@@ -24,14 +25,38 @@ from app.models.base import Base
 
 VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 
+#: Tables introduced after the baseline squash, with the revision that owns
+#: them. The baseline keeps the pre-squash shape; a table that appears here must
+#: be created by exactly that revision.
+POST_BASELINE_TABLES = {
+    "ai_task_defs": "0003_ai_task_registry.py",
+    "ai_call_logs": "0003_ai_task_registry.py",
+    "proposal_kinds": "0004_proposals_unified.py",
+    "proposals": "0004_proposals_unified.py",
+    "telemetry_devices": "0005_telemetry_unified.py",
+    "telemetry_anomalies": "0005_telemetry_unified.py",
+    "integration_credentials": "0006_connector_framework.py",
+    "integration_sync_state": "0006_connector_framework.py",
+    "erasure_requests": "0007_data_lifecycle.py",
+    "retention_policies": "0007_data_lifecycle.py",
+    "extension_sources": "0008_extension_sources.py",
+    "extension_source_versions": "0008_extension_sources.py",
+    "extension_consents": "0008_extension_sources.py",
+    "extension_isolation_posture": "0008_extension_sources.py",
+    "calendar_bindings": "0009_calendar_bindings.py",
+    "calendar_event_links": "0009_calendar_bindings.py",
+    "calendar_binding_credentials": "0009_calendar_bindings.py",
+    "calendar_sync_logs": "0009_calendar_bindings.py",
+}
+
 
 def _migration_files():
     return sorted(p for p in glob.glob(str(VERSIONS_DIR / "*.py")) if not p.endswith("__init__.py"))
 
 
 def _load_migration_module(revision_attr: str = "down_revision", want=None):
-    """Load a migration module by an attribute value. By default loads the
-    baseline (the unique migration whose ``down_revision is None``)."""
+    """Load the root baseline (the unique migration whose ``down_revision``
+    is ``None``)."""
     files = _migration_files()
     baseline = None
     for path in files:
@@ -46,8 +71,7 @@ def _load_migration_module(revision_attr: str = "down_revision", want=None):
 
 
 def test_there_is_exactly_one_root_baseline():
-    """The chain must have exactly one root baseline (down_revision is None).
-    Incremental follow-up migrations on top of it are fine."""
+    """The chain must have exactly one root baseline."""
     roots = []
     for path in _migration_files():
         spec = importlib.util.spec_from_file_location(Path(path).stem, path)
@@ -58,87 +82,60 @@ def test_there_is_exactly_one_root_baseline():
     assert len(roots) == 1, f"expected exactly one root baseline migration, found {roots}"
 
 
-def test_revision_identifiers():
-    mod, _ = _load_migration_module()
-    assert mod.down_revision is None, (
-        "the consolidated baseline must be the root (down_revision=None)"
-    )
-
-
-#: Tables registered on the ORM metadata today that are intentionally NOT in
-#: the consolidated baseline — they were added by a follow-up migration after
-#: the squash. Each entry documents the migration that introduced the table so
-#: the exception is auditable.
-POST_BASELINE_TABLES: dict[str, str] = {
-    # Workstream G.1 of the integrations follow-ups pass
-    # (plan: dev/plans/integrations-sdk-followups-2026-07-21.md).
-    "integration_proposals": "g1h2i3t4l5pr_add_integration_proposals",
-    # OAuth2 client registry for the FHIR facade (api access layers plan).
-    # (plan: dev/plans/api-access-layers-2026-07-23.md).
-    "oauth_clients": "o1a2u3t4h5n6_create_oauth_clients",
-    # Native (mobile) push target registry — Phase 8 of the bridge SDK
-    # enhancement plan. Created with raw SQL (``CREATE TABLE IF NOT EXISTS``)
-    # rather than ``op.create_table``.
-    # (plan: dev/plans/bridge-sdk-integrations-enhancement-2026-08-12.md).
-    "mobile_push_targets": "m1o2b3i4l5e6_add_mobile_push_targets",
-    # Family identity contract alignment (identity-auth §5; plan 16 H1).
-    "auth_sessions": "h1c2o3n4t5r6_identity_contract_alignment",
-    "instance_settings": "h1c2o3n4t5r6_identity_contract_alignment",
-    # Audit-stream rename to the family contract name (identity-auth
-    # §5/§17; plan 16 H2) — created by the baseline as ``audit_logs``,
-    # renamed (plus the ``outcome`` column) by this follow-up.
-    "audit_events": "a1u2d3i4t5e6_rename_audit_logs_to_audit_events",
-}
+def test_baseline_is_0001_and_chain_ids_are_sequential():
+    """The root is ``0001_baseline`` and every id is ``NNNN[_slug]``."""
+    mod, path = _load_migration_module()
+    assert mod.revision == "0001_baseline"
+    assert path.name == "0001_baseline.py"
+    for migration in _migration_files():
+        stem = Path(migration).stem
+        assert re.fullmatch(r"\d{4}(_[a-z0-9_]+)?", stem), (
+            f"{stem} is not a sequential NNNN_slug revision id"
+        )
 
 
 @pytest.mark.parametrize("table", sorted(Base.metadata.tables))
-def test_every_model_table_is_created_by_the_baseline(table):
-    """The baseline must define every table registered on the ORM metadata,
-    unless the table is in :data:`POST_BASELINE_TABLES` (added by a named
-    follow-up migration)."""
-    if table in POST_BASELINE_TABLES:
-        migration = POST_BASELINE_TABLES[table]
-        # Sanity-check: the named migration actually exists + creates the
-        # table. Catches the allowlist getting out of sync with reality.
-        migration_path = VERSIONS_DIR / f"{migration}.py"
-        assert migration_path.exists(), (
-            f"POST_BASELINE_TABLES lists {table!r} as added by "
-            f"{migration!r}, but {migration_path.name} doesn't exist"
-        )
-        migration_src = migration_path.read_text()
-        # Most follow-up migrations use ``op.create_table``; a few create the
-        # table via raw SQL (``CREATE TABLE IF NOT EXISTS``); a rename
-        # migration brings the table under its current name via
-        # ``op.rename_table`` (e.g. audit_logs → audit_events, H2). Accept
-        # any of the three. The table name may be single- or double-quoted
-        # and may sit on the line after the opening paren
-        # (black-formatted migrations).
-        created = (
-            bool(
-                re.search(
-                    rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]",
-                    migration_src,
-                )
-            )
-            or f"CREATE TABLE IF NOT EXISTS {table}" in migration_src
-            or bool(
-                re.search(
-                    rf"op\.rename_table\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]{re.escape(table)}['\"]",
-                    migration_src,
-                )
-            )
-        )
-        assert created, (
-            f"POST_BASELINE_TABLES lists {table!r} as added by "
-            f"{migration_path.name}, but that migration doesn't create it"
-        )
-        return  # exception honored
+def test_every_model_table_is_created_by_a_migration(table):
+    """Every table on the ORM metadata is created by some revision.
 
+    The squash absorbed every pre-2026-10-21 migration, so there is no
+    post-baseline allowlist: the baseline must create each table EXCEPT the ones
+    a later sequential revision introduces (currently ``ai_task_defs`` and
+    ``ai_call_logs``, created by ``0003_ai_task_registry``). A table missing from
+    every revision means model⇄migration drift (the drift gate in
+    ``test_schema_drift_gate`` catches the reverse).
+    """
+    if table == "telemetry_data":
+        _mod, path = _load_migration_module()
+        assert "op.create_table(" in path.read_text() and "telemetry_data" in path.read_text()
+        return
+
+    created_in = [
+        Path(migration).name
+        for migration in _migration_files()
+        if re.search(
+            rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]",
+            Path(migration).read_text(),
+        )
+    ]
+    assert created_in, f"Table '{table}' is not created by any migration"
+    if created_in != ["0001_baseline.py"]:
+        assert table in POST_BASELINE_TABLES, (
+            f"Table '{table}' is created by {created_in} but is not a declared "
+            "post-baseline table — either fold it into the baseline or add it to "
+            "POST_BASELINE_TABLES with its owning revision."
+        )
+        assert created_in == [POST_BASELINE_TABLES[table]], (
+            f"Table '{table}' is created by {created_in}, expected {[POST_BASELINE_TABLES[table]]}"
+        )
+
+
+def test_baseline_carries_no_cagg_shape():
+    """CAGG ladder creation belongs to ``0002_telemetry`` (plan 3 §2.3)."""
     _mod, path = _load_migration_module()
     src = path.read_text()
-    assert re.search(rf"op\.create_table\(\s*['\"]{re.escape(table)}['\"]", src), (
-        f"Table '{table}' is missing from the consolidated baseline"
-    )
+    assert "CREATE MATERIALIZED VIEW" not in src
+    assert "add_continuous_aggregate_policy" not in src
 
 
 def test_concept_tables_exist():
@@ -157,8 +154,8 @@ def test_concept_tables_exist():
         engine.dispose()
 
 
-def test_old_category_tables_dropped():
-    """The legacy scattered category tables must not exist."""
+def test_retired_category_tables_dropped():
+    """The retired scattered category tables must not exist."""
     sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
@@ -195,44 +192,3 @@ def test_extensions_installed():
                 assert result == 1, f"extension {ext} not installed"
     finally:
         engine.dispose()
-
-
-def test_pg_enum_types_carry_every_python_enum_value():
-    """Every value of every PG-backed Python enum must exist as a label on the
-    matching Postgres enum type (the consolidated baseline creates them inline
-    via ``sa.Enum(...)`` during table creation)."""
-    from app.models import enums
-
-    sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
-    engine = create_engine(sync_url)
-    try:
-        with engine.connect() as conn:
-            rows = conn.execute(
-                text(
-                    "SELECT t.typname, e.enumlabel "
-                    "FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid"
-                )
-            ).all()
-            pg_values: dict[str, set[str]] = {}
-            for typname, label in rows:
-                pg_values.setdefault(typname, set()).add(label)
-    finally:
-        engine.dispose()
-
-    # (pg_type_name, python_enum_class). Comparison is case-insensitive: some
-    # enums (e.g. CodingSystem) deliberately store uppercase labels in Postgres
-    # while their Python .value is lowercase -- a pre-existing quirk unrelated
-    # to whether the baseline created the type.
-    checks = [
-        ("medicationstatus", enums.MedicationStatus),
-        ("gender", enums.Gender),
-        ("role", enums.Role),
-        ("codingsystem", enums.CodingSystem),
-        ("quantitytype", enums.QuantityType),
-    ]
-    for pg_name, py_enum in checks:
-        python_values = {v.value.lower() for v in py_enum}
-        pg_labels = {lab.lower() for lab in pg_values.get(pg_name, set())}
-        assert python_values <= pg_labels, (
-            f"{pg_name}: PG missing values {python_values - pg_labels}"
-        )

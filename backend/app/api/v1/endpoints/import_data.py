@@ -14,10 +14,9 @@ from app.schemas.backup import ImportJobListResponse, ImportJobResponse
 from app.schemas.import_data import (
     CSVImportConfig,
     FHIRImportConfig,
-    OCRImportConfig,
 )
 from app.schemas.user import TokenData
-from app.services.import_service import ImportService
+from app.services.imports.service import ImportService
 
 router = APIRouter(prefix="/import", tags=["data-import"])
 
@@ -50,7 +49,7 @@ async def import_backup(
     user_id = _parse_uuid(str(current_user.user_id))
     svc = ImportService(db)
 
-    from app.services.document_service import _read_capped
+    from app.services.documents.document_service import _read_capped
 
     suffix = Path(file.filename or "").suffix or ".bin"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -97,7 +96,7 @@ async def import_fhir(
     tmp_path = None
     try:
         tenant_id = str(current_user.tenant_id)
-        from app.services.document_service import _read_capped
+        from app.services.documents.document_service import _read_capped
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp:
             content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
@@ -138,7 +137,7 @@ async def import_csv(
     tmp_path = None
     try:
         tenant_id = str(current_user.tenant_id)
-        from app.services.document_service import _read_capped
+        from app.services.documents.document_service import _read_capped
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
             content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
@@ -165,12 +164,15 @@ async def import_csv(
 async def import_ocr(
     file: UploadFile = File(...),
     patient_id: str | None = Form(None),
-    model_name: str | None = Form(None),
-    extract_tables: bool = Form(True),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Import data using OCR from PDF or images (OpenAI-compatible APIs)."""
+    """Import data using OCR from PDF or images.
+
+    Provider, base URL, model and key resolve through the scoped AI gateway
+    (the ``ocr`` task assignment, BYOK key at rest) — the request carries no
+    model configuration.
+    """
     valid_extensions = [".pdf", ".jpg", ".jpeg", ".png", ".webp"]
     filename = file.filename or "unknown"
     if not any(filename.lower().endswith(ext) for ext in valid_extensions):
@@ -182,34 +184,19 @@ async def import_ocr(
     tmp_path = None
     try:
         suffix = Path(filename).suffix
-        from app.services.document_service import _read_capped
+        from app.services.documents.document_service import _read_capped
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await _read_capped(file, settings.MAX_UPLOAD_SIZE * 1024 * 1024)
             tmp.write(content)
             tmp_path = Path(tmp.name)
-        config = OCRImportConfig(
-            provider=settings.OCR_PROVIDER,
-            model_name=model_name or settings.OPENAI_MODEL,
-            extract_tables=extract_tables,
-        )
-        # API-H1 (audit 2026-08): the OCR endpoint always uses the
-        # platform-configured base URL + key. A client-supplied api_base
-        # previously exfiltrated the server's OPENAI_API_KEY to an
-        # attacker host (and was a generic SSRF primitive).
-        api_base_url = settings.OPENAI_API_BASE
-        api_key = settings.OPENAI_API_KEY
-        model = model_name or settings.OPENAI_MODEL
         tenant_id = str(current_user.tenant_id)
         svc = ImportService(db)
         result = await svc.import_from_ocr(
             file_path=tmp_path,
             tenant_id=tenant_id,
             patient_id=patient_id,
-            config=config,
-            api_key=api_key,
-            api_base=api_base_url,
-            model=model,
+            user_id=str(current_user.user_id),
         )
         return result
     except Exception:

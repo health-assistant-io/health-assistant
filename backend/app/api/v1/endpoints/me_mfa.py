@@ -26,13 +26,13 @@ from app.schemas.auth import (
     MFAStatusResponse,
 )
 from app.schemas.user import TokenData
-from app.services import mfa_service
-from app.services.audit_service import (
+from app.services.audit.audit_service import (
     OUTCOME_DENIED,
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.user_service import get_user_by_id
+from app.services.auth import mfa_service
+from app.services.tenancy.user_service import get_user_by_id
 
 router = APIRouter(prefix="/me", tags=["mfa"])
 

@@ -15,7 +15,6 @@ const WORKFLOW_MAPPING: Record<string, string[]> = {
   'smart_extraction_upload': ['ocr'],
   'magic_fill': ['magic_fill_examination'],
   'clinical_chat': ['chat'],
-  'medication_audit': ['medication_interaction'],
   'biomarker_definition': ['define_biomarker'],
   'medication_definition': ['define_medication'],
   'fhir_import_normalization': ['nlp'],
@@ -32,8 +31,8 @@ export function useActiveAIWorkflow(workflowOrTaskType?: string): ActiveAITask[]
     if (!workflowOrTaskType) {
        return [{ 
            taskType: 'default',
-           provider: configSummary.default?.provider || null, 
-           model: configSummary.default?.model || null 
+           provider: configSummary.tasks?.default?.provider || null,
+           model: configSummary.tasks?.default?.model || null
        }];
     }
 
@@ -41,7 +40,7 @@ export function useActiveAIWorkflow(workflowOrTaskType?: string): ActiveAITask[]
     const taskTypes = WORKFLOW_MAPPING[workflowOrTaskType] || [workflowOrTaskType];
 
     return taskTypes.map(taskType => {
-      const taskConfig = (configSummary as any)[taskType];
+      const taskConfig = configSummary.tasks?.[taskType];
       
       if (taskConfig && (taskConfig.provider || taskConfig.model)) {
         return {
@@ -51,11 +50,11 @@ export function useActiveAIWorkflow(workflowOrTaskType?: string): ActiveAITask[]
         };
       }
 
-      // Fallback to default
+      // Fallback to the text capability default
       return {
         taskType: taskType,
-        provider: configSummary.default?.provider || null,
-        model: configSummary.default?.model || null
+        provider: configSummary.tasks?.default?.provider || null,
+        model: configSummary.tasks?.default?.model || null
       };
     });
   }, [configSummary, workflowOrTaskType]);

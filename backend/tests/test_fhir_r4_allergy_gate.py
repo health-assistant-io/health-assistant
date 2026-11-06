@@ -17,7 +17,7 @@ import pytest
 
 from app.models.enums import AllergyCategory, AllergyClinicalStatus, AllergyCriticality
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
-from app.services.fhir_helpers import assert_valid_fhir
+from app.services.fhir.fhir_helpers import assert_valid_fhir
 
 
 def _valid_allergy_data() -> dict:
@@ -88,7 +88,7 @@ def test_allergy_catalog_to_fhir_dict_handles_medication_category():
 @pytest.mark.asyncio
 async def test_add_patient_allergy_calls_assert_valid_fhir(monkeypatch):
     """Verify add_patient_allergy invokes the FHIR validation gate."""
-    from app.services import allergy_service
+    from app.services.clinical import allergy_service
 
     gate_calls = []
     original = allergy_service.assert_valid_fhir
@@ -136,7 +136,7 @@ async def test_add_patient_allergy_calls_assert_valid_fhir(monkeypatch):
 async def test_update_patient_allergy_merges_code_partial(monkeypatch):
     """A text-only code update must NOT wipe the existing catalog_id."""
     from app.schemas.allergy import AllergyIntoleranceUpdate
-    from app.services import allergy_service
+    from app.services.clinical import allergy_service
 
     existing = AllergyIntolerance(
         id=uuid4(),
@@ -172,7 +172,7 @@ async def test_update_patient_allergy_merges_code_partial(monkeypatch):
 @pytest.mark.asyncio
 async def test_get_allergy_usage_joins_patient_rows():
     """The cross-patient usage query returns {allergy, patient} dicts."""
-    from app.services import allergy_service
+    from app.services.clinical import allergy_service
 
     fake_allergy = MagicMock()
     fake_allergy.to_dict.return_value = {"id": "a1", "code": {"text": "Latex"}}
@@ -196,7 +196,7 @@ async def test_get_allergy_usage_joins_patient_rows():
 @pytest.mark.asyncio
 async def test_reprocess_allergy_no_nlp_returns_entry_unchanged(monkeypatch):
     """When NLP is unavailable, reprocess returns the entry without enrichment."""
-    from app.services import allergy_service
+    from app.services.clinical import allergy_service
 
     entry = AllergyCatalog(
         id=uuid4(),

@@ -133,7 +133,7 @@ async def search_catalogs_endpoint(
     isn't captured by the type path-param.
     """
     from app.models.enums import ConceptKind
-    from app.services.catalog_search_service import search_catalogs
+    from app.services.catalog.catalog_search_service import search_catalogs
 
     type_list = [t.strip() for t in types.split(",") if t.strip()] if types else None
 
@@ -198,7 +198,7 @@ async def get_catalog_graph(
     tags. Returns ``{nodes, edges, truncated}`` where nodes are resolved via
     the polymorphic resolver (label, icon, color, kind per node).
     """
-    from app.services.catalog_graph_service import whole_catalog_graph
+    from app.services.catalog.catalog_graph_service import whole_catalog_graph
 
     # Map catalog type names (e.g. "vaccine") to EdgeEndpointType values
     # (e.g. "immunization") via the registry. Most match directly, but
@@ -275,7 +275,7 @@ async def list_catalog_items(
     )
     extras = {x.strip().lower() for x in (include or "").split(",") if x.strip()}
     if "relations" in extras:
-        from app.services.catalog_graph_service import count_relations
+        from app.services.catalog.catalog_graph_service import count_relations
 
         item_ids = [item.get("id") for item in resp["items"]]
         # Item ids come back as UUIDs from the adapters (biomarker) or strings
@@ -392,7 +392,7 @@ async def promote_catalog_item(
     try:
         item = await descriptor.service.promote_scope(db, current_user, item_id, target)
     except ValueError:
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=400,
             detail=f"invalid scope '{target}'. Use: system | tenant | user",
         )
@@ -416,7 +416,7 @@ async def get_catalog_item_history(
     and any scope transition. The item itself must be visible to the caller
     (404 otherwise) so the trail is never leaked cross-tenant.
     """
-    from app.services.catalog_audit_service import list_history
+    from app.services.catalog.catalog_audit_service import list_history
 
     descriptor = _require_descriptor(type)
     # The item must be visible to the caller before its history is revealed.
@@ -453,7 +453,7 @@ async def get_catalog_relations(
     does this biomarker affect?", "what treats this disease?", etc.
     """
     from app.models.enums import ConceptRelationType
-    from app.services.catalog_graph_service import traverse
+    from app.services.catalog.catalog_graph_service import traverse
 
     descriptor = _require_descriptor(type)
     whitelist: tuple[ConceptRelationType, ...] | None = None

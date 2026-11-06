@@ -17,7 +17,7 @@ exposure switch flipped 2026-10-13 (a canonical edit, never a per-repo
 one). The setup endpoint accepts ``ALL_PRESETS``; decision-only presets
 validate via the decision probe (D13), never a catalog fetch.
 
-Canonical text: dev/guidelines/ai-features.md §15; data: dev/contracts/
+Canonical text: the family AI standard §15; data: the family contract canonical/
 ai-presets.json.
 """
 

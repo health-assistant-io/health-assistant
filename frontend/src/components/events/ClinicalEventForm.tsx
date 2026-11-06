@@ -395,7 +395,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
         // Flatten the recurrence sub-object to the top-level keys the adapter
         // reads (`event_metadata.frequency` / `interval` / `days_of_week` /
         // `time_of_day`). The form keeps the nested `recurrence` shape
-        // internally for legacy reasons; on submit we promote the fields so
+        // internally for its nested shape; on submit we promote the fields so
         // `adaptClinicalEventToEvents` produces per-day occurrences for
         // `schedule_kind='recurring'` types.
         const recurrence = formData.event_metadata?.recurrence;

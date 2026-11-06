@@ -13,6 +13,7 @@ fresh-continuation resume path).
 """
 
 import json
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,12 +27,12 @@ from app.ai.graphs.chat_agent import (
 )
 from app.ai.graphs.checkpointer import CheckpointStore, bind_runtime_store
 from app.models.enums import Role
-from app.services.chat_branching import (
+from app.services.chat.chat_branching import (
     branch_thread_key,
     card_thread_key,
     regenerate_thread_key,
 )
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 from tests._auth_helpers import create_tenant, create_user
 
 ASK_USER_CALL = {
@@ -120,7 +121,8 @@ async def test_interrupt_survives_branch_and_stays_resumable():
     await store.open()
     bind_runtime_store(store)
     try:
-        ask_tool = _ask_user_tool(_ask_observation("prop-a"))
+        proposal_a = str(uuid.uuid4())
+        ask_tool = _ask_user_tool(_ask_observation(proposal_a))
         llm_a = ScriptedStreamingLLM([_ask_chunk(), _text_chunk("Thanks! Dose noted.")])
 
         # Branch A = the original spine: a pausing ask_user turn on the
@@ -189,7 +191,7 @@ async def test_interrupt_survives_branch_and_stays_resumable():
 
         # The card row was persisted proactively on branch A; the card-
         # derived thread IS branch A's thread (cards attach to messages).
-        card = await svc.find_message_by_proposal(session.id, "prop-a", user.id, tenant_id)
+        card = await svc.find_message_by_proposal(session.id, proposal_a, user.id, tenant_id)
         assert card is not None
         all_messages = await svc.get_session_messages(session.id, user.id, tenant_id)
         assert card_thread_key(session.id, all_messages, card) == thread_a
@@ -228,7 +230,8 @@ async def test_regenerated_variant_pause_keys_on_reroll_anchor():
     await store.open()
     bind_runtime_store(store)
     try:
-        ask_tool = _ask_user_tool(_ask_observation("prop-r"))
+        proposal_r = str(uuid.uuid4())
+        ask_tool = _ask_user_tool(_ask_observation(proposal_r))
         llm = ScriptedStreamingLLM([_ask_chunk(), _text_chunk("Resumed.")])
 
         u1 = await svc.save_message(
@@ -269,7 +272,7 @@ async def test_regenerated_variant_pause_keys_on_reroll_anchor():
         # The regenerated card row is a NEW sibling under u1 (a1 kept), and
         # the card-derived thread matches the turn's thread.
         all_messages = await svc.get_session_messages(session.id, user.id, tenant_id)
-        card = await svc.find_message_by_proposal(session.id, "prop-r", user.id, tenant_id)
+        card = await svc.find_message_by_proposal(session.id, proposal_r, user.id, tenant_id)
         assert card is not None
         assert card.parent_id == u1.id
         assert card_thread_key(session.id, all_messages, card) == reroll_thread

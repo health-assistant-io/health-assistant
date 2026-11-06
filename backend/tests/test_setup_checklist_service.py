@@ -24,8 +24,8 @@ from app.models.enums import (
 )
 from app.models.fhir.patient import Patient
 from app.schemas.user import TokenData
-from app.services.fhir_extensions import validate_patient_extensions
-from app.services.setup_checklist_service import (
+from app.services.fhir.fhir_extensions import validate_patient_extensions
+from app.services.setup.setup_checklist_service import (
     SUPPORTED_ENTITIES,
     SetupChecklistService,
 )

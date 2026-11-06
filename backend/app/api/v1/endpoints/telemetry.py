@@ -1,19 +1,21 @@
-# ruff: noqa: B904 -- long immutable strings; reflow when touched
+"""Telemetry ingest endpoint.
+
+The analytical reads live under ``/api/v1/analytics`` (the one web-facing
+surface); the bridge reads through its schema-pinned sub-API. This router is
+the single ingest seam: long-format device points in, validated/canonicalized
+rows out.
+"""
+
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.telemetry import TelemetrySyncPayload
 from app.schemas.user import TokenData
-from app.services.telemetry_service import (
-    get_telemetry_anomalies,
-    get_telemetry_data,
-    get_telemetry_summary,
-    upload_telemetry_data,
-)
+from app.services.telemetry.telemetry_service import upload_telemetry_data
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,12 @@ async def upload_telemetry_data_endpoint(
     """Sync time-series health data from a mobile device (Health Connect / HealthKit)."""
     try:
         uploaded = await upload_telemetry_data(
-            db, payload.device_id, payload.points, current_user.tenant_id
+            db,
+            payload.device_id,
+            payload.points,
+            current_user.tenant_id,
+            source=payload.source,
+            device_label=payload.device_label,
         )
         return {
             "uploaded": uploaded,
@@ -37,77 +44,7 @@ async def upload_telemetry_data_endpoint(
             "message": "Sync successful",
         }
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     except Exception:
         logger.exception("Telemetry upload failed")
-        raise HTTPException(status_code=500, detail="Telemetry upload failed")
-
-
-@router.get("/data")
-async def get_telemetry_data_endpoint(
-    device_id: str,
-    start_date: str,
-    end_date: str,
-    metrics: str = Query(None),
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get telemetry data for a device.
-
-    Tenant-scoped: the caller can only ever read data belonging to their own
-    tenant regardless of which device_id they pass.
-    """
-    data = await get_telemetry_data(
-        db,
-        tenant_id=current_user.tenant_id,
-        device_id=device_id,
-        start_date=start_date,
-        end_date=end_date,
-        metrics=metrics,
-    )
-    return {"device_id": device_id, "data": data}
-
-
-@router.get("/data/summary")
-async def get_telemetry_summary_endpoint(
-    date: str,
-    device_id: str | None = None,
-    metrics: str = Query(None),
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get daily summary for telemetry data (tenant-scoped).
-
-    ``metrics`` is an optional comma-separated list of biomarker slugs; when
-    omitted, every slug observed on ``date`` is summarized.
-    """
-    summary = await get_telemetry_summary(
-        db,
-        tenant_id=current_user.tenant_id,
-        target_date=date,
-        device_id=device_id,
-        metrics=metrics,
-    )
-    return summary
-
-
-@router.get("/anomalies")
-async def get_telemetry_anomalies_endpoint(
-    device_id: str,
-    metric: str,
-    period_days: int = Query(30, ge=1, le=365),
-    current_user: TokenData = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Detect anomalies in a device's telemetry stream.
-
-    Tenant-scoped via ``current_user.tenant_id``.
-    """
-    anomalies = await get_telemetry_anomalies(
-        db,
-        tenant_id=current_user.tenant_id,
-        device_id=device_id,
-        metric=metric,
-        period_days=period_days,
-    )
-    return {"device_id": device_id, "metric": metric, "anomalies": anomalies}
+        raise HTTPException(status_code=500, detail="Telemetry upload failed") from None

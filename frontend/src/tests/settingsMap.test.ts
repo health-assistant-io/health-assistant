@@ -6,7 +6,6 @@ import {
 } from '../config/settingsNav';
 import { AI_TABS } from '../pages/Settings/AIConfig';
 import { TOOLS_TAB_SECTIONS } from '../pages/Settings/ToolsConfig';
-// eslint-disable-next-line import/extensions
 import mapJson from '../../../contracts/settings-map.json';
 
 // Settings-structure conformance wall (ADR-0033 / plan 27): the settings

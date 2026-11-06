@@ -26,7 +26,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pywebpush import WebPushException
 
-from app.services.webpush_service import SubscriptionExpired, send_web_push
+from app.services.notifications.webpush_service import SubscriptionExpired, send_web_push
 
 
 def _make_webpush_exception(status_code: int) -> WebPushException:
@@ -46,8 +46,11 @@ def _make_webpush_exception(status_code: int) -> WebPushException:
 def test_c13_send_web_push_raises_subscription_expired_on_410():
     """HTTP 410 Gone = subscription permanently dead → SubscriptionExpired."""
     sub_info = {"endpoint": "https://push.example.com/abc"}
-    with patch("app.services.webpush_service.webpush", side_effect=_make_webpush_exception(410)):
-        with patch("app.services.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
+    with patch(
+        "app.services.notifications.webpush_service.webpush",
+        side_effect=_make_webpush_exception(410),
+    ):
+        with patch("app.services.notifications.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
             with pytest.raises(SubscriptionExpired) as exc_info:
                 send_web_push(sub_info, {"title": "hi"})
     assert exc_info.value.status_code == 410
@@ -57,8 +60,11 @@ def test_c13_send_web_push_raises_subscription_expired_on_410():
 def test_c13_send_web_push_raises_subscription_expired_on_404():
     """HTTP 404 Not Found = subscription revoked → SubscriptionExpired."""
     sub_info = {"endpoint": "https://push.example.com/xyz"}
-    with patch("app.services.webpush_service.webpush", side_effect=_make_webpush_exception(404)):
-        with patch("app.services.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
+    with patch(
+        "app.services.notifications.webpush_service.webpush",
+        side_effect=_make_webpush_exception(404),
+    ):
+        with patch("app.services.notifications.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
             with pytest.raises(SubscriptionExpired) as exc_info:
                 send_web_push(sub_info, {"title": "hi"})
     assert exc_info.value.status_code == 404
@@ -67,8 +73,11 @@ def test_c13_send_web_push_raises_subscription_expired_on_404():
 def test_c13_send_web_push_returns_false_on_transient_failure():
     """HTTP 5xx / other WebPushException = transient → return False (retry possible)."""
     sub_info = {"endpoint": "https://push.example.com/abc"}
-    with patch("app.services.webpush_service.webpush", side_effect=_make_webpush_exception(503)):
-        with patch("app.services.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
+    with patch(
+        "app.services.notifications.webpush_service.webpush",
+        side_effect=_make_webpush_exception(503),
+    ):
+        with patch("app.services.notifications.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
             result = send_web_push(sub_info, {"title": "hi"})
     assert result is False
 
@@ -79,8 +88,8 @@ def test_c13_send_web_push_returns_true_on_success():
     fake_response = MagicMock()
     fake_response.ok = True
     fake_response.status_code = 201
-    with patch("app.services.webpush_service.webpush", return_value=fake_response):
-        with patch("app.services.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
+    with patch("app.services.notifications.webpush_service.webpush", return_value=fake_response):
+        with patch("app.services.notifications.webpush_service.VAPID_PRIVATE_KEY", "fake-key"):
             result = send_web_push(sub_info, {"title": "hi"})
     assert result is True
 

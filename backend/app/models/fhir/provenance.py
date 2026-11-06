@@ -15,7 +15,7 @@ from sqlalchemy import Column, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.models.base import Base, TenantMixin, TimestampMixin, UUIDMixin
-from app.services.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
+from app.services.fhir.fhir_helpers import build_fhir_resource, build_meta, fhir_isoformat
 
 # HL7 v3 ProvenanceActivityType codes (the canonical "what happened" codes).
 # https://terminology.hl7.org/CodeSystem/v3-ProvenanceEventType

@@ -633,7 +633,7 @@ def _make_config(
     configurable: dict[str, Any] = {"runtime": runtime}
     if session_id is not None:
         # Plan 13 H2 (plan 11 §6 health ruling): the bare session id is the
-        # legacy LINEAR thread; branched turns key a per-branch thread
+        # LINEAR thread; branched turns key a per-branch thread
         # ``{session_id}:{branch_tip_id}`` so a paused ask_user on one
         # branch is never clobbered by another branch's runs.
         configurable["thread_id"] = thread_id or str(session_id)
@@ -661,7 +661,7 @@ async def run_chat_graph(
     ``done`` completion signal, which the SSE mapper drops).
 
     ``thread_id`` selects the checkpoint thread (plan 13 H2 branching: the
-    per-branch key; defaults to the legacy bare session id). ``turn_parent_id``
+    per-branch key; defaults to the bare session id). ``turn_parent_id``
     pins where this turn's assistant rows hang in the branch tree (regenerate
     turns re-roll under an existing user message)."""
     graph = build_chat_graph(checkpointer=checkpointer)

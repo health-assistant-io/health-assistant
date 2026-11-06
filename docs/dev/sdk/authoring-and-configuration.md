@@ -207,7 +207,9 @@ background Celery beat fires every 60 seconds and calls
 
 ```python
     async def pull_data(self, integration: UserIntegration) -> List[ObservationCreate]:
-        last_sync = self.get_sync_cursor(integration, "last_date", default="2024-01-01")
+        last_sync = self.get_cursor(
+            integration, "observations", default="2024-01-01"
+        )
 
         # Use the shared SDK HTTP helper (token-aware, full-jitter retry/backoff).
         from app.extensions.sdk import http_request
@@ -222,17 +224,25 @@ background Celery beat fires every 60 seconds and calls
 
         # ... parse data and build observations ...
 
-        self.set_sync_cursor(integration, "last_date", "2024-02-01")
+        self.set_cursor(integration, "observations", "2024-02-01")
         return observations
 ```
 
-Cursor/state in one call pair (JSONB-safe — the base mutates
-`user_config["_sync_state"]` with the `flag_modified` dance so JSONB
-change detection picks it up):
+Cursors are **rows**, not JSONB: `get_cursor` / `set_cursor` /
+`clear_cursor` read and buffer writes against `integration_sync_state`. The
+engine hydrates the instance buffer before a run and flushes it in the same
+transaction. The first argument after the integration is the closed stream
+vocabulary — `observations`, `documents`, `appointments`, `labs`,
+`telemetry` — and `key` names a provider-scoped sub-cursor when one stream
+carries several upstream resources:
 
 ```python
-last_timestamp = self.get_sync_cursor(integration, "last_timestamp", default=0)
-self.set_sync_cursor(integration, "last_timestamp", new_timestamp)
+stream = "observations"
+key = "Condition"  # per-resource sub-cursor; omit for the stream's primary cursor
+last_timestamp = self.get_cursor(integration, stream, key=key, default=0)
+self.set_cursor(integration, stream, new_timestamp, key=key)  # kind="timestamp"
+# Opaque tokens: kind="page_token" | "etag" | "commit" (commit JSON-encodes
+# lists/dicts, so a "seen ids" set round-trips exactly).
 ```
 
 ## Webhook handlers (opt-in push)
@@ -283,7 +293,7 @@ Implement `handle_api_request`:
         if path == "status" and method == "GET":
             return {
                 "status": "connected",
-                "cursor": self.get_sync_cursor(integration, "last_timestamp")
+                "cursor": self.get_cursor(integration, "telemetry")
             }
 
         if path == "sync" and method == "POST":
@@ -327,6 +337,16 @@ reusable auth module in `app/extensions/sdk/auth.py`:
   (`revoke`, RFC 7009). When DCR is advertised but returns no `client_id`,
   it raises an actionable typed `auth` error instead of producing a broken
   authorize URL.
+
+For non-SMART OAuth providers, a connector overrides `begin_oauth` /
+`complete_oauth` (the platform's `/{domain}/oauth/start` +
+`/{domain}/oauth/callback` routes) and keeps its own token endpoint
+client over the guarded transport — the **Withings connector**
+(`app/extensions/builtin/withings/`) is the reference: the sealed
+`oauth2` credential slot carries the client secret + token pair with
+maintained expiry columns, and the provider refreshes before every pull,
+resealing in place (see `INTEGRATIONS_FRAMEWORK.md` § Adding a data
+source).
 
 The connect flow is **decoupled from the config modal** — config creates a
 `PENDING` instance, then a separate Authorize action runs the OAuth
@@ -577,7 +597,7 @@ Expose interactive buttons on the instance detail page:
 
     async def execute_custom_action(self, integration: UserIntegration, action_id: str, **kwargs) -> Dict[str, Any]:
         if action_id == "reset_cursor":
-            self.set_sync_cursor(integration, "last_date", None)
+            self.clear_cursor(integration, "observations")
             return {"message": "Cursor reset successfully!"} # Returns a Toast to the UI
 
         raise NotImplementedError(f"Action not supported.")
@@ -762,7 +782,7 @@ can't accidentally match an unrelated UI row.
 **What the engine does per record:**
 
 1. Resolves a service-context `TokenData` from the integration's owning
-   user (`app/services/integration_actor.py`) — the integration inherits
+   user (`app/services/integration/integration_actor.py`) — the integration inherits
    its owner's tenant, role, and user_id: same RBAC, same audit
    provenance, same tenant scoping as an interactive UI request. No
    "integration user" service account is created.
@@ -904,49 +924,69 @@ class MyProvider(BaseHealthProvider):
         # cursor so you don't re-propose, log audit, suppress duplicates.
         # Default is a no-op; safe to leave unimplemented.
         if outcome.error is None:
-            self.set_sync_cursor(
-                integration, "last_approved_proposal", str(proposal_id)
+            self.set_cursor(
+                integration, "observations", str(proposal_id),
+                key="last_approved_proposal", kind="commit",
             )
 ```
 
-`IntegrationProposalSpec` uses a `proposal_type` discriminator
-(`create_biomarker_definition` / `create_medication_definition` /
-`create_concept` / `create_edge`) mirroring the chat-side AI HITL
-`task_type` strings.
+`IntegrationProposalSpec` uses a `proposal_type` discriminator — the
+**kind id** from the family proposal-kind contract
+(`contracts/hitl-proposal-kinds.json`):
 
-**State machine + persistence.** Each spec persists as an
-`IntegrationProposal` row (status `PROPOSED`):
+| Kind | Writes | Server-side resolver |
+|---|---|---|
+| `create_event` | a patient clinical event | `clinical_event_service.create_event` |
+| `create_examination` | a patient examination | `examination_service.create_examination` |
+| `add_medication` | a patient prescription | `medication_service.add_patient_medication` |
+| `add_biomarker_to_examination` | a patient Observation | `fhir_service.create_observation` |
+| `create_biomarker_definition` | catalog biomarker | `catalog_proposal_service.apply_proposal` |
+| `create_medication_definition` | catalog medication | `catalog_proposal_service.apply_proposal` |
+| `create_concept` | catalog concept | `catalog_proposal_service.apply_proposal` |
+| `create_edge` | catalog edge | `catalog_proposal_service.apply_proposal` |
+
+Chat-only kinds (`add_allergy`, `create_allergy_definition`,
+`generate_anatomy_graph`, `ask_user`) are `client_committed` / `record_only`:
+the UI already wrote through the canonical endpoint, so there is no
+server-side apply path for an extension to invoke them.
+
+A patient-record spec must carry a patient scope — pass `patient_id=` on the
+spec (the proposal row), or `patient_id` inside `proposed_payload`. A payload
+that names a *different* patient than the proposal row is rejected before any
+write.
+
+**One table, versioned payloads.** Every spec persists as a `proposals` row
+(`source='extension'`, `source_ref` = your instance id) — the same table chat
+cards use. The card document is `payload` (`{title, context,
+proposed_payload}`) with `payload_schema_version`; `kind_id` points at the
+seeded `proposal_kinds` lookup (boot-seeded from the contract, so a new kind is
+a contract entry plus a row, never a migration); `dedup_key` is unique per
+**tenant**.
+
+**State machine.** The closed lifecycle is
+`proposed | approved | rejected | applied | failed | expired | superseded`:
 
 ```
-                ┌────────────┐
-                │  PROPOSED  │
-                └─────┬──────┘
-        ┌─────────────┼─────────────┐
-    approve        reject        cancel
-        │             │             │
-        ▼             ▼             ▼
-  ┌──────────┐  ┌──────────┐  ┌──────────┐
-  │CONFIRMED │  │DISMISSED │  │DISMISSED │
-  └──────────┘  └──────────┘  └──────────┘
-        │ apply error
-        ▼
-  ┌──────────┐
-  │  FAILED  │
-  └──────────┘
+proposed ──approve──▶ approved ──apply ok──▶ applied
+   │                      └────apply error──▶ failed
+   ├──reject/cancel──▶ rejected
+   ├──expiry sweep───▶ expired
+   └──superseded─────▶ superseded
 ```
 
-`approve` routes the (possibly user-edited) payload through the same
-`apply_proposal` write path — `CONFIRMED` on success, `FAILED` on apply
-error (the row stays for retry/re-review). `reject` / `cancel` →
-`DISMISSED`, no apply; distinguishable in audit by the `note`.
-Re-resolve from a terminal state returns **409** (idempotent contract).
+`approve` validates the (possibly user-edited) payload against the kind's
+contract schema **before any write** (model/user output is untrusted), then
+runs the resolver. Status `failed` keeps the row for re-review. Resolve is
+**idempotent**: repeating the recorded outcome returns the stored result
+(200) — re-approving an applied proposal never writes twice. A *different*
+decision on a terminal row (or a superseded one) is `409`. An expiry sweep
+closes stale pending proposals every 15 minutes.
 
-**Dedup:** `dedup_key = sha256(canonical_json({"type": proposal_type,
-"payload": proposed_payload}))` per spec, partial unique index on
-`(integration_id, dedup_key)`. Re-emitting the same spec is a no-op —
-even after a decision, the engine doesn't re-spam the inbox. Providers
-wanting stronger don't-re-propose semantics advance their own cursor in
-`handle_proposal_resolution`.
+**Dedup:** `dedup_key = sha256(canonical_json({"kind": proposal_type,
+"payload": proposed_payload}))` per tenant. Re-emitting the same spec is a
+no-op — even after a decision, the engine doesn't re-spam the inbox.
+Providers wanting stronger don't-re-propose semantics advance their own cursor
+in `handle_proposal_resolution`.
 
 **Resolver endpoints:**
 
@@ -958,9 +998,9 @@ wanting stronger don't-re-propose semantics advance their own cursor in
 
 The resolve body is
 `{action: "approve"|"reject"|"cancel", payload?: Dict, note?: str}` — the
-optional `payload` overrides `proposed_payload` on approve. Response:
-`status`, `resolved_payload`, `applied_entity_id` (on successful approve),
-`error` (on FAILED).
+optional `payload` overrides the declared `proposed_payload` on approve.
+Response: `status`, `payload`, `final_payload`, `resolution_trace`,
+`applied_entity_id` (on a successful approve), `error` (on `failed`).
 
 **Per-sync cap + notification:**
 `INTEGRATION_MAX_HITL_PROPOSALS_PER_SYNC = 20`. For each *newly-inserted*
@@ -1030,11 +1070,11 @@ re-OCR). Without a stable upstream id, use cursor dedup:
 
 ```python
 async def pull_documents(self, integration):
-    last_pull = self.get_sync_cursor(integration, "last_doc_pulled_at")
+    last_pull = self.get_cursor(integration, "documents")
     new_docs = await self._fetch_docs_since(last_pull)
     if new_docs:
-        self.set_sync_cursor(
-            integration, "last_doc_pulled_at", new_docs[-1].fetched_at.isoformat()
+        self.set_cursor(
+            integration, "documents", new_docs[-1].fetched_at.isoformat()
         )
     return new_docs
 ```

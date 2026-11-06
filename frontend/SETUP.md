@@ -4,7 +4,7 @@
 
 ```bash
 cd frontend
-npm install
+pnpm install
 ```
 
 ## Configuration
@@ -16,13 +16,13 @@ Create `.env` file use `.env.example` as template
 ## Development Server
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 ## Build for Production
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ## Docker Build

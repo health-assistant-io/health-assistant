@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 
 from app.schemas.user import TokenData
-from app.services import clinical_event_service as svc
+from app.services.clinical import clinical_event_service as svc
 
 TENANT = uuid4()
 PATIENT = uuid4()

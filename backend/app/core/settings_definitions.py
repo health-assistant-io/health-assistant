@@ -216,17 +216,6 @@ SETTINGS_REGISTRY: list[SettingDefinition] = [
     ),
     # ---------------- Notifications ----------------
     SettingDefinition(
-        key="notifications.enabled",
-        category="notifications",
-        type=SettingType.BOOLEAN,
-        default=True,
-        storage=SettingStorage.DEVICE,
-        allowed_levels=[SettingLevel.USER],
-        label_key="settings.notifications_enabled",
-        description_key="settings.notifications_enabled_desc",
-        order=10,
-    ),
-    SettingDefinition(
         key="notifications.sources.SYSTEM",
         category="notifications",
         type=SettingType.BOOLEAN,

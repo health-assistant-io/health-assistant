@@ -23,7 +23,7 @@ from app.models.biomarker_model import (
 from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem
 from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
-from app.services.analytics_service import (
+from app.services.analytics import (
     _get_observation_status,
     _state_observation_status,
     get_biomarker_state_history,
@@ -385,7 +385,7 @@ async def test_get_biomarker_trends_includes_state_observations():
     """STATE observations must appear in the trends response (previously
     they were silently dropped because raw_value/normalized_value/
     value_quantity are all NULL for categorical rows)."""
-    from app.services.analytics_service import get_biomarker_trends
+    from app.services.analytics import get_biomarker_trends
 
     tenant_id, patient_id, bio_id, slug = await _seed_world()
     base = datetime(2024, 1, 1, tzinfo=UTC)
@@ -440,7 +440,7 @@ async def test_get_biomarker_trends_quantity_unchanged():
     """Sanity: the QUANTITY branch is untouched by the state-handling fix.
     A numeric biomarker still returns numeric ``value`` + status, and the
     new state_* fields are absent/null."""
-    from app.services.analytics_service import get_biomarker_trends
+    from app.services.analytics import get_biomarker_trends
 
     async with AsyncSessionLocal() as session:
         tenant = TenantModel(id=uuid4(), name="Q", slug=f"qty-t-{uuid4().hex[:8]}")

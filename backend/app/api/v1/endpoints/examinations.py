@@ -26,8 +26,8 @@ from app.schemas.examination import (
 )
 from app.schemas.task_log import TaskLogResponse
 from app.schemas.user import TokenData
-from app.services.access import check_examination_access, check_patient_access
-from app.services.audit_service import audit_read, log_audit_action
+from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.auth.access import check_examination_access, check_patient_access
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def create_examination(
     :class:`~app.core.errors.NotFoundError` to a 404.
     """
     from app.core.errors import NotFoundError
-    from app.services.examination_service import create_examination as _create
+    from app.services.clinical.examination_service import create_examination as _create
 
     try:
         examination = await _create(db, current_user, examination_in)
@@ -203,7 +203,7 @@ async def list_examination_categories(
 ):
     from app.models.concept_model import Concept
     from app.models.enums import ConceptKind
-    from app.services.concept_service import concepts_with_kind
+    from app.services.catalog.concept_service import concepts_with_kind
 
     # Examination categories now live in the unified concepts table
     result = await db.execute(
@@ -389,7 +389,7 @@ async def get_examination_documents(
     from sqlalchemy import not_
 
     from app.models.document_model import DocumentModel
-    from app.services.document_service import enrich_document_entities
+    from app.services.documents.document_service import enrich_document_entities
 
     # Subquery to find all parent_ids that have children (meaning they have been edited)
     parent_ids_subquery = select(DocumentModel.parent_id).where(
@@ -421,7 +421,7 @@ async def extract_examination_data(
     - 'full': OCR for all included docs + LLM analysis (default)
     - 'extract_only': LLM analysis only using existing text
     """
-    from app.services.document_service import (
+    from app.services.documents.document_service import (
         trigger_cumulative_extraction,
         trigger_full_examination_extraction,
     )
@@ -493,7 +493,7 @@ async def bulk_delete_examinations(
 
     from app.models.document_model import DocumentModel
     from app.models.fhir import Medication, Observation
-    from app.services.document_service import delete_document
+    from app.services.documents.document_service import delete_document
 
     # Fetch all examinations to be deleted, verifying ownership
     query = select(ExaminationModel).where(
@@ -560,7 +560,7 @@ async def delete_examination(
 
     from app.models.document_model import DocumentModel
     from app.models.fhir import Medication, Observation
-    from app.services.document_service import delete_document
+    from app.services.documents.document_service import delete_document
 
     # 1. Physical document deletion
     docs_result = await db.execute(

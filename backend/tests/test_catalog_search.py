@@ -17,7 +17,7 @@ from app.models.enums import ConceptStatus
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
-from app.services.catalog_search_service import search_catalogs
+from app.services.catalog.catalog_search_service import search_catalogs
 from tests._auth_helpers import headers_for_claims
 
 

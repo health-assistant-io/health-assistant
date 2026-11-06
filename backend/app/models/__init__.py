@@ -1,6 +1,7 @@
 from app.models.enums import ImmunizationStatus
 
 from .ai_provider_model import AIModel, AIProviderModel, AITaskAssignment
+from .ai_task_model import AICallLog, AITaskDef
 from .anatomy_model import AnatomyFigure, AnatomyStructure
 from .associations import examination_doctors, organization_doctors
 from .audit_model import AuditEvent
@@ -11,6 +12,12 @@ from .biomarker_model import (
     BiomarkerReferenceRange,
     Laboratory,
     Unit,
+)
+from .calendar_binding import (
+    CalendarBinding,
+    CalendarBindingCredential,
+    CalendarEventLink,
+    CalendarSyncLog,
 )
 from .catalog_audit_model import CatalogAuditLog
 from .chat_model import ChatMessage, ChatSession
@@ -24,10 +31,17 @@ from .clinical_event import (
     EventObservationLink,
 )
 from .concept_model import Concept, ConceptEdge, ConceptKindTag
+from .data_lifecycle_model import ErasureRequest, RetentionPolicy
 from .doctor_model import DoctorModel
 from .document_model import DocumentModel
 from .examination_model import ExaminationModel
 from .export_import_job import ExportJobModel, ImportJobModel
+from .extension_source_model import (
+    ExtensionConsent,
+    ExtensionIsolationPosture,
+    ExtensionSource,
+    ExtensionSourceVersion,
+)
 from .fhir import (
     AllergyCatalog,
     AllergyCategory,
@@ -46,7 +60,6 @@ from .fhir.device import DeviceModel
 from .fhir.organization import OrganizationModel
 from .fhir.provenance import ProvenanceModel
 from .instance_setting_model import InstanceSettingModel
-from .integration_proposal import IntegrationProposal
 from .notification import (
     Notification,
     NotificationCategory,
@@ -70,18 +83,30 @@ from .notification_rule import (
 )
 from .oauth import OAuthClient
 from .patient_layout import PatientLayoutModel
+from .proposal import Proposal, ProposalKind
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
 from .task_log import TaskLog
-from .telemetry_model import TelemetryDataModel
+from .telemetry_model import (
+    TelemetryAnomalyModel,
+    TelemetryDataModel,
+    TelemetryDeviceModel,
+)
 from .tenant_model import TenantModel
-from .user_integration import UserIntegration
+from .user_integration import (
+    IntegrationCredential,
+    IntegrationSyncLog,
+    IntegrationSyncState,
+    UserIntegration,
+)
 from .user_model import Role, UserModel
 
 __all__ = [
+    "AICallLog",
     "AIModel",
     "AIProviderModel",
     "AITaskAssignment",
+    "AITaskDef",
     "AllergyCatalog",
     "AllergyCategory",
     "AllergyClinicalStatus",
@@ -95,6 +120,10 @@ __all__ = [
     "Base",
     "BiomarkerDefinition",
     "BiomarkerReferenceRange",
+    "CalendarBinding",
+    "CalendarBindingCredential",
+    "CalendarEventLink",
+    "CalendarSyncLog",
     "CatalogAuditLog",
     "ChatMessage",
     "ChatSession",
@@ -111,15 +140,22 @@ __all__ = [
     "DiagnosticReport",
     "DoctorModel",
     "DocumentModel",
+    "ErasureRequest",
     "EventAnatomyLink",
     "EventExaminationLink",
     "EventObservationLink",
     "ExaminationModel",
     "ExportJobModel",
+    "ExtensionConsent",
+    "ExtensionIsolationPosture",
+    "ExtensionSource",
+    "ExtensionSourceVersion",
     "ImmunizationStatus",
     "ImportJobModel",
     "InstanceSettingModel",
-    "IntegrationProposal",
+    "IntegrationCredential",
+    "IntegrationSyncLog",
+    "IntegrationSyncState",
     "Laboratory",
     "Medication",
     "Notification",
@@ -141,14 +177,19 @@ __all__ = [
     "Patient",
     "PatientImmunization",
     "PatientLayoutModel",
+    "Proposal",
+    "ProposalKind",
     "ProvenanceModel",
     "RecipientKind",
     "RecipientStatus",
+    "RetentionPolicy",
     "Role",
     "SystemIntegration",
     "SystemSetting",
     "TaskLog",
+    "TelemetryAnomalyModel",
     "TelemetryDataModel",
+    "TelemetryDeviceModel",
     "TenantMixin",
     "TenantModel",
     "TriggerType",

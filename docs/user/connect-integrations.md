@@ -7,7 +7,7 @@ Health Assistant — nothing third-party is loaded into your server.
 
 ## The catalog
 
-**Settings → Integrations** lists what's available. Five integrations
+**Settings → Integrations** lists what's available. Seven integrations
 ship today:
 
 | Integration | What it does |
@@ -15,6 +15,8 @@ ship today:
 | Developer Dummy Data | A reference integration that generates sample data — useful to preview the whole flow |
 | Health Assistant Bridge | A signed two-way connection for your mobile app or custom client |
 | FHIR Server (Hospital Sync) | Connects to a hospital EHR via OAuth2 (SMART-on-FHIR) or a tokenless local FHIR server |
+| FHIR Client (Keyed Pull) | Pulls records from an external FHIR R4 server that issues a static access token |
+| Withings | Pulls your Withings scale, blood-pressure monitor and tracker measurements through your own Withings partner app (OAuth2) |
 | MCP Client | Exposes an external tool server's tools to the AI assistant |
 | Universal Webhook | Receives signed webhooks from any sender you control |
 
@@ -48,6 +50,40 @@ instance. Store it in your client immediately:
   (`base_url | integration_id | api_secret`) for the mobile app's
   scanner; regenerating rotates the secret immediately, which signs out
   previously paired devices.
+
+## Access tokens (keyed pulls)
+
+Integrations that *poll* a remote server with a static token (the FHIR
+Client) seal the token into the encrypted credential store instead of the
+instance configuration:
+
+- the config form's token field is sealed on save — it never appears in
+  the stored configuration (the UI shows `***`),
+- re-submitting the form with a new token rotates the sealed credential
+  in place; leaving it blank keeps the current one,
+- **revoking the credential stops the sync immediately** — the instance
+  flips to an error state and pulls nothing rather than running
+  unauthenticated. Un-revoke or reconnect to resume.
+
+## OAuth connectors (Withings)
+
+The Withings connector uses the same sealed credential store, plus the
+standard OAuth consent round-trip:
+
+- the config form asks for **your own Withings partner app's** client id
+  (non-secret) and client secret (sealed on save) — you register the
+  free partner app at partner.withings.com with your deployment's
+  callback URL,
+- **Authorize** runs the consent round-trip: Withings' consent page, then
+  the access/refresh token pair joins the SAME sealed credential slot as
+  the client secret, and the Withings account binding is recorded as
+  non-secret metadata,
+- the access token **refreshes automatically before every pull** and the
+  refresh reseals the slot in place — no manual token management,
+- if you revoke the app's access on the Withings side (or the secret
+  changes in the partner console), the next refresh fails closed: the
+  instance flips to an error state with a reconnect prompt instead of
+  pulling with a broken credential. Re-authorize to resume.
 
 ## After connecting
 

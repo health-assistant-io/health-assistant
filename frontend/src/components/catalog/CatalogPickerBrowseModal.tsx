@@ -1,23 +1,44 @@
 /**
- * Catalog picker — browse modal (the popup half of `CatalogItemPicker`).
+ * Catalog picker — browse-modal composition (the app-side half of
+ * {@link CatalogItemPicker}).
  *
- * Opened by the in-input "browse" button. Lets the user pick items from the
- * full catalog instead of the inline type-ahead search: a searchable catalog-
- * type dropdown (default **All** → cross-catalog search), a search box, a scope
- * filter, and the shared {@link CatalogBrowser} list with an Add/Added toggle
- * per row. Supports accumulating multiple picks before Done.
+ * The browse-modal pattern (search / category filter / Add-Added rows /
+ * pagination / count footer) lives in the shared `multi-select-picker`
+ * module. This module supplies the catalog-domain chrome and the data
+ * closures through that module's slots — `renderBody` (body composition),
+ * `renderRowContent` (rich rows), `filterOption` (client facets),
+ * `reloadKey` (server-side scope refetch) and controlled `category`:
  *
- * "All" uses the cross-catalog {@link searchCatalogs} endpoint; a specific type
- * uses the per-type {@link listCatalogItems} (so scope + pagination apply).
+ *   - the icon + searchable catalog-type dropdown (`CatalogTypeSelect`),
+ *     with "All" locked when the field allows a single catalog;
+ *   - the scope filter (All / System / Tenant / Mine) — server-side, so a
+ *     change re-runs the current search via `reloadKey`;
+ *   - per-type client facets (biomarker category/telemetry, allergy
+ *     category, vaccine coding_system, medication is_custom, concept
+ *     status) via `filterOption`;
+ *   - the List | Graph view toggle — the graph selection surface
+ *     (`CatalogPickerGraph`) rides `renderBody`, toggling through the
+ *     body ctx so both surfaces feed the same controlled selection.
+ *
+ * "All" uses the cross-catalog {@link searchCatalogs} endpoint (min 2
+ * chars — the hint state renders through `renderBody` too); a specific
+ * type uses {@link listCatalogItems} (scope + pagination apply).
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X, List, GitBranch } from 'lucide-react';
-import { Modal } from '../ui/Modal';
-import { LoadingState } from '../ui/LoadingState';
+import { GitBranch, List, Search, X } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { el, enUS } from 'date-fns/locale';
+import type { Locale } from 'date-fns';
+import type {
+  MultiSelectPickerBrowseProps,
+  PickerBrowseBodyCtx,
+  PickerOption,
+} from '../ui/multiSelectPicker';
 import { CatalogTypeSelect } from './CatalogTypeSelect';
-import { CatalogBrowser } from './CatalogBrowser';
 import { CatalogPickerGraph } from './CatalogPickerGraph';
+import { ClassBadge, Highlight, itemLabel } from './CatalogBrowser';
+import { ScopeBadge } from './ScopeBadge';
 import { FilterBar } from '../ui/filters/FilterBar';
 import { useFilterState } from '../ui/filters/useFilterState';
 import { getFacetsForType } from './catalogFacetRegistry';
@@ -26,386 +47,388 @@ import {
   listCatalogTypes,
   searchCatalogs,
 } from '../../services/catalogService';
-import type {
-  CatalogItem,
-  CatalogSelection,
-  CatalogTypeMeta,
-} from '../../types/catalog';
+import { toPlainText } from '../../utils/textFormat';
+import { useAuthStore } from '../../store/slices/authSlice';
+import {
+  hitToOption,
+  itemToOption,
+  type CatalogPickerOption,
+} from './catalogPickerAdapter';
+import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
 
-interface CatalogPickerBrowseModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  /** Current selection (so rows render Added + the footer count is live). */
-  picked: CatalogSelection[];
-  /** Toggle a visible item into/out of the selection. */
-  onTogglePick: (item: CatalogItem, catalogType: string) => void;
-  /** Restrict the type dropdown to a subset; default = all registered. */
-  allowedTypes?: string[];
-  /** ConceptKind value that narrows the `concept` catalog (passed through from
-   *  `CatalogItemPicker.conceptKind`). Ignored for non-concept catalogs. */
-  conceptKind?: string;
-  /** 'single' hides the multi-accumulate affordance. */
-  mode?: 'single' | 'multi';
-}
-
-const ALL = 'all';
+const ALL = '';
 const PAGE_SIZE = 50;
 
-export const CatalogPickerBrowseModal: React.FC<CatalogPickerBrowseModalProps> = ({
-  isOpen,
-  onClose,
-  picked,
-  onTogglePick,
-  allowedTypes,
+const SCOPE_OPTIONS = [
+  { v: '', k: 'catalogs.scope_all', f: 'All' },
+  { v: 'system', k: 'catalogs.scope_system', f: 'System' },
+  { v: 'tenant', k: 'catalogs.scope_tenant', f: 'Tenant' },
+  { v: 'mine', k: 'catalogs.scope_mine', f: 'Mine' },
+];
+
+export interface UseCatalogPickerBrowseOpts {
+  /** Catalog types the field accepts (already stringified). */
+  allowedList?: string[];
+  conceptKind?: string;
+  /** Relation stamped on new picks in relation mode; undefined = no relation. */
+  relationDefault?: string;
+}
+
+export function useCatalogPickerBrowse({
+  allowedList,
   conceptKind,
-  mode = 'multi',
-}) => {
-  const { t } = useTranslation();
-  const [types, setTypes] = useState<CatalogTypeMeta[]>([]);
-  // When the picker is scoped to a single distinctive catalog (e.g. a
-  // body-location field locked to anatomy), default to that catalog and
-  // disable the "All" option — it's redundant (All == the one catalog) and
-  // surfacing cross-catalog results the user can't select would be confusing.
+  relationDefault,
+}: UseCatalogPickerBrowseOpts): {
+  browseModalProps: MultiSelectPickerBrowseProps;
+  onBrowseOpenChange: (open: boolean) => void;
+} {
+  const { t, i18n } = useTranslation();
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  const locale: Locale = i18n.language.startsWith('el') ? el : enUS;
+
   const singleType =
-    allowedTypes && allowedTypes.length === 1 ? allowedTypes[0] : null;
-  const [activeType, setActiveType] = useState<string>(singleType ?? ALL);
+    allowedList && allowedList.length === 1 ? allowedList[0] : null;
 
-  const [items, setItems] = useState<CatalogItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string>(singleType ?? ALL);
   const [scope, setScope] = useState('');
-  // List vs graph selection surface. Graph gives relational context (e.g. the
-  // anatomy hierarchy helps you navigate to the right organ); list is the flat
-  // browse/sort view. Both surfaces feed the same `handleToggle` → selection.
   const [viewMode, setViewMode] = useState<'list' | 'graph'>('list');
+  const [types, setTypes] = useState<CatalogTypeMeta[]>([]);
+  const [loadedItems, setLoadedItems] = useState<CatalogItem[]>([]);
+  const [loadedTotal, setLoadedTotal] = useState(0);
+  const typesFetchSeq = useRef(0);
 
-  // Load the catalog-type registry once (filtered to allowedTypes).
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const resp = await listCatalogTypes();
-        if (cancelled) return;
-        const filtered = allowedTypes?.length
-          ? resp.types.filter((tg) => allowedTypes.includes(tg.type))
-          : resp.types;
-        setTypes(filtered);
-      } catch {
-        if (!cancelled) setTypes([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, allowedTypes]);
-
-  // Reset the active type when the modal reopens, so a picker repurposed for a
-  // different field (different `allowedTypes`) defaults correctly: locked to
-  // the single catalog when distinctive, or back to "All" otherwise.
-  useEffect(() => {
-    if (!isOpen) return;
-    setActiveType(singleType ?? ALL);
-  }, [isOpen, singleType]);
-
-  // Resolve a visible item's catalog type for the toggle callback. In "all"
-  // mode the list comes from searchCatalogs (no per-item type on CatalogItem),
-  // so we tag rows via a side index built at fetch time.
-  const itemToType = useMemo(() => {
-    const map: Record<string, string> = {};
-    items.forEach((it) => {
-      // `__type` is stamped on at fetch for cross-catalog search results.
-      const tag = (it as CatalogItem & { __type?: string }).__type;
-      if (tag) map[String(it.id)] = tag;
-    });
-    return map;
-  }, [items]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (activeType === ALL) {
-        // The cross-catalog search endpoint requires q (min_length=2). With a
-        // shorter query there's nothing to list — show a prompt instead.
-        if (search.trim().length < 2) {
-          setItems([]);
-          setTotal(0);
-          return;
-        }
-        // "All" means "all ALLOWED catalogs", not "every catalog in the
-        // system" — pass `types` so a scoped picker never leaks results from
-        // catalogs the field can't accept.
-        const resp = await searchCatalogs(search, {
-          limit: PAGE_SIZE,
-          types: allowedTypes?.length ? allowedTypes.join(',') : undefined,
-          kind: conceptKind,
-        });
-        // Cross-catalog hits → CatalogItem-shaped rows tagged with __type.
-        const rows = resp.results.map(
-          (r) =>
-            ({
-              id: r.id,
-              name: r.label,
-              __type: r.type,
-            }) as CatalogItem,
-        );
-        setItems(rows);
-        setTotal(rows.length);
-      } else {
-        const resp = await listCatalogItems(activeType, {
-          search: search || undefined,
-          scope: scope || undefined,
-          // kind only meaningful for the concept catalog; the backend ignores
-          // it for other types. listCatalogItems already supports a kind param.
-          kind: conceptKind,
-          limit: PAGE_SIZE,
-          offset: 0,
-        });
-        setItems(resp.items);
-        setTotal(resp.total);
-      }
-    } catch {
-      setItems([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeType, search, scope, conceptKind, allowedTypes]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const t = setTimeout(load, 200); // debounce search/scope/type changes
-    return () => clearTimeout(t);
-  }, [load, isOpen]);
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || activeType === ALL) return; // search endpoint has no offset
-    setLoadingMore(true);
-    try {
-      const resp = await listCatalogItems(activeType, {
-        search: search || undefined,
-        scope: scope || undefined,
-        kind: conceptKind,
-        limit: PAGE_SIZE,
-        offset: items.length,
-      });
-      setItems((prev) => [...prev, ...resp.items]);
-    } catch {
-      /* keep what we have */
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [activeType, search, scope, conceptKind, items.length, loadingMore]);
-
-  const pickedIds = useMemo(() => picked.map((p) => p.id), [picked]);
-
-  const handleToggle = useCallback(
-    (item: CatalogItem, explicitType?: string) => {
-      // The graph view passes the node's catalog type directly (it knows it
-      // from the node). The list view omits it; we resolve from the __type
-      // tag stamped at fetch, falling back to the active type dropdown.
-      const cat = explicitType ?? itemToType[String(item.id)] ?? activeType;
-      onTogglePick(item, cat);
-    },
-    [itemToType, activeType, onTogglePick],
-  );
-
-  const hasMore = activeType !== ALL && items.length < total;
-
-  // Per-type client-mode facets (biomarker category/telemetry, allergy
-  // category, vaccine coding_system, medication is_custom, concept status).
-  // Server-mode facets (concept kind, anatomy class) are excluded — the picker
-  // filters in-memory and doesn't refetch on facet change. Facets are empty
-  // for "All" (cross-catalog) mode and for types with no client facets.
+  // Per-type client-mode facets (server-mode facets like concept kind are
+  // excluded — the picker filters in-memory and doesn't refetch on facet
+  // change). Empty for "All" (cross-catalog) mode.
   const facets = useMemo(
-    () => (activeType !== ALL ? getFacetsForType(activeType).filter((f) => f.mode !== 'server') : []),
-    [activeType],
+    () =>
+      category !== ALL
+        ? getFacetsForType(category).filter((f) => f.mode !== 'server')
+        : [],
+    [category],
   );
   const pickerFilter = useFilterState(facets);
-  const filteredItems = useMemo(
-    () => pickerFilter.applyFilters(items),
-    [pickerFilter, items],
+
+  const onBrowseOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) return;
+      setCategory(singleType ?? ALL);
+      setLoadedItems([]);
+      setLoadedTotal(0);
+      const seq = ++typesFetchSeq.current;
+      (async () => {
+        try {
+          const resp = await listCatalogTypes();
+          if (seq !== typesFetchSeq.current) return;
+          setTypes(
+            allowedList?.length
+              ? resp.types.filter((tg) => allowedList.includes(tg.type))
+              : resp.types,
+          );
+        } catch {
+          if (seq === typesFetchSeq.current) setTypes([]);
+        }
+      })();
+    },
+    [singleType, allowedList],
   );
 
-  return (
-    <Modal
-      open={isOpen}
-      onOpenChange={(o) => !o && onClose()}
-      title={t('catalogs.picker_browse_title', 'Browse catalog')}
-      className="max-w-3xl"
-    >
-      <div className="flex flex-col h-[70vh] gap-3">
-        {/* Top row: list filters (hidden in graph mode — the graph owns its
-            own type/kind/depth/relation filter strip) + the List|Graph toggle. */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {viewMode === 'list' && (
-            <>
-              <CatalogTypeSelect
-                types={types}
-                activeType={activeType}
-                onSelect={(tp) => setActiveType(tp)}
-                allowAll
-                allDisabled={!!singleType}
-                allValue={ALL}
-                allLabel={t('catalogs.picker_type_all', 'All catalogs')}
-              />
+  const fetchPage = useCallback(
+    async (query: string, cat: string, offset: number): Promise<PickerOption[]> => {
+      try {
+        if (cat === ALL) {
+          if (offset > 0) return [];
+          if (query.trim().length < 2) {
+            setLoadedItems([]);
+            return [];
+          }
+          const resp = await searchCatalogs(query, {
+            limit: PAGE_SIZE,
+            types: allowedList?.length ? allowedList.join(',') : undefined,
+            kind: conceptKind,
+          });
+          return resp.results.map((hit) => hitToOption(hit, relationDefault));
+        }
+        const resp = await listCatalogItems(cat, {
+          search: query || undefined,
+          scope: scope || undefined,
+          kind: conceptKind,
+          limit: PAGE_SIZE,
+          offset,
+        });
+        setLoadedItems((prev) => (offset === 0 ? resp.items : [...prev, ...resp.items]));
+        setLoadedTotal(resp.total);
+        return resp.items.map((item) => itemToOption(item, cat, relationDefault));
+      } catch {
+        return [];
+      }
+    },
+    [allowedList, conceptKind, scope, relationDefault],
+  );
 
-              {/* Scope segmented control — list view + concrete type only. */}
-              {activeType !== ALL && (
-                <div className="flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                  {[
-                    { v: '', k: 'catalogs.scope_all', f: 'All' },
-                    { v: 'system', k: 'catalogs.scope_system', f: 'System' },
-                    { v: 'tenant', k: 'catalogs.scope_tenant', f: 'Tenant' },
-                    { v: 'mine', k: 'catalogs.scope_mine', f: 'Mine' },
-                  ].map((opt) => (
-                    <button
-                      key={opt.v || 'all'}
-                      onClick={() => setScope(opt.v)}
-                      className={`px-2.5 py-1.5 text-xs font-medium ${
-                        scope === opt.v
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      {t(opt.k, opt.f)}
-                    </button>
-                  ))}
-                </div>
-              )}
+  const onSearch = useCallback(
+    (query: string, cat: string | null) => fetchPage(query, cat ?? ALL, 0),
+    [fetchPage],
+  );
 
-              <div className="relative flex-1 min-w-48">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t('catalogs.picker_search', 'Search items…')}
-                  className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-hidden"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+  const onLoadMore = useCallback(
+    (query: string, cat: string | null, offset: number) =>
+      fetchPage(query, cat ?? ALL, offset),
+    [fetchPage],
+  );
+
+  const filterOption = useCallback(
+    (option: PickerOption) => {
+      const item = (option as CatalogPickerOption).item;
+      return item ? pickerFilter.matches(item) : true;
+    },
+    [pickerFilter],
+  );
+
+  const renderRowContent = useCallback(
+    (
+      option: PickerOption,
+      _selected: boolean,
+      rowCtx: { search: string; category: string },
+    ): React.ReactNode => {
+      const item = (option as CatalogPickerOption).item;
+      if (!item) {
+        return (
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wide text-blue-500">
+              {option.category}
+            </span>
+            <span className="min-w-0 flex-1 truncate">
+              <Highlight text={option.label} term={rowCtx.search} />
+            </span>
+          </div>
+        );
+      }
+      const desc = toPlainText(item.description);
+      const updated = item.updated_at
+        ? formatDistanceToNow(new Date(item.updated_at), { addSuffix: true, locale })
+        : null;
+      const relCount = typeof item.relation_count === 'number' ? item.relation_count : null;
+      return (
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="min-w-0 flex-1 text-left">
+            <span className="block truncate text-sm font-semibold">
+              <Highlight text={itemLabel(item)} term={rowCtx.search} />
+            </span>
+            {desc ? (
+              <span className="mt-1 block line-clamp-2 text-xs leading-snug text-gray-500 dark:text-gray-400">
+                <Highlight text={desc} term={rowCtx.search} />
+              </span>
+            ) : null}
+            {(updated || relCount !== null) && (
+              <span className="mt-1.5 block text-[11px] text-gray-400">
+                {updated && (
+                  <>
+                    {t('catalogs.updated_ago', 'Updated')} {updated}
+                  </>
                 )}
-              </div>
-            </>
-          )}
-
-          {/* List | Graph view toggle (always visible). */}
-          <div className={`flex items-center rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden shrink-0 ${viewMode === 'graph' ? 'ml-auto' : ''}`}>
-            <button
-              onClick={() => setViewMode('list')}
-              title={t('catalogs.picker_view_list', 'List view')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium ${
-                viewMode === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setViewMode('graph')}
-              title={t('catalogs.picker_view_graph', 'Graph view')}
-              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium ${
-                viewMode === 'graph'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-              }`}
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-            </button>
+                {updated && relCount ? ' · ' : ''}
+                {relCount !== null && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <GitBranch className="w-3 h-3" /> {relCount}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <ClassBadge item={item} />
+            <ScopeBadge
+              scope={item.scope}
+              created_by={item.created_by}
+              currentUserId={currentUserId}
+            />
           </div>
         </div>
+      );
+    },
+    [t, locale, currentUserId],
+  );
 
-        {/* Selection surface: graph (relational, self-filtered) or list (flat). */}
-        <div className="flex-1 min-h-0">
-          {viewMode === 'graph' ? (
-            <CatalogPickerGraph
-              allowedTypes={allowedTypes}
-              conceptKind={conceptKind}
-              pickedIds={pickedIds}
-              onTogglePick={handleToggle}
-              mode={mode}
+  const renderBody = useCallback(
+    (ctx: PickerBrowseBodyCtx): React.ReactNode => {
+      const pickedIds = ctx.value.map((entry) => {
+        const ext = entry as CatalogPickerOption;
+        return ext.id ?? String(entry.value).split(':')[1];
+      });
+      const viewToggle = (
+        <div
+          className={`flex shrink-0 items-center overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600 ${viewMode === 'graph' ? 'ml-auto' : ''}`}
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            title={t('catalogs.picker_view_list', 'List view')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium ${
+              viewMode === 'list'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('graph')}
+            title={t('catalogs.picker_view_graph', 'Graph view')}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium ${
+              viewMode === 'graph'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+          >
+            <GitBranch className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      );
+
+      if (viewMode === 'graph') {
+        return (
+          <div className="flex h-[70vh] min-h-0 flex-col gap-2">
+            {viewToggle}
+            <div className="min-h-0 flex-1">
+              <CatalogPickerGraph
+                allowedTypes={allowedList}
+                conceptKind={conceptKind}
+                pickedIds={pickedIds}
+                onTogglePick={(item, catalogType) =>
+                  ctx.toggle(itemToOption(item, catalogType, relationDefault))
+                }
+              />
+            </div>
+          </div>
+        );
+      }
+
+      const allHint = category === ALL && ctx.search.trim().length < 2;
+      const hasListFilters = !!scope || !!ctx.search.trim() || pickerFilter.isActive;
+      return (
+        <div className="flex h-[70vh] min-h-0 flex-col gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <CatalogTypeSelect
+              types={types}
+              activeType={category}
+              onSelect={ctx.onCategoryChange}
+              allowAll
+              allDisabled={!!singleType}
+              allValue={ALL}
+              allLabel={t('catalogs.picker_type_all', 'All catalogs')}
             />
-          ) : loading ? (
-            <LoadingState variant="section" message={t('catalogs.loading', 'Loading catalogs…')} />
-          ) : activeType === ALL && search.trim().length < 2 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <Search className="w-8 h-8 text-gray-300 dark:text-gray-600 mb-2" />
+            {category !== ALL && (
+              <div className="flex items-center overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600">
+                {SCOPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.v || 'all'}
+                    type="button"
+                    onClick={() => setScope(opt.v)}
+                    className={`px-2.5 py-1.5 text-xs font-medium ${
+                      scope === opt.v
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {t(opt.k, opt.f)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {hasListFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setScope('');
+                  ctx.onSearchChange('');
+                  pickerFilter.clearAll();
+                }}
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-gray-300 dark:hover:bg-red-900/20"
+              >
+                <X className="h-3.5 w-3.5" />
+                {t('common.clear_filters', 'Clear filters')}
+              </button>
+            )}
+            <div className="relative min-w-48 flex-1">{ctx.searchInput}</div>
+            {viewToggle}
+          </div>
+          {allHint ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
+              <Search className="mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
               <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
                 {t('catalogs.picker_all_hint_title', 'Search across all catalogs')}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {t('catalogs.picker_all_hint', 'Type at least 2 characters, or pick a specific catalog type to browse it.')}
+              <p className="mt-1 text-xs text-gray-400">
+                {t(
+                  'catalogs.picker_all_hint',
+                  'Type at least 2 characters, or pick a specific catalog type to browse it.',
+                )}
               </p>
             </div>
           ) : (
-            <div className="flex flex-col h-full gap-2">
-              {/* Per-type facet chips (biomarker category/telemetry, allergy
-                  category, etc.) — same FilterBar the workspace uses. Empty
-                  (renders nothing) for types with no registered facets. */}
+            <>
               {facets.length > 0 && (
                 <FilterBar
                   facets={facets}
                   filter={pickerFilter}
-                  items={items}
+                  items={loadedItems}
                   showActivePills
-                  resultCount={filteredItems.length}
-                  totalCount={items.length}
+                  resultCount={pickerFilter.applyFilters(loadedItems).length}
+                  totalCount={loadedItems.length}
                 />
               )}
-              <div className="flex-1 min-h-0">
-                <CatalogBrowser
-                  items={filteredItems}
-                  loading={false}
-                  total={total}
-                  viewMode="list"
-                  domainRoute={() => null}
-                  onSelectItem={() => undefined}
-                  pickedIds={pickedIds}
-                  onTogglePick={handleToggle}
-                  hasMore={hasMore}
-                  loadingMore={loadingMore}
-                  onLoadMore={loadMore}
-                  searchTerm={search}
-                  hasActiveFilters={!loading && (!!search || !!scope || pickerFilter.isActive)}
-                  onClearFilters={() => {
-                    setSearch('');
-                    setScope('');
-                    pickerFilter.clearAll();
-                  }}
-                />
-              </div>
-            </div>
+              {ctx.list}
+            </>
           )}
         </div>
-
-        {/* Footer: count + Done */}
-        <div className="shrink-0 flex items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {picked.length === 0
-              ? t('catalogs.picker_none_selected', 'No items selected')
-              : t('catalogs.picker_n_selected', { count: picked.length, defaultValue: '{{count}} selected' })}
-          </span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-          >
-            {mode === 'single'
-              ? picked.length
-                ? t('common.done', 'Done')
-                : t('common.cancel', 'Cancel')
-              : t('common.done', 'Done')}
-          </button>
-        </div>
-      </div>
-    </Modal>
+      );
+    },
+    [
+      t,
+      viewMode,
+      category,
+      scope,
+      types,
+      singleType,
+      facets,
+      pickerFilter,
+      loadedItems,
+      allowedList,
+      conceptKind,
+      relationDefault,
+    ],
   );
-};
+
+  const browseModalProps = useMemo<MultiSelectPickerBrowseProps>(
+    () => ({
+      title: t('catalogs.picker_browse_title', 'Browse catalog'),
+      className: 'sm:max-w-3xl',
+      debounceMs: 200,
+      category,
+      onCategoryChange: setCategory,
+      reloadKey: scope,
+      hasMore: category === ALL ? false : loadedItems.length < loadedTotal,
+      filterOption,
+      renderRowContent,
+      renderBody,
+      onSearch,
+      onLoadMore,
+    }),
+    [
+      t,
+      category,
+      scope,
+      loadedItems.length,
+      loadedTotal,
+      filterOption,
+      renderRowContent,
+      renderBody,
+      onSearch,
+      onLoadMore,
+    ],
+  );
+
+  return { browseModalProps, onBrowseOpenChange };
+}

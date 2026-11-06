@@ -150,7 +150,7 @@ def _patient_family_name_sort():
 
     Handles both stored shapes of ``Patient.name``:
     - a list of HumanName (FHIR canonical; the new shape post-FHIR-import),
-    - a single HumanName dict (legacy REST-created rows).
+    - a single HumanName dict (rows created through the REST facade).
 
     ``name -> 0 ->> 'family'`` extracts the family of the first list element
     (NULL when ``name`` is a dict, not an array). ``name ->> 'family'``
@@ -493,7 +493,7 @@ def parse_search_params(
                         raise ValueError
                     params._count = min(c, MAX_COUNT)
                 except ValueError:
-                    raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+                    raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
                         status_code=400,
                         detail=_operation_outcome_detail(
                             "invalid",
@@ -578,10 +578,10 @@ def parse_search_params(
             except ValueError:
                 pass
         elif key == "_offset":
-            # Tolerant alias: some legacy/non-standard clients (and the
+            # Tolerant alias: some non-standard clients (and the
             # previous version of this server) emit ``_offset=N`` in pagination
             # links. We emit ``page=N`` on output (most common convention) but
-            # accept ``_offset`` on input so those legacy links keep working.
+            # accept ``_offset`` on input so those links keep working.
             # The value is the 0-based row offset.
             try:
                 off = int(value)

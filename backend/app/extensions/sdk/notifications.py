@@ -11,7 +11,7 @@ Providers opt into rich, event-driven notifications by:
 
 The platform calls these hooks from ``integration_sync_service.run_sync``
 after observations are persisted. Specs are converted to ``emit()`` calls
-with the integration owner as the default target (mirroring the legacy
+with the integration owner as the default target (mirroring the
 sync-outcome behavior).
 
 This module mirrors :mod:`integrations.sdk.observation_builder` (a fluent
@@ -330,7 +330,7 @@ class NotificationSpecBuilder:
         """Attach a DisplayBlock (kv/list/table/json/text/code) to the payload.
 
         The notification detail modal renders ``payload.display_blocks[]``
-        using the same renderer as ``ActionResultModal``.
+        using the same renderer as the action-result dialog (``ActionResultBlocks``).
         """
         self._spec.display_blocks.append(block)
         return self

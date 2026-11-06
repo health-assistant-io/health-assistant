@@ -1,0 +1,512 @@
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
+from pathlib import Path
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy import func, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.core.config import settings
+from app.models.anatomy_model import AnatomyFigure, AnatomyStructure
+from app.models.concept_model import ConceptEdge
+from app.models.enums import (
+    ConceptKind,
+    ConceptRelationType,
+    EdgeApprovalStatus,
+    EdgeEndpointType,
+)
+from app.schemas.anatomy import (
+    AnatomyRelationCreate,
+    AnatomyStructureCreate,
+    AnatomyStructureUpdate,
+)
+from app.services.catalog.concept_service import resolve_concept_by_slug
+
+
+async def get_anatomy_structures(
+    db: AsyncSession,
+    tenant_id: UUID | None = None,
+    class_concept_id: UUID | None = None,
+    class_concept_ids: list[UUID] | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[AnatomyStructure], int]:
+
+    query = select(AnatomyStructure)
+
+    if tenant_id:
+        query = query.where(
+            or_(
+                AnatomyStructure.tenant_id == tenant_id,
+                AnatomyStructure.tenant_id.is_(None),
+            )
+        )
+    else:
+        query = query.where(AnatomyStructure.tenant_id.is_(None))
+
+    if class_concept_id:
+        query = query.where(AnatomyStructure.class_concept_id == class_concept_id)
+
+    if class_concept_ids:
+        query = query.where(AnatomyStructure.class_concept_id.in_(class_concept_ids))
+
+    if search:
+        term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                AnatomyStructure.name.ilike(term),
+                AnatomyStructure.slug.ilike(term),
+                AnatomyStructure.standard_code.ilike(term),
+                AnatomyStructure.description.ilike(term),
+            )
+        )
+
+    total_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(total_query)
+    total = total_result.scalar() or 0
+
+    query = query.order_by(AnatomyStructure.name.asc()).offset(offset).limit(limit)
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    return list(items), total
+
+
+async def get_anatomy_structure_by_id_or_slug(
+    db: AsyncSession, identifier: str, tenant_id: UUID | None = None
+) -> AnatomyStructure | None:
+
+    query = select(AnatomyStructure)
+
+    try:
+        uuid_val = UUID(identifier)
+        query = query.where(AnatomyStructure.id == uuid_val)
+    except ValueError:
+        query = query.where(AnatomyStructure.slug == identifier)
+
+    if tenant_id:
+        query = query.where(
+            or_(
+                AnatomyStructure.tenant_id == tenant_id,
+                AnatomyStructure.tenant_id.is_(None),
+            )
+        )
+    else:
+        query = query.where(AnatomyStructure.tenant_id.is_(None))
+
+    result = await db.execute(query)
+    return result.scalars().first()
+
+
+async def create_anatomy_structure(
+    db: AsyncSession,
+    structure_in: AnatomyStructureCreate,
+    *,
+    role: str,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> AnatomyStructure:
+    """Create a new anatomy structure. Scope/tenant_id/created_by are stamped
+    by the shared ``DEFAULT_CATALOG_POLICY.assign_create_scope`` (same path
+    biomarker/medication/allergy/vaccine use) — SYSTEM_ADMIN→system,
+    ADMIN/MANAGER→tenant, USER→user."""
+    data = structure_in.model_dump()
+    # Resolve the friendly class slug to a class_concept_id (takes precedence
+    # over an explicit class_concept_id if both are supplied).
+    slug = data.pop("class_concept_slug", None)
+    if slug:
+        data["class_concept_id"] = await resolve_concept_by_slug(
+            db, slug, ConceptKind.ANATOMY_CLASS
+        )
+    db_structure = AnatomyStructure(**data)
+    DEFAULT_CATALOG_POLICY.assign_create_scope(role, db_structure, tenant_id, user_id)
+    db.add(db_structure)
+    await db.commit()
+    await db.refresh(db_structure)
+    return db_structure
+
+
+async def update_anatomy_structure(
+    db: AsyncSession,
+    structure: AnatomyStructure,
+    structure_in: AnatomyStructureUpdate,
+) -> AnatomyStructure:
+    """Patch an existing anatomy structure with the provided fields."""
+    update_data = structure_in.model_dump(exclude_unset=True)
+    slug = update_data.pop("class_concept_slug", None)
+    if slug is not None:
+        update_data["class_concept_id"] = (
+            await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS) if slug else None
+        )
+    for field, value in update_data.items():
+        setattr(structure, field, value)
+    await db.commit()
+    await db.refresh(structure)
+    return structure
+
+
+async def delete_anatomy_structure(
+    db: AsyncSession,
+    structure: AnatomyStructure,
+) -> None:
+    """Delete an anatomy structure and cascade its relations."""
+    await db.delete(structure)
+    await db.commit()
+
+
+async def create_relation(db: AsyncSession, relation_in: AnatomyRelationCreate) -> ConceptEdge:
+    """Create an anatomy→anatomy edge in the unified ``concept_edges`` table.
+
+    The ``anatomy_relations`` table is gone (migration
+    ``h9c0d1e2f3a4``); all anatomy hierarchy edges now live in
+    ``concept_edges`` with ``src_type='anatomy', dst_type='anatomy'``.
+    """
+    rel_type = ConceptRelationType(relation_in.relation_type.value)
+
+    # Dedup: check if an identical edge already exists.
+    existing = await db.execute(
+        select(ConceptEdge).where(
+            ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+            ConceptEdge.src_id == relation_in.source_id,
+            ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+            ConceptEdge.dst_id == relation_in.target_id,
+            ConceptEdge.relation == rel_type,
+        )
+    )
+    found = existing.scalars().first()
+    if found:
+        return found
+
+    edge = ConceptEdge(
+        src_type=EdgeEndpointType.ANATOMY,
+        src_id=relation_in.source_id,
+        dst_type=EdgeEndpointType.ANATOMY,
+        dst_id=relation_in.target_id,
+        relation=rel_type,
+        status=EdgeApprovalStatus.APPROVED,
+    )
+    db.add(edge)
+    await db.commit()
+    await db.refresh(edge)
+    return edge
+
+
+async def get_related_structures(
+    db: AsyncSession,
+    structure_id: UUID,
+    relation_type: ConceptRelationType | None = None,
+    direction: str = "both",  # "outgoing", "incoming", "both"
+) -> dict[str, Any]:
+    """Returns related anatomy structures for a given node, queried from the
+    unified ``concept_edges`` table (anatomy→anatomy edges only).
+
+    Returns ``{"outgoing": [{"relation_type": str, "structure": AnatomyStructure}],
+    "incoming": [...]}`` — the endpoint serializes this directly.
+    """
+    response: dict[str, Any] = {"outgoing": [], "incoming": []}
+
+    if direction in ("both", "outgoing"):
+        q = (
+            select(ConceptEdge, AnatomyStructure)
+            .join(
+                AnatomyStructure,
+                AnatomyStructure.id == ConceptEdge.dst_id,
+            )
+            .where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.src_id == structure_id,
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
+        )
+        if relation_type:
+            q = q.where(ConceptEdge.relation == relation_type)
+        for edge, struct in (await db.execute(q)).all():
+            response["outgoing"].append({"relation_type": edge.relation, "structure": struct})
+
+    if direction in ("both", "incoming"):
+        q = (
+            select(ConceptEdge, AnatomyStructure)
+            .join(
+                AnatomyStructure,
+                AnatomyStructure.id == ConceptEdge.src_id,
+            )
+            .where(
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_id == structure_id,
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
+        )
+        if relation_type:
+            q = q.where(ConceptEdge.relation == relation_type)
+        for edge, struct in (await db.execute(q)).all():
+            response["incoming"].append({"relation_type": edge.relation, "structure": struct})
+
+    return response
+
+
+async def get_anatomy_graph(
+    db: AsyncSession,
+    root: AnatomyStructure,
+    tenant_id: UUID | None = None,
+    depth: int = 1,
+    relation_type: ConceptRelationType | None = None,
+    direction: str = "both",
+) -> dict[str, Any]:
+    """Breadth-first traversal of the anatomy graph from ``root`` up to ``depth``
+    hops, querying the unified ``concept_edges`` table (anatomy→anatomy edges
+    only).
+
+    Returns ``{"nodes": [{"structure": AnatomyStructure, "depth": int}, ...],
+    "edges": [{"source_id": UUID, "target_id": UUID, "relation_type": str}, ...]}``.
+    """
+    if depth < 1:
+        depth = 1
+
+    root_id = root.id
+    nodes: dict[UUID, dict[str, Any]] = {root_id: {"structure": root, "depth": 0}}
+    visible_ids: set = {root_id}
+    edges_seen: set = set()
+    edge_rows: list[dict[str, Any]] = []
+    frontier: set = {root_id}
+
+    for hop in range(1, depth + 1):
+        if not frontier:
+            break
+
+        neighbor_ids: set = set()
+        new_edges: list[tuple] = []
+
+        if direction in ("both", "outgoing"):
+            q = select(ConceptEdge).where(
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.src_id.in_(frontier),
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
+            if relation_type:
+                q = q.where(ConceptEdge.relation == relation_type)
+            for e in (await db.execute(q)).scalars().all():
+                new_edges.append((e.src_id, e.dst_id, e.relation, e))
+                neighbor_ids.add(e.dst_id)
+
+        if direction in ("both", "incoming"):
+            q = select(ConceptEdge).where(
+                ConceptEdge.dst_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.dst_id.in_(frontier),
+                ConceptEdge.src_type == EdgeEndpointType.ANATOMY,
+                ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+            )
+            if relation_type:
+                q = q.where(ConceptEdge.relation == relation_type)
+            for e in (await db.execute(q)).scalars().all():
+                new_edges.append((e.src_id, e.dst_id, e.relation, e))
+                neighbor_ids.add(e.src_id)
+
+        for src_id, dst_id, rel, _edge in new_edges:
+            key = (src_id, dst_id, rel)
+            if key not in edges_seen:
+                edges_seen.add(key)
+                edge_rows.append(
+                    {
+                        "source_id": src_id,
+                        "target_id": dst_id,
+                        "relation_type": rel,
+                    }
+                )
+
+        # Load structures for newly discovered neighbors (tenant-scoped).
+        to_load = [nid for nid in neighbor_ids if nid not in nodes]
+        next_frontier: set = set()
+        if to_load:
+            q = select(AnatomyStructure).where(AnatomyStructure.id.in_(to_load))
+            if tenant_id:
+                q = q.where(
+                    or_(
+                        AnatomyStructure.tenant_id == tenant_id,
+                        AnatomyStructure.tenant_id.is_(None),
+                    )
+                )
+            for s in (await db.execute(q)).scalars().all():
+                nodes[s.id] = {"structure": s, "depth": hop}
+                visible_ids.add(s.id)
+                next_frontier.add(s.id)
+
+        frontier = next_frontier
+
+    # Drop edges whose endpoints were filtered out by tenant scoping.
+    edge_rows = [
+        e for e in edge_rows if e["source_id"] in visible_ids and e["target_id"] in visible_ids
+    ]
+
+    return {"nodes": list(nodes.values()), "edges": edge_rows}
+
+
+# --- Anatomy figures (DB-driven body atlas, raster images) ---
+
+FIGURES_DIR = "anatomy_figures"  # subdirectory under HA_UPLOAD_DIR
+
+
+def _figures_base_dir() -> Path:
+    """Absolute path to the anatomy figures image directory under HA_UPLOAD_DIR."""
+    base = Path(str(settings.HA_UPLOAD_DIR)) / FIGURES_DIR
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def save_figure_image(
+    slug: str, data: bytes, ext: str = "webp", kind: str = "image"
+) -> tuple[str, int, int]:
+    """Write image bytes to HA_UPLOAD_DIR/anatomy_figures/{slug}.{ext} (or
+    {slug}-source.{ext} when kind='source') and return (relative_path, w, h)."""
+    import io
+    import re
+
+    from PIL import Image as PILImage
+
+    base = _figures_base_dir()
+    suffix = "-source" if kind == "source" else ""
+    # Audit A13: slug is interpolated into a filesystem path. Sanitise to a
+    # strict basename (no separators, no traversal) and confirm the resolved
+    # path stays within the figures base dir — defence-in-depth even though
+    # the only writer is SYSTEM_ADMIN-gated.
+    safe_slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(slug)).strip(".-") or "figure"
+    path = (base / f"{safe_slug}{suffix}.{ext}").resolve()
+    try:
+        path.relative_to(base.resolve())
+    except ValueError:
+        raise ValueError(f"Refusing to write anatomy figure outside base dir: {slug!r}")
+    path.write_bytes(data)
+    with PILImage.open(io.BytesIO(data)) as img:
+        w, h = img.size
+    return f"{FIGURES_DIR}/{safe_slug}{suffix}.{ext}", w, h
+
+
+def figure_image_abspath(figure: AnatomyFigure) -> Path | None:
+    if not figure.image_path:
+        return None
+    return Path(str(settings.HA_UPLOAD_DIR)) / figure.image_path
+
+
+def figure_source_abspath(figure: AnatomyFigure) -> Path | None:
+    if not figure.source_image_path:
+        return None
+    return Path(str(settings.HA_UPLOAD_DIR)) / figure.source_image_path
+
+
+async def list_anatomy_figures(
+    db: AsyncSession,
+    active_only: bool = True,
+) -> list[AnatomyFigure]:
+    query = select(AnatomyFigure).order_by(
+        AnatomyFigure.figure_key.asc(), AnatomyFigure.sort_order.asc()
+    )
+    if active_only:
+        query = query.where(AnatomyFigure.is_active.is_(True))
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_anatomy_figure(db: AsyncSession, slug: str) -> AnatomyFigure | None:
+    result = await db.execute(select(AnatomyFigure).where(AnatomyFigure.slug == slug))
+    return result.scalars().first()
+
+
+async def create_anatomy_figure(
+    db: AsyncSession,
+    *,
+    slug: str,
+    label: str,
+    figure_key: str,
+    view_key: str,
+    image_data: bytes,
+    ext: str = "webp",
+    source_data: bytes | None = None,
+    source_ext: str = "webp",
+    sort_order: int = 0,
+    is_active: bool = True,
+) -> AnatomyFigure:
+    existing = await get_anatomy_figure(db, slug)
+    if existing:
+        raise ValueError(f"Figure with slug '{slug}' already exists")
+    rel_path, w, h = save_figure_image(slug, image_data, ext)
+    source_path = None
+    if source_data:
+        source_path, _, _ = save_figure_image(slug, source_data, source_ext, kind="source")
+    db_figure = AnatomyFigure(
+        slug=slug,
+        label=label,
+        figure_key=figure_key,
+        view_key=view_key,
+        image_path=rel_path,
+        source_image_path=source_path,
+        width=w,
+        height=h,
+        sort_order=sort_order,
+        is_active=is_active,
+    )
+    db.add(db_figure)
+    await db.commit()
+    await db.refresh(db_figure)
+    return db_figure
+
+
+async def update_anatomy_figure(
+    db: AsyncSession,
+    figure: AnatomyFigure,
+    *,
+    label: str | None = None,
+    figure_key: str | None = None,
+    view_key: str | None = None,
+    sort_order: int | None = None,
+    is_active: bool | None = None,
+    image_data: bytes | None = None,
+    ext: str = "webp",
+    source_data: bytes | None = None,
+    source_ext: str = "webp",
+    clear_source: bool = False,
+) -> AnatomyFigure:
+    if label is not None:
+        figure.label = label
+    if figure_key is not None:
+        figure.figure_key = figure_key
+    if view_key is not None:
+        figure.view_key = view_key
+    if sort_order is not None:
+        figure.sort_order = sort_order
+    if is_active is not None:
+        figure.is_active = is_active
+    if image_data:
+        old = figure_image_abspath(figure)
+        if old and old.exists():
+            old.unlink()
+        rel_path, w, h = save_figure_image(figure.slug, image_data, ext)
+        figure.image_path = rel_path
+        figure.width = w
+        figure.height = h
+    if source_data:
+        stale_path = figure_source_abspath(figure)
+        if stale_path and stale_path.exists():
+            stale_path.unlink()
+        source_path, _, _ = save_figure_image(figure.slug, source_data, source_ext, kind="source")
+        figure.source_image_path = source_path
+    elif clear_source:
+        stale_path = figure_source_abspath(figure)
+        if stale_path and stale_path.exists():
+            stale_path.unlink()
+        figure.source_image_path = None
+    await db.commit()
+    await db.refresh(figure)
+    return figure
+
+
+async def delete_anatomy_figure(db: AsyncSession, figure: AnatomyFigure) -> None:
+    for p in (figure_image_abspath(figure), figure_source_abspath(figure)):
+        if p and p.exists():
+            p.unlink()
+    await db.delete(figure)
+    await db.commit()

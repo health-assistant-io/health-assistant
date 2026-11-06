@@ -16,7 +16,7 @@ Security (centralized here — the single chokepoint):
    calls enumerating patients.
 
 No PII is logged (only type/tenant/limit). See
-``dev/plans/instance-browser-unified-picker-2026-07-16.md`` §4.
+``the design notes`` §4.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -28,8 +28,8 @@ from app.core.security import get_current_user
 from app.models.enums import Role
 from app.schemas.instance_search import InstanceSearchResponse
 from app.schemas.user import TokenData
-from app.services.access import check_patient_access
-from app.services.instance_search_service import search_instances
+from app.services.auth.access import check_patient_access
+from app.services.instances.instance_search_service import search_instances
 
 router = APIRouter(prefix="/instances", tags=["Instances"])
 

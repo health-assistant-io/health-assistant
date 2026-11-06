@@ -128,31 +128,33 @@ async def ai_ctx():
         )
         db.add_all([session_a, session_b])
         await db.flush()
-        message_a = uuid.uuid4()
-        db.add(
-            ChatMessage(
-                id=message_a,
-                session_id=session_a.id,
-                role="assistant",
-                content={"text": "Shall I log this as a clinical event?"},
-                tasks=[
-                    {
-                        "proposal_id": "prop-1",
-                        "task_type": "create_clinical_event",
-                        "title": "Log hyperlipidemia follow-up",
-                        "status": "proposed",
-                        "proposed_payload": {"title": "Hyperlipidemia follow-up"},
-                    }
-                ],
-                citations=[{"source": "biomarker:ldl", "label": "LDL trend"}],
-            )
-        )
         await db.commit()
+        proposal_id = str(uuid.uuid4())
+        from app.services.chat.chat_session_service import ChatSessionService
+
+        message = await ChatSessionService(db).save_message(
+            session_id=session_a.id,
+            role="assistant",
+            content={"text": "Shall I log this as a clinical event?"},
+            tasks=[
+                {
+                    "schema_version": 1,
+                    "proposal_id": proposal_id,
+                    "task_type": "create_clinical_event",
+                    "title": "Log hyperlipidemia follow-up",
+                    "status": "proposed",
+                    "proposed_payload": {"title": "Hyperlipidemia follow-up"},
+                    "context": {"patient_id": str(patient_a)},
+                }
+            ],
+            citations=[{"source": "biomarker:ldl", "label": "LDL trend"}],
+        )
         return {
             "integration_id": integration_id,
             "session_a": session_a.id,
             "session_b": session_b.id,
-            "message_a": message_a,
+            "message_a": message.id,
+            "proposal_id": proposal_id,
         }
 
 
@@ -193,7 +195,7 @@ async def test_ai_messages_return_tasks_and_isolation_holds(ai_ctx):
         method="GET",
         request=_get_request(),
     )
-    assert result["data"][0]["tasks"][0]["proposal_id"] == "prop-1"
+    assert result["data"][0]["tasks"][0]["proposal_id"] == ctx["proposal_id"]
 
     with pytest.raises(ValueError):
         await provider.handle_api_request(
@@ -314,7 +316,7 @@ async def test_ai_chat_returns_tasks_and_citations_of_latest_assistant_row(ai_ct
     assert result["success"] is True
     assert result["session_id"] == str(ctx["session_a"])
     assert result["message_id"] == str(ctx["message_a"])
-    assert result["tasks"][0]["proposal_id"] == "prop-1"
+    assert result["tasks"][0]["proposal_id"] == ctx["proposal_id"]
     assert result["tasks"][0]["status"] == "proposed"
     assert result["citations"] == [{"source": "biomarker:ldl", "label": "LDL trend"}]
 
@@ -325,7 +327,7 @@ async def test_ai_chat_pins_the_engine_saves_before_assist_returns_ordering(ai_c
     caller's db session BEFORE `assist` returns (mirrored here by a fake
     that saves through ChatSessionService) — the provider's fetch must see
     this turn's row, tasks and citations included."""
-    from app.services.chat_session_service import ChatSessionService
+    from app.services.chat.chat_session_service import ChatSessionService
 
     ctx = ai_ctx
     integration = await _load_integration(ctx["integration_id"])
@@ -340,7 +342,8 @@ async def test_ai_chat_pins_the_engine_saves_before_assist_returns_ordering(ai_c
             content={"text": "Confirm and I'll log it."},
             tasks=[
                 {
-                    "proposal_id": "prop-2",
+                    "schema_version": 1,
+                    "proposal_id": str(uuid.uuid4()),
                     "task_type": "create_clinical_event",
                     "title": "Log follow-up",
                     "status": "proposed",
@@ -350,6 +353,7 @@ async def test_ai_chat_pins_the_engine_saves_before_assist_returns_ordering(ai_c
             citations=[{"source": "observation:abc", "label": "LDL 3.9"}],
         )
         saved["id"] = row.id
+        saved["proposal_id"] = row.tasks[0]["proposal_id"]
         return {
             "message": "Confirm and I'll log it.",
             "session_id": str(row.session_id),
@@ -367,7 +371,7 @@ async def test_ai_chat_pins_the_engine_saves_before_assist_returns_ordering(ai_c
         )
 
     assert result["message_id"] == str(saved["id"])
-    assert result["tasks"][0]["proposal_id"] == "prop-2"
+    assert result["tasks"][0]["proposal_id"] == saved["proposal_id"]
     assert result["citations"] == [{"source": "observation:abc", "label": "LDL 3.9"}]
 
 
@@ -430,7 +434,7 @@ async def test_ai_messages_limit_is_honored_newest_first(ai_ctx):
     )
     assert len(limited["data"]) == 3
     assert limited["data"][0]["id"] == str(ctx["message_a"])
-    assert limited["data"][0]["tasks"][0]["proposal_id"] == "prop-1"
+    assert limited["data"][0]["tasks"][0]["proposal_id"] == ctx["proposal_id"]
     assert limited["data"][1]["content"]["text"] == "older-4"
     assert limited["data"][2]["content"]["text"] == "older-3"
 
@@ -460,7 +464,7 @@ async def test_ai_resolve_records_dismissal_and_appends_note(ai_ctx):
 
     result = await provider.handle_api_request(
         integration=integration,
-        path=f"ai/sessions/{ctx['session_a']}/tasks/prop-1/resolve",
+        path=f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
         method="POST",
         request=_post_request({"status": "dismissed"}),
     )
@@ -483,14 +487,22 @@ async def test_ai_resolve_records_dismissal_and_appends_note(ai_ctx):
         assert len(notes) == 1
         assert notes[0].role == "assistant"
 
-    # Second resolve → conflict (BridgeError 409 'hitl_conflict' through the
-    # proxy; still a ValueError subclass for direct provider callers).
+    # Repeating the recorded outcome is idempotent (plan 5 W4): 200 again.
+    repeated = await provider.handle_api_request(
+        integration=integration,
+        path=f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
+        method="POST",
+        request=_post_request({"status": "dismissed"}),
+    )
+    assert repeated["task"]["status"] == "dismissed"
+
+    # A conflicting decision on the terminal proposal is the 409 conflict.
     with pytest.raises(ValueError):
         await provider.handle_api_request(
             integration=integration,
-            path=f"ai/sessions/{ctx['session_a']}/tasks/prop-1/resolve",
+            path=f"ai/sessions/{ctx['session_a']}/tasks/{ctx['proposal_id']}/resolve",
             method="POST",
-            request=_post_request({"status": "dismissed"}),
+            request=_post_request({"status": "confirmed"}),
         )
 
 

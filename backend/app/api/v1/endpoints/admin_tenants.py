@@ -59,12 +59,12 @@ from app.schemas.tenant import (
     TenantUserResponse,
     UpdateTenantUser,
 )
-from app.services.audit_service import (
+from app.services.audit.audit_service import (
     OUTCOME_DENIED,
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.tenant_admin_service import TenantAdminService
+from app.services.tenancy.tenant_admin_service import TenantAdminService
 
 router = APIRouter(prefix="/admin/tenants", tags=["admin-tenants"])
 
@@ -120,7 +120,7 @@ def _coerce_uuid(value: str, field: str = "tenant_id") -> UUID:
     try:
         return UUID(value)
     except (ValueError, AttributeError, TypeError):
-        raise HTTPException(  # noqa: B904 -- legacy raise; add explicit chaining when touched
+        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid {field}: must be a valid UUID.",
         )
@@ -333,9 +333,9 @@ async def set_tenant_user_mfa(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found in this tenant.",
         )
-    old_enforced = bool(user.mfa_enforced)
-    if old_enforced != payload.enforced:
-        from app.services import mfa_service
+    prior_enforced = bool(user.mfa_enforced)
+    if prior_enforced != payload.enforced:
+        from app.services.auth import mfa_service
 
         user = await mfa_service.set_enforced(uid, payload.enforced)
 
@@ -346,7 +346,7 @@ async def set_tenant_user_mfa(
         resource_type="user",
         resource_id=uid,
         outcome=OUTCOME_OK,
-        old_value={"mfa_enforced": old_enforced},
+        old_value={"mfa_enforced": prior_enforced},  # gate-allow: *, audit diff
         new_value={
             "mfa_enforced": payload.enforced,
             "mfa_enabled": bool(getattr(user, "mfa_secret_enc", None)),

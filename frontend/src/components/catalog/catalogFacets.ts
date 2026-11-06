@@ -6,7 +6,7 @@
  * unknown>`) — the `strField` helper safely extracts string fields, and
  * boolean toggles use strict `=== true` comparison.
  *
- * See `dev/plans/modular-filter-system-2026-07-14.md` §2 Phase 6c.
+ * See `local planning notes/modular-filter-system-2026-07-14.md` §2 Phase 6c.
  */
 import type { FacetDefinition } from '../ui/filters';
 import { deriveCountedOptions } from '../ui/filters';

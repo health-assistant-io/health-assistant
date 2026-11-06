@@ -23,7 +23,7 @@ Coverage map (each test pins one capability):
 * ``test_api_request_status_responds``                       — §I
 * ``test_api_request_echo_round_trip``                       — §I
 * ``test_api_request_unknown_path_raises``                   — §I
-* ``test_supports_tools_returns_langchain_tools``            — §J
+* ``test_get_tools_returns_langchain_tools``            — §J
 * ``test_pull_clinical_events_emits_one_event``              — §K
 * ``test_pull_clinical_events_respects_toggle``              — §K
 * ``test_pull_examinations_emits_one_exam``                  — §L
@@ -53,6 +53,7 @@ import pytest
 from app.extensions.builtin.dev_dummy.config_flow import DevDummyConfigFlow
 from app.extensions.builtin.dev_dummy.provider import DevDummyProvider
 from app.extensions.errors import ExtensionError
+from app.models.enums import IntegrationSyncStream
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -160,16 +161,15 @@ async def test_pull_data_raises_rate_limit_error(provider: DevDummyProvider):
 
 @pytest.mark.asyncio
 async def test_pull_data_advances_cursor(provider: DevDummyProvider):
-    """Cursor write/read round-trip — the provider must mutate
-    ``user_config['_sync_state']`` so SQLAlchemy's JSONB mutation
-    detection picks it up."""
+    """Cursor write/read round-trip — cursors are sync-state rows, buffered
+    on the instance by the engine (no ``user_config`` mutation)."""
     integration = make_integration(config={})
-    original_cursor = provider.get_sync_cursor(integration, "last_timestamp")
+    original_cursor = provider.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
     assert original_cursor is None
 
     await provider.pull_data(integration)
 
-    new_cursor = provider.get_sync_cursor(integration, "last_timestamp")
+    new_cursor = provider.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS)
     assert isinstance(new_cursor, str), "cursor must be an ISO string after pull_data"
     # The cursor is a tz-aware ISO timestamp; parsing must succeed.
     parsed = datetime.fromisoformat(new_cursor)
@@ -348,10 +348,12 @@ async def test_api_request_cursor_responds(provider: DevDummyProvider):
 @pytest.mark.asyncio
 async def test_api_request_reset_clears_cursor(provider: DevDummyProvider):
     integration = make_integration(config={})
-    provider.set_sync_cursor(integration, "last_timestamp", "2099-01-01T00:00:00+00:00")
+    provider.set_cursor(
+        integration, IntegrationSyncStream.OBSERVATIONS, "2099-01-01T00:00:00+00:00"
+    )
     resp = await provider.handle_api_request(integration, "reset", "POST", request=None)
     assert resp == {"ok": True, "cursor": None}
-    assert provider.get_sync_cursor(integration, "last_timestamp") is None
+    assert provider.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS) is None
 
 
 @pytest.mark.asyncio
@@ -377,7 +379,7 @@ async def test_api_request_unknown_path_raises(provider: DevDummyProvider):
 
 
 @pytest.mark.asyncio
-async def test_supports_tools_returns_langchain_tools(provider: DevDummyProvider):
+async def test_get_tools_returns_langchain_tools(provider: DevDummyProvider):
     try:
         from langchain_core.tools import StructuredTool  # noqa: F401
     except ImportError:
@@ -392,7 +394,7 @@ async def test_supports_tools_returns_langchain_tools(provider: DevDummyProvider
 
 
 @pytest.mark.asyncio
-async def test_supports_tools_returns_empty_when_disabled(provider: DevDummyProvider):
+async def test_get_tools_returns_empty_when_disabled(provider: DevDummyProvider):
     integration = make_integration(config={"enable_tools": False})
     tools = await provider.get_tools(integration)
     assert tools == []
@@ -509,7 +511,13 @@ async def test_pull_hitl_proposals_emits_concept(provider: DevDummyProvider):
 @pytest.mark.asyncio
 async def test_pull_hitl_proposals_skips_after_resolution(provider: DevDummyProvider):
     integration = make_integration(config={"enable_hitl_proposals": True})
-    provider.set_sync_cursor(integration, "hitl_stress_index_resolved", True)
+    provider.set_cursor(
+        integration,
+        IntegrationSyncStream.OBSERVATIONS,
+        True,
+        key="hitl_stress_index_resolved",
+        kind="commit",
+    )
     assert await provider.pull_hitl_proposals(integration) == []
 
 
@@ -525,8 +533,22 @@ async def test_handle_proposal_resolution_advances_cursor(provider: DevDummyProv
     from app.extensions.sdk import ProposalOutcome
 
     await provider.handle_proposal_resolution(integration, uuid4(), ProposalOutcome())
-    assert provider.get_sync_cursor(integration, "hitl_stress_index_resolved") is True
-    assert provider.get_sync_cursor(integration, "hitl_resolved_count") == 1
+    assert (
+        provider.get_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            key="hitl_stress_index_resolved",
+        )
+        is True
+    )
+    assert (
+        provider.get_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            key="hitl_resolved_count",
+        )
+        == 1
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -650,10 +672,12 @@ def test_get_custom_actions_lists_three(provider: DevDummyProvider):
 @pytest.mark.asyncio
 async def test_custom_action_reset_cursor(provider: DevDummyProvider):
     integration = make_integration(config={})
-    provider.set_sync_cursor(integration, "last_timestamp", "2099-01-01T00:00:00+00:00")
+    provider.set_cursor(
+        integration, IntegrationSyncStream.OBSERVATIONS, "2099-01-01T00:00:00+00:00"
+    )
     out = await provider.execute_custom_action(integration, "reset_cursor")
     assert "cursor reset" in out["message"].lower()
-    assert provider.get_sync_cursor(integration, "last_timestamp") is None
+    assert provider.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS) is None
 
 
 @pytest.mark.asyncio

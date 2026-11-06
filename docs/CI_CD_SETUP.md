@@ -10,11 +10,11 @@ Every push to `main` on GitHub runs the workflows in `.github/workflows/`:
 
 | Workflow | What it does |
 |---|---|
-| **Test suite** (`test.yml`, reusable) | Backend pytest (Python 3.12, Postgres + Redis service containers) + frontend lint & build. |
+| **Test suite** (`test.yml`, reusable) | Backend pytest (Python 3.12, Postgres + Redis service containers) + frontend vitest, lint & build. |
 | **Docker Build and Publish** (`docker-publish.yml`) | Builds backend + frontend images and publishes them to `ghcr.io` on `main` and semver tags. |
 | **Create GitHub Release** (`release.yml`) | On `vX.Y.Z` tags: creates a GitHub Release with notes extracted from the matching `CHANGELOG.md` section. |
 | **Security Scan** (`security-scan.yml`) | Dependency vulnerability scanning on `main` and PRs. |
-| **BYOK setup contract** / **AI architecture alignment** / **Cross-repo conventions** | Contract gates (`byok-contract.yml`, `ai-alignment.yml`, `family-convergence.yml`): the one-click AI provider setup contract, AI architecture rules, and shared conventions. |
+| **BYOK setup contract** / **AI architecture alignment** / **Cross-repo conventions** | Contract gates (`byok-contract.yml`, `ai-alignment.yml`, `family-convergence.yml`): the one-click AI provider setup contract, AI architecture rules, and shared conventions. `family-convergence.yml` also runs the repo-specific no-legacy gate (`scripts/check-no-legacy.sh` + its self-test): zero-importer components, one pnpm lockfile, documented counts, retired shapes, deleted surfaces, one service-worker registration and a real 404, and the retired `supports_*` probe vocabulary. |
 
 Releases are cut with `scripts/version_manager.py` — see the changelog-first flow in `CHANGELOG.md`; images and GitHub Releases publish only when a release is explicitly pushed.
 
@@ -32,7 +32,7 @@ flowchart TD
 ```
 
 1. **`test-backend`** — starts Postgres (TimescaleDB) and Redis via `docker run` on the job's own network (the runner's `services:` DNS aliases are unreliable, so siblings are started explicitly with `--network-alias`), installs dependencies with **uv** (`uv sync --frozen`), and runs the pytest suite. The locked workspace includes the shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit) as a git-SHA-pinned dependency, so install steps (CI and Docker image builds) need network access to `github.com`.
-2. **`test-frontend`** — `npm ci`, lint, and a production build check.
+2. **`test-frontend`** — `pnpm install --frozen-lockfile` (the one lockfile is `frontend/pnpm-lock.yaml`), the vitest suite (`pnpm exec vitest run`), lint, and a production build check. The `test-backend` job additionally runs the repo-specific no-legacy gate.
 3. **`build-and-push`** — builds both images with the host's Docker daemon and pushes them to the Gitea container registry (floating tag `latest`/`test` + the commit SHA).
 4. **`deploy`** — SSHes to the target server, writes `.env` from repo secrets, copies `docker-compose.standalone.yml` + DB init scripts, runs a PG-major pre-flight on the existing data volume, brings the stack up, and runs `alembic upgrade head`.
 5. The standalone stack exposes a single published port — the bundled nginx gateway (`${HTTP_PORT:-80}`) — which also routes Flower at `/flower/` behind basic auth. Backend/frontend/Flower ports are bound to loopback only.

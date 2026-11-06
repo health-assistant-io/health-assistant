@@ -294,6 +294,70 @@
             }
           }
         }
+      },
+      {
+        "name": "connector-display-title",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "entry": "extension.py",
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "title": "Greenhouse Jobs",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token",
+              "domains": ["boards-api.greenhouse.io"]
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Greenhouse jobs",
+                "summary": "Job postings from Greenhouse boards"
+              }
+            }
+          }
+        }
       }
     ],
     "invalid": [
@@ -985,6 +1049,71 @@
               "en": {
                 "title": "Greenhouse jobs",
                 "summary": "SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "title-over-titlemaxchars",
+        "because": "the manifest display name is bounded by the charter titleMaxChars (80)",
+        "doc": {
+          "apiVersion": "extension/v1",
+          "kindVersion": 1,
+          "entry": "extension.py",
+          "kind": "connector",
+          "id": "greenhouse-jobs",
+          "title": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+          "version": "1.0.0",
+          "author": "Example Corp",
+          "license": "MIT",
+          "repository": "https://git.example.com/extensions/greenhouse-jobs",
+          "capabilities": [
+            "net",
+            "sync",
+            "secrets"
+          ],
+          "domains": [
+            "boards-api.greenhouse.io"
+          ],
+          "secrets": [
+            {
+              "id": "api-token",
+              "purpose": "Greenhouse API token",
+              "domains": ["boards-api.greenhouse.io"]
+            }
+          ],
+          "configSchema": {
+            "type": "object",
+            "properties": {
+              "board-token": {
+                "type": "string",
+                "title": "Board token",
+                "x-secret": true
+              }
+            }
+          },
+          "itemSchema": {
+            "type": "object",
+            "properties": {
+              "external-id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "supportsIncremental": true,
+          "i18n": {
+            "defaultLocale": "en",
+            "locales": {
+              "en": {
+                "title": "Greenhouse jobs",
+                "summary": "Job postings from Greenhouse boards"
               }
             }
           }

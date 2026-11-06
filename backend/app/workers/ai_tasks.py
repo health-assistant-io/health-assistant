@@ -1,4 +1,4 @@
-# ruff: noqa: E501 -- long immutable strings / legacy patterns; reflow when touched
+# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """AI-related Celery tasks: OCR, cumulative extraction, anomaly/interaction
 checks, and stuck-extraction cleanup.
 
@@ -266,7 +266,7 @@ async def cumulative_extraction(self, examination_id: str, user_id: str | None =
 @celery_app.task(bind=True)
 @async_task
 async def check_medication_interactions(self, medications: list, user_id: str):
-    from app.services.medication_interactor import MedicationInteractor
+    from app.services.clinical.medication_interactor import MedicationInteractor
 
     interactor = MedicationInteractor()
     results = await interactor.check_interactions(medications)
@@ -278,7 +278,7 @@ async def check_medication_interactions(self, medications: list, user_id: str):
 async def detect_anomalies(self, patient_id: str, biomarker_code: str | None = None):
     """Detect anomalies for a patient's biomarkers via the analytics service."""
     from app.models.fhir.patient import Observation
-    from app.services.analytics_service import get_biomarker_anomalies
+    from app.services.analytics import get_biomarker_anomalies
 
     db, _engine = get_async_session()
     try:
@@ -383,22 +383,23 @@ async def prune_checkpoint_threads():
     timestamp columns, so thread age is derived from the owning chat session
     (Phase 3.3 contract; plan 13 H2 extended it to branch threads): a
     thread is owned by the session whose id is its ``thread_id`` — the
-    legacy bare form — or the ``{session_id}:{branch_tip_id}`` form branched
-    turns use. Threads whose session was last updated before
-    ``AI_CHECKPOINT_RETENTION_DAYS`` ago, plus orphan threads whose owning
-    session row no longer exists, are deleted (``checkpoint_blobs`` /
-    ``checkpoint_writes`` first, then ``checkpoints``).
+    bare form — or the ``{session_id}:{branch_tip_id}`` form branched turns
+    use. Threads whose session was last updated before the ``checkpoints``
+    retention-policy row's window (``retention_policies``, seeded at 30 days)
+    ago, plus orphan threads whose owning session row no longer exists, are
+    deleted (``checkpoint_blobs`` / ``checkpoint_writes`` first, then
+    ``checkpoints``).
 
     On a fresh install the tables do not exist until the backend's first boot
     runs ``setup()`` — that case is a logged no-op, so the beat can run before
-    the app ever started. The job is idempotent; HITL task cards live in
-    ``chat_messages.tasks`` JSONB and are NOT affected by checkpoint pruning.
+    the app ever started. The job is idempotent; HITL task cards live in the
+    ``proposals`` table and are NOT affected by checkpoint pruning.
     """
     from datetime import datetime, timedelta
 
     from sqlalchemy import bindparam, text
 
-    from app.core.config import settings
+    from app.services.data_lifecycle.retention_service import policy_days
 
     db, _engine = get_async_session()
     try:
@@ -412,7 +413,8 @@ async def prune_checkpoint_threads():
             if checkpoints_rel is None:
                 logger.info("Checkpoint tables not present yet — nothing to prune.")
                 return {"threads": 0, "rows_deleted": 0}
-            cutoff = datetime.now(UTC) - timedelta(days=settings.AI_CHECKPOINT_RETENTION_DAYS)
+            days = await policy_days(db, table="checkpoints", default=30)
+            cutoff = datetime.now(UTC) - timedelta(days=days)
             stale = (
                 (
                     await db.execute(
@@ -423,7 +425,7 @@ async def prune_checkpoint_threads():
                 .scalars()
                 .all()
             )
-            # Branch threads hang off the same session: the bare id (legacy
+            # Branch threads hang off the same session: the bare id (unbranched
             # linear threads) and every "{session_id}:{branch_tip_id}" form.
             orphans = (
                 (
@@ -465,7 +467,7 @@ async def prune_checkpoint_threads():
                     "Pruned %d checkpoint rows across %d thread(s) (retention=%dd)",
                     deleted,
                     thread_count,
-                    settings.AI_CHECKPOINT_RETENTION_DAYS,
+                    days,
                 )
             return {"threads": thread_count, "rows_deleted": deleted}
     finally:

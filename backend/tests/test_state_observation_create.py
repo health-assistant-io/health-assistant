@@ -20,8 +20,8 @@ from app.models.biomarker_model import (
 from app.models.enums import BiomarkerValueType, CatalogScope, CodingSystem
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
-from app.services.fhir_service import create_observation
-from app.services.observation_value_validator import InvalidObservationValue
+from app.services.biomarkers.observation_value_validator import InvalidObservationValue
+from app.services.fhir.fhir_service import create_observation
 
 V3 = "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
 

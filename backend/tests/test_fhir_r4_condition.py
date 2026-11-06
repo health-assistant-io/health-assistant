@@ -16,8 +16,8 @@ import pytest
 
 from app.models.clinical_event import ClinicalEvent
 from app.models.enums import ClinicalEventStatus, CodingSystem
-from app.services.fhir_converter import fhir_to_condition_orm, validate_resource
-from app.services.fhir_helpers import FhirSerializationError, parse_fhir_resource
+from app.services.fhir.fhir_converter import fhir_to_condition_orm, validate_resource
+from app.services.fhir.fhir_helpers import FhirSerializationError, parse_fhir_resource
 
 
 def _make_event(**overrides) -> ClinicalEvent:
@@ -304,7 +304,7 @@ def test_invalid_condition_rejected_by_to_fhir_dict():
     """Malformed data should be rejected by build_fhir_resource. fhir.resources
     is lenient on cardinality (1..1 not always enforced), but it does enforce
     type-strict validation — e.g. a code field that isn't a CodeableConcept."""
-    from app.services.fhir_helpers import build_fhir_resource
+    from app.services.fhir.fhir_helpers import build_fhir_resource
 
     # An obviously invalid Condition: `code` is a string, not a CodeableConcept.
     with pytest.raises(FhirSerializationError):

@@ -1,14 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Pencil, PlugZap, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
-import { ProviderCard, ProviderForm, type ConnectionTestStatus } from '@neuronection/assistant-ui';
+import { Loader2, Pencil, PlugZap, Plus, Power, Save, Sparkles, Trash2 } from 'lucide-react';
+import {
+  CUSTOM_PRESET_KEY,
+  ErrorBanner,
+  ProviderCard,
+  ProviderForm,
+  SetupFirstRunCard,
+  type ConnectionTestStatus,
+} from '@neuronection/assistant-ui';
 import {
   COUNTRIES,
   countryDisplayName,
   getCountryFlag,
 } from '@neuronection/assistant-ui/countries';
 import { useAIConfigStore } from '../../store/slices/aiConfigSlice';
-import { AIProvider } from '../../api/aiConfig';
+import { aiConfigApi, AIProvider, type ProviderPreset } from '../../api/aiConfig';
+import { defaultName } from './defaultName';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -37,6 +45,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
   const {
     providers,
     models,
+    updateProvider,
     deleteProvider,
     fetchExternalModels,
     error,
@@ -130,6 +139,17 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
               ]
             : []),
           {
+            key: 'toggle',
+            label: provider.is_active
+              ? t('settings.ai.disable')
+              : t('settings.ai.enable'),
+            icon: Power,
+            onSelect: () =>
+              void updateProvider(provider.id, { is_active: !provider.is_active }).catch(
+                () => undefined,
+              ),
+          },
+          {
             key: 'delete',
             label: t('settings.ai.delete_provider'),
             icon: Trash2,
@@ -200,18 +220,23 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
       })}
 
       {providers.length === 0 ? (
-        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-          {t('settings.ai.no_providers')}
-        </p>
+        <SetupFirstRunCard
+          title={t('settings.ai.first_run_title')}
+          body={t('settings.ai.no_providers')}
+          setupLabel={t('settings.ai.add_provider')}
+          onSetup={() => setSetupOpen(true)}
+        />
       ) : null}
 
       {error ? (
-        <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-100 p-3 dark:border-red-900/50 dark:bg-red-900/30">
-          <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
-          <button onClick={clearError} className="px-2 py-1 text-xs font-bold underline">
-            {t('settings.ai.dismiss')}
-          </button>
-        </div>
+        <ErrorBanner
+          message={error}
+          action={
+            <button onClick={clearError} className="px-2 py-1 text-xs font-bold underline">
+              {t('settings.ai.dismiss')}
+            </button>
+          }
+        />
       ) : null}
 
       {dialog ? (
@@ -220,6 +245,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
           scope={scope}
           userId={userId}
           tenantId={tenantId}
+          existingNames={providers.map((provider) => provider.name)}
           onClose={() => setDialog(null)}
         />
       ) : null}
@@ -293,13 +319,15 @@ const ProviderFormDialog: React.FC<{
   scope: 'global' | 'tenant' | 'user';
   userId?: string;
   tenantId?: string;
+  existingNames: string[];
   onClose: () => void;
-}> = ({ provider, scope, userId, tenantId, onClose }) => {
+}> = ({ provider, scope, userId, tenantId, existingNames, onClose }) => {
   const { t, i18n } = useTranslation();
   const { createProvider, updateProvider } = useAIConfigStore();
   const editing = provider !== null;
 
   const [name, setName] = useState(provider?.name ?? '');
+  const [nameDirty, setNameDirty] = useState(editing);
   const [providerType, setProviderType] = useState(provider?.provider_type ?? 'openai');
   const [baseUrl, setBaseUrl] = useState(
     provider?.api_base ?? 'https://api.openai.com/v1',
@@ -310,8 +338,77 @@ const ProviderFormDialog: React.FC<{
   const [companyName, setCompanyName] = useState(provider?.company_name ?? '');
   const [companyWebsite, setCompanyWebsite] = useState(provider?.company_website ?? '');
   const [country, setCountry] = useState(provider?.company_country ?? '');
+  const [engines, setEngines] = useState<ProviderPreset[]>([]);
+  const [presetKey, setPresetKey] = useState(CUSTOM_PRESET_KEY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Engine catalog (create mode): the backend's preset surface — the same
+  // §15 data the setup tiles render; health's processor-only tesseract
+  // type joins as an app-declared local entry.
+  useEffect(() => {
+    if (editing) return;
+    let cancelled = false;
+    aiConfigApi
+      .listProviderPresets()
+      .then((data) => {
+        if (!cancelled) {
+          setEngines(
+            data.order
+              .filter((key) => data.presets[key])
+              .map((key) => data.presets[key]),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEngines([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing]);
+
+  const engineOptions = [
+    ...engines
+      .filter((engine) => engine.key !== 'tesseract')
+      .map((engine) => ({
+        key: engine.key,
+        name: engine.name,
+        local: Boolean(engine.local),
+      })),
+    { key: 'tesseract', name: t('settings.ai.type_tesseract'), local: true },
+  ];
+
+  const applyPreset = (key: string) => {
+    setPresetKey(key);
+    if (key === CUSTOM_PRESET_KEY) {
+      setProviderType('openai');
+      setBaseUrl('https://api.openai.com/v1');
+      setIsLocal(false);
+      return;
+    }
+    if (key === 'tesseract') {
+      setProviderType('tesseract');
+      setIsLocal(true);
+      return;
+    }
+    const engine = engines.find((entry) => entry.key === key);
+    if (!engine) return;
+    setProviderType(engine.provider_type);
+    setBaseUrl(engine.base_url);
+    setIsLocal(Boolean(engine.local));
+    // Connection name auto-seed (family contract): the engine label,
+    // numbered when taken — re-seeded while untouched or still auto-seeded.
+    if (!nameDirty || engineOptions.some((option) => option.name === name)) {
+      setName(defaultName(engine.name, existingNames));
+      setNameDirty(false);
+    }
+  };
+
+  const onNameChange = (value: string) => {
+    setName(value);
+    setNameDirty(true);
+  };
 
   const canSave = name.trim().length > 0 && !saving;
 
@@ -401,26 +498,10 @@ const ProviderFormDialog: React.FC<{
                 : t('settings.ai.type_openai')}
             </p>
           </div>
-        ) : (
-          <div className={PROVIDER_FORM_FIELDS}>
-            <label className="block space-y-1 text-sm">
-              <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
-                {t('settings.ai.provider_type')}
-              </span>
-              <select
-                value={providerType}
-                onChange={(e) => setProviderType(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm shadow-xs outline-hidden transition-all focus:ring-2 focus:ring-blue-500/20 dark:border-dark-border dark:bg-dark-surface dark:text-dark-text"
-              >
-                <option value="openai">{t('settings.ai.type_openai')}</option>
-                <option value="tesseract">{t('settings.ai.type_tesseract')}</option>
-              </select>
-            </label>
-          </div>
-        )}
+        ) : null}
         <ProviderForm
           name={name}
-          onNameChange={setName}
+          onNameChange={onNameChange}
           baseUrl={baseUrl}
           onBaseUrlChange={setBaseUrl}
           apiKey={apiKey}
@@ -433,6 +514,15 @@ const ProviderFormDialog: React.FC<{
           }
           hasStoredKey={editing && (provider?.has_api_key ?? Boolean(provider?.api_key))}
           storedKeyLabel={editing ? provider?.api_key ?? undefined : undefined}
+          {...(!editing
+            ? {
+                presets: engineOptions,
+                presetKey,
+                onPresetChange: applyPreset,
+                presetLabel: t('settings.ai.provider_type'),
+                customPresetLabel: t('settings.ai.setup.custom'),
+              }
+            : {})}
           showLocationKind
           locationKind={isLocal ? 'local' : 'cloud'}
           onLocationKindChange={(kind) => setIsLocal(kind === 'local')}
@@ -444,10 +534,14 @@ const ProviderFormDialog: React.FC<{
           onCountryChange={setCountry}
           countryLabel={t('settings.ai.country_label')}
           countryPlaceholder={t('settings.ai.country_placeholder')}
+          countrySearchPlaceholder={t('settings.ai.country_search')}
+          countryEmptyLabel={t('settings.ai.country_empty')}
+          countryClearLabel={t('settings.ai.country_clear')}
           countryOptions={COUNTRIES.map((entry) => ({
             value: entry.code,
             label: `${entry.flag} ${countryDisplayName(entry.code, i18n.resolvedLanguage ?? 'en')}`,
           }))}
+          error={formError ?? undefined}
         >
           <div className={PROVIDER_FORM_FIELDS}>
             <ComplianceFields
@@ -459,11 +553,6 @@ const ProviderFormDialog: React.FC<{
             />
           </div>
         </ProviderForm>
-        {formError ? (
-          <p role="alert" className="text-xs text-red-600 dark:text-red-400">
-            {formError}
-          </p>
-        ) : null}
       </div>
     </Modal>
   );

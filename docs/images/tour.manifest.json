@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "templateVersion": "1.2.5",
+  "version": 2,
+  "templateVersion": "1.3.0",
   "project": "Health Assistant",
   "generatedBy": "scripts/ui-capture (Neuronection family template)",
   "gallery": {

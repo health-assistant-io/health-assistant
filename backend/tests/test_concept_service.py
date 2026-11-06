@@ -18,8 +18,8 @@ from app.models.enums import (
     EdgeApprovalStatus,
     EdgeEndpointType,
 )
-from app.services.catalog_search_service import search_concepts
-from app.services.concept_service import ConceptService
+from app.services.catalog.catalog_search_service import search_concepts
+from app.services.catalog.concept_service import ConceptService
 
 
 @pytest_asyncio.fixture

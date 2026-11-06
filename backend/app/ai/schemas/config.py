@@ -204,17 +204,24 @@ class AIModelResponse(BaseModel):
 
 
 class AITaskAssignmentResponse(BaseModel):
-    """Schema for task assignment response"""
+    """Schema for task assignment response.
+
+    ``task_type`` is the registry id (``ai_task_defs.code``) — derived from the
+    FK, never a stored free-form string. ``revoked_at`` is the lifecycle: rows
+    are revoked, never deleted, and "active" means exactly ``revoked_at is
+    None`` (mirroring the DB unique index).
+    """
 
     id: UUID
-    task_type: str
+    task_type: str | None
     scope: AIScope
     provider_id: UUID | None
     provider_name: str | None = None
     model_id: UUID | None
     model_name: str | None = None
-    is_active: bool
-    priority: int
+    fallback_provider_id: UUID | None = None
+    fallback_model_id: UUID | None = None
+    revoked_at: datetime | None = None
     phi_allowed: bool = False
     tenant_id: UUID | None
     user_id: UUID | None
@@ -225,19 +232,31 @@ class AITaskAssignmentResponse(BaseModel):
 
 
 class AITaskAssignmentCreate(BaseModel):
-    """Schema for creating a new task assignment"""
+    """Schema for creating a new task assignment.
+
+    Single-slot law: a second *active* assignment for the same
+    ``(tenant_id, user_id, task_type)`` is refused by the database (409) — there
+    is no ``priority`` knob and no "deactivate the previous one" shim. A
+    specialist row may declare its own ``fallback_provider_id``/
+    ``fallback_model_id`` pair (a capability default may not — it *is* the
+    fallback).
+    """
 
     task_type: str = Field(
         ...,
         min_length=1,
         max_length=50,
-        description="Task type: ocr, nlp, medication_interaction, anomaly_detection",
+        description="Task id from the TaskDef registry (e.g. ocr, chat, define_anatomy_graph)",
     )
     scope: AIScope = Field(default=AIScope.SYSTEM, description="Scope of assignment")
     provider_id: UUID | None = Field(None, description="Provider ID")
     model_id: UUID | None = Field(None, description="Model ID")
-    is_active: bool = Field(default=True, description="Enable/disable assignment")
-    priority: int = Field(default=0, ge=0, description="Priority for ordering")
+    fallback_provider_id: UUID | None = Field(
+        None, description="Fallback provider (specialist tasks only)"
+    )
+    fallback_model_id: UUID | None = Field(
+        None, description="Fallback model (specialist tasks only)"
+    )
     phi_allowed: bool = Field(
         default=False,
         description=(
@@ -253,13 +272,16 @@ class AITaskAssignmentCreate(BaseModel):
 
 
 class AITaskAssignmentUpdate(BaseModel):
-    """Schema for updating a task assignment"""
+    """Schema for updating a task assignment.
 
-    task_type: str | None = Field(None, min_length=1, max_length=50)
+    The task identity is immutable (revoke + create to move a slot); every
+    other binding, including the fallback pair, is editable.
+    """
+
     provider_id: UUID | None = Field(None)
     model_id: UUID | None = Field(None)
-    is_active: bool | None = Field(None)
-    priority: int | None = Field(None, ge=0)
+    fallback_provider_id: UUID | None = Field(None)
+    fallback_model_id: UUID | None = Field(None)
     phi_allowed: bool | None = Field(
         default=None,
         description="D17 PHI opt-in (decision_* assignments only; explicit).",
@@ -311,32 +333,17 @@ class TaskTypeAssignment(BaseModel):
 
 
 class AIConfigSummary(BaseModel):
-    """Summary of AI configuration"""
+    """Summary of AI configuration.
+
+    ``tasks`` is registry-keyed: one entry per resolved task (the registry is
+    the only task list — there is no per-task field to drift when a task is
+    added). ``workflows`` remains a derived composition over the same map.
+    """
 
     providers: list[AIProviderResponse]
     models: list[AIModelResponse]
     task_assignments: list[AITaskAssignmentResponse]
-    default: TaskTypeAssignment | None
-    ocr: TaskTypeAssignment | None
-    nlp: TaskTypeAssignment | None
-    medication_interaction: TaskTypeAssignment | None
-    anomaly_detection: TaskTypeAssignment | None
-    fill_biomarker_form: TaskTypeAssignment | None
-    fill_medication_form: TaskTypeAssignment | None
-    magic_fill_examination: TaskTypeAssignment | None
-    define_biomarker: TaskTypeAssignment | None
-    define_medication: TaskTypeAssignment | None
-    suggest_category_icon: TaskTypeAssignment | None
-    generate_category_icon: TaskTypeAssignment | None
-    chat: TaskTypeAssignment | None
-    transcription: TaskTypeAssignment | None
-    embed: TaskTypeAssignment | None = None
-    decision_tool_dispatch: TaskTypeAssignment | None = None
-    decision_boolean_gate: TaskTypeAssignment | None = None
-    decision_choice: TaskTypeAssignment | None = None
-    decision_score: TaskTypeAssignment | None = None
-    # ADR-0036: the decision default row rides the summary.
-    decision: TaskTypeAssignment | None = None
+    tasks: dict[str, TaskTypeAssignment] = Field(default_factory=dict)
     workflows: dict[str, list[TaskTypeAssignment]] | None = None
     ai_agent_max_iterations: int = 20
 
@@ -347,6 +354,30 @@ class AIConfigUpdate(BaseModel):
     """Schema for updating AI configuration settings"""
 
     ai_agent_max_iterations: int | None = Field(None, ge=1, le=100)
+
+
+class AIUsageTaskRow(BaseModel):
+    """Per-task aggregate over the audit window (``ai_call_logs``)."""
+
+    task_type: str
+    calls: int
+    errors: int
+    prompt_tokens: int
+    completion_tokens: int
+    cost_micros: int
+    avg_latency_ms: float | None = None
+    last_call_at: datetime | None = None
+
+
+class AIUsageResponse(BaseModel):
+    """Tenant-scoped AI usage/spend view (plan 4 W3 proof of value)."""
+
+    window_days: int
+    since: datetime
+    total_calls: int
+    total_errors: int
+    total_cost_micros: int
+    tasks: list[AIUsageTaskRow]
 
 
 class ProviderSetupOptions(BaseModel):

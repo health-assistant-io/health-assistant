@@ -7,7 +7,7 @@
  * chart-only preferences (chart type, grid, spikes) live here.
  *
  * Branches on ``biomarker.value_type``:
- *  - QUANTITY (default): the legacy LineChart with reference-range bands.
+ *  - QUANTITY (default): the LineChart with reference-range bands.
  *  - STATE: a categorical StateTimeline (step-line of colored state dots)
  *    instead of a nonsensical numeric line chart.
  */
@@ -53,10 +53,10 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
   const [showSpikes, setShowSpikes] = useState(true);
 
   return (
-    <div className="p-6 sm:p-8 animate-in fade-in duration-300">
+    <div className="p-6 sm:p-8 animate-in fade-in duration-300" data-capture="biomarker-trends">
       <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex items-center space-x-2">
-            <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border">
+            <div className="flex bg-gray-100 dark:bg-dark-bg p-1 rounded-xl border border-gray-200 dark:border-dark-border" data-capture="chart-ranges">
               {TIME_RANGES.map(range => (
                 <button
                   key={range.id}

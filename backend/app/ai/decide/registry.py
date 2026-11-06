@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers.enums import (
@@ -11,10 +11,14 @@ from app.ai.providers.enums import (
     DecisionTransport,
     TaskType,
 )
+from app.ai.providers.resolution import (
+    ResolvedAssignment,
+    assignment_candidates,
+    resolve_task,
+)
 from app.models.ai_provider_model import (
     AIModel,
     AIProviderModel,
-    AIScope,
     AITaskAssignment,
 )
 from app.models.enums import AIModelCapability
@@ -90,6 +94,7 @@ DecisionResolution = (
 class AuditMeta:
     provider_id: UUID | None
     model: str
+    model_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -143,7 +148,11 @@ def _create_systemone(resolution: DecisionResolution, deps: DecisionEngineDeps) 
 def _audit_systemone(resolution: DecisionResolution) -> AuditMeta | None:
     if not isinstance(resolution, SystemOneResolution):
         return None
-    return AuditMeta(provider_id=resolution.provider.id, model=resolution.model.model_name)
+    return AuditMeta(
+        provider_id=resolution.provider.id,
+        model=resolution.model.model_name,
+        model_id=resolution.model.id,
+    )
 
 
 SYSTEMONE_REGISTRATION = DecisionTransportRegistration(
@@ -193,30 +202,12 @@ async def _decision_candidates(
 ) -> list[AITaskAssignment]:
     """Active assignment rows for a decision slot, in resolution order.
 
-    Same cascade as ``resolve_active_assignment`` (USER > TENANT > SYSTEM via
-    the alphabetical enum-name ordering, then ``priority`` desc) but returns
-    EVERY row — the §3 contract's fallback is priority ordering — and NEVER
-    falls back to the ``default`` task (D4 slot separation).
+    Thin alias over the ONE scope-cascade query in
+    :mod:`app.ai.providers.resolution` (plan 4 W2) — ordering, revocation and
+    the reachable-scope conditions live there, so config-revision fingerprinting
+    and resolution can never disagree about which rows exist.
     """
-    query = select(AITaskAssignment).where(
-        AITaskAssignment.task_type == task_type,
-        AITaskAssignment.is_active == True,  # noqa: E712 — SQLAlchemy filter
-    )
-    conditions = [AITaskAssignment.scope == AIScope.SYSTEM]
-    if tenant_id:
-        conditions.append(
-            (AITaskAssignment.scope == AIScope.TENANT) & (AITaskAssignment.tenant_id == tenant_id)
-        )
-    if user_id:
-        conditions.append(
-            (AITaskAssignment.scope == AIScope.USER) & (AITaskAssignment.user_id == user_id)
-        )
-    query = query.where(or_(*conditions)).order_by(
-        AITaskAssignment.scope.desc(),
-        AITaskAssignment.priority.desc(),
-        AITaskAssignment.created_at,
-    )
-    return list((await db.execute(query)).scalars().all())
+    return await assignment_candidates(db, task_type, tenant_id, user_id)
 
 
 #: Public alias — the service summary and the funnel share this resolution.
@@ -286,6 +277,16 @@ def clear_decision_resolution_cache() -> None:
     _RESOLUTION_CACHE.clear()
 
 
+def _candidate_key(candidate: ResolvedAssignment) -> tuple[str, object, object, str]:
+    """Identity of a resolved candidate (row + model + hop)."""
+    return (
+        candidate.task_id,
+        candidate.assignment.id,
+        getattr(candidate.model, "id", None),
+        candidate.hop.value,
+    )
+
+
 async def _compute_resolution(
     capability: DecisionCapability,
     db: AsyncSession,
@@ -293,62 +294,65 @@ async def _compute_resolution(
     *,
     phi_adjacent: bool,
 ) -> DecisionResolution:
+    """Resolve a decision capability through the ONE precedence chain.
+
+    Precedence (plan 4 W2 / ADR-0036 / ADR-0037): specialist kind primary →
+    specialist kind fallback → decision capability default → unavailable. An
+    EMPTY kind slot inherits the ``decision`` default; a configured-but-unusable
+    one is reported honestly and never silently replaced. Scope cascade, active
+    rows (``revoked_at IS NULL``) and ordering all come from
+    :func:`app.ai.providers.resolution.resolve_task`; this function only supplies
+    the decision-specific usability predicate (D2b capability routing + D17 PHI
+    scope guard) and maps the winner onto a transport resolution.
+    """
     task_type = decision_task_type(capability)
-    candidates = await _decision_candidates(db, task_type, deps.tenant_id, deps.user_id)
-    if not candidates:
-        # ADR-0036 §2: an empty kind slot inherits the `decision` default
-        # slot across the same scope cascade — never a hop onto ``default``
-        # (D4 slot separation); the default is single-slot (ADR-0037).
-        candidates = await _decision_candidates(
-            db, TaskType.DECISION.value, deps.tenant_id, deps.user_id
-        )
-    if not candidates:
-        return OffResolution()
     rejections: list[str] = []
+    unavailable: list[DecisionResolution] = []
+    ready: dict[tuple[str, object, object, str], DecisionResolution] = {}
     phi_blocked = False
-    last_index = len(candidates) - 1
-    for index, candidate in enumerate(candidates):
-        if candidate.model_id is None:
-            rejections.append(f"The '{task_type}' slot has no model bound.")
-            continue
-        model = (
-            (await db.execute(select(AIModel).where(AIModel.id == candidate.model_id)))
-            .scalars()
-            .first()
-        )
-        if model is None:
-            rejections.append(f"Model '{candidate.model_id}' is not registered.")
-            continue
-        provider = (
-            (
-                await db.execute(
-                    select(AIProviderModel).where(AIProviderModel.id == model.provider_id)
-                )
-            )
-            .scalars()
-            .first()
-        )
+
+    def accept(candidate: ResolvedAssignment) -> str | None:
+        nonlocal phi_blocked
+        if candidate.model is None:
+            return f"The '{candidate.task_id}' slot has no model bound."
+        provider = candidate.provider
         if provider is None:
-            rejections.append(f"Model '{model.model_name}' has no provider.")
-            continue
-        if phi_adjacent and not candidate.phi_allowed:
+            return f"The '{candidate.task_id}' slot has no provider bound."
+        if phi_adjacent and not candidate.assignment.phi_allowed:
             phi_blocked = True
-            rejections.append("PHI-adjacent dispatch is not enabled for this decision assignment.")
-            continue
-        transport = decision_transport_of(provider, model)
-        is_decision_model = AIModelCapability.DECISION.value in model.get_capabilities()
+            return "PHI-adjacent dispatch is not enabled for this decision assignment."
+        transport = decision_transport_of(provider, candidate.model)
+        is_decision_model = AIModelCapability.DECISION.value in candidate.model.get_capabilities()
         if transport is None or not is_decision_model:
-            rejections.append(f"Model '{model.model_name}' is not a decision model.")
-            continue
+            return f"Model '{candidate.model.model_name}' is not a decision model."
         registration = REGISTRATIONS[transport]
         if capability not in registration.capabilities:
-            rejections.append(f"The transport of '{model.model_name}' does not serve {task_type}.")
-            continue
-        resolution = registration.resolve_candidate(provider, model, deps)
-        if isinstance(resolution, UnavailableResolution) and index != last_index:
-            rejections.append(resolution.reason)
-            continue
-        return resolution
+            return f"The transport of '{candidate.model.model_name}' does not serve {task_type}."
+        resolution = registration.resolve_candidate(provider, candidate.model, deps)
+        if isinstance(resolution, UnavailableResolution):
+            unavailable.append(resolution)
+            return resolution.reason
+        ready[_candidate_key(candidate)] = resolution
+        return None
+
+    resolved = await resolve_task(
+        db,
+        task_type,
+        deps.tenant_id,
+        deps.user_id,
+        accept=accept,
+        rejections=rejections,
+    )
+    if resolved is not None and resolved.provider is not None and resolved.model is not None:
+        cached = ready.get(_candidate_key(resolved))
+        if cached is not None:
+            return cached
+        transport = decision_transport_of(resolved.provider, resolved.model)
+        if transport is not None:
+            registration = REGISTRATIONS[transport]
+            return registration.resolve_candidate(resolved.provider, resolved.model, deps)
+        return UnavailableResolution(reason="unresolvable decision model")
+
     if phi_blocked:
         return UnavailableResolution(
             reason=(
@@ -357,9 +361,11 @@ async def _compute_resolution(
             ),
             code=PHI_EXCLUDED_CODE,
         )
-    return UnconfiguredResolution(
-        reason=rejections[0] if rejections else "No decision model is assigned."
-    )
+    if unavailable:
+        return unavailable[0]
+    if not rejections:
+        return OffResolution()
+    return UnconfiguredResolution(reason=rejections[0])
 
 
 async def resolve_decision(

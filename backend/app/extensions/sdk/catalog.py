@@ -13,7 +13,7 @@ catalog contributions by:
 The platform calls these hooks from ``integration_sync_service.run_sync``
 after observations + clinical events + examinations have been processed.
 Each proposal is routed through
-:func:`app.services.catalog_proposal_service.apply_proposal`, which dispatches
+:func:`app.services.catalog.catalog_proposal_service.apply_proposal`, which dispatches
 by ``kind`` to the appropriate service-layer write path
 (``BiomarkerDefinition`` / ``MedicationCatalog`` / ``ConceptService.create_concept``
 / ``ConceptService.create_edge``) and stamps ``ConceptProvenance.INTEGRATION``
@@ -47,7 +47,7 @@ class CatalogProposal(BaseModel):
     """One catalog contribution from an integration.
 
     The platform's ``run_sync`` pipeline calls
-    :func:`app.services.catalog_proposal_service.apply_proposal` on each
+    :func:`app.services.catalog.catalog_proposal_service.apply_proposal` on each
     proposal returned by ``pull_catalog_proposals``. The proposal is
     stateless — once applied, the resulting catalog row is owned by the
     integration's tenant (with ``AuditMixin.created_by`` set to the owning

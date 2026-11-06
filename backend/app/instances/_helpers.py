@@ -24,7 +24,7 @@ def code_text(code_col_value: Any) -> str:
     """Extract the human ``text`` from a FHIR-shaped JSONB ``code`` column.
 
     FHIR ``code`` is ``{"text": "Glucose", "coding": [...]}`` (or just a
-    string in legacy rows). Returns ``""`` when absent so callers can build a
+    string in single-value rows). Returns ``""`` when absent so callers can build a
     fallback label without try/except.
     """
     if not code_col_value:

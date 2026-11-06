@@ -31,7 +31,7 @@ async def test_export_backup_task_runs_service(monkeypatch):
             run_called["job_id"] = str(job_id)
 
     monkeypatch.setattr("app.workers.tasks.get_async_session", FakeFactory())
-    monkeypatch.setattr("app.services.export_service.ExportService", FakeExportService)
+    monkeypatch.setattr("app.services.export.export_service.ExportService", FakeExportService)
 
     result = await _EXPORT_ASYNC(None, jid)
     assert result["job_id"] == jid
@@ -59,7 +59,7 @@ async def test_export_backup_task_returns_failed_on_exception(monkeypatch):
             raise RuntimeError("boom")
 
     monkeypatch.setattr("app.workers.tasks.get_async_session", FakeFactory())
-    monkeypatch.setattr("app.services.export_service.ExportService", FakeExportService)
+    monkeypatch.setattr("app.services.export.export_service.ExportService", FakeExportService)
 
     result = await _EXPORT_ASYNC(None, jid)
     assert result["status"] == "failed"
@@ -99,7 +99,7 @@ async def test_import_backup_task_runs_service(monkeypatch, tmp_path):
             return FakeResult()
 
     monkeypatch.setattr("app.workers.tasks.get_async_session", FakeFactory())
-    monkeypatch.setattr("app.services.import_service.ImportService", FakeImportService)
+    monkeypatch.setattr("app.services.imports.service.ImportService", FakeImportService)
 
     result = await _IMPORT_ASYNC(None, jid, str(archive), uid)
     assert result["job_id"] == jid
@@ -137,7 +137,7 @@ async def test_import_backup_task_cleans_up_archive(monkeypatch, tmp_path):
             return FakeResult()
 
     monkeypatch.setattr("app.workers.tasks.get_async_session", FakeFactory())
-    monkeypatch.setattr("app.services.import_service.ImportService", FakeImportService)
+    monkeypatch.setattr("app.services.imports.service.ImportService", FakeImportService)
 
     assert archive.exists()
     await _IMPORT_ASYNC(None, jid, str(archive), uid)

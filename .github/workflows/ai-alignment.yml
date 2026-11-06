@@ -25,5 +25,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Run AI alignment gate self-test (path resolution)
+        run: bash scripts/check-ai-alignment.sh --self-test
       - name: Run AI alignment gate
         run: bash scripts/check-ai-alignment.sh --self --mode strict

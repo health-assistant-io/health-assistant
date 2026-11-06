@@ -8,7 +8,7 @@ B6:  No prompt-injection / jailbreak defense anywhere. Added a heuristic
 
 B12: The audit table (``AuditEvent``/``audit_events`` — renamed from
      ``AuditLog``/``audit_logs`` in plan 16 H2) existed but was never
-     written. Added ``app.services.audit_service.log_audit_action`` and
+     written. Added ``app.services.audit.audit_service.log_audit_action`` and
      wired it into the FHIR create/delete endpoints so every clinical
      write has a provenance trail (who/what/when + old/new value diff).
 """
@@ -164,7 +164,7 @@ def test_b6_chat_system_prompts_include_defense_preamble():
 
 def test_b12_audit_service_module_exists():
     """B12: the audit service module must exist and expose the helper."""
-    from app.services import audit_service
+    from app.services.audit import audit_service
 
     assert hasattr(audit_service, "log_audit_action")
     assert callable(audit_service.log_audit_action)
@@ -173,7 +173,7 @@ def test_b12_audit_service_module_exists():
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_writes_row():
     """B12: log_audit_action persists an AuditEvent entry via its own session."""
-    from app.services import audit_service
+    from app.services.audit import audit_service
 
     captured = {}
 
@@ -225,7 +225,7 @@ async def test_b12_log_audit_action_writes_row():
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_never_raises():
     """B12: a logging failure must not break the calling request."""
-    from app.services import audit_service
+    from app.services.audit import audit_service
 
     with (
         patch.object(audit_service, "DATABASE_AVAILABLE", True),
@@ -243,7 +243,7 @@ async def test_b12_log_audit_action_never_raises():
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_noop_when_db_unavailable():
     """B12: when DATABASE_AVAILABLE is False, the helper is a silent no-op."""
-    from app.services import audit_service
+    from app.services.audit import audit_service
 
     with (
         patch.object(audit_service, "DATABASE_AVAILABLE", False),
@@ -261,7 +261,7 @@ async def test_b12_log_audit_action_noop_when_db_unavailable():
 def test_b12_fhir_endpoints_import_audit_service():
     """B12 regression: the observations endpoint module must import log_audit_action."""
     src = inspect.getsource(__import__("app.api.v1.endpoints.observations", fromlist=["x"]))
-    assert "from app.services.audit_service import" in src, (
+    assert "from app.services.audit.audit_service import" in src, (
         "observations.py must import log_audit_action."
     )
 

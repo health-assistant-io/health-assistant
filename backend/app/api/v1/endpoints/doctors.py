@@ -10,7 +10,7 @@ from app.models.doctor_model import DoctorModel
 from app.models.enums import Role
 from app.schemas.doctor import DoctorCreate, DoctorResponse, DoctorUpdate
 from app.schemas.user import TokenData
-from app.services.doctor_service import (
+from app.services.clinical.doctor_service import (
     create_doctor,
     delete_doctor,
     get_doctor,

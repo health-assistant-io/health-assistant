@@ -7,9 +7,9 @@ structured information from the user (free-text, single/multi-choice, or a
 catalog/instance reference) before proceeding.
 
 Reuses the existing HITL machinery unchanged: the ``__hitl__`` tool-result
-marker, the former bracketed HITL_TASK SSE sentinel, the ``tasks`` JSONB column on
-``ChatMessage``, the ``/resolve`` endpoint, and the ``/resume`` continuation
-turn. There is no DB migration, no new endpoint, no new sentinel.
+marker, the ``task`` payload event, the one ``proposals`` store, the
+``/resolve`` endpoint, and the ``/resume`` continuation turn. There is no new
+endpoint and no new sentinel.
 
 Unlike ``propose_*``:
 
@@ -20,7 +20,7 @@ Unlike ``propose_*``:
 * **Inline card.** The handler renders the form in the card body, not in a
   modal (faster intake).
 
-See ``dev/plans/ai-ask-user-questions-2026-07-21.md`` for the full design.
+See ``the design notes`` for the full design.
 """
 
 from __future__ import annotations
@@ -407,7 +407,7 @@ async def _snapshot_catalog_candidates(
         # frontend EntityPicker will run the first query when the user types.
         return []
     try:
-        from app.services.catalog_search_service import search_catalogs
+        from app.services.catalog.catalog_search_service import search_catalogs
 
         hits = await search_catalogs(
             ctx.db,

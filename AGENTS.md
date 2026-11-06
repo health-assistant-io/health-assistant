@@ -24,8 +24,7 @@ core/
 │                 # the framework itself lives in backend/app/extensions/
 ├── frontend/     # React 18 + Vite + TS + Tailwind + Zustand
 ├── docs/         # docs-tree.json is the source of truth for public nav + SEO
-├── docker/ scripts/ uploads/ logging/
-└── .opencode/    # local agent/tool config (gitignored)
+└── docker/ scripts/ uploads/ logging/
 ```
 
 ## Build & test
@@ -34,6 +33,7 @@ core/
 ./scripts/run-dev.sh                          # honcho: backend + worker + beat + flower + frontend
 cd backend && ./run-tests.sh [tests/test_x.py] # pytest (async; requires the migrated test DB)
 cd backend && ruff check && ruff format        # lint/format
+bash scripts/install.selftest.sh              # install path (offline; no Docker daemon)
 # Frontend
 cd frontend && npm run build && npm run lint   # build = tsc && vite build
 ```
@@ -52,6 +52,7 @@ cd frontend && npm run build && npm run lint   # build = tsc && vite build
   runtime, `builtin/`); `integrations/` holds only the bridge client SDK
   satellites (never imported by the backend).
 - **Always update `CHANGELOG.md`** under `## [Unreleased]` for user-visible changes.
+- **A shipped feature updates `core/docs/capabilities.json`** (family contract: `contracts/product-capabilities.schema.json`) in the same change.
 - **Never push to the online repo by default** — `version_manager.py --git` stops at a
   local commit + tag; add `--push` only when explicitly asked.
 - **Generic UI primitives** come from

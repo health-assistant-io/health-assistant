@@ -13,10 +13,11 @@ from app.api.v1 import api_router
 from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
 from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
 from app.core.cookies import CsrfMiddleware
+from app.core.csp import DOCUMENT_CSP
 from app.core.errors import DomainError
 from app.core.logging_setup import setup_logging
-from app.services.fhir_helpers import FhirSerializationError
-from app.services.observation_value_validator import InvalidObservationValue
+from app.services.biomarkers.observation_value_validator import InvalidObservationValue
+from app.services.fhir.fhir_helpers import FhirSerializationError
 
 # Configure logging
 setup_logging(log_name="backend", debug=settings.DEBUG)
@@ -114,7 +115,7 @@ async def lifespan(app: FastAPI):
     # Seed initial data
     from app.core.database import DATABASE_AVAILABLE
     from app.extensions.registry import integration_registry
-    from app.services.seed_service import seed_service
+    from app.services.seed.service import SeedService
 
     if DATABASE_AVAILABLE:
         # Instance facts (identity-auth §4): init-only — the empty DB
@@ -129,7 +130,7 @@ async def lifespan(app: FastAPI):
 
         try:
             logger.info("Running seed stages in dependency order...")
-            all_stats = await seed_service.seed_all()
+            all_stats = await SeedService().seed_all()
             logger.info("All seed stages complete: %s", all_stats)
         except Exception as e:
             _abort_or_warn(e, "Catalog seeding")
@@ -166,7 +167,7 @@ async def lifespan(app: FastAPI):
         # users), prepare the setup token per SETUP_TOKEN_MODE and log
         # mode-specific guidance. The wizard reads the mode + URL hint via
         # /auth/setup-status. See app/core/setup_token.py +
-        # dev/audits/setup-token-modes.md.
+        # the family audit notes/setup-token-modes.md.
         try:
             from sqlalchemy import func, select
 
@@ -471,15 +472,19 @@ app.add_middleware(CsrfMiddleware)
 
 
 # Security: baseline response headers (audit A7) — the kit's middleware
-# with health's policy (plan 21): no CSP here (the frontend is a separate
-# origin; the website's CSP is single-sourced in nginx/website config),
-# X-Frame-Options overridable per route (the inline document download
-# relaxes to SAMEORIGIN for the PDF preview iframe), and HSTS only when
-# the client's connection actually arrived over TLS. Applied to every
-# response; the nginx layer (ADR-0005) stays untouched.
+# with health's policy (plan 21). The CSP body lives in
+# ``app.core.csp.DOCUMENT_CSP``: the SPA document is served by the
+# frontend image (serve.json) / vite dev server, and the API emits the
+# same directive set on every response. ``X-Frame-Options`` stays
+# overridable per route (the inline document download relaxes to
+# SAMEORIGIN for the PDF preview iframe — ``frame-ancestors 'self'`` in
+# the CSP body matches that relaxation), and HSTS is emitted only when the
+# client's connection actually arrived over TLS. Applied to every
+# response; the nginx layer (ADR-0005) stays the outer connection/TLS
+# layer.
 app.add_middleware(
     SecurityHeadersMiddleware,
-    policy=HeaderPolicy(web_csp=None, frame_overridable=True, hsts_behind_proxy=True),
+    policy=HeaderPolicy(web_csp=DOCUMENT_CSP, frame_overridable=True, hsts_behind_proxy=True),
 )
 
 
@@ -540,7 +545,7 @@ app.include_router(api_router)
 @app.get("/.well-known/smart-configuration", tags=["oauth"])
 async def smart_configuration():
     """SMART-on-FHIR discovery document for the FHIR facade."""
-    from app.services.fhir_facade_service import build_smart_configuration
+    from app.services.fhir.fhir_facade_service import build_smart_configuration
 
     return build_smart_configuration()
 

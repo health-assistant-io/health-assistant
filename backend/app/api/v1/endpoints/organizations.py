@@ -12,7 +12,7 @@ from app.schemas.organization import (
     OrganizationWithDetails,
 )
 from app.schemas.user import TokenData
-from app.services.organization_service import (
+from app.services.tenancy.organization_service import (
     create_organization,
     delete_organization,
     get_organization,

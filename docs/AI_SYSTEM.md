@@ -17,9 +17,9 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 | STT client (`app/ai/assistance/stt.py`) | Gateway-owned narrow exception: raw `httpx` multipart against `{api_base}/audio/transcriptions` (LangChain has no transcription chat model). Resolved via `get_stt_target`, capability-gated (`audio_input`). |
 | Graphs package (`app/ai/graphs/`) | LangGraph flows: one module per flow, typed State. Nodes call the gateway, never models directly. |
 | Checkpoint store (`app/ai/graphs/checkpointer.py`) | Process-lifespan-held `AsyncPostgresSaver`: pool opened once in the FastAPI lifespan, boot-time idempotent `setup()`, **drain-before-close** on shutdown (in-flight graph runs finish before the pool closes). |
-| Checkpoint pruning (`app/workers/ai_tasks.py::prune_checkpoint_threads`, daily beat) | The checkpoint tables have no timestamp columns, so thread age derives from the owning chat session — the bare `thread_id` == session id (legacy linear threads) or the `{session_id}:{branch_tip_id}` form branched turns use: sessions idle beyond `AI_CHECKPOINT_RETENTION_DAYS` (default 30) prune all their threads, and orphan threads whose owning session row is gone are pruned too. No-op until the tables exist; HITL cards live in `chat_messages` and are never touched. |
+| Checkpoint pruning (`app/workers/ai_tasks.py::prune_checkpoint_threads`, daily beat) | The checkpoint tables have no timestamp columns, so thread age derives from the owning chat session — the bare `thread_id` == session id or the `{session_id}:{branch_tip_id}` form branched turns use: sessions idle beyond the `checkpoints` row in `retention_policies` (default 30 days, operator-editable; the retired `AI_CHECKPOINT_RETENTION_DAYS` env var is gone) prune all their threads, and orphan threads whose owning session row is gone are pruned too. No-op until the tables exist; HITL cards live in `proposals` and are never touched. |
 | `AIAssistanceService` (`app/ai/assistance/service.py`) | Orchestrator for the Agentic Chatbot and "Magic Fill" features. Manages session context and routing. |
-| `app/ai/agents/` | The agentic loop + HITL plumbing: `chat_agent.py` (reasoning loop, tool dispatch, streaming), `hitl.py` (resume-continuation contract + `[HITL RESOLUTION FEEDBACK]` formatting), `prompts.py` (system prompt assembly). |
+| `app/ai/agents/` | The agentic loop + HITL plumbing: `chat_agent.py` (reasoning loop, tool dispatch, streaming), `hitl.py` (resume-continuation contract, `[HITL RESOLUTION FEEDBACK]` formatting + the untrusted-payload screening seam), `prompts.py` (system prompt assembly). |
 | `app/ai/tools/` | LangChain tools (DB queries, document retrieval) that the AI assistant can invoke via `get_tools(db, tenant_id, patient_id, examination_id=None, user_id=None)`. |
 | `MedicalProcessingService` (`app/ai/pipeline/service.py`) | Orchestrator for complex clinical logic (unit conversion, ontology matching, persistence). |
 | `app/workers/ai_tasks.py` | Celery worker task definitions that delegate to the above services. |
@@ -31,17 +31,64 @@ The AI system is built on a **Unified Factory Pattern**, decoupling clinical log
 Health Assistant uses a strict, database-driven configuration for all AI processors. This ensures consistency and auditability across multitenant deployments.
 
 ### Data Models
-- **Providers:** Define the API endpoint and credentials (e.g., OpenAI, custom vLLM server).
+- **Providers:** Define the API endpoint and credentials (e.g., OpenAI, custom vLLM server). `provider_type` names the backend: `openai` (covers every OpenAI-compatible endpoint), `mock`, the processor backends (`tesseract`, `spacy`) or `decision`. The reserved-but-unwired types (`anthropic`, `azure_openai`, `bedrock`, `ollama`) are refused on create/update with `422 provider_type_unwired`; an unrecognized string still falls back to the OpenAI-compatible builder with a logged warning.
 - **Models:** Define the specific model string (e.g., `gpt-4o`, `gemini-1.5-pro`), context window (`max_tokens`), `temperature`, and an optional **reasoning effort** (`settings.reasoning_effort`: `none`/`minimal`/`low`/`medium`/`high`). Reasoning-family models (GPT-5 / o-series) reject function-tool requests on chat completions unless reasoning effort is `none` — set it on the model row to serve the chat task; leave unset for provider defaults. Multiple models can belong to a single provider.
-- **Task Assignments:** Map specific application tasks (e.g., `ocr`, `nlp`, `medication_interaction`) to a specific Provider + Model combination.
+- **Task Definitions (`ai_task_defs`):** The task vocabulary is a **seeded lookup table**, not a CHECK constraint and not a free-form string. Rows are seeded at boot from the one TaskDef registry (`backend/app/ai/providers/task_registry.py`), so adding an AI task is a registry entry + a row — never a migration. Ids are deterministic (uuid5 over the task code), and a parity test asserts *seed ≡ registry* (`tests/test_ai_task_registry.py`).
+- **Task Assignments:** Map a task (`ai_task_defs.id`, e.g. `ocr`, `chat`, `define_anatomy_graph`) to a Provider + Model at one configuration scope. A **specialist** row may declare its own fallback pair (`fallback_provider_id`/`fallback_model_id`); a **capability default** may not — a default *is* the fallback (the single-slot rule).
 
-### Resolution Logic
-When a task (e.g., `ocr`) is executed for a specific `tenant_id`:
-1. **Tenant Assignment**: Check for a specific task assignment for that tenant and task type.
-2. **Global Assignment**: If none, check for a system-wide task assignment (where `tenant_id` is NULL).
-3. **Global Default Fallback**: Look for an assignment with the task type `default`.
+### The one task registry (the AI task registry work)
+`backend/app/ai/providers/task_registry.py` declares each task once as a `TaskDef` `{id, label_key, capability, trigger, phi_class, accepts_priority, decision_kinds?, enabled, route, capability_default}`. Everything else is derived and never hand-maintained:
 
-*Note: While database configuration is strongly recommended for production, the processors (OCR and NLP) will safely fall back to environment variables (e.g., `OPENAI_API_KEY`, `OCR_PROVIDER`) if no database assignments are found.*
+```
+TaskDef registry (Python, the source of truth)
+   ├─ TaskType enum            → backend/app/ai/providers/task_types.py   (generated)
+   ├─ capability map / setup slot map → providers/capabilities.py, providers/setup.py (derived functions)
+   ├─ ai_task_defs rows        → seeded at boot (data, not DDL) + parity test
+   └─ frontend task list       → frontend/src/generated/taskRegistry.ts   (generated)
+```
+
+`scripts/sync-task-registry.mjs` emits both projections (`--ts`, `--py`; `--check`/`--check-py` are the drift gates); `scripts/check-task-registry.sh` runs in CI (`task-registry.yml`) and fails on projection drift, a reappearing hand-maintained map (`TASK_REQUIRED_CAPABILITY` / `_SLOT_TASK_TYPES` / a literal task list), a label key missing from any shipped locale, or a non-LLM engine task leaking back into the AI layer. The completeness wall asserts every registry task has a UI label and a declared capability default, so a task can no longer exist in the enum while being invisible and unassignable (the `define_anatomy_graph` failure mode).
+
+**Taxonomy (the AI task taxonomy):** `medication_interaction` (RxNorm) and `anomaly_detection` (analytics) are **not** AI tasks — they have no provider, model or prompt and live in `backend/app/services/engine/engine_task_registry.py` as background engine tasks.
+
+### Resolution Logic — one implementation
+Precedence exists **once**, in `backend/app/ai/providers/resolution.py` (the decision funnel supplies only its capability/PHI predicate — it does not own a second chain):
+
+1. **Specialist primary** — the active assignment for the task itself, most specific scope first: USER > TENANT > SYSTEM (an explicit `CASE`, not the old alphabetical-enum trick).
+2. **Specialist fallback** — the `fallback_provider_id`/`fallback_model_id` pair on that specialist row (columns, never extra rows).
+3. **Capability default** — the task declared as the capability default for the task's capability: `default` (text), `ocr` (vision), `transcription` (stt), `embed` (embeddings), `decision` (decision slots).
+4. **Unavailable** — `None` (the chat gateway then uses environment settings; the decision funnel fails open).
+
+An **empty** specialist slot inherits the capability default; a **configured-but-unusable** slot is reported as unavailable instead of being silently replaced (the "no third hop" rule). `priority` no longer exists anywhere: app-side ordering is gone and the database enforces the single-slot law.
+
+### Assignment law (enforced by the database)
+`ai_task_assignments` rows are **revoked, never deleted** (`revoked_at`; "active" means exactly `revoked_at IS NULL`). A partial unique index enforces **one active row per `(tenant_id, user_id, task_type_id)`** with `NULLS NOT DISTINCT` — required because system rows are `(NULL, NULL, task)` and tenant rows `(tenant, NULL, task)`, which plain NULL-distinct uniqueness would treat as distinct. Capability defaults need no second index: each default *is* a task (`default`/`ocr`/`transcription`/`embed`/`decision`), so the same index is the `(tenant, user, capability)` law. A second active row is a `409 assignment_conflict` (`IntegrityError` at the DB, not an app-side check). **PG15+** is required (`tests` + CI run PG16).
+
+*Note: While database configuration is strongly recommended for production, the processors (OCR and NLP) still fall back to environment variables (e.g. `OPENAI_API_KEY`, `OCR_PROVIDER`) when no usable assignment exists.*
+
+### Per-AI-call audit (`ai_call_logs`)
+Every model call writes **one row** — not one per user turn: a three-tool agent loop is three rows. Emission happens at the two seams where a model is actually invoked:
+
+- **the LangChain model factory** (`app/ai/providers/service.py` builds every chat/OCR/NLP model) attaches `AICallAuditHandler` (a LangChain callback handler). Instance-level callbacks survive `bind_tools` and cover `invoke`/`ainvoke`/`stream`/`astream`, so tool-calling loops, streaming chunks and structured-output calls are all counted by construction;
+- **the decision funnel** (`app/ai/decide/funnel.py`) calls the shared `record_call` helper with the transport's usage payload (the decide SDK is not a LangChain model).
+
+| column | meaning |
+|---|---|
+| `task_type_id` | FK → `ai_task_defs` (the registry vocabulary) |
+| `route` | closed vocabulary: `chat \| decision \| embed \| stt \| ocr \| extract` (native PG enum) |
+| `provider_id` / `model_id` | `SET NULL` on delete — the audit outlives config |
+| `tenant_id` / `user_id` / `patient_id` | tenant cascade on erasure; no patient FK (the row outlives the patient) |
+| `started_at` / `latency_ms` | wall-clock start + measured duration |
+| `prompt_tokens` / `completion_tokens` | provider-reported usage when available (nullable) |
+| `cost_micros` | **integer micro-units**, computed from the model row's declared `settings.cost_per_1k_{input,output}_micros` — no hardcoded price table and no float money; `0` when the deployment declared none |
+| `status` | `ok \| error \| timeout \| cancelled` (native PG enum) |
+| `error_class` | the typed machine class (e.g. `APITimeoutError`), never a message or prompt fragment |
+| `trace_id` | correlation id minted at the gateway (shared by every call from one model construction) |
+| `meta` + `meta_schema_version` | open payload (model name, `streamed`); **never prompts or completions** (PHI) |
+
+Writes are **fail-soft** (a failed audit insert is logged and dropped — it never breaks the model call), rows carry no PHI payload, and retention is the `operational` class owned by the plan-6 retention job. `GET /ai-config/usage?window_days=N` (tenant-scoped, admin-only) aggregates the table per task: calls, errors, tokens, `cost_micros`, average latency.
+
+**Health delta worth knowing:** the embeddings (`run_embed`) and speech-to-text (`transcribe_audio`) paths are direct HTTP clients outside the LangChain gateway; the `embed`/`stt` routes are already in the vocabulary, and their emission lands when those seams grow the tenant/trace context plumbing (tracked as a follow-up, not a silent omission).
 
 ### UI Management
 Administrators can manage AI settings via the UI at `/settings/ai-config`:
@@ -63,7 +110,7 @@ cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py --dry-run
 cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py
 ```
 
-**Scope checks:** every `/ai-config/providers/*` and `/ai-config/models/*` endpoint enforces USER/TENANT/SYSTEM scope via `verify_provider_access` / `verify_model_access`. `fetch-external-models` additionally rejects `api_base` values that point at loopback / private / link-local addresses in production (`DEBUG=False`).
+**Scope checks:** every `/ai-config/providers/*` and `/ai-config/models/*` endpoint enforces USER/TENANT/SYSTEM scope via `verify_provider_access` / `verify_model_access`. The task-resolution reads (`GET /ai-config/task-assignments/active/{task_type}`, `GET /ai-config/default-for-task/{task_type}`) apply the same discipline to their caller-supplied `tenant_id`/`user_id` parameters through `check_requested_scope`: a SYSTEM_ADMIN reads any layer, every other role only its own tenant, and a non-self `user_id` is refused (403) before any resolution runs. `fetch-external-models` additionally rejects `api_base` values that point at loopback / private / link-local addresses in production (`DEBUG=False`).
 
 ### BYOK one-click provider setup
 
@@ -71,21 +118,21 @@ Health implements the platform-standard BYOK setup contract. One call takes a us
 
 - **Canonical data** lives in `contracts/ai-presets.json` and is synced into `backend/app/ai/providers/presets_data.py` by `scripts/sync-ai-presets.mjs` (GENERATED — never hand-edited; `scripts/check-byok-contract.sh` gates drift). The hand-written overlay `backend/app/ai/providers/presets.py` maps canonical wire types onto health's `ProviderType` (`openai_compatible` → `openai`) and records per-app enablement deltas: `gemini` (no wired `google` builder) and `anthropic` (reserved stub) are disabled with reasons — enabling them later is a one-line overlay change once the matching factory branch lands.
 - **Setup semantics** (`backend/app/ai/providers/setup.py`): fetch-first validation (the key is verified against the vendor's real catalog before anything persists), curated allowlists matched exact-or-snapshot-suffix, append-union on re-run (user models are never deleted), gap-fill only into empty/dead slots, `preset_key` stamping + adoption of manual rows (same type + base, earliest first). Options body (the five-bind body): `curated_ids / bind_chat / bind_vision / bind_stt / bind_decision`.
-- **Slot mapping (health delta):** the shared chat slot binds health's `default` task (the resolution fallback), vision binds `ocr`, STT binds `transcription`, and the decision slots bind health's `decision_tool_dispatch` / `decision_boolean_gate` / `decision_choice` / `decision_score` task types (never the `default` fallback). Health has no embeddings slot.
+- **Slot mapping (health delta):** derived from the task registry — the shared chat slot binds the text capability default (`default`), vision binds `ocr`, STT binds `transcription`, embeddings bind `embed`, and `bind_decision` gap-fills only the `decision` default slot (kind slots inherit, the decision-default rule). Setup never writes a fallback pair and never sets the PHI opt-in.
 - **Decision-only presets** (wire type `decision`, e.g. the docs-verified `typesafe`) validate via the **decision probe** — one minimal typed question under the abort timeout; a classified failure persists nothing. They appear in `ALL_PRESETS` (setup-acceptable) and, since the §13.3 exposure switch flipped (2026-10-13), on the tile surface like every preset. `decision_models[]` from the canonical catalog persist as `capabilities=["decision"]` + `decision_transport="systemone"` rows; `bind_decision` gap-fills each empty declared decision slot at the setup's own scope, never a live one, and the created rows are never PHI-opted-in. Keyless local presets (Ollama: `nimble`/`tev1`/`clef`/`clef-flash`) surface decision rows the same way and resolve keylessly at funnel time (explicit sentinel key — the official SDK requires a non-empty key).
 - **Secrets:** keys follow the existing encrypted-at-rest pattern (`encrypt_secret` on `ai_providers.api_key`) — never plaintext, never logged; preset bases are SSRF-guarded like the manual path. Setup touches catalogs only — no PHI flows through it, and no telemetry captures prompts or keys during setup.
 - **Errors** are classified into a stable i18n-backed enum (`invalid_key | insufficient_credit | new_user_quota | region_unavailable | timeout | local_not_running | unknown`) with `suspected_vendor` mis-paste hints; the endpoint returns `{code, suspected_vendor, message}` on 422 and the UI routes them through i18n.
-- **Model capabilities** use the standard platform vocabulary `text | vision | tools | stt | tts | embeddings | decision`. The legacy health value `audio_input` (verified transcription-only) migrated to `stt` in revision `b1y2o3k4s5e6`, which also added `ai_providers.preset_key` (nullable; NULL = manual row). The revision is round-trip tested (`tests/test_byok_migration.py`). Revision `d1e2c3i4s5i6` (the decision-models revision) added `ai_models.decision_transport` (`'systemone'` seam, NULL = not a decision model) and `ai_task_assignments.phi_allowed` (the PHI scope guard — decision assignments are PHI-excluded by default, explicit opt-in only); also round-trip tested (`tests/test_decision_models_migration.py`). The `decision` capability is explicit-only (never inferred from a model name) and serves the four `decision_*` task slots exclusively.
+- **Model capabilities** use the standard platform vocabulary `text | vision | tools | stt | tts | embeddings | decision`. Transcription is the `stt` capability; `ai_providers.preset_key` (nullable; NULL = manual row) records the provider preset. `ai_models.decision_transport` (`'systemone'` seam, NULL = not a decision model) and `ai_task_assignments.phi_allowed` (the PHI scope guard — decision assignments are PHI-excluded by default, explicit opt-in only) are part of `0001_baseline`. The `decision` capability is explicit-only (never inferred from a model name) and serves the four `decision_*` task slots exclusively.
 - **Tests:** the uniform contract matrix — the 14 BYOK cases + the decision/probe/PHI cases (23 total) — lives in `backend/tests/test_ai_provider_setup_contract.py` (mock transport, no network); the funnel conformance suite in `backend/tests/test_decide_conformance.py`.
 
 ### Decision models
 
 Decision models are ordinary provider models serving the four `decision_*` task slots through the **decide funnel** (`backend/app/ai/decide/`) — never through the chat/OCR/NLP factories:
 
-- **Transport registry:** one registration per decision transport (`systemone` via `typesafe-sdk`, AI-layer confined). Resolution walks the slot's assignment rows in the standard scope cascade (USER > TENANT > SYSTEM, `priority` desc) — a priority-ordered fallback chain; an unassigned slot is a resolution result (`off`), never an error, and resolution never falls back to the `default` chat task (D4 slot separation).
+- **Transport registry:** one registration per decision transport (`systemone` via `typesafe-sdk`, AI-layer confined). Resolution uses the SAME precedence chain as every other task (specialist kind primary → specialist kind fallback → the `decision` capability default → unavailable; scope cascade USER > TENANT > SYSTEM) through `providers/resolution.py`; an unassigned slot is a resolution result (`off`), never an error, and resolution never falls back to the `default` **chat** task (D4 slot separation — the `decision` default slot is a different task).
 - **D2b capability routing is enforced:** a model serves a slot only when it advertises `decision` AND its transport declares the slot's capability; `decision_open_args` is vocabulary-only and never assignable.
 - **PHI scope guard (health-specific):** decision assignments are PHI-excluded by default (`ai_task_assignments.phi_allowed = false`). A decision dispatch marked `phi_adjacent` resolves only assignments carrying the explicit opt-in; otherwise the decision point does not run (fail-open). The opt-in lives on the task-assignment API + the settings checkbox — setup gap-fill and set-default never set it.
-- **Fail-open + audit:** an unassigned/failing slot means the decision point does not run (byte-identical to pre-feature behavior); every invocation writes one structured audit record (`task=decision`, provider, model, latency, token usage, outcome) — health has no per-AI-call table yet, so the audit rides structured logs (storage deferred until that table exists).
+- **Fail-open + audit:** an unassigned/failing slot means the decision point does not run (byte-identical to pre-feature behavior). Every invocation writes **one `ai_call_logs` row** (route `decision`, task id, provider/model ids, latency, token usage, status, trace id) — the structured log line stays as a live diagnostic, the table is the durable audit (see § *Per-AI-call audit*).
 - **UI:** the *Decision models* group in AI settings (task assignment) carries the verbatim cloud privacy notice at first assignment; setup's re-run review offers the `bind_decision` fill switch when the preset declares decision models.
 
 ---
@@ -95,8 +142,8 @@ Decision models are ordinary provider models serving the four `decision_*` task 
 Both `LangChainOCRProcessor` and `LangChainStructuredExtractor` are provider-agnostic and receive their chat model **injected** — they never construct one themselves. `AIProviderService.get_ocr_processor` / `get_nlp_extractor` resolve the scoped task assignment and build the `BaseChatModel` through the factory (`app/ai/chat_models.py`), as does every other model consumer via `get_llm`.
 
 ### Supported Providers (via LangChain)
-- **OpenAI-Compatible APIs:** Native support (Vision + Structured Output + Tool Calling). This includes direct OpenAI usage, or Local LLMs (vLLM, Ollama, etc.) by configuring the `api_base` in the UI.
-- **Anthropic**: Support via `langchain-anthropic` (requires adding dependency).
+- **OpenAI-Compatible APIs:** Native support (Vision + Structured Output + Tool Calling). This includes direct OpenAI usage, or Local LLMs (vLLM, Ollama, etc.) by configuring the `api_base` in the UI with `provider_type: openai` (Ollama's OpenAI-compatible endpoint).
+- **Reserved, not wired:** `anthropic`, `azure_openai`, `bedrock`, `ollama` have `ProviderType` members but their builders raise `NotImplementedError`. Provider/model write endpoints now **refuse them at write time** with `422 {"code": "provider_type_unwired", "message": …}` (`app/ai/providers/registry.py::UNWIRED_PROVIDER_TYPES`), so no configuration row can advertise a provider that cannot run; enabling one is a factory branch + a set removal in the same change. The BYOK preset overlay reflects the same state — `anthropic`/`gemini` are disabled with recorded reasons in `DISABLED_PRESET_REASONS`.
 
 ---
 
@@ -137,9 +184,19 @@ Messages form a branch tree per session (`chat_messages.parent_id` + per-node `a
 
 ### 4.1 Human-in-the-Loop (HITL) Proposals
 
-Beyond the single direct write tool (`update_examination_notes`), the chatbot can **propose** write actions via the `propose_*` tool family. **The AI never writes clinical data.** A `propose_*` tool only builds a draft and returns a `{"__hitl__": true, "task": {...}}` marker; the streaming layer detects it, **proactively saves** the task immediately (surviving stream interruptions), and emits a `task` payload event; the frontend renders a **review card** (compact summary) which opens a **modal** with the full prefilled form; the human edits and explicitly **Approves**, which commits through the **canonical, tenant-scoped, RBAC-enforced REST endpoint** (identical to a manual create). A dedicated `/resolve` endpoint then records the outcome (`confirmed` / `dismissed`) into the chat audit log — it performs no writes.
+The chatbot can **propose** write actions via the `propose_*` tool family. **The AI never writes clinical data.** A `propose_*` tool only builds a draft and returns a `{"__hitl__": true, "task": {...}}` marker; the streaming layer detects it, **proactively saves** the card immediately (surviving stream interruptions), and emits a `task` payload event; the frontend renders a **review card** (compact summary) which opens a **modal** with the full prefilled form; the human edits and explicitly **Approves**, which commits through the **canonical, tenant-scoped, RBAC-enforced REST endpoint** (identical to a manual create). A dedicated `/resolve` endpoint then records the outcome (`confirmed` / `dismissed`) — it performs no writes.
 
-**Auto-resume continuation:** after the user resolves task card(s), the agent automatically gets a **continuation turn** via `POST /sessions/{id}/resume`. The backend reads the resolved outcomes from `tasks` JSONB (never trusted from the client), builds a structured `[HITL RESOLUTION FEEDBACK]` message with per-task status/result/error, and streams a new response. The agent acknowledges what was saved, can chain dependent proposals (e.g. define biomarker → add it to exam), and respects dismissed items. Guardrails: fires at most once per message (`resumedMessageIds` ref), race-gated against concurrent user messages, suppressed on session reloads.
+**One proposal store (schema plan 5).** A card is a row in the `proposals` table — `source='chat'`, `source_ref` = the assistant message id, `ordinal` = card order — never JSONB on the message (`chat_messages.tasks` is gone, with no replacement column). `kind_id` points at the seeded `proposal_kinds` vocabulary (`create_event`, `create_examination`, `add_medication`, `add_biomarker_to_examination` plus the catalog/chat kinds); `kind.card_variant` is the family HITL card-contract key the UI registers a handler under, so the card contract is unchanged. `payload` is the versioned card document (`payload_schema_version`), `final_payload` the user-approved shape (validated against the kind's contract schema before any server-side write), and `resolution_trace` the audit trail (who resolved what when). Extension proposals land in the same table with `source='extension'` and `source_ref` = the integration instance id; approving one runs the kind's server-side resolver and transitions `proposed → approved → applied` (or `failed`).
+
+**State machine + idempotent resolve.** The closed state machine is
+`proposed | approved | rejected | applied | failed | expired | superseded`,
+enforced in one module (`app/services/proposals/proposal_state.py`) with typed errors.
+Resolve is idempotent: repeating the recorded outcome returns the stored result
+(200); a conflicting decision on a terminal row is `409`. An expiry sweep
+(`app.workers.tasks.expire_proposals`, 15-minute beat) resolves stale pending
+proposals to `expired`.
+
+**Auto-resume continuation:** after the user resolves task card(s), the agent automatically gets a **continuation turn** via `POST /sessions/{id}/resume`. The backend reads the resolved outcomes from the `proposals` rows (never trusted from the client), builds a structured `[HITL RESOLUTION FEEDBACK]` message with per-card status/result/error, and streams a new response. `final_payload` enters that prompt only through the screening seam (`screen_hitl_value`: control-character strip, whitespace collapse, length bounds, prompt-injection neutralization) — user-edited draft data is untrusted input. The agent acknowledges what was saved, can chain dependent proposals (e.g. define biomarker → add it to exam), and respects dismissed items. Guardrails: fires at most once per message (`resumedMessageIds` ref), race-gated against concurrent user messages, suppressed on session reloads.
 
 **Continue button (partial resume):** if the user answers some cards but leaves others pending, a "Continue (N unanswered)" button appears. Clicking it triggers the resume with partial answers — the LLM is told which items were skipped and instructed not to auto-repropose them. When ALL cards are resolved, auto-resume fires immediately (no button needed).
 
@@ -174,9 +231,9 @@ Beyond the single direct write tool (`update_examination_notes`), the chatbot ca
 - Invalid combinations are silently dropped (drop-and-report — the kept-vs-dropped count surfaces in the tool result so the LLM self-corrects on the next turn).
 - The LLM discovers valid pairings via the `get_link_schema` tool; the frontend `<LinksSection>` component uses `GET /api/v1/concept-edges/schema` to filter destination + relation dropdowns per the same matrix. Approve triggers the primary create, then `createLinksFor(srcType, newId, links)` POSTs each edge — all in one user confirmation.
 
-Task statuses use the `HitlTaskStatus(str, Enum)` enum (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod. The frontend mirrors this via `TERMINAL_HITL_STATUSES` in `registry.tsx`.
+The family HITL card-contract **wire** status is `HitlTaskStatus` (`PROPOSED | CONFIRMED | FAILED | DISMISSED`) with a `terminal()` classmethod; the frontend mirrors it via `TERMINAL_HITL_STATUSES` in `registry.tsx`. Persistence uses the richer seven-state `ProposalStatus` machine, mapped in `app/services/proposals/proposal_state.py` (`applied→confirmed`, `rejected/expired/superseded→dismissed`).
 
-Adding a task type touches **none** of the protocol, DB, or endpoints — only one `propose_*` tool, one frontend handler, one registry line, and (usually) one extracted headless form. The full recipe + the `task` payload event / `__hitl__` / resume contract are described in this section.
+Adding a task type touches **none** of the protocol, endpoints, or the DB schema — one `propose_*` tool, one frontend handler, one registry line, one entry in `contracts/hitl-proposal-kinds.json` (boot-seeded as a `proposal_kinds` row), and (usually) one extracted headless form. The full recipe + the `task` payload event / `__hitl__` / resume contract are described in this section.
 
 **Security model:** AI proposes, human discharges; untrusted prefill is re-validated client- *and* server-side; `/resolve` is idempotent (409 on re-resolve) and verifies session ownership; `/resume` reads outcomes from the DB (never trusts the client) and verifies ownership; the full proposed-vs-committed diff is audited in the `ChatMessage.tasks` JSONB column; resume summaries trim large payloads to short identifying fields only (no PHI leakage).
 

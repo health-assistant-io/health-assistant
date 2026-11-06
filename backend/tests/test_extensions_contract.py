@@ -47,9 +47,7 @@ SOURCES_SCHEMA = json.loads(
 
 def test_structural_fixture_wall() -> None:
     """One canonical runner: schema + semantics + the reject channel."""
-    failures = contract.run_manifest_fixtures(
-        MANIFEST_FIXTURES, MANIFEST_SCHEMA, SOURCES_SCHEMA
-    )
+    failures = contract.run_manifest_fixtures(MANIFEST_FIXTURES, MANIFEST_SCHEMA, SOURCES_SCHEMA)
     assert failures == [], "\n".join(failures)
 
 

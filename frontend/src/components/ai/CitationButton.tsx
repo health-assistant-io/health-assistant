@@ -62,7 +62,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
     }, 300);
   };
 
-  // Find tool call for legacy fallback OR to resolve truncated UUIDs
+  // Find the tool call for the fallback OR to resolve truncated UUIDs
   const toolCall = [...toolCalls].reverse().find(tc => {
     const nameMatch = tc.name.toLowerCase() === reference.toLowerCase();
     if (nameMatch) return true;

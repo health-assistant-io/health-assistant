@@ -294,7 +294,7 @@ def _run_full_setup(config):
         worker_concurrency = "2"
     config["CELERY_WORKER_CONCURRENCY"] = worker_concurrency
 
-    # First-run setup-token mode (see dev/audits/setup-token-modes.md).
+    # First-run setup-token mode.
     print("\nFirst-run setup wizard — how should the first admin account be bootstrapped?")
     print("  1) log     (default) — backend prints a one-time token to the container logs;")
     print("                          you retrieve it with `docker compose logs backend | grep`.")

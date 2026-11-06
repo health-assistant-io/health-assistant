@@ -53,11 +53,36 @@ from app.extensions.sdk import (
     table_block,
     text_block,
 )
-from app.models.enums import CodingSystem
+from app.models.enums import CodingSystem, IntegrationCursorKind, IntegrationSyncStream
 from app.models.user_integration import UserIntegration
 from app.schemas.fhir.observation import ObservationCreate
 
 logger = logging.getLogger(__name__)
+
+#: Which framework stream a remote FHIR resource belongs to. The cursor key
+#: stays per-resource (one slow resource must not starve its siblings) while
+#: the stream gives the sync engine one typed health row per data class.
+_STREAM_BY_RESOURCE: dict[str, IntegrationSyncStream] = {
+    "Observation": IntegrationSyncStream.OBSERVATIONS,
+    "Condition": IntegrationSyncStream.OBSERVATIONS,
+    "MedicationStatement": IntegrationSyncStream.OBSERVATIONS,
+    "MedicationRequest": IntegrationSyncStream.OBSERVATIONS,
+    "AllergyIntolerance": IntegrationSyncStream.OBSERVATIONS,
+    "Immunization": IntegrationSyncStream.OBSERVATIONS,
+    "Encounter": IntegrationSyncStream.APPOINTMENTS,
+    "Appointment": IntegrationSyncStream.APPOINTMENTS,
+    "DocumentReference": IntegrationSyncStream.DOCUMENTS,
+    "DiagnosticReport": IntegrationSyncStream.LABS,
+}
+
+
+def _stream_for_key(cursor_key: str) -> IntegrationSyncStream:
+    """Resolve a per-resource cursor key to its typed stream."""
+    if cursor_key.startswith("hitl:"):
+        return IntegrationSyncStream.OBSERVATIONS
+    resource = cursor_key.split(":", 1)[-1]
+    return _STREAM_BY_RESOURCE.get(resource, IntegrationSyncStream.OBSERVATIONS)
+
 
 _CATEGORY_FILTER = {"laboratory": "laboratory", "vital-signs": "vital-signs"}
 _PAGE_SIZE = 100
@@ -83,6 +108,20 @@ _RESOURCE_TOKENS = (
     "AllergyIntolerance",  # → allergies
     "Immunization",  # → immunizations
 )
+
+#: Hard bound on the ``hitl:seen_codes`` commit token (plan 6 / F13). The set
+#: is catalog-bounded by construction (a code enters only once), but a
+#: long-lived connection against a huge remote catalogue can still grow the
+#: JSON cursor without bound. Keep the most recent entries; older codes
+#: re-propose at worst (the idempotent proposal store dedups them).
+HITL_SEEN_CODES_LIMIT = 2000
+
+
+def bound_seen_codes(codes: list[str]) -> list[str]:
+    """Trim a seen-code list to the retention bound (newest last)."""
+    if len(codes) <= HITL_SEEN_CODES_LIMIT:
+        return list(codes)
+    return list(codes[-HITL_SEEN_CODES_LIMIT:])
 
 
 class FhirServerProvider(BaseHealthProvider):
@@ -333,7 +372,7 @@ class FhirServerProvider(BaseHealthProvider):
                 integration,
                 "Observation",
                 extra_params=extra_params,
-                cursor_key="last_updated",
+                cursor_key="Observation",
             )
         except ExtensionError as e:
             logger.error("fhir_server %s pull failed: %s", integration.id, e)
@@ -381,7 +420,7 @@ class FhirServerProvider(BaseHealthProvider):
         """
         from app.core.database import AsyncSessionLocal
         from app.models.fhir import Observation
-        from app.services.fhir_service import map_observations_to_biomarkers
+        from app.services.fhir.fhir_service import map_observations_to_biomarkers
 
         orm_obs = []
         for obs_data in observations:
@@ -483,9 +522,7 @@ class FhirServerProvider(BaseHealthProvider):
         if auth_mode == "smart" and not config.get("_oauth"):
             return []  # PENDING (not yet authorized)
 
-        effective_cursor_key = (
-            cursor_key if cursor_key is not None else f"last_updated:{resource_type}"
-        )
+        effective_cursor_key = cursor_key if cursor_key is not None else resource_type
         time_window_months = int(config.get("time_window_months") or 12)
         cursor = self._initial_cursor(integration, time_window_months, effective_cursor_key)
         remote_patient = self._remote_patient(integration)
@@ -544,7 +581,12 @@ class FhirServerProvider(BaseHealthProvider):
             if updated and updated > latest:
                 latest = updated
         if latest > cursor:
-            self.set_sync_cursor(integration, effective_cursor_key, latest)
+            self.set_cursor(
+                integration,
+                _stream_for_key(effective_cursor_key),
+                latest,
+                key=effective_cursor_key,
+            )
 
         await self.log_debug_payload(
             integration,
@@ -659,10 +701,10 @@ class FhirServerProvider(BaseHealthProvider):
         self,
         integration: UserIntegration,
         time_window_months: int,
-        key: str = "last_updated",
+        key: str = "Observation",
     ) -> str:
         """The ``_lastUpdated`` floor: saved cursor, else now - time_window."""
-        saved = self.get_sync_cursor(integration, key)
+        saved = self.get_cursor(integration, _stream_for_key(key), key=key)
         if saved:
             return str(saved)
         cutoff = datetime.now(dt.UTC) - timedelta(days=30 * time_window_months)
@@ -670,8 +712,8 @@ class FhirServerProvider(BaseHealthProvider):
 
     # --------------------------------------------------- multi-resource pull
     # Phases 1-4 of the fhir-server multi-resource sync plan
-    # (dev/plans/fhir-server-multi-resource-sync-2026-07-23.md). Every hook
-    # below mirrors the established supports_X / pull_X opt-in shape. Each
+    # (local planning notes/fhir-server-multi-resource-sync-2026-07-23.md). Every hook
+    # below mirrors the declared-data-class / pull_X opt-in shape. Each
     # ``pull_*`` honours ``sync_direction`` (no-op when auto-pull is
     # disabled, like ``pull_data``) and the per-instance ``pull_resources``
     # selection so operators can opt a specific instance out of, say,
@@ -867,10 +909,19 @@ class FhirServerProvider(BaseHealthProvider):
             return []
 
         known_codes = await self._known_biomarker_codes(integration)
-        seen_codes = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+        seen_list = list(
+            self.get_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                key="hitl:seen_codes",
+                default=[],
+            )
+            or []
+        )
+        seen_codes = set(seen_list)
 
         proposals = []
-        newly_seen = list(seen_codes)
+        newly_seen = list(seen_list)
         for code, info in observed.items():
             if code in known_codes or code in seen_codes:
                 continue
@@ -891,9 +942,17 @@ class FhirServerProvider(BaseHealthProvider):
             newly_seen.append(code)
 
         # Record seen codes (known + newly proposed) so future syncs skip
-        # them even if the proposal is still pending.
-        if newly_seen != list(seen_codes):
-            self.set_sync_cursor(integration, "hitl:seen_codes", newly_seen)
+        # them even if the proposal is still pending. The token is bounded
+        # (F13) so a huge remote catalogue cannot grow it forever.
+        bounded = bound_seen_codes(newly_seen)
+        if bounded != seen_list:
+            self.set_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                bounded,
+                key="hitl:seen_codes",
+                kind=IntegrationCursorKind.COMMIT,
+            )
 
         await self.log_debug_payload(
             integration,
@@ -921,9 +980,23 @@ class FhirServerProvider(BaseHealthProvider):
             code = payload.get("code")
             if not code:
                 return
-            seen = set(self.get_sync_cursor(integration, "hitl:seen_codes", default=[]) or [])
+            seen = set(
+                self.get_cursor(
+                    integration,
+                    IntegrationSyncStream.OBSERVATIONS,
+                    key="hitl:seen_codes",
+                    default=[],
+                )
+                or []
+            )
             seen.add(str(code))
-            self.set_sync_cursor(integration, "hitl:seen_codes", list(seen))
+            self.set_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                bound_seen_codes(list(seen)),
+                key="hitl:seen_codes",
+                kind=IntegrationCursorKind.COMMIT,
+            )
         except Exception as e:
             logger.debug("handle_proposal_resolution failed for %s: %s", integration.id, e)
 
@@ -1133,8 +1206,19 @@ class FhirServerProvider(BaseHealthProvider):
         # next cycle (was: advanced to `now` unconditionally → failed rows
         # were never retried → silent data loss on transient failures).
         if max_pushed_at is not None:
-            self.set_sync_cursor(integration, "last_pushed_at", max_pushed_at.isoformat())
-        self.set_sync_cursor(integration, "last_push_result", result)
+            self.set_cursor(
+                integration,
+                IntegrationSyncStream.OBSERVATIONS,
+                max_pushed_at.isoformat(),
+                key="push",
+            )
+        self.set_cursor(
+            integration,
+            IntegrationSyncStream.OBSERVATIONS,
+            result,
+            key="push_result",
+            kind=IntegrationCursorKind.COMMIT,
+        )
         await self.log_debug_payload(
             integration,
             f"FHIR push -> {result['pushed']} sent "
@@ -1393,7 +1477,9 @@ class FhirServerProvider(BaseHealthProvider):
 
     def _push_since(self, integration, now):
         """Push cursor: ``last_pushed_at`` else now - time_window_months."""
-        parsed = _parse_iso(self.get_sync_cursor(integration, "last_pushed_at"))
+        parsed = _parse_iso(
+            self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS, key="push")
+        )
         if parsed:
             return parsed
         months = int(self._config(integration).get("time_window_months") or 12)
@@ -1678,7 +1764,10 @@ class FhirServerProvider(BaseHealthProvider):
         except ExtensionError as e:
             label = "auth" if e.code == "auth" else e.code
             return {"message": f"Pull failed ({label}): {e}"}
-        cursor = self.get_sync_cursor(integration, "last_updated") or "—"
+        cursor = (
+            self.get_cursor(integration, IntegrationSyncStream.OBSERVATIONS, key="Observation")
+            or "—"
+        )
         return action_result(
             message=f"Pulled and stored {len(observations)} observation(s).",
             results=[
@@ -1745,17 +1834,15 @@ class FhirServerProvider(BaseHealthProvider):
     async def _action_reset_cursors(self, integration) -> dict[str, Any]:
         """Reset every sync cursor (Observation, per-resource pull, push, HITL).
 
-        Clears the whole ``_sync_state`` dict so the next sync re-pulls /
+        Clears every hydrated sync-state cursor so the next sync re-pulls /
         re-pushes the full configured window for every resource type. The
-        per-resource cursors (``last_updated:Condition``, ...) and the
-        HITL seen-codes set (``hitl:seen_codes``) are cleared too — a
+        per-resource cursors (``Condition``, ``Encounter``, ...) and the
+        HITL seen-codes token (``hitl:seen_codes``) are cleared too — a
         reset is an operator's "start over" switch.
         """
-        new_config = dict(integration.user_config or {})
-        new_state = dict(new_config.get("_sync_state") or {})
-        cleared = sorted(new_state.keys())
-        new_config["_sync_state"] = {}
-        integration.user_config = new_config
+        from app.services.integration.integration_sync_state import clear_all
+
+        cleared = clear_all(integration)
         await self.log_debug_payload(integration, "Cursors reset", {"cleared": cleared})
         return action_result(
             message=(

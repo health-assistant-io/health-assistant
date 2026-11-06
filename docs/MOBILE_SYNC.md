@@ -14,7 +14,7 @@ your server, never anywhere else.
 > The app lives in a sibling repo (`app/`). The Bridge integration, the Kotlin
 > SDK, and the backend push path live in this repo (`core/`). This doc covers
 > the sync architecture; the wire contract is in
-> [`integrations/health_assistant_bridge/docs/`](../integrations/health_assistant_bridge/docs/).
+> [`backend/app/extensions/builtin/health_assistant_bridge/docs/`](../backend/app/extensions/builtin/health_assistant_bridge/docs/).
 
 ---
 
@@ -51,7 +51,8 @@ Health Connect ──▶ HealthConnectSource ──▶ HealthSyncPipeline ──
 
 - **Pluggable sources.** A `HealthDataSource` interface is the plugin contract.
   `HealthConnectSource` (reads the 5 HC record types) is the first
-  implementation; a `ManualEntrySource` stub demonstrates the plugin path.
+  implementation; `ManualEntrySource` is a full plugin source (manual sample
+  entry across all Health Connect types), not a stub.
   Future sources (Fitbit, Withings, manual entry) register identically.
 - **Offline-first outbox.** Every reading is persisted to a SQLite outbox
   *before* it's sent. The `SyncCoordinator` drains it in 1000-record batches,
@@ -117,7 +118,7 @@ The same Bridge connection is a full record client for the bound patient — all
 - **Notifications** — the Kotlin SDK also wraps the notification inbox, preferences, triggers, and Web Push device registration.
 
 The wire contract (request/response shapes for every path above) lives in
-[`integrations/health_assistant_bridge/docs/`](../integrations/health_assistant_bridge/docs/).
+[`backend/app/extensions/builtin/health_assistant_bridge/docs/`](../backend/app/extensions/builtin/health_assistant_bridge/docs/).
 
 ---
 
@@ -167,4 +168,4 @@ doing:
 
 - [Integrations Framework](INTEGRATIONS_FRAMEWORK.md) · [integration SDK](dev/sdk/overview.md) — the SDK the Bridge uses.
 - [API Access Layers](API_LAYERS.md) — the three API surfaces, incl. the bridge proxy.
-- [`integrations/health_assistant_bridge/docs/`](../integrations/health_assistant_bridge/docs/) — the bridge wire contract.
+- [`backend/app/extensions/builtin/health_assistant_bridge/docs/`](../backend/app/extensions/builtin/health_assistant_bridge/docs/) — the bridge wire contract.

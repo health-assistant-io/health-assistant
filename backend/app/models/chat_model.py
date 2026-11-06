@@ -50,8 +50,10 @@ class ChatMessage(Base, UUIDMixin, TimestampMixin):
     content = Column(JSONB, nullable=False)  # Supports text and future image blocks
     tool_calls = Column(JSONB, nullable=True)
     citations = Column(JSONB, nullable=True)
-    # Human-in-the-loop task cards proposed by the assistant (see HITL_TASK protocol)
-    tasks = Column(JSONB, nullable=True)
+    # HITL cards are NOT stored here: they are rows in ``proposals``
+    # (source='chat', source_ref = this message id, ordered by ordinal — plan 5).
+    # The ADR-0015 wire ``tasks`` array is an in-memory projection attached by
+    # ChatSessionService.attach_cards().
     # Branch tree (family contract, plan 11 §6): messages form a forest per
     # session — ``parent_id`` is the tree edge, ``active_child_id`` the
     # per-node variant pointer. Both service-enforced (no FKs): deletes

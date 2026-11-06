@@ -20,7 +20,7 @@ from uuid import uuid4
 import pytest
 from httpx import AsyncClient
 
-from app.services.fhir_service import _extract_comment_text, _parse_datetime
+from app.services.fhir.fhir_service import _extract_comment_text, _parse_datetime
 
 # ---------------------------------------------------------------------------
 # Helper unit tests (no DB)

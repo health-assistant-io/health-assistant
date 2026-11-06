@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "category": "overview",
+      "items": [
+        {
+          "id": "overview",
+          "file": "overview.md",
+          "title": "Overview",
+          "description": "FHIR Client for Health Assistant, the self-hosted, open-source health records platform. A pull-only connector for external FHIR R4 servers that issue a static access token — it reads the bound patient's record into the Biomarker Engine, labs, medications and appointments.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "setup",
+      "items": [
+        {
+          "id": "connection",
+          "file": "connection.md",
+          "title": "Connection & Patient Binding",
+          "description": "Connect a token-issuing FHIR R4 server: base URL, the sealed API-key credential, and the required remote patient binding. Rotation and what the Check Connection action validates.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "usage",
+      "items": [
+        {
+          "id": "pull",
+          "file": "pull.md",
+          "title": "Pull (Streams & Cursors)",
+          "description": "What the connector pulls and where it lands: observations into the Biomarker Engine, DiagnosticReports into labs, MedicationStatements into medications, Encounters into examinations — with per-resource cursors, dedup and mapping-gap recording.",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "security",
+      "items": [
+        {
+          "id": "security",
+          "file": "security.md",
+          "title": "Security",
+          "description": "Where the access token lives (sealed, context-bound, revocable), the fail-closed pull rule, tenant isolation of pulled data, and what the connector deliberately does not do (no push, no SMART-on-FHIR).",
+          "audience": "user"
+        }
+      ]
+    },
+    {
+      "category": "troubleshooting",
+      "items": [
+        {
+          "id": "troubleshooting",
+          "file": "troubleshooting.md",
+          "title": "Troubleshooting",
+          "description": "Diagnose a FHIR Client integration: reconnect prompts after revocation, empty pulls, patient-binding errors, unmapped lab codes, and hostile-resource rejections.",
+          "audience": "user"
+        }
+      ]
+    }
+  ]
+}

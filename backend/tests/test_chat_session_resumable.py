@@ -1,12 +1,17 @@
-"""Integration tests for ``ChatSessionService.find_resumable_message`` and
-``find_message_by_proposal`` against a real Postgres instance.
+"""Integration tests for the chat HITL lookup paths against real Postgres.
 
-Pins the bug where the resume continuation turn fell back to a generic
-message (instead of the structured HITL RESOLUTION FEEDBACK) because the
-"has tasks?" filter was ``tasks IS NOT NULL`` — which incorrectly matched
-rows with ``tasks = 'null'::jsonb`` or ``tasks = '[]'``. The fix uses
-``jsonb_array_length(tasks) > 0`` which excludes SQL NULL, JSON null, AND
-empty arrays.
+Plan 5 moved chat cards out of ``chat_messages.tasks`` into the one
+``proposals`` table (source='chat', source_ref=message id, ordinal=card order).
+These tests pin the two lookups the resolve/resume paths depend on:
+
+* ``find_resumable_message`` returns the message whose proposals drive a
+  resume turn — never a card-less audit note, never a plain reply;
+* ``find_message_by_proposal`` resolves a proposal id back to its emitting
+  message, session- and tenant-scoped.
+
+They also pin the wire projection: ``get_session_messages`` still attaches the
+ADR-0015 ``tasks`` array (ordered by ``ordinal``) even though the column is
+gone.
 """
 
 from __future__ import annotations
@@ -18,10 +23,10 @@ import pytest
 import pytest_asyncio
 
 from app.core.database import AsyncSessionLocal
-from app.models.chat_model import ChatMessage, ChatSession
+from app.models.chat_model import ChatSession
 from app.models.tenant_model import TenantModel
 from app.models.user_model import UserModel
-from app.services.chat_session_service import ChatSessionService
+from app.services.chat.chat_session_service import ChatSessionService
 
 
 @pytest_asyncio.fixture
@@ -32,10 +37,8 @@ async def chat_setup() -> AsyncIterator[dict]:
     session_id = uuid.uuid4()
 
     async with AsyncSessionLocal() as db:
-        # Tenant first (FK target).
         db.add(TenantModel(id=tenant_id, name="T", slug=f"t-{tenant_id}"))
         await db.flush()
-        # User row is referenced by ChatSession.user_id FK. Use a minimal stub.
         db.add(
             UserModel(
                 id=user_id,
@@ -63,8 +66,6 @@ async def chat_setup() -> AsyncIterator[dict]:
             "session_id": session_id,
         }
     finally:
-        # Cascade deletes clean up messages; the session row cleanup also
-        # nukes the user + tenant we created.
         async with AsyncSessionLocal() as db:
             await db.execute(
                 ChatSession.__table__.delete().where(ChatSession.__table__.c.id == session_id)
@@ -78,24 +79,28 @@ async def chat_setup() -> AsyncIterator[dict]:
             await db.commit()
 
 
-async def _add_message(
-    session_id, role="assistant", content=None, tasks=None, tool_calls=None
-) -> str:
-    """Insert one ChatMessage and return its id."""
-    msg_id = uuid.uuid4()
+def _card(task_type: str = "ask_user", title: str = "Question") -> dict:
+    return {
+        "schema_version": 1,
+        "proposal_id": str(uuid.uuid4()),
+        "task_type": task_type,
+        "title": title,
+        "status": "proposed",
+        "proposed_payload": {"questions": []},
+        "context": {},
+    }
+
+
+async def _save(session_id, *, tasks=None, text="...") -> tuple[uuid.UUID, list[dict]]:
     async with AsyncSessionLocal() as db:
-        db.add(
-            ChatMessage(
-                id=msg_id,
-                session_id=session_id,
-                role=role,
-                content=content or {"text": "..."},
-                tool_calls=tool_calls,
-                tasks=tasks,
-            )
+        svc = ChatSessionService(db)
+        message = await svc.save_message(
+            session_id=session_id,
+            role="assistant",
+            content={"text": text},
+            tasks=tasks,
         )
-        await db.commit()
-    return str(msg_id)
+        return message.id, list(tasks or [])
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +109,9 @@ async def _add_message(
 
 
 @pytest.mark.asyncio
-async def test_find_resumable_returns_message_with_tasks(chat_setup):
-    """Baseline: a task-bearing message IS returned."""
-    await _add_message(
-        chat_setup["session_id"],
-        tasks=[{"proposal_id": "p1", "task_type": "ask_user", "status": "confirmed"}],
-    )
+async def test_find_resumable_returns_card_message(chat_setup):
+    card = _card()
+    message_id, _ = await _save(chat_setup["session_id"], tasks=[card])
     async with AsyncSessionLocal() as db:
         svc = ChatSessionService(db)
         msg = await svc.find_resumable_message(
@@ -118,26 +120,17 @@ async def test_find_resumable_returns_message_with_tasks(chat_setup):
             chat_setup["tenant_id"],
         )
     assert msg is not None
-    assert msg.tasks and len(msg.tasks) == 1
-    assert msg.tasks[0]["proposal_id"] == "p1"
+    assert msg.id == message_id
+    assert msg.tasks[0]["proposal_id"] == card["proposal_id"]
 
 
 @pytest.mark.asyncio
-async def test_find_resumable_skips_audit_note_with_null_tasks(chat_setup):
-    """The /resolve endpoint saves an audit-note assistant message with no
-    tasks AFTER updating the original ask_user message. find_resumable MUST
-    skip the audit-note (SQL NULL tasks) and return the original message."""
-    original_id = await _add_message(
-        chat_setup["session_id"],
-        tasks=[{"proposal_id": "p1", "task_type": "ask_user", "status": "confirmed"}],
-    )
-    # Audit-note: tasks default to None → SQL NULL.
-    await _add_message(
-        chat_setup["session_id"],
-        role="assistant",
-        content={"text": "✓ The user answered: ..."},
-        tasks=None,
-    )
+async def test_find_resumable_skips_audit_note(chat_setup):
+    """The resolve path appends a card-less assistant note after the card
+    message; the resume must still find the card-bearing message."""
+    original_id, _ = await _save(chat_setup["session_id"], tasks=[_card()])
+    await _save(chat_setup["session_id"], text="✓ The user answered: ...")
+
     async with AsyncSessionLocal() as db:
         svc = ChatSessionService(db)
         msg = await svc.find_resumable_message(
@@ -146,24 +139,12 @@ async def test_find_resumable_skips_audit_note_with_null_tasks(chat_setup):
             chat_setup["tenant_id"],
         )
     assert msg is not None
-    assert str(msg.id) == original_id, (
-        "find_resumable_message returned the audit-note instead of the "
-        "task-bearing ask_user message — this is the root cause of the "
-        "'I can't see which biomarker was selected' bug."
-    )
+    assert msg.id == original_id
 
 
 @pytest.mark.asyncio
-async def test_find_resumable_skips_empty_tasks_array(chat_setup):
-    """An empty-tasks message (``tasks = []``) is NOT a resumable message."""
-    await _add_message(
-        chat_setup["session_id"],
-        tasks=[],  # JSONB '[]'
-    )
-    await _add_message(
-        chat_setup["session_id"],
-        tasks=[{"proposal_id": "real", "task_type": "ask_user", "status": "confirmed"}],
-    )
+async def test_find_resumable_none_when_no_cards(chat_setup):
+    await _save(chat_setup["session_id"])
     async with AsyncSessionLocal() as db:
         svc = ChatSessionService(db)
         msg = await svc.find_resumable_message(
@@ -171,37 +152,13 @@ async def test_find_resumable_skips_empty_tasks_array(chat_setup):
             chat_setup["user_id"],
             chat_setup["tenant_id"],
         )
-    assert msg is not None
-    assert msg.tasks[0]["proposal_id"] == "real"
+    assert msg is None
 
 
 @pytest.mark.asyncio
-async def test_find_resumable_skips_json_null_tasks(chat_setup):
-    """A row with ``tasks = 'null'::jsonb`` (JSON null, distinct from SQL
-    NULL) is NOT a resumable message. SQLAlchemy's ``isnot(None)`` matches
-    JSON null (returns True), so the old query would erroneously return this
-    row and ``target.tasks`` would deserialize to Python None, triggering
-    the graceful-fallback branch in ``resume_after_hitl``."""
-    # Insert via raw SQL so we can put the literal JSON 'null' in.
-    from sqlalchemy import text
-
-    msg_id = uuid.uuid4()
-    async with AsyncSessionLocal() as db:
-        await db.execute(
-            text(
-                "INSERT INTO chat_messages (id, session_id, role, content, tasks) "
-                "VALUES (:id, :sid, 'assistant', '{\"text\":\"x\"}'::jsonb, 'null'::jsonb)"
-            ),
-            {"id": msg_id, "sid": chat_setup["session_id"]},
-        )
-        await db.commit()
-
-    # Add a REAL task-bearing message after the JSON-null one.
-    real_id = await _add_message(
-        chat_setup["session_id"],
-        tasks=[{"proposal_id": "p1", "task_type": "ask_user", "status": "confirmed"}],
-    )
-
+async def test_find_resumable_returns_newest_card_message(chat_setup):
+    await _save(chat_setup["session_id"], tasks=[_card()])
+    newest_id, _ = await _save(chat_setup["session_id"], tasks=[_card()])
     async with AsyncSessionLocal() as db:
         svc = ChatSessionService(db)
         msg = await svc.find_resumable_message(
@@ -210,10 +167,7 @@ async def test_find_resumable_skips_json_null_tasks(chat_setup):
             chat_setup["tenant_id"],
         )
     assert msg is not None
-    assert str(msg.id) == real_id, (
-        "find_resumable_message returned the JSON-null-tasks row instead of "
-        "the real task-bearing row. The query must use jsonb_array_length > 0."
-    )
+    assert msg.id == newest_id
 
 
 # ---------------------------------------------------------------------------
@@ -222,29 +176,98 @@ async def test_find_resumable_skips_json_null_tasks(chat_setup):
 
 
 @pytest.mark.asyncio
-async def test_find_by_proposal_skips_null_tasks(chat_setup):
-    """``/resolve`` looks up the task by proposal_id; it must NOT match
-    audit-note messages with NULL tasks (which would crash with IndexError
-    on ``tasks[task_idx]``)."""
-    await _add_message(
-        chat_setup["session_id"],
-        tasks=[{"proposal_id": "p1", "task_type": "ask_user", "status": "confirmed"}],
-    )
-    # Audit-note after.
-    await _add_message(
-        chat_setup["session_id"],
-        role="assistant",
-        content={"text": "✓ ..."},
-        tasks=None,
-    )
+async def test_find_by_proposal_returns_emitting_message(chat_setup):
+    card = _card()
+    message_id, _ = await _save(chat_setup["session_id"], tasks=[card])
+    await _save(chat_setup["session_id"], text="✓ ...")
 
     async with AsyncSessionLocal() as db:
         svc = ChatSessionService(db)
         msg = await svc.find_message_by_proposal(
             chat_setup["session_id"],
-            "p1",
+            card["proposal_id"],
             chat_setup["user_id"],
             chat_setup["tenant_id"],
         )
     assert msg is not None
-    assert any(t.get("proposal_id") == "p1" for t in (msg.tasks or []))
+    assert msg.id == message_id
+    assert msg.tasks[0]["proposal_id"] == card["proposal_id"]
+
+
+@pytest.mark.asyncio
+async def test_find_by_proposal_unknown_returns_none(chat_setup):
+    async with AsyncSessionLocal() as db:
+        svc = ChatSessionService(db)
+        msg = await svc.find_message_by_proposal(
+            chat_setup["session_id"],
+            str(uuid.uuid4()),
+            chat_setup["user_id"],
+            chat_setup["tenant_id"],
+        )
+    assert msg is None
+
+
+@pytest.mark.asyncio
+async def test_find_by_proposal_wrong_session_returns_none(chat_setup):
+    card = _card()
+    await _save(chat_setup["session_id"], tasks=[card])
+    async with AsyncSessionLocal() as db:
+        svc = ChatSessionService(db)
+        msg = await svc.find_message_by_proposal(
+            uuid.uuid4(),
+            card["proposal_id"],
+            chat_setup["user_id"],
+            chat_setup["tenant_id"],
+        )
+    assert msg is None
+
+
+# ---------------------------------------------------------------------------
+# wire projection (tasks array is in-memory, ordered by ordinal)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_session_messages_carry_cards_in_ordinal_order(chat_setup):
+    first, second = _card(title="First"), _card(title="Second")
+    await _save(chat_setup["session_id"], tasks=[first, second])
+    async with AsyncSessionLocal() as db:
+        svc = ChatSessionService(db)
+        messages = await svc.get_session_messages(
+            chat_setup["session_id"],
+            chat_setup["user_id"],
+            chat_setup["tenant_id"],
+        )
+    assert len(messages) == 1
+    cards = messages[0].tasks
+    assert [card["title"] for card in cards] == ["First", "Second"]
+    assert cards[0]["status"] == "proposed"
+    assert cards[0]["task_type"] == "ask_user"
+    assert cards[0]["resolved"] is None
+
+
+@pytest.mark.asyncio
+async def test_delete_session_removes_its_proposals(chat_setup):
+    """Chat proposals use a polymorphic source_ref (no FK): deleting the
+    session must clean them up explicitly, not leave orphans."""
+    from app.models.proposal import Proposal
+
+    card = _card()
+    await _save(chat_setup["session_id"], tasks=[card])
+    async with AsyncSessionLocal() as db:
+        await ChatSessionService(db).delete_session(chat_setup["session_id"], chat_setup["user_id"])
+        row = await db.get(Proposal, uuid.UUID(card["proposal_id"]))
+    assert row is None
+
+
+@pytest.mark.asyncio
+async def test_plain_messages_carry_an_empty_tasks_list(chat_setup):
+    await _save(chat_setup["session_id"])
+    async with AsyncSessionLocal() as db:
+        svc = ChatSessionService(db)
+        messages = await svc.get_session_messages(
+            chat_setup["session_id"],
+            chat_setup["user_id"],
+            chat_setup["tenant_id"],
+        )
+    assert messages[0].tasks == []

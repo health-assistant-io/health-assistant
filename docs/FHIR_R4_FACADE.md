@@ -181,7 +181,7 @@ Two cases:
 
 ### Case A — your model already exists and has a `to_fhir_dict()`
 
-1. **Add a reverse converter** in `backend/app/services/fhir_converter.py`:
+1. **Add a reverse converter** in `backend/app/services/fhir/fhir_converter.py`:
    ```python
    def fhir_to_my_resource_orm(f: Dict[str, Any]) -> Dict[str, Any]:
        return _clean({

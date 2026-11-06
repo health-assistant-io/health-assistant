@@ -94,11 +94,55 @@ async def register_session(user_id: str, jti: str, ttl_seconds: int) -> None:
         logger.warning("token_store: could not register session jti: %s", e)
 
 
-async def is_session_active(user_id: str, jti: str) -> bool:
+async def is_session_active(user_id: str, jti: str, family_id: str | None = None) -> bool:
     try:
         return bool(await redis_client.exists(_session_key(user_id, jti)))
     except Exception as e:
-        logger.warning("token_store unavailable, treating session as active: %s", e)
+        logger.warning("token_store unavailable, checking auth_sessions: %s", e)
+    return await _family_is_live(user_id, family_id)
+
+
+async def _family_is_live(user_id: str, family_id: str | None) -> bool:
+    """Authoritative DB fallback for a Redis outage.
+
+    ``auth_sessions`` is the family record (the Redis jti store is only the
+    hot revocation layer), so a revoked row must keep a logged-out access
+    token dead even while Redis is unreachable. Fails open only when the
+    database is also unavailable (availability-first, same posture as
+    before) or when the token carries no family id (non-family token); a
+    missing or revoked row is inactive.
+    """
+    if not family_id:
+        logger.warning(
+            "token_store unavailable and token has no family id — treating session as active"
+        )
+        return True
+    try:
+        from datetime import UTC, datetime
+        from uuid import UUID
+
+        from sqlalchemy import select
+
+        from app.core.database import AsyncSessionLocal
+        from app.models.auth_session_model import AuthSessionModel
+
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(AuthSessionModel).where(
+                    AuthSessionModel.id == UUID(str(family_id)),
+                    AuthSessionModel.user_id == UUID(str(user_id)),
+                )
+            )
+        if row is None:
+            return False
+        now = datetime.now(UTC)
+        return (
+            row.revoked_at is None
+            and row.expires_at > now
+            and row.absolute_expires_at > now
+        )
+    except Exception as e:
+        logger.warning("auth_sessions fallback unavailable, treating session as active: %s", e)
         return True
 
 

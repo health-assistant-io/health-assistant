@@ -28,6 +28,35 @@ const libDeps = existsSync(libPkgPath)
   ? Object.keys(JSON.parse(readFileSync(libPkgPath, 'utf8')).dependencies ?? {}).filter(hasRootEntry)
   : []
 
+// Dev-only CSP. The production policy — identical to the API's
+// (backend/app/core/csp.py) — ships in public/serve.json, which the frontend
+// image's `serve` runtime applies. Dev differs only where HMR needs it:
+// @vitejs/plugin-react injects an inline refresh preamble (script-src
+// 'unsafe-inline') and the HMR client opens a WebSocket back to the dev
+// server (connect-src ws: wss:). Never widen these in production.
+const devCsp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' ws: wss:",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+].join('; ')
+
+const securityHeaders = {
+  'Content-Security-Policy': devCsp,
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+}
+
 export default defineConfig({
   optimizeDeps: {
     exclude: [excludedLib],
@@ -148,6 +177,7 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    headers: securityHeaders,
     proxy: {
       '/api': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',

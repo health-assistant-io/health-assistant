@@ -36,8 +36,8 @@ from app.facade.responses import (
 )
 from app.facade.scopes import require_fhir_scopes
 from app.schemas.user import TokenData
-from app.services.fhir_facade_service import build_capability_statement
-from app.services.fhir_helpers import FhirSerializationError
+from app.services.fhir.fhir_facade_service import build_capability_statement
+from app.services.fhir.fhir_helpers import FhirSerializationError
 
 # Trigger resource registration at import time.
 register_all()

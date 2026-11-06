@@ -8,7 +8,7 @@
  * workspace filters. The header offers client-side sort + a live count.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, GitBranch, ArrowUpDown, ArrowUp, ArrowDown, SearchX, Inbox, ChevronDown, Loader2, Plus, Check } from 'lucide-react';
+import { ExternalLink, GitBranch, ArrowUpDown, ArrowUp, ArrowDown, SearchX, Inbox, ChevronDown, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
 import { el, enUS } from 'date-fns/locale';
@@ -28,7 +28,7 @@ import { CONCEPT_KIND_LABELS, KIND_COLORS } from '../../types/concept';
  * for taxonomy concepts — so every catalog type surfaces its most important
  * category on the row. Clicking the badge toggles the matching filter facet.
  */
-const ClassBadge: React.FC<{
+export const ClassBadge: React.FC<{
   item: CatalogItem;
   /** Toggle the filter facet for this tag's value. */
   onClick?: (value: string) => void;
@@ -79,7 +79,7 @@ type SortKey = 'name' | 'updated' | 'relations';
 type SortDir = 'asc' | 'desc';
 
 /** Wraps case-insensitive matches of `term` inside `text` with <mark>. */
-const Highlight: React.FC<{ text: string; term?: string }> = ({ text, term }) => {
+export const Highlight: React.FC<{ text: string; term?: string }> = ({ text, term }) => {
   const q = term?.trim();
   if (!q) return <>{text}</>;
   const lower = text.toLowerCase();
@@ -130,14 +130,9 @@ interface CatalogBrowserProps {
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
-  /** Picker mode: ids already picked (highlighted + marked "Added"). */
-  pickedIds?: string[];
-  /** Picker mode: toggle an item into/out of the selection. When provided,
-   *  each row renders an Add/Added button. Off by default (workspace use). */
-  onTogglePick?: (item: CatalogItem) => void;
 }
 
-const itemLabel = (item: CatalogItem): string =>
+export const itemLabel = (item: CatalogItem): string =>
   String(item.name || item.slug || item.id || 'Unnamed');
 
 export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
@@ -158,8 +153,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
   hasMore,
   loadingMore,
   onLoadMore,
-  pickedIds,
-  onTogglePick,
 }) => {
   const { t, i18n } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
@@ -359,8 +352,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
               ? formatDistanceToNow(new Date(item.updated_at), { addSuffix: true, locale })
               : null;
             const relCount = typeof item.relation_count === 'number' ? item.relation_count : null;
-            const isPicked = !!pickedIds?.includes(String(item.id));
-            const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
+            const active = selectedItemId && String(item.id) === selectedItemId;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
             // Strip any HTML/Markdown in the description to a single plain-text
@@ -427,26 +419,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   )}
-                  {onTogglePick && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onTogglePick(item); }}
-                      className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
-                        isPicked
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                    >
-                      {isPicked ? (
-                        <>
-                          <Check className="w-3 h-3" /> {t('catalogs.picker_added', 'Added')}
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-3 h-3" /> {t('common.add', 'Add')}
-                        </>
-                      )}
-                    </button>
-                  )}
                 </div>
               </li>
             );
@@ -459,8 +431,7 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
               ? formatDistanceToNow(new Date(item.updated_at), { addSuffix: true, locale })
               : null;
             const relCount = typeof item.relation_count === 'number' ? item.relation_count : null;
-            const isPicked = !!pickedIds?.includes(String(item.id));
-            const active = (selectedItemId && String(item.id) === selectedItemId) || isPicked;
+            const active = selectedItemId && String(item.id) === selectedItemId;
             const route = domainRoute(item);
             const scopeVal = scopeClickValue(item);
             // Strip any HTML/Markdown in the description to a single plain-text
@@ -525,26 +496,6 @@ export const CatalogBrowser: React.FC<CatalogBrowserProps> = ({
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
-                  )}
-                  {onTogglePick && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onTogglePick(item); }}
-                      className={`inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md shrink-0 transition-colors ${
-                        isPicked
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                    >
-                      {isPicked ? (
-                        <>
-                          <Check className="w-3 h-3" /> {t('catalogs.picker_added', 'Added')}
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="w-3 h-3" /> {t('common.add', 'Add')}
-                        </>
-                      )}
-                    </button>
                   )}
                 </div>
               </div>

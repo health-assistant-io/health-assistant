@@ -1,0 +1,106 @@
+# Lifecycle inventory — health-assistant/core (constitution rule 10 / guidelines/data-model.md §7)
+#
+# Format: `table :: record|operational|transient`
+# Gate D6 (scripts/check-data-model.sh) reads this file: every mapped table must
+# be classified exactly once.
+#
+#  * record       — clinical/record data; retained with the subject (patient,
+#                   user or tenant) and erased only when the subject is erased
+#                   (tombstoned where the FHIR facade needs proof-of-existence)
+#  * operational  — bounded retention; a `retention_policies` row names the
+#                   cutoff and a named job enforces it
+#  * transient    — prunable at will (caches, runtime sessions)
+#
+# The code-side mirror is `app/core/data_lifecycle.py`; both change together.
+
+# --- identity + tenancy ---
+tenants             :: record        tenant boundary; erased only by the tenant-erasure walker
+users               :: record        accounts; erased with the user/tenant (self-service DELETE /users/me)
+instance_settings   :: record        instance facts (auth_mode/demo_mode) consumed once at init
+system_settings     :: record        operator-managed system configuration
+system_integrations :: record        operator-managed system integration configuration
+oauth_clients       :: record        SMART/OAuth client registrations; erased with the tenant
+auth_sessions       :: transient     refresh families; prunable once absolutely expired
+
+# --- clinical record ---
+fhir_patients        :: record       FHIR R4 Patient (tombstoned for 410 Gone)
+fhir_observations    :: record       FHIR R4 Observation / biomarker values
+fhir_medications     :: record       FHIR R4 MedicationStatement
+fhir_allergy_intolerances :: record  FHIR R4 AllergyIntolerance
+fhir_diagnostic_reports :: record    FHIR R4 DiagnosticReport
+fhir_communications  :: record       FHIR R4 Communication
+fhir_devices         :: record       FHIR R4 Device
+fhir_organizations   :: record       FHIR R4 Organization
+fhir_provenance      :: record       FHIR R4 Provenance; erased via target/entity references
+examinations         :: record       clinical visit containers (tombstoned)
+documents            :: record       uploaded source documents + their files (tombstoned)
+clinical_events      :: record       longitudinal health journeys (tombstoned)
+clinical_event_occurrences :: record event episode rows
+clinical_event_types :: record       per-tenant journey blueprints
+event_anatomy_links  :: record       event↔anatomy join rows
+event_examination_links :: record    event↔examination join rows
+event_observation_links :: record    event↔observation join rows
+patient_immunizations :: record      immunization records (tombstoned)
+patient_layouts      :: record       per-user patient layout documents
+doctors              :: record       care-team profiles
+laboratories         :: record       tenant lab registry
+biomarker_states     :: record       categorical state catalog (seeded, retained with the instance)
+biomarker_definitions :: record      biomarker catalog
+biomarker_reference_ranges :: record reference ranges
+biomarker_allowed_states :: operational  seeded state-vocabulary join; bounded by the registry
+units                :: record       unit catalog
+concepts             :: record       unified taxonomy concepts (tombstoned)
+concept_edges        :: record       taxonomy knowledge-graph edges
+concept_kind_tags    :: record       concept↔kind join rows
+allergy_catalog      :: record       seeded allergy catalog
+medication_catalog   :: record       seeded medication catalog
+vaccine_catalog      :: record       seeded vaccine catalog
+anatomy_structures   :: record       anatomy catalog
+anatomy_figures      :: record       anatomy figure catalog
+chat_sessions        :: record       chat conversations
+chat_messages        :: record       chat content blocks; erased with the session
+notification_rules   :: record       user-owned threshold rules
+notification_triggers :: record      user-owned scheduled reminders
+
+# --- user-owned configuration ---
+user_integrations    :: record       per-instance connector configuration; erased with its subject
+integration_credentials :: record    sealed credential slots; crypto-shredded on subject erasure
+integration_sync_state :: operational per-stream cursors + sync health; bounded by the retention job
+calendar_bindings :: record           bound cloud-calendar accounts; erased with the owning user/patient
+calendar_event_links :: record       sync identity per projected record; erased with its binding
+calendar_binding_credentials :: record sealed credential slots; crypto-shredded on subject erasure
+calendar_sync_logs :: operational    per-run audit (counts + typed codes); bounded by the retention job
+export_jobs          :: operational export/backup job records; artifacts scrubbed on subject erasure
+import_jobs          :: operational import/restore job records
+
+# --- operational history ---
+audit_events         :: operational  append-only audit stream; bounded by the audit retention policy
+catalog_audit_log    :: operational  catalog change history
+task_logs            :: operational  background-task logs
+ai_call_logs         :: operational  one row per AI model call; bounded retention
+ai_task_defs         :: operational  seeded task vocabulary (bounded by the registry; no pruning job)
+ai_providers         :: record       AI provider configuration
+ai_models            :: record       AI model configuration
+ai_task_assignments :: record        per-task provider/model assignments
+proposal_kinds       :: operational  seeded HITL proposal-kind vocabulary (bounded by the contract)
+proposals            :: operational  HITL proposals + resolution trace; expiry sweep + bounded retention
+notifications        :: operational  notification events (fan-out children cascade)
+notification_recipients :: operational inbox state rows
+notification_deliveries :: operational per-channel delivery log
+notification_subscriptions :: operational Web Push (VAPID) subscriptions
+mobile_push_targets  :: operational  native push device registrations
+integration_sync_logs :: operational append-only sync-run history
+integration_debug_logs :: operational debug-mode payload captures
+telemetry_data       :: operational  TimescaleDB readings hypertable (chunk + row retention)
+telemetry_anomalies  :: operational  persisted CAgg anomaly events
+telemetry_devices    :: operational  device identity registry
+
+# --- data-lifecycle control plane ---
+erasure_requests     :: record       the erasure ledger; done rows replay against every restore
+retention_policies   :: operational  retention policy data (seeded defaults, operator-editable)
+
+# --- extension source lane (plan 7) ---
+extension_sources    :: record       imported-content origins; erased with the tenant (system rows NULL-tenant)
+extension_source_versions :: record  immutable digest-pinned content versions (the consent anchor)
+extension_consents   :: record       version-bound per-capability consent decisions
+extension_isolation_posture :: operational  per-version isolation evidence (DETECTION, bounded retention)

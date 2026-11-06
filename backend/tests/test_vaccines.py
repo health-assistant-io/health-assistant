@@ -15,7 +15,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.fhir.patient import Patient
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
 from app.models.tenant_model import TenantModel
-from app.services.fhir_helpers import assert_valid_fhir
+from app.services.fhir.fhir_helpers import assert_valid_fhir
 from tests._auth_helpers import headers_for_claims
 from tests._facade_auth import facade_api_headers
 
