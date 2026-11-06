@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.9.0] - 2026-11-06
 
+### Fixed (AI — local providers work without DEBUG, 2026-11-07)
+- **A self-hosted Ollama/vLLM endpoint on localhost or a LAN address no
+  longer needs `DEBUG=true`.** The `api_base` SSRF guard now honours the
+  provider's explicit `is_local` flag (manual providers and the local
+  presets); non-local providers stay strict. The preset contract tests
+  failed on the first CI run without this. The service worker also declares
+  `workbox-precaching`/`workbox-routing` directly, so a clean install
+  (CI, Docker build) builds the PWA.
+
 ### Security (dependency advisories cleared, 2026-11-07)
 - **The v0.9.0 image ships without known runtime advisories.** Backend:
   authlib 1.9.5, tornado 6.6, dnspython 2.9.2, joserfc 1.8.0,

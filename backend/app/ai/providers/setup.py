@@ -535,7 +535,7 @@ async def setup_provider_from_preset(
 
     decision_only = preset["wire_type"] == "decision"
     ensure_wired_provider_type(preset["type"])
-    guard_api_base(preset["base_url"])
+    guard_api_base(preset["base_url"], allow_private=bool(preset.get("local")))
 
     existing = await _resolve_target_row(db, preset_key, preset, scope, tenant_id, user_id)
     key = "" if (preset["local"] and not decision_only) else (api_key or "").strip()

@@ -101,13 +101,22 @@ jobs:
             -e POSTGRES_DB=neuronection_health_test \
             -e POSTGRES_USER=neuronection_health_owner \
             -e POSTGRES_PASSWORD=password \
-            timescale/timescaledb:latest-pg14
+            timescale/timescaledb:latest-pg16
 
           docker run -d --rm \
             --name ha-test-redis \
             --network "$JOB_NET" \
             --network-alias redis \
             redis:7-alpine
+
+          # Network aliases only resolve on user-defined networks; act_runner's
+          # job container may share the default bridge, where DNS aliases do
+          # not work ("could not translate host name postgres"). Resolve the
+          # sibling IPs explicitly and pin them in /etc/hosts — the DB
+          # containers are reachable by IP on the network either way.
+          PG_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ha-test-postgres)"
+          REDIS_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ha-test-redis)"
+          printf '%s postgres\n%s redis\n' "$PG_IP" "$REDIS_IP" >> /etc/hosts
 
           echo "Waiting for postgres to accept connections…"
           for i in $(seq 1 30); do

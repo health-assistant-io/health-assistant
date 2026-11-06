@@ -179,7 +179,7 @@ class Settings(BaseSettings):
         development and ``HA_APP_ENV`` was not set explicitly, so dev
         shells/tests that pin either are unaffected.
         """
-        stale = os.environ.get("APP_ENV", "").strip().lower()
+        stale = os.environ.get("APP_ENV", "").strip().lower()  # gate-allow: APP_ENV
         if (
             self.HA_APP_ENV in ("development", "test", "testing")
             and "HA_APP_ENV" not in os.environ

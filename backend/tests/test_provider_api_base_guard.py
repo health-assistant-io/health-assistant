@@ -78,6 +78,18 @@ def test_prod_blocks_private(monkeypatch):
         guard_api_base("http://192.168.1.10:11434/v1")
 
 
+def test_local_provider_allows_private(monkeypatch):
+    """An explicitly local provider (is_local / local preset) may use a LAN
+    address in production — the self-hosted Ollama/vLLM path."""
+    _patch_settings(monkeypatch, debug=False)
+    guard_api_base("http://192.168.1.10:11434/v1", allow_private=True)
+
+
+def test_local_provider_allows_loopback(monkeypatch):
+    _patch_settings(monkeypatch, debug=False)
+    guard_api_base("http://127.0.0.1:11434/v1", allow_private=True)
+
+
 def test_create_provider_rejects_internal_api_base(monkeypatch):
     """The guard runs on the create-provider path too (S-2's fix)."""
     from app.extensions import polite_http

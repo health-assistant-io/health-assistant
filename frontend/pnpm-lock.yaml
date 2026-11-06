@@ -207,6 +207,12 @@ importers:
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.13.5)(jsdom@30.0.1)(vite@8.3.5(@types/node@24.13.5)(jiti@2.7.0)(terser@5.51.2))
+      workbox-precaching:
+        specifier: ^7.4.1
+        version: 7.4.1
+      workbox-routing:
+        specifier: ^7.4.1
+        version: 7.4.1
 
 packages:
 

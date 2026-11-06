@@ -42,15 +42,17 @@ from app.models.tenant_model import TenantModel
 logger = logging.getLogger(__name__)
 
 
-def guard_api_base(api_base: str) -> None:
+def guard_api_base(api_base: str, *, allow_private: bool = False) -> None:
     """Audit 2026-09-11 S-2: validate a provider ``api_base`` for SSRF safety.
 
     Blocks non-http(s) schemes, unresolvable URLs, and hosts resolving to
     loopback/private/link-local/metadata ranges — including hostnames whose
     DNS resolves internally (the gap the endpoint-level literal-IP check
-    couldn't close). Self-hosted local LLM stacks keep working via
-    ``INTEGRATION_ALLOWED_HOSTS`` / ``INTEGRATION_BLOCK_PRIVATE_RANGES=false``,
-    or automatically while ``DEBUG`` is enabled.
+    couldn't close). Explicitly local providers (``is_local=True`` or a
+    local preset) pass ``allow_private=True`` so a self-hosted Ollama/vLLM
+    on localhost works in production; the env knobs
+    (``INTEGRATION_ALLOWED_HOSTS`` / ``INTEGRATION_BLOCK_PRIVATE_RANGES``)
+    and ``DEBUG`` keep working too.
 
     Raises ``ValueError`` with a client-facing message on violation.
     """
@@ -60,7 +62,10 @@ def guard_api_base(api_base: str) -> None:
     if not api_base:
         return
     try:
-        polite_http.check_url(api_base, config=net_guard_config(allow_private=settings.DEBUG))
+        polite_http.check_url(
+            api_base,
+            config=net_guard_config(allow_private=settings.DEBUG or allow_private),
+        )
     except polite_http.PoliteHttpError as exc:
         raise ValueError(
             "api_base must be an http(s) URL that does not resolve to an "
@@ -138,7 +143,7 @@ class AIProviderService:
     async def create_provider(self, provider_data: AIProviderCreate) -> AIProviderModel:
         """Create a new provider. The api_key is encrypted at rest before persistence."""
         ensure_wired_provider_type(provider_data.provider_type)
-        guard_api_base(provider_data.api_base or "")
+        guard_api_base(provider_data.api_base or "", allow_private=provider_data.is_local)
         from app.core.encryption import encrypt_secret
 
         payload = provider_data.model_dump()
@@ -173,7 +178,12 @@ class AIProviderService:
             ensure_wired_provider_type(update_dict["provider_type"])
 
         if "api_base" in update_dict:
-            guard_api_base(update_dict["api_base"] or "")
+            allow_local = update_dict.get("is_local")
+            if allow_local is None:
+                allow_local = await self.db.scalar(
+                    select(AIProviderModel.is_local).where(AIProviderModel.id == provider_id)
+                )
+            guard_api_base(update_dict["api_base"] or "", allow_private=bool(allow_local))
 
         if "api_key" in update_dict:
             incoming = update_dict["api_key"]
@@ -211,7 +221,7 @@ class AIProviderService:
             import httpx
 
             url = f"{provider.api_base.rstrip('/')}/models"
-            guard_api_base(url)
+            guard_api_base(url, allow_private=provider.is_local)
             headers = {"Authorization": f"Bearer {provider.get_api_key_plaintext()}"}
 
             async with httpx.AsyncClient() as client:

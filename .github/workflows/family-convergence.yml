@@ -66,6 +66,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # This wall imports the app, so conftest runs the migrations: it needs the
+    # same database + cache services as the test workflow (the job previously
+    # failed on `connection to server at "localhost" ... refused`).
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: neuronection_health_test
+          POSTGRES_USER: neuronection_health_owner
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U neuronection_health_owner -d neuronection_health_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -73,4 +99,11 @@ jobs:
         run: uv sync --frozen
       - name: Run the vendored contract fixtures + semantics
         working-directory: backend
+        env:
+          POSTGRES_USER: neuronection_health_owner
+          POSTGRES_PASSWORD: password
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: neuronection_health_test
+          REDIS_URL: redis://localhost:6379
         run: uv run --frozen pytest tests/test_extensions_contract.py -q
