@@ -8,6 +8,10 @@ COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml 
 RUN pnpm install --frozen-lockfile
 
 COPY frontend/ .
+# The frontend test suite typechecks against the repo-root settings-map
+# contract; the Docker build stage only copies frontend/, so provide it at the
+# path the test file resolves (../../../contracts from src/tests).
+COPY contracts/settings-map.json /contracts/settings-map.json
 RUN pnpm run build
 
 FROM node:24-alpine AS runtime
