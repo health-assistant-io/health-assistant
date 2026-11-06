@@ -63,7 +63,7 @@ dynamic = ["version"]
 # requirements file could never co-install either) — use a dedicated
 # environment for biomedical NLP models.
 local-ai = [
-    "nltk>=3.10.3",
+    "nltk>=3.10.4",
     "spacy>=3.8.16",
     "torch>=2.1.2",
     "transformers>=4.57.6",
