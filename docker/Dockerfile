@@ -42,6 +42,12 @@ COPY backend/scripts /app/backend/scripts
 # behind GET /setup/extension-catalog, demo mode's sample PDF) — omitting
 # this dir shipped images whose wizard dropdowns and seed stages ran empty.
 COPY backend/data /app/backend/data
+# Family contracts read at runtime by the extension registry (manifest +
+# docs-tree schemas, the charter) and the data-lifecycle inventory. The
+# registry resolves them at /app/contracts (repo-root contracts/); omitting
+# this made production fail closed at startup while tests passed from a
+# checkout.
+COPY contracts /app/contracts
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
 RUN useradd --create-home --uid 10001 ha \

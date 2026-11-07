@@ -27,12 +27,23 @@ RUNTIME_COPY_PATHS = (
     "backend/alembic.ini",
     "backend/scripts",
     "backend/data",
+    "contracts",
 )
 
 RUNTIME_DATA_FILES = (
     "backend/data/seeds/omb_race_ethnicity.json",
     "backend/data/seeds/default_catalog.json",
     "backend/data/seeds/sample_blood_panel.pdf",
+)
+
+# Files the extension registry / data-lifecycle read from /app/contracts at
+# runtime. The image build failed production startup while every test passed
+# from a checkout (2026-11-07).
+RUNTIME_CONTRACT_FILES = (
+    "contracts/extension-manifest.schema.json",
+    "contracts/docs-tree.schema.json",
+    "contracts/extension-charter.json",
+    "contracts/data-model.lifecycle.txt",
 )
 
 
@@ -49,3 +60,8 @@ def test_runtime_images_copy_backend_data():
 def test_runtime_data_files_exist_in_repo():
     for rel in RUNTIME_DATA_FILES:
         assert (REPO_ROOT / rel).is_file(), f"runtime data file missing: {rel}"
+
+
+def test_runtime_contract_files_exist_in_repo():
+    for rel in RUNTIME_CONTRACT_FILES:
+        assert (REPO_ROOT / rel).is_file(), f"runtime contract file missing: {rel}"

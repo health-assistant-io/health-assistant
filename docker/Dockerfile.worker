@@ -38,6 +38,9 @@ COPY backend/scripts /app/backend/scripts
 # Seed JSONs + catalogs read at runtime (startup seed_all, demo mode's
 # sample PDF) — omitting this dir shipped images whose seed stages ran empty.
 COPY backend/data /app/backend/data
+# Family contracts read at runtime (the extension registry resolves
+# /app/contracts; the worker shares the app modules).
+COPY contracts /app/contracts
 COPY integrations /app/integrations
 
 # Non-root runtime user (audit 2026-08 CFG-M5).
