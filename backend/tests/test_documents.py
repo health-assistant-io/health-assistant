@@ -9,7 +9,7 @@ class MockUser:
     def __init__(self):
         self.id = "65daba01-2bcb-4b46-9f2f-de9352c209d6"
         self.user_id = self.id
-        self.role = "user"
+        self.role = "USER"
         self.tenant_id = str(uuid.uuid4())
 
     def get(self, key, default=None):
@@ -37,6 +37,7 @@ class MockDocumentModel:
         self.extracted_text = "Blood Glucose: 95 mg/dL"
         self.owner_id = "65daba01-2bcb-4b46-9f2f-de9352c209d6"
         self.tenant_id = str(uuid.uuid4())
+        self.patient_id = None
 
     def to_dict(self):
         return {
@@ -56,8 +57,19 @@ def mock_document():
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.endpoints.documents.log_audit_action", new_callable=AsyncMock)
+@patch("app.services.audit.audit_service.log_audit_action", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.documents.get_document")
-async def test_get_document(mock_get_document, async_client: AsyncClient, mock_document):
+async def test_get_document(
+    mock_get_document,
+    mock_audit_service,
+    mock_audit_endpoint,
+    async_client: AsyncClient,
+    mock_document,
+):
+    """The read endpoint with a fully mocked store — the mock user's tenant
+    is synthetic, so the audit write is mocked too (fail-closed policy would
+    otherwise refuse the request)."""
     from app.core.database import get_db
     from app.core.security import get_current_user
     from app.main import app
@@ -96,16 +108,30 @@ async def test_list_documents(mock_get_documents, async_client: AsyncClient, moc
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.endpoints.documents.log_audit_action", new_callable=AsyncMock)
+@patch("app.services.audit.audit_service.log_audit_action", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.documents.delete_document")
 @patch("app.api.v1.endpoints.documents.get_document")
 async def test_delete_document(
-    mock_get_document, mock_delete_document, async_client: AsyncClient, mock_document
+    mock_get_document,
+    mock_delete_document,
+    mock_audit_service,
+    mock_audit_endpoint,
+    async_client: AsyncClient,
+    mock_document,
 ):
+    """ADMIN deletes with a fully mocked store; audit is mocked too (the
+    mock principal's tenant is synthetic — the real fail-closed lane would
+    refuse the request)."""
     from app.core.database import get_db
     from app.core.security import get_current_user
     from app.main import app
+    from app.schemas.user import TokenData
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    # ADMIN principal: document:delete is ADMIN-side in the ADR 0054
+    # baseline — a USER principal is denied at the central route gate.
+    admin = TokenData(user_id=uuid.uuid4(), sub="x", tenant_id=uuid.uuid4(), role="ADMIN")
+    app.dependency_overrides[get_current_user] = lambda: admin
     app.dependency_overrides[get_db] = override_get_db
 
     mock_get_document.return_value = mock_document

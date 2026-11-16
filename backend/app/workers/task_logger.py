@@ -245,18 +245,28 @@ class TaskProgressTracker:
             # We need tenant_id to channel to the correct user.
             # But we might not have it in tracker. Let's fetch it or just broadcast doc id.
             doc_result = await self.db.execute(
-                select(DocumentModel.tenant_id).where(DocumentModel.id == self.document_id)
+                select(DocumentModel.tenant_id, DocumentModel.owner_id).where(
+                    DocumentModel.id == self.document_id
+                )
             )
-            tenant_id = doc_result.scalar_one_or_none()
-            if tenant_id:
+            row = doc_result.first()
+            if row:
+                tenant_id, owner_id = row
                 msg = {
                     "type": "document_progress",
                     "document_id": str(self.document_id),
                     "status": status,
                     "progress": progress,
-                    "error_message": error_message,
                 }
-                await publish_message(f"tenant:{tenant_id}:tasks", json.dumps(msg))
+                # USERs subscribe to their own channel only; MANAGER+ keep
+                # the tenant-wide operational view (with the error detail).
+                if owner_id:
+                    await publish_message(f"user:{owner_id}:tasks", json.dumps(msg))
+                if tenant_id:
+                    await publish_message(
+                        f"tenant:{tenant_id}:tasks",
+                        json.dumps({**msg, "error_message": error_message}),
+                    )
         except Exception:
             pass
 
@@ -308,19 +318,29 @@ class TaskProgressTracker:
         from app.core.redis import publish_message
 
         try:
+            from app.models.fhir.patient import Patient
+
             exam_result = await self.db.execute(
-                select(ExaminationModel.tenant_id).where(ExaminationModel.id == self.examination_id)
+                select(ExaminationModel.tenant_id, Patient.user_id)
+                .join(Patient, Patient.id == ExaminationModel.patient_id)
+                .where(ExaminationModel.id == self.examination_id)
             )
-            tenant_id = exam_result.scalar_one_or_none()
-            if tenant_id:
+            row = exam_result.first()
+            if row:
+                tenant_id, owner_id = row
                 msg = {
                     "type": "examination_progress",
                     "examination_id": str(self.examination_id),
                     "status": status,
                     "progress": progress,
-                    "error_message": error_message,
                 }
-                await publish_message(f"tenant:{tenant_id}:tasks", json.dumps(msg))
+                if owner_id:
+                    await publish_message(f"user:{owner_id}:tasks", json.dumps(msg))
+                if tenant_id:
+                    await publish_message(
+                        f"tenant:{tenant_id}:tasks",
+                        json.dumps({**msg, "error_message": error_message}),
+                    )
         except Exception:
             pass
 

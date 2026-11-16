@@ -57,12 +57,11 @@ describe('useFieldDescriptors', () => {
     expect(metaSection?.descriptors.some((d) => d.key === 'meta_data')).toBe(true);
   });
 
-  it('never exposes META_KEYS fields (id, scope, is_custom, …)', () => {
+  it('never exposes META_KEYS fields (id, scope, …)', () => {
     const item = {
       name: 'C',
       id: 'abc',
       scope: 'system',
-      is_custom: false,
       created_at: '2026-01-01',
       weird: 'ok',
     } as unknown as CatalogItem;
@@ -73,7 +72,6 @@ describe('useFieldDescriptors', () => {
     ];
     expect(allKeys).not.toContain('id');
     expect(allKeys).not.toContain('scope');
-    expect(allKeys).not.toContain('is_custom');
     expect(allKeys).not.toContain('created_at');
     // non-meta leftover still surfaces
     expect(allKeys).toContain('weird');

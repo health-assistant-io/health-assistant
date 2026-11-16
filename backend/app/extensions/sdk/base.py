@@ -114,13 +114,16 @@ class BaseHealthProvider(_CoreBaseHealthProvider, ABC):
 
     # --- Tool Exposure (for the Chat Assistant) ---
 
-    async def get_tools(self, integration: UserIntegration) -> list[Any]:
+    async def get_tools(self, integration: UserIntegration, *, principal: Any = None) -> list[Any]:
         """Return LangChain-compatible tools for this instance.
 
         Only called by the platform tool aggregator when the manifest
         declares the ``chat-tools`` capability. Tools should be standard
         LangChain ``StructuredTool`` / ``@tool`` objects so the existing
         ``llm.bind_tools`` + reasoning loop works unchanged.
+        ``principal`` is the integration's scoped identity (ADR 0054 D8); an
+        implementation that maps tool risk classes to permissions
+        (``CapabilityGrant.authorize_tool``) authorizes against it.
 
         Implementations should swallow per-instance errors and return ``[]``
         on failure so one bad instance doesn't break the whole chat turn.

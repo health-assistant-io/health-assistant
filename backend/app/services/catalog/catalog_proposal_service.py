@@ -13,8 +13,8 @@ Routing by ``kind``:
   :class:`~app.catalogs.policy.CatalogWritePolicy`, plus a
   ``meta_data["_provenance"] = "integration"`` tag (the model has no
   dedicated provenance column). Idempotent on ``slug``.
-- ``medication`` → :func:`app.services.clinical.medication_service.create_catalog_medication`.
-  Idempotent on ``(tenant_id, name)`.
+- ``medication`` → :func:`app.services.catalog.catalog_write_service.create_medication`
+  (the unified write contract). Idempotent on ``(tenant_id, name)`.
 - ``concept`` → :meth:`app.services.catalog.concept_service.ConceptService.create_concept`.
   Idempotent on ``slug``.
 - ``edge`` → :meth:`~app.services.catalog.concept_service.ConceptService.create_edge`
@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.extensions.sdk.catalog import CatalogProposal
 from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.concept_model import Concept
 from app.models.enums import (
     ConceptKind,
     ConceptProvenance,
@@ -51,9 +52,9 @@ from app.schemas.biomarker import BiomarkerCreate, sanitize_slug
 from app.schemas.medication import MedicationCatalogCreate
 from app.services.catalog.concept_service import (
     ConceptService,
-    resolve_biomarker_class_concept,
     resolve_concept_by_slug,
 )
+from app.services.seed.provenance import mark_user_modified_for_model
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,10 @@ async def apply_proposal(
             (e.g. a USER-role integration owner can't create concepts or
             edges). The engine logs and continues per-item.
     """
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
+
+    require_principal_permission(actor, Permission.CATALOG_CREATE)
     if proposal.kind == "biomarker":
         return await _apply_biomarker_proposal(db, actor, proposal)
     if proposal.kind == "medication":
@@ -142,7 +147,7 @@ async def _apply_biomarker_proposal(
     Mirrors the ``POST /api/v1/biomarkers/`` endpoint logic exactly:
     validates via :class:`BiomarkerCreate`, resolves the preferred unit
     symbol, resolves the ``biomarker_class`` concept from the
-    ``category`` string, stamps scope via
+    ``class_concept_slug`` key, stamps scope via
     :meth:`CatalogWritePolicy.assign_create_scope`. Idempotent on ``slug``.
     """
     payload = dict(proposal.payload)
@@ -159,7 +164,7 @@ async def _apply_biomarker_proposal(
         "slug": slug,
         "coding_system": payload.get("coding_system") or "loinc",
         "code": payload.get("code") or None,
-        "category": payload.get("category") or None,
+        "class_concept_slug": payload.get("class_concept_slug") or None,
         "aliases": list(payload.get("aliases") or []),
         "info": payload.get("info") or None,
         "reference_range_min": payload.get("reference_range_min"),
@@ -183,9 +188,14 @@ async def _apply_biomarker_proposal(
         )
 
     preferred_unit_id = await _resolve_unit_id(db, biomarker_payload["preferred_unit_symbol"])
-    class_concept_id = await resolve_biomarker_class_concept(
-        db, biomarker_payload["category"], tenant_id=actor.tenant_id
-    )
+    class_concept_id = None
+    if biomarker_payload["class_concept_slug"]:
+        class_concept_id = await resolve_concept_by_slug(
+            db,
+            biomarker_payload["class_concept_slug"],
+            ConceptKind.BIOMARKER_CLASS,
+            tenant_id=actor.tenant_id,
+        )
 
     new_bio = BiomarkerDefinition(
         slug=slug,
@@ -220,6 +230,7 @@ async def _apply_biomarker_proposal(
                 detail="biomarker created concurrently by another writer",
             )
         raise ValueError(f"biomarker proposal slug={slug!r} failed integrity check: {exc}") from exc
+    await mark_user_modified_for_model(db, BiomarkerDefinition, new_bio.id)
 
     return ApplyResult(
         kind="biomarker",
@@ -254,10 +265,11 @@ async def _apply_medication_proposal(
 ) -> ApplyResult:
     """Apply a ``kind="medication"`` proposal.
 
-    Validates via :class:`MedicationCatalogCreate`, then routes through
-    :func:`app.services.clinical.medication_service.create_catalog_medication`
-    (which stamps scope via
-    :meth:`CatalogWritePolicy.assign_create_scope` and FHIR-validates the
+    Validates via :class:`MedicationCatalogCreate`, then routes through the
+    unified catalog write service
+    (:func:`app.services.catalog.catalog_write_service.create_medication` —
+    the ONE write contract shared with the REST endpoints, which stamps scope
+    via :meth:`CatalogWritePolicy.assign_create_scope` and FHIR-validates the
     row). Idempotent on ``(tenant_id, name)`` — re-proposing the same
     medication in the same tenant returns the existing row without
     duplicating.
@@ -278,18 +290,18 @@ async def _apply_medication_proposal(
             detail="medication with this name already exists in tenant",
         )
 
-    # ``create_catalog_medication`` calls ``db.commit()`` itself — inconsistent
-    # with the other routers that just flush. Match its contract by giving it
-    # an isolated session and re-raising the (already-stamped) row to the
-    # caller. Idempotent on race via the pre-check above.
-    from app.services.clinical.medication_service import create_catalog_medication
+    # The write service calls ``db.commit()`` itself; give it an isolated
+    # session so the engine's outer transaction stays consistent. Idempotent
+    # on race via the pre-check above (a duplicate code/seed_key surfaces as
+    # the typed ``CatalogUniqueViolation`` → 409 contract).
+    from app.services.catalog.catalog_write_service import create_medication
 
-    new_entry = await create_catalog_medication(db, actor, MedicationCatalogCreate(**payload))
+    new_entry = await create_medication(db, actor, MedicationCatalogCreate(**payload))
     return ApplyResult(
         kind="medication",
         created=True,
-        entity_id=new_entry.id,
-        detail=new_entry.name,
+        entity_id=UUID(str(new_entry["id"])),
+        detail=str(new_entry["name"]),
     )
 
 
@@ -299,16 +311,21 @@ async def _find_medication_by_name(
     """Lookup matching the same tenant-scope read path used by the catalog
     service: SYSTEM rows (``tenant_id IS NULL``) are visible to all
     tenants; TENANT rows are scoped to the actor's tenant."""
-    stmt = select(MedicationCatalog).where(
-        MedicationCatalog.name == name,
-        (
-            MedicationCatalog.tenant_id.is_(None)
-            if tenant_id is None
-            else (MedicationCatalog.tenant_id.in_([None, tenant_id]))
-        ),
+    stmt = (
+        select(MedicationCatalog)
+        .where(
+            MedicationCatalog.name == name,
+            (
+                MedicationCatalog.tenant_id.is_(None)
+                if tenant_id is None
+                else (MedicationCatalog.tenant_id.in_([None, tenant_id]))
+            ),
+        )
+        .order_by(MedicationCatalog.tenant_id.is_(None))
+        .limit(1)
     )
     result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +410,7 @@ async def _apply_concept_proposal(
                 )
         raise
     await db.flush()
+    await mark_user_modified_for_model(db, Concept, concept.id)
     return ApplyResult(
         kind="concept",
         created=True,

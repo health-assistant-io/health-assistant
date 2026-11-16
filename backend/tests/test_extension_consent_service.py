@@ -303,3 +303,47 @@ class TestPerVersionSealing:
         assert consents.version_secret_state(stamped, v1) == "sealed"
         assert consents.version_secret_state(stamped, v2) == "stale", "an upgrade re-binds"
         assert "hunter2" not in str(consents.declared_secret_slots(v1))
+
+
+class TestCapabilityGrantAfterRevocation:
+    async def test_revoking_a_consent_removes_the_capability_from_the_grant(
+        self, db_session, tenant, user_id
+    ):
+        from app.extensions import capabilities
+
+        version = await _version(
+            db_session,
+            "grant-revoke",
+            _manifest("demo-mcp", "1.0.0", ["chat-tools", "secrets"]),
+            approved=True,
+        )
+        await consents.record_decisions(
+            db_session,
+            user_id=user_id,
+            tenant_id=tenant,
+            version=version,
+            decisions={"chat-tools": "granted", "secrets": "granted"},
+            decided_by=user_id,
+        )
+        granted = await consents.granted_capabilities(db_session, user_id=user_id, version=version)
+        live = capabilities.grant_for_manifest(
+            version.envelope, bundled=False, granted_capabilities=granted
+        )
+        assert "chat-tools" in live.capabilities
+        assert live.database_access is False
+
+        await consents.record_decisions(
+            db_session,
+            user_id=user_id,
+            tenant_id=tenant,
+            version=version,
+            decisions={"chat-tools": "denied"},
+            decided_by=user_id,
+        )
+        revoked = await consents.granted_capabilities(db_session, user_id=user_id, version=version)
+        narrowed = capabilities.grant_for_manifest(
+            version.envelope, bundled=False, granted_capabilities=revoked
+        )
+        assert "chat-tools" not in narrowed.capabilities
+        with pytest.raises(ExtensionError):
+            narrowed.require("chat-tools")

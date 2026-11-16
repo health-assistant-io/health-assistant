@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from app.core.database import AsyncSessionLocal
 from app.models.anatomy_model import AnatomyStructure
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 @pytest.mark.asyncio
@@ -35,7 +36,7 @@ async def test_seed_all_resolves_anatomy_class(tmp_path, monkeypatch):
         await db.execute(delete(AnatomyStructure))
         await db.commit()
 
-    await SeedService().seed_all()
+    await seed_with_commit(SeedService().seed_all)
     async with AsyncSessionLocal() as db:
         total = (await db.execute(select(func.count()).select_from(AnatomyStructure))).scalar()
         with_class = (

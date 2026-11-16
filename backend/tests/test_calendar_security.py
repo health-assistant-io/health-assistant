@@ -239,9 +239,7 @@ async def test_oauth_callback_completes_only_for_the_starting_principal(
         assert code == "good-code"
         return {"access_token": "at-1", "refresh_token": "rt-1", "expires_in": 3600}
 
-    monkeypatch.setattr(
-        "app.api.v1.endpoints.calendar.exchange_code", fake_exchange
-    )
+    monkeypatch.setattr("app.api.v1.endpoints.calendar.exchange_code", fake_exchange)
     completed = await client.get(
         f"/api/v1/calendar/oauth/callback?state={state}&code=good-code",
         headers=owner_headers,
@@ -262,8 +260,7 @@ async def test_oauth_callback_completes_only_for_the_starting_principal(
                 text(
                     "SELECT kind FROM calendar_binding_credentials "
                     "WHERE binding_id = CAST(:bid AS uuid)"
-                )
-                .bindparams(bid=binding["id"])
+                ).bindparams(bid=binding["id"])
             )
         ).scalar_one()
         assert cred == "oauth"
@@ -279,9 +276,7 @@ async def test_oauth_callback_sends_the_deployment_client_secret(
     exchange time, never written into the binding slot."""
     owner, owner_headers = owner_env
     monkeypatch.setenv("CALENDAR_OAUTH_CLIENT_IDS", '{"google": "client-123"}')
-    monkeypatch.setenv(
-        "CALENDAR_OAUTH_CLIENT_SECRETS", '{"google": "web-app-secret-1"}'
-    )
+    monkeypatch.setenv("CALENDAR_OAUTH_CLIENT_SECRETS", '{"google": "web-app-secret-1"}')
     patient_id = await _patient_id_for(owner)
     binding = await _api_binding(client, owner_headers, patient_id)
     started = await client.post(
@@ -398,9 +393,7 @@ class _ExplodingClient:
 
     async def send(self, request, stream=False):
         self.calls += 1
-        raise httpx.ConnectError(
-            f"[Errno -2] Name or service not known: GET {self._url}"
-        )
+        raise httpx.ConnectError(f"[Errno -2] Name or service not known: GET {self._url}")
 
     async def aclose(self):
         return None
@@ -412,16 +405,12 @@ async def test_provider_error_never_carries_the_feed_token(data_key, caplog):
     the host must scrub before storing/surfacing. The token appears
     nowhere: not in ``last_error``, not in the audit row, not in the
     outcome, not in the logs."""
-    binding, _exam = await _make_world(
-        provider="ics", auth_kind="token", direction="pull"
-    )
+    binding, _exam = await _make_world(provider="ics", auth_kind="token", direction="pull")
     full_url = f"https://feeds.example.com/calendar.ics?token={SECRET_FEED_TOKEN}"
 
     async with AsyncSessionLocal() as db:
         live = (
-            await db.execute(
-                select(CalendarBinding).where(CalendarBinding.id == binding.id)
-            )
+            await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
         ).scalar_one()
         await creds.set_secret(db, live, {"url": full_url})
         await db.commit()
@@ -438,9 +427,7 @@ async def test_provider_error_never_carries_the_feed_token(data_key, caplog):
     try:
         async with AsyncSessionLocal() as db:
             live = (
-                await db.execute(
-                    select(CalendarBinding).where(CalendarBinding.id == binding.id)
-                )
+                await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
             ).scalar_one()
             with caplog.at_level("ERROR"):
                 outcome = await calendar_sync.run_sync(db, live, http=exploding)
@@ -453,9 +440,7 @@ async def test_provider_error_never_carries_the_feed_token(data_key, caplog):
     assert SECRET_FEED_TOKEN not in repr(outcome.to_dict())
     async with AsyncSessionLocal() as db:
         live = (
-            await db.execute(
-                select(CalendarBinding).where(CalendarBinding.id == binding.id)
-            )
+            await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
         ).scalar_one()
         assert SECRET_FEED_TOKEN not in (live.last_error or "")
         row = (
@@ -571,9 +556,9 @@ async def test_consent_notice_is_keyed_to_the_chosen_auth_kind(client, owner_env
     assert "token" in ics["consentNotices"] and "none" in ics["consentNotices"]
     assert "token" in ics["consentNotices"]["token"].lower()
     assert "no credential" in ics["consentNotices"]["none"]
-    assert (
-        ics["consentNotices"]["token"] != ics["consentNotices"]["none"]
-    ), "a token bind must never be told it needs no credential"
+    assert ics["consentNotices"]["token"] != ics["consentNotices"]["none"], (
+        "a token bind must never be told it needs no credential"
+    )
     caldav = providers["caldav"]
     assert "app-password" in caldav["consentNotices"]
 
@@ -598,9 +583,7 @@ def _remote_event(uid: str, *, categories: tuple[str, ...] = (), **kwargs) -> Ca
 @pytest.mark.asyncio
 async def test_pulled_event_is_flagged_unverified_and_never_completed(data_key):
     remote_uid = f"health:clinical-event:{uuid4()}"
-    binding, _exam = await _make_world(
-        provider="nextcloud", auth_kind="none", direction="two-way"
-    )
+    binding, _exam = await _make_world(provider="nextcloud", auth_kind="none", direction="two-way")
     transport = FakeTransport(events=[_remote_event(remote_uid)])
     async with AsyncSessionLocal() as db:
         live = (
@@ -611,9 +594,7 @@ async def test_pulled_event_is_flagged_unverified_and_never_completed(data_key):
     assert outcome.counts.get("create-local") == 1
     async with AsyncSessionLocal() as db:
         row = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid)
-            )
+            await db.execute(select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid))
         ).scalar_one()
         metadata = dict(row.event_metadata or {})
         assert metadata.get("origin") == "calendar"
@@ -626,16 +607,12 @@ async def test_pulled_event_is_flagged_unverified_and_never_completed(data_key):
 @pytest.mark.asyncio
 async def test_second_pull_does_not_duplicate_the_record(data_key):
     remote_uid = f"health:clinical-event:{uuid4()}"
-    binding, _exam = await _make_world(
-        provider="nextcloud", auth_kind="none", direction="two-way"
-    )
+    binding, _exam = await _make_world(provider="nextcloud", auth_kind="none", direction="two-way")
     transport = FakeTransport(events=[_remote_event(remote_uid)])
     for _ in range(2):
         async with AsyncSessionLocal() as db:
             live = (
-                await db.execute(
-                    select(CalendarBinding).where(CalendarBinding.id == binding.id)
-                )
+                await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
             ).scalar_one()
             outcome = await calendar_sync.run_sync(db, live, transport=transport)
     assert outcome.ok is True
@@ -644,10 +621,10 @@ async def test_second_pull_does_not_duplicate_the_record(data_key):
     )
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid)
-            )
-        ).scalars().all()
+            (await db.execute(select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid)))
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
 
 
@@ -688,9 +665,7 @@ async def test_foreign_event_is_not_pulled_by_default(data_key):
     """The default acceptance predicate admits only ``health:`` round-trip
     uids — never the whole personal calendar."""
     foreign_uid = f"family-reunion-{uuid4().hex[:8]}"
-    binding, _exam = await _make_world(
-        provider="nextcloud", auth_kind="none", direction="two-way"
-    )
+    binding, _exam = await _make_world(provider="nextcloud", auth_kind="none", direction="two-way")
     transport = FakeTransport(events=[_remote_event(foreign_uid)])
     async with AsyncSessionLocal() as db:
         live = (
@@ -701,10 +676,14 @@ async def test_foreign_event_is_not_pulled_by_default(data_key):
     assert outcome.counts.get("create-local") is None
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.external_id == foreign_uid)
+            (
+                await db.execute(
+                    select(ClinicalEvent).where(ClinicalEvent.external_id == foreign_uid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == []
 
 
@@ -769,10 +748,10 @@ async def test_confirm_and_dismiss_are_the_tier1_surface(client, owner_env, data
         )
         await db.commit()
         row_id = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.external_id == external)
-            )
-        ).scalar_one().id
+            (await db.execute(select(ClinicalEvent).where(ClinicalEvent.external_id == external)))
+            .scalar_one()
+            .id
+        )
 
     confirmed = await client.post(
         f"/api/v1/calendar/bindings/{binding['id']}/inbound/{row_id}/confirm",
@@ -850,9 +829,7 @@ async def test_full_redaction_patch_is_consent_gated_both_ways(client, owner_env
 async def test_second_writer_over_the_same_calendar_is_refused(client, owner_env):
     owner, headers = owner_env
     patient_id = await _patient_id_for(owner)
-    first = await _api_binding(
-        client, headers, patient_id, options={"calendar_id": "primary"}
-    )
+    first = await _api_binding(client, headers, patient_id, options={"calendar_id": "primary"})
     assert first["remote_calendar_id"] == "primary"
     second = await client.post(
         "/api/v1/calendar/bindings",
@@ -1036,9 +1013,9 @@ async def test_redirect_into_a_private_address_is_refused(data_key):
             self.calls += 1
             # the pin dials the resolved IP but keeps the original Host —
             # and a private hop must never reach send at all
-            assert (
-                request.headers.get("host") == "feeds.example.com"
-            ), "the private hop must never dial"
+            assert request.headers.get("host") == "feeds.example.com", (
+                "the private hop must never dial"
+            )
             return httpx.Response(
                 302,
                 headers={"location": "http://10.0.0.9/cal.ics"},
@@ -1055,9 +1032,7 @@ async def test_redirect_into_a_private_address_is_refused(data_key):
     with patch.object(polite_http, "check_url", fake_check_url):
         async with AsyncSessionLocal() as db:
             live = (
-                await db.execute(
-                    select(CalendarBinding).where(CalendarBinding.id == binding.id)
-                )
+                await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
             ).scalar_one()
             outcome = await calendar_sync.run_sync(db, live, http=spy)
     assert outcome.ok is False
@@ -1097,9 +1072,7 @@ async def test_invalid_grant_stops_as_needs_auth_and_notifies_once(data_key, mon
     await _seed_oauth_slot(binding, expires_in_seconds=-3600)()
 
     async def rejecting_refresh(token_url, refresh_value, client_id, *, http, **kwargs):
-        raise ExtensionError(
-            "auth", "OAuth error 'invalid_grant'", status=400
-        )
+        raise ExtensionError("auth", "OAuth error 'invalid_grant'", status=400)
 
     monkeypatch.setattr("app.extensions.sdk.auth.refresh_token", rejecting_refresh)
 
@@ -1124,14 +1097,17 @@ async def test_invalid_grant_stops_as_needs_auth_and_notifies_once(data_key, mon
     assert live.consecutive_failures == 0, "a typed stop never counts as a transient streak"
     async with AsyncSessionLocal() as db:
         rows = (
-            await db.execute(
-                text(
-                    "SELECT error_code FROM calendar_sync_logs "
-                    "WHERE binding_id = CAST(:bid AS uuid)"
+            (
+                await db.execute(
+                    text(
+                        "SELECT error_code FROM calendar_sync_logs "
+                        "WHERE binding_id = CAST(:bid AS uuid)"
+                    ).bindparams(bid=binding.id)
                 )
-                .bindparams(bid=binding.id)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == ["auth"], "notify ONCE — the repeat run must not re-audit"
 
 
@@ -1141,9 +1117,7 @@ async def test_insufficient_scope_needs_a_fresh_consent(data_key, monkeypatch):
     await _seed_oauth_slot(binding, expires_in_seconds=-3600)()
 
     async def scope_rejected(token_url, refresh_value, client_id, *, http, **kwargs):
-        raise ExtensionError(
-            "auth", "OAuth error 'insufficient_scope'", status=403
-        )
+        raise ExtensionError("auth", "OAuth error 'insufficient_scope'", status=403)
 
     monkeypatch.setattr("app.extensions.sdk.auth.refresh_token", scope_rejected)
     async with AsyncSessionLocal() as db:
@@ -1164,9 +1138,7 @@ async def test_refresh_sends_the_deployment_client_secret(data_key, monkeypatch)
     monkeypatch.setenv("CALENDAR_OAUTH_CLIENT_SECRETS", '{"google": "web-app-secret-1"}')
     seen: dict[str, str | None] = {}
 
-    async def capture(
-        token_url, refresh_value, client_id, *, client_secret=None, http, **kwargs
-    ):
+    async def capture(token_url, refresh_value, client_id, *, client_secret=None, http, **kwargs):
         seen["client_secret"] = client_secret
         return {
             "access_token": "at-new",
@@ -1197,9 +1169,7 @@ async def test_transient_refresh_failures_degrade_then_fail(data_key, monkeypatc
     for _ in range(calendar_sync.FAILURE_CAP + 1):
         async with AsyncSessionLocal() as db:
             live = (
-                await db.execute(
-                    select(CalendarBinding).where(CalendarBinding.id == binding.id)
-                )
+                await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
             ).scalar_one()
             outcome = await calendar_sync.run_sync(db, live, transport=FakeTransport())
         statuses.append(outcome.status)
@@ -1218,14 +1188,18 @@ async def test_transient_refresh_failures_degrade_then_fail(data_key, monkeypatc
 async def test_migration_carries_the_laws_shape():
     async with AsyncSessionLocal() as db:
         indexes = (
-            await db.execute(
-                text(
-                    "SELECT indexname FROM pg_indexes WHERE indexname IN ("
-                    "'uq_calendar_bindings_remote_calendar', "
-                    "'uq_clinical_events_calendar_dedup')"
+            (
+                await db.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes WHERE indexname IN ("
+                        "'uq_calendar_bindings_remote_calendar', "
+                        "'uq_clinical_events_calendar_dedup')"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert set(indexes) == {
             "uq_calendar_bindings_remote_calendar",
             "uq_clinical_events_calendar_dedup",

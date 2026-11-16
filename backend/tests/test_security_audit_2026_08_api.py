@@ -52,26 +52,25 @@ async def test_restore_documents_sanitizes_filename_extension(tmp_path):
     archive.read = MagicMock(return_value=b"bytes")
 
     tenant_id = "11111111-1111-1111-1111-111111111111"
-    upload_dir = tmp_path / "uploads"
-    with (
-        patch("app.services.documents.document_service.HA_UPLOAD_DIR", upload_dir),
-        patch(
-            "app.services.documents.document_service.ALLOWED_UPLOAD_EXTENSIONS",
-            frozenset({".pdf", ".txt", ".png"}),
-        ),
+    with patch(
+        "app.services.documents.document_service.ALLOWED_UPLOAD_EXTENSIONS",
+        frozenset({".pdf", ".txt", ".png"}),
     ):
         count = await svc.restore_documents(meta, archive, tenant_id, id_remap={}, owner_id=None)
 
     assert count >= 1
-    written = list((upload_dir / tenant_id).iterdir())
-    for f in written:
-        # Every written file lives inside the tenant dir and has a safe name.
-        assert f.parent == upload_dir / tenant_id
-        assert f.name.split("/")[-1] == f.name
-        assert ".." not in f.name
-        assert "/" not in f.name
-        assert f.suffix in {".pdf", ".txt", ".png", ".bin"}
-    # The traversal name must not have escaped the tenant dir.
+    from app.storage.documents import DocumentStorage
+
+    added = [call.args[0] for call in svc.db.add.call_args_list]
+    storage = DocumentStorage()
+    for doc in added:
+        # The restored row stores a tenant-scoped key, never a path.
+        assert doc.file_path == ""
+        assert doc.object_key.startswith(f"tenants/{tenant_id}/documents/")
+        assert ".." not in doc.object_key
+        assert storage.read_key(doc.object_key) == b"bytes"
+        assert doc.object_key.rsplit(".", 1)[-1] in {"pdf", "txt", "png", "bin"}
+    # The traversal name must not have escaped any root.
     assert not (tmp_path / "pwned").exists()
     assert not (Path("/tmp") / "pwned").exists()
 
@@ -105,7 +104,7 @@ async def test_export_validates_patient_ids():
     current_user = _token(Role.USER.value, tenant, user)
 
     with patch(
-        "app.services.auth.access.check_patient_access", new_callable=AsyncMock
+        "app.services.auth.access.check_patient_export_access", new_callable=AsyncMock
     ) as mock_check:
         await _validate_patient_scoping(
             ExportScope.PATIENT, [other_patient], current_user, db=MagicMock()
@@ -126,7 +125,7 @@ async def test_export_denies_foreign_patient():
     async def deny(pid, cu, db):
         raise AuthorizationError("nope")
 
-    with patch("app.services.auth.access.check_patient_access", new=deny):
+    with patch("app.services.auth.access.check_patient_export_access", new=deny):
         with pytest.raises(AuthorizationError):
             await _validate_patient_scoping(
                 ExportScope.PATIENT,
@@ -169,8 +168,9 @@ async def test_presign_uses_tenant_scoped_fetch():
 
     src = inspect.getsource(documents.get_presigned_url_endpoint)
     assert "current_user.tenant_id" in src
-    # The fetch must pass the tenant for non-SYSTEM_ADMIN callers.
-    assert "None if current_user.role == Role.SYSTEM_ADMIN.value else current_user.tenant_id" in src
+    # The fetch must pass the tenant for every caller but an unscoped human
+    # SYSTEM_ADMIN — a scoped credential naming SYSTEM_ADMIN keeps the tenant.
+    assert "None if is_unscoped_system_admin(current_user) else current_user.tenant_id" in src
 
 
 # ---------------------------------------------------------------------------

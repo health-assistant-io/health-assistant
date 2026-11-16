@@ -15,13 +15,15 @@ enforced.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalogs import CatalogRegistry
+from app.catalogs.policy import CatalogConflict, CatalogUniqueViolation
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.schemas.user import TokenData
@@ -40,37 +42,48 @@ def _require_descriptor(type: str):
     return CatalogRegistry.get(type)
 
 
-# Catalog types whose writes are serviced outside the meta-layer. The concept
-# adapter is read-only (taxonomy/catalog merge plan AD-1 r2): all concept writes
-# flow through ``/concepts`` → ``ConceptService``. The generic catalog write
-# endpoints 405 on these types so the read-only contract is enforced server-
-# side, not just by the frontend dispatch.
-_READ_ONLY_CATALOG_TYPES = frozenset({"concept"})
-
-
-def _require_writable_descriptor(type: str):
-    """Resolve the descriptor and reject read-only catalog types on writes."""
+def _require_write_contract(type: str):
+    """Resolve the descriptor + its typed write contract."""
     descriptor = _require_descriptor(type)
-    if type in _READ_ONLY_CATALOG_TYPES:
-        raise HTTPException(
-            status_code=405,
-            detail=(
-                f"Catalog type '{type}' is read-only via /catalogs. "
-                f"Use the /{type} endpoints directly."
-            ),
-        )
+    if descriptor.write is None:  # pragma: no cover - every registered type has one
+        raise HTTPException(status_code=405, detail=f"Catalog type '{type}' has no write contract.")
     return descriptor
+
+
+def _validate_payload(schema, payload: dict[str, Any]):
+    """Validate a raw body against the type's write schema.
+
+    Unknown or system-owned fields (``scope``, ``tenant_id``, ``seed_key``,
+    ``created_by``, ...) are rejected with a typed 422 — never silently
+    dropped (the retired ``_writable``-as-validation behavior).
+    """
+    from pydantic import ValidationError
+
+    try:
+        return schema.model_validate(payload)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=exc.errors(include_url=False, include_context=False),
+        ) from None
 
 
 @router.get("")
 async def list_catalog_types(
     current_user: TokenData = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """List every registered catalog type with its UI metadata.
+    """List every registered catalog type with its UI + write metadata.
 
     Drives the left rail of the ``/admin/catalogs`` workspace — no hardcoded
     nav. Returns ``{"types": [{"type", "ui": {...}, "has_concept_link",
-    "edge_endpoint_type", "search_columns"}, ...]}``.
+    "edge_endpoint_type", "search_columns", "write": {...}}, ...]}``.
+
+    The ``write`` block is derived from the type's :class:`CatalogWriteContract`
+    (``create_fields``/``update_fields`` = the Pydantic schema fields,
+    ``supports_promote``). It is the single source of truth for write-path
+    clients: a body key outside these lists is rejected 422 by the generic
+    routes (``extra="forbid"``), so callers filter their payloads to exactly
+    these fields.
     """
     return {
         "types": [
@@ -85,6 +98,11 @@ async def list_catalog_types(
                 "has_concept_link": d.has_concept_link,
                 "edge_endpoint_type": d.edge_endpoint_type.value,
                 "search_columns": list(d.search_columns),
+                "write": {
+                    "create_fields": sorted(d.write.create_schema.model_fields),
+                    "update_fields": sorted(d.write.update_schema.model_fields),
+                    "supports_promote": d.write.supports_promote,
+                },
             }
             for d in CatalogRegistry.all()
         ]
@@ -321,17 +339,24 @@ async def create_catalog_item(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Create a catalog item. The scope is derived from the creator's role
-    (SYSTEM_ADMIN→system, ADMIN/MANAGER→tenant, USER→user) — any authenticated
-    role may create (plan §1.2).
+    """Create a catalog item through the type's ONE write contract (ADR 0055 D5).
 
-    The payload is a generic dict; the adapter mass-assignment-guards it
-    against read-only/system fields. Domain-specific rich create logic (e.g.
-    biomarker unit-symbol resolution, medication AI enrichment) stays on the
-    domain endpoints.
+    The raw body is validated against the descriptor's typed create schema
+    (``extra="forbid"`` — unknown/system-owned fields → 422), then dispatched
+    to the same service function the domain routes call. The scope is derived
+    from the creator's role (SYSTEM_ADMIN→system, ADMIN/MANAGER→tenant,
+    USER→user; concepts follow ConceptService's curated-taxonomy RBAC).
     """
-    descriptor = _require_writable_descriptor(type)
-    return await descriptor.service.create(db, current_user, payload)
+    descriptor = _require_write_contract(type)
+    data = _validate_payload(descriptor.write.create_schema, payload)
+    try:
+        return await descriptor.service.create(db, current_user, data)
+    except CatalogUniqueViolation:
+        raise  # global handler → 409 (must win over the ValueError mapping below)
+    except ValueError as exc:
+        # Domain-value errors (e.g. unknown biomarker state/unit slug) — the
+        # same status the domain routes return for the same failure.
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.put("/{type}/{item_id}")
@@ -342,14 +367,20 @@ async def update_catalog_item(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Update one catalog item. Scope + ownership enforced in the adapter
-    (creator OR ADMIN for user-scope; ADMIN/MANAGER for tenant; SYSTEM_ADMIN
-    for system); raises :class:`~app.catalogs.policy.CatalogPermissionDenied`
-    (→ 403) on insufficient role. Returns 404 when the item is missing or
-    outside the caller's scope.
+    """Update one catalog item through the type's ONE write contract.
+
+    Scope + ownership enforced in the write service
+    (:class:`~app.catalogs.policy.CatalogPermissionDenied` → 403). Returns 404
+    when the item is missing or outside the caller's scope.
     """
-    descriptor = _require_writable_descriptor(type)
-    item = await descriptor.service.update(db, current_user, item_id, payload)
+    descriptor = _require_write_contract(type)
+    data = _validate_payload(descriptor.write.update_schema, payload)
+    try:
+        item = await descriptor.service.update(db, current_user, item_id, data)
+    except CatalogUniqueViolation:
+        raise  # global handler → 409
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     if item is None:
         raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return item
@@ -362,40 +393,60 @@ async def delete_catalog_item(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Delete one catalog item (scope + ownership enforced in the adapter)."""
-    descriptor = _require_writable_descriptor(type)
-    deleted = await descriptor.service.delete(db, current_user, item_id)
+    """Delete one catalog item (scope + ownership enforced in the write
+    service; concepts retire-or-soft-delete via ConceptService)."""
+    descriptor = _require_write_contract(type)
+    try:
+        deleted = await descriptor.service.delete(db, current_user, item_id)
+    except CatalogUniqueViolation:
+        raise  # global handler → 409
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     if not deleted:
         raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return {"status": "success", "message": f"{type} item deleted"}
+
+
+class CatalogPromoteRequest(BaseModel):
+    """Body of ``POST /catalogs/{type}/{id}/promote``."""
+
+    scope: Literal["system", "tenant", "user"]
+
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/{type}/{item_id}/promote")
 async def promote_catalog_item(
     type: str,
     item_id: UUID,
-    payload: dict[str, Any],
+    payload: CatalogPromoteRequest,
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Transition a catalog item's scope (plan §1.3).
 
-    Body: ``{"scope": "tenant" | "system" | "user"}``. Role-gated:
-    user↔tenant requires ADMIN/MANAGER; any transition involving system
-    requires SYSTEM_ADMIN. On promote-to-system the ``tenant_id`` is cleared
-    (canonical); on demote-to-tenant it is set to the actor's tenant.
+    Role-gated: user↔tenant requires ADMIN/MANAGER; any transition involving
+    system requires SYSTEM_ADMIN. On promote-to-system the ``tenant_id`` is
+    cleared (canonical); on demote-to-tenant it is set to the actor's tenant.
+    A slug duplicate at the target tier → 409.
     """
-    descriptor = _require_writable_descriptor(type)
-    target = (payload or {}).get("scope")
-    if not target:
-        raise HTTPException(status_code=400, detail="body must include 'scope'")
-    try:
-        item = await descriptor.service.promote_scope(db, current_user, item_id, target)
-    except ValueError:
-        raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
-            status_code=400,
-            detail=f"invalid scope '{target}'. Use: system | tenant | user",
+    descriptor = _require_write_contract(type)
+    if not descriptor.write.supports_promote:
+        # Concepts derive scope from tenant_id at create; there is no tier
+        # transition in ConceptService to route through.
+        raise HTTPException(
+            status_code=405,
+            detail=(
+                f"Catalog type '{type}' has no scope transition. "
+                "Create the item at the target scope instead."
+            ),
         )
+    try:
+        item = await descriptor.service.promote_scope(db, current_user, item_id, payload.scope)
+    except (CatalogConflict, CatalogUniqueViolation):
+        raise  # global handlers → 409
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     if item is None:
         raise HTTPException(status_code=404, detail=f"{type} item '{item_id}' not found")
     return item

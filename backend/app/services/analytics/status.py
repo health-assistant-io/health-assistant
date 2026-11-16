@@ -36,11 +36,6 @@ async def _get_observation_status(
     # could be exactly at the bound (still normal) or beyond it (abnormal).
     # Rather than guess, fall through to the explicit reference-range
     # comparison in step 2 which has the raw value + bounds to decide.
-    if getattr(obs, "relative_score", None) is not None and 0.0 < obs.relative_score < 1.0:
-        return "Normal"
-        # score at boundary (0.0 or 1.0) — defer to the range check below.
-
-    # 2. Use provided ranges or fallback to parsing FHIR reference_range
     status = "Normal"
     try:
         num_val = float(val)
@@ -53,6 +48,17 @@ async def _get_observation_status(
             if ref_range and isinstance(ref_range, list) and len(ref_range) > 0:
                 low = ref_range[0].get("low", {}).get("value")
                 high = ref_range[0].get("high", {}).get("value")
+
+        # The interior-score fast path is valid only when the score is
+        # unambiguous: both bounds present (two-sided) or neither bound known
+        # (score is the only signal). A one-sided range is stored with a 0.5
+        # relative score by contract, so treating that as "inside" would flag
+        # "< 10 / value 15" Normal — exactly one bound must go to the range
+        # comparison below.
+        score = getattr(obs, "relative_score", None)
+        if score is not None and 0.0 < score < 1.0 and ((low is None) == (high is None)):
+            return "Normal"
+        # score at boundary (0.0 or 1.0) — defer to the range check below.
 
         if low is not None and num_val < float(low):
             status = "Low"

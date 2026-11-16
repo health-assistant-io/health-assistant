@@ -15,6 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalogs.policy import CatalogUniqueViolation
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import (
@@ -31,6 +32,7 @@ from app.schemas.concept import (
     NeighborResponse,
 )
 from app.schemas.user import TokenData
+from app.services.catalog import catalog_write_service
 from app.services.catalog.concept_service import ConceptService
 
 router = APIRouter(prefix="/concepts", tags=["Concepts"])
@@ -115,54 +117,19 @@ async def create_concept(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a concept. Global (tenant_scoped=False) requires SYSTEM_ADMIN.
+    """Create a concept via the unified write contract.
 
-    Accepts ``kinds: [...]`` (preferred) or a single ``kind: "..."``; at least
-    one kind must be supplied.
+    Global (tenant_scoped=False) requires SYSTEM_ADMIN; duplicate slug → 409;
+    invalid kinds → 422 (validated by the schema). The same service the
+    generic ``POST /catalogs/concept`` route calls.
     """
-    svc = ConceptService(db)
-    resolved_kinds: list[ConceptKind] = []
-    for k in body.kinds:
-        try:
-            resolved_kinds.append(ConceptKind(k))
-        except ValueError:
-            raise HTTPException(400, f"Invalid kind '{k}'")
-    if body.kind is not None:
-        try:
-            single_kind = ConceptKind(body.kind)
-        except ValueError:
-            raise HTTPException(400, f"Invalid kind '{body.kind}'")
-        if single_kind not in resolved_kinds:
-            resolved_kinds.append(single_kind)
-    if not resolved_kinds:
-        raise HTTPException(400, "at least one kind is required")
-
-    tenant_id = current_user.tenant_id if body.tenant_scoped else None
     try:
-        concept = await svc.create_concept(
-            slug=body.slug,
-            name=body.name,
-            kinds=resolved_kinds,
-            tenant_id=tenant_id,
-            role=current_user.role,
-            description=body.description,
-            parent_id=body.parent_id,
-            coding_system=body.coding_system,
-            code=body.code,
-            aliases=body.aliases,
-            icon=body.icon,
-            color=body.color,
-            display_order=body.display_order,
-            meta_data=body.meta_data,
-            created_by=current_user.user_id,
-            actor=current_user,
-        )
-        await db.commit()
-    except PermissionError as exc:
-        raise HTTPException(403, str(exc))
+        data = await catalog_write_service.create_concept(db, current_user, body)
+    except CatalogUniqueViolation as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    return ConceptResponse.model_validate(concept)
+    return data
 
 
 @router.get("/{concept_id}", response_model=ConceptResponse)
@@ -186,32 +153,22 @@ async def update_concept(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a concept's mutable fields (RBAC enforced in service)."""
-    svc = ConceptService(db)
-    fields = body.model_dump(exclude_unset=True)
-    if "status" in fields and isinstance(fields.get("status"), str):
-        from app.models.enums import ConceptStatus
-
-        try:
-            fields["status"] = ConceptStatus(fields["status"])
-        except ValueError:
-            raise HTTPException(400, f"Invalid status '{fields['status']}'")
-
+    """Update a concept's mutable fields (RBAC enforced in ConceptService,
+    via the unified write contract)."""
     try:
-        concept = await svc.update_concept(
-            concept_id,
-            current_user.tenant_id,
-            current_user.role,
-            actor=current_user,
-            **fields,
-        )
-        await db.commit()
+        data = await catalog_write_service.update_concept(db, current_user, concept_id, body)
+    except CatalogUniqueViolation as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except PermissionError as exc:
         raise HTTPException(403, str(exc))
     except ValueError as exc:
-        raise HTTPException(404 if "not found" in str(exc).lower() else 400, str(exc))
-    await db.refresh(concept)
-    return ConceptResponse.model_validate(concept)
+        # The typed not-found path (ConceptNotFoundError) resolves to `None`
+        # in the write contract; this maps the remaining domain value errors
+        # (bogus parent reference, immutable slug) to 400.
+        raise HTTPException(400, str(exc)) from None
+    if data is None:
+        raise HTTPException(404, "Concept not found")
+    return data
 
 
 @router.delete("/{concept_id}", status_code=204)
@@ -226,19 +183,14 @@ async def delete_concept(
     to ``retired``); an edge-less concept is also soft-deleted (``deleted_at``
     set). Both are reversible via ``POST /{concept_id}/restore``.
     """
-    svc = ConceptService(db)
     try:
-        await svc.delete_concept(
-            concept_id,
-            current_user.tenant_id,
-            current_user.role,
-            actor=current_user,
-        )
-        await db.commit()
+        deleted = await catalog_write_service.delete_concept(db, current_user, concept_id)
     except PermissionError as exc:
         raise HTTPException(403, str(exc))
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+    if not deleted:
+        raise HTTPException(404, "Concept not found")
 
 
 @router.post("/{concept_id}/restore", response_model=ConceptResponse)

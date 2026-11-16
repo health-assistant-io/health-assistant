@@ -44,6 +44,88 @@ describe('filterNavByRole', () => {
     const forUser = filterNavByRole(MAIN_NAV, 'USER');
     expect(forUser.some((i) => i.path === '/administration')).toBe(false);
   });
+
+  // --- permission gating (the /me/access mirror, ADR 0054) ---
+
+  const can = (permission: string) =>
+    ({
+      user: false,
+      'user:read': false,
+      'user:invite': true,
+      'tenant:read': true,
+      'tenant:manage': false,
+      'settings:read': true,
+      'integration:manage': false,
+      'patient:read': true,
+      'clinical:read': true,
+      'catalog:read': true,
+    })[permission] ?? false;
+
+  it('hides permission-gated sub-items when the caller holds none of them', () => {
+    // A MANAGER-shaped `can`: holds settings/patient/clinical reads, no
+    // user:read, no integration:manage.
+    const manager = filterNavByRole(MAIN_NAV, 'MANAGER', can).find(
+      (i) => i.path === '/administration',
+    );
+    const paths = manager?.subItems?.map((s) => s.path) ?? [];
+    // The matrix outcomes: MANAGER loses the user directory and the
+    // OAuth-client management; the tenant settings stay.
+    expect(paths).not.toContain('/admin/tenant/users');
+    expect(paths).not.toContain('/admin/tenant/oauth-clients');
+    expect(paths).toContain('/admin/tenant/settings');
+    expect(paths).not.toContain('/patients'); // roles gate unchanged
+  });
+
+  it('keeps ADMIN surfaces when the caller holds the permissions', () => {
+    const adminCan = (permission: string) =>
+      ['user:read', 'integration:manage', 'settings:read', 'patient:read', 'clinical:read'].includes(
+        permission,
+      );
+    const admin = filterNavByRole(MAIN_NAV, 'ADMIN', adminCan).find(
+      (i) => i.path === '/administration',
+    );
+    const paths = admin?.subItems?.map((s) => s.path) ?? [];
+    expect(paths).toContain('/admin/tenant/users');
+    expect(paths).toContain('/admin/tenant/oauth-clients');
+    expect(paths).toContain('/admin/tenant/settings');
+    expect(paths).toContain('/patients');
+  });
+
+  it('exposes the Access management leaf behind patient:grant / settings:read', () => {
+    const bothCan = (permission: string) =>
+      ['patient:grant', 'settings:read'].includes(permission);
+    const withBoth = filterNavByRole(MAIN_NAV, 'MANAGER', bothCan)
+      .find((i) => i.path === '/administration');
+    expect(withBoth?.subItems?.map((s) => s.path)).toContain('/admin/tenant/access');
+
+    const neitherCan = () => false;
+    const without = filterNavByRole(MAIN_NAV, 'MANAGER', neitherCan)
+      .find((i) => i.path === '/administration');
+    // Every leaf gated off drops the whole group (existing contract).
+    expect(without).toBeUndefined();
+
+    // Roles gate: USER never sees the admin surface even with patient:grant.
+    const userCan = () => true;
+    expect(
+      filterNavByRole(MAIN_NAV, 'USER', userCan).some((i) => i.path === '/administration'),
+    ).toBe(false);
+  });
+
+  it('ignores permission gating when no can predicate is supplied', () => {
+    // Roles-only behavior (the old contract) must stay intact for callers
+    // that have not hydrated the mirror yet.
+    const manager = filterNavByRole(MAIN_NAV, 'MANAGER').find(
+      (i) => i.path === '/administration',
+    );
+    expect(manager?.subItems?.map((s) => s.path)).toContain('/admin/tenant/oauth-clients');
+  });
+
+  it('hides the whole group when permission filtering empties it', () => {
+    const nothingCan = () => false;
+    expect(
+      filterNavByRole(MAIN_NAV, 'ADMIN', nothingCan).some((i) => i.path === '/administration'),
+    ).toBe(false);
+  });
 });
 
 describe('resolveActiveNavId', () => {

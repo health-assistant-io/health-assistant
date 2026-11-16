@@ -120,7 +120,6 @@ async def define_anatomy_graph(llm, user_input: str, context: dict[str, Any]) ->
 
     Guidelines:
     - The `slug` must be globally unique, kebab-case (e.g., 'left-ventricle').
-    - `is_custom` should be true.
     - Ensure all `source_slug` and `target_slug` in the edges exist in the nodes you provide, OR refer to major known systems (like 'heart', 'brain', 'cardiovascular-system').
     - Be highly accurate with relation types (PART_OF, BRANCH_OF, DRAINS_INTO, etc.).
     {dedup_block}"""

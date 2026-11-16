@@ -85,9 +85,7 @@ async def binding():
 
     async with AsyncSessionLocal() as db:
         yield (
-            await db.execute(
-                select(CalendarBinding).where(CalendarBinding.id == binding_id)
-            )
+            await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding_id))
         ).scalar_one()
 
 
@@ -106,13 +104,9 @@ def data_key(monkeypatch):
 async def test_sealed_payload_is_ciphertext_and_reads_back(binding, data_key):
     binding.auth_kind = "app-password"
     async with AsyncSessionLocal() as db:
-        stored = await db.execute(
-            select(CalendarBinding).where(CalendarBinding.id == binding.id)
-        )
+        stored = await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
         live = stored.scalar_one()
-        row = await creds.set_secret(
-            db, live, {"password": "app-pass-xyz", "username": "ilia"}
-        )
+        row = await creds.set_secret(db, live, {"password": "app-pass-xyz", "username": "ilia"})
         await db.commit()
         assert row.kid
         assert "app-pass-xyz" not in row.sealed_blob

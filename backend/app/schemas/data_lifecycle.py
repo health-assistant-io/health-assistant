@@ -27,6 +27,14 @@ class ErasureRequestCreate(BaseModel):
     subject_id: UUID
     dry_run: bool = True
     export_before_erase: bool = False
+    password: str | None = Field(
+        None,
+        description=(
+            "Required for a non-dry self-erasure (subject_type=user, "
+            "subject_id=the caller) — the same re-authentication as "
+            "DELETE /users/me."
+        ),
+    )
 
 
 class ErasureReportResponse(BaseModel):

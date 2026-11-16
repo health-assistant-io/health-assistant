@@ -379,10 +379,9 @@ def _transport_url(options: dict[str, Any], secret: dict[str, Any], key: str) ->
         if not sanitized:
             return sealed
         sealed_parts, row_parts = urlsplit(str(sealed)), urlsplit(str(sanitized))
-        same_address = (
-            sealed_parts.hostname == row_parts.hostname
-            and (sealed_parts.path or "/") == (row_parts.path or "/")
-        )
+        same_address = sealed_parts.hostname == row_parts.hostname and (
+            sealed_parts.path or "/"
+        ) == (row_parts.path or "/")
         if same_address:
             return sealed
     return str(sanitized) if sanitized else None
@@ -436,9 +435,7 @@ def _window(now: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
-async def _load_projections(
-    db: AsyncSession, binding: Any, now: datetime
-) -> list[Projection]:
+async def _load_projections(db: AsyncSession, binding: Any, now: datetime) -> list[Projection]:
     """Load this binding's patient records and map them (host-owned mapping)."""
     window_start, window_end = _window(now)
     day_start: date = (window_start - timedelta(days=1)).date()
@@ -446,18 +443,21 @@ async def _load_projections(
     projections: list[Projection] = []
 
     exams = (
-        await db.execute(
-            select(ExaminationModel)
-            .where(
-                ExaminationModel.tenant_id == binding.tenant_id,
-                ExaminationModel.patient_id == binding.patient_id,
-                ExaminationModel.deleted_at.is_(None),
-                ExaminationModel.examination_date.isnot(None),
-                ExaminationModel.examination_date >= day_start,
-                ExaminationModel.examination_date <= day_end,
+        (
+            await db.execute(
+                select(ExaminationModel).where(
+                    ExaminationModel.tenant_id == binding.tenant_id,
+                    ExaminationModel.patient_id == binding.patient_id,
+                    ExaminationModel.deleted_at.is_(None),
+                    ExaminationModel.examination_date.isnot(None),
+                    ExaminationModel.examination_date >= day_start,
+                    ExaminationModel.examination_date <= day_end,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for exam in exams:
         organization_name = None
         if "organization" in exam.__dict__ and exam.organization is not None:
@@ -475,26 +475,29 @@ async def _load_projections(
             projections.append(mapped)
 
     events = (
-        await db.execute(
-            select(ClinicalEvent)
-            .where(
-                ClinicalEvent.tenant_id == binding.tenant_id,
-                ClinicalEvent.patient_id == binding.patient_id,
-                ClinicalEvent.deleted_at.is_(None),
-                ClinicalEvent.onset_date.isnot(None),
-                ClinicalEvent.onset_date >= window_start,
-                ClinicalEvent.onset_date <= window_end,
-                # Inbound (calendar-origin) records are NOT projections:
-                # they entered from a provider and are unverified (C3) —
-                # pushing them back out under a health: uid would round-trip
-                # untrusted text into the calendar.
-                or_(
-                    ClinicalEvent.event_metadata["origin"].astext.is_(None),
-                    ClinicalEvent.event_metadata["origin"].astext != "calendar",
-                ),
+        (
+            await db.execute(
+                select(ClinicalEvent).where(
+                    ClinicalEvent.tenant_id == binding.tenant_id,
+                    ClinicalEvent.patient_id == binding.patient_id,
+                    ClinicalEvent.deleted_at.is_(None),
+                    ClinicalEvent.onset_date.isnot(None),
+                    ClinicalEvent.onset_date >= window_start,
+                    ClinicalEvent.onset_date <= window_end,
+                    # Inbound (calendar-origin) records are NOT projections:
+                    # they entered from a provider and are unverified (C3) —
+                    # pushing them back out under a health: uid would round-trip
+                    # untrusted text into the calendar.
+                    or_(
+                        ClinicalEvent.event_metadata["origin"].astext.is_(None),
+                        ClinicalEvent.event_metadata["origin"].astext != "calendar",
+                    ),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for event_row in events:
         type_name = None
         if "type_entity" in event_row.__dict__ and event_row.type_entity is not None:
@@ -504,9 +507,7 @@ async def _load_projections(
             projections.append(mapped)
 
     projections.extend(await _load_pulled_projections(db, binding, window_start, window_end))
-    projections.extend(
-        await _load_occurrence_projections(db, binding, window_start, window_end)
-    )
+    projections.extend(await _load_occurrence_projections(db, binding, window_start, window_end))
 
     return projections
 
@@ -524,20 +525,23 @@ async def _load_pulled_projections(
     only what the pull stored — never remote-only fields.
     """
     rows = (
-        await db.execute(
-            select(ClinicalEvent)
-            .where(
-                ClinicalEvent.tenant_id == binding.tenant_id,
-                ClinicalEvent.patient_id == binding.patient_id,
-                ClinicalEvent.deleted_at.is_(None),
-                ClinicalEvent.external_id.isnot(None),
-                ClinicalEvent.source_integration_id.is_(None),
-                ClinicalEvent.event_metadata["origin"].astext == "calendar",
-                ClinicalEvent.onset_date >= window_start,
-                ClinicalEvent.onset_date <= window_end,
+        (
+            await db.execute(
+                select(ClinicalEvent).where(
+                    ClinicalEvent.tenant_id == binding.tenant_id,
+                    ClinicalEvent.patient_id == binding.patient_id,
+                    ClinicalEvent.deleted_at.is_(None),
+                    ClinicalEvent.external_id.isnot(None),
+                    ClinicalEvent.source_integration_id.is_(None),
+                    ClinicalEvent.event_metadata["origin"].astext == "calendar",
+                    ClinicalEvent.onset_date >= window_start,
+                    ClinicalEvent.onset_date <= window_end,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     projections: list[Projection] = []
     for row in rows:
         event = _pulled_event(row)
@@ -574,18 +578,22 @@ async def _load_occurrence_projections(
     db: AsyncSession, binding: Any, window_start: datetime, window_end: datetime
 ) -> list[Projection]:
     occ_rows = (
-        await db.execute(
-            select(ClinicalEventOccurrence)
-            .join(ClinicalEvent, ClinicalEventOccurrence.event_id == ClinicalEvent.id)
-            .where(
-                ClinicalEvent.tenant_id == binding.tenant_id,
-                ClinicalEvent.patient_id == binding.patient_id,
-                ClinicalEvent.deleted_at.is_(None),
-                ClinicalEventOccurrence.occurred_at >= window_start,
-                ClinicalEventOccurrence.occurred_at <= window_end,
+        (
+            await db.execute(
+                select(ClinicalEventOccurrence)
+                .join(ClinicalEvent, ClinicalEventOccurrence.event_id == ClinicalEvent.id)
+                .where(
+                    ClinicalEvent.tenant_id == binding.tenant_id,
+                    ClinicalEvent.patient_id == binding.patient_id,
+                    ClinicalEvent.deleted_at.is_(None),
+                    ClinicalEventOccurrence.occurred_at >= window_start,
+                    ClinicalEventOccurrence.occurred_at <= window_end,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     projections = []
     for occurrence in occ_rows:
         mapped = occurrence_event(occurrence, redaction=binding.redaction)
@@ -596,10 +604,14 @@ async def _load_occurrence_projections(
 
 async def _load_links(db: AsyncSession, binding: Any) -> list[EventLink]:
     rows = (
-        await db.execute(
-            select(CalendarEventLink).where(CalendarEventLink.binding_id == binding.id)
+        (
+            await db.execute(
+                select(CalendarEventLink).where(CalendarEventLink.binding_id == binding.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         EventLink(
             local_id=str(row.local_id),
@@ -685,9 +697,7 @@ async def _list_remote(
     return events, next_sync_token
 
 
-async def _changed_since(
-    transport: CalendarTransport, cursor: str
-) -> tuple[bool, str | None]:
+async def _changed_since(transport: CalendarTransport, cursor: str) -> tuple[bool, str | None]:
     """Has anything changed since ``cursor``? (M4 — the safe delta form.)
 
     A delta listing returns only CHANGED events, so it must never be used as
@@ -697,9 +707,7 @@ async def _changed_since(
     cursor -> dropped, never a failure.
     """
     try:
-        page = await transport.list_events(
-            datetime.now(UTC), datetime.now(UTC), sync_token=cursor
-        )
+        page = await transport.list_events(datetime.now(UTC), datetime.now(UTC), sync_token=cursor)
     except CalendarError:
         return True, None
     changed = bool(page.events) or page.next_page_token is not None
@@ -795,15 +803,19 @@ async def _create_local_event(
       index is the concurrent-race backstop.
     """
     existing = (
-        await db.execute(
-            select(ClinicalEvent).where(
-                ClinicalEvent.tenant_id == binding.tenant_id,
-                ClinicalEvent.patient_id == binding.patient_id,
-                ClinicalEvent.source_integration_id.is_(None),
-                ClinicalEvent.external_id == event.uid,
+        (
+            await db.execute(
+                select(ClinicalEvent).where(
+                    ClinicalEvent.tenant_id == binding.tenant_id,
+                    ClinicalEvent.patient_id == binding.patient_id,
+                    ClinicalEvent.source_integration_id.is_(None),
+                    ClinicalEvent.external_id == event.uid,
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None:
         return existing
 
@@ -859,9 +871,7 @@ async def _apply_plan(
             assert action.event is not None  # reconcile always carries it
             written = await transport.put_event(action.event)
             projection = projections_by_uid.get(action.uid)
-            local_id = (
-                str(projection.local_id) if projection is not None else str(action.local_id)
-            )
+            local_id = str(projection.local_id) if projection is not None else str(action.local_id)
             await _upsert_link(
                 db,
                 binding,
@@ -917,9 +927,7 @@ async def _apply_plan(
             assert action.event is not None
             local_id = action.local_id
             if local_id is None:
-                counts["skipped-locally-owned"] = (
-                    counts.get("skipped-locally-owned", 0) + 1
-                )
+                counts["skipped-locally-owned"] = counts.get("skipped-locally-owned", 0) + 1
                 continue
             row = (
                 await db.execute(
@@ -1197,9 +1205,7 @@ async def run_sync(
 
         # ---- remote listing (cursor round-trips; stale token → full resync) ----
         try:
-            remote_events, next_sync_token = await _list_remote(
-                transport, window_start, window_end
-            )
+            remote_events, next_sync_token = await _list_remote(transport, window_start, window_end)
         except CalendarError as exc:
             # `not-ready` is the contract's code for a dead cursor (E13).
             if exc.code in ("not-ready", "stale-token") and sync_cursor:
@@ -1360,9 +1366,7 @@ async def test_binding(
         if transport is None:
             transport = build_transport(binding, http, auth, secret=secret)
         now = _now()
-        await _list_remote(
-            transport, now - timedelta(days=7), now + timedelta(days=30), None
-        )
+        await _list_remote(transport, now - timedelta(days=7), now + timedelta(days=30), None)
         binding.status = "ok"
         binding.last_error = None
         binding.consecutive_failures = 0

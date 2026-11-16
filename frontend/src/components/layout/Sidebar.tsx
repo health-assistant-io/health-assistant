@@ -12,6 +12,7 @@ import CreateMenu from '../ui/CreateMenu';
 import { Breadcrumbs } from '../ui/Breadcrumbs';
 import { SidebarFooter } from './SidebarFooter';
 import { MAIN_NAV, filterNavByRole, resolveActiveNavId, resolveSubPath } from '../../config/mainNav';
+import { useAccessStore } from '../../store/slices/accessSlice';
 
 function Sidebar() {
   const { t } = useTranslation();
@@ -28,12 +29,13 @@ function Sidebar() {
   const toggleSidebarCollapse = useUIStore(state => state.toggleSidebarCollapse);
   const { currentPatient } = usePatientStore();
   const user = useAuthStore(state => state.user);
+  const can = useAccessStore((s) => s.can);
   const theme = useSettingsStore(state => state.theme);
   const pageHeaderConfig = useUIStore(state => state.pageHeaderConfig);
 
   const items = useMemo<NavItem[]>(
     () =>
-      filterNavByRole(MAIN_NAV, user?.role).map((item) => ({
+      filterNavByRole(MAIN_NAV, user?.role, can).map((item) => ({
         id: item.path,
         label: t(item.labelKey),
         icon: item.icon,
@@ -43,7 +45,7 @@ function Sidebar() {
           section: sub.section ? t(sub.section) : undefined,
         })),
       })),
-    [t, user?.role, currentPatient?.id],
+    [t, user?.role, can, currentPatient?.id],
   );
 
   const activeId = resolveActiveNavId(
@@ -51,6 +53,7 @@ function Sidebar() {
     location.search,
     currentPatient?.id,
     user?.role,
+    can,
   );
 
   return (

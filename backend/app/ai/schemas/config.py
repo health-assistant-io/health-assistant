@@ -364,7 +364,9 @@ class AIUsageTaskRow(BaseModel):
     errors: int
     prompt_tokens: int
     completion_tokens: int
-    cost_micros: int
+    cost_micros: int | None
+    priced_calls: int = 0
+    unpriced_calls: int = 0
     avg_latency_ms: float | None = None
     last_call_at: datetime | None = None
 
@@ -376,7 +378,9 @@ class AIUsageResponse(BaseModel):
     since: datetime
     total_calls: int
     total_errors: int
-    total_cost_micros: int
+    total_cost_micros: int | None
+    priced_calls: int = 0
+    unpriced_calls: int = 0
     tasks: list[AIUsageTaskRow]
 
 

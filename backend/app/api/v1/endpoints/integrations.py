@@ -13,7 +13,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import tenant_context
 from app.core.database import get_db
+from app.core.errors import DomainError
 from app.core.rate_limit import (
     enforce_integration_rate_limit,
     rate_limit,
@@ -34,6 +36,14 @@ from app.services.integration.system_integration_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Domain status → the proxy's stable machine code (service refusals).
+_DOMAIN_ERROR_CODES = {
+    400: "validation",
+    403: "forbidden",
+    404: "not_found",
+    409: "conflict",
+}
 
 # Machine-route request body cap (audit 2026-08 M4). The tokenless webhook +
 # api-proxy routes previously read unbounded bodies into RAM; 25 MiB matches
@@ -575,6 +585,16 @@ async def submit_config_flow(
         db.add(new_integration)
         integration_row = new_integration
 
+    try:
+        from app.services.integration.integration_principals import (
+            provision_for_integration,
+        )
+
+        await provision_for_integration(db, integration_row, actor_id=current_user.user_id)
+    except Exception:
+        await db.rollback()
+        raise
+
     # Credential-store slots (plan 8 W1): flows that collect a secret for
     # ``integration_credentials`` seal it here — after the instance row
     # exists (the cipher context is the instance id) and before commit, so
@@ -678,14 +698,17 @@ async def oauth_callback(
     domain: str,
     state: str,
     code: str,
+    current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     _rl=Depends(rate_limit("integration_oauth_callback", max_requests=30, window=60)),
 ):
-    """OAuth callback (browser redirect, unauthenticated — secured by `state`).
+    """OAuth callback (browser redirect) — secured by state **and session**.
 
-    Consumes the one-shot ``state`` (which carries ``integration_id``), exchanges
-    the code for tokens via the provider, persists them encrypted, flips the
-    instance to ACTIVE, then 302-redirects to the SPA ``/connected`` landing.
+    Consumes the one-shot ``state`` (which carries ``integration_id``),
+    verifies the completing browser is the principal that started the flow
+    (ADR-0052 §3 / E12 — same rule as the calendar lane), exchanges the code
+    for tokens via the provider, persists them encrypted, flips the instance
+    to ACTIVE, then 302-redirects to the SPA ``/connected`` landing.
     """
     provider, _ = await _load_enabled_oauth(domain, db)
 
@@ -703,6 +726,15 @@ async def oauth_callback(
         user_uuid = UUID(user_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Malformed identifiers in OAuth state.")
+
+    # Bind-CSRF: the browser completing the flow must be the user who
+    # started it. The state was already burned above, so a refused flow
+    # cannot be replayed.
+    if str(current_user.user_id) != str(user_uuid):
+        raise HTTPException(
+            status_code=403,
+            detail="This OAuth state belongs to a different session — flow refused.",
+        )
 
     stmt = select(UserIntegration).where(
         UserIntegration.id == integration_uuid, UserIntegration.user_id == user_uuid
@@ -816,7 +848,7 @@ async def get_integration_details(
                         "id": str(b.id),
                         "name": b.name,
                         "slug": b.slug,
-                        "category": b.category,
+                        "class_concept_name": b.class_concept.name if b.class_concept else None,
                         "last_seen": last_seen.isoformat() if last_seen else None,
                     }
                 )
@@ -1069,6 +1101,26 @@ async def remove_integration(
             await provider.revoke(existing)
         except Exception:
             logger.warning("Token revocation failed for %s — deleting anyway", integration_id)
+
+    from app.services.integration.integration_principals import (
+        active_principal_for_integration,
+        delete_for_integration,
+        revoke_principal,
+    )
+
+    principal = await active_principal_for_integration(db, existing)
+    if principal is not None:
+        await revoke_principal(
+            db,
+            tenant_id=existing.tenant_id,
+            principal_id=principal.id,
+            actor_id=current_user.user_id,
+        )
+    # The principal row cannot survive the connector: the FK would null
+    # ``integration_id`` on an ``integration``-kind row, which the check
+    # constraint refuses. Revocation above is the audited accountability
+    # record; the row itself goes with the connector.
+    await delete_for_integration(db, tenant_id=existing.tenant_id, integration_id=existing.id)
 
     await db.delete(existing)
     await db.commit()
@@ -1710,14 +1762,18 @@ async def integration_webhook(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid integration ID format")
 
-    stmt = select(UserIntegration).where(
-        UserIntegration.id == integration_uuid,
-        UserIntegration.provider == domain,
-        UserIntegration.status == IntegrationStatus.ACTIVE,
-    )
-    result = await db.execute(stmt)
-    integration = result.scalar_one_or_none()
-
+    # Bootstrap lookup (ADR 0054 Phase 5): the tokenless-HMAC machine
+    # principal has no session — the integration id resolves system-side,
+    # then the webhook runs under the integration's tenant once the
+    # signature below proves possession of its secret.
+    with tenant_context.system_scope("integrations:webhook"):
+        stmt = select(UserIntegration).where(
+            UserIntegration.id == integration_uuid,
+            UserIntegration.provider == domain,
+            UserIntegration.status == IntegrationStatus.ACTIVE,
+        )
+        result = await db.execute(stmt)
+        integration = result.scalar_one_or_none()
     if not integration:
         raise HTTPException(status_code=404, detail="Active integration not found")
 
@@ -1776,6 +1832,10 @@ async def integration_webhook(
             integration_id,
         )
         raise HTTPException(status_code=401, detail="Webhook signature verification failed")
+
+    # The secret is proven — the rest of the webhook runs under the
+    # integration's tenant (ADR 0054 Phase 5).
+    tenant_context.set_tenant(integration.tenant_id, actor=f"integration:{integration.id}")
 
     from app.models.enums import IntegrationSyncErrorClass
     from app.models.user_integration import IntegrationSyncLog
@@ -2029,13 +2089,16 @@ async def integration_api_proxy(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid integration ID format")
 
-    stmt = select(UserIntegration).where(
-        UserIntegration.id == integration_uuid,
-        UserIntegration.provider == domain,
-        UserIntegration.status == IntegrationStatus.ACTIVE,
-    )
-    result = await db.execute(stmt)
-    integration = result.scalar_one_or_none()
+    # Bootstrap lookup (ADR 0054 Phase 5): machine principal — see the
+    # webhook route; the id resolves system-side, the signature proves it.
+    with tenant_context.system_scope("integrations:api"):
+        stmt = select(UserIntegration).where(
+            UserIntegration.id == integration_uuid,
+            UserIntegration.provider == domain,
+            UserIntegration.status == IntegrationStatus.ACTIVE,
+        )
+        result = await db.execute(stmt)
+        integration = result.scalar_one_or_none()
 
     if not integration:
         raise HTTPException(status_code=404, detail="Active integration not found")
@@ -2095,6 +2158,10 @@ async def integration_api_proxy(
             detail="Invalid or missing X-Api-Signature.",
         )
 
+    # The secret is proven — the rest of the proxy runs under the
+    # integration's tenant (ADR 0054 Phase 5).
+    tenant_context.set_tenant(integration.tenant_id, actor=f"integration:{integration.id}")
+
     # AI budget: every ``ai/*`` path plus the provider-declared AI paths that
     # lack the prefix (the bridge's ``/map`` — audit 2026-10-18 F19) draws
     # from one per-instance bucket, so a signed client cannot bypass the
@@ -2142,6 +2209,19 @@ async def integration_api_proxy(
         raise HTTPException(
             status_code=e.status_code,
             detail={"code": e.code, "message": str(e)},
+        )
+    except DomainError as e:
+        # Service-layer refusals (a scoped credential without the write
+        # permission, a hidden row, a conflict) are the client's 4xx — not an
+        # internal failure. The domain detail is authored for the client and
+        # safe to echo; mapping it here keeps a service-seam refusal from
+        # surfacing as the generic ``io`` 500.
+        raise HTTPException(
+            status_code=e.status_code,
+            detail={
+                "code": _DOMAIN_ERROR_CODES.get(e.status_code, "io"),
+                "message": e.detail,
+            },
         )
     except ValueError:
         # Bare ValueErrors are the service-level validation class. Answer the typed

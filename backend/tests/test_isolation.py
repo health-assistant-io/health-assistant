@@ -19,6 +19,11 @@ class MockStandardUser:
 async def test_list_patients_isolation_for_standard_user(
     mock_list_patients, async_client: AsyncClient
 ):
+    """``GET /patients`` is ``patient:read @ own`` (ADR 0054): the gate lets
+    the USER principal through and the handler enforces the isolation — the
+    service is called with the caller's grant-aware reachable set (own +
+    active grants), never the raw ``user_id`` query parameter, so the
+    tenant-wide directory is unreachable even though the route answers 200."""
     from app.core.security import get_current_user
     from app.main import app
 
@@ -26,14 +31,17 @@ async def test_list_patients_isolation_for_standard_user(
     app.dependency_overrides[get_current_user] = lambda: user
     mock_list_patients.return_value = {"items": [], "total": 0}
 
-    # Standard user requests their patients
-    response = await async_client.get("/api/v1/patients")
+    # A USER cannot widen the answer by passing another member's user_id —
+    # the handler ignores the query parameter and filters by the reachable set.
+    other_user_id = uuid.uuid4()
+    response = await async_client.get("/api/v1/patients", params={"user_id": str(other_user_id)})
 
     assert response.status_code == 200
-
-    # Verify that list_patients was called WITH the user's ID string to enforce isolation
-    _args, kwargs = mock_list_patients.call_args
-    assert str(kwargs.get("user_id")) == str(user.user_id)
+    _, kwargs = mock_list_patients.call_args
+    assert isinstance(kwargs["patient_ids"], set)
+    assert "user_id" not in kwargs
+    assert all(pid != other_user_id for pid in kwargs["patient_ids"])
+    assert mock_list_patients.call_args.args[0] == user.tenant_id
 
     app.dependency_overrides = {}
 

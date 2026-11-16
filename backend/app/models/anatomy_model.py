@@ -47,7 +47,6 @@ class AnatomyStructure(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, Time
     standard_code = Column(String(50), nullable=True)  # The actual ID, e.g., FMA_7088
 
     description = Column(Text, nullable=True)
-    is_custom = Column(Boolean, default=False, nullable=False)
 
     # Optional rendering hints for the 2D anatomy explorer / body map.
     # Holds e.g. {"map": {"marker": {"view": "front", "cx": 102, "cy": 115,
@@ -93,7 +92,6 @@ class AnatomyStructure(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, Time
             "standard_system": self.standard_system.value if self.standard_system else None,
             "standard_code": self.standard_code,
             "description": self.description,
-            "is_custom": self.is_custom,
             "display": self.display,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
@@ -102,10 +100,10 @@ class AnatomyStructure(Base, UUIDMixin, SystemScopeTenantMixin, AuditMixin, Time
 
 
 class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
-    """A body figure view stored as a raster image on disk (replaces the old
+    """A body figure view stored as a raster image object (replaces the old
     hardcoded SVG atlas). Each row is one view of one figure (e.g.
-    ``man-front``, ``woman-back``) backed by a WebP/PNG image file under
-    ``HA_UPLOAD_DIR/anatomy_figures/``. Markers on
+    ``man-front``, ``woman-back``) backed by a WebP/PNG object under
+    ``tenants/system/anatomy/``. Markers on
     ``AnatomyStructure.display.map.markers`` are keyed by ``figure.slug``,
     normalized 0-1 relative to the image's pixel dimensions. Managed by
     SYSTEM_ADMIN.
@@ -120,10 +118,13 @@ class AnatomyFigure(Base, UUIDMixin, TimestampMixin):
     # Free-form view tag: "front", "back", "left", "right", or custom — not an
     # enum so admins can invent new aspects without code changes.
     view_key = Column(String(50), nullable=False)
-    # Relative path to the image under HA_UPLOAD_DIR (e.g. "anatomy_figures/man-front.webp").
+    # Server-generated object key (``tenants/system/anatomy/...``). A
+    # pre-contract row may still hold the old ``anatomy_figures/...`` path;
+    # the dual-read branch resolves it while the local volume is mounted.
     image_path = Column(String(500), nullable=True)
-    # Original uncropped source image (for re-cropping in the editor). NULL when
-    # no crop was applied (the image_path IS the original) or when discarded.
+    # Original uncropped source object key (for re-cropping in the editor).
+    # NULL when no crop was applied (the image_path IS the original) or when
+    # discarded.
     source_image_path = Column(String(500), nullable=True)
     # Image pixel dimensions — markers resolve against these (normalized 0-1).
     width = Column(Integer, nullable=True)

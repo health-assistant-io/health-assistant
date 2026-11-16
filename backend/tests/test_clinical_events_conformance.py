@@ -27,7 +27,7 @@ from app.models.clinical_event import (
     EventExaminationLink,
 )
 from app.models.concept_model import Concept
-from app.models.enums import ClinicalEventStatus, CodingSystem, Gender
+from app.models.enums import CatalogScope, ClinicalEventStatus, CodingSystem, Gender
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
@@ -114,7 +114,15 @@ async def _make_type(tenant_id, *, slug, name, category_concept_id=None, **templ
 async def _make_concept(tenant_id, *, slug, name):
     cid = uuid.uuid4()
     async with AsyncSessionLocal() as db:
-        db.add(Concept(id=cid, slug=slug, name=name, tenant_id=tenant_id))
+        db.add(
+            Concept(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
+                id=cid,
+                slug=slug,
+                name=name,
+                tenant_id=tenant_id,
+            )
+        )
         await db.commit()
     return cid
 
@@ -707,7 +715,6 @@ async def _make_anatomy(tenant_id, *, slug, name):
                 tenant_id=tenant_id,
                 slug=slug,
                 name=name,
-                is_custom=True,
             )
         )
         await db.commit()
@@ -1010,6 +1017,7 @@ async def _make_biomarker(tenant_id, *, slug, name):
     async with AsyncSessionLocal() as db:
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=bid,
                 tenant_id=tenant_id,
                 slug=slug,

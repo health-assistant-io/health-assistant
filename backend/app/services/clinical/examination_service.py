@@ -48,13 +48,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.authz.permissions import Permission
 from app.core.errors import NotFoundError
 from app.models.doctor_model import DoctorModel
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.examination import ExaminationCreate
 from app.schemas.user import TokenData
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import check_patient_access, require_principal_permission
 
 # NOTE: ``app.ai.pipeline.service.MedicalProcessingService`` is imported
 # lazily inside :func:`create_examination` to avoid a circular import
@@ -98,8 +100,11 @@ async def create_examination(
     ``category_concept`` eager-loaded so callers (endpoint or engine) get
     a consistent shape — matches the previous endpoint behavior.
     """
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
     if payload.patient_id is not None:
-        await check_patient_access(payload.patient_id, current_user, db)
+        await check_patient_access(
+            payload.patient_id, current_user, db, required=GrantPermission.WRITE
+        )
 
     # Validate patient exists — the original endpoint did this before the
     # service-layer refactor; preserved as a defensive NotFoundError so a
@@ -288,3 +293,52 @@ async def _reload_with_relationships(db: AsyncSession, examination_id: UUID) -> 
         )
     )
     return result.scalar_one()
+
+
+async def delete_examination(
+    db: AsyncSession,
+    examination: ExaminationModel,
+    current_user: TokenData,
+    *,
+    trigger_cumulative: bool = False,
+) -> None:
+    """Delete one examination and its dependent rows (the canonical seam).
+
+    Takes the request actor so a scoped credential that reaches this write
+    through a path without the route gate (the bridge proxy) is refused
+    before any side effect — uploads, documents or rows. Linked documents go
+    through :func:`document_service.delete_document` with the same actor, so
+    their file/row cleanup carries the same guard. ``trigger_cumulative`` is
+    off by default: the examination is going away.
+    """
+    from sqlalchemy import delete
+
+    from app.models.document_model import DocumentModel
+    from app.models.fhir import Medication, Observation
+    from app.services.documents.document_service import delete_document
+
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+
+    documents = (
+        (
+            await db.execute(
+                select(DocumentModel).where(DocumentModel.examination_id == examination.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for document in documents:
+        await delete_document(
+            str(document.id), db, current_user, trigger_cumulative=trigger_cumulative
+        )
+
+    await db.execute(delete(Observation).where(Observation.examination_id == examination.id))
+    await db.execute(delete(Medication).where(Medication.examination_id == examination.id))
+    # The dependent rows are already gone (documents were removed one by one,
+    # observations/medications by the statements above). Reload the
+    # collections so the ORM cascade sees an empty set instead of trying to
+    # re-delete stale instances.
+    await db.refresh(examination, attribute_names=["documents", "medications", "observations"])
+    await db.delete(examination)
+    await db.commit()

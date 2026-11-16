@@ -1,3 +1,5 @@
+import os
+import re
 from logging.config import fileConfig
 
 from alembic.script import ScriptDirectory
@@ -15,24 +17,25 @@ config = context.config
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers stays False: the test suite runs alembic
+    # in-process (tests/conftest.py), and the default True marks every
+    # logger the app already created as disabled — silently dropping
+    # records pytest's caplog needs.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here for 'autogenerate' support
 target_metadata = Base.metadata
 
 
 def get_url():
-    """Get database URL from config or environment"""
-    # Use the Pydantic settings model which correctly handles fallbacks,
-    # environment variables, and Docker network hostnames.
-    from app.core.config import settings
+    """Get database URL from config or environment.
 
-    if not settings.HA_DATABASE_URL:
-        raise ValueError("HA_DATABASE_URL must be defined to run migrations")
+    ADR-0064 tri-state policy lives in ``app.core.db_conninfo.migrations_url``:
+    the owner DSN wins; ``HA_DB_SPLIT=1`` without it refuses (fail closed).
+    """
+    from app.core.db_conninfo import migrations_url
 
-    url = settings.HA_DATABASE_URL
-    # Convert async URL to sync for Alembic
-    return url.replace("+asyncpg", "+psycopg2")
+    return migrations_url().replace("+asyncpg", "+psycopg2")
 
 
 def run_migrations_offline() -> None:
@@ -116,6 +119,59 @@ def run_migrations(connection: Connection) -> None:
 
     with context.begin_transaction():
         context.run_migrations()
+    record_migration_head(connection)
+
+
+def record_migration_head(connection: Connection) -> None:
+    """Publish the DB's migration position into an app-readable marker
+    (plan 64 §1.4).
+
+    ``0016_rls`` REVOKEs ``alembic_version`` from the runtime role — the
+    app can never read the version row, so ``/ready`` cannot check "DB at
+    head" against it. Every alembic run (the compose ``migrate`` job, the
+    install/update scripts, the test harness) runs as the OWNER and ends
+    by writing the DB's reached revision into ``migration_state`` (single
+    row, SELECT granted to the app role). The readiness probe compares
+    that marker with the head compiled into this release: a half-migrated
+    database, a stale migrate, or a fresh database with no migrate yet all
+    fail the check instead of taking traffic. A database downgraded to
+    base drops the marker — ``downgrade base`` leaves an empty database.
+
+    The marker records what the DATABASE reports (``alembic_version``),
+    not the chain's head: the probe's comparison against the release's
+    head is what turns "behind" into a 503.
+    """
+    position = None
+    if inspect(connection).has_table("alembic_version"):
+        # At base the version table itself is dropped — an empty database.
+        position = connection.execute(text("SELECT version_num FROM alembic_version")).first()
+    if position is None or not position[0]:
+        connection.execute(text("DROP TABLE IF EXISTS migration_state"))
+        connection.commit()
+        return
+    head = str(position[0])
+    app_role = os.environ.get("POSTGRES_APP_USER", "neuronection_health_app")
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS migration_state ("
+            "id INT PRIMARY KEY DEFAULT 1 CHECK (id = 1), "
+            "head_revision TEXT NOT NULL, "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        )
+    )
+    # The role name comes from deployment config, not user input — validate
+    # it to a safe identifier shape before interpolation.
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", app_role):
+        raise ValueError(f"POSTGRES_APP_USER {app_role!r} is not a valid role name")
+    connection.execute(text(f"GRANT SELECT ON migration_state TO {app_role}"))
+    connection.execute(
+        text(
+            "INSERT INTO migration_state (id, head_revision) VALUES (1, :head) "
+            "ON CONFLICT (id) DO UPDATE SET head_revision = :head, updated_at = now()"
+        ),
+        {"head": head},
+    )
+    connection.commit()
 
 
 def run_migrations_online() -> None:

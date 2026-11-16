@@ -5,7 +5,7 @@ describe('catalogFacetRegistry', () => {
   it('returns the biomarker facets for "biomarker"', () => {
     const facets = getFacetsForType('biomarker');
     expect(facets.map((f) => f.id)).toEqual([
-      'category',
+      'class_concept_name',
       'is_telemetry',
       'coding_system',
       'unit',
@@ -13,7 +13,7 @@ describe('catalogFacetRegistry', () => {
   });
 
   it('returns allergy facets for "allergy"', () => {
-    expect(getFacetsForType('allergy').map((f) => f.id)).toEqual(['category', 'is_custom']);
+    expect(getFacetsForType('allergy').map((f) => f.id)).toEqual(['category', 'scope']);
   });
 
   it('returns vaccine facets for "vaccine"', () => {
@@ -21,7 +21,7 @@ describe('catalogFacetRegistry', () => {
   });
 
   it('returns medication facets for "medication"', () => {
-    expect(getFacetsForType('medication').map((f) => f.id)).toEqual(['is_custom']);
+    expect(getFacetsForType('medication').map((f) => f.id)).toEqual(['scope']);
   });
 
   it('returns concept facets for "concept"', () => {

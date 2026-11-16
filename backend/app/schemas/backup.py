@@ -38,7 +38,6 @@ class ExportJobResponse(BaseModel):
     status: JobStatus
     progress: int = 0
     patient_ids: list[str] | None = None
-    file_path: str | None = None
     file_size_bytes: int | None = None
     resource_counts: dict[str, int] | None = None
     smart_scope: str | None = None

@@ -4,8 +4,8 @@
  * Mirrors `MedicationForm`'s architecture (self-contained header + scrollable
  * body + footer) but composes the shared primitives instead of reimplementing
  * them:
- *  - `CatalogItemPicker` (single, type `vaccine`) — pick the vaccine definition.
- *  - "Define new" inline panel — create a vaccine catalog entry on the fly.
+ *  - `CatalogItemPicker` (single, type `vaccine`) — pick the vaccine definition
+ *    (definitions are created from the browse dialog, `allowCreate`).
  *  - `InstanceField` (single, type `examination`) — link the visit the dose was
  *    administered at (the `examination_id` FK).
  *  - `DatePicker` for the administered date.
@@ -14,14 +14,10 @@
  * The form owns the draft; `onSubmit` receives a typed payload and the caller
  * (`VaccinationModal`) performs the API writes + link persistence.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Syringe,
   Search,
-  Plus,
-  Save,
-  X,
   Calendar,
   Info,
   Hash,
@@ -35,6 +31,7 @@ import { InstanceField } from '../instances/InstanceField';
 import '../../features/instances/adapters'; // registers instance adapters
 import { DatePicker } from '../ui/DatePicker';
 import { LinksSection } from '../ai/hitl/LinksSection';
+import { RecordFormFooter } from '../records/RecordFormFooter';
 import { IMMUNIZATION_STATUSES } from './vaccinationStatus';
 
 /** AI/HITL prefill shape (ready for a future `propose_vaccine` tool). */
@@ -42,7 +39,6 @@ export interface VaccinationFormPrefill {
   name?: string;
   catalog_id?: string | null;
   matched?: boolean;
-  is_new?: boolean;
   administered_at?: string;
   dose_number?: string;
   lot_number?: string;
@@ -64,10 +60,6 @@ export interface VaccinationFormPayload {
   manufacturer?: string | null;
   location?: string | null;
   note?: string | null;
-  /** When true, the caller creates a vaccine catalog entry from the name
-   *  (disease association is handled in the catalog via LinksSection/PREVENTS,
-   *  not as free text here). */
-  is_new_catalog_entry?: boolean;
   /** Graph links for the catalog entry; persisted by the caller. */
   links: CatalogSelection[];
 }
@@ -78,9 +70,15 @@ export interface VaccinationFormProps {
   prefill?: VaccinationFormPrefill;
   onSubmit: (payload: VaccinationFormPayload) => Promise<void>;
   onCancel?: () => void;
-  showHeader?: boolean;
+  /** Owned by the shell; set as the native `<form id>` so a footer button
+   *  outside the form (the popup) can submit it through the `form` attribute. */
+  formId?: string;
+  /** Inline footer for the HITL chat-card placement; the popup shell renders
+   *  its own `RecordFormFooter` instead. */
   showActions?: boolean;
   submitLabel?: string;
+  /** Reports validity/loading to the shell so its footer can drive Save. */
+  onStateChange?: (state: { canSubmit: boolean; loading: boolean }) => void;
 }
 
 const EMPTY = {
@@ -100,14 +98,13 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
   prefill,
   onSubmit,
   onCancel,
-  showHeader = true,
+  formId,
   showActions = true,
   submitLabel,
+  onStateChange,
 }) => {
   const { t } = useTranslation();
   const [selection, setSelection] = useState<CatalogSelection[]>([]);
-  const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newName, setNewName] = useState('');
   const [links, setLinks] = useState<CatalogSelection[]>([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ ...EMPTY });
@@ -128,7 +125,6 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
         examination_id: immunization.examination_id ?? '',
       });
       setSelection([]);
-      setIsAddingNew(false);
       setLinks([]);
     } else if (prefill) {
       setForm((prev) => ({
@@ -149,29 +145,24 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
         setSelection([
           { type: 'vaccine', id: prefill.catalog_id, label: prefill.name ?? '' },
         ]);
-        setIsAddingNew(false);
-      } else if (prefill.is_new) {
-        setSelection([]);
-        setNewName(prefill.name ?? '');
-        setIsAddingNew(true);
       }
     } else {
       setForm({ ...EMPTY });
       setSelection([]);
-      setIsAddingNew(false);
-      setNewName('');
       setLinks([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [immunization, prefill]);
 
-  const canSubmit =
-    !loading &&
-    (immunization
-      ? true
-      : isAddingNew
-        ? newName.trim().length > 0
-        : selection.length > 0);
+  const canSubmit = !loading && (Boolean(immunization) || selection.length > 0);
+
+  const reportedState = useRef('');
+  useEffect(() => {
+    const key = `${canSubmit}|${loading}`;
+    if (reportedState.current === key) return;
+    reportedState.current = key;
+    onStateChange?.({ canSubmit, loading });
+  }, [canSubmit, loading, onStateChange]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -183,8 +174,8 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
         vaccine_code: immunization
           ? immunization.vaccine_code
           : {
-              text: isAddingNew ? newName : (selection[0]?.label ?? newName),
-              catalog_id: isAddingNew ? null : (selection[0]?.id ?? null),
+              text: selection[0]?.label ?? '',
+              catalog_id: selection[0]?.id ?? null,
             },
         examination_id: form.examination_id || null,
         administered_at: form.administered_at
@@ -195,7 +186,6 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
         manufacturer: form.manufacturer || null,
         location: form.location || null,
         note: form.note || null,
-        is_new_catalog_entry: !immunization && isAddingNew,
         links,
       };
       await onSubmit(payload);
@@ -207,40 +197,12 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {showHeader && (
-        <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between shrink-0 bg-white dark:bg-dark-surface">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-rose-50 dark:bg-rose-900/30 rounded-xl">
-              <Syringe className="w-6 h-6 text-rose-600 dark:text-rose-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text">
-                {immunization
-                  ? t('vaccinations.modal.update_title')
-                  : t('vaccinations.modal.new_title')}
-              </h2>
-              <p className="text-xs text-gray-500 dark:text-dark-muted font-medium uppercase tracking-widest mt-0.5">
-                {t('vaccinations.modal.subtitle')}
-              </p>
-            </div>
-          </div>
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-400" />
-            </button>
-          )}
-        </div>
-      )}
-
-      <form
-        onSubmit={handleSubmit}
-        className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar"
-      >
+    <form
+      id={formId}
+      onSubmit={handleSubmit}
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <div className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar">
         {/* Vaccine selection — only when creating */}
         {!immunization && (
           <div className="space-y-4">
@@ -249,71 +211,16 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
               {t('vaccinations.modal.select_from_catalog')}
             </label>
 
-            {!isAddingNew && (
-              <>
-                <CatalogItemPicker
-                  mode="single"
-                  allowedTypes={['vaccine']}
-                  value={selection}
-                  onChange={setSelection}
-                  placeholder={t('vaccinations.modal.search_placeholder')}
-                  displayMode="cards"
-                  block
-                />
-                {selection.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingNew(true)}
-                    className="w-full text-left px-6 py-5 bg-rose-50/50 dark:bg-rose-900/10 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center space-x-3 text-rose-600 rounded-2xl border border-dashed border-rose-200"
-                  >
-                    <div className="p-2 bg-rose-600 text-white rounded-xl">
-                      <Plus className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold">
-                        {t('vaccinations.modal.define_new')}
-                      </p>
-                      <p className="text-[10px] font-bold uppercase tracking-widest">
-                        {t('vaccinations.modal.add_custom')}
-                      </p>
-                    </div>
-                  </button>
-                )}
-              </>
-            )}
-
-            {isAddingNew && (
-              <div className="p-6 bg-rose-50/30 dark:bg-rose-900/10 rounded-2xl border border-rose-100/50 dark:border-rose-900/30 space-y-4 animate-in zoom-in-95">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-bold text-rose-600 uppercase tracking-widest">
-                    {t('vaccinations.modal.define_new')}
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingNew(false);
-                      setNewName('');
-                    }}
-                    className="px-3 py-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest hover:underline"
-                  >
-                    {t('medications.modal.change')}
-                  </button>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">
-                    {t('vaccinations.modal.name_label')}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={t('vaccinations.modal.name_placeholder')}
-                    className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-rose-500 outline-hidden dark:text-dark-text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-              </div>
-            )}
+            <CatalogItemPicker
+              mode="single"
+              allowedTypes={['vaccine']}
+              value={selection}
+              onChange={setSelection}
+              placeholder={t('vaccinations.modal.search_placeholder')}
+              displayMode="cards"
+              block
+              allowCreate
+            />
           </div>
         )}
 
@@ -468,42 +375,26 @@ export const VaccinationForm: React.FC<VaccinationFormProps> = ({
           onChange={setLinks}
           hideWhenEmpty
         />
-      </form>
+      </div>
 
       {showActions && (
-        <div className="px-8 py-6 bg-gray-50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border flex items-center shrink-0">
-          <div className="ml-auto flex items-center space-x-4">
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                disabled={loading}
-                className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-dark-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {t('common.cancel')}
-              </button>
-            )}
-            <button
-              onClick={handleSubmit}
-              disabled={!canSubmit}
-              className="px-8 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-rose-500/20 transition-all flex items-center space-x-2"
-            >
-              {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              <span>
-                {submitLabel ??
-                  (immunization
-                    ? t('vaccinations.modal.update_record')
-                    : t('vaccinations.modal.save'))}
-              </span>
-            </button>
-          </div>
+        <div className="flex shrink-0 items-center border-t border-gray-50 bg-gray-50 px-8 py-6 dark:border-dark-border dark:bg-dark-bg/50">
+          <RecordFormFooter
+            formId={formId}
+            canSubmit={canSubmit}
+            loading={loading}
+            submitLabel={
+              submitLabel ??
+              (immunization
+                ? t('vaccinations.modal.update_record')
+                : t('vaccinations.modal.save'))
+            }
+            cancelLabel={t('common.cancel')}
+            onCancel={onCancel}
+          />
         </div>
       )}
-    </div>
+    </form>
   );
 };
 

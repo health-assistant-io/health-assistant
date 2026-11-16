@@ -156,11 +156,20 @@ async def test_update_patient_allergy_merges_code_partial(monkeypatch):
     fake_db.commit = AsyncMock()
     fake_db.refresh = AsyncMock()
 
+    from app.schemas.user import TokenData
+
+    actor = TokenData(
+        user_id=uuid4(),
+        tenant_id=existing.tenant_id,
+        role="ADMIN",
+        sub=str(uuid4()),
+    )
+
     original_catalog_id = existing.code["catalog_id"]
     await allergy_service.update_patient_allergy(
         fake_db,
         existing.id,
-        existing.tenant_id,
+        actor,
         AllergyIntoleranceUpdate(code={"text": "Peanuts (updated)"}),
     )
 

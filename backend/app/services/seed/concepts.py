@@ -1,56 +1,130 @@
-"""Concept, disease and concept-edge seeding."""
+"""Concept, disease and concept-edge seeding (identity upsert — ADR 0055).
 
-import json
+Concepts and diseases carry an immutable qualified ``seed_key``
+(``concept:<kebab-key>``); the row id is the deterministic ``uuid5``
+derived from it, so a rename never forks the row and cross-file parent
+references resolve by id. Upsert is by id, then ``seed_key``
+(``tenant_id IS NULL``) — the ``slug`` stays display data and is never a
+join key.
+
+``concept_edges.json`` items keep readable endpoint refs
+(``src_slug``/``dst_slug`` with an optional ``src_type``/``dst_type``);
+each ref resolves **by identity** — the uuid5 of its qualified seed key
+(``concept:<slug>``, ``medication:<kebab-key>``, ``anatomy:<slug>``,
+``biomarker:<slug>``, ``vaccine:<slug>``), never by name — and every
+curated edge gets the deterministic id
+``uuid5(SEED_KEY_NAMESPACE, "concept-edge:<src_type>:<src_key>/"
+"<dst_type>:<dst_key>/<relation>")``.
+
+Transaction ownership (ADR 0056): the seeders take a required session and
+parsed pack items, flush, and never commit — the caller owns the
+transaction.
+"""
+
 import logging
+import uuid
+from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
+from app.core.catalog_identity import SEED_KEY_NAMESPACE, seed_key_uuid
+from app.core.seed_pack.bundled import bundled_stage_items
 from app.services.catalog.concept_service import sync_concept_kind_tags
+from app.services.seed.identity import (
+    apply_values,
+    find_identity_row,
+    identity_id,
+    item_label,
+    require_seed_key,
+)
 
 logger = logging.getLogger(__name__)
 
+_JSON_FIELDS = ("aliases", "icon", "meta_data")
+_OPTIONAL_FIELDS = ("description", "coding_system", "code", "icon", "color")
+
+
+def _seed_edge_identity(
+    src_ref: tuple[str, str], dst_ref: tuple[str, str], relation: str
+) -> uuid.UUID:
+    """The deterministic id of a curated concept edge.
+
+    ``uuid5(SEED_KEY_NAMESPACE, "concept-edge:<src_type>:<src_key>/"
+    "<dst_type>:<dst_key>/<relation>")`` — derived from the readable refs,
+    so a reseed recreates the same edge id (computed directly rather than
+    through ``seed_key_uuid``: relation labels are uppercase and the seed
+    key body charset is lowercase-only).
+    """
+    src_type, src_key = src_ref
+    dst_type, dst_key = dst_ref
+    return uuid.uuid5(
+        SEED_KEY_NAMESPACE,
+        f"concept-edge:{src_type}:{src_key}/{dst_type}:{dst_key}/{relation}",
+    )
+
+
+def concept_values(item: dict[str, Any], parent_id: Any) -> dict[str, Any]:
+    """The mutable fields of a concept seed item (parent only when resolved)."""
+    values: dict[str, Any] = {"name": item["name"]}
+    for field in _OPTIONAL_FIELDS:
+        if item.get(field) is not None:
+            values[field] = item[field]
+    if item.get("aliases") is not None:
+        values["aliases"] = item["aliases"]
+    if item.get("meta_data") is not None:
+        values["meta_data"] = item["meta_data"]
+    if item.get("display_order") is not None:
+        values["display_order"] = item["display_order"]
+    # A parent reference is never nullified on re-seed: an unresolved
+    # parent keeps the previously-resolved value (same rule as anatomy).
+    if parent_id is not None:
+        values["parent_id"] = parent_id
+    return values
+
 
 class ConceptSeedMixin:
-    async def seed_concepts(self, session: AsyncSession = None) -> dict[str, int]:
-        """Sync the unified concept taxonomy from JSON to Database."""
+    async def seed_concepts(
+        self,
+        session: AsyncSession,
+        items: Sequence[dict[str, Any]] | None = None,
+    ) -> dict[str, int]:
+        """Sync the unified concept taxonomy from the bundled (or given) items.
 
-        file_path = self.seeds_dir / "concepts.json"
-        if not file_path.exists():
-            logger.warning(f"Concepts seed file not found: {file_path}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
-
-        try:
-            with open(file_path) as f:
-                data = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load concepts seed: {e}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
-
-        if session:
-            return await self._process_concepts(session, data)
-        else:
-            async with AsyncSessionLocal() as new_session:
-                result = await self._process_concepts(new_session, data)
-                await new_session.commit()
-                return result
+        The caller owns the session and the transaction (flush only, no
+        commit).
+        """
+        if items is None:
+            items = bundled_stage_items("concepts", self.seeds_dir)
+        return await self._process_concepts(session, list(items))
 
     async def _process_concepts(
-        self, session: AsyncSession, data: list[dict[str, Any]]
+        self, session: AsyncSession, data: Sequence[dict[str, Any]]
     ) -> dict[str, int]:
         from app.models.concept_model import Concept, ConceptKindTag
         from app.models.enums import CatalogScope, ConceptKind, ConceptStatus
 
-        stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        stats = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "errors": 0}
 
         data = data if isinstance(data, list) else data.get("items", [])
         if not await self._table_exists(session, "concepts"):
             logger.error("Table 'concepts' does not exist. Skipping seeding.")
-            return {"added": 0, "updated": 0, "skipped": len(data), "errors": 0}
+            return {"added": 0, "updated": 0, "unchanged": 0, "skipped": len(data), "errors": 0}
 
         slug_to_id: dict[str, Any] = {}
+
+        async def _resolve_parent(parent_slug: str | None) -> Any:
+            if not parent_slug:
+                return None
+            if parent_slug in slug_to_id:
+                return slug_to_id[parent_slug]
+            # Parents seeded by an earlier stage/file (e.g. diseases.json)
+            # carry the same deterministic id — resolve by identity, not slug.
+            derived = seed_key_uuid("concept", parent_slug)
+            return await session.scalar(
+                select(Concept.id).where(Concept.id == derived, Concept.tenant_id.is_(None))
+            )
 
         for item in data:
             try:
@@ -61,43 +135,42 @@ class ConceptSeedMixin:
                 else:
                     kinds = [ConceptKind(item["kind"])]
                 slug = item["slug"]
+                qualified = require_seed_key(item, "concept")
+                parent_id = await _resolve_parent(item.get("parent_slug"))
+                if item.get("parent_slug") and parent_id is None:
+                    self.note_unresolved_ref(
+                        "concepts",
+                        item,
+                        f"parent_slug={item.get('parent_slug')}",
+                    )
 
-                # Slug is globally unique per tenant now (post multi-kind), so
-                # look up by slug alone — NOT (kind, slug). Filtering by kinds[0]
-                # would miss an existing concept whose kind tags were edited,
-                # then try to INSERT and hit the (slug, tenant) unique index.
-                stmt = select(Concept).where(
-                    Concept.slug == slug,
-                    Concept.tenant_id.is_(None),
+                db_concept = await find_identity_row(
+                    session, Concept, qualified, explicit_id=item.get("id")
                 )
-                result = await session.execute(stmt)
-                db_concept = result.scalar_one_or_none()
-
-                parent_id = None
-                parent_slug = item.get("parent_slug")
-                if parent_slug and parent_slug in slug_to_id:
-                    parent_id = slug_to_id[parent_slug]
 
                 if db_concept:
-                    db_concept.name = item.get("name", db_concept.name)
-                    db_concept.description = item.get("description", db_concept.description)
-                    db_concept.coding_system = item.get("coding_system", db_concept.coding_system)
-                    db_concept.code = item.get("code", db_concept.code)
-                    db_concept.aliases = item.get("aliases", db_concept.aliases)
-                    db_concept.icon = item.get("icon", db_concept.icon)
-                    db_concept.color = item.get("color", db_concept.color)
-                    db_concept.display_order = item.get("display_order", db_concept.display_order)
-                    if parent_id:
-                        db_concept.parent_id = parent_id
+                    values = concept_values(item, parent_id)
+                    json_present = tuple(f for f in _JSON_FIELDS if f in values)
+                    changed = apply_values(db_concept, values, json_present)
                     # Reconcile kind tags to the JSON's `kinds` — without this,
                     # changing a concept's kinds in the seed file and re-seeding
                     # would silently do nothing (the create path sets tags, the
                     # update path used to skip them).
-                    sync_concept_kind_tags(db_concept, kinds)
-                    stats["updated"] += 1
+                    desired_tags = {t.kind for t in (db_concept.kind_tags or [])}
+                    desired_kinds = set(kinds)
+                    tags_changed = (
+                        desired_tags != desired_kinds
+                        or db_concept.primary_kind not in desired_kinds
+                    )
+                    if tags_changed:
+                        sync_concept_kind_tags(db_concept, kinds)
+                        changed = True
+                    stats["updated" if changed else "unchanged"] += 1
                     slug_to_id[slug] = db_concept.id
                 else:
                     new_concept = Concept(
+                        id=identity_id(qualified, item.get("id")),
+                        seed_key=qualified,
                         slug=slug,
                         name=item["name"],
                         primary_kind=kinds[0],
@@ -110,6 +183,7 @@ class ConceptSeedMixin:
                         icon=item.get("icon"),
                         color=item.get("color"),
                         display_order=item.get("display_order", 0),
+                        meta_data=item.get("meta_data"),
                         parent_id=parent_id,
                         status=ConceptStatus.ACTIVE,
                     )
@@ -120,67 +194,50 @@ class ConceptSeedMixin:
                     stats["added"] += 1
                     slug_to_id[slug] = new_concept.id
             except Exception as e:
-                logger.error(f"Error seeding concept {item.get('slug')}: {e}")
+                self.note_item_error("concepts", item, e)
+                logger.error(f"Error seeding concept {item_label(item)}: {e}")
                 stats["errors"] += 1
 
         await session.flush()
         return stats
 
-    async def seed_diseases(self, session: AsyncSession = None) -> dict[str, int]:
-        """Sync disease reference concepts (``kind=disease``, ICD-10 codes) from JSON.
+    async def seed_diseases(
+        self,
+        session: AsyncSession,
+        items: Sequence[dict[str, Any]] | None = None,
+    ) -> dict[str, int]:
+        """Sync disease reference concepts (``kind=disease``, ICD-10 codes).
 
-        Diseases live as concepts — they inherit full CRUD/search/edges/FHIR for
-        free via the concept layer. This stage loads ``diseases.json`` (same
-        envelope format as ``concepts.json``) through :meth:`_process_concepts`
-        so the upsert + kind-tag reconciliation logic is shared. Must run AFTER
-        :meth:`seed_concepts` (for any parent_slug refs) and BEFORE
+        Diseases live as concepts — they inherit full CRUD/search/edges/FHIR
+        for free via the concept layer. ``items`` defaults to the bundled
+        pack's parsed diseases and flows through :meth:`_process_concepts` so
+        the identity upsert + kind-tag reconciliation logic is shared. Must
+        run AFTER :meth:`seed_concepts` (for any parent_slug refs) and BEFORE
         :meth:`seed_concept_edges` (so specialty/medication/vaccine → disease
-        edges resolve).
+        edges resolve). The caller owns the session and the transaction.
         """
-        file_path = self.seeds_dir / "diseases.json"
-        if not file_path.exists():
-            logger.warning(f"Diseases seed file not found: {file_path}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        if items is None:
+            items = bundled_stage_items("diseases", self.seeds_dir)
+        return await self._process_concepts(session, list(items))
 
-        try:
-            with open(file_path) as f:
-                data = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load diseases seed: {e}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
+    async def seed_concept_edges(
+        self,
+        session: AsyncSession,
+        items: Sequence[dict[str, Any]] | None = None,
+    ) -> dict[str, int]:
+        """Sync concept relationships (edges) from the bundled (or given) items.
 
-        if session:
-            return await self._process_concepts(session, data)
-        async with AsyncSessionLocal() as new_session:
-            result = await self._process_concepts(new_session, data)
-            await new_session.commit()
-            return result
-
-    async def seed_concept_edges(self, session: AsyncSession = None) -> dict[str, int]:
-        """Sync concept relationships (edges) from JSON to Database."""
-        file_path = self.seeds_dir / "concept_edges.json"
-        if not file_path.exists():
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
-
-        try:
-            with open(file_path) as f:
-                data = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load concept edges seed: {e}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
-
-        if session:
-            return await self._process_concept_edges(session, data)
-        else:
-            async with AsyncSessionLocal() as new_session:
-                result = await self._process_concept_edges(new_session, data)
-                await new_session.commit()
-                return result
+        The caller owns the session and the transaction (flush only, no
+        commit).
+        """
+        if items is None:
+            items = bundled_stage_items("concept_edges", self.seeds_dir)
+        return await self._process_concept_edges(session, list(items))
 
     async def _process_concept_edges(
-        self, session: AsyncSession, data: list[dict[str, Any]]
+        self, session: AsyncSession, data: Sequence[dict[str, Any]]
     ) -> dict[str, int]:
-        from app.models.concept_model import Concept, ConceptEdge
+        from app.models.concept_model import ConceptEdge
         from app.models.enums import (
             ConceptProvenance,
             ConceptRelationType,
@@ -188,65 +245,78 @@ class ConceptSeedMixin:
             EdgeEndpointType,
         )
 
-        stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        stats = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "errors": 0}
 
         data = data if isinstance(data, list) else data.get("items", [])
         if not await self._table_exists(session, "concept_edges"):
             logger.error("Table 'concept_edges' does not exist. Skipping.")
-            return {"added": 0, "updated": 0, "skipped": len(data), "errors": 0}
+            return {"added": 0, "updated": 0, "unchanged": 0, "skipped": len(data), "errors": 0}
 
-        # Resolve a slug to an endpoint {type, id} per the seed item's declared
-        # type. Defaults to "concept" so existing seed entries (which omit the
-        # type) keep working unchanged. Add a branch here to support more
-        # polymorphic endpoint tables (biomarker, examination, …).
+        # Resolve a readable seed ref to an endpoint {type, id} **by identity**:
+        # the deterministic uuid5 of the ref's qualified seed key first
+        # (``concept:<slug>``, ``medication:<kebab-key>``, …), then the
+        # ``seed_key`` column — never by name. Defaults to "concept" so
+        # existing seed entries (which omit the type) keep working unchanged.
+        # Add a branch here to support more polymorphic endpoint tables
+        # (examination, …).
         from app.models.anatomy_model import AnatomyStructure
         from app.models.biomarker_model import BiomarkerDefinition
+        from app.models.concept_model import Concept
         from app.models.fhir.medication import MedicationCatalog
         from app.models.fhir.vaccine import VaccineCatalog
 
-        async def _resolve_endpoint(slug: str, etype: str):
-            if not slug:
+        _ENDPOINT_TABLES = {
+            "concept": Concept,
+            "anatomy": AnatomyStructure,
+            "biomarker": BiomarkerDefinition,
+            "medication": MedicationCatalog,
+            "vaccine": VaccineCatalog,
+            # Exported files carry the enum tag ("immunization"), hand-written
+            # ones the readable "vaccine" — both resolve to the vaccine catalog.
+            "immunization": VaccineCatalog,
+        }
+        # The edge enum tags vaccines "immunization" (the patient-instance
+        # endpoint type); the seed-key prefix stays "vaccine:".
+        _ENDPOINT_TYPES = {
+            "concept": EdgeEndpointType.CONCEPT,
+            "anatomy": EdgeEndpointType.ANATOMY,
+            "biomarker": EdgeEndpointType.BIOMARKER,
+            "medication": EdgeEndpointType.MEDICATION,
+            "vaccine": EdgeEndpointType.IMMUNIZATION,
+            "immunization": EdgeEndpointType.IMMUNIZATION,
+        }
+
+        async def _resolve_endpoint(key: str, etype: str):
+            if not key:
                 return None
-            if etype == "concept":
-                row = await session.execute(
-                    select(Concept.id).where(Concept.slug == slug, Concept.tenant_id.is_(None))
-                )
-                eid = row.scalar_one_or_none()
-                return (EdgeEndpointType.CONCEPT, eid) if eid else None
-            if etype == "anatomy":
-                row = await session.execute(
-                    select(AnatomyStructure.id).where(AnatomyStructure.slug == slug)
-                )
-                eid = row.scalar_one_or_none()
-                return (EdgeEndpointType.ANATOMY, eid) if eid else None
-            if etype == "biomarker":
-                row = await session.execute(
-                    select(BiomarkerDefinition.id).where(BiomarkerDefinition.slug == slug)
-                )
-                eid = row.scalar_one_or_none()
-                return (EdgeEndpointType.BIOMARKER, eid) if eid else None
-            if etype == "medication":
-                # MedicationCatalog has no slug — resolve by name (case-insensitive).
-                row = await session.execute(
-                    select(MedicationCatalog.id).where(
-                        func.lower(MedicationCatalog.name) == slug.lower(),
-                        MedicationCatalog.tenant_id.is_(None),
+            model = _ENDPOINT_TABLES.get(etype)
+            endpoint_type = _ENDPOINT_TYPES.get(etype)
+            if model is None or endpoint_type is None:
+                logger.warning(f"Unknown seed endpoint type '{etype}' (key={key}); skipping.")
+                return None
+            # The identity prefix stays the readable "vaccine" for both tags —
+            # the seed key was minted as ``vaccine:<key>`` regardless of the
+            # endpoint tag the file uses.
+            identity_type = "vaccine" if etype == "immunization" else etype
+            derived = seed_key_uuid(identity_type, key)
+            eid = await session.scalar(
+                select(model.id).where(model.id == derived, model.tenant_id.is_(None))
+            )
+            if eid is None and hasattr(model, "seed_key"):
+                # A row created before the deterministic scheme keeps its id;
+                # its seed_key column is the second identity lookup. Models
+                # without the column (anatomy) resolve by the derived id only.
+                eid = await session.scalar(
+                    select(model.id).where(
+                        model.seed_key == f"{identity_type}:{key}", model.tenant_id.is_(None)
                     )
                 )
-                eid = row.scalar_one_or_none()
-                return (EdgeEndpointType.MEDICATION, eid) if eid else None
-            if etype == "vaccine":
-                # VaccineCatalog has a slug — resolve directly (global rows only).
-                row = await session.execute(
-                    select(VaccineCatalog.id).where(
-                        VaccineCatalog.slug == slug,
-                        VaccineCatalog.tenant_id.is_(None),
-                    )
+            if eid is None:
+                logger.warning(
+                    f"Seed edge endpoint {etype}:{key} resolves to no seeded row — skipped."
                 )
-                eid = row.scalar_one_or_none()
-                return (EdgeEndpointType.IMMUNIZATION, eid) if eid else None
-            logger.warning(f"Unknown seed endpoint type '{etype}' (slug={slug}); skipping.")
-            return None
+                return None
+            return (endpoint_type, eid)
 
         for item in data:
             try:
@@ -254,31 +324,48 @@ class ConceptSeedMixin:
                 dst_type = item.get("dst_type", "concept")
                 relation = ConceptRelationType(item["relation"])
 
+                src_ref = (src_type, item.get("src_slug"))
+                dst_ref = (dst_type, item.get("dst_slug"))
                 src = await _resolve_endpoint(item.get("src_slug"), src_type)
                 dst = await _resolve_endpoint(item.get("dst_slug"), dst_type)
 
                 if not src or not dst:
+                    self.note_unresolved_ref(
+                        "concept_edges",
+                        item,
+                        f"endpoints {src_type}:{item.get('src_slug')} -> "
+                        f"{dst_type}:{item.get('dst_slug')}",
+                        key=(
+                            f"concept-edge:{src_type}:{item.get('src_slug')}/"
+                            f"{dst_type}:{item.get('dst_slug')}/{relation.value}"
+                        ),
+                    )
                     stats["skipped"] += 1
                     continue
 
                 src_etype, src_id = src
                 dst_etype, dst_id = dst
 
-                existing = await session.execute(
-                    select(ConceptEdge).where(
+                # Only an APPROVED tuple short-circuits: a pending/rejected
+                # proposal between the same endpoints must not suppress the
+                # curated seed edge (mirrors the vaccine seeder).
+                existing = await session.scalar(
+                    select(ConceptEdge.id).where(
                         ConceptEdge.src_type == src_etype,
                         ConceptEdge.src_id == src_id,
                         ConceptEdge.dst_type == dst_etype,
                         ConceptEdge.dst_id == dst_id,
                         ConceptEdge.relation == relation,
+                        ConceptEdge.status == EdgeApprovalStatus.APPROVED,
                         ConceptEdge.tenant_id.is_(None),
                     )
                 )
-                if existing.scalar_one_or_none():
-                    stats["updated"] += 1
+                if existing is not None:
+                    stats["unchanged"] += 1
                     continue
 
                 edge = ConceptEdge(
+                    id=_seed_edge_identity(src_ref, dst_ref, relation.value),
                     src_type=src_etype,
                     src_id=src_id,
                     dst_type=dst_etype,
@@ -291,6 +378,7 @@ class ConceptSeedMixin:
                 session.add(edge)
                 stats["added"] += 1
             except Exception as e:
+                self.note_item_error("concept_edges", item, e)
                 logger.error(f"Error seeding concept edge {item}: {e}")
                 stats["errors"] += 1
 

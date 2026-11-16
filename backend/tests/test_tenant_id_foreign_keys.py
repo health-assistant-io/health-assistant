@@ -32,7 +32,12 @@ SET_NULL_TENANT_FKS = {"erasure_requests"}
 
 
 def _get_tenant_tables():
-    """Return {table_name: has_fk} for every table with a tenant_id column."""
+    """Return {table_name: has_fk} for every table with a tenant_id column.
+
+    Physical tables only — views (the RLS-scoped ``telemetry_*_scoped``
+    wrappers) expose columns through ``information_schema`` but are not
+    tables and carry no constraints of their own.
+    """
     sync_url = settings.HA_DATABASE_URL.replace("+asyncpg", "+psycopg2")
     engine = create_engine(sync_url)
     try:
@@ -55,8 +60,11 @@ def _get_tenant_tables():
                               AND kcu.column_name = 'tenant_id'
                         ) AS has_fk
                     FROM information_schema.columns c
+                    JOIN pg_class pc ON pc.relname = c.table_name
+                        AND pc.relnamespace = 'public'::regnamespace
                     WHERE c.column_name = 'tenant_id'
                         AND c.table_schema = 'public'
+                        AND pc.relkind = 'r'
                     ORDER BY c.table_name
                     """
                 )

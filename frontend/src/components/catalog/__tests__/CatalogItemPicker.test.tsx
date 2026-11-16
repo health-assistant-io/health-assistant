@@ -14,11 +14,13 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (k: string, dftOrOpts?: unknown) => {
-      if (typeof dftOrOpts === 'string') return dftOrOpts;
-      let s = (dftOrOpts as { defaultValue?: string })?.defaultValue ?? k;
-      const opts = (dftOrOpts ?? {}) as Record<string, unknown>;
-      for (const [key, val] of Object.entries(opts)) {
+    t: (k: string, dftOrOpts?: unknown, opts?: Record<string, unknown>) => {
+      let s =
+        typeof dftOrOpts === 'string'
+          ? dftOrOpts
+          : ((dftOrOpts as { defaultValue?: string })?.defaultValue ?? k);
+      const vars = { ...(typeof dftOrOpts === 'object' ? (dftOrOpts ?? {}) : {}), ...(opts ?? {}) };
+      for (const [key, val] of Object.entries(vars)) {
         if (key === 'defaultValue') continue;
         s = s.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), String(val));
       }
@@ -31,16 +33,40 @@ vi.mock('react-i18next', () => ({
 const searchCatalogsMock = vi.fn();
 const listCatalogItemsMock = vi.fn();
 const listCatalogTypesMock = vi.fn();
+const createCatalogItemMock = vi.fn();
 vi.mock('../../../services/catalogService', () => ({
   searchCatalogs: (...args: unknown[]) => searchCatalogsMock(...args),
   listCatalogItems: (...args: unknown[]) => listCatalogItemsMock(...args),
   listCatalogTypes: (...args: unknown[]) => listCatalogTypesMock(...args),
+  createCatalogItem: (...args: unknown[]) => createCatalogItemMock(...args),
   getRelationType: vi.fn(),
   getRelationTypes: vi.fn(async () => ({ items: [] })),
   loadRelationTypes: vi.fn(async () => undefined),
   getCatalogItem: vi.fn(),
   getCatalogGraph: vi.fn(async () => ({ nodes: [], edges: [] })),
 }));
+
+vi.mock('../../../services/biomarkerService', () => ({
+  __esModule: true,
+  default: {
+    getUnits: vi.fn().mockResolvedValue([]),
+    getStates: vi.fn().mockResolvedValue([]),
+    syncReferenceRanges: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock('../../../services/conceptEdges', () => ({
+  getLinkSchema: vi.fn().mockResolvedValue([]),
+  createLinksFor: vi.fn().mockResolvedValue([]),
+  selectionsToLinkInputs: vi.fn(() => []),
+}));
+
+vi.mock('react-toastify', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}));
+
+vi.mock('../../ui/AIAssistButton', () => ({ AIAssistButton: () => null }));
+vi.mock('../../ui/RichTextEditor', () => ({ RichTextEditor: () => <div /> }));
 
 vi.mock('../../../store/slices/authSlice', () => ({
   useAuthStore: (sel: (s: { user: { id: string } | null }) => unknown) =>
@@ -101,6 +127,12 @@ beforeEach(() => {
   listCatalogItemsMock.mockResolvedValue({
     items: [medicationItem, secondItem],
     total: 2,
+  });
+  createCatalogItemMock.mockResolvedValue({
+    id: 'm9',
+    name: 'New Med',
+    slug: 'new-med',
+    seed_key: 'medication:new-med',
   });
 });
 
@@ -234,5 +266,109 @@ describe('CatalogItemPicker browse modal', () => {
     expect(onChange).toHaveBeenCalledWith([
       { type: 'medication', id: 'm2', label: 'Ibuprofen' },
     ]);
+  });
+});
+
+describe('CatalogItemPicker browse-create (allowCreate)', () => {
+  it('renders no New action when allowCreate is off', async () => {
+    renderPicker({ mode: 'single' });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('New Medication')).not.toBeInTheDocument();
+  });
+
+  it('renders no New action in multi mode even when allowCreate is on', async () => {
+    renderPicker({ allowCreate: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('New Medication')).not.toBeInTheDocument();
+  });
+
+  it('renders no New action when the field allows more than one catalog type', async () => {
+    // Create is only offered for a SINGLE-type field — a multi-type picker
+    // has no one type to define, even in single mode with allowCreate.
+    renderPicker({
+      mode: 'single',
+      allowCreate: true,
+      allowedTypes: ['medication', 'allergy'],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText('New Medication')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('New Allergen')).not.toBeInTheDocument();
+  });
+
+  it('renders New <type> in the list header when allowCreate + single + list', async () => {
+    renderPicker({ mode: 'single', allowCreate: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Aspirin')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'New Medication' })).toBeInTheDocument();
+  });
+
+  it('renders no New action in the graph view', async () => {
+    renderPicker({ mode: 'single', allowCreate: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByTitle('Graph view'));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('button', { name: 'New Medication' })).not.toBeInTheDocument();
+  });
+
+  it('seeds the create dialog name from the browse search and selects + closes after create', async () => {
+    const onChange = renderPicker({ mode: 'single', allowCreate: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Aspirin');
+
+    fireEvent.change(within(dialog).getByRole('searchbox'), {
+      target: { value: 'new me' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New Medication' }));
+
+    // The browse search text is the draft's starting name.
+    await waitFor(() =>
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2),
+    );
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    const nameInput = within(dialogs[dialogs.length - 1] as HTMLElement).getAllByRole(
+      'textbox',
+    )[0];
+    expect(nameInput).toHaveValue('new me');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The created row (server identity) becomes the single pick, and both
+    // dialogs close.
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith([
+        { type: 'medication', id: 'm9', label: 'New Med' },
+      ]),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // No reload bump — the list page was fetched once on open.
+    expect(listCatalogItemsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the browse modal and the selection when the create dialog is cancelled', async () => {
+    const onChange = renderPicker({ mode: 'single', allowCreate: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Aspirin');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New Medication' }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(2),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1),
+    );
+
+    // The browse modal is still open and the selection is untouched.
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(within(document.querySelector('[role="dialog"]') as HTMLElement).getByText('Aspirin')).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

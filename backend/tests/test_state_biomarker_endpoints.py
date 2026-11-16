@@ -96,7 +96,7 @@ async def test_create_state_biomarker_persists_allowed_states(
     )
     # If the canonical seed isn't loaded, fall back to the test-inserted
     # state-e2e-* slugs.
-    if response.status_code != 200:
+    if response.status_code != 201:
         # Look up the actual POS/NEG slugs in the DB and retry
         from sqlalchemy import select
 
@@ -129,7 +129,7 @@ async def test_create_state_biomarker_persists_allowed_states(
             headers=auth_headers,
         )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
     data = response.json()
     assert data["value_type"] == "state"
     assert data["supports_multi_state"] is False
@@ -158,7 +158,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
     response = await async_client.post(
         "/api/v1/biomarkers/", json=create_body, headers=auth_headers
     )
-    if response.status_code != 200:
+    if response.status_code != 201:
         # Use test-seeded slugs as fallback (see prior test).
         from sqlalchemy import select
 
@@ -174,7 +174,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
         response = await async_client.post(
             "/api/v1/biomarkers/", json=create_body, headers=auth_headers
         )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
     bio_id = response.json()["id"]
     assert len(response.json()["allowed_states"]) == 1
 
@@ -183,7 +183,7 @@ async def test_patch_state_biomarker_replaces_allowed_states(
     response = await async_client.patch(
         f"/api/v1/biomarkers/{bio_id}", json=patch_body, headers=auth_headers
     )
-    if response.status_code != 200:
+    if response.status_code != 201:
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
@@ -222,7 +222,7 @@ async def test_patch_state_biomarker_rejects_telemetry_toggle(
         },
         headers=auth_headers,
     )
-    if response.status_code != 200:
+    if response.status_code != 201:
         from sqlalchemy import select
 
         async with AsyncSessionLocal() as session:
@@ -243,7 +243,7 @@ async def test_patch_state_biomarker_rejects_telemetry_toggle(
             },
             headers=auth_headers,
         )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
     bio_id = response.json()["id"]
 
     bad_patch = await async_client.patch(
@@ -279,7 +279,21 @@ async def test_post_state_biomarker_rejects_unknown_state_slug(
 @pytest.mark.asyncio
 async def test_post_quantity_biomarker_unchaged_shape(async_client: AsyncClient, auth_headers):
     """A QUANTITY biomarker POST still works exactly as before — the new fields
-    default and the response includes value_type=quantity + empty allowed_states."""
+    default and the response includes value_type=quantity + empty allowed_states.
+    The unit symbol must resolve (unknown symbols are a 400, never a silent
+    drop), so the test seeds its unit first."""
+    from sqlalchemy import select
+
+    from app.models.biomarker_model import Unit
+
+    async with AsyncSessionLocal() as session:
+        exists = (
+            await session.execute(select(Unit).where(Unit.symbol == "mg/dL"))
+        ).scalar_one_or_none()
+        if exists is None:
+            session.add(Unit(symbol="mg/dL", name="mg/dL", quantity_type="OTHER"))
+            await session.commit()
+
     response = await async_client.post(
         "/api/v1/biomarkers/",
         json={
@@ -289,8 +303,9 @@ async def test_post_quantity_biomarker_unchaged_shape(async_client: AsyncClient,
         },
         headers=auth_headers,
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
     data = response.json()
     assert data["value_type"] == "quantity"
     assert data["supports_multi_state"] is False
     assert data["allowed_states"] == []
+    assert data["preferred_unit_symbol"] == "mg/dL"

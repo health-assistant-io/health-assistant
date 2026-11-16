@@ -30,7 +30,6 @@ export interface AllergyCatalogEntry {
   class_concept_name?: string | null;
   tenant_id?: string | null;
   created_by?: string | null;
-  is_custom: boolean;
   created_at?: string;
   updated_at?: string;
 }

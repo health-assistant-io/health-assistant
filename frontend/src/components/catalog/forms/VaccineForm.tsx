@@ -1,6 +1,8 @@
 /**
- * Vaccine create/edit form — slug, name, code (CVX), target diseases, dose
- * schedule, contraindications, side effects. Mirrors `VaccineCatalogCreate`.
+ * Vaccine create/edit form — slug, name, code (CVX), dose schedule,
+ * contraindications, side effects. Mirrors `VaccineCatalogCreate` (vaccine →
+ * disease links are graph data — `PREVENTS` edges — and are managed through
+ * the links section, not a write field).
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -44,9 +46,6 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
   onChange,
 }) => {
   const { t } = useTranslation();
-  const targetDiseases = Array.isArray(values.target_diseases)
-    ? (values.target_diseases as string[])
-    : [];
   const sideEffects = Array.isArray(values.side_effects)
     ? (values.side_effects as string[])
     : [];
@@ -111,23 +110,6 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
         value={String(values.description ?? '')}
         onChange={(html) => onChange({ description: html })}
       />
-      <Field
-        label={t('catalogs.field_target_diseases', 'Target diseases')}
-        hint={t('catalogs.field_aliases_hint', 'Comma-separated')}
-      >
-        <TextInput
-          value={targetDiseases.join(', ')}
-          onChange={(e) =>
-            onChange({
-              target_diseases: e.target.value
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-            })
-          }
-          placeholder="Measles, Mumps, Rubella"
-        />
-      </Field>
 
       {/* Dose Schedule */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40 p-3 space-y-3">

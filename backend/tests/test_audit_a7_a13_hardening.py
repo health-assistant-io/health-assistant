@@ -53,8 +53,10 @@ class TestSecurityHeaders:
         # <iframe> while every other response stays DENY.
         from starlette.responses import PlainTextResponse
 
+        from app.core.authz.policy import RouteClass, policy
         from app.main import app
 
+        @policy(RouteClass.PUBLIC)
         @app.get("/__xfo_override_probe__")
         async def _probe():
             return PlainTextResponse("ok", headers={"X-Frame-Options": "SAMEORIGIN"})
@@ -187,6 +189,26 @@ class TestWSTokenFallbackDeprecation:
 
 # --------------------------------------------------------------------------- A13
 class TestAnatomySlugSanitization:
+    @staticmethod
+    def _local_store(tmp_path, monkeypatch):
+        from app.storage.bootstrap import (
+            ENTRYPOINT_SERVER,
+            StorageConfig,
+            build_store,
+        )
+
+        store = build_store(
+            StorageConfig(
+                backend="local",
+                entrypoint=ENTRYPOINT_SERVER,
+                local_root=tmp_path,
+                max_object_mb=10,
+            ).validate()
+        )
+        monkeypatch.setattr("app.storage.documents.current_store", lambda settings=None: store)
+        monkeypatch.setattr("app.storage.artifacts.current_store", lambda settings=None: store)
+        return store
+
     def test_traversal_slug_sanitised_into_base_dir(self, tmp_path, monkeypatch):
         import io
 
@@ -194,18 +216,17 @@ class TestAnatomySlugSanitization:
 
         from app.services.anatomy import anatomy_service as anat
 
-        monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
+        store = self._local_store(tmp_path, monkeypatch)
         buf = io.BytesIO()
         Image.new("RGB", (1, 1), (1, 2, 3)).save(buf, format="WEBP")
-        rel, w, h = anat.save_figure_image("../../etc/passwd", buf.getvalue(), ext="webp")
-        # No path separators survive into the filename, and the file written
-        # is contained inside the base dir (no escape).
-        fname = rel.split("/")[-1]
-        assert "/" not in fname
-        assert ".." not in fname
-        written = list(tmp_path.glob("*.webp"))
-        assert len(written) == 1
-        assert written[0].resolve().is_relative_to(tmp_path.resolve())
+        key, w, h = anat.save_figure_image("../../etc/passwd", buf.getvalue(), ext="webp")
+        # No path separators survive into the object name, and the object is
+        # confined to the system anatomy prefix.
+        object_name = key.rsplit("/", 1)[-1]
+        assert "/" not in object_name
+        assert ".." not in object_name
+        assert key.startswith("tenants/system/anatomy/")
+        assert store.get(key) == buf.getvalue()
         assert w == 1 and h == 1
 
     def test_safe_slug_normalised(self, tmp_path, monkeypatch):
@@ -215,10 +236,11 @@ class TestAnatomySlugSanitization:
 
         from app.services.anatomy import anatomy_service as anat
 
-        monkeypatch.setattr(anat, "_figures_base_dir", lambda: tmp_path)
+        store = self._local_store(tmp_path, monkeypatch)
         buf = io.BytesIO()
         Image.new("RGB", (1, 1), (1, 2, 3)).save(buf, format="WEBP")
-        rel, w, h = anat.save_figure_image("Heart/Cardiac", buf.getvalue(), ext="webp")
-        # Slashes/special chars reduced to hyphens, stays within base dir.
-        assert "/" not in rel.split("/")[-1]
+        key, w, h = anat.save_figure_image("Heart/Cardiac", buf.getvalue(), ext="webp")
+        # Slashes/special chars reduced to hyphens; still one opaque key.
+        assert key.rsplit("/", 1)[-1] == "Heart-Cardiac.webp"
+        assert store.get(key) is not None
         assert w == 1 and h == 1

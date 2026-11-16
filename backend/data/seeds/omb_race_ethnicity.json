@@ -6,33 +6,33 @@
     "schema_note": "OMB minimum categories for race + ethnicity, coded against the CDC Race and Ethnicity Code Determination (URN: oid:2.16.840.1.113883.6.238). Drives the GET /setup/extension-catalog options so the client renders the correct dropdowns without hardcoding CDC codes."
   },
   "races": [
-    { "code": "1002-5", "display": "American Indian or Alaska Native" },
-    { "code": "2028-9", "display": "Asian" },
-    { "code": "2054-5", "display": "Black or African American" },
-    { "code": "2076-8", "display": "Native Hawaiian or Other Pacific Islander" },
-    { "code": "2106-3", "display": "White" }
+    { "seed_key": "race:american-indian-or-alaska-native", "code": "1002-5", "display": "American Indian or Alaska Native" },
+    { "seed_key": "race:asian", "code": "2028-9", "display": "Asian" },
+    { "seed_key": "race:black-or-african-american", "code": "2054-5", "display": "Black or African American" },
+    { "seed_key": "race:native-hawaiian-or-other-pacific-islander", "code": "2076-8", "display": "Native Hawaiian or Other Pacific Islander" },
+    { "seed_key": "race:white", "code": "2106-3", "display": "White" }
   ],
   "ethnicities": [
-    { "code": "2135-2", "display": "Hispanic or Latino" },
-    { "code": "2186-5", "display": "Not Hispanic or Latino" }
+    { "seed_key": "ethnicity:hispanic-or-latino", "code": "2135-2", "display": "Hispanic or Latino" },
+    { "seed_key": "ethnicity:not-hispanic-or-latino", "code": "2186-5", "display": "Not Hispanic or Latino" }
   ],
   "languages": [
-    { "code": "en", "display": "English" },
-    { "code": "el", "display": "Greek" },
-    { "code": "es", "display": "Spanish" },
-    { "code": "fr", "display": "French" },
-    { "code": "de", "display": "German" },
-    { "code": "it", "display": "Italian" },
-    { "code": "pt", "display": "Portuguese" },
-    { "code": "ru", "display": "Russian" },
-    { "code": "ar", "display": "Arabic" },
-    { "code": "zh", "display": "Chinese" },
-    { "code": "ja", "display": "Japanese" },
-    { "code": "ko", "display": "Korean" },
-    { "code": "hi", "display": "Hindi" },
-    { "code": "tr", "display": "Turkish" },
-    { "code": "nl", "display": "Dutch" },
-    { "code": "pl", "display": "Polish" },
-    { "code": "sv", "display": "Swedish" }
+    { "seed_key": "language:en", "code": "en", "display": "English" },
+    { "seed_key": "language:el", "code": "el", "display": "Greek" },
+    { "seed_key": "language:es", "code": "es", "display": "Spanish" },
+    { "seed_key": "language:fr", "code": "fr", "display": "French" },
+    { "seed_key": "language:de", "code": "de", "display": "German" },
+    { "seed_key": "language:it", "code": "it", "display": "Italian" },
+    { "seed_key": "language:pt", "code": "pt", "display": "Portuguese" },
+    { "seed_key": "language:ru", "code": "ru", "display": "Russian" },
+    { "seed_key": "language:ar", "code": "ar", "display": "Arabic" },
+    { "seed_key": "language:zh", "code": "zh", "display": "Chinese" },
+    { "seed_key": "language:ja", "code": "ja", "display": "Japanese" },
+    { "seed_key": "language:ko", "code": "ko", "display": "Korean" },
+    { "seed_key": "language:hi", "code": "hi", "display": "Hindi" },
+    { "seed_key": "language:tr", "code": "tr", "display": "Turkish" },
+    { "seed_key": "language:nl", "code": "nl", "display": "Dutch" },
+    { "seed_key": "language:pl", "code": "pl", "display": "Polish" },
+    { "seed_key": "language:sv", "code": "sv", "display": "Swedish" }
   ]
 }

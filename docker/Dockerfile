@@ -24,7 +24,8 @@ COPY pyproject.toml uv.lock ./
 COPY backend/pyproject.toml backend/pyproject.toml
 COPY backend/app backend/app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev \
+      --extra object-storage-s3 --extra object-storage-azure
 
 FROM base AS runtime
 # Copy only the uv environment from the deps stage.

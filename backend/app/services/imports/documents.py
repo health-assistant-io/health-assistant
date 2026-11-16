@@ -6,7 +6,6 @@ from app.services.imports.types import (
     UUID,
     Any,
     DocumentModel,
-    Path,
     _uuid,
     uuid4,
     zipfile,
@@ -31,12 +30,9 @@ class DocumentsMixin:
         from app.services.documents.document_service import (
             ALLOWED_UPLOAD_EXTENSIONS,
         )
-        from app.services.documents.document_service import (
-            HA_UPLOAD_DIR as RESOLVED_UPLOAD_DIR,
-        )
+        from app.storage.documents import DocumentStorage, document_key
 
-        tenant_dir = Path(str(RESOLVED_UPLOAD_DIR)) / str(tenant_id)
-        tenant_dir.mkdir(parents=True, exist_ok=True)
+        storage = DocumentStorage()
         count = 0
         for meta in documents_meta:
             try:
@@ -54,28 +50,31 @@ class DocumentsMixin:
                 ext = PurePosixPath(raw_filename).suffix.lower()
                 if ext not in ALLOWED_UPLOAD_EXTENSIONS:
                     ext = ".bin"
-                target_name = f"{uuid4()}{ext}"
-                target_path = tenant_dir / target_name
+                doc_id = uuid4()
+                object_key = document_key(tenant_id, doc_id, f"restored{ext}")
+                data = None
                 if archive and archive_path:
                     try:
                         data = archive.read(archive_path)
-                        target_path.write_bytes(data)
                     except KeyError:
-                        target_path = None
-                else:
-                    target_path = None
+                        data = None
+
                 doc = DocumentModel(
+                    id=doc_id,
                     tenant_id=tenant_id,
                     owner_id=owner_id,
                     patient_id=_uuid(pid),
                     filename=meta.get("filename") or "imported",
-                    file_path=str(target_path) if target_path else "",
+                    file_path="",
+                    object_key=object_key if data is not None else None,
                     status=meta.get("status") or "uploaded",
                     extracted_text=meta.get("extracted_text"),
                     entities=meta.get("entities"),
                     include_in_extraction=bool(meta.get("include_in_extraction", False)),
                     is_edited=bool(meta.get("is_edited", False)),
                 )
+                if data is not None:
+                    await storage.aput(doc, data, key=object_key)
                 self.db.add(doc)
                 count += 1
             except Exception as e:

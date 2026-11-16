@@ -4,12 +4,16 @@ import {
   Shield,
   Palette,
   Cpu,
+  Coins,
   Plug,
   Download,
   Building2,
   Globe,
   Bone,
   Wrench,
+  Fingerprint,
+  HardDrive,
+  ShieldAlert,
 } from 'lucide-react';
 
 /**
@@ -74,7 +78,11 @@ export const userSettingsHeader: SettingsNavHeader = {
  */
 export const tenantSettingsNav: SettingsNavItem[] = [
   { to: '/admin/tenant/settings', icon: Building2, labelKey: 'settings.nav_general', labelFallback: 'General', end: true },
+  { to: '/admin/tenant/security', icon: Shield, labelKey: 'admin.security_policy', labelFallback: 'Security policy' },
+  { to: '/admin/tenant/identity', icon: Fingerprint, labelKey: 'enterprise.nav_identity', labelFallback: 'Enterprise identity', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
+  { to: '/admin/tenant/elevations', icon: ShieldAlert, labelKey: 'elevations.nav_tenant', labelFallback: 'Elevations', roles: ['ADMIN', 'MANAGER', 'SYSTEM_ADMIN'] },
   { to: '/admin/tenant/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
+  { to: '/admin/tenant/data-cost', icon: Coins, labelKey: 'settings.nav_data_cost', labelFallback: 'Data & Cost', roles: ['ADMIN', 'SYSTEM_ADMIN'] },
   { to: '/admin/tenant/tools', icon: Wrench, labelKey: 'settings.nav_tools', labelFallback: 'Tools' },
 ];
 
@@ -91,8 +99,11 @@ export const tenantSettingsHeader: SettingsNavHeader = {
 export const systemSettingsNav: SettingsNavItem[] = [
   { to: '/admin/system/settings', icon: Globe, labelKey: 'settings.nav_general', labelFallback: 'General', end: true },
   { to: '/admin/system/ai-config', icon: Cpu, labelKey: 'settings.nav_ai', labelFallback: 'AI Configuration' },
+  { to: '/admin/system/data-cost', icon: Coins, labelKey: 'settings.nav_data_cost', labelFallback: 'Data & Cost', roles: ['SYSTEM_ADMIN'] },
+  { to: '/admin/system/storage', icon: HardDrive, labelKey: 'settings.nav_storage', labelFallback: 'Storage', roles: ['SYSTEM_ADMIN'] },
   { to: '/admin/system/tools', icon: Wrench, labelKey: 'settings.nav_tools', labelFallback: 'Tools' },
   { to: '/admin/system/integrations', icon: Plug, labelKey: 'common.integrations', labelFallback: 'Integrations' },
+  { to: '/admin/system/elevations', icon: ShieldAlert, labelKey: 'elevations.nav_system', labelFallback: 'Instance elevations', roles: ['SYSTEM_ADMIN'] },
   // Catalogs moved to top-level nav (/catalogs, all users) — Phase C.
   { to: '/admin/anatomy-atlas', icon: Bone, labelKey: 'settings.nav_anatomy_atlas', labelFallback: 'Anatomy Atlas' },
 ];

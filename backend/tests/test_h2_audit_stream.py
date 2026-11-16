@@ -270,7 +270,7 @@ async def test_h2_login_ok_and_denied_audited(async_client):
     assert denied.status_code == 401
     rows = await _audit_rows(action="auth.login", user_id=user.id, outcome="denied")
     assert rows, "failed login must be audited"
-    assert rows[0].new_value == {"reason": "invalid_credentials"}
+    assert rows[0].new_value == {"detail": "invalid_credentials"}
 
     anon = await async_client.post(
         "/api/v1/auth/login",
@@ -280,7 +280,7 @@ async def test_h2_login_ok_and_denied_audited(async_client):
     # Anonymous denial: NULL actor + a tenant-less row is the marker.
     rows = await _audit_rows(action="auth.login", outcome="denied")
     anon_rows = [
-        r for r in rows if r.new_value == {"reason": "invalid_credentials"} and r.user_id is None
+        r for r in rows if r.new_value == {"detail": "invalid_credentials"} and r.user_id is None
     ]
     assert anon_rows, "unknown-email login denial must be audited (NULL actor)"
 
@@ -335,7 +335,9 @@ async def test_h2_admin_user_actions_audited(async_client, system_admin_headers)
     user_id = created.json()["id"]
     rows = await _audit_rows(action="user.create", resource_id=user_id)
     assert rows and rows[0].outcome == "ok"
-    assert rows[0].new_value["email"] == email
+    assert rows[0].new_value["email"] == "[redacted]", (
+        "the user's email is PII — the redaction map masks it"
+    )
 
     promoted = await async_client.put(
         f"/api/v1/users/{user_id}",
@@ -351,7 +353,9 @@ async def test_h2_admin_user_actions_audited(async_client, system_admin_headers)
     deleted = await async_client.delete(f"/api/v1/users/{user_id}", headers=system_admin_headers)
     assert deleted.status_code == 200, deleted.text
     rows = await _audit_rows(action="user.delete", resource_id=user_id)
-    assert rows and rows[0].old_value["email"] == email
+    assert rows and rows[0].old_value["email"] == "[redacted]", (
+        "the user's email is PII — the redaction map masks it"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +383,75 @@ async def test_h2_patient_write_audited(async_client, system_admin_headers):
     assert deleted.status_code == 200, deleted.text
     rows = await _audit_rows(action="delete_patient", resource_id=patient_id)
     assert rows and rows[0].outcome == "ok"
+
+
+@pytest.mark.asyncio
+async def test_patient_audit_diff_stores_persisted_snapshot(async_client, system_admin_headers):
+    """S5 — patient create/update audit diffs are the *persisted* model
+    snapshot, not the raw request dict: an unknown request key cannot carry
+    PHI past the redaction map into ``audit_events``."""
+    import json as _json
+
+    shadow = "shadow-key-phi-secret"
+    resp = await async_client.post(
+        "/api/v1/patients",
+        headers=system_admin_headers,
+        json={
+            "name": {"family": "Snapshot", "given": ["S5"]},
+            "gender": "male",
+            shadow: "free-text PHI an unknown key must not smuggle in",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    patient_id = resp.json()["id"]
+
+    rows = await _audit_rows(action="create_patient", resource_id=patient_id)
+    assert rows, "create must be audited"
+    stored = _json.dumps(rows[0].new_value)
+    assert shadow not in stored, "the unknown request key rode past redaction"
+    assert rows[0].new_value["gender"] == "MALE"  # persisted model field (enum name)
+    assert rows[0].new_value["name"] == "[redacted]"  # known PHI still masked
+
+    updated = await async_client.put(
+        f"/api/v1/patients/{patient_id}",
+        headers=system_admin_headers,
+        json={shadow: "smuggle attempt", "gender": "female"},
+    )
+    assert updated.status_code == 200, updated.text
+    rows = await _audit_rows(action="update_patient", resource_id=patient_id)
+    assert rows, "update must be audited"
+    assert shadow not in _json.dumps(rows[0].new_value)
+    assert rows[0].new_value["gender"] == "FEMALE"
+
+
+@pytest.mark.asyncio
+async def test_layout_audit_diff_stores_persisted_shape(async_client, system_admin_headers):
+    """S5 — ``dashboard_layout`` is schema-less JSONB: the layout write's
+    audit diff carries the persisted shape (its keys), never the request
+    values, so arbitrary payloads cannot ride past the redaction map."""
+    import json as _json
+
+    shadow = "layout-shadow-phi"
+    resp = await async_client.post(
+        "/api/v1/patients",
+        headers=system_admin_headers,
+        json={"name": {"family": "Layout", "given": ["S5"]}, "gender": "male"},
+    )
+    assert resp.status_code == 200, resp.text
+    patient_id = resp.json()["id"]
+
+    put = await async_client.put(
+        f"/api/v1/patients/{patient_id}/layout",
+        headers=system_admin_headers,
+        json={"columns": ["vitals"], shadow: "not a layout field"},
+    )
+    assert put.status_code == 200, put.text
+
+    rows = await _audit_rows(action="update_patient_layout", resource_id=patient_id)
+    assert rows, "the layout write must be audited"
+    stored = _json.dumps(rows[0].new_value)
+    assert "not a layout field" not in stored, "layout values rode into the audit raw"
+    assert rows[0].new_value["dashboard_layout_keys"] == ["columns", shadow]
 
 
 @pytest.mark.asyncio

@@ -114,7 +114,7 @@ class CandidateRef(BaseModel):
         None, max_length=40, description="loinc | snomed | custom | …"
     )
     category: str | None = Field(
-        None, max_length=120, description="Biomarker category / exam category"
+        None, max_length=120, description="Exam category / catalog grouping label"
     )
     kind: str | None = Field(None, max_length=80, description="ConceptKind for concept entities")
 
@@ -461,7 +461,7 @@ def _hit_to_candidate(hit: dict[str, Any], fallback_type: str) -> CandidateRef:
         detail=_truncate(description, 240),
         code=hit.get("code"),
         coding_system=hit.get("coding_system"),
-        category=hit.get("category"),
+        category=hit.get("category") or hit.get("class_concept_name"),
         kind=hit.get("kind"),
         is_telemetry=is_telemetry,
         unit=hit.get("preferred_unit_symbol") or hit.get("unit_symbol"),

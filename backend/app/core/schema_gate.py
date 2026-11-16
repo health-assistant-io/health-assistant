@@ -6,8 +6,11 @@ creates as raw SQL:
 * catalog search indexes with a non-default opclass
   (``gin_trgm_ops``) or a ``to_tsvector(...)`` expression,
 * the per-tenant ``COALESCE(tenant_id, sentinel)`` uniques
-  (``ix_*_slug_tenant`` / ``ix_fhir_patients_mrn_tenant``),
-* ``ix_concept_edges_unique`` (same COALESCE form).
+  (``ix_*_slug_tenant`` / ``ix_fhir_patients_mrn_tenant`` / the
+  ``ix_*_seed_key_tenant`` and ``ix_*_code_tenant`` identity uniques of
+  0010_catalog_identity),
+* ``ix_concept_edges_approved_unique`` (same COALESCE form, partial on
+  ``status = 'approved'``).
 
 Autogenerate reflects those indexes but cannot match them against metadata,
 so — without this list — every run would report them as removed and the drift
@@ -21,30 +24,40 @@ index.
 
 MIGRATION_MANAGED_INDEXES = frozenset(
     {
+        "ix_allergy_catalog_code_tenant",
         "ix_allergy_catalog_fts",
         "ix_allergy_catalog_name_trgm",
+        "ix_allergy_catalog_seed_key_tenant",
         "ix_anatomy_structures_fts",
         "ix_anatomy_structures_name_trgm",
         "ix_anatomy_structures_slug_tenant",
         "ix_anatomy_structures_slug_trgm",
         "ix_biomarker_definitions_fts",
         "ix_biomarker_definitions_name_trgm",
+        "ix_biomarker_definitions_seed_key_tenant",
         "ix_biomarker_definitions_slug_tenant",
         "ix_biomarker_definitions_slug_trgm",
+        "ix_clinical_event_types_fts",
+        "ix_clinical_event_types_name_trgm",
         "ix_clinical_event_types_slug_tenant",
-        "ix_concept_edges_unique",
+        "ix_clinical_event_types_slug_trgm",
+        "ix_concept_edges_approved_unique",
         "ix_concepts_aliases_gin",
         "ix_concepts_fts",
         "ix_concepts_name_trgm",
+        "ix_concepts_seed_key_tenant",
         "ix_concepts_slug_tenant",
         "ix_concepts_slug_trgm",
-        "ix_concepts_trgm",
         "ix_fhir_observations_component_gin",
         "ix_fhir_patients_mrn_tenant",
+        "ix_medication_catalog_code_tenant",
         "ix_medication_catalog_fts",
         "ix_medication_catalog_name_trgm",
+        "ix_medication_catalog_seed_key_tenant",
         "ix_vaccine_catalog_fts",
         "ix_vaccine_catalog_name_trgm",
+        "ix_vaccine_catalog_seed_key_tenant",
+        "ix_vaccine_catalog_slug_tenant",
     }
 )
 
@@ -61,6 +74,13 @@ RUNTIME_MANAGED_TABLES = frozenset(
         "checkpoint_blobs",
         "checkpoint_writes",
         "checkpoint_migrations",
+        # Ops-owned tables outside the model lane (plan 64 / ADR-0063/0064):
+        # ``alembic/env.py`` maintains ``migration_state`` (the app-readable
+        # head marker /ready reads — ``alembic_version`` is revoked from the
+        # runtime role by 0016_rls), and ``scripts/provision_db.py`` +
+        # ``scripts/backup.sh`` own ``backup_runs`` (the backup run ledger).
+        "migration_state",
+        "backup_runs",
     }
 )
 

@@ -21,7 +21,6 @@ export interface ExportJob {
   status: JobStatus;
   progress: number;
   patient_ids?: string[] | null;
-  file_path?: string | null;
   file_size_bytes?: number | null;
   resource_counts?: Record<string, number> | null;
   smart_scope?: string | null;

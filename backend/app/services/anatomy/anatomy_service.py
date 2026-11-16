@@ -1,4 +1,4 @@
-# ruff: noqa: B904 -- long immutable strings; reflow when touched
+
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -7,7 +7,11 @@ from sqlalchemy import func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.catalogs.policy import (
+    DEFAULT_CATALOG_POLICY,
+    CatalogReferenceError,
+    CatalogUniqueViolation,
+)
 from app.core.config import settings
 from app.models.anatomy_model import AnatomyFigure, AnatomyStructure
 from app.models.concept_model import ConceptEdge
@@ -22,7 +26,11 @@ from app.schemas.anatomy import (
     AnatomyStructureCreate,
     AnatomyStructureUpdate,
 )
-from app.services.catalog.concept_service import resolve_concept_by_slug
+from app.services.catalog.concept_service import (
+    require_visible_concept,
+    resolve_concept_by_slug,
+)
+from app.services.seed.provenance import mark_user_modified_for_model
 
 
 async def get_anatomy_structures(
@@ -101,6 +109,52 @@ async def get_anatomy_structure_by_id_or_slug(
     return result.scalars().first()
 
 
+async def _resolve_anatomy_class(
+    db: AsyncSession,
+    data: dict,
+    tenant_id: UUID | None,
+    *,
+    sent_fields: set[str] | None = None,
+) -> None:
+    """Resolve/validate the anatomy class reference in a create/update dict
+    (in place; pops the ``class_concept_slug`` input convenience).
+
+    Precedence matches the other catalog types: a sent ``class_concept_id``
+    wins and is visibility-checked (system rows or the caller's tenant only) —
+    on the update path (``sent_fields`` = the schema's ``model_fields_set``)
+    an explicit ``null`` id clears the link and any slug sent alongside is
+    ignored; otherwise a ``class_concept_slug`` must resolve tenant-explicitly
+    — an unknown slug raises the typed 400, never a silent drop. An explicit
+    ``null`` slug (or, on create, the absence of both) clears the link.
+
+    ``sent_fields=None`` (the create path, whose full ``model_dump()`` cannot
+    distinguish "not sent" from "explicit null") keeps the create reading: a
+    non-null id wins, otherwise the slug resolves.
+    """
+    slug = data.pop("class_concept_slug", None)
+    if sent_fields is not None:
+        if "class_concept_id" in sent_fields:
+            data["class_concept_id"] = await require_visible_concept(
+                db, data.get("class_concept_id"), tenant_id
+            )
+            return
+        if slug is None:
+            return
+    elif data.get("class_concept_id") is not None:
+        data["class_concept_id"] = await require_visible_concept(
+            db, data["class_concept_id"], tenant_id
+        )
+        return
+    resolved = (
+        await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS, tenant_id=tenant_id)
+        if slug
+        else None
+    )
+    if slug and resolved is None:
+        raise CatalogReferenceError("class concept")
+    data["class_concept_id"] = resolved
+
+
 async def create_anatomy_structure(
     db: AsyncSession,
     structure_in: AnatomyStructureCreate,
@@ -114,16 +168,12 @@ async def create_anatomy_structure(
     biomarker/medication/allergy/vaccine use) — SYSTEM_ADMIN→system,
     ADMIN/MANAGER→tenant, USER→user."""
     data = structure_in.model_dump()
-    # Resolve the friendly class slug to a class_concept_id (takes precedence
-    # over an explicit class_concept_id if both are supplied).
-    slug = data.pop("class_concept_slug", None)
-    if slug:
-        data["class_concept_id"] = await resolve_concept_by_slug(
-            db, slug, ConceptKind.ANATOMY_CLASS
-        )
+    await _resolve_anatomy_class(db, data, tenant_id)
     db_structure = AnatomyStructure(**data)
     DEFAULT_CATALOG_POLICY.assign_create_scope(role, db_structure, tenant_id, user_id)
     db.add(db_structure)
+    await db.flush()
+    await mark_user_modified_for_model(db, AnatomyStructure, db_structure.id)
     await db.commit()
     await db.refresh(db_structure)
     return db_structure
@@ -133,16 +183,32 @@ async def update_anatomy_structure(
     db: AsyncSession,
     structure: AnatomyStructure,
     structure_in: AnatomyStructureUpdate,
+    *,
+    tenant_id: UUID | None = None,
 ) -> AnatomyStructure:
-    """Patch an existing anatomy structure with the provided fields."""
+    """Patch an existing anatomy structure with the provided fields.
+
+    The class reference follows the shared update precedence (see
+    :func:`_resolve_anatomy_class`): a sent ``class_concept_id`` wins — an
+    explicit ``null`` clears the link, any slug sent alongside is ignored —
+    and a bare slug must resolve tenant-explicitly. A new slug is
+    pre-checked against the caller's visible rows — the table carries no
+    unique index on ``slug`` — and a duplicate raises the same typed 409 the
+    create path returns."""
     update_data = structure_in.model_dump(exclude_unset=True)
-    slug = update_data.pop("class_concept_slug", None)
-    if slug is not None:
-        update_data["class_concept_id"] = (
-            await resolve_concept_by_slug(db, slug, ConceptKind.ANATOMY_CLASS) if slug else None
-        )
+    await _resolve_anatomy_class(
+        db, update_data, tenant_id, sent_fields=set(structure_in.model_fields_set)
+    )
+    new_slug = update_data.get("slug")
+    if new_slug and new_slug != structure.slug:
+        existing = await get_anatomy_structure_by_id_or_slug(db, new_slug, tenant_id)
+        if existing is not None and existing.id != structure.id:
+            raise CatalogUniqueViolation(
+                "slug", new_slug, message=f"structure with slug '{new_slug}' already exists"
+            )
     for field, value in update_data.items():
         setattr(structure, field, value)
+    await mark_user_modified_for_model(db, AnatomyStructure, structure.id)
     await db.commit()
     await db.refresh(structure)
     return structure
@@ -348,54 +414,114 @@ async def get_anatomy_graph(
 
 # --- Anatomy figures (DB-driven body atlas, raster images) ---
 
-FIGURES_DIR = "anatomy_figures"  # subdirectory under HA_UPLOAD_DIR
+#: Legacy local subdirectory; pre-contract rows store ``<this>/<slug>.webp``.
+FIGURES_DIR = "anatomy_figures"
 
 
-def _figures_base_dir() -> Path:
-    """Absolute path to the anatomy figures image directory under HA_UPLOAD_DIR."""
-    base = Path(str(settings.HA_UPLOAD_DIR)) / FIGURES_DIR
-    base.mkdir(parents=True, exist_ok=True)
-    return base
+def _figure_artifact(value: str | None) -> tuple[str | None, Path | None]:
+    """Split a stored figure location into ``(key, legacy_path)``.
+
+    New rows hold a tenant-prefixed object key; pre-contract rows hold the
+    old ``anatomy_figures/...`` relative path, which the dual-read branch
+    resolves under the local upload root while that volume is mounted. The
+    legacy prefix is matched explicitly: a relative segment like
+    ``anatomy_figures/man-front.webp`` would otherwise look like an object
+    key and be looked up in the wrong place.
+    """
+    if not value:
+        return None, None
+    if value.startswith(f"{FIGURES_DIR}/"):
+        return None, Path(str(settings.HA_UPLOAD_DIR)) / value
+    from app.storage.artifacts import looks_like_key
+
+    if looks_like_key(value):
+        return value, None
+    return None, Path(str(settings.HA_UPLOAD_DIR)) / value
+
+
+def figure_key_for(slug: str, ext: str = "webp", *, source: bool = False) -> str:
+    """Server-generated anatomy key (slug sanitized to one segment)."""
+    import re
+
+    from app.storage.artifacts import anatomy_key
+    from app.storage.object_storage import safe_extension
+
+    safe_slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(slug)).strip(".-") or "figure"
+    extension = safe_extension(ext or "webp") or ".webp"
+    return anatomy_key(safe_slug, extension, source=source)
 
 
 def save_figure_image(
     slug: str, data: bytes, ext: str = "webp", kind: str = "image"
 ) -> tuple[str, int, int]:
-    """Write image bytes to HA_UPLOAD_DIR/anatomy_figures/{slug}.{ext} (or
-    {slug}-source.{ext} when kind='source') and return (relative_path, w, h)."""
+    """Store image bytes and return ``(object_key, width, height)``.
+
+    The slug is sanitised to a strict single segment (never a path); the
+    object lives under ``tenants/system/anatomy/``. ``kind='source'`` stores
+    the uncropped original alongside the rendered figure.
+    """
     import io
-    import re
 
     from PIL import Image as PILImage
 
-    base = _figures_base_dir()
-    suffix = "-source" if kind == "source" else ""
-    # Audit A13: slug is interpolated into a filesystem path. Sanitise to a
-    # strict basename (no separators, no traversal) and confirm the resolved
-    # path stays within the figures base dir — defence-in-depth even though
-    # the only writer is SYSTEM_ADMIN-gated.
-    safe_slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(slug)).strip(".-") or "figure"
-    path = (base / f"{safe_slug}{suffix}.{ext}").resolve()
-    try:
-        path.relative_to(base.resolve())
-    except ValueError:
-        raise ValueError(f"Refusing to write anatomy figure outside base dir: {slug!r}")
-    path.write_bytes(data)
+    from app.storage.documents import document_storage
+
+    key = figure_key_for(slug, ext, source=kind == "source")
+    extension = Path(key).suffix.lower()
+    media = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }.get(extension, "application/octet-stream")
+    document_storage().put_key(key, data, content_type=media)
     with PILImage.open(io.BytesIO(data)) as img:
         w, h = img.size
-    return f"{FIGURES_DIR}/{safe_slug}{suffix}.{ext}", w, h
+    return key, w, h
 
 
-def figure_image_abspath(figure: AnatomyFigure) -> Path | None:
-    if not figure.image_path:
+def figure_object_exists(slug: str, ext: str = "webp", *, source: bool = False) -> bool:
+    """Whether the keyed figure object is already present in the store."""
+    from app.storage.artifacts import ArtifactStorage
+
+    return ArtifactStorage().exists(figure_key_for(slug, ext, source=source))
+
+
+def figure_image_key(figure: AnatomyFigure) -> tuple[str | None, Path | None]:
+    return _figure_artifact(figure.image_path)
+
+
+def figure_source_key(figure: AnatomyFigure) -> tuple[str | None, Path | None]:
+    return _figure_artifact(figure.source_image_path)
+
+
+def read_figure_image(figure: AnatomyFigure, *, source: bool = False) -> bytes | None:
+    """Read the figure bytes through the store (legacy local path fallback)."""
+    from app.storage.artifacts import ArtifactStorage
+
+    key, legacy = figure_source_key(figure) if source else figure_image_key(figure)
+    if key is None and legacy is None:
         return None
-    return Path(str(settings.HA_UPLOAD_DIR)) / figure.image_path
+    return ArtifactStorage().read_with_legacy(key, legacy)
 
 
-def figure_source_abspath(figure: AnatomyFigure) -> Path | None:
-    if not figure.source_image_path:
-        return None
-    return Path(str(settings.HA_UPLOAD_DIR)) / figure.source_image_path
+async def aread_figure_image(figure: AnatomyFigure, *, source: bool = False) -> bytes | None:
+    """Async bridge: figure bytes without blocking the event loop."""
+    import anyio
+
+    return await anyio.to_thread.run_sync(
+        lambda: read_figure_image(figure, source=source)
+    )
+
+
+def figure_media_type(figure: AnatomyFigure, *, source: bool = False) -> str:
+    value = (figure.source_image_path if source else figure.image_path) or ""
+    suffix = Path(value).suffix.lower()
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".png":
+        return "image/png"
+    return "image/jpeg"
 
 
 async def list_anatomy_figures(
@@ -433,10 +559,18 @@ async def create_anatomy_figure(
     existing = await get_anatomy_figure(db, slug)
     if existing:
         raise ValueError(f"Figure with slug '{slug}' already exists")
-    rel_path, w, h = save_figure_image(slug, image_data, ext)
+    from functools import partial
+
+    import anyio
+
+    rel_path, w, h = await anyio.to_thread.run_sync(
+        partial(save_figure_image, slug, image_data, ext)
+    )
     source_path = None
     if source_data:
-        source_path, _, _ = save_figure_image(slug, source_data, source_ext, kind="source")
+        source_path, _, _ = await anyio.to_thread.run_sync(
+            partial(save_figure_image, slug, source_data, source_ext, kind="source")
+        )
     db_figure = AnatomyFigure(
         slug=slug,
         label=label,
@@ -480,24 +614,40 @@ async def update_anatomy_figure(
         figure.sort_order = sort_order
     if is_active is not None:
         figure.is_active = is_active
+    from functools import partial
+
+    import anyio
+
+    from app.storage.artifacts import ArtifactStorage
+
     if image_data:
-        old = figure_image_abspath(figure)
-        if old and old.exists():
-            old.unlink()
-        rel_path, w, h = save_figure_image(figure.slug, image_data, ext)
+        old_key, old_legacy = figure_image_key(figure)
+        if old_key or old_legacy:
+            await anyio.to_thread.run_sync(
+                ArtifactStorage().delete_with_legacy, old_key, old_legacy
+            )
+        rel_path, w, h = await anyio.to_thread.run_sync(
+            partial(save_figure_image, figure.slug, image_data, ext)
+        )
         figure.image_path = rel_path
         figure.width = w
         figure.height = h
     if source_data:
-        stale_path = figure_source_abspath(figure)
-        if stale_path and stale_path.exists():
-            stale_path.unlink()
-        source_path, _, _ = save_figure_image(figure.slug, source_data, source_ext, kind="source")
+        stale_key, stale_legacy = figure_source_key(figure)
+        if stale_key or stale_legacy:
+            await anyio.to_thread.run_sync(
+                ArtifactStorage().delete_with_legacy, stale_key, stale_legacy
+            )
+        source_path, _, _ = await anyio.to_thread.run_sync(
+            partial(save_figure_image, figure.slug, source_data, source_ext, kind="source")
+        )
         figure.source_image_path = source_path
     elif clear_source:
-        stale_path = figure_source_abspath(figure)
-        if stale_path and stale_path.exists():
-            stale_path.unlink()
+        stale_key, stale_legacy = figure_source_key(figure)
+        if stale_key or stale_legacy:
+            await anyio.to_thread.run_sync(
+                ArtifactStorage().delete_with_legacy, stale_key, stale_legacy
+            )
         figure.source_image_path = None
     await db.commit()
     await db.refresh(figure)
@@ -505,8 +655,13 @@ async def update_anatomy_figure(
 
 
 async def delete_anatomy_figure(db: AsyncSession, figure: AnatomyFigure) -> None:
-    for p in (figure_image_abspath(figure), figure_source_abspath(figure)):
-        if p and p.exists():
-            p.unlink()
+    import anyio
+
+    from app.storage.artifacts import ArtifactStorage
+
+    storage = ArtifactStorage()
+    for key, legacy in (figure_image_key(figure), figure_source_key(figure)):
+        if key or legacy:
+            await anyio.to_thread.run_sync(storage.delete_with_legacy, key, legacy)
     await db.delete(figure)
     await db.commit()

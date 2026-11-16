@@ -1,26 +1,24 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Plus, Save, Info, Calendar, Pill, Clock, X } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { Search, Info, Calendar, Clock } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
 import { DatePicker } from '../ui/DatePicker';
 import { TimeList } from '../ui/TimeList';
-import { MedicationRecord, MedicationTiming } from '../../services/medicationService';
+import { MedicationRecord, MedicationTiming, type MedicationStatus } from '../../services/medicationService';
+import { normalizeMedicationStatus } from '../../utils/medicationStatus';
 import { CatalogItemPicker } from '../catalog/CatalogItemPicker';
 import { searchCatalogs } from '../../services/catalogService';
 import type { CatalogSelection } from '../../types/catalog';
 import { InstanceField } from '../instances/InstanceField';
 import '../../features/instances/adapters'; // registers the instance adapters
 import { LinksSection } from '../ai/hitl/LinksSection';
+import { RecordFormFooter } from '../records/RecordFormFooter';
 
 export interface MedicationFormPrefill {
   name?: string;
   catalog_id?: string | null;
   matched?: boolean;
-  is_new?: boolean;
-  indications?: string | null;
-  side_effects?: string[];
-  contraindications?: string | null;
-  dosage_info?: string | null;
   dosage?: string;
   frequency_label?: string;
   reason?: string;
@@ -43,9 +41,6 @@ export interface MedicationFormPayload {
   reason: string | null;
   note: string | null;
   code: { text: string; catalog_id?: string };
-  indications?: string;
-  side_effects?: string[];
-  is_new_catalog_entry?: boolean;
   /** Optional examination to link this medication to at create/edit time. */
   examination_id?: string | null;
   /** User-edited graph links — attached to the medication catalog entry.
@@ -67,8 +62,21 @@ interface MedicationFormProps {
   onReject?: () => void;
   submitLabel?: string;
   rejectLabel?: string;
-  showHeader?: boolean;
+  /** Owned by the shell; set as the native `<form id>` so a footer button
+   *  outside the form (the popup) can submit it through the `form` attribute. */
+  formId?: string;
+  /** Inline footer for the HITL chat-card placement; the popup shell renders
+   *  its own `RecordFormFooter` instead. */
   showActions?: boolean;
+  /** Reports validity/loading to the shell so its footer can drive Save. */
+  onStateChange?: (state: { canSubmit: boolean; loading: boolean }) => void;
+  /**
+   * One-shot programmatic pick (HITL confirm-after-create): set the picker to
+   * this catalog entry. Applies when `catalog_id` CHANGES and the picker does
+   * not already hold it; never re-applies after the user clears the chip; a
+   * remount with the same value is a no-op (the ref seeds from the prop).
+   */
+  catalogSelection?: { catalog_id: string; text: string };
 }
 
 const PRESETS = [
@@ -90,23 +98,21 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
       onReject,
       submitLabel,
       rejectLabel,
-      showHeader = true,
+      formId,
       showActions = true,
+      onStateChange,
+      catalogSelection,
     },
     ref
   ) {
     const { t } = useTranslation();
     const [selection, setSelection] = useState<CatalogSelection[]>([]);
-    const [newMedName, setNewMedName] = useState('');
     const [loading, setLoading] = useState(false);
-    const [isAddingNew, setIsAddingNew] = useState(false);
     const [links, setLinks] = useState<CatalogSelection[]>([]);
 
     const [formData, setFormData] = useState({
-      status: 'active' as 'active' | 'completed' | 'entered-in-error' | 'intended' | 'stopped' | 'on-hold' | 'unknown',
+      status: 'active' as MedicationStatus,
       dosage: '',
-      indications: '',
-      side_effects: [] as string[],
       start_date: new Date().toISOString().split('T')[0],
       end_date: '',
       reason: '',
@@ -127,10 +133,8 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
     useEffect(() => {
       if (medication) {
         setFormData({
-          status: medication.status as any,
+          status: normalizeMedicationStatus(medication.status),
           dosage: medication.dosage || '',
-          indications: '',
-          side_effects: [],
           start_date: medication.start_date ? medication.start_date.split('T')[0] : '',
           end_date: medication.end_date ? medication.end_date.split('T')[0] : '',
           reason: medication.reason || '',
@@ -141,23 +145,19 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           setTiming(medication.frequency);
         }
         setSelection([]);
-        setNewMedName('');
-        setIsAddingNew(false);
         setLinks([]);
       } else if (prefill) {
         setFormData(prev => ({
           ...prev,
-          status: (prefill.status as any) || 'active',
+          status: prefill.status ? normalizeMedicationStatus(prefill.status) : 'active',
           dosage: prefill.dosage || '',
-          indications: prefill.indications || '',
-          side_effects: prefill.side_effects || [],
           start_date: prefill.start_date ? prefill.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
           end_date: prefill.end_date ? prefill.end_date.split('T')[0] : '',
           reason: prefill.reason || '',
           note: prefill.note || ''
         }));
         setLinks(Array.isArray(prefill.links) ? prefill.links : []);
-        
+
         if (prefill.frequency_label) {
           const preset = PRESETS.find(p => t(`medications.modal.presets.${p.key}`).toLowerCase() === prefill.frequency_label?.toLowerCase());
           if (preset) {
@@ -179,21 +179,11 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             id: prefill.catalog_id,
             label: prefill.name || ''
           }]);
-          setNewMedName('');
-          setIsAddingNew(false);
-        } else if (prefill.is_new) {
-          setSelection([]);
-          setNewMedName(prefill.name || '');
-          setIsAddingNew(true);
-        } else if (prefill.name) {
-          setNewMedName(prefill.name);
         }
       } else {
         setFormData({
           status: 'active',
           dosage: '',
-          indications: '',
-          side_effects: [],
           start_date: new Date().toISOString().split('T')[0],
           end_date: '',
           reason: '',
@@ -210,15 +200,27 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           as_needed: false
         });
         setSelection([]);
-        setNewMedName('');
-        setIsAddingNew(false);
+        setLinks([]);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [medication, prefill]);
 
+    // One-shot programmatic pick (HITL confirm-after-create). The ref seeds
+    // from the prop so a remount with the same value is a no-op, and the
+    // value never re-applies once the user has cleared the chip.
+    const appliedCatalogRef = useRef<string | null>(catalogSelection?.catalog_id ?? null);
+    useEffect(() => {
+      const id = catalogSelection?.catalog_id;
+      if (!id || appliedCatalogRef.current === id) return;
+      appliedCatalogRef.current = id;
+      if (selection.some((s) => s.id === id)) return;
+      setSelection([{ type: 'medication', id, label: catalogSelection?.text ?? '' }]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalogSelection]);
+
     const handleSubmit = async (e?: React.FormEvent) => {
       if (e) e.preventDefault();
-      if (loading || (isAddingNew ? !newMedName.trim() : (!medication && selection.length === 0))) return;
+      if (loading || (!medication && selection.length === 0)) return;
       setLoading(true);
 
       try {
@@ -231,12 +233,9 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
           reason: formData.reason || null,
           note: formData.note || null,
           code: medication ? medication.code : {
-            text: isAddingNew ? newMedName : (selection[0]?.label ?? newMedName),
-            catalog_id: isAddingNew ? undefined : selection[0]?.id
+            text: selection[0]?.label ?? '',
+            catalog_id: selection[0]?.id
           },
-          indications: isAddingNew ? formData.indications : undefined,
-          side_effects: isAddingNew ? formData.side_effects : undefined,
-          is_new_catalog_entry: isAddingNew,
           examination_id: formData.examination_id || undefined,
           links,
         };
@@ -251,18 +250,16 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
 
     useImperativeHandle(ref, () => ({ submit: () => handleSubmit() }));
 
-    const addSideEffect = (effect: string) => {
-      if (effect && !formData.side_effects.includes(effect)) {
-        setFormData({ ...formData, side_effects: [...formData.side_effects, effect] });
-      }
-    };
+    const canSubmit =
+      !loading && (selection.length > 0 || Boolean(medication));
 
-    const removeSideEffect = (index: number) => {
-      setFormData({
-        ...formData,
-        side_effects: formData.side_effects.filter((_, i) => i !== index)
-      });
-    };
+    const reportedState = useRef('');
+    useEffect(() => {
+      const key = `${canSubmit}|${loading}`;
+      if (reportedState.current === key) return;
+      reportedState.current = key;
+      onStateChange?.({ canSubmit, loading });
+    }, [canSubmit, loading, onStateChange]);
 
     const toggleDay = (day: string) => {
       const current = timing.days_of_week || [];
@@ -278,28 +275,19 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
     };
 
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        {/* Header */}
-        {showHeader && (
-          <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between shrink-0 bg-white dark:bg-dark-surface">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-                <Pill className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text">
-                  {medication ? t('medications.modal.update_title') : t('medications.modal.new_title')}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-dark-muted font-medium uppercase tracking-widest mt-0.5">
-                  {t('medications.modal.clinical_records')}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {!medication && (
-                <AIAssistButton 
-                  taskType="fill_medication_form" 
-                  context={{ patientId }} 
+      <form id={formId} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          {/* Substance Selection */}
+          {!medication && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest px-1 flex items-center">
+                  <Search className="w-3 h-3 mr-2" />
+                  {t('medications.modal.select_from_catalog')}
+                </label>
+                <AIAssistButton
+                  taskType="fill_medication_form"
+                  context={{ patientId }}
                   onSuggestedData={async (data) => {
                     setFormData(prev => ({
                       ...prev,
@@ -323,154 +311,41 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                         setFormData(prev => ({...prev, note: `${prev.note ? prev.note + '\n' : ''}Suggested Frequency: ${data.frequency_label}`}));
                       }
                     }
-                    if (data.medication_name && selection.length === 0 && !isAddingNew) {
+                    if (data.medication_name && selection.length === 0) {
                       try {
                         const resp = await searchCatalogs(data.medication_name, { types: 'medication', limit: 1 });
                         if (resp.results.length > 0) {
                           const hit = resp.results[0];
                           setSelection([{ type: hit.type, id: hit.id, label: hit.label }]);
                         } else {
-                          setIsAddingNew(true);
-                          setNewMedName(data.medication_name);
+                          // Unmatched name: the picker stays empty — definitions
+                          // are created from the browse dialog (Browse → New).
+                          toast.info(
+                            t('medications.modal.not_in_catalog', '{{name}} is not in the catalog — define it via Browse → New.', { name: data.medication_name }),
+                          );
                         }
                       } catch {
-                        setNewMedName(data.medication_name);
+                        // A FAILED search is not an unmatched name — only an
+                        // empty result may claim "not in the catalog".
+                        toast.error(
+                          t('catalogs.search_failed', 'Could not search the catalog — try again.'),
+                        );
                       }
                     }
                   }}
                 />
-              )}
-              {onCancel && (
-                <button type="button" onClick={onCancel} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
-                  <X className="w-5 h-5 text-gray-400" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-          {/* Substance Selection */}
-          {!medication && (
-            <div className="space-y-4">
-              <label className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest px-1 flex items-center">
-                <Search className="w-3 h-3 mr-2" />
-                {t('medications.modal.select_from_catalog')}
-              </label>
-
-              {!isAddingNew && (
-                <>
-                  <CatalogItemPicker
-                    mode="single"
-                    allowedTypes={['medication']}
-                    value={selection}
-                    onChange={setSelection}
-                    placeholder={t('medications.modal.search_placeholder')}
-                    displayMode="cards"
-                    block
-                  />
-                  {selection.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNew(true)}
-                      className="w-full text-left px-6 py-5 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 rounded-2xl border border-dashed border-blue-200"
-                    >
-                      <div className="p-2 bg-blue-600 text-white rounded-xl">
-                        <Plus className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold">{t('medications.modal.define_new')}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest">{t('medications.modal.add_custom')}</p>
-                      </div>
-                    </button>
-                  )}
-                </>
-              )}
-
-              {isAddingNew && (
-                <div className="p-6 bg-blue-50/30 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-900/30 space-y-4 animate-in zoom-in-95">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{t('medications.modal.define_new')}</h4>
-                    <div className="flex items-center gap-2">
-                      <AIAssistButton
-                        taskType="define_medication"
-                        context={{}}
-                        placeholder={t('medications.modal.define_new')}
-                        onSuggestedData={(data) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            indications: data.indications || prev.indications,
-                            side_effects: data.side_effects && Array.isArray(data.side_effects)
-                              ? [...new Set([...prev.side_effects, ...data.side_effects])]
-                              : prev.side_effects
-                          }));
-                          if (data.name && !newMedName) setNewMedName(data.name);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => { setIsAddingNew(false); setNewMedName(''); }}
-                        className="px-3 py-1.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline"
-                      >
-                        {t('medications.modal.change')}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.name_label')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('medications.modal.name_placeholder')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                        value={newMedName}
-                        onChange={e => setNewMedName(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.main_indications')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('medications.modal.indications_q')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                        value={formData.indications}
-                        onChange={e => setFormData({ ...formData, indications: e.target.value })}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">{t('medications.modal.side_effects')}</label>
-                      <div className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          placeholder={t('medications.modal.add_side_effect')}
-                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              addSideEffect((e.target as HTMLInputElement).value);
-                              (e.target as HTMLInputElement).value = '';
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {formData.side_effects.map((se, i) => (
-                          <span key={i} className="px-2 py-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-bold flex items-center space-x-1">
-                            <span>{se}</span>
-                            <button type="button" onClick={() => removeSideEffect(i)} className="text-gray-400 hover:text-red-500">
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <CatalogItemPicker
+                mode="single"
+                allowedTypes={['medication']}
+                value={selection}
+                onChange={setSelection}
+                placeholder={t('medications.modal.search_placeholder')}
+                displayMode="cards"
+                block
+                allowCreate
+              />
             </div>
           )}
 
@@ -587,10 +462,13 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
                 onChange={e => setFormData({...formData, status: e.target.value as any})}
               >
                 <option value="active">{t('medications.modal.status.active')}</option>
+                <option value="inactive">{t('medications.modal.status.inactive')}</option>
                 <option value="completed">{t('medications.modal.status.completed')}</option>
+                <option value="cancelled">{t('medications.modal.status.cancelled')}</option>
                 <option value="on-hold">{t('medications.modal.status.on_hold')}</option>
                 <option value="stopped">{t('medications.modal.status.stopped')}</option>
                 <option value="intended">{t('medications.modal.status.intended')}</option>
+                <option value="entered-in-error">{t('medications.modal.status.entered_in_error')}</option>
               </select>
             </div>
 
@@ -682,48 +560,29 @@ export const MedicationForm = forwardRef<MedicationFormHandle, MedicationFormPro
             onChange={setLinks}
             hideWhenEmpty
           />
-        </form>
+        </div>
 
         {/* Footer */}
         {showActions && (
-          <div className="px-8 py-6 bg-gray-50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border flex items-center shrink-0">
-            {onReject && (
-              <button
-                type="button"
-                onClick={onReject}
-                disabled={loading}
-                className="px-5 py-2.5 text-sm font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {rejectLabel ?? t('ai_chat.hitl.reject', 'Reject')}
-              </button>
-            )}
-            <div className="ml-auto flex items-center space-x-4">
-              {onCancel && (
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  disabled={loading}
-                  className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-dark-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('common.cancel')}
-                </button>
-              )}
-              <button
-                onClick={handleSubmit}
-                disabled={loading || (isAddingNew ? !newMedName.trim() : (!selection.length && !medication))}
-                className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-2"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>{submitLabel ?? (medication ? t('medications.modal.update_record') : t('medications.modal.save_medication'))}</span>
-              </button>
-            </div>
+          <div className="flex shrink-0 items-center border-t border-gray-50 bg-gray-50 px-8 py-6 dark:border-dark-border dark:bg-dark-bg/50">
+            <RecordFormFooter
+              formId={formId}
+              canSubmit={canSubmit}
+              loading={loading}
+              submitLabel={
+                submitLabel ??
+                (medication
+                  ? t('medications.modal.update_record')
+                  : t('medications.modal.save_medication'))
+              }
+              cancelLabel={t('common.cancel')}
+              onCancel={onCancel}
+              rejectLabel={rejectLabel}
+              onReject={onReject}
+            />
           </div>
         )}
-      </div>
+      </form>
     );
   }
 );

@@ -115,6 +115,7 @@ for vendored in \
   "backend/app/extensions/polite_http.py" \
   "backend/app/extensions/contract.py" \
   "backend/app/extensions/conformance.py" \
+  "backend/app/extensions/extension_sources.py" \
   "backend/app/extensions/hitl-proposal-kinds.json" \
   "contracts/extension-charter.json" \
   "contracts/extension-manifest.schema.json" \

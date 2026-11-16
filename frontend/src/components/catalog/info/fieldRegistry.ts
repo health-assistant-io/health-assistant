@@ -112,7 +112,6 @@ export const META_KEYS: ReadonlySet<string> = new Set([
   'updated_at',
   'scope',
   'version',
-  'is_custom',
 ]);
 
 /** Base shape every descriptor shares. */
@@ -309,10 +308,6 @@ const VACCINE_FIELDS: FieldDescriptor[] = [
   },
   { key: 'description', labelKey: 'catalogs.field_description', labelFallback: 'Description', section: 'clinical', kind: 'richtext' },
   { key: 'contraindications', labelKey: 'catalogs.field_contraindications', labelFallback: 'Contraindications', section: 'clinical', kind: 'richtext' },
-  {
-    key: 'target_diseases', labelKey: 'catalogs.field_target_diseases', labelFallback: 'Target diseases',
-    section: 'targets', kind: 'chips', variant: 'danger',
-  },
   {
     key: 'side_effects', labelKey: 'catalogs.field_side_effects', labelFallback: 'Side effects',
     section: 'targets', kind: 'chips', variant: 'warning',

@@ -58,7 +58,7 @@ export function renderCreateBiomarkerSummary(task: TaskInfo): React.ReactNode {
   const chips: { icon: React.ComponentType<{ className?: string }>; label: string }[] = [];
 
   if (p.name) chips.push({ icon: Beaker, label: String(p.name) });
-  if (p.category) chips.push({ icon: Tag, label: String(p.category) });
+  if (p.class_concept_slug) chips.push({ icon: Tag, label: String(p.class_concept_slug) });
   if (p.preferred_unit_symbol) chips.push({ icon: Beaker, label: String(p.preferred_unit_symbol) });
   if (p.is_telemetry) chips.push({ icon: Beaker, label: 'Telemetry' });
 

@@ -1,7 +1,7 @@
 # Health Assistant - Docker Utilities & Cheat Sheet
 
 This directory contains the Docker configuration for Health Assistant — the
-family's reference full stack (deployment.md / ADR-0022). Docker Compose is
+family's reference full stack (deployment.md). Docker Compose is
 the **production supervisor** (honcho is dev-only): every `Procfile.dev`
 process maps to a service (uvicorn → `backend`; celery worker/beat/flower →
 own services; vite → served by the `frontend` image).
@@ -88,7 +88,7 @@ docker run --rm --entrypoint sh -v docker_uploads:/from:ro -v health-assistant_u
 docker volume rm docker_uploads
 ```
 
-## Databases & roles (ADR-0022)
+## Databases & roles
 
 Web mode runs **PostgreSQL 16** — health keeps its TimescaleDB-optional
 image (`timescale/timescaledb:latest-pg16`; the migrations degrade
@@ -99,23 +99,39 @@ deployment.md:
 |---|---|
 | Database | `neuronection_health` (test: `neuronection_health_test`, demo: `neuronection_health_demo` in `../demo/`) |
 | Roles | `neuronection_health_owner` (owns schema, runs migrations/DDL) + `neuronection_health_app` (runtime: CONNECT + DML only — never DDL) |
-| Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `HA_DATABASE_URL` (URL wins when set). The `POSTGRES_*` parts are the infra container names shared with the compose files; the assembled/pinned URL carries the `HA_` prefix (plan 20 D2). |
+| Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (**owner** secret), `HA_DB_PASSWORD` (**app** secret — distinct per the credential policy), `HA_DATABASE_URL` (URL wins when set). The `POSTGRES_*` parts are the infra container names shared with the compose files; the assembled/pinned URL carries the `HA_` prefix. |
 
 **Two-role split — what exactly happens here:** `docker/init-roles.sh`
 runs once, on first boot of an empty data volume, and grants the app role
 DML-only privileges (plus `ALTER DEFAULT PRIVILEGES` so tables the owner
-creates during migrations are covered automatically). The compose stacks
-then wire **two URLs**: the shared `x-backend-env` anchor connects
-backend/worker/beat as `neuronection_health_app` (least privilege), while the
-one-shot `migrate` service overrides `HA_DATABASE_URL` to run
-`alembic upgrade head` as `neuronection_health_owner` — the compose-level
-equivalent of career/study's `SA_MIGRATIONS_DATABASE_URL` entrypoint
-pattern (health runs migrations as a separate gated service instead of an
-image entrypoint). Both roles share the single `POSTGRES_PASSWORD`, so the
-env surface stays at the law's four vars; the split is privilege-based,
-not credential-based. Consequence: the app containers hold the owner
-password (the migrate service must, to run alembic), while the runtime
-role can never alter the schema.
+creates during migrations are covered automatically). The two roles hold
+**distinct secrets** (the credential policy): the owner's is `POSTGRES_PASSWORD`
+(the image bootstrap password; used only by the db service, the one-shot
+`migrate`, and host-side backup/restore), the app role's is `HA_DB_PASSWORD`.
+The compose stacks wire **two URLs** accordingly: the shared `x-backend-env`
+anchor connects backend/worker/beat as `neuronection_health_app` (least
+privilege — its DSN embeds `HA_DB_PASSWORD`), while the one-shot `migrate`
+service overrides `HA_DATABASE_URL` with the owner DSN
+(`HA_MIGRATIONS_DATABASE_URL`) and also provisions
+(`scripts/provision_db.py`: extensions, app role, grants, `backup_runs`
+ledger table) before `alembic upgrade head`, re-granting and verifying the
+app role's DML-only posture afterwards. A shared secret refuses to init;
+the conformance gate fails any stack whose serving env carries the owner
+credential.
+
+**Upgrade order (row-level security — SECURITY.md "Deploy constraint").**
+Since `0016_rls` the database enforces tenant isolation a second time,
+reading session contexts only the current code plants. The order is
+one-directional: **new images first, then migrate** (or stop-then-migrate).
+A new process against a not-yet-migrated database is fine — the planted
+contexts are inert until policies exist. An old process against an
+already-migrated database fails closed on everything (reads answer zero
+rows, writes are refused outright) — a short availability gap bounded by
+compose recreating the app services after `migrate`. The compose `migrate`
+service already gates every app service via
+`service_completed_successfully`, so a normal `docker compose up` keeps the
+order automatically — never run `migrate` while old-version containers are
+still running, and never migrate before pulling the new images.
 
 **Migrating an existing checkout (pre-2026-09 layout):** databases were
 `health_assistant`/`health_assistant_test` with a single `admin` user, on
@@ -129,14 +145,17 @@ instance:
 3. Recreate the volume: `docker compose --env-file .env -f docker/docker-compose.standalone.yml down -v`
    (dev: `./scripts/reset-dev-db.sh`, which also wants
    `POSTGRES_USER=neuronection_health_owner` in the root `.env`).
-4. Bring the stack back up and restore: `scripts/restore.sh
-   backups/health-assistant-<stamp>.tar.gz --yes`. The restore re-applies
-   the runtime-role grants, so an `admin`-era dump comes back owned by
+4. Bring the stack back up and restore into a throwaway target
+   (`scripts/restore.sh` refuses the live database), then cut over by
+   pointing `.env` at the restored database:
+   `scripts/restore.sh backups/health-assistant-<stamp>.tar.gz --target
+   neuronection_health_restored --yes`. The restore re-applies the
+   runtime-role grants, so an `admin`-era dump comes back owned by
    `neuronection_health_owner` with `neuronection_health_app` DML intact.
 
-### Renaming `neuro_*` → `neuronection_*` (ADR-0022 amendment, 2026-09-30)
+### Renaming `neuro_*` → `neuronection_*` (2026-09-30)
 
-The family datastore prefix was spelled out (ADR-0022 revision history):
+The family datastore prefix was spelled out:
 databases `neuronection_health` (+ `neuronection_health_test` /
 `neuronection_health_demo`), roles `neuronection_health_owner` /
 `neuronection_health_app`. **Existing installations migrate automatically**
@@ -144,7 +163,7 @@ databases `neuronection_health` (+ `neuronection_health_test` /
 
 - `scripts/install.sh` / `scripts/update-docker.sh` run
   `migrate_legacy_db_names()` before the stack boots: start postgres,
-  rename a `neuro_health` (or pre-ADR `health_assistant`) database and the
+  rename a `neuro_health` (or older `health_assistant`) database and the
   `neuro_health_*` roles.
 - The prod/test and demo deploy workflows do the same mid-deploy.
 - PostgreSQL refuses to rename the session's own user, so the owner role is
@@ -234,15 +253,19 @@ Verify it's up: `curl http://localhost:${HAPI_PORT:-8080}/fhir/metadata | head`
 
 ```bash
 # 1. Secrets: generate .env (see .env.example) — at minimum
-#    POSTGRES_PASSWORD, REDIS_PASSWORD, FLOWER_PASSWORD,
+#    POSTGRES_PASSWORD (DB OWNER) + HA_DB_PASSWORD (app; DISTINCT per
+#    the credential policy), REDIS_PASSWORD, FLOWER_PASSWORD (with --profile flower),
 #    HA_SESSION_KEY, HA_REFRESH_KEY, HA_DATA_KEY.
 python3 scripts/setup_env.py          # or copy .env.example → .env and edit
 # 2. Images: standalone deploys pre-built images from REGISTRY/REPOSITORY/
 #    IMAGE_TAG (defaults follow the release workflow's publish target).
 #    For a from-source full stack use docker-compose.dev.yml instead.
-# 3. Bring it up (+ scheduled backups):
+# 3. Bring it up (+ scheduled same-host backups — a convenience copy, NOT
+#    disaster recovery; T1 off-host backups run scripts/backup.sh from a
+#    host timer):
 docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile backup up -d
-# → http://localhost  (nginx routes / → SPA, /api/ → backend, /flower/ → Flower)
+# → http://localhost  (nginx routes / → SPA, /api/ → backend, /flower/ →
+#    Flower — opt-in via --profile flower; the route 502s while disabled)
 ```
 
 - **`IMAGE_TAG` must match the tree.** The publish workflow tags release
@@ -291,16 +314,34 @@ deployments:
 
 ## Backup & restore drill
 
-**Backup is a service, not a ritual** (deployment.md): the `backup`
-sidecar (standalone + prod, `--profile backup`) writes timestamped
-`db-*.dump` (`pg_dump -Fc` as `neuronection_health_owner`) + `uploads-*.tar.gz`
-archives into `docker/backups/` every `BACKUP_INTERVAL_HOURS`, keeping
-`BACKUP_KEEP` of each. Host-side one-shots (used by the drill and for
-off-machine copies) are `scripts/backup.sh` →
-`backups/health-assistant-<stamp>.tar.gz` (manifest + `database.dump` +
-`uploads.tar.gz`) and `scripts/restore.sh`.
+**Backup is a service, not a ritual** (deployment.md), and per the backup policy:
 
-**Drill — run it before you rely on it:**
+- **Off-host first (T1).** Run `scripts/backup.sh` from a host timer with
+  `BACKUP_ENCRYPTION_KEY` (or `BACKUP_AGE_RECIPIENT` + `age`) and
+  `BACKUP_DESTINATION` (`s3://bucket/prefix`, `azure://container/prefix`,
+  or a configured rclone `remote:path`). Health backups are
+  **`encrypted: required`** — the script refuses to produce a plaintext
+  archive unless `BACKUP_ALLOW_UNENCRYPTED=1` is set explicitly for a
+  local convenience run. Every run writes a **`backup_runs` ledger row**
+  (started/finished/status/bytes/destination/checksum/error_class); a stale
+  row (> 2× the interval) must raise your external alert.
+- **The compose `backup` sidecar** (`--profile backup`) writes timestamped
+  `db-*.dump` + `uploads-*.tar.gz` archives into `docker/backups/` — the
+  SAME host as the database. That is a local convenience copy, labelled
+  `non-DR`: a host disk failure loses both. T1 deployments use
+  `scripts/backup.sh` off-host instead.
+
+**Drill — run it before you rely on it:** the restore is a
+**throwaway-target** procedure (the restore design / the backup policy §4): `scripts/restore.sh`
+refuses to write into the live database, restores into a new empty target
+database with the TimescaleDB hooks, verifies it, and only then do you cut
+over. The scratch-container version of the drill runs in CI and locally:
+
+```bash
+scripts/test-restore-scratch.sh   # pinned Timescale container: migrate + seed +
+                                  # dump + restore into a second empty container +
+                                  # row-count / RLS / CAGG / audit-chain assertions
+```
 
 ```bash
 # 1. Seed data — start the stack and create something you can recognize.
@@ -311,35 +352,91 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml run --rm 
 docker compose --env-file .env -f docker/docker-compose.standalone.yml exec -T postgres \
   psql -U neuronection_health_owner -d neuronection_health -c 'SELECT count(*) FROM users;'
 
-# 2. Back up.
-scripts/backup.sh                       # → backups/health-assistant-<stamp>.tar.gz
+# 2. Back up (encrypted; the default is plaintext-refusing).
+BACKUP_ENCRYPTION_KEY='<operator-key-ring-secret>' scripts/backup.sh
+# → backups/health-assistant-<stamp>.tar.gz.enc (+ a backup_runs ledger row)
 
-# 3. Destroy the data (--profile backup also stops the backup sidecar, which
-#    otherwise keeps the volumes in use).
-docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile backup down -v
+# 3. Decrypt (restore.sh consumes a plain .tar.gz; backups are encrypted).
+BACKUP_ENCRYPTION_KEY='<operator-key-ring-secret>' openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+  -in backups/health-assistant-<stamp>.tar.gz.enc -out /tmp/health-restore.tar.gz -pass env:BACKUP_ENCRYPTION_KEY
 
-# 4. Restore (nothing is touched without --yes / FORCE=1). Start only the
-#    database first; the restore stops the backup sidecar itself so its dump
-#    tick cannot race pg_restore.
-docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d postgres
-scripts/restore.sh backups/health-assistant-<stamp>.tar.gz --yes
+# 4. Restore into a throwaway target (never the live DB — the script refuses
+#    it). Nothing runs without the explicit --target; a non-empty target needs
+#    --drop-existing as the disposable confirmation.
+scripts/restore.sh /tmp/health-restore.tar.gz \
+  --target neuronection_health_restored --refresh-caggs --yes
 
-# 5. Verify the data is back through the API.
-docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
-curl -s -X POST http://localhost/api/v1/auth/login \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'username=drill@healthassistant.local&password=correct-horse-battery'   # → 200 + access_token
+# 5. Read the verification the restore prints (row counts vs the live DB, an
+#    RLS fail-closed + tenant-context probe, a trend query, RLS policies,
+#    CAGG/retention/compression jobs, audit-chain integrity, erasure-ledger
+#    replay, backend readiness probe against the target). Only then cut over:
+#    stop the writers, set POSTGRES_DB=neuronection_health_restored in .env,
+#    docker compose up -d (the migrate gate re-runs alembic), log in and
+#    spot-check. Rollback is the reverse .env edit — the previous database is
+#    never deleted by the script; keep it (and the archive) until the new
+#    target has survived its first backup cycle.
 ```
 
-`scripts/restore.sh` prints exactly what it destroys (the `neuronection_health`
-database + the `uploads` volume) and refuses to run without `--yes` (or
-`FORCE=1`). It uses `pg_restore --clean --if-exists --no-owner` and then
-re-applies the `neuronection_health_app` runtime grants, so restoring over a
-running instance works, and so pre-split (`admin`-era) dumps come back
-usable. Point `HA_COMPOSE_FILE` / `HA_COMPOSE_PROJECT` at another flavor
-(prod, or a differently-named project) when needed. The demo stack
-(`../demo/`) is disposable — no backup service; the scripts work against
-any running stack (`POSTGRES_DB=neuronection_health_demo` there).
+`scripts/restore.sh` (the restore design) replaces the retired `pg_restore --clean` into
+the live DB:
+
+- **Safety first:** `--target` is required, the live database
+  (`POSTGRES_DB` / `HA_DATABASE_URL`), `postgres`/`template*` and the test
+  database are refused, and a pre-existing target needs `--drop-existing`.
+  The live uploads volume and the object store are never written.
+- **Timescale-aware:** extensions are created explicitly
+  (`timescaledb` + `pgcrypto` + `pg_trgm`), then
+  `timescaledb_pre_restore()` → `pg_restore -Fc --no-owner`
+  (single-threaded — Timescale does not support `-j`) →
+  `timescaledb_post_restore()`, then `ANALYZE`.
+- **CAGGs are rebuilt, not restored:** the refresh policies for
+  `telemetry_hourly`/`telemetry_daily`/`telemetry_monthly`, the retention
+  policy (2 years) and the compression policy are re-asserted with
+  `if_not_exists => true` after the restore (a dump taken while a policy was
+  missing cannot survive); `--refresh-caggs` forces an immediate full
+  rebuild of the materialized buckets.
+- **Roles and grants:** both roles (owner + app, the credential policy) are ensured before
+  the restore, and the app role's DML grants + default privileges +
+  scoped-view surface are re-applied after it (heals `admin`-era dumps).
+- **Erasure ledger:** replayed into the *target* before it can serve traffic,
+  so a pre-erasure backup cannot resurrect a subject even at cutover.
+- **Verification:** row counts on named tables (compared read-only against
+  the live DB), fail-closed app-role reads, one known record under a tenant
+  context, `telemetry_hourly_scoped` trend query, `pg_policies`, Timescale
+  jobs, audit-chain integrity (SQL contiguity tier + full hash walk through
+  the backend image), and a backend readiness probe pointed at the target.
+- **Cloud profiles:** no refusal — the DB restore works the same way; objects
+  stay provider-side (versioning) and the manifest in the archive tells you
+  what the backup carried. Point `HA_COMPOSE_FILE` / `HA_COMPOSE_PROJECT` at
+  another flavor when needed; `--pg-container`/`--pg-network` restore into a
+  standalone Timescale container (that is what the scratch drill uses).
+
+**RPO / RTO (the backup policy §1):**
+
+| Deployment shape | Mechanism | RPO target | RTO target |
+|---|---|---|---|
+| T2 local (standalone, `non-DR`) | backup sidecar / `backup.sh` → same host | 24 h | 1–2 h |
+| T2 + object storage | dump **to object storage** + provider versioning | 24 h (DB) | 1–2 h |
+| T1 cloud VM | provider disk snapshot **and** off-host dump | 24 h | 1–2 h |
+| T1 managed PG / Timescale Cloud | provider PITR + daily backup + object versioning | 5–15 min | 1 h |
+
+The restore is the RTO-critical path: `test-restore-scratch.sh` records dump
+and restore wall-times per run, and the quarterly drill (the restore drill
+approves the first one) records real-shaped-dataset timings. PITR needs WAL
+archiving on a VM — without it the snapshot + dump pair above is the
+mechanism; on Timescale Cloud use the provider's PITR and run the logical
+drill as the verification.
+
+**Encryption at rest (the backup policy §3 — health/PHI: required, key not stored
+with the backup):** encrypt the archive before it leaves the host with
+`age` (one archive-key recipient, e.g.
+`age -R <recipient.pub> -o archive.tar.gz.age`; decrypt with the operator
+key ring / a secrets manager, never a file beside the backups).
+`openssl enc -aes-256-cbc -pbkdf2` is the accepted fallback; on cloud, the
+provider's KMS envelope (S3 SSE-KMS / Blob encryption + bucket policy) with
+the key in Key Vault/Secrets Manager. Backup-side wiring lands with the
+ledger writer (the restore design backup step); until then keep archives on
+encrypted-at-rest storage and off-host.
 
 **Sizing the backup window:** `pg_dump -Fc` of a small-institute database
 (single-digit GB with documents in the uploads volume rather than the DB)

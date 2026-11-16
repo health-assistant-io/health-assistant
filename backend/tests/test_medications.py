@@ -11,7 +11,7 @@ class MockUser:
     def __init__(self):
         self.id = uuid.uuid4()
         self.user_id = self.id
-        self.role = "user"
+        self.role = "USER"
         self.tenant_id = uuid.uuid4()
 
     def get(self, key, default=None):
@@ -40,9 +40,39 @@ async def test_get_catalog_medication_details(mock_get_details, async_client: As
     mock_catalog_entry.contraindications = "None"
     mock_catalog_entry.dosage_info = "Take daily"
     mock_catalog_entry.tenant_id = None
+    # Fields the extended MedicationCatalogResponse now projects.
+    mock_catalog_entry.seed_key = None
+    mock_catalog_entry.coding_system = None
+    mock_catalog_entry.code = None
+    mock_catalog_entry.class_concept_id = None
+    mock_catalog_entry.class_concept_slug = None
+    mock_catalog_entry.class_concept_name = None
+    mock_catalog_entry.scope = None
+    mock_catalog_entry.created_by = None
+    mock_catalog_entry.class_concept = None
 
-    # We need to mock the to_dict method or just the return value of the service
-    # The service returns the model object, the endpoint converts it via response_model
+    # The endpoint serializes through ``serialize_catalog_row`` (which reads
+    # ``to_dict()``), so the mock carries the projected row dict.
+    mock_catalog_entry.to_dict.return_value = {
+        "id": str(catalog_id),
+        "name": "Test Med",
+        "seed_key": None,
+        "coding_system": None,
+        "code": None,
+        "description": "Test Description",
+        "indications": "Test Indications",
+        "side_effects": ["Nausea"],
+        "contraindications": "None",
+        "dosage_info": "Take daily",
+        "class_concept_id": None,
+        "class_concept_slug": None,
+        "class_concept_name": None,
+        "scope": None,
+        "tenant_id": None,
+        "created_by": None,
+        "created_at": None,
+        "updated_at": None,
+    }
     mock_get_details.return_value = mock_catalog_entry
 
     response = await async_client.get(f"/api/v1/medications/catalog/{catalog_id}")

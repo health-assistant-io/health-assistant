@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import token_store
+from app.core import tenant_context, token_store
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import rate_limit
@@ -173,8 +173,12 @@ async def token(
 
     client_id, client_secret = await _extract_client_credentials(request, data)
 
-    result = await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
-    client = result.scalar_one_or_none()
+    # Bootstrap lookup (ADR 0054 Phase 5): client_id is globally unique
+    # and no principal exists yet — the auth layer resolves it system-side,
+    # then the grant runs under the client's tenant.
+    with tenant_context.system_scope("oauth:token"):
+        result = await db.execute(select(OAuthClient).where(OAuthClient.client_id == client_id))
+        client = result.scalar_one_or_none()
     if (
         client is None
         or not client.is_active
@@ -200,6 +204,7 @@ async def token(
             detail="invalid_client: authentication failed.",
             headers={"WWW-Authenticate": "Basic"},
         )
+    tenant_context.set_tenant(client.tenant_id, actor=str(client.client_id))
 
     registered = list(client.scopes) if client.scopes else []
     requested = parse_scopes(data.get("scope"))

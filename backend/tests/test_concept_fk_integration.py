@@ -238,10 +238,12 @@ async def test_doctor_specialty_concept_round_trips(async_client, admin_headers_
 
 
 @pytest.mark.asyncio
-async def test_biomarker_list_carries_class_concept_alias(async_client, admin_headers_and_patient):
-    """GET /biomarkers must serialize the ``category`` string alias derived
-    from class_concept without a serialization error. Uses the seeded global
-    catalog; if empty, creates one biomarker first."""
+async def test_biomarker_list_carries_class_concept_projection(
+    async_client, admin_headers_and_patient
+):
+    """GET /biomarkers serializes the class-concept projection (``class_concept_*``)
+    without a serialization error — and carries no ``category`` alias (ADR 0055
+    Phase 4 retired it). Uses the seeded global catalog."""
     headers, _ = admin_headers_and_patient
     listing = await async_client.get("/api/v1/biomarkers/", headers=headers)
     assert listing.status_code == 200, listing.text
@@ -250,6 +252,8 @@ async def test_biomarker_list_carries_class_concept_alias(async_client, admin_he
     items = raw["items"] if isinstance(raw, dict) else raw
     assert isinstance(items, list)
     for it in items:
-        assert "category" in it
+        assert "category" not in it
         assert "class_concept_id" in it
-        assert it["category"] is None or isinstance(it["category"], str)
+        assert "class_concept_slug" in it
+        assert "class_concept_name" in it
+        assert it["class_concept_name"] is None or isinstance(it["class_concept_name"], str)

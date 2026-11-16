@@ -38,7 +38,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.security import get_current_user
 from app.main import app
 from app.models.ai_provider_model import AIModel, AIProviderModel, AIScope
-from app.models.ai_task_model import AICallLog
+from app.models.ai_task_model import AICallLog, AIPriceOverride
 from app.models.enums import AICallRoute, AICallStatus, Role
 from app.models.tenant_model import TenantModel
 from app.schemas.user import TokenData
@@ -112,6 +112,7 @@ async def log_ctx():
     yield ctx
     async with AsyncSessionLocal() as session:
         await session.execute(delete(AICallLog).where(AICallLog.tenant_id == tenant_id))
+        await session.execute(delete(AIPriceOverride).where(AIPriceOverride.tenant_id == tenant_id))
         await session.execute(delete(AIModel).where(AIModel.provider_id == provider.id))
         await session.execute(delete(AIProviderModel).where(AIProviderModel.tenant_id == tenant_id))
         await session.commit()
@@ -273,3 +274,137 @@ def test_route_vocabulary_covers_the_task_registry():
 
     routes = {AICallRoute(task.route.value) for task in TASKS}
     assert routes == set(AICallRoute)
+
+
+async def test_call_time_cost_uses_tenant_override(log_ctx):
+    async with AsyncSessionLocal() as session:
+        session.add(
+            AIPriceOverride(
+                tenant_id=log_ctx["tenant_id"],
+                model="audit-model",
+                match="exact",
+                input_micros_per_million=2_000_000,
+                output_micros_per_million=4_000_000,
+                metering="tokens",
+            )
+        )
+        await session.commit()
+
+    ok = await record_call(
+        _ctx(log_ctx),
+        started_at=datetime.now(UTC),
+        latency_ms=5,
+        status=AICallStatus.OK,
+        prompt_tokens=11,
+        completion_tokens=7,
+    )
+    assert ok is True
+    row = (await _rows(log_ctx["tenant_id"]))[0]
+    assert row.cost_micros == 50  # 11*2 + 7*4 micro-dollars
+    assert row.price_source == "user"
+    assert row.usage_source == "provider"
+    assert row.price_version is not None
+
+
+async def test_unknown_price_is_null_not_zero(log_ctx):
+    ctx = CallAuditContext(
+        task_id="chat",
+        tenant_id=log_ctx["tenant_id"],
+        model_name="model-with-no-declared-price",
+    )
+    ok = await record_call(
+        ctx,
+        started_at=datetime.now(UTC),
+        latency_ms=5,
+        status=AICallStatus.OK,
+        prompt_tokens=11,
+        completion_tokens=7,
+    )
+    assert ok is True
+    row = (await _rows(log_ctx["tenant_id"]))[0]
+    assert row.cost_micros is None
+    assert row.price_source == "unknown"
+    assert row.usage_source == "provider"
+
+
+async def test_legacy_settings_still_price_and_are_labelled(log_ctx):
+    ok = await record_call(
+        _ctx(log_ctx),
+        started_at=datetime.now(UTC),
+        latency_ms=5,
+        status=AICallStatus.OK,
+        prompt_tokens=11,
+        completion_tokens=7,
+    )
+    assert ok is True
+    row = (await _rows(log_ctx["tenant_id"]))[0]
+    assert row.cost_micros == round(11 * 2000 / 1000) + round(7 * 4000 / 1000)
+    assert row.price_source == "legacy"
+    assert row.price_version == "pre-contract"
+
+
+async def test_pricing_endpoint_is_admin_scoped_and_crud(log_ctx, async_client: AsyncClient):
+    app.dependency_overrides[get_current_user] = lambda: TokenData(
+        user_id=uuid.uuid4(),
+        sub="admin@example.com",
+        role=Role.ADMIN.value,
+        tenant_id=log_ctx["tenant_id"],
+    )
+    try:
+        prices = await async_client.get("/api/v1/ai/prices")
+        assert prices.status_code == 200, prices.text
+        assert prices.json()["tenant_id"] == str(log_ctx["tenant_id"])
+
+        refused = await async_client.get(f"/api/v1/ai/prices?tenant_id={uuid.uuid4()}")
+        assert refused.status_code == 403
+
+        created = await async_client.put(
+            "/api/v1/ai/prices",
+            json={
+                "model": "audit-model",
+                "input_micros_per_million": 2_000_000,
+                "output_micros_per_million": 4_000_000,
+            },
+        )
+        assert created.status_code == 200, created.text
+        override_id = created.json()["id"]
+
+        await record_call(
+            _ctx(log_ctx),
+            started_at=datetime.now(UTC),
+            latency_ms=5,
+            status=AICallStatus.OK,
+            prompt_tokens=11,
+            completion_tokens=7,
+        )
+        costs = await async_client.get("/api/v1/ai/usage/costs?window_days=7")
+        assert costs.status_code == 200, costs.text
+        cost_row = costs.json()["rows"][0]
+        assert cost_row["cost_micros"] == 50
+        assert cost_row["priced_calls"] == 1
+        assert cost_row["unpriced_calls"] == 0
+
+        listed = (await async_client.get("/api/v1/ai/prices")).json()
+        assert len(listed["overrides"]) == 1
+        effective = next(row for row in listed["effective"] if row["model"] == "audit-model")
+        assert effective["source"] == "user"
+
+        deleted = await async_client.delete(f"/api/v1/ai/prices/{override_id}")
+        assert deleted.status_code == 204
+        assert (await async_client.get("/api/v1/ai/prices")).json()["overrides"] == []
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def test_pricing_endpoint_refuses_non_admin(log_ctx, async_client: AsyncClient):
+    app.dependency_overrides[get_current_user] = lambda: TokenData(
+        user_id=uuid.uuid4(),
+        sub="user@example.com",
+        role=Role.USER.value,
+        tenant_id=log_ctx["tenant_id"],
+    )
+    try:
+        response = await async_client.get("/api/v1/ai/prices")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 403

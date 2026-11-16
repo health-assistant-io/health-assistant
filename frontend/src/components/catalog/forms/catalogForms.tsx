@@ -28,6 +28,12 @@ export interface CatalogItemFormProps {
   onChange: (patch: Record<string, unknown>) => void;
   /** 'create' hides readonly/identity fields (slug auto-derived etc.). */
   mode: 'create' | 'edit';
+  /** The backend owns the slug (ADR 0055 D8): the dialog derives it for
+   *  display only and strips it from the wire, so the slug field renders
+   *  disabled — an edit there would be silently dropped. Only
+   *  `CreateCatalogItemModal` passes this; the admin workspace omits it and
+   *  keeps its explicit-slug door (seed/import contract). */
+  serverOwnedSlug?: boolean;
 }
 
 export interface CatalogFormConfig {

@@ -13,7 +13,7 @@ from app.services.analytics import (
     get_category_analytics,
     get_dashboard_data,
 )
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import apply_patient_scope, check_patient_access
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -168,7 +168,6 @@ async def get_available_categories_endpoint(
         await check_patient_access(patient_id, current_user, db)
 
     from app.models.document_model import DocumentModel
-    from app.models.fhir.patient import Patient
 
     query = select(DocumentModel.entities).where(
         DocumentModel.tenant_id == current_user.tenant_id,
@@ -176,10 +175,10 @@ async def get_available_categories_endpoint(
     )
     if patient_id:
         query = query.where(DocumentModel.patient_id == patient_id)
-    elif current_user.role == Role.USER.value:
-        # Filter by all user's patients
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
-        query = query.where(DocumentModel.patient_id.in_(patient_ids_query))
+    else:
+        # Grant-aware scope: only documents of reachable patients (the
+        # tenant-wide aggregate stays a staff surface).
+        query = await apply_patient_scope(query, DocumentModel.patient_id, current_user, db)
 
     result = await db.execute(query)
     entities_list = result.scalars().all()

@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
+from app.core import tenant_context
 from app.core.config import settings
 from app.extensions.registry import integration_registry
 from app.models.enums import IntegrationStatus
@@ -23,6 +25,10 @@ from app.models.user_integration import UserIntegration
 from app.workers.celery_app import celery_app
 
 logger = get_task_logger(__name__)
+
+
+class _WorkerContextSession(Session):
+    """Worker sessions' sync class — carries the RLS context hook."""
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +94,13 @@ def get_async_session() -> tuple[AsyncSession, AsyncEngine]:
     dispose the engine (it is shared across tasks).
     """
     engine = get_async_engine()
-    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(
+        bind=engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        sync_session_class=_WorkerContextSession,
+    )
+    tenant_context.install_session_hook(session_factory)
     return session_factory(), engine
 
 
@@ -99,13 +111,19 @@ def async_task(func):
     ``get_async_engine()`` uses ``NullPool``, no DB connection is ever reused
     across loops, so the historical "Future attached to a different loop"
     failure mode is impossible.
+
+    Every task runs as the system actor (ADR 0054 Phase 5): the context is
+    planted at the task boundary and restored on exit, so it never leaks
+    into the next task of the same worker process. A task that needs a
+    narrower context narrows inside its body (``tenant_scope``).
     """
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         loop = asyncio.new_event_loop()
         try:
-            return loop.run_until_complete(func(*args, **kwargs))
+            with tenant_context.system_scope(f"celery:{func.__name__}"):
+                return loop.run_until_complete(func(*args, **kwargs))
         finally:
             loop.close()
 
@@ -320,6 +338,49 @@ async def expire_proposals():
         await db.close()
 
 
+@celery_app.task(name="app.workers.tasks.expire_patient_access_grants")
+@async_task
+async def expire_patient_access_grants():
+    """Flip due patient-access grants to ``expired`` (ADR 0054 Phase 2).
+
+    Read paths already ignore expired grants by predicate; this sweep keeps
+    the ledger honest — every flip goes through the grant state machine,
+    which audits it (``grant_expire``) and notifies the grantee and grantor.
+    """
+    from app.services.auth.patient_grants import expire_due_grants
+
+    db, _engine = get_async_session()
+    try:
+        async with db:
+            expired = await expire_due_grants(db)
+            if expired:
+                logger.info("Expired %d patient access grant(s).", expired)
+    finally:
+        await db.close()
+
+
+@celery_app.task(name="app.workers.tasks.expire_access_elevations")
+@async_task
+async def expire_access_elevations():
+    """Flip due break-glass elevations to ``expired`` (ADR 0054 Phase 12A).
+
+    The consultation predicate (``expires_at > now()`` in SQL) already
+    ignores due rows, so this sweep keeps the ledger honest — every flip
+    goes through the elevation state machine, which audits it
+    (``elevation_expire``) and notifies the requester and approver.
+    """
+    from app.services.auth.elevations import expire_due_elevations
+
+    db, _engine = get_async_session()
+    try:
+        async with db:
+            expired = await expire_due_elevations(db)
+            if expired:
+                logger.info("Expired %d access elevation(s).", expired)
+    finally:
+        await db.close()
+
+
 @celery_app.task(name="app.workers.tasks.sync_active_integrations", bind=True, max_retries=1)
 @async_task
 async def sync_active_integrations(self):
@@ -391,9 +452,7 @@ async def sync_active_integrations(self):
                     sync_interval = int(user_config["sync_interval"])
 
                 if last_synced_at:
-                    next_sync = last_synced_at + datetime.timedelta(
-                        minutes=sync_interval
-                    )
+                    next_sync = last_synced_at + datetime.timedelta(minutes=sync_interval)
                     # Add a small buffer (e.g. 10 seconds) to avoid missing cycles due to slight execution delays
                     if start_time < (next_sync - datetime.timedelta(seconds=10)):
                         logger.debug(
@@ -406,9 +465,7 @@ async def sync_active_integrations(self):
                     logger.warning(f"Provider not found for integration {provider_slug}")
                     continue
 
-                logger.info(
-                    f"Syncing integration {provider_slug} for user {user_id}"
-                )
+                logger.info(f"Syncing integration {provider_slug} for user {user_id}")
 
                 # Re-acquire the row through the async API: a previous
                 # iteration's rollback may have expired it, and
@@ -455,6 +512,73 @@ async def sync_active_integrations(self):
 
     except Exception as e:
         logger.error(f"Critical error during integration sync cycle: {e}")
+    finally:
+        await db.close()
+
+
+@celery_app.task(
+    name="app.workers.tasks.sync_seed_sources",
+    bind=True,
+    max_retries=0,
+    soft_time_limit=1500,
+    time_limit=1800,
+)
+@async_task
+async def sync_seed_sources(self):
+    """Periodic seed-source sync (ADR 0056 Phase 3 — startup never fetches).
+
+    Every enabled ``git``/``registry`` source fetches its pinned ref and
+    registers a new digest as a **pending** version (approval still gates
+    any apply); ``file`` sources are upload-driven and ``bundled`` applies
+    at boot, so neither is visited. Per-source failures record
+    ``last_error`` (pins stand) and the cycle continues. The per-task
+    time-limit override (soft 25 min / hard 30 min) covers large packs —
+    the default 15-minute task cap would kill a slow fetch mid-sync. Logs
+    carry ids/kinds/counts only — no pack content, no PHI, no
+    high-cardinality labels.
+    """
+    from app.models.enums import SeedSourceKind
+    from app.models.seed_source_model import SeedSource
+    from app.services.seed.sources_service import sync_source
+
+    logger.info("Starting seed source sync cycle.")
+    db, _engine = get_async_session()
+    try:
+        async with db:
+            sources = (
+                (
+                    await db.execute(
+                        select(SeedSource).where(
+                            SeedSource.enabled.is_(True),
+                            SeedSource.kind.in_([SeedSourceKind.GIT, SeedSourceKind.REGISTRY]),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            logger.info("Found %d enabled seed sources to sync.", len(sources))
+            for source in sources:
+                try:
+                    result = await sync_source(db, source)
+                    logger.info(
+                        "Seed source %s (%s): %s (%d version(s) in result)",
+                        source.id,
+                        source.kind.value,
+                        result.get("status"),
+                        len(result.get("versions") or []),
+                    )
+                except Exception as exc:
+                    await db.commit()
+                    logger.warning(
+                        "Seed source %s (%s) sync failed: %s",
+                        source.id,
+                        source.kind.value,
+                        getattr(exc, "code", type(exc).__name__),
+                    )
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Critical error during seed source sync cycle: {e}")
     finally:
         await db.close()
 
@@ -818,14 +942,23 @@ async def export_backup(self, job_id_str: str):
 @celery_app.task(bind=True, max_retries=0)
 @async_task
 async def import_backup(
-    self, job_id_str: str, archive_path: str, owner_id_str: str, config_json: str = "{}"
+    self, job_id_str: str, object_key: str, owner_id_str: str, config_json: str = "{}"
 ):
-    """Run a backup/restore import job from a ZIP or bare JSON file."""
+    """Run a backup/restore import job from a ZIP or bare JSON object.
+
+    The caller dispatches the tenant-scoped **object key**; this worker is a
+    separate process and materializes it into a private temp file for the
+    duration of the import. A pre-contract message may still carry an
+    absolute path (rolling upgrade), which is read as-is and removed at the
+    end, exactly as before.
+    """
     import json
+    from pathlib import Path
     from uuid import UUID
 
     from app.schemas.import_data import FHIRImportConfig
     from app.services.imports.service import ImportService
+    from app.storage.artifacts import ArtifactStorage
 
     job_id = UUID(job_id_str)
     owner_id = UUID(owner_id_str)
@@ -833,11 +966,16 @@ async def import_backup(
     config_dict = json.loads(config_json)
     config = FHIRImportConfig(**config_dict) if config_dict else None
 
+    legacy_path = Path(object_key) if object_key.startswith("/") else None
+    storage = ArtifactStorage()
+    key = object_key if legacy_path is None else None
+
     db, _engine = get_async_session()
     try:
         async with db:
-            svc = ImportService(db)
-            result = await svc.run_import(job_id, archive_path, owner_id, config=config)
+            with storage.materialize_with_legacy(key, legacy_path) as archive_path:
+                svc = ImportService(db)
+                result = await svc.run_import(job_id, str(archive_path), owner_id, config=config)
         return {
             "job_id": job_id_str,
             "status": result.status.value,
@@ -850,8 +988,12 @@ async def import_backup(
     finally:
         await db.close()
         try:
-            from pathlib import Path as _Path
-
-            _Path(archive_path).unlink(missing_ok=True)
+            # The import is a one-shot artefact: remove the object on both
+            # success and failure. Legacy path messages keep deleting the
+            # local file as before.
+            if legacy_path is not None:
+                legacy_path.unlink(missing_ok=True)
+            else:
+                storage.delete(object_key)
         except Exception:
             pass

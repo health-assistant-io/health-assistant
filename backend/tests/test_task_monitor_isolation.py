@@ -312,37 +312,16 @@ async def test_retry_examination_extraction_same_tenant_succeeds():
 
 
 @pytest.mark.asyncio
-async def test_get_task_statistics_filters_by_tenant_for_user(monkeypatch):
-    """The aggregate stats query must include the tenant_id predicate for
-    non-admin users."""
+async def test_get_task_statistics_filters_by_tenant_for_user():
+    """The aggregate stats queries must include the tenant (and, for USER,
+    the owner/patient) predicate."""
     tenant_a = uuid.uuid4()
     user = _user(tenant_a)
 
-    # Capture every statement passed to db.execute.
-    rendered_stmts: list[str] = []
-
-    real_select = task_monitor.select
-
-    class _CaptureStmt:
-        def __init__(self, base):
-            self.base = base
-            self.predicates = []
-
-        def where(self, *preds):
-            self.predicates.extend(preds)
-            return self
-
-        def group_by(self, *a, **kw):
-            return self
-
-    def fake_select(*a, **kw):
-        return _CaptureStmt(real_select(*a, **kw))
-
-    monkeypatch.setattr(task_monitor, "select", fake_select)
+    executed: list[str] = []
 
     async def _execute(stmt, *a, **kw):
-        if isinstance(stmt, _CaptureStmt):
-            rendered_stmts.extend(str(p) for p in stmt.predicates)
+        executed.append(str(stmt))
         scalar_result = MagicMock()
         scalar_result.all.return_value = []
         scalar_result.scalar.return_value = 0
@@ -353,13 +332,11 @@ async def test_get_task_statistics_filters_by_tenant_for_user(monkeypatch):
 
     await task_monitor.get_task_statistics(db=db, current_user=user)
 
-    # At least one tenant predicate should have been emitted on at least
-    # one of the four queries (doc by_status, exam by_status, stalled docs,
-    # stalled exams).
-    joined = "\n".join(rendered_stmts)
+    joined = "\n".join(executed)
     assert "tenant_id" in joined, "tenant predicate missing from stats queries"
-
-    monkeypatch.setattr(task_monitor, "select", real_select)
+    assert "user_id" in joined or "owner_id" in joined, (
+        "USER owner/patient predicate missing from stats queries"
+    )
 
 
 @pytest.mark.asyncio

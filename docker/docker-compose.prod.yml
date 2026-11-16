@@ -7,8 +7,9 @@
 # crashed worker does NOT bring down the backend or frontend.
 #
 # Required env vars (set in .env or your secret manager):
-#   POSTGRES_PASSWORD, HA_SESSION_KEY, HA_REFRESH_KEY, HA_DATA_KEY, OPENAI_API_KEY,
-#   FLOWER_USER, FLOWER_PASSWORD,
+#   POSTGRES_PASSWORD (DB OWNER secret), HA_DB_PASSWORD (app DB secret —
+#   ADR-0064: the two must be distinct), HA_SESSION_KEY, HA_REFRESH_KEY,
+#   HA_DATA_KEY, OPENAI_API_KEY, FLOWER_PASSWORD (with --profile flower),
 #   REGISTRY, REPOSITORY, IMAGE_TAG (for pre-built images)
 #
 # Optional env vars (have defaults):
@@ -52,12 +53,13 @@ x-backend-env: &backend-env
   DEBUG: "false"
   POSTGRES_HOST: postgres
   POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
-  # Two-role split (deployment.md / ADR-0022): the runtime connects as the
-  # least-privilege neuronection_health_app role (DML only); only the one-shot
-  # `migrate` service uses the owner role. Both roles share POSTGRES_PASSWORD.
+  # Two-role credential split (ADR-0064 / plan 64): the runtime connects as
+  # the least-privilege neuronection_health_app role via HA_DB_PASSWORD.
+  # POSTGRES_PASSWORD is the OWNER secret — it exists only on the db and
+  # migrate services below; serving containers must never receive it (the
+  # conformance gate fails the stack if they do).
   POSTGRES_USER: neuronection_health_app
-  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-  HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+  HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${HA_DB_PASSWORD:?Set HA_DB_PASSWORD (app DB password, distinct from POSTGRES_PASSWORD) in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
   REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   OPENAI_API_BASE: ${OPENAI_API_BASE:-}
@@ -83,7 +85,13 @@ x-backend-env: &backend-env
   HA_RATELIMIT_AI: ${HA_RATELIMIT_AI:-}
   HA_RATELIMIT_MCP: ${HA_RATELIMIT_MCP:-}
   HA_RATELIMIT_DEFAULT: ${HA_RATELIMIT_DEFAULT:-}
-  HA_TRUSTED_PROXY_COUNT: ${HA_TRUSTED_PROXY_COUNT:-0}
+  HA_TRUSTED_PROXY_COUNT: ${HA_TRUSTED_PROXY_COUNT:-1}
+  # Cookie Secure is DERIVED, never static (plan 64 §1.6): HA_COOKIE_SECURE
+  # left empty means the app derives it from the public scheme (APP_URL https)
+  # or HA_TLS, so LAN/VPN HTTP login keeps working and TLS deployments get
+  # Secure without hand-editing flags.
+  HA_COOKIE_SECURE: ${HA_COOKIE_SECURE:-}
+  HA_TLS: ${HA_TLS:-false}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_USER: ${SMTP_USER:-}
@@ -94,6 +102,35 @@ x-backend-env: &backend-env
   VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-admin@healthassistant.local}
   APP_URL: ${APP_URL:-}
   HA_UPLOAD_DIR: /app/uploads
+  # Family object storage (optional in self-host, required under a cloud
+  # profile). The backend resolves one backend at boot and probes it. Empty
+  # values keep the local default; provider-specific knobs that have a
+  # contract default are deliberately not emitted here (path style, TLS
+  # verify, timeouts, max attempts) so the operator's env can set them only
+  # where needed. `docker-compose.cloud.yml` supplies the cloud profile.
+  HA_CLOUD_PROFILE: ${HA_CLOUD_PROFILE:-}
+  HA_OBJECT_STORAGE_BACKEND: ${HA_OBJECT_STORAGE_BACKEND:-}
+  HA_OBJECT_STORAGE_REQUIRED: ${HA_OBJECT_STORAGE_REQUIRED:-false}
+  HA_OBJECT_STORAGE_LOCAL_ROOT: ${HA_OBJECT_STORAGE_LOCAL_ROOT:-}
+  HA_EXPORT_MAX_MB: ${HA_EXPORT_MAX_MB:-1024}
+  # MAX_MB/PRESIGN_TTL are omitted on purpose: the app binds the cap to
+  # MAX_UPLOAD_SIZE and the TTL to the contract default. An operator who
+  # overrides either adds the variable in their env/override file.
+  HA_S3_BUCKET: ${HA_S3_BUCKET:-}
+  HA_S3_REGION: ${HA_S3_REGION:-}
+  HA_S3_ENDPOINT_URL: ${HA_S3_ENDPOINT_URL:-}
+  HA_S3_ACCESS_KEY_ID: ${HA_S3_ACCESS_KEY_ID:-}
+  HA_S3_SECRET_ACCESS_KEY: ${HA_S3_SECRET_ACCESS_KEY:-}
+  HA_S3_SESSION_TOKEN: ${HA_S3_SESSION_TOKEN:-}
+  HA_S3_SSE: ${HA_S3_SSE:-}
+  HA_S3_KMS_KEY_ID: ${HA_S3_KMS_KEY_ID:-}
+  HA_S3_PREFIX: ${HA_S3_PREFIX:-}
+  HA_AZURE_STORAGE_CONTAINER: ${HA_AZURE_STORAGE_CONTAINER:-}
+  HA_AZURE_STORAGE_CONNECTION_STRING: ${HA_AZURE_STORAGE_CONNECTION_STRING:-}
+  HA_AZURE_STORAGE_ACCOUNT_URL: ${HA_AZURE_STORAGE_ACCOUNT_URL:-}
+  HA_AZURE_STORAGE_ACCOUNT_NAME: ${HA_AZURE_STORAGE_ACCOUNT_NAME:-}
+  HA_AZURE_STORAGE_CREDENTIAL: ${HA_AZURE_STORAGE_CREDENTIAL:-}
+  HA_AZURE_STORAGE_PREFIX: ${HA_AZURE_STORAGE_PREFIX:-}
   AI_AGENT_MAX_ITERATIONS: ${AI_AGENT_MAX_ITERATIONS:-20}
   MCP_STDIO_ALLOWED_COMMANDS: ${MCP_STDIO_ALLOWED_COMMANDS:-npx,uvx,python,python3,node}
   MCP_MAX_SERVERS_PER_USER: ${MCP_MAX_SERVERS_PER_USER:-5}
@@ -124,11 +161,14 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       # The bootstrap superuser IS the migration owner role (deployment.md:
-      # neuronection_health_owner runs migrations). init-roles.sh creates the
-      # least-privilege neuronection_health_app runtime role on first boot.
+      # neuronection_health_owner runs migrations) — its secret is
+      # POSTGRES_PASSWORD (ADR-0064 owner credential: used only here and by
+      # the migrate service / host restore; never by serving containers).
       POSTGRES_USER: neuronection_health_owner
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (DB OWNER password) in .env}
+      # The runtime role + its DISTINCT secret (ADR-0064): HA_DB_PASSWORD.
       POSTGRES_APP_USER: neuronection_health_app
+      POSTGRES_APP_PASSWORD: ${HA_DB_PASSWORD:?Set HA_DB_PASSWORD (app DB password, distinct from POSTGRES_PASSWORD) in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -173,14 +213,14 @@ services:
       - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
-  # Migrations (one-shot)
+  # Migrations + provisioning (one-shot, OWNER role — ADR-0064)
   #
-  # Runs `alembic upgrade head` and exits. All app containers depend on it
-  # with `condition: service_completed_successfully`, so they wait for
-  # migrations to complete before booting. This avoids the previous race
-  # where parallel backend replicas ran migrations simultaneously, and
-  # decouples migration failure from backend boot (Compose surfaces the
-  # migrate container's failure clearly).
+  # The only service that ever receives the owner credential. It provisions
+  # (extensions, app role, grants, default privileges, backup ledger table),
+  # runs `alembic upgrade head`, creates the langgraph checkpoint tables, then
+  # re-grants and VERIFIES the app role is DML-only. All app containers depend
+  # on it with `condition: service_completed_successfully`, so they wait for
+  # migrations to complete before booting, and serving code never runs DDL.
   #
   # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
@@ -188,25 +228,28 @@ services:
     image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
     container_name: ${STACK_NAME:-health-assistant}-migrate
     restart: "no"
-    # Two-role split (deployment.md / ADR-0022): migrations run as the owner
-    # role (DDL) — this service overrides the shared x-backend-env anchor
-    # with the neuronection_health_owner URL, the compose-level equivalent of
-    # career/study's `SA_MIGRATIONS_DATABASE_URL` entrypoint pattern. The
-    # backend/worker/beat services connect as least-privilege neuronection_health_app.
     environment:
       <<: *backend-env
+      # Owner credential + DSN (ADR-0064): the canonical
+      # HA_MIGRATIONS_DATABASE_URL is what alembic / provision_db /
+      # setup_checkpoints prefer; it lives HERE ONLY — never in the serving
+      # env. HA_DB_SPLIT=1 without this URL refuses to migrate (fail closed).
+      HA_DB_SPLIT: "1"
       POSTGRES_USER: neuronection_health_owner
-      HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (DB OWNER password) in .env}
+      POSTGRES_APP_PASSWORD: ${HA_DB_PASSWORD:?Set HA_DB_PASSWORD (app DB password, distinct from POSTGRES_PASSWORD) in .env}
+      HA_MIGRATIONS_DATABASE_URL: postgresql+asyncpg://neuronection_health_owner:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD (DB OWNER password) in .env}@postgres:5432/${POSTGRES_DB:-neuronection_health}
     depends_on:
       postgres:
         condition: service_healthy
-    # Alembic first, then the langgraph checkpoint tables: CheckpointStore's
-    # boot-time setup() DDL belongs to the owner (the runtime app role is
-    # DML-only and PG15+ denies CREATE on public) — scripts/
-    # setup_checkpoints.py runs the same idempotent setup as the owner,
-    # once per deploy. App-role DML on the created tables is covered by
-    # init-roles.sh's ALTER DEFAULT PRIVILEGES.
-    command: ["sh", "-c", "alembic upgrade head && python scripts/setup_checkpoints.py"]
+    # Provision (owner seam) → Alembic → checkpoint tables → re-grant + verify.
+    # scripts/provision_db.py owns extensions/app-role/grants/ledger DDL;
+    # app-role DML on the created tables is covered by the default privileges.
+    command: >
+      sh -c "python scripts/provision_db.py pre &&
+             alembic upgrade head &&
+             python scripts/setup_checkpoints.py &&
+             python scripts/provision_db.py post"
     logging: *default-logging
     networks:
       - health-assistant-network
@@ -273,6 +316,11 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # Local/self-host worker: OCR/DICOM/PDF processors materialize and read
+    # documents from the same uploads volume the backend writes. A cloud
+    # profile removes this mount via docker-compose.cloud.yml.
+    volumes:
+      - uploads:/app/uploads
     command: >
       celery -A app.workers.celery_app worker
       --loglevel=info
@@ -313,8 +361,8 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       POSTGRES_USER: neuronection_health_app
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
+      # App-role DSN only (ADR-0064): beat never sees the owner credential.
+      HA_DATABASE_URL: postgresql+asyncpg://neuronection_health_app:${HA_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-neuronection_health}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       redis:
@@ -327,7 +375,12 @@ services:
       - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
-  # Flower (Celery monitoring UI)
+  # Flower (Celery monitoring UI) — OPT-IN via --profile flower (plan 64).
+  #
+  # Off by default: Flower exposes task payloads (health data) and is an
+  # operator tool, not a stack dependency. The bundled nginx resolves the
+  # flower upstream lazily (nginx.conf), so profiling it off never breaks
+  # proxy startup — /flower/ just 502s while disabled.
   #
   # Auth required (FLOWER_USER / FLOWER_PASSWORD). Bind to 127.0.0.1 by
   # default — expose via your reverse proxy with TLS, OR set
@@ -338,6 +391,7 @@ services:
     container_name: ${STACK_NAME:-health-assistant}-flower
     restart: unless-stopped
     init: true
+    profiles: ["flower"]
     ports:
       - "${FLOWER_BIND:-127.0.0.1}:${FLOWER_PORT:-5555}:5555"
     environment:
@@ -380,14 +434,16 @@ services:
       - health-assistant-network
 
   # ───────────────────────────────────────────────────────────────────────
-  # Backup sidecar (deployment.md: "Backup is a service, not a ritual")
+  # Backup sidecar (same-host dump — labelled NON-DR; plan 64 / ADR-0063)
   #
-  # Scheduled instance backups (pg_dump -Fc of neuronection_health + the uploads
-  # volume) written to the ./backups bind mount (= docker/backups/), every
-  # BACKUP_INTERVAL_HOURS, keeping BACKUP_KEEP of each. Enable with
-  # --profile backup. Host-side one-shots incl. manifest + restore:
-  # scripts/backup.sh + scripts/restore.sh (see docker/README.md →
-  # Backup & restore drill).
+  # Writes pg_dump -Fc of neuronection_health (+ the uploads tarball) to the
+  # ./backups bind mount — the SAME HOST as the database. That is a
+  # convenience copy, not disaster recovery: a host disk failure loses the
+  # database and these dumps together. T1 deployments must run the host-side
+  # `scripts/backup.sh` (host timer/systemd) instead — it encrypts, uploads
+  # OFF-HOST (S3/Azure/rclone) and records a backup_runs ledger row per run.
+  # Enable this sidecar only for local convenience:
+  #   --profile backup
   # ───────────────────────────────────────────────────────────────────────
   backup:
     image: timescale/timescaledb:latest-pg16 # pg_dump from the same image as the server
@@ -397,12 +453,15 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # Owner credential (pg_dump reads catalog + all tables; ADR-0063).
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGHOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:-neuronection_health}
       POSTGRES_USER: neuronection_health_owner
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      HA_CLOUD_PROFILE: ${HA_CLOUD_PROFILE:-}
+      HA_OBJECT_STORAGE_BACKEND: ${HA_OBJECT_STORAGE_BACKEND:-}
     volumes:
       - ./backups:/backups
       - uploads:/uploads:ro
@@ -410,7 +469,11 @@ services:
       sh -c 'while true; do
         ts=$$(date -u +%Y%m%d-%H%M%S);
         pg_dump -h $$PGHOST -U $$POSTGRES_USER -Fc $$POSTGRES_DB > /backups/db-$$ts.dump;
-        tar czf /backups/uploads-$$ts.tar.gz -C /uploads . || true;
+        if [ -z "$$HA_CLOUD_PROFILE" ] && { [ -z "$$HA_OBJECT_STORAGE_BACKEND" ] || [ "$$HA_OBJECT_STORAGE_BACKEND" = "local" ]; }; then
+          tar czf /backups/uploads-$$ts.tar.gz -C /uploads . || true;
+        else
+          echo "object storage backend: object bytes are provider-durable; skipping the uploads volume" >&2;
+        fi;
         find /backups -name "db-*.dump" | sort | head -n -$$BACKUP_KEEP | xargs -r rm --;
         find /backups -name "uploads-*.tar.gz" | sort | head -n -$$BACKUP_KEEP | xargs -r rm --;
         sleep $$((BACKUP_INTERVAL_HOURS * 3600));

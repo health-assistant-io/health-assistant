@@ -1,7 +1,7 @@
 {
   "contract": "cloud-connectors",
   "schemaVersion": 1,
-  "purpose": "Cross-language acceptance wall for the family cloud calendar/files contract (ADR-0052). The Python checker runs every row; a second-language host (desktop) pins the same rows against its own implementation. Values are data only \u2014 no real credentials, accounts or private events.",
+  "purpose": "Cross-language acceptance wall for the family cloud calendar/files contract (ADR-0052). The Python checker runs every row; a second-language host (desktop) pins the same rows against its own implementation. Values are data only — no real credentials, accounts or private events.",
   "catalog": {
     "order": [
       "google",
@@ -701,6 +701,45 @@
       "args": {
         "direction": "two-way",
         "deletions": "keep-local",
+        "remoteWritable": true
+      },
+      "expect": {
+        "actions": [
+          {
+            "kind": "unlink",
+            "uid": "remote-1"
+          }
+        ],
+        "skipped": 0
+      }
+    },
+    {
+      "name": "remote-deleted-keep-remote-forgets-locally",
+      "local": [
+        {
+          "localId": "p1",
+          "event": {
+            "uid": "remote-1",
+            "summary": "Exam",
+            "start": "2026-11-12T09:00:00Z"
+          },
+          "updatedAt": "2026-11-03T10:00:00Z"
+        }
+      ],
+      "remote": [],
+      "links": [
+        {
+          "localId": "p1",
+          "uid": "remote-1",
+          "remoteId": "g-1",
+          "updatedAt": "2026-11-03T10:00:00Z",
+          "localHash": "$local",
+          "remoteHash": "$remote"
+        }
+      ],
+      "args": {
+        "direction": "two-way",
+        "deletions": "keep-remote",
         "remoteWritable": true
       },
       "expect": {

@@ -88,11 +88,19 @@ async def list_rules(
     tenant_id: str | UUID,
     *,
     patient_id: str | UUID | None = None,
+    patient_ids: set[UUID] | None = None,
     biomarker_id: str | UUID | None = None,
     enabled: bool | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[NotificationRule]:
+    """List rules, tenant-scoped.
+
+    ``patient_id`` narrows to one patient; ``patient_ids`` narrows to a
+    reachable set (rules attached to other patients, and tenant-wide rules
+    with no patient, stay hidden — the endpoint passes ``None`` for
+    tenant-wide roles and the reachable set for restricted ones).
+    """
     if not DATABASE_AVAILABLE:
         return []
     tenant_uuid = _uuid(tenant_id)
@@ -102,6 +110,10 @@ async def list_rules(
     patient_uuid = _uuid(patient_id)
     if patient_uuid is not None:
         stmt = stmt.where(NotificationRule.patient_id == patient_uuid)
+    elif patient_ids is not None:
+        if not patient_ids:
+            return []
+        stmt = stmt.where(NotificationRule.patient_id.in_(patient_ids))
     biomarker_uuid = _uuid(biomarker_id)
     if biomarker_uuid is not None:
         stmt = stmt.where(NotificationRule.biomarker_id == biomarker_uuid)

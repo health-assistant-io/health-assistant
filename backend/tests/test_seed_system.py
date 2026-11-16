@@ -3,6 +3,7 @@
 import pytest
 
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 @pytest.mark.asyncio
@@ -27,13 +28,13 @@ async def test_seed_all_runs_stages_in_declared_order(monkeypatch):
 
     for name in svc._SEED_STAGE_NAMES:
 
-        async def _stub(_name=name):
+        async def _stub(*_args, _name=name, **_kwargs):
             calls.append(_name)
             return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
 
         monkeypatch.setattr(svc, f"seed_{name}", _stub)
 
-    result = await svc.seed_all()
+    result = await seed_with_commit(svc.seed_all)
 
     assert list(result.keys()) == svc._SEED_STAGE_NAMES
     assert calls == svc._SEED_STAGE_NAMES
@@ -52,10 +53,10 @@ async def test_seed_biomarker_panels_creates_membership_edges():
 
     svc = SeedService()
     # Prerequisites: panels (concepts) + biomarker definitions (default catalog).
-    await svc.seed_concepts()
-    await svc.seed_default_catalog()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_default_catalog)
 
-    stats = await svc.seed_biomarker_panels()
+    stats = await seed_with_commit(svc.seed_biomarker_panels)
     # Standard contract.
     for k in ("added", "updated", "skipped", "errors"):
         assert k in stats and isinstance(stats[k], int), f"bad stats: {stats}"
@@ -89,7 +90,7 @@ async def test_seed_body_parts_reads_split_anatomy_files():
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    stats = await svc.seed_body_parts()
+    stats = await seed_with_commit(svc.seed_body_parts)
     for k in ("added", "updated", "skipped", "errors"):
         assert k in stats, f"missing {k}: {stats}"
 
@@ -123,7 +124,7 @@ async def test_seed_all_executes_every_stage_for_real(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "HA_UPLOAD_DIR", str(tmp_path))
 
     svc = SeedService()
-    result = await svc.seed_all()
+    result = await seed_with_commit(svc.seed_all)
 
     # Every declared stage produced a stats dict with the standard contract:
     # {added, updated, skipped, errors}. default_catalog additionally carries a

@@ -103,7 +103,7 @@
         "id": "ai-system",
         "file": "AI_SYSTEM.md",
         "title": "AI System & Configuration",
-        "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, and per-tenant model configuration."
+        "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, per-tenant model configuration, and call-time cost provenance with tenant price overrides."
       }
     ]
   },
@@ -169,7 +169,7 @@
         "id": "cloud-calendars-dev",
         "file": "dev/cloud-calendars.md",
         "title": "Cloud calendars — implementation",
-        "description": "Health host map for ADR-0052: vendored engines, mapping law, security invariants, test map and gotchas."
+        "description": "Health host map: vendored engines, mapping law, security invariants, test map and gotchas."
       }
     ]
   },
@@ -266,6 +266,18 @@
         "file": "TASK_DEBUGGING_GUIDE.md",
         "title": "Task Debugging Guide",
         "description": "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
+      },
+      {
+        "id": "object-storage-dev",
+        "file": "dev/storage.md",
+        "title": "Object storage — implementation",
+        "description": "Health host map for document, export, import and anatomy object storage: keys, bootstrap, worker materialization, PHI presign limits, backup boundary and tests."
+      },
+      {
+        "id": "deployment-dev",
+        "file": "dev/deployment.md",
+        "title": "Deployment — T1/on-prem conformance",
+        "description": "The T1 deployment contract for health: quick start, the owner/app DB credential split, one-shot migrate + provisioning, /health + /ready severity model, derived cookie Secure, the opt-in Flower profile, and encrypted off-host backups with the backup_runs ledger."
       }
     ]
   }

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "contract": "settings-map",
-  "updated": "2026-11-06",
+  "updated": "2026-11-15",
   "purpose": "One family taxonomy for settings surfaces: what a setting IS decides where it LIVES. Canonical per ADR-0033 / ADR-0031 (sync-and-gate): this file is the master; product repos vendor it byte-identical under contracts/ and scripts/verify-wiring.sh flags drift. A setting may not ship (or move) in any product without a domain entry (or adopter line) here.",
   "groups": {
     "ai": {
@@ -281,6 +281,39 @@
       }
     },
     {
+      "id": "app.data",
+      "group": "app",
+      "title": "Data & Cost",
+      "definition": "Local AI usage ledger (recorded call-time micro-USD cost, tokens, unpriced/partial counts) and the per-model price overrides/effective built-in list prices. Price is a per-model attribute; the editor lives here in P1 (Data & Cost → Prices), the ledger is app.*, and a later single move to ai.models is allowed only as a move, never a second editor.",
+      "home": {
+        "tab": "data",
+        "section": "overview"
+      },
+      "scope": "device-local (desktop) / admin-tenant (web)",
+      "adopters": {
+        "desktop-assistant": "aligned",
+        "health-assistant/core": "aligned (plan 58 P2: tenant/system Data & Cost page)"
+      }
+    },
+    {
+      "id": "app.storage",
+      "group": "app",
+      "title": "Storage status",
+      "definition": "Read-only deployment facts for object storage: backend, bucket/container, prefix, region/endpoint host, SSE mode, per-object cap, presign TTL and the live health row. Credentials are env/instance-role only, and switching backends is a verified migration, never a settings save.",
+      "home": {
+        "tab": "developer",
+        "section": "storage"
+      },
+      "secrets": "none",
+      "scope": "instance (admin)",
+      "adopters": {
+        "study-assistant": "aligned",
+        "career-assistant": "aligned",
+        "health-assistant/core": "aligned",
+        "desktop-assistant": "n/a"
+      }
+    },
+    {
       "id": "tools.job-sources",
       "group": "tools",
       "title": "Job sources — posting ingestion",
@@ -340,6 +373,21 @@
       "scope": "instance (admin)",
       "adopters": {
         "career-assistant": "aligned (plan 205)"
+      }
+    },
+    {
+      "id": "tools.posting-hygiene",
+      "group": "tools",
+      "title": "Posting hygiene",
+      "definition": "Cross-source posting duplicate operations: trust signals (repost count, last verified), low-confidence duplicate proposals, deterministic re-scan, admin merge and the reversible clear that removes duplicate_of_id. Never a scam verdict; no model call.",
+      "home": {
+        "tab": "tools",
+        "section": "hygiene"
+      },
+      "secrets": "none",
+      "scope": "instance (admin)",
+      "adopters": {
+        "career-assistant": "aligned (plan 212)"
       }
     }
   ],
@@ -435,6 +483,30 @@
               "id": "decisions",
               "domains": [
                 "tools.decisions"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "data",
+          "group": "app",
+          "sections": [
+            {
+              "id": "overview",
+              "domains": [
+                "app.data"
+              ]
+            },
+            {
+              "id": "prices",
+              "domains": [
+                "app.data"
+              ]
+            },
+            {
+              "id": "calls",
+              "domains": [
+                "app.data"
               ]
             }
           ]
@@ -565,7 +637,20 @@
         },
         {
           "id": "developer",
-          "group": "app"
+          "group": "app",
+          "sections": [
+            {
+              "id": "diagnostics",
+              "domains": []
+            },
+            {
+              "id": "storage",
+              "domains": [
+                "app.storage"
+              ]
+            }
+          ],
+          "note": "diagnostics stays user-visible; storage is the admin-only read-only deployment card (plan 55 P4b2). No separate tab."
         }
       ]
     },
@@ -642,9 +727,15 @@
               "domains": [
                 "tools.mappings"
               ]
+            },
+            {
+              "id": "hygiene",
+              "domains": [
+                "tools.posting-hygiene"
+              ]
             }
           ],
-          "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token); plan 32 Phase 1 broadened connectors to also host job-source connector instances (manifest catalog + x-secret slots + probes); plan 119 added the MCP server section (endpoint + token lifecycle, per-scope tool/resource visibility, opt-in write switch); plan 154 split the connectors section into mcp (the MCP server surface) and sources (job-source + extension ingestion); plan 186 split the sources domains into tools.job-sources + tools.extensions (section split pending)"
+          "note": "plan 27 Phase 3: the former AI-config web tab split into web-search (SearXNG URL) + connectors (GitHub token); plan 32 Phase 1 broadened connectors to also host job-source connector instances (manifest catalog + x-secret slots + probes); plan 119 added the MCP server section (endpoint + token lifecycle, per-scope tool/resource visibility, opt-in write switch); plan 154 split the connectors section into mcp (the MCP server surface) and sources (job-source + extension ingestion); plan 186 split the sources domains into tools.job-sources + tools.extensions (section split pending); plan 212 adds the posting-hygiene console"
         },
         {
           "id": "automations",
@@ -669,6 +760,12 @@
           "id": "users",
           "group": "app",
           "admin": true
+        },
+        {
+          "id": "storage",
+          "group": "app",
+          "admin": true,
+          "note": "admin-only read-only deployment storage card (app.storage)"
         },
         {
           "id": "audit",
@@ -710,6 +807,19 @@
           "note": "scope-tiered navs (user/tenant/system) stay product-specific; hosts exactly ai.* since plan 27 Phase 4 — legacy ?tab=agent redirects to the tier's tools page"
         },
         {
+          "id": "data",
+          "group": "app",
+          "admin": true,
+          "sections": [
+            {
+              "id": "overview",
+              "domains": [
+                "app.data"
+              ]
+            }
+          ]
+        },
+        {
           "id": "tools",
           "group": "tools",
           "admin": true,
@@ -731,6 +841,20 @@
           "id": "anatomy-atlas",
           "group": "app",
           "admin": true
+        },
+        {
+          "id": "admin-system",
+          "group": "app",
+          "admin": true,
+          "sections": [
+            {
+              "id": "storage",
+              "domains": [
+                "app.storage"
+              ]
+            }
+          ],
+          "note": "the /admin/system/* system-settings shell; storage is the system-admin read-only deployment card"
         }
       ]
     },

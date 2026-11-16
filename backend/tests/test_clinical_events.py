@@ -17,11 +17,26 @@ TEST_USER_ID = uuid.uuid4()
 TEST_TENANT_ID = uuid.uuid4()
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def override_get_current_user():
     from app.schemas.user import TokenData
 
     return TokenData(
-        user_id=TEST_USER_ID, sub=str(TEST_USER_ID), tenant_id=TEST_TENANT_ID, role="user"
+        user_id=TEST_USER_ID, sub=str(TEST_USER_ID), tenant_id=TEST_TENANT_ID, role="USER"
+    )
+
+
+def override_admin_user():
+    from app.schemas.user import TokenData
+
+    return TokenData(
+        user_id=TEST_USER_ID, sub=str(TEST_USER_ID), tenant_id=TEST_TENANT_ID, role="ADMIN"
     )
 
 
@@ -246,11 +261,14 @@ async def test_update_event(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_delete_event(async_client: AsyncClient):
+    """ADMIN principal: clinical:delete is ADMIN-side in the ADR 0054
+    baseline — a USER principal is denied at the central route gate before
+    this handler runs, so the deletion mechanics are pinned with ADMIN."""
     from app.core.database import get_db
     from app.core.security import get_current_user
     from app.main import app
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_current_user] = override_admin_user
 
     db_mock = AsyncMock()
     db_mock.delete = AsyncMock()

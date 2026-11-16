@@ -92,3 +92,19 @@ Writes flown through the integrations are stamped with their provenance
 (source integration + upstream stable ids), land through the same
 validation and RBAC as interactive edits, and dedup so a re-sync never
 duplicates your history.
+
+## Your account sessions and API tokens
+
+The same trust model applies to your own sign-in surface. **Settings →
+Security → Active sessions** lists each device signed in to your account:
+the current device is marked, each row carries the preformatted signed-in /
+last-seen / expiry facts, and **Revoke** signs that one device out. **Sign
+out others** keeps this device and revokes the rest. The list, the current
+badge and the revoke action are the shared family session component; the
+confirmation, error and toast messaging stay in Health.
+
+Personal API tokens and SCIM tokens are shown **once** when created or
+rotated, in a single shown-once block with a copy action. The plaintext is
+never stored or logged; if you lose it, rotate the token — the old bearer
+stops working immediately. The OAuth client id is shown separately from
+the client secret; only the secret uses the shown-once block.

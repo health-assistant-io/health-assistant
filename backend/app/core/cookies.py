@@ -64,6 +64,7 @@ CSRF_EXEMPT_PREFIXES = (
     "/api/v1/auth/setup",
     "/api/v1/auth/demo-login",
     "/api/v1/auth/mfa",
+    "/api/v1/auth/passkeys",
     "/health",
     "/docs",
     "/redoc",

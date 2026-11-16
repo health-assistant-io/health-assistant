@@ -7,7 +7,7 @@ optional source/label. ``patient_id`` is required. Read routes live under
 """
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -19,7 +19,7 @@ class MockUser:
     def __init__(self):
         self.id = "65daba01-2bcb-4b46-9f2f-de9352c209d6"
         self.user_id = self.id
-        self.role = "user"
+        self.role = "USER"
         self.tenant_id = str(uuid.uuid4())
 
     def get(self, key, default=None):
@@ -60,15 +60,19 @@ async def test_upload_telemetry_data(mock_upload, async_client: AsyncClient, moc
     app.dependency_overrides[get_current_user] = override_get_current_user
     mock_upload.return_value = len(mock_telemetry_points)
 
-    response = await async_client.post(
-        "/api/v1/telemetry/data",
-        json={
-            "device_id": "apple_watch_1",
-            "source": "health-connect",
-            "device_label": "Apple Watch",
-            "points": mock_telemetry_points,
-        },
-    )
+    with patch(
+        "app.api.v1.endpoints.telemetry.check_patient_access",
+        new=AsyncMock(return_value=MagicMock()),
+    ):
+        response = await async_client.post(
+            "/api/v1/telemetry/data",
+            json={
+                "device_id": "apple_watch_1",
+                "source": "health-connect",
+                "device_label": "Apple Watch",
+                "points": mock_telemetry_points,
+            },
+        )
     assert response.status_code == 200
     assert response.json()["uploaded"] == len(mock_telemetry_points)
     assert response.json()["device_id"] == "apple_watch_1"

@@ -48,6 +48,64 @@ def test_compute_relative_score_math():
 
 
 # ---------------------------------------------------------------------------
+# Issue #159 — one-sided reference-range convention
+# ---------------------------------------------------------------------------
+
+
+def test_correct_one_sided_range_moves_inverted_bounds():
+    """High + low-only + value > low (a "< X" stored on the wrong side) and
+    Low + high-only + value < high (a "> X" stored on the wrong side) are
+    moved to their correct side; both flag spellings work."""
+    from app.services.biomarkers.reference_ranges import correct_one_sided_range
+
+    assert correct_one_sided_range(10.0, None, 15.0, "High") == (None, 10.0)
+    assert correct_one_sided_range(10.0, None, 15.0, "H") == (None, 10.0)
+    assert correct_one_sided_range(None, 5.0, 3.0, "Low") == (5.0, None)
+    assert correct_one_sided_range(None, 5.0, 3.0, "l") == (5.0, None)
+
+
+def test_correct_one_sided_range_never_touches_correct_ranges():
+    """Correctly-sided, two-sided, ambiguous and flagless inputs pass through
+    unchanged — bounds are corrected, never dropped or invented."""
+    from app.services.biomarkers.reference_ranges import correct_one_sided_range
+
+    # Already on the correct side.
+    assert correct_one_sided_range(None, 10.0, 15.0, "High") == (None, 10.0)
+    assert correct_one_sided_range(5.0, None, 3.0, "Low") == (5.0, None)
+    # Two-sided ranges are never touched, even when flagged abnormal.
+    assert correct_one_sided_range(0.0, 10.0, 15.0, "High") == (0.0, 10.0)
+    # No flag / no value → direction unknowable.
+    assert correct_one_sided_range(10.0, None, 15.0, None) == (10.0, None)
+    assert correct_one_sided_range(10.0, None, None, "High") == (10.0, None)
+    # Value does not corroborate the inversion (at or on the other side).
+    assert correct_one_sided_range(10.0, None, 8.0, "High") == (10.0, None)
+    assert correct_one_sided_range(10.0, None, 10.0, "High") == (10.0, None)
+    # No range at all.
+    assert correct_one_sided_range(None, None, 5.0, "High") == (None, None)
+
+
+def test_compute_relative_score_with_interpretation_normalizes_inverted_pair():
+    """With a flag, an inverted one-sided pair is corrected before scoring.
+
+    The score itself stays 0.5 for any one-sided range (the engine contract,
+    mirroring ObservationBuilder) — what changes is the pair a caller
+    persists, which is what the status logic reads. Without a flag the
+    legacy behaviour (0.5, untouched pair) is preserved, and a two-sided
+    range scores identically with or without a flag.
+    """
+    # Inverted "< 10" (low-only) + High: corrected to max-only → still 0.5.
+    assert compute_relative_score(15.0, 10.0, None, interpretation="High") == 0.5
+    # No flag: legacy behaviour, pair untouched, 0.5.
+    assert compute_relative_score(15.0, 10.0, None) == 0.5
+    # Correctly-sided one-sided ranges keep their middle score.
+    assert compute_relative_score(15.0, None, 10.0, interpretation="High") == 0.5
+    assert compute_relative_score(3.0, 5.0, None, interpretation="Low") == 0.5
+    # Two-sided: unaffected by the flag.
+    assert compute_relative_score(15.0, 0.0, 10.0, interpretation="High") == 1.0
+    assert compute_relative_score(5.0, 0.0, 10.0, interpretation="High") == 0.5
+
+
+# ---------------------------------------------------------------------------
 # Model / schema
 # ---------------------------------------------------------------------------
 
@@ -116,6 +174,10 @@ def _bio(**kw) -> BiomarkerDefinition:
         "reference_range_max": 4.0,
     }
     base.update(kw)
+    base.setdefault(
+        "scope",
+        "tenant" if base.get("tenant_id") is not None else "system",
+    )
     return BiomarkerDefinition(**base)
 
 
@@ -216,7 +278,7 @@ async def _seed_biomarker_with_ranges(session, tenant_id):
         reference_range_min=0.4,
         reference_range_max=4.0,
         tenant_id=tenant_id,
-        scope="system",
+        scope="tenant",
     )
     session.add(bio)
     await session.flush()

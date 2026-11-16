@@ -34,7 +34,10 @@ services:
       # least-privilege neuronection_health_app runtime role on first boot.
       POSTGRES_USER: neuronection_health_owner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # ADR-0064: the runtime role needs its OWN secret, distinct from the
+      # owner's (init-roles.sh refuses a shared value).
       POSTGRES_APP_USER: neuronection_health_app
+      POSTGRES_APP_PASSWORD: ${HA_DB_PASSWORD:-dev_app_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -251,6 +254,9 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # Local OCR/DICOM processors read the same uploads volume as the backend.
+    volumes:
+      - uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -t 5 || exit 1"]
       interval: 60s

@@ -22,12 +22,26 @@ export interface CatalogUiMeta {
   admin_route: string;
 }
 
+/**
+ * The typed write contract for one catalog type (ADR 0055 D5), from
+ * `GET /catalogs` `write`. `create_fields` / `update_fields` mirror the
+ * backend Pydantic schemas exactly — the single source of truth for the
+ * payload allowlist: any other key in a request body is rejected with a 422
+ * (`extra="forbid"`), never silently dropped.
+ */
+export interface CatalogWriteMeta {
+  create_fields: string[];
+  update_fields: string[];
+  supports_promote: boolean;
+}
+
 export interface CatalogTypeMeta {
   type: CatalogType;
   ui: CatalogUiMeta;
   has_concept_link: boolean;
   edge_endpoint_type: string;
   search_columns: string[];
+  write: CatalogWriteMeta;
 }
 
 export interface CatalogTypeListResponse {

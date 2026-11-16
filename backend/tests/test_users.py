@@ -10,6 +10,13 @@ from app.models.enums import Role
 from ._auth_helpers import create_user
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 # Helper to mock the dependency
 class MockTokenData:
     def __init__(self, user_id, tenant_id, role, sub=None):
@@ -137,7 +144,9 @@ async def test_get_user_forbidden(mock_get_user_by_id, async_client: AsyncClient
 
     response = await async_client.get(f"/api/v1/users/{mock_target_user.id}")
     assert response.status_code == 403
-    assert response.json()["detail"] == "Not authorized to view this user"
+    # ADR 0054: a USER principal lacks user:read — the central route gate
+    # answers uniformly before the handler's own viewer check runs.
+    assert response.json()["detail"] == "Access denied"
 
     app.dependency_overrides = {}
 
@@ -157,6 +166,43 @@ async def test_get_user_admin_allowed(
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == mock_target_user.email
+
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+async def test_update_user_self_service_is_not_this_surface(async_client, mock_target_user):
+    """ADR 0054 phase-6 tighten: ``PUT /users/{id}`` requires
+    ``user:role_assign @ tenant`` (ADMIN-side) — a signed-in USER (or
+    MANAGER) updating their *own* row is denied at the gate. Profile
+    self-service lives at ``/settings/user``; the handler's old
+    ``is_self`` branch was unreachable dead code and is gone."""
+    from app.core.security import get_current_user
+    from app.main import app
+
+    self_token = MockTokenData(
+        user_id=mock_target_user.id,
+        tenant_id=mock_target_user.tenant_id,
+        role="USER",
+        sub=mock_target_user.email,
+    )
+    app.dependency_overrides[get_current_user] = lambda: self_token
+
+    response = await async_client.put(f"/api/v1/users/{mock_target_user.id}?email=me@example.com")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied"
+
+    manager_token = MockTokenData(
+        user_id=uuid.uuid4(),
+        tenant_id=mock_target_user.tenant_id,
+        role="MANAGER",
+        sub="manager@example.com",
+    )
+    app.dependency_overrides[get_current_user] = lambda: manager_token
+
+    response = await async_client.put(f"/api/v1/users/{mock_target_user.id}?email=me@example.com")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied"
 
     app.dependency_overrides = {}
 
@@ -234,6 +280,8 @@ async def test_delete_user_forbidden(async_client: AsyncClient, mock_target_user
     response = await async_client.delete(f"/api/v1/users/{mock_target_user.id}")
 
     assert response.status_code == 403
-    assert "not authorized to access this resource" in response.json()["detail"]
+    # ADR 0054: a USER principal lacks user:deactivate — the central route
+    # gate answers uniformly before the handler's own RoleChecker runs.
+    assert response.json()["detail"] == "Access denied"
 
     app.dependency_overrides = {}

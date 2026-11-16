@@ -2,6 +2,7 @@
 
 import logging
 
+from app.models.enums import CatalogScope
 from app.services.imports.types import (
     UTC,
     UUID,
@@ -55,15 +56,23 @@ class SidecarMixin:
                 payload, tenant_id, id_remap
             )
         elif name == "biomarker_definitions.json":
-            created["biomarker_definitions"] = await self._restore_biomarker_catalog(
-                payload, tenant_id
-            )
+            (
+                created["biomarker_definitions"],
+                biomarker_errors,
+            ) = await self._restore_biomarker_catalog(payload, tenant_id)
+            errors.extend(biomarker_errors)
         elif name == "medication_catalog.json":
-            created["medication_catalog"] = await self._restore_medication_catalog(
-                payload, tenant_id
-            )
+            (
+                created["medication_catalog"],
+                medication_errors,
+            ) = await self._restore_medication_catalog(payload, tenant_id)
+            errors.extend(medication_errors)
         elif name == "allergy_catalog.json":
-            created["allergy_catalog"] = await self._restore_allergy_catalog(payload, tenant_id)
+            (
+                created["allergy_catalog"],
+                allergy_errors,
+            ) = await self._restore_allergy_catalog(payload, tenant_id)
+            errors.extend(allergy_errors)
         elif name == "clinical_event_types.json":
             created["clinical_event_types"] = await self._restore_clinical_event_types(
                 payload, tenant_id
@@ -361,14 +370,26 @@ class SidecarMixin:
                     self.db.add(row)
         return count
 
-    async def _restore_biomarker_catalog(self, payload: dict[str, Any], tenant_id: UUID) -> int:
+    async def _restore_biomarker_catalog(
+        self, payload: dict[str, Any], tenant_id: UUID
+    ) -> tuple[int, list[str]]:
+        """Restore the tenant's biomarker catalog (ADR 0055).
+
+        Only rows the job tenant owns are imported: exported system rows are
+        recreated by the seed lane and are skipped. The importer runs with the
+        job tenant, so its ``(tenant, system)`` lookup prefers the tenant
+        overlay and never mutates a system row; item failures are surfaced,
+        never swallowed.
+        """
         from app.schemas.biomarker import (
             BiomarkerCreate,
             CatalogImportPayload,
             UnitCreate,
         )
         from app.services.catalog.catalog_import_service import CatalogImportService
+        from app.services.imports.taxonomy import payload_row_scope
 
+        errors: list[str] = []
         units = [
             UnitCreate(
                 symbol=u["symbol"],
@@ -379,6 +400,10 @@ class SidecarMixin:
         ]
         biomarkers = []
         for b in payload.get("biomarkers", []):
+            scope = payload_row_scope(b, tenant_id)
+            if scope != "tenant":
+                logger.warning("biomarker %r skipped: %s row", b.get("slug"), scope)
+                continue
             try:
                 biomarkers.append(
                     BiomarkerCreate(
@@ -386,7 +411,6 @@ class SidecarMixin:
                         name=b["name"],
                         coding_system=b.get("coding_system", "loinc"),
                         code=b.get("code"),
-                        category=b.get("category"),
                         class_concept_slug=b.get("class_concept_slug"),
                         aliases=b.get("aliases", []),
                         info=b.get("info"),
@@ -397,15 +421,20 @@ class SidecarMixin:
                     )
                 )
             except Exception as e:
-                logger.warning(f"biomarker skipped: {e}")
+                errors.append(f"biomarker {b.get('slug')!r}: {e}")
         cat_payload = CatalogImportPayload(
             metadata=None,
             units=units,
             biomarkers=biomarkers,
         )
-        svc = CatalogImportService(self.db)
-        stats = await svc.import_catalog(cat_payload)
-        return stats.get("biomarkers_added", 0) + stats.get("biomarkers_updated", 0)
+        svc = CatalogImportService(self.db, tenant_id=tenant_id)
+        result = await svc.import_catalog(cat_payload)
+        errors.extend(
+            f"{outcome.kind} {outcome.reference!r}: {outcome.error}" for outcome in result.failures
+        )
+        return (
+            result.stats.get("biomarkers_added", 0) + result.stats.get("biomarkers_updated", 0)
+        ), errors
 
     async def _restore_clinical_event_types(self, payload: dict[str, Any], tenant_id: UUID) -> int:
         from app.models.concept_model import Concept, ConceptKindTag
@@ -439,6 +468,7 @@ class SidecarMixin:
                         icon=c.get("icon"),
                         color=c.get("color"),
                         status=ConceptStatus.ACTIVE,
+                        scope=CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM,
                     )
                     new_cat.kind_tags.append(ConceptKindTag(kind=ConceptKind.EVENT_CATEGORY))
                     self.db.add(new_cat)

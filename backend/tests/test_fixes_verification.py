@@ -15,6 +15,13 @@ from app.models.examination_model import ExaminationModel
 from app.schemas.user import TokenData
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def override_get_current_user():
     uid = uuid.uuid4()
     tid = uuid.uuid4()
@@ -28,7 +35,9 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
 
     uid = uuid.uuid4()
     tid = uuid.uuid4()
-    current_user_obj = TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="USER")
+    # ADMIN principal: clinical:delete is ADMIN-side in the ADR 0054
+    # baseline — a USER principal is denied at the central route gate.
+    current_user_obj = TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="ADMIN")
 
     def local_override():
         return current_user_obj
@@ -94,7 +103,9 @@ async def test_examination_thorough_deletion(async_client: AsyncClient):
         assert "deleted successfully" in response.json()["message"]
 
         # Verify document deletion was called with trigger_cumulative=False
-        mock_delete_doc.assert_called_once_with(str(mock_doc.id), db_mock, trigger_cumulative=False)
+        mock_delete_doc.assert_called_once_with(
+            str(mock_doc.id), db_mock, current_user_obj, trigger_cumulative=False
+        )
 
         # Verify exam itself was deleted
         db_mock.delete.assert_called_with(mock_exam)

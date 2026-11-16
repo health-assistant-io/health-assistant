@@ -16,6 +16,11 @@ class AuthSessionModel(Base, UUIDMixin):
     list surface (``GET /api/v1/me/sessions``) shows when each family
     signed in.
 
+    The device facts (migration ``0019_session_metadata``) are ``ip`` /
+    ``user_agent`` as observed at issuance and ``last_seen_at`` — the
+    throttled activity stamp written on session verification. All three
+    are nullable: unknown is NULL, never a fabricated default.
+
     The Redis jti store (``app/core/token_store.py``) remains the hot
     revocation layer; this table is the authoritative family record.
     """
@@ -33,12 +38,18 @@ class AuthSessionModel(Base, UUIDMixin):
     absolute_expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     client_label = Column(String(200), nullable=False, default="", server_default="")
+    ip = Column(String(45), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "client_label": self.client_label,
+            "ip": self.ip,
+            "user_agent": self.user_agent,
+            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "absolute_expires_at": (

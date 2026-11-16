@@ -2,10 +2,12 @@
  * Concept create/edit form — multi-kind, parent, coding, icon, aliases, status.
  *
  * Registered in ``CATALOG_FORMS`` so the catalog modal's ``getCatalogForm``
- * picks it up for ``type='concept'``. Writes route through ``/concepts`` (not
- * ``/catalogs/concept``) via the write-target dispatch (plan §4.3).
+ * picks it up for ``type='concept'``. Saves go through the generic
+ * ``/catalogs/concept`` write contract (the payload helper filters the draft
+ * to the descriptor's declared fields; ``ConceptService`` stays the write
+ * authority behind it).
  *
- * Fields mirror ``ConceptCreateInput`` / ``ConceptUpdateInput``:
+ * Fields mirror ``ConceptCreate`` / ``ConceptUpdate``:
  * slug (create-only), name, kinds, parent, coding system + code, aliases,
  * icon, color, display_order, status (edit-only).
  */

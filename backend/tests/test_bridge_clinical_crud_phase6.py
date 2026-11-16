@@ -26,6 +26,7 @@ from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.clinical_event import ClinicalEvent, ClinicalEventType
 from app.models.concept_model import Concept
+from app.models.enums import CatalogScope
 from app.models.fhir.allergy import AllergyIntolerance
 from app.models.fhir.medication import Medication
 from app.models.fhir.patient import Patient
@@ -96,6 +97,7 @@ async def bridge_with_two_patients():
         # looks it up by slug + walks its category_concept_id, so seed a
         # throwaway concept + a "symptom" type pointing at it.
         category_concept = Concept(
+            scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             slug=f"cat-p6-{tenant_id.hex[:6]}",

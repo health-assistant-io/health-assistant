@@ -10,7 +10,16 @@ patient-instance record (a dose administered). Both project to FHIR R4:
 See ``the design notes`` Phase 5.
 """
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -37,17 +46,24 @@ class VaccineCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
 
     ``tenant_id`` nullable — ``NULL`` = system-wide default, non-null = tenant
     override. ``class_concept_id`` is the taxonomy hook (a ``vaccine_class``
-    concept), following the ``<role>_concept_id`` convention.
+    concept), following the ``<role>_concept_id`` convention. ``seed_key`` is
+    the immutable natural key (``vaccine:<kebab-key>``); ``slug`` stays
+    display-only — server-derived, per-tenant unique via
+    ``ix_vaccine_catalog_slug_tenant``, never referenced as identity (ADR 0055).
+    Vaccine → disease links are ``PREVENTS`` ``concept_edges`` rows (seeded
+    from the ``target_diseases`` readable refs); the graph is their single
+    source of truth — there is no JSONB column for them. The disease links
+    are queryable via the relations endpoints, not this row.
     """
 
     __tablename__ = "vaccine_catalog"
 
     slug = Column(String(255), nullable=False, index=True)
     name = Column(String(255), nullable=False)
+    seed_key = Column(String(120), nullable=True)
     description = Column(Text, nullable=True)
     coding_system = Column(String(50), nullable=True, default="cvx")
     code = Column(String(50), nullable=True)  # CVX code
-    target_diseases = Column(JSONB, nullable=True)  # list of disease concept slugs
     dose_schedule = Column(JSONB, nullable=True)  # {doses, intervals}
     contraindications = Column(Text, nullable=True)
     side_effects = Column(JSONB, nullable=True)  # list of strings
@@ -72,6 +88,15 @@ class VaccineCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
         index=True,
     )
 
+    __table_args__ = (
+        CheckConstraint("scope <> 'system' OR tenant_id IS NULL", name="scope_system_no_tenant"),
+        CheckConstraint(
+            "(scope <> 'tenant' AND scope <> 'user') OR tenant_id IS NOT NULL",
+            name="scope_scoped_has_tenant",
+        ),
+        CheckConstraint("scope <> 'user' OR created_by IS NOT NULL", name="scope_user_has_creator"),
+    )
+
     class_concept = relationship(
         "Concept",
         foreign_keys="[VaccineCatalog.class_concept_id]",
@@ -79,28 +104,33 @@ class VaccineCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     )
 
     @property
-    def is_custom(self):
-        return self.tenant_id is not None
+    def class_concept_slug(self) -> str | None:
+        return self.class_concept.slug if self.class_concept else None
+
+    @property
+    def class_concept_name(self) -> str | None:
+        return self.class_concept.name if self.class_concept else None
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "slug": self.slug,
             "name": self.name,
+            "seed_key": self.seed_key,
             "description": self.description,
             "coding_system": self.coding_system,
             "code": self.code,
-            "target_diseases": self.target_diseases or [],
             "dose_schedule": self.dose_schedule,
             "contraindications": self.contraindications,
             "side_effects": self.side_effects or [],
             "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
-            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
-            "class_concept_name": self.class_concept.name if self.class_concept else None,
+            "class_concept_slug": self.class_concept_slug,
+            "class_concept_name": self.class_concept_name,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
-            "is_custom": self.is_custom,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def to_fhir_dict(self) -> dict:

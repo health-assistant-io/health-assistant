@@ -9,10 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.biomarker_model import (
-    BiomarkerDefinition,
-    Unit,
-)
+from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import ConceptEdge
 from app.models.enums import (
@@ -36,6 +33,7 @@ from app.schemas.clinical_event import (
 )
 from app.schemas.user import TokenData
 from app.services.audit.audit_service import audit_read, log_audit_action
+from app.services.catalog.catalog_write_service import serialize_biomarker
 from app.services.clinical import clinical_event_service as ce_service
 
 logger = logging.getLogger(__name__)
@@ -93,31 +91,24 @@ async def get_correlated_biomarkers(
         .all()
     )
 
-    response = []
-    if edge_rows:
-        bio_rows = (
+    if not edge_rows:
+        return []
+    bio_rows = (
+        (
             await db.execute(
-                select(BiomarkerDefinition, Unit.symbol.label("unit_symbol"))
-                .outerjoin(Unit, BiomarkerDefinition.preferred_unit_id == Unit.id)
-                .where(BiomarkerDefinition.id.in_(edge_rows))
+                select(BiomarkerDefinition).where(
+                    BiomarkerDefinition.id.in_(edge_rows),
+                    or_(
+                        BiomarkerDefinition.tenant_id.is_(None),
+                        BiomarkerDefinition.tenant_id == current_user.tenant_id,
+                    ),
+                )
             )
-        ).all()
-        for bio, symbol in bio_rows:
-            bio_dict = {
-                "id": bio.id,
-                "slug": bio.slug,
-                "name": bio.name,
-                "category": bio.category,
-                "aliases": bio.aliases,
-                "preferred_unit_id": bio.preferred_unit_id,
-                "info": bio.info,
-                "reference_range_min": bio.reference_range_min,
-                "reference_range_max": bio.reference_range_max,
-                "preferred_unit_symbol": symbol,
-            }
-            response.append(bio_dict)
-
-    return response
+        )
+        .scalars()
+        .all()
+    )
+    return [serialize_biomarker(bio, current_user.tenant_id) for bio in bio_rows]
 
 
 @router.post("/types/{type_id}/biomarkers")
@@ -137,6 +128,7 @@ async def add_correlated_biomarker(
         db,
         type_id,
         payload.biomarker_id,
+        actor=current_user,
         correlation_type=payload.correlation_type,
         description=payload.description,
     )
@@ -150,7 +142,7 @@ async def remove_correlated_biomarker(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a biomarker ↔ event-type correlation."""
-    await ce_service.remove_correlated_biomarker(db, type_id, biomarker_id)
+    await ce_service.remove_correlated_biomarker(db, type_id, biomarker_id, actor=current_user)
     return {"message": "Correlation removed"}
 
 
@@ -226,6 +218,7 @@ async def create_event(
     event = await ce_service.create_event(db, current_user, event_in)
     # §17: clinical-event writes are audited (plan 16 H2).
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_clinical_event",
@@ -255,6 +248,7 @@ async def update_event(
 ):
     event = await ce_service.update_event(db, event_id, current_user, event_in)
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_clinical_event",
@@ -274,6 +268,7 @@ async def delete_event(
     """Soft-delete (tombstone) the event and emit the deletion notification."""
     await ce_service.soft_delete_event(db, event_id, current_user)
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_clinical_event",

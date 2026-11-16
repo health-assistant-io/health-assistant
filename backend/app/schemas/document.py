@@ -43,7 +43,9 @@ class DocumentResponse(DocumentBase):
     status: str
     progress: int
     error_message: str | None = None
-    file_path: str
+    # Wire compatibility only: never populated with a server path. Document
+    # bytes are fetched through the authorized download/preview routes.
+    file_path: str = ""
     include_in_extraction: bool
     extracted_text: str | None = None
     entities: Any | None = None

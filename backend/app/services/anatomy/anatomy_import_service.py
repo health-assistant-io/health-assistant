@@ -14,6 +14,7 @@ from app.models.enums import (
 )
 from app.schemas.anatomy_import import AnatomyImportPayload
 from app.services.catalog.concept_service import resolve_concept_by_slug
+from app.services.seed.provenance import mark_user_modified_for_model
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,14 @@ class AnatomyImportService:
         # 1. Process Nodes
         for node_data in payload.nodes:
             try:
+                # System-only door: the JSON import writes the shared global
+                # ontology, so it may only match/update system rows — a slug
+                # that belongs to a tenant's private row is invisible here.
                 result = await self.db.execute(
-                    select(AnatomyStructure).where(AnatomyStructure.slug == node_data.slug)
+                    select(AnatomyStructure).where(
+                        AnatomyStructure.slug == node_data.slug,
+                        AnatomyStructure.tenant_id.is_(None),
+                    )
                 )
                 existing_node = result.scalar_one_or_none()
 
@@ -57,8 +64,8 @@ class AnatomyImportService:
                     existing_node.standard_system = node_data.standard_system
                     existing_node.standard_code = node_data.standard_code
                     existing_node.description = node_data.description
-                    existing_node.is_custom = node_data.is_custom
                     existing_node.display = node_data.display
+                    await mark_user_modified_for_model(self.db, AnatomyStructure, existing_node.id)
                     stats["nodes_updated"] += 1
                     node_id_map[existing_node.slug] = existing_node.id
                 else:
@@ -69,19 +76,24 @@ class AnatomyImportService:
                         standard_system=node_data.standard_system,
                         standard_code=node_data.standard_code,
                         description=node_data.description,
-                        is_custom=node_data.is_custom,
                         display=node_data.display,
                     )
                     self.db.add(new_node)
                     await self.db.flush()
+                    await mark_user_modified_for_model(self.db, AnatomyStructure, new_node.id)
                     stats["nodes_added"] += 1
                     node_id_map[new_node.slug] = new_node.id
             except Exception as e:
                 logger.error(f"Error processing anatomy node {node_data.slug}: {e}")
                 stats["errors"] += 1
 
-        # Refresh map for all nodes to allow edges to resolve even if node wasn't in payload
-        all_nodes_result = await self.db.execute(select(AnatomyStructure.slug, AnatomyStructure.id))
+        # Refresh map for all system nodes so edges resolve even when a node
+        # was not in the payload; tenant-owned structures stay out of reach.
+        all_nodes_result = await self.db.execute(
+            select(AnatomyStructure.slug, AnatomyStructure.id).where(
+                AnatomyStructure.tenant_id.is_(None)
+            )
+        )
         for slug, node_id in all_nodes_result.all():
             node_id_map[slug] = node_id
 

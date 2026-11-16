@@ -21,6 +21,8 @@ const RouteFallback = () => (
 );
 
 import { SessionGate } from './components/auth/SessionGate';
+import { RequirePermission } from './components/auth/RequirePermission';
+import { StepUpProvider } from './components/auth/StepUpProvider';
 const RoleSetupWizard = lazy(() => import('./pages/Setup/RoleSetupWizard'));
 const Dashboard = lazy(() => import('./pages/Dashboard/Dashboard'));
 const AllergyList = lazy(() => import('./pages/Allergies/AllergyList'));
@@ -54,7 +56,9 @@ const MyAccount = lazy(() => import('./pages/Account/MyAccount'));
 const AppearanceSettings = lazy(() => import('./pages/Settings/AppearanceSettings'));
 const Security = lazy(() => import('./pages/Settings/Security'));
 const TenantSettingsPage = lazy(() => import('./pages/Admin/TenantSettings'));
+const TenantSecurityPolicyPage = lazy(() => import('./pages/Admin/TenantSecurityPolicy'));
 const SystemSettingsPage = lazy(() => import('./pages/Admin/SystemSettings'));
+const StorageStatusPage = lazy(() => import('./pages/Admin/StorageStatus'));
 const Integrations = lazy(() => import('./pages/Settings/Integrations'));
 const IntegrationDetail = lazy(() => import('./pages/Settings/IntegrationDetail'));
 const OAuthConnected = lazy(() => import('./pages/Settings/OAuthConnected'));
@@ -78,11 +82,18 @@ const CatalogManagement = lazy(() => import('./pages/Admin/CatalogManagement'));
 const CatalogWorkspace = lazy(() => import('./pages/Catalogs/CatalogWorkspace').then(m => ({ default: m.CatalogWorkspace })));
 const VaccinationList = lazy(() => import('./pages/Vaccinations/VaccinationList').then(m => ({ default: m.VaccinationList })));
 const SystemIntegrations = lazy(() => import('./pages/Admin/SystemIntegrations'));
+const SeedSources = lazy(() => import('./pages/Admin/SeedSources'));
 const AtlasManager = lazy(() => import('./pages/Admin/AtlasManager'));
 const OAuthClients = lazy(() => import('./pages/Admin/OAuthClients'));
+const AccessManagement = lazy(() => import('./pages/Admin/AccessManagement'));
+const AuditViewer = lazy(() => import('./pages/Admin/AuditViewer'));
+const EnterpriseIdentity = lazy(() => import('./pages/Admin/EnterpriseIdentity'));
+const ElevationQueue = lazy(() => import('./pages/Admin/ElevationQueue'));
 const NotFoundPage = lazy(() => import('./pages/NotFound/NotFoundPage'));
+const NoAccessPage = lazy(() => import('./pages/NoAccess/NoAccessPage'));
 
 const AIConfig = lazy(() => import('./pages/Settings/AIConfig').then(m => ({ default: m.AIConfig })));
+const DataCost = lazy(() => import('./pages/Settings/DataCost').then(m => ({ default: m.DataCost })));
 const ToolsConfig = lazy(() => import('./pages/Settings/ToolsConfig').then(m => ({ default: m.ToolsConfig })));
 import { useAuthStore } from './store/slices/authSlice';
 import { useSettingsStore } from './store/slices/settingsSlice';
@@ -223,6 +234,7 @@ function App() {
   // resolved a live cookie session.
   return (
     <SessionGate>
+      <StepUpProvider>
       <ToastContainer position="bottom-right" />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -276,23 +288,27 @@ function App() {
           {user?.role === 'SYSTEM_ADMIN' && (
             <>
               {/* Full-page admin dashboards — no settings sidebar */}
-              <Route path="/admin/system/tenants" element={<TenantManagement />} />
-              <Route path="/admin/system/tenants/:tenantId" element={<TenantDetail />} />
-              <Route path="/admin/system/users" element={<UserManagement />} />
-              <Route path="/admin/system/users/:userId" element={<UserDetail />} />
+              <Route path="/admin/system/tenants" element={<RequirePermission permission="tenant:read"><TenantManagement /></RequirePermission>} />
+              <Route path="/admin/system/tenants/:tenantId" element={<RequirePermission permission="tenant:read"><TenantDetail /></RequirePermission>} />
+              <Route path="/admin/system/users" element={<RequirePermission permission="user:read"><UserManagement /></RequirePermission>} />
+              <Route path="/admin/system/users/:userId" element={<RequirePermission permission="user:read"><UserDetail /></RequirePermission>} />
               {/* Catalog workspace moved to /catalogs (all users, Phase C).
                   Stale admin bookmarks redirect there. */}
               <Route path="/admin/catalogs" element={<Navigate to="/catalogs" replace />} />
 
               {/* Configuration surfaces — share the settings shell */}
               <Route element={<SettingsShell nav={systemSettingsNav} header={systemSettingsHeader} />}>
-                <Route path="/admin/system/settings" element={<SystemSettingsPage />} />
-                <Route path="/admin/system/ai-config" element={<AIConfig scope="global" />} />
-                <Route path="/admin/system/tools" element={<ToolsConfig scope="global" />} />
-                <Route path="/admin/system/integrations" element={<SystemIntegrations />} />
-                <Route path="/admin/system/catalogs" element={<CatalogManagement />} />
+                <Route path="/admin/system/settings" element={<RequirePermission permission="settings:read"><SystemSettingsPage /></RequirePermission>} />
+                <Route path="/admin/system/storage" element={<RequirePermission permission="settings:read"><StorageStatusPage /></RequirePermission>} />
+                <Route path="/admin/system/ai-config" element={<RequirePermission permission="ai:config_read"><AIConfig scope="global" /></RequirePermission>} />
+                <Route path="/admin/system/data-cost" element={<RequirePermission permission="ai:config_read"><DataCost scope="global" /></RequirePermission>} />
+                <Route path="/admin/system/tools" element={<RequirePermission permission="ai:config_read"><ToolsConfig scope="global" /></RequirePermission>} />
+                <Route path="/admin/system/integrations" element={<RequirePermission permission="integration:manage"><SystemIntegrations /></RequirePermission>} />
+                <Route path="/admin/system/catalogs" element={<RequirePermission permission={['catalog:read', 'seed_source:read']}><CatalogManagement /></RequirePermission>} />
+                <Route path="/admin/system/seed-sources" element={<RequirePermission permission="seed_source:read"><SeedSources scope="system" /></RequirePermission>} />
+                <Route path="/admin/system/elevations" element={<RequirePermission permission="break_glass:approve"><ElevationQueue scope="system" /></RequirePermission>} />
                 <Route path="/admin/system/taxonomy" element={<Navigate to="/catalogs?type=concept" replace />} />
-                <Route path="/admin/anatomy-atlas" element={<AtlasManager />} />
+                <Route path="/admin/anatomy-atlas" element={<RequirePermission permission="catalog:read"><AtlasManager /></RequirePermission>} />
               </Route>
             </>
           )}
@@ -301,15 +317,27 @@ function App() {
           {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'SYSTEM_ADMIN') && (
             <>
               {/* Full-page admin dashboards — no settings sidebar */}
-              <Route path="/admin/tenant/users" element={<UserManagement />} />
-              <Route path="/admin/tenant/users/:userId" element={<UserDetail />} />
-              <Route path="/admin/tenant/oauth-clients" element={<OAuthClients />} />
+              {/* user:read / integration:manage are ADMIN-side in the
+                  permission baseline (ADR 0054) — MANAGER hitting these
+                  paths lands on /no-access instead of a 403 loop. */}
+              <Route path="/admin/tenant/users" element={<RequirePermission permission="user:read"><UserManagement /></RequirePermission>} />
+              <Route path="/admin/tenant/users/:userId" element={<RequirePermission permission="user:read"><UserDetail /></RequirePermission>} />
+              <Route path="/admin/tenant/oauth-clients" element={<RequirePermission permission="integration:manage"><OAuthClients /></RequirePermission>} />
+              <Route path="/admin/tenant/access" element={<RequirePermission permission={['patient:grant', 'settings:read']}><AccessManagement /></RequirePermission>} />
+              <Route path="/admin/tenant/seed-sources" element={<RequirePermission permission="seed_source:read"><SeedSources scope="tenant" /></RequirePermission>} />
+              {/* Audit viewer (ADR 0054 phase 3 UI) — audit:read is
+                  ADMIN/SYSTEM_ADMIN; MANAGER lands on /no-access. */}
+              <Route path="/admin/audit" element={<RequirePermission permission="audit:read"><AuditViewer /></RequirePermission>} />
 
               {/* Configuration surfaces — share the settings shell */}
               <Route element={<SettingsShell nav={tenantSettingsNav} header={tenantSettingsHeader} />}>
-                <Route path="/admin/tenant/settings" element={<TenantSettingsPage />} />
-                <Route path="/admin/tenant/ai-config" element={<AIConfig scope="tenant" />} />
-                <Route path="/admin/tenant/tools" element={<ToolsConfig scope="tenant" />} />
+                <Route path="/admin/tenant/settings" element={<RequirePermission permission="settings:read"><TenantSettingsPage /></RequirePermission>} />
+                <Route path="/admin/tenant/security" element={<RequirePermission permission="settings:read"><TenantSecurityPolicyPage /></RequirePermission>} />
+                <Route path="/admin/tenant/identity" element={<RequirePermission permission={['settings:read', 'tenant:manage']}><EnterpriseIdentity /></RequirePermission>} />
+                <Route path="/admin/tenant/elevations" element={<RequirePermission permission="break_glass:request"><ElevationQueue scope="tenant" /></RequirePermission>} />
+                <Route path="/admin/tenant/ai-config" element={<RequirePermission permission="ai:config_read"><AIConfig scope="tenant" /></RequirePermission>} />
+                <Route path="/admin/tenant/data-cost" element={<RequirePermission permission="ai:config_read"><DataCost scope="tenant" /></RequirePermission>} />
+                <Route path="/admin/tenant/tools" element={<RequirePermission permission="ai:config_read"><ToolsConfig scope="tenant" /></RequirePermission>} />
               </Route>
             </>
           )}
@@ -328,12 +356,15 @@ function App() {
             <Route path="/settings/ai-config" element={<AIConfig scope="user" />} />
             <Route path="/settings/integrations" element={<Integrations />} />
             {(user?.role === 'ADMIN' || user?.role === 'SYSTEM_ADMIN') && (
-              <Route path="/settings/export-import" element={<ExportImport />} />
+              <Route path="/settings/export-import" element={<RequirePermission permission="export:group"><ExportImport /></RequirePermission>} />
             )}
           </Route>
           <Route path="/settings/integrations/:id" element={<IntegrationDetail />} />
           <Route path="/integrations/:domain/connected" element={<OAuthConnected />} />
           <Route path="/about" element={<AboutPage />} />
+          {/* The guarded-route landing state (ADR 0054): a clear no-access
+              page instead of a blank screen or a 403 loop. */}
+          <Route path="/no-access" element={<NoAccessPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
@@ -362,6 +393,7 @@ function App() {
           )}
         </div>
       )}
+      </StepUpProvider>
     </SessionGate>
   );
 }

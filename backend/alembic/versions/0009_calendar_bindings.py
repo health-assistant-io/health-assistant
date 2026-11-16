@@ -1,4 +1,3 @@
-# ruff: noqa: E501 -- long immutable DDL strings; reflow when touched
 """Calendar connector lane: family cloud-calendar bindings (ADR-0052 / plan 52 P2).
 
 Four tables:
@@ -108,35 +107,51 @@ def upgrade() -> None:
         sa.Column("patient_id", sa.UUID(), nullable=False),
         sa.Column("provider", sa.String(length=50), nullable=False),
         sa.Column(
-            "service", sa.Enum(CalendarService, native_enum=False, values_callable=_enum_values),
-            server_default=sa.text("'calendar'"), nullable=False,
+            "service",
+            sa.Enum(CalendarService, native_enum=False, values_callable=_enum_values),
+            server_default=sa.text("'calendar'"),
+            nullable=False,
         ),
-        sa.Column("auth_kind", sa.Enum(CalendarAuthKind, native_enum=False, values_callable=_enum_values), nullable=False),
+        sa.Column(
+            "auth_kind",
+            sa.Enum(CalendarAuthKind, native_enum=False, values_callable=_enum_values),
+            nullable=False,
+        ),
         sa.Column("label", sa.String(length=255), nullable=False),
         sa.Column("account_label", sa.String(length=255), nullable=True),
         sa.Column("scopes", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("secret_ref", sa.String(length=255), nullable=True),
         sa.Column(
-            "direction", sa.Enum(CalendarDirection, native_enum=False, values_callable=_enum_values),
-            server_default=sa.text("'push'"), nullable=False,
+            "direction",
+            sa.Enum(CalendarDirection, native_enum=False, values_callable=_enum_values),
+            server_default=sa.text("'push'"),
+            nullable=False,
         ),
         sa.Column(
-            "redaction", sa.Enum(CalendarRedaction, native_enum=False, values_callable=_enum_values),
-            server_default=sa.text("'neutral'"), nullable=False,
+            "redaction",
+            sa.Enum(CalendarRedaction, native_enum=False, values_callable=_enum_values),
+            server_default=sa.text("'neutral'"),
+            nullable=False,
         ),
         sa.Column(
-            "enabled", sa.Boolean(),
-            server_default=sa.text("true"), nullable=False,
+            "enabled",
+            sa.Boolean(),
+            server_default=sa.text("true"),
+            nullable=False,
         ),
         sa.Column(
-            "status", sa.Enum(CalendarBindingStatus, native_enum=False, values_callable=_enum_values),
-            server_default=sa.text("'unbound'"), nullable=False,
+            "status",
+            sa.Enum(CalendarBindingStatus, native_enum=False, values_callable=_enum_values),
+            server_default=sa.text("'unbound'"),
+            nullable=False,
         ),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("last_synced_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
-            "consecutive_failures", sa.Integer(),
-            server_default=sa.text("0"), nullable=False,
+            "consecutive_failures",
+            sa.Integer(),
+            server_default=sa.text("0"),
+            nullable=False,
         ),
         sa.Column("sync_cursor", sa.Text(), nullable=True),
         sa.Column(
@@ -153,9 +168,7 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
         ),
-        sa.Column(
-            "created_by", sa.UUID(), nullable=True
-        ),
+        sa.Column("created_by", sa.UUID(), nullable=True),
         sa.Column("updated_by", sa.UUID(), nullable=True),
         sa.Column(
             "created_at",
@@ -234,16 +247,18 @@ def upgrade() -> None:
         postgresql_where=sa.text(
             "remote_calendar_id IS NOT NULL AND direction IN ('push', 'two-way')"
         ),
-        sqlite_where=sa.text(
-            "remote_calendar_id IS NOT NULL AND direction IN ('push', 'two-way')"
-        ),
+        sqlite_where=sa.text("remote_calendar_id IS NOT NULL AND direction IN ('push', 'two-way')"),
     )
 
     op.create_table(
         "calendar_event_links",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("binding_id", sa.UUID(), nullable=False),
-        sa.Column("local_kind", sa.Enum(CalendarLocalKind, native_enum=False, values_callable=_enum_values), nullable=False),
+        sa.Column(
+            "local_kind",
+            sa.Enum(CalendarLocalKind, native_enum=False, values_callable=_enum_values),
+            nullable=False,
+        ),
         sa.Column("local_id", sa.UUID(), nullable=False),
         sa.Column("uid", sa.String(length=255), nullable=False),
         sa.Column("remote_id", sa.Text(), nullable=True),
@@ -280,9 +295,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_calendar_event_links")),
-        sa.UniqueConstraint(
-            "binding_id", "uid", name=op.f("uq_calendar_event_links_binding_uid")
-        ),
+        sa.UniqueConstraint("binding_id", "uid", name=op.f("uq_calendar_event_links_binding_uid")),
     )
     for name, columns in (
         ("ix_calendar_event_links_binding_id", ["binding_id"]),
@@ -297,7 +310,11 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("binding_id", sa.UUID(), nullable=False),
-        sa.Column("kind", sa.Enum(CalendarSlotKind, native_enum=False, values_callable=_enum_values), nullable=False),
+        sa.Column(
+            "kind",
+            sa.Enum(CalendarSlotKind, native_enum=False, values_callable=_enum_values),
+            nullable=False,
+        ),
         sa.Column("sealed_blob", sa.Text(), nullable=False),
         sa.Column("kid", sa.String(length=64), nullable=False),
         sa.Column(
@@ -359,7 +376,12 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("tenant_id", sa.UUID(), nullable=False),
         sa.Column("binding_id", sa.UUID(), nullable=False),
-        sa.Column("status", sa.Enum(CalendarRunStatus, native_enum=False, values_callable=_enum_values), server_default=sa.text("'ok'"), nullable=False),
+        sa.Column(
+            "status",
+            sa.Enum(CalendarRunStatus, native_enum=False, values_callable=_enum_values),
+            server_default=sa.text("'ok'"),
+            nullable=False,
+        ),
         sa.Column(
             "counts",
             postgresql.JSONB(astext_type=sa.Text()),
@@ -370,8 +392,10 @@ def upgrade() -> None:
         sa.Column("error_code", sa.String(length=24), nullable=True),
         sa.Column("error_detail", sa.Text(), nullable=True),
         sa.Column(
-            "source", sa.String(length=16),
-            server_default=sa.text("'manual'"), nullable=False,
+            "source",
+            sa.String(length=16),
+            server_default=sa.text("'manual'"),
+            nullable=False,
         ),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=False),
@@ -426,20 +450,14 @@ def upgrade() -> None:
         "clinical_events",
         ["tenant_id", "patient_id", "external_id"],
         unique=True,
-        postgresql_where=sa.text(
-            "external_id IS NOT NULL AND source_integration_id IS NULL"
-        ),
-        sqlite_where=sa.text(
-            "external_id IS NOT NULL AND source_integration_id IS NULL"
-        ),
+        postgresql_where=sa.text("external_id IS NOT NULL AND source_integration_id IS NULL"),
+        sqlite_where=sa.text("external_id IS NOT NULL AND source_integration_id IS NULL"),
     )
 
 
 def downgrade() -> None:
     op.drop_index("uq_clinical_events_calendar_dedup", table_name="clinical_events")
-    op.drop_index(
-        "uq_calendar_bindings_remote_calendar", table_name="calendar_bindings"
-    )
+    op.drop_index("uq_calendar_bindings_remote_calendar", table_name="calendar_bindings")
     op.drop_table("calendar_sync_logs")
     op.drop_table("calendar_binding_credentials")
     op.drop_table("calendar_event_links")

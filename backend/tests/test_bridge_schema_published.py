@@ -139,7 +139,7 @@ class MockUser:
     def __init__(self):
         self.id = uuid.uuid4()
         self.user_id = self.id
-        self.role = "user"
+        self.role = "USER"
         self.tenant_id = uuid.uuid4()
 
 

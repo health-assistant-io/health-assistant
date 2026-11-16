@@ -112,10 +112,17 @@ async def create_doctor(
 
 
 async def update_doctor(
-    doctor_id: UUID, tenant_id: UUID, db: AsyncSession, **kwargs
+    doctor_id: UUID,
+    tenant_id: UUID,
+    db: AsyncSession,
+    actor_user_id: UUID | None = None,
+    actor_role: str | None = None,
+    **kwargs,
 ) -> DoctorModel | None:
     doctor = await get_doctor(doctor_id, tenant_id, db)
     if not doctor:
+        return None
+    if actor_role == "USER" and str(doctor.created_by) != str(actor_user_id):
         return None
 
     # ``specialty_concept_id`` (the FK) is authoritative. ``specialty`` is a
@@ -141,9 +148,17 @@ async def update_doctor(
     return doctor
 
 
-async def delete_doctor(doctor_id: UUID, tenant_id: UUID, db: AsyncSession) -> bool:
+async def delete_doctor(
+    doctor_id: UUID,
+    tenant_id: UUID,
+    db: AsyncSession,
+    actor_user_id: UUID | None = None,
+    actor_role: str | None = None,
+) -> bool:
     doctor = await get_doctor(doctor_id, tenant_id, db)
     if not doctor:
+        return False
+    if actor_role == "USER" and str(doctor.created_by) != str(actor_user_id):
         return False
 
     await db.delete(doctor)

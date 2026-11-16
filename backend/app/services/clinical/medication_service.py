@@ -8,15 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.processors.nlp import get_nlp_extractor_from_db
 from app.ai.schemas.nlp import UnknownMedicationExtract
+from app.core.authz.permissions import Permission
 from app.models.fhir.medication import Medication, MedicationCatalog
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.medication import (
-    MedicationCatalogCreate,
-    MedicationCatalogUpdate,
     MedicationRecordCreate,
     MedicationRecordUpdate,
 )
 from app.schemas.user import TokenData
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import check_patient_access, require_principal_permission
 from app.services.fhir.fhir_helpers import assert_valid_fhir
 from app.services.notifications.notification_manager import NotificationManager
 
@@ -46,106 +46,6 @@ async def get_catalog_medication(
     )
     result = await db.execute(query)
     return result.scalar_one_or_none()
-
-
-async def create_catalog_medication(
-    db: AsyncSession, actor, data: MedicationCatalogCreate
-) -> MedicationCatalog:
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    new_entry = MedicationCatalog(**data.model_dump())
-    DEFAULT_CATALOG_POLICY.assign_create_scope(
-        actor.role, new_entry, actor.tenant_id, actor.user_id
-    )
-    # FHIR validation gate (audit: write-time gate coverage). Catches invalid
-    # Medication shapes before persisting; raises FhirSerializationError →
-    # mapped to HTTP 400 by the global handler.
-    assert_valid_fhir(new_entry)
-    db.add(new_entry)
-    await db.commit()
-    await db.refresh(new_entry)
-    return new_entry
-
-
-async def update_catalog_medication(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-    data: MedicationCatalogUpdate,
-) -> MedicationCatalog | None:
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    query = select(MedicationCatalog).where(
-        MedicationCatalog.id == catalog_id,
-        or_(
-            MedicationCatalog.tenant_id.is_(None),
-            MedicationCatalog.tenant_id == actor.tenant_id,
-        ),
-    )
-    result = await db.execute(query)
-    med = result.scalar_one_or_none()
-
-    if not med:
-        return None
-
-    # RBAC: scope + ownership (creator OR ADMIN for user-scope; ADMIN/MANAGER
-    # for tenant; SYSTEM_ADMIN for system).
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        med.scope,
-        item_created_by=med.created_by,
-        actor_user_id=actor.user_id,
-    )
-
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(med, key, value)
-
-    # FHIR validation gate (audit: write-time gate coverage). Verifies the
-    # mutated MedicationCatalog still projects to a valid FHIR Medication
-    # before commit.
-    assert_valid_fhir(med)
-    await db.commit()
-    await db.refresh(med)
-    return med
-
-
-async def delete_catalog_medication(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-) -> bool:
-    """Delete a medication catalog entry with scope+ownership RBAC.
-
-    Raises :class:`CatalogPermissionDenied` (mapped to HTTP 403) on
-    insufficient role. Returns ``False`` if the entry is missing or out of
-    scope.
-    """
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    query = select(MedicationCatalog).where(
-        MedicationCatalog.id == catalog_id,
-        or_(
-            MedicationCatalog.tenant_id.is_(None),
-            MedicationCatalog.tenant_id == actor.tenant_id,
-        ),
-    )
-    result = await db.execute(query)
-    med = result.scalar_one_or_none()
-
-    if not med:
-        return False
-
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        med.scope,
-        item_created_by=med.created_by,
-        actor_user_id=actor.user_id,
-    )
-
-    await db.delete(med)
-    await db.commit()
-    return True
 
 
 async def get_patient_medications(
@@ -192,7 +92,8 @@ async def add_patient_medication(
     patient_id = data.patient_id
     if patient_id is None:
         raise ValueError("MedicationRecordCreate.patient_id is required.")
-    await check_patient_access(patient_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
 
     effective_external_id = external_id or data.external_id
 
@@ -315,9 +216,18 @@ async def _find_integration_medication(
 async def update_patient_medication(
     db: AsyncSession,
     medication_id: UUID,
-    tenant_id: UUID,
+    current_user: TokenData,
     data: MedicationRecordUpdate,
 ) -> Medication | None:
+    """Update one patient medication.
+
+    Takes the request actor (not a raw tenant id) so the scoped-credential
+    guard runs at the same seam as create: a ``patient:read``-only PAT or
+    integration principal is refused here even when it reaches the service
+    through a path that never ran the route gate.
+    """
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    tenant_id = current_user.tenant_id
     query = select(Medication).where(
         Medication.id == medication_id,
         Medication.tenant_id == tenant_id,
@@ -377,13 +287,17 @@ async def update_patient_medication(
     return record
 
 
-async def delete_patient_medication(db: AsyncSession, medication_id: UUID, tenant_id: UUID) -> bool:
+async def delete_patient_medication(
+    db: AsyncSession, medication_id: UUID, current_user: TokenData
+) -> bool:
+    """Hard-delete one medication row (actor-gated, tenant-scoped)."""
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
     # Cleanup triggers first
     await NotificationManager.delete_triggers_by_reference(medication_id)
 
     query = delete(Medication).where(
         Medication.id == medication_id,
-        Medication.tenant_id == tenant_id,
+        Medication.tenant_id == current_user.tenant_id,
     )
     result = await db.execute(query)
     await db.commit()

@@ -1,4 +1,5 @@
-# ruff: noqa: SIM115 -- long immutable strings / legacy patterns; reflow when touched
+
+import io
 import json
 import os
 import uuid
@@ -11,6 +12,17 @@ import pytest
 from app.models.enums import ExportScope, ExportType, JobStatus
 from app.models.export_import_job import ExportJobModel
 from app.services.export.export_service import ExportService, _patient_filter_conditions
+from app.storage.artifacts import ArtifactStorage
+
+
+def _read_key(key: str) -> bytes:
+    data = ArtifactStorage().read(key)
+    assert data is not None, f"object {key} missing"
+    return data
+
+
+def _zip_at(key: str) -> zipfile.ZipFile:
+    return zipfile.ZipFile(io.BytesIO(_read_key(key)))
 
 
 def _make_patient(pid, tenant_id):
@@ -89,6 +101,8 @@ def _make_doc(did, tenant_id, pid, tmp_path, filename="report.pdf"):
     d.id = did
     d.filename = filename
     d.file_path = str(tmp_path / filename)
+    d.object_key = None
+    d.tenant_id = tenant_id
     d.status = "completed"
     d.to_dict.return_value = {
         "id": str(did),
@@ -304,13 +318,12 @@ def test_write_fhir_only_file_writes_bundle_and_manifest(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FHIR_ONLY, {})
     path, size, manifest = svc.write_fhir_only_file(bundle, tid, jid, manifest)
-    assert os.path.exists(path)
+    assert path.startswith(f"tenants/{tid}/exports/")
     assert path.endswith(".fhir.json")
-    loaded = json.loads(open(path).read())
+    loaded = json.loads(_read_key(path))
     assert loaded["resourceType"] == "Bundle"
     assert size > 0
     assert len(manifest.files) == 1
@@ -321,7 +334,6 @@ def test_write_catalog_file_writes_catalog(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     catalog = {
         "units": [{"symbol": "mg/dL", "name": "mg/dL"}],
         "biomarkers": [{"slug": "glucose", "name": "Glucose"}],
@@ -329,9 +341,9 @@ def test_write_catalog_file_writes_catalog(tmp_path, monkeypatch):
     }
     manifest = svc.build_manifest(tid, ExportScope.SYSTEM, ExportType.CATALOG_ONLY, {})
     path, _size, manifest = svc.write_catalog_file(catalog, tid, jid, manifest)
-    assert os.path.exists(path)
+    assert path.startswith(f"tenants/{tid}/exports/")
     assert path.endswith(".catalog.json")
-    loaded = json.loads(open(path).read())
+    loaded = json.loads(_read_key(path))
     assert loaded["biomarkers"][0]["slug"] == "glucose"
     assert manifest.counts["biomarkers"] == 1
     assert manifest.counts["units"] == 1
@@ -342,7 +354,6 @@ def test_write_full_backup_zip_creates_bagit_structure(tmp_path, monkeypatch):
     jid = uuid.uuid4()
     pid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     doc = _make_doc(uuid.uuid4(), tid, pid, tmp_path)
     sidecars = {
@@ -351,9 +362,9 @@ def test_write_full_backup_zip_creates_bagit_structure(tmp_path, monkeypatch):
     }
     manifest = svc.build_manifest(tid, ExportScope.SYSTEM, ExportType.FULL_BACKUP, {})
     path, size, manifest = svc.write_full_backup_zip(bundle, sidecars, [doc], tid, jid, manifest)
-    assert os.path.exists(path)
+    assert path.startswith(f"tenants/{tid}/exports/")
     assert path.endswith(".zip")
-    with zipfile.ZipFile(path) as zf:
+    with _zip_at(path) as zf:
         names = zf.namelist()
         assert "fhir/bundle.json" in names
         assert "nonfhir/examinations.json" in names
@@ -376,12 +387,11 @@ def test_manifest_sha256_matches_file_in_zip(tmp_path, monkeypatch):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     svc = ExportService.__new__(ExportService)
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     bundle = {"resourceType": "Bundle", "type": "transaction", "entry": []}
     sidecars = {"x.json": [{"a": 1}]}
     manifest = svc.build_manifest(tid, ExportScope.PATIENT, ExportType.FULL_BACKUP, {})
     path, _, manifest = svc.write_full_backup_zip(bundle, sidecars, [], tid, jid, manifest)
-    with zipfile.ZipFile(path) as zf:
+    with _zip_at(path) as zf:
         bundle_bytes = zf.read("fhir/bundle.json")
         import hashlib
 
@@ -401,7 +411,6 @@ async def test_run_export_fhir_only_completes(monkeypatch, tmp_path):
     uid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -452,7 +461,7 @@ async def test_run_export_fhir_only_completes(monkeypatch, tmp_path):
 
     assert job.status == JobStatus.COMPLETED
     assert completed["path"].endswith(".fhir.json")
-    assert os.path.exists(completed["path"])
+    assert _read_key(completed["path"])
     assert completed["counts"]["Patient"] == 1
 
 
@@ -461,7 +470,6 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
     pid = uuid.uuid4()
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -520,7 +528,8 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
 
     assert job.status == JobStatus.COMPLETED
     assert completed["path"].endswith(".zip")
-    assert os.path.exists(completed["path"])
+    with _zip_at(completed["path"]) as zf:
+        assert zf.namelist()
     assert "Patient" in completed["counts"]
 
 
@@ -528,7 +537,6 @@ async def test_run_export_full_backup_writes_zip(monkeypatch, tmp_path):
 async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,
@@ -586,7 +594,6 @@ async def test_run_export_catalog_only_completes(monkeypatch, tmp_path):
 async def test_run_export_fail_job_on_exception(monkeypatch, tmp_path):
     tid = uuid.uuid4()
     jid = uuid.uuid4()
-    monkeypatch.setattr("app.services.documents.document_service.HA_UPLOAD_DIR", str(tmp_path))
     job = ExportJobModel(
         id=jid,
         tenant_id=tid,

@@ -118,6 +118,32 @@ async def test_a9_interior_score_is_normal():
 
 
 @pytest.mark.asyncio
+async def test_a9_one_sided_upper_range_is_not_masked_by_interior_score():
+    """Issue #159: a max-only ("< 10") range stores 0.5, but a value above
+    the bound must still read High (not Normal)."""
+    from app.services.analytics import _get_observation_status
+
+    obs = _FakeObs(
+        relative_score=0.5,
+        reference_range=[{"high": {"value": 10}}],
+    )
+    assert await _get_observation_status("glucose", 15, obs) == "High"
+
+
+@pytest.mark.asyncio
+async def test_a9_one_sided_lower_range_is_not_masked_by_interior_score():
+    """Issue #159: a min-only ("> 5") range stores 0.5; a value below the
+    bound must read Low."""
+    from app.services.analytics import _get_observation_status
+
+    obs = _FakeObs(
+        relative_score=0.5,
+        reference_range=[{"low": {"value": 5}}],
+    )
+    assert await _get_observation_status("glucose", 3, obs) == "Low"
+
+
+@pytest.mark.asyncio
 async def test_a9_high_boundary_defers_to_range_check_high():
     """A9: score clamped to 1.0 must NOT short-circuit to Normal — defer to
     the reference-range comparison which can detect the genuinely-high value."""

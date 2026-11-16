@@ -3,7 +3,7 @@
  *
  * Renders a small pill: green with a check when the value is truthy, muted
  * gray with a slash when falsy. Used for catalog flags like
- * `is_telemetry` / `is_custom` / `retired` in the Info tab, and reusable for
+ * `is_telemetry` / `supports_multi_state` / `retired` in the Info tab, and reusable for
  * any boolean display where a colored pill communicates state faster than a
  * "Yes/No" string.
  */

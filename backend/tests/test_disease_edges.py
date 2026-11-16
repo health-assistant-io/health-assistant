@@ -25,17 +25,23 @@ from app.models.enums import (
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.vaccine import VaccineCatalog
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 async def _seed_all_catalogs():
-    """Run the seed stages the disease edges depend on, in pipeline order."""
+    """Run the seed stages the disease edges depend on, in pipeline order.
+
+    The vaccine stage materializes the PREVENTS edges from the seed file's
+    ``target_diseases`` refs, so disease concepts must exist first (the
+    canonical ``seed_all`` order: concepts → diseases → vaccines).
+    """
     svc = SeedService()
-    await svc.seed_medications()
-    await svc.seed_vaccines()
-    await svc.seed_body_parts()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
+    await seed_with_commit(svc.seed_medications)
+    await seed_with_commit(svc.seed_vaccines)
+    await seed_with_commit(svc.seed_body_parts)
+    await seed_with_commit(svc.seed_concept_edges)
 
 
 async def _concept_id(slug: str) -> uuid.UUID:

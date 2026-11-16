@@ -1465,6 +1465,601 @@
       }
     ]
   },
+  "sourceGrammar": {
+    "against": "extension_sources.py — the canonical parser (strategy resolution and archive extraction stay host/app-side)",
+    "module": "extension_sources.py",
+    "caps": {
+      "maxArchiveEntries": 512,
+      "maxRefLength": 200,
+      "maxSubpathLength": 255,
+      "maxUrlLength": 512
+    },
+    "archiveCap": {
+      "limit": 512,
+      "rejectedEntries": 513,
+      "note": "the module exposes the cap and the allowlist; the host's archive reader enforces the count while materializing entries (health raises ARCHIVE_TOO_LARGE beyond it)."
+    },
+    "valid": [
+      {
+        "name": "url-https-repo",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext/greenhouse-jobs",
+        "expect": "https://git.example.com/ext/greenhouse-jobs"
+      },
+      {
+        "name": "url-with-port",
+        "call": "parse_url",
+        "value": "https://git.example.com:8443/ext/repo",
+        "expect": "https://git.example.com:8443/ext/repo"
+      },
+      {
+        "name": "url-path-punctuation-allowlist",
+        "call": "parse_url",
+        "value": "https://git.example.com/a~b!$&'()*+,;=:%2F-_./c",
+        "expect": "https://git.example.com/a~b!$&'()*+,;=:%2F-_./c"
+      },
+      {
+        "name": "ref-generic-branch",
+        "call": "parse_source_ref",
+        "value": "main",
+        "strategy": null,
+        "expect": {
+          "value": "main",
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-generic-slashed",
+        "call": "parse_source_ref",
+        "value": "feature/plan-60",
+        "strategy": null,
+        "expect": {
+          "value": "feature/plan-60",
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-generic-tag-glob",
+        "call": "parse_source_ref",
+        "value": "v*",
+        "strategy": null,
+        "expect": {
+          "value": "v*",
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-surrounding-space-trimmed",
+        "call": "parse_source_ref",
+        "value": "  release/v2  ",
+        "strategy": null,
+        "expect": {
+          "value": "release/v2",
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-strategy-branch",
+        "call": "parse_source_ref",
+        "value": "main",
+        "strategy": "branch",
+        "expect": {
+          "value": "main",
+          "strategy": "branch",
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-strategy-tag-pattern",
+        "call": "parse_source_ref",
+        "value": "v*",
+        "strategy": "tag-pattern",
+        "expect": {
+          "value": "v*",
+          "strategy": "tag-pattern",
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-strategy-release-tag-takes-no-value",
+        "call": "parse_source_ref",
+        "value": null,
+        "strategy": "release-tag",
+        "expect": {
+          "value": null,
+          "strategy": "release-tag",
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-strategy-commit-pin-40",
+        "call": "parse_source_ref",
+        "value": "0123456789abcdef0123456789abcdef01234567",
+        "strategy": "commit-pin",
+        "expect": {
+          "value": "0123456789abcdef0123456789abcdef01234567",
+          "strategy": "commit-pin",
+          "commitSha": "0123456789abcdef0123456789abcdef01234567"
+        }
+      },
+      {
+        "name": "ref-strategy-commit-pin-64",
+        "call": "parse_source_ref",
+        "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "strategy": "commit-pin",
+        "expect": {
+          "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "strategy": "commit-pin",
+          "commitSha": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        }
+      },
+      {
+        "name": "ref-detected-commit-pin-40",
+        "call": "parse_source_ref",
+        "value": "0123456789abcdef0123456789abcdef01234567",
+        "strategy": null,
+        "expect": {
+          "value": "0123456789abcdef0123456789abcdef01234567",
+          "strategy": null,
+          "commitSha": "0123456789abcdef0123456789abcdef01234567"
+        }
+      },
+      {
+        "name": "ref-uppercase-hex-is-a-branch-not-a-pin",
+        "call": "parse_source_ref",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "strategy": null,
+        "expect": {
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-blank-is-the-default-branch",
+        "call": "parse_source_ref",
+        "value": "   ",
+        "strategy": null,
+        "expect": {
+          "value": null,
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "ref-null-is-the-default-branch",
+        "call": "parse_source_ref",
+        "value": null,
+        "strategy": null,
+        "expect": {
+          "value": null,
+          "strategy": null,
+          "commitSha": null
+        }
+      },
+      {
+        "name": "subpath-simple",
+        "call": "parse_subpath",
+        "value": "connectors/greenhouse",
+        "expect": "connectors/greenhouse"
+      },
+      {
+        "name": "subpath-single-segment",
+        "call": "parse_subpath",
+        "value": "extensions",
+        "expect": "extensions"
+      },
+      {
+        "name": "subpath-surrounding-space-trimmed",
+        "call": "parse_subpath",
+        "value": "  packs/core  ",
+        "expect": "packs/core"
+      },
+      {
+        "name": "subpath-blank-is-the-root",
+        "call": "parse_subpath",
+        "value": "   ",
+        "expect": null
+      },
+      {
+        "name": "subpath-null-is-the-root",
+        "call": "parse_subpath",
+        "value": null,
+        "expect": null
+      },
+      {
+        "name": "archive-manifest",
+        "call": "validate_archive_entry",
+        "value": "manifest.json",
+        "expect": "manifest.json"
+      },
+      {
+        "name": "archive-item",
+        "call": "validate_archive_entry",
+        "value": "items/medications.json",
+        "expect": "items/medications.json"
+      },
+      {
+        "name": "archive-nested-item",
+        "call": "validate_archive_entry",
+        "value": "items/2026/medications.json",
+        "expect": "items/2026/medications.json"
+      },
+      {
+        "name": "archive-directory-entry",
+        "call": "validate_archive_entry",
+        "value": "items/",
+        "expect": "items/"
+      },
+      {
+        "name": "archive-nested-directory-entry",
+        "call": "validate_archive_entry",
+        "value": "packs/manifests/",
+        "expect": "packs/manifests/"
+      },
+      {
+        "name": "commit-sha-40",
+        "call": "parse_commit_sha",
+        "value": "0123456789abcdef0123456789abcdef01234567",
+        "expect": "0123456789abcdef0123456789abcdef01234567"
+      },
+      {
+        "name": "commit-sha-64",
+        "call": "parse_commit_sha",
+        "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "expect": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      }
+    ],
+    "invalid": [
+      {
+        "name": "url-userinfo",
+        "call": "parse_url",
+        "value": "https://user:ghp_secretvalue@git.example.com/ext/repo",
+        "code": "URI_INVALID",
+        "leak": [
+          "ghp_secretvalue"
+        ],
+        "because": "userinfo credentials are structurally inexpressible (no '@' in the allowlist)"
+      },
+      {
+        "name": "url-http-scheme",
+        "call": "parse_url",
+        "value": "http://git.example.com/ext/repo",
+        "code": "URI_INVALID",
+        "because": "https-only: http:// is a grammar miss, not a transport refusal"
+      },
+      {
+        "name": "url-file-scheme",
+        "call": "parse_url",
+        "value": "file:///etc/seeds",
+        "code": "NET_DENIED",
+        "because": "file:// is a refused transport (D13)"
+      },
+      {
+        "name": "url-file-scheme-uppercase",
+        "call": "parse_url",
+        "value": "FILE:///etc/seeds",
+        "code": "NET_DENIED",
+        "because": "the scheme refusal is case-insensitive (no case-smuggled transport)"
+      },
+      {
+        "name": "url-ftp-scheme",
+        "call": "parse_url",
+        "value": "ftp://example.com/pack.zip",
+        "code": "NET_DENIED",
+        "because": "ftp:// is a refused transport"
+      },
+      {
+        "name": "url-ssh-scheme",
+        "call": "parse_url",
+        "value": "ssh://git@example.com/repo",
+        "code": "NET_DENIED",
+        "because": "ssh:// is a refused transport"
+      },
+      {
+        "name": "url-git-scheme",
+        "call": "parse_url",
+        "value": "git://example.com/repo",
+        "code": "NET_DENIED",
+        "because": "the unauthenticated git:// transport is refused"
+      },
+      {
+        "name": "url-query-string",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext/repo?token=leakme",
+        "code": "URI_INVALID",
+        "leak": [
+          "leakme"
+        ],
+        "because": "no query — the schema has no '?' in its path class"
+      },
+      {
+        "name": "url-fragment",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext/repo#main",
+        "code": "URI_INVALID",
+        "because": "no fragment — '#' is outside the allowlist"
+      },
+      {
+        "name": "url-backslash",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext\\repo",
+        "code": "URI_INVALID",
+        "because": "a backslash is a path-confusion character, refused everywhere"
+      },
+      {
+        "name": "url-interior-space",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext repo",
+        "code": "URI_INVALID",
+        "because": "whitespace inside a URL is refused"
+      },
+      {
+        "name": "url-trailing-space",
+        "call": "parse_url",
+        "value": "https://git.example.com/ext/repo ",
+        "code": "URI_INVALID",
+        "because": "a trailing space is whitespace, not padding"
+      },
+      {
+        "name": "url-too-short",
+        "call": "parse_url",
+        "value": "https://x",
+        "code": "URI_INVALID",
+        "because": "the schema's minLength is 12"
+      },
+      {
+        "name": "url-too-long",
+        "call": "parse_url",
+        "value": "https://git.example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "code": "URI_INVALID",
+        "because": "the schema's maxLength is 512"
+      },
+      {
+        "name": "url-empty",
+        "call": "parse_url",
+        "value": "",
+        "code": "URI_INVALID",
+        "because": "a source url is required"
+      },
+      {
+        "name": "ref-leading-dash",
+        "call": "parse_source_ref",
+        "value": "--upload-pack=evil",
+        "code": "REF_INVALID",
+        "because": "a leading dash is an argv option injection — structurally impossible"
+      },
+      {
+        "name": "ref-interior-space",
+        "call": "parse_source_ref",
+        "value": "main extra",
+        "code": "REF_INVALID",
+        "because": "ref names carry no whitespace"
+      },
+      {
+        "name": "ref-quote",
+        "call": "parse_source_ref",
+        "value": "ma\"in",
+        "code": "REF_INVALID",
+        "because": "quotes are outside the ref allowlist"
+      },
+      {
+        "name": "ref-too-long",
+        "call": "parse_source_ref",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "code": "REF_INVALID",
+        "because": "the schema bounds ref values at 200 characters"
+      },
+      {
+        "name": "ref-strategy-unknown",
+        "call": "parse_source_ref",
+        "value": "main",
+        "strategy": "semver",
+        "code": "REF_INVALID",
+        "because": "the strategy vocabulary is closed (the charter's four)"
+      },
+      {
+        "name": "release-tag-whitespace-value",
+        "call": "parse_source_ref",
+        "value": "   ",
+        "strategy": "release-tag",
+        "code": "REF_INVALID",
+        "because": "release-tag takes no value, including a whitespace-only one"
+      },
+      {
+        "name": "ref-branch-without-value",
+        "call": "parse_source_ref",
+        "value": null,
+        "strategy": "branch",
+        "code": "REF_INVALID",
+        "because": "branch requires its value"
+      },
+      {
+        "name": "ref-tag-pattern-without-value",
+        "call": "parse_source_ref",
+        "value": "",
+        "strategy": "tag-pattern",
+        "code": "REF_INVALID",
+        "because": "tag-pattern requires a glob value"
+      },
+      {
+        "name": "ref-release-tag-with-value",
+        "call": "parse_source_ref",
+        "value": "v1.2.0",
+        "strategy": "release-tag",
+        "code": "REF_INVALID",
+        "because": "release-tag resolves host-side and takes no value"
+      },
+      {
+        "name": "ref-commit-pin-not-a-sha",
+        "call": "parse_source_ref",
+        "value": "main",
+        "strategy": "commit-pin",
+        "code": "REF_INVALID",
+        "because": "commit-pin values are 40/64 lowercase hex"
+      },
+      {
+        "name": "ref-commit-pin-uppercase",
+        "call": "parse_source_ref",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "strategy": "commit-pin",
+        "code": "REF_INVALID",
+        "because": "uppercase hex is a second spelling of one pin — refused"
+      },
+      {
+        "name": "ref-commit-pin-short",
+        "call": "parse_source_ref",
+        "value": "abc123",
+        "strategy": "commit-pin",
+        "code": "REF_INVALID",
+        "because": "an abbreviated sha is ambiguous over time"
+      },
+      {
+        "name": "commit-sha-uppercase",
+        "call": "parse_commit_sha",
+        "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "code": "REF_INVALID",
+        "because": "parse_commit_sha is strict lowercase"
+      },
+      {
+        "name": "commit-sha-short",
+        "call": "parse_commit_sha",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "code": "REF_INVALID",
+        "because": "39 hex chars is neither 40 nor 64"
+      },
+      {
+        "name": "subpath-traversal",
+        "call": "parse_subpath",
+        "value": "../../etc/passwd",
+        "code": "SUBPATH_INVALID",
+        "because": "'..' segments are refused"
+      },
+      {
+        "name": "subpath-absolute",
+        "call": "parse_subpath",
+        "value": "/etc/passwd",
+        "code": "SUBPATH_INVALID",
+        "because": "a subpath is relative to the checkout root"
+      },
+      {
+        "name": "subpath-trailing-slash",
+        "call": "parse_subpath",
+        "value": "packs/core/",
+        "code": "SUBPATH_INVALID",
+        "because": "the schema's segment pattern admits no trailing separator"
+      },
+      {
+        "name": "subpath-backslash",
+        "call": "parse_subpath",
+        "value": "packs\\core",
+        "code": "SUBPATH_INVALID",
+        "because": "a backslash is not a path separator here"
+      },
+      {
+        "name": "subpath-too-long",
+        "call": "parse_subpath",
+        "value": "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/",
+        "code": "SUBPATH_INVALID",
+        "because": "the schema bounds subpaths at 255 characters"
+      },
+      {
+        "name": "subpath-dot-segment",
+        "call": "parse_subpath",
+        "value": "packs/./core",
+        "code": "SUBPATH_INVALID",
+        "because": "each segment starts alphanumeric — '.' is not a segment"
+      },
+      {
+        "name": "subpath-interior-space",
+        "call": "parse_subpath",
+        "value": "packs/core dir",
+        "code": "SUBPATH_INVALID",
+        "because": "segments carry no whitespace"
+      },
+      {
+        "name": "archive-traversal",
+        "call": "validate_archive_entry",
+        "value": "items/../../etc/passwd.json",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "a '..' segment is zip-slip"
+      },
+      {
+        "name": "archive-traversal-directory",
+        "call": "validate_archive_entry",
+        "value": "../",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "a hostile directory entry is traversal, not a skippable directory"
+      },
+      {
+        "name": "archive-absolute-directory",
+        "call": "validate_archive_entry",
+        "value": "/etc/",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "an absolute directory entry leaves the pack namespace"
+      },
+      {
+        "name": "archive-absolute",
+        "call": "validate_archive_entry",
+        "value": "/etc/passwd.json",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "an absolute entry leaves the pack namespace"
+      },
+      {
+        "name": "archive-backslash",
+        "call": "validate_archive_entry",
+        "value": "items\\medications.json",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "a backslash is a path-confusion character in a zip name"
+      },
+      {
+        "name": "archive-dotdot-manifest",
+        "call": "validate_archive_entry",
+        "value": "items/../manifest.json",
+        "code": "ARCHIVE_PATH_TRAVERSAL",
+        "because": "the '..' refusal precedes the allowlist"
+      },
+      {
+        "name": "archive-item-non-json",
+        "call": "validate_archive_entry",
+        "value": "items/x.txt",
+        "code": "ARCHIVE_ENTRY_FORBIDDEN",
+        "because": "only items/**.json item files are admitted"
+      },
+      {
+        "name": "archive-root-script",
+        "call": "validate_archive_entry",
+        "value": "run.sh",
+        "code": "ARCHIVE_ENTRY_FORBIDDEN",
+        "because": "an executable at the archive root is never a pack file"
+      },
+      {
+        "name": "archive-hidden-file",
+        "call": "validate_archive_entry",
+        "value": ".env",
+        "code": "ARCHIVE_ENTRY_FORBIDDEN",
+        "because": "hidden/config files are outside the allowlist"
+      },
+      {
+        "name": "archive-empty-name",
+        "call": "validate_archive_entry",
+        "value": "",
+        "code": "ARCHIVE_ENTRY_FORBIDDEN",
+        "because": "an entry needs a name"
+      },
+      {
+        "name": "archive-nested-manifest",
+        "call": "validate_archive_entry",
+        "value": "packs/manifest.json",
+        "code": "ARCHIVE_ENTRY_FORBIDDEN",
+        "because": "the manifest is the archive root's manifest.json, not a nested copy"
+      }
+    ]
+  },
   "rpc": {
     "against": "capability-rpc.schema.json",
     "valid": [

@@ -76,7 +76,7 @@ async def test_apply_biomarker_proposal_creates_definition(tenant_and_actor):
     proposal = biomarker_proposal(
         name="Sleep Quality Score",
         slug=f"{p}-sleep-quality",
-        category="Sleep",
+        class_concept_slug="sleep",
         coding_system="custom",
         code="HKSleepQuality",
         is_telemetry=True,

@@ -594,7 +594,7 @@ class TestAggregator:
 
         mcp_provider = MagicMock()
 
-        async def fake_get_tools(integration):
+        async def fake_get_tools(integration, *, principal=None):
             t = MagicMock()
             t.name = "mcp__mcp__tool"
             return [t]
@@ -631,7 +631,7 @@ class TestAggregator:
 
         provider = MagicMock()
 
-        async def fake_get_tools(integration):
+        async def fake_get_tools(integration, *, principal=None):
             if integration is bad:
                 raise RuntimeError("connection refused")
             t = MagicMock()
@@ -664,7 +664,7 @@ class TestAggregator:
 
         provider = MagicMock()
 
-        async def fake_get_tools(integration):
+        async def fake_get_tools(integration, *, principal=None):
             t1 = MagicMock()
             t1.name = "a"
             t2 = MagicMock()
@@ -694,7 +694,7 @@ class TestAggregator:
 
         ws_provider = MagicMock()
 
-        async def fake_get_tools(integration):
+        async def fake_get_tools(integration, *, principal=None):
             t = MagicMock()
             t.name = "web_search"
             return [t]
@@ -993,3 +993,72 @@ class TestDisplayBlocks:
 
         r = action_result("msg", [list_block("T", ["x"])], tools=["x"])
         assert r["tools"] == ["x"]  # backwards-compat extra field
+
+
+class TestToolRiskAuthorization:
+    """F8: the declared risk class is authorized against the acting principal."""
+
+    @staticmethod
+    def _principal(permissions):
+        import uuid
+
+        from app.schemas.user import TokenData
+
+        return TokenData(
+            user_id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            role="USER",
+            sub="test@local",
+            integration_principal_id=str(uuid.uuid4()),
+            integration_permissions=list(permissions),
+            integration_patient_scope="all",
+        )
+
+    def test_read_only_class_requires_a_read_scope(self):
+        from app.extensions.builtin.mcp_client.tool_adapter import authorize_tool_risk
+
+        scoped = self._principal(["ai:use"])
+        refusal = authorize_tool_risk("dev_dummy", "read-only", scoped)
+        assert refusal is not None and "read-only" in refusal
+
+        capable = self._principal(["ai:use", "patient:read"])
+        assert authorize_tool_risk("dev_dummy", "read-only", capable) is None
+
+    def test_passthrough_proxy_declaration_carries_no_family(self):
+        """``mcp_client`` declares a tool but no data classes: no DB family."""
+        from app.extensions.builtin.mcp_client.tool_adapter import authorize_tool_risk
+
+        scoped = self._principal(["ai:use"])
+        assert authorize_tool_risk("mcp_client", "state-changing", scoped) is None
+
+    def test_filter_drops_every_tool_when_the_principal_lacks_the_family(self):
+        pytest.importorskip("fastmcp")
+        from unittest.mock import MagicMock
+
+        from app.extensions.builtin.mcp_client.tool_adapter import filter_and_adapt_tools
+
+        integration = MagicMock()
+        integration.id = uuid.uuid4()
+        integration.instance_name = "risk"
+        integration.provider = "dev_dummy"
+        integration.user_config = {}
+        tool = MagicMock()
+        tool.name = "read_probe"
+        tool.description = "probe"
+        tool.input_schema = {"type": "object", "properties": {}}
+        tool.tags = None
+        tool.annotations = None
+
+        assert (
+            filter_and_adapt_tools(
+                integration, [tool], MagicMock(), principal=self._principal(["ai:use"])
+            )
+            == []
+        )
+        adapted = filter_and_adapt_tools(
+            integration,
+            [tool],
+            MagicMock(),
+            principal=self._principal(["ai:use", "patient:read"]),
+        )
+        assert len(adapted) == 1

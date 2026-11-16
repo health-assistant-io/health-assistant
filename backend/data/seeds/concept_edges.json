@@ -334,151 +334,78 @@
       "relation": "EXAMINES"
     },
     {
-      "_comment": "Phase 6 — medication TREATS disease (which disease a drug treats). src_type=medication resolves MedicationCatalog by case-insensitive name. Powers 'what treats this disease?'.",
-      "src_slug": "Metformin",
+      "_comment": "Medication TREATS disease (which disease a drug treats). A medication endpoint ref is the seed-key key part (medication:<kebab-key>). Powers 'what treats this disease?'.",
+      "src_slug": "metformin",
       "src_type": "medication",
       "dst_slug": "type-2-diabetes",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Lisinopril",
+      "src_slug": "lisinopril",
       "src_type": "medication",
       "dst_slug": "hypertension",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Lisinopril",
+      "src_slug": "lisinopril",
       "src_type": "medication",
       "dst_slug": "heart-failure",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Atorvastatin",
+      "src_slug": "atorvastatin",
       "src_type": "medication",
       "dst_slug": "hypercholesterolemia",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Atorvastatin",
+      "src_slug": "atorvastatin",
       "src_type": "medication",
       "dst_slug": "coronary-artery-disease",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Aspirin",
+      "src_slug": "aspirin",
       "src_type": "medication",
       "dst_slug": "coronary-artery-disease",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Amoxicillin",
+      "src_slug": "amoxicillin",
       "src_type": "medication",
       "dst_slug": "pneumonia",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Levothyroxine",
+      "src_slug": "levothyroxine",
       "src_type": "medication",
       "dst_slug": "hypothyroidism",
       "relation": "TREATS"
     },
     {
-      "src_slug": "Amlodipine",
+      "src_slug": "amlodipine",
       "src_type": "medication",
       "dst_slug": "hypertension",
       "relation": "TREATS"
     },
     {
-      "_comment": "Phase 6 — medication CONTRAINDICATES disease (when a drug is risky for a disease).",
-      "src_slug": "Aspirin",
+      "_comment": "Medication CONTRAINDICATES disease (when a drug is risky for a disease).",
+      "src_slug": "aspirin",
       "src_type": "medication",
       "dst_slug": "peptic-ulcer",
       "relation": "CONTRAINDICATES"
     },
     {
-      "src_slug": "Metformin",
+      "src_slug": "metformin",
       "src_type": "medication",
       "dst_slug": "chronic-kidney-disease",
       "relation": "CONTRAINDICATES"
     },
     {
-      "src_slug": "Lisinopril",
+      "src_slug": "lisinopril",
       "src_type": "medication",
       "dst_slug": "chronic-kidney-disease",
       "relation": "CONTRAINDICATES"
-    },
-    {
-      "_comment": "Phase 6 — vaccine PREVENTS disease (which disease a vaccine prevents). src_type=vaccine resolves VaccineCatalog by slug. Powers 'what does this vaccine prevent?'.",
-      "src_slug": "mmr",
-      "src_type": "vaccine",
-      "dst_slug": "measles",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "mmr",
-      "src_type": "vaccine",
-      "dst_slug": "mumps",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "mmr",
-      "src_type": "vaccine",
-      "dst_slug": "rubella",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "influenza-inactivated",
-      "src_type": "vaccine",
-      "dst_slug": "influenza",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "covid19-mrna",
-      "src_type": "vaccine",
-      "dst_slug": "covid-19",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "tdap",
-      "src_type": "vaccine",
-      "dst_slug": "tetanus",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "tdap",
-      "src_type": "vaccine",
-      "dst_slug": "diphtheria",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "tdap",
-      "src_type": "vaccine",
-      "dst_slug": "pertussis",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "hepatitis-b",
-      "src_type": "vaccine",
-      "dst_slug": "hepatitis-b",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "hpv",
-      "src_type": "vaccine",
-      "dst_slug": "hpv-infection",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "hpv",
-      "src_type": "vaccine",
-      "dst_slug": "cervical-cancer",
-      "relation": "PREVENTS"
-    },
-    {
-      "src_slug": "pneumococcal-conjugate",
-      "src_type": "vaccine",
-      "dst_slug": "pneumococcal-pneumonia",
-      "relation": "PREVENTS"
     },
     {
       "src_slug": "head",

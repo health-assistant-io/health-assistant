@@ -11,6 +11,13 @@ from app.models.doctor_model import DoctorModel
 from app.models.examination_model import ExaminationModel
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def override_get_current_user():
     from app.schemas.user import TokenData
 

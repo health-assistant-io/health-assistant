@@ -2,12 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { Lock, Monitor, Shield, ShieldCheck, Smartphone, Loader2 } from 'lucide-react';
+import { ErrorBanner } from '@neuronection/assistant-ui';
+import { AccountSessionList, type AccountSessionRow } from '@neuronection/assistant-ui/account-session-list';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { FormModal } from '../../components/ui/FormModal';
 import { MFAEnrollmentPanel } from '../../components/auth/MFAEnrollmentPanel';
+import { PasskeyCard } from '../../components/settings/PasskeyCard';
+import { ApiTokensCard } from '../../components/settings/ApiTokensCard';
+import { MyElevationsCard } from '../../components/settings/MyElevationsCard';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { useUIStore } from '../../store/slices/uiSlice';
 import {
+  changeMyPassword,
   listMySessions,
   revokeMySession,
+  revokeOtherSessions,
   type UserSession,
 } from '../../services/sessionService';
 import {
@@ -28,6 +37,7 @@ function formatSessionDate(value: string | null): string {
 function Security() {
   const { t } = useTranslation();
   const logout = useAuthStore((state) => state.logout);
+  const showConfirmation = useUIStore((s) => s.showConfirmation);
 
   const [status, setStatus] = useState<MFAStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,8 +49,18 @@ function Security() {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<UserSession[] | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
 
-  const refresh = async () => {
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const passwordMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+  const refresh = useCallback(async () => {
     try {
       setStatus(await getMyMfa());
     } catch (err) {
@@ -48,9 +68,9 @@ function Security() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -78,6 +98,101 @@ function Security() {
       toast.error(t('settings.sessions_revoke_failed', 'Could not revoke this session.'));
     } finally {
       setRevoking(null);
+    }
+  };
+
+  const revokeOthers = () => {
+    showConfirmation({
+      title: t('settings.sessions_revoke_others_title', 'Sign out other devices'),
+      message: t('settings.sessions_revoke_others_message', 'Every other device is signed out; this one stays signed in.'),
+      confirmLabel: t('settings.sessions_revoke_others', 'Sign out others'),
+      cancelLabel: t('common.cancel', 'Cancel'),
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        setRevokingOthers(true);
+        try {
+          const count = await revokeOtherSessions();
+          toast.success(
+            t('settings.sessions_revoke_others_done', 'Signed out other devices.', { count }),
+          );
+          await loadSessions();
+        } catch (err) {
+          console.error('Failed to revoke other sessions:', err);
+          toast.error(t('settings.sessions_revoke_failed', 'Could not revoke this session.'));
+        } finally {
+          setRevokingOthers(false);
+        }
+      },
+    });
+  };
+
+  const sessionRows: AccountSessionRow[] = (sessions ?? []).map((session) => {
+    const details = [session.ip || '—'];
+    if (session.user_agent) details.push(session.user_agent);
+    details.push(`${t('settings.sessions_signed_in', 'Signed in')}: ${formatSessionDate(session.created_at)}`);
+    details.push(`${t('settings.sessions_last_seen', 'Last seen')}: ${formatSessionDate(session.last_seen_at)}`);
+    details.push(`${t('settings.sessions_expires', 'Expires')}: ${formatSessionDate(session.expires_at)}`);
+    // A row without a client label still needs a stable, unique name: the
+    // library's revoke action carries the label, so two label-less sessions
+    // would otherwise share one accessible name. The short session id keeps
+    // them distinct (ip alone collides behind a shared NAT).
+    const label = session.client_label
+      || `${session.ip || t('settings.sessions_unknown_device', 'Unknown device')} · ${session.id.slice(0, 8)}`;
+    return {
+      id: session.id,
+      current: session.current,
+      label,
+      details,
+    };
+  });
+
+  const revokeSessionById = (id: string) => {
+    const session = sessions?.find((candidate) => candidate.id === id);
+    if (session) void revokeSession(session);
+  };
+
+  const changePassword = async () => {
+    if (!currentPassword || !newPassword || newPassword !== confirmPassword) return;
+    setChangingPassword(true);
+    setPasswordError(null);
+    try {
+      await changeMyPassword(currentPassword, newPassword);
+      setShowPasswordModal(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      toast.success(
+        t('settings.change_password_success', 'Password updated — please sign in again.'),
+      );
+      // The backend revokes every token family on a password change (§12),
+      // so the current session is already invalid. Clear local state and
+      // return to the login screen; the logout POST may 401 now, which is
+      // expected and must not surface as a password-change failure.
+      await logout().catch(() => {});
+    } catch (err) {
+      console.error('Password change failed:', err);
+      const resp = (err as Record<string, unknown>)?.response as
+        | { status?: number; data?: { detail?: unknown } }
+        | undefined;
+      if (resp?.status === 400) {
+        setPasswordError(
+          typeof resp.data?.detail === 'string'
+            ? resp.data.detail
+            : t('settings.change_password_wrong_current', 'Current password is incorrect.'),
+        );
+      } else if (resp?.status === 422) {
+        setPasswordError(
+          typeof resp.data?.detail === 'string'
+            ? resp.data.detail
+            : t('settings.change_password_policy', 'The new password does not meet the policy (at least 10 characters).'),
+        );
+      } else if (resp?.status === 429) {
+        setPasswordError(t('settings.change_password_rate_limited', 'Too many attempts — please wait a moment and try again.'));
+      } else {
+        setPasswordError(t('settings.change_password_failed', 'Could not change the password. Please try again.'));
+      }
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -151,13 +266,23 @@ function Security() {
               {t('settings.mfa_title', 'Two-factor authentication (TOTP)')}
             </p>
             <p className="text-sm text-gray-500 dark:text-dark-muted">
-              {status?.enabled
+              {status?.totp_enabled
                 ? t('settings.mfa_enabled_desc', 'Your account requires a 6-digit code from your authenticator at sign-in.')
-                : t('settings.mfa_desc', 'Add a second factor with any authenticator app (Google Authenticator, Aegis, 1Password…).')}
+                : status?.passkey_enabled
+                  ? t('settings.mfa_enabled_passkey_desc', 'Your account signs in with a passkey; add TOTP as an additional factor if you wish.')
+                  : t('settings.mfa_desc', 'Add a second factor with any authenticator app (Google Authenticator, Aegis, 1Password…).')}
             </p>
+            {status && status.passkey_count > 0 && (
+              <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">
+                {t('settings.mfa_passkey_count', {
+                  count: status.passkey_count,
+                  defaultValue: `${status.passkey_count} passkey(s) registered as a factor.`,
+                })}
+              </p>
+            )}
           </div>
         </div>
-        {status && !status.enabled && !enrollment && (
+        {status && !status.totp_enabled && !enrollment && (
           <button
             onClick={startEnrollment}
             disabled={busy}
@@ -166,7 +291,7 @@ function Security() {
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t('settings.mfa_enroll', 'Set up')}
           </button>
         )}
-        {status?.enabled && (
+        {status?.totp_enabled && (
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
             {t('settings.mfa_active', 'Active')}
           </span>
@@ -176,6 +301,12 @@ function Security() {
       {status?.enforced && (
         <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40 rounded-xl px-3 py-2">
           {t('settings.mfa_enforced_hint', 'Your administrator requires MFA on this account; it cannot be disabled here.')}
+        </p>
+      )}
+
+      {status?.totp_enabled && (
+        <p className="text-xs text-gray-500 dark:text-dark-muted" data-testid="recovery-codes-note">
+          {t('settings.recovery_codes_note', 'Recovery codes are shown once when TOTP is enrolled. If you lost them, disable and re-enroll TOTP to receive a new set.')}
         </p>
       )}
 
@@ -215,7 +346,7 @@ function Security() {
         </form>
       )}
 
-      {status?.enabled && !showDisable && (
+      {status?.totp_enabled && !showDisable && (
         <div className="border-t border-gray-100 dark:border-dark-border pt-4">
           <button
             onClick={() => status.enforced ? setError(t('settings.mfa_enforced_hint', 'Your administrator requires MFA on this account; it cannot be disabled here.')) : setShowDisable(true)}
@@ -226,7 +357,7 @@ function Security() {
         </div>
       )}
 
-      {status?.enabled && showDisable && (
+      {status?.totp_enabled && showDisable && (
         <form onSubmit={disable} className="space-y-3 border-t border-gray-100 dark:border-dark-border pt-4">
           <div>
             <label htmlFor="mfa-disable-password" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
@@ -264,7 +395,6 @@ function Security() {
     </div>
   );
 
-
   const sessionsCard = (
     <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 space-y-4">
       <div className="flex items-center space-x-3">
@@ -283,41 +413,33 @@ function Security() {
         <div className="flex items-center justify-center py-4 text-gray-400">
           <Loader2 className="w-4 h-4 animate-spin" />
         </div>
-      ) : sessions.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-dark-muted">
-          {t('settings.sessions_empty', 'No other active sessions.')}
-        </p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-dark-border">
-          {sessions.map((session) => (
-            <li key={session.id} className="py-3 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-dark-text truncate">
-                  {session.client_label || t('settings.sessions_unknown_device', 'Unknown device')}
-                  {session.current && (
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
-                      {t('settings.sessions_current', 'This device')}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-dark-muted">
-                  {t('settings.sessions_signed_in', 'Signed in')}: {formatSessionDate(session.created_at)}
-                  {session.expires_at && ` · ${t('settings.sessions_expires', 'Expires')}: ${formatSessionDate(session.expires_at)}`}
-                </p>
-              </div>
+        <AccountSessionList
+          rows={sessionRows}
+          onRevoke={revokeSessionById}
+          busyId={revoking ?? undefined}
+          labels={{
+            current: t('settings.sessions_current', 'This device'),
+            revoke: t('settings.sessions_revoke', 'Revoke'),
+            revoking: t('settings.sessions_revoking', 'Revoking…'),
+            empty: t('settings.sessions_empty', 'No other active sessions.'),
+          }}
+          headerAction={
+            sessions.length > 1 ? (
               <button
                 type="button"
-                onClick={() => revokeSession(session)}
-                disabled={revoking === session.id}
-                className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+                onClick={revokeOthers}
+                disabled={revokingOthers}
+                className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 dark:border-dark-border text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-dark-border disabled:opacity-50"
+                data-testid="sessions-revoke-others"
               >
-                {revoking === session.id
+                {revokingOthers
                   ? t('settings.sessions_revoking', 'Revoking…')
-                  : t('settings.sessions_revoke', 'Revoke')}
+                  : t('settings.sessions_revoke_others', 'Sign out others')}
               </button>
-            </li>
-          ))}
-        </ul>
+            ) : undefined
+          }
+        />
       )}
     </div>
   );
@@ -341,11 +463,87 @@ function Security() {
               </p>
             </div>
           </div>
-          <button className="px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-border">
+          <button
+            type="button"
+            onClick={() => {
+              setPasswordError(null);
+              setShowPasswordModal(true);
+            }}
+            className="px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-border"
+          >
             {t('common.edit', 'Change')}
           </button>
         </div>
       </div>
+
+      <FormModal
+        open={showPasswordModal}
+        onOpenChange={(open) => {
+          setShowPasswordModal(open);
+          if (!open) setPasswordError(null);
+        }}
+        title={t('settings.change_password', 'Change Password')}
+        icon={Lock}
+        size="sm"
+        onSubmit={changePassword}
+        submitting={changingPassword}
+        submitDisabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+        submitLabel={t('settings.change_password_submit', 'Update password')}
+        cancelLabel={t('common.cancel', 'Cancel')}
+        bodyClassName="p-6 space-y-4"
+      >
+        <div>
+          <label htmlFor="change-password-current" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
+            {t('settings.change_password_current', 'Current password')}
+          </label>
+          <input
+            id="change-password-current"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={currentPassword}
+            onChange={(e) => { setCurrentPassword(e.target.value); setPasswordError(null); }}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg dark:bg-dark-border dark:text-dark-text"
+            placeholder="••••••••"
+          />
+        </div>
+        <div>
+          <label htmlFor="change-password-new" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
+            {t('settings.change_password_new', 'New password')}
+          </label>
+          <input
+            id="change-password-new"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={newPassword}
+            onChange={(e) => { setNewPassword(e.target.value); setPasswordError(null); }}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg dark:bg-dark-border dark:text-dark-text"
+            placeholder="••••••••"
+          />
+        </div>
+        <div>
+          <label htmlFor="change-password-confirm" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
+            {t('settings.change_password_confirm', 'Confirm new password')}
+          </label>
+          <input
+            id="change-password-confirm"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={confirmPassword}
+            onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(null); }}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg dark:bg-dark-border dark:text-dark-text"
+            placeholder="••••••••"
+          />
+        </div>
+        {passwordMismatch && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {t('settings.change_password_mismatch', 'Passwords do not match.')}
+          </p>
+        )}
+        <ErrorBanner message={passwordError} />
+      </FormModal>
 
       {loading ? (
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6 flex items-center justify-center text-gray-400">
@@ -354,7 +552,10 @@ function Security() {
       ) : (
         <>
           {mfaCard}
+          <PasskeyCard onChanged={refresh} />
           {sessionsCard}
+          <ApiTokensCard />
+          <MyElevationsCard />
         </>
       )}
     </div>

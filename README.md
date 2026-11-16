@@ -237,7 +237,7 @@ Interactive API docs are also available at `/docs` on a running backend.
 Health Assistant is **Beta** (`0.8.x`). The points below are honest boundaries — not every limitation is a bug.
 
 - **Pre-1.0 APIs.** REST endpoints, DB schemas, and FHIR projections may change before `1.0`. Pin a version for production deployments.
-- **Self-hosted only.** There is no managed/cloud hosted offering. You run it on Linux via Docker. No native Windows or macOS desktop installers.
+- **Self-hosted only.** There is no managed/cloud hosted offering. You run it on Linux via Docker, on your own AWS or Azure VM or on-prem hardware. No native Windows or macOS desktop installers.
 - **TimescaleDB is mandatory.** A plain Postgres will crash on the telemetry hypertable migration. Use the bundled compose image or install the extension.
 - **Celery is a separate process.** The FastAPI process does not run background jobs. If you run `uvicorn` standalone, document extraction, reminders, and integration sync will queue silently in Redis. The provided compose files and `run-dev.sh` start them together.
 - **AI features need an external LLM.** OCR, document extraction, and the chat assistant call an OpenAI-compatible endpoint you provide (OpenAI, vLLM, Ollama, etc.). The rest of the app works without one.

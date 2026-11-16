@@ -72,7 +72,7 @@ migration step.
 
    > **There are no default login credentials.** The email and password you enter in the wizard are the ones you sign in with from then on.
 
-   - **Localhost** installs (`http://localhost`) need **no setup token**.
+   - **Any production install needs the setup token**, including `http://localhost` — a host-level reverse proxy makes remote requests look local, so the peer address is not trusted as a bypass.
    - **Domain or LAN** installs get a **one-click setup URL** (`http://your-host/setup?token=…`) printed by the installer — the token is filled in for you; just click.
    - If you used the manual commands instead, retrieve the token from the backend logs: `docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"`.
 
@@ -170,12 +170,12 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 - [ ] Set `HA_APP_ENV=production`
 - [ ] Use HTTPS/TLS (terminate at the reverse proxy)
 - [ ] Configure firewall rules
-- [ ] Set up database backups — built in: `scripts/backup.sh` / `scripts/restore.sh`, plus the in-app [Export & Import](./EXPORT_IMPORT.md) (FHIR Bundle + ZIP with SHA256 manifest)
+- [ ] Set up database backups — built in: `scripts/backup.sh`, restore into a throwaway target with `scripts/restore.sh --target <new-db> --yes` (never the live DB; see [docker/README.md → Backup & restore](../docker/README.md#backup--restore-drill) for the procedure, RPO/RTO and encryption), plus the in-app [Export & Import](./EXPORT_IMPORT.md) (FHIR Bundle + ZIP with SHA256 manifest)
 - [ ] Rate limiting is **built in** (Redis-backed, per-client-IP on `/auth/login`/`register`/`refresh`/`invite`)
 - [ ] Baseline **security headers are automatic** on every response (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, a `Content-Security-Policy`, HSTS); the SPA document gets the same policy from the frontend image (`public/serve.json` → `serve`). If you front the SPA with your own proxy, pass those headers through — do not replace them with a weaker policy
 - [ ] Enable logging and monitoring (Flower at `/flower` behind the reverse proxy is a good dashboard)
 - [ ] **Webhook/API secrets are automatic** — every new integration instance is provisioned with an HMAC secret (shown once at creation); unsigned requests are rejected
-- [ ] Set `HA_TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`
+- [ ] Set `HA_TRUSTED_PROXY_COUNT` to the number of reverse proxies in front of the app (0 = direct exposure; the bundled compose defaults to 1 behind its nginx) so rate limiting can't be bypassed with a spoofed `X-Forwarded-For`. If the backend port is exposed directly, set it to 0.
 - [ ] Set `REDIS_PASSWORD` — the docker stacks require it and Redis runs with `requirepass`
 - [ ] API docs (`/docs`) are disabled in production by default; set `ENABLE_API_DOCS=true` only if you understand the exposure
 
@@ -191,6 +191,8 @@ Health data must never cross the network in cleartext. The standalone nginx flav
    ```
 
 2. **Bring-your-own-proxy:** terminate TLS at your existing proxy (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel) and keep the stack's nginx HTTP-only on an internal network. Set `APP_URL`/`FRONTEND_URL` to the public HTTPS origins (they drive CORS, the OAuth issuer, and TrustedHost validation).
+
+In both cases set **`HA_COOKIE_SECURE=true`** so the `nx_access` / `nx_refresh` / `nx_csrf` cookies are `Secure` (and take the `__Host-` prefix binding). Leave it `false` only for plain-HTTP local/VPN installs — browsers would otherwise refuse to store the cookies.
 
 ## Updates
 

@@ -13,8 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.telemetry import TelemetrySyncPayload
 from app.schemas.user import TokenData
+from app.services.auth.access import check_patient_access
 from app.services.telemetry.telemetry_service import upload_telemetry_data
 
 logger = logging.getLogger(__name__)
@@ -29,6 +31,9 @@ async def upload_telemetry_data_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Sync time-series health data from a mobile device (Health Connect / HealthKit)."""
+    for patient_id in {point.patient_id for point in payload.points}:
+        await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
+
     try:
         uploaded = await upload_telemetry_data(
             db,

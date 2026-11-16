@@ -1,6 +1,6 @@
 """Authentication schemas"""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Lenient email pattern: one ``@`` with non-blank, whitespace-free text on
 # both sides. We deliberately do NOT use ``EmailStr``/email-validator here
@@ -73,6 +73,13 @@ class UserRegister(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
+    @field_validator("password")
+    @classmethod
+    def _password_within_bcrypt_limit(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
+        return value
+
 
 class SetupStatus(BaseModel):
     """First-run status — tells the frontend whether to show the setup
@@ -144,6 +151,13 @@ class SetupRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
+    @field_validator("password")
+    @classmethod
+    def _password_within_bcrypt_limit(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
+        return value
+
 
 # ---------------------------------------------------------------------------
 # TOTP MFA (plan 16 H5)
@@ -209,6 +223,45 @@ class MFAEnrollResponse(BaseModel):
 class MFAStatusResponse(BaseModel):
     """Self-service MFA status (``GET /me/mfa``)."""
 
-    enabled: bool = Field(..., description="A confirmed TOTP secret is active.")
+    enabled: bool = Field(..., description="At least one factor (TOTP or passkey) is active.")
     enforced: bool = Field(..., description="An admin requires MFA for this account.")
-    pending: bool = Field(..., description="An enrollment awaits confirmation.")
+    pending: bool = Field(..., description="A TOTP enrollment awaits confirmation.")
+    totp_enabled: bool = Field(default=False, description="A confirmed TOTP secret is active.")
+    passkey_enabled: bool = Field(default=False, description="At least one active passkey exists.")
+    passkey_count: int = Field(default=0, description="Active passkey count.")
+
+
+# ---------------------------------------------------------------------------
+# Step-up re-authentication (program 12C1)
+# ---------------------------------------------------------------------------
+
+
+class StepUpRequest(BaseModel):
+    """``POST /auth/step-up`` — prove presence for one sensitive action.
+
+    ``action`` is one of ``role_change`` | ``export`` | ``break_glass`` |
+    ``grant_admin`` | ``mfa_change``. ``password`` is required when the
+    account has a local password; ``code`` (TOTP or a recovery code) when MFA
+    is active. ``mfa_change`` guards factor changes (TOTP enrollment, passkey
+    registration/deletion) — the proof must be minted with a factor that
+    already existed, never the one being enrolled.
+    """
+
+    action: str = Field(..., min_length=1, description="The action being authorized.")
+    password: str | None = Field(default=None, description="Account password, when set.")
+    code: str | None = Field(
+        default=None,
+        min_length=4,
+        max_length=16,
+        description="TOTP code or a single-use recovery code, when MFA is active.",
+    )
+
+
+class StepUpResponse(BaseModel):
+    """A recorded step-up proof: what satisfied it and when it expires."""
+
+    action: str
+    methods: list[str]
+    issued_at: int
+    expires_at: int
+    expires_in: int

@@ -138,6 +138,24 @@ async def _enroll_and_confirm(user: UserModel, *, code: str | None = None) -> di
     return data
 
 
+async def _session(user: UserModel, *, auth_mode: str = "password", **extra) -> dict:
+    """Bearer headers for a real sign-in (family + refresh, no step-up proof)."""
+    from app.services.auth.auth_session_service import issue_session
+
+    issued = await issue_session(
+        user,
+        auth_mode=auth_mode,
+        client_label="pytest-mfa",
+        extra_claims=extra or None,
+    )
+    return {"Authorization": f"Bearer {issued.access_token}"}
+
+
+async def _live(user: UserModel) -> UserModel:
+    async with AsyncSessionLocal() as session:
+        return await session.get(UserModel, user.id)
+
+
 async def _login(async_client: AsyncClient, user: UserModel, password: str):
     return await async_client.post(
         "/api/v1/auth/login",
@@ -147,7 +165,10 @@ async def _login(async_client: AsyncClient, user: UserModel, password: str):
 
 @pytest_asyncio.fixture
 async def mfa_user():
-    return await create_user(password="correct-password-123")
+    # USER role: the challenge/enroll mechanics under test are role-agnostic,
+    # and a SYSTEM_ADMIN login now always demands MFA (ADR 0054 Phase 3) —
+    # a policy-free USER login stays a plain 200.
+    return await create_user(role=Role.USER, password="correct-password-123")
 
 
 @pytest_asyncio.fixture
@@ -444,11 +465,14 @@ def test_encrypt_decrypt_roundtrip():
 @pytest.mark.asyncio
 async def test_me_mfa_lifecycle(async_client: AsyncClient, fast_recovery_hashing, no_rate_limit):
     user = await create_user(password="my-password-123")
-    headers = await auth_headers(user)
+    headers = await auth_headers(user, step_up=True)
 
     status = await async_client.get("/api/v1/me/mfa", headers=headers)
     assert status.status_code == 200
-    assert status.json() == {"enabled": False, "enforced": False, "pending": False}
+    assert status.json()["enabled"] is False
+    assert status.json()["enforced"] is False
+    assert status.json()["pending"] is False
+    assert status.json()["passkey_count"] == 0
 
     enroll = await async_client.post("/api/v1/me/mfa/enroll", headers=headers)
     assert enroll.status_code == 200, enroll.text
@@ -471,7 +495,30 @@ async def test_me_mfa_lifecycle(async_client: AsyncClient, fast_recovery_hashing
         headers=headers,
     )
     assert good.status_code == 200
-    assert good.json() == {"enabled": True, "enforced": False, "pending": False}
+    assert good.json()["enabled"] is True
+    assert good.json()["enforced"] is False
+    assert good.json()["pending"] is False
+    assert good.json()["totp_enabled"] is True
+
+    # Adding a factor raises the same safety-critical notice as a passkey.
+    from sqlalchemy import select
+
+    from app.models.notification import Notification
+
+    async with AsyncSessionLocal() as session:
+        notices = (
+            (
+                await session.execute(
+                    select(Notification).where(
+                        Notification.tenant_id == user.tenant_id,
+                        Notification.source_ref["event"].astext == "totp_added",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(notices) == 1 and notices[0].title
 
     # Already active → re-enroll is a 409.
     again = await async_client.post("/api/v1/me/mfa/enroll", headers=headers)
@@ -502,6 +549,119 @@ async def test_me_mfa_requires_session(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_me_mfa_enrollment_requires_a_step_up(
+    async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
+):
+    """B2 — TOTP enrollment is a factor change and therefore step-up gated.
+
+    ``available_methods`` accepts TOTP, so an ungated ``/me/mfa/enroll`` would
+    let a stolen bearer (or a hijacked SSO-only session) mint a factor and then
+    mint proofs for export / role changes / break-glass / admin grants.
+    """
+    user = await create_user(password="my-password-123")
+    family = await _session(user)
+
+    enroll = await async_client.post("/api/v1/me/mfa/enroll", headers=family)
+    assert enroll.status_code == 403, enroll.text
+    detail = enroll.json()["detail"]
+    assert detail["code"] == "step_up_required"
+    assert detail["action"] == "mfa_change"
+    assert detail["methods"] == ["password"]
+
+    confirm = await async_client.post(
+        "/api/v1/me/mfa/confirm", json={"code": "000000"}, headers=family
+    )
+    assert confirm.status_code == 403, confirm.text
+    assert confirm.json()["detail"] == {
+        "code": "step_up_required",
+        "action": "mfa_change",
+        "methods": ["password"],
+        "expires_in": 600,
+    }
+
+    # A bare auth token (no family) cannot prove presence at all: still 403,
+    # never a silent enrollment.
+    bare = await async_client.post("/api/v1/me/mfa/enroll", headers=await auth_headers(user))
+    assert bare.status_code == 403
+    assert bare.json()["detail"]["code"] == "step_up_required"
+    assert bare.json()["detail"]["methods"] == []
+
+    fresh = await _live(user)
+    assert fresh.mfa_secret_enc is None
+    assert fresh.mfa_pending is None
+
+    # With the proof the flow works (the interceptor/UI path).
+    allowed = await async_client.post(
+        "/api/v1/me/mfa/enroll", headers=await auth_headers(user, step_up=True)
+    )
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["secret"]
+
+
+@pytest.mark.asyncio
+async def test_a_hijacked_sso_only_session_cannot_self_provision_totp(
+    async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
+):
+    """B2 — an SSO-only account with no fresh federated proof has no factor.
+
+    It cannot enroll TOTP (403 step_up_required) and therefore cannot mint the
+    export / role-change proofs that enrollment would have made possible.
+    """
+    user = await create_user(password=None)
+    headers = await _session(user, auth_mode="oidc")
+
+    enroll = await async_client.post("/api/v1/me/mfa/enroll", headers=headers)
+    assert enroll.status_code == 403, enroll.text
+    detail = enroll.json()["detail"]
+    assert detail["code"] == "step_up_required"
+    assert detail["action"] == "mfa_change"
+    assert detail["methods"] == []
+
+    confirm = await async_client.post(
+        "/api/v1/me/mfa/confirm", json={"code": "000000"}, headers=headers
+    )
+    assert confirm.status_code == 403
+    assert confirm.json()["detail"]["code"] == "step_up_required"
+
+    fresh = await _live(user)
+    assert fresh.mfa_secret_enc is None
+    assert fresh.mfa_pending is None
+
+    for action in ("export", "role_change", "break_glass", "grant_admin", "mfa_change"):
+        proof = await async_client.post(
+            "/api/v1/auth/step-up", json={"action": action}, headers=headers
+        )
+        assert proof.status_code == 403, (action, proof.text)
+        assert proof.json()["detail"]["code"] == "step_up_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_federated_sign_in_can_still_enroll_totp(
+    async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
+):
+    """The gate is not a dead end: a fresh IdP second factor is a proof."""
+    user = await create_user(password=None)
+    headers = await _session(user, auth_mode="oidc", amr=["pwd", "otp"], auth_time=int(time.time()))
+
+    proof = await async_client.post(
+        "/api/v1/auth/step-up", json={"action": "mfa_change"}, headers=headers
+    )
+    assert proof.status_code == 200, proof.text
+    assert proof.json()["methods"] == ["federated"]
+
+    enroll = await async_client.post("/api/v1/me/mfa/enroll", headers=headers)
+    assert enroll.status_code == 200, enroll.text
+    data = enroll.json()
+    confirm = await async_client.post(
+        "/api/v1/me/mfa/confirm",
+        json={"code": totp_code_at(data["secret"], time.time())},
+        headers=headers,
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["enabled"] is True
+
+
+@pytest.mark.asyncio
 async def test_disable_refused_while_enforced(
     async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
 ):
@@ -518,6 +678,58 @@ async def test_disable_refused_while_enforced(
     )
     assert resp.status_code == 403
     assert "required by policy" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_disable_denial_reason_survives_redaction(
+    async_client: AsyncClient, fast_recovery_hashing, no_rate_limit
+):
+    """N1 — the fixed-vocab MFA denial causes live under ``cause`` so the
+    write-time redaction map (which masks free-text ``reason`` keys) cannot
+    mask them; the stored row stays operationally readable."""
+    from sqlalchemy import select
+
+    enforced_user = await create_user(password="my-password-123")
+    await _enroll_and_confirm(enforced_user)
+    await mfa_service.set_enforced(enforced_user.id, True)
+    enforced_headers = await auth_headers(enforced_user)
+
+    enforced = await async_client.request(
+        "DELETE",
+        "/api/v1/me/mfa",
+        json={"password": "my-password-123"},
+        headers=enforced_headers,
+    )
+    assert enforced.status_code == 403
+
+    # A second user, MFA active but not enforced: the password check runs.
+    plain_user = await create_user(password="my-password-123")
+    await _enroll_and_confirm(plain_user)
+    bad_password = await async_client.request(
+        "DELETE",
+        "/api/v1/me/mfa",
+        json={"password": "wrong-password"},
+        headers=await auth_headers(plain_user),
+    )
+    assert bad_password.status_code == 401
+
+    async with AsyncSessionLocal() as db:
+        rows = list(
+            (
+                await db.execute(
+                    select(AuditEvent)
+                    .where(AuditEvent.action == "mfa.disable")
+                    .order_by(AuditEvent.created_at.desc())
+                    .limit(2)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    causes = {row.new_value.get("cause") for row in rows if row.new_value}
+    assert causes == {"mfa_enforced", "invalid_password"}
+    for row in rows:
+        assert "reason" not in (row.new_value or {})
 
 
 # ---------------------------------------------------------------------------
@@ -693,7 +905,9 @@ async def test_mfa_does_not_affect_existing_sessions(
     assert after.status_code == 200
 
     status = await async_client.get("/api/v1/me/mfa", headers=headers)
-    assert status.json() == {"enabled": True, "enforced": True, "pending": False}
+    assert status.json()["enabled"] is True
+    assert status.json()["enforced"] is True
+    assert status.json()["pending"] is False
 
 
 @pytest.mark.asyncio

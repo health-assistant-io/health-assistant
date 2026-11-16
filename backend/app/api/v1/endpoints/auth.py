@@ -33,7 +33,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import instance_state, setup_token, token_store
+from app.core import instance_state, setup_token, tenant_context, token_store
+from app.core.authz.policy import RouteClass, policy
 from app.core.config import settings
 from app.core.cookies import (
     REFRESH_COOKIE,
@@ -44,6 +45,7 @@ from app.core.database import get_db
 from app.core.rate_limit import check_account_limit, rate_limit
 from app.core.security import (
     AUTH_MODE_DEMO,
+    AUTH_MODE_OIDC,
     AUTH_MODE_PASSWORD,
     MFA_CHALLENGE_TTL_SECONDS,
     _dummy_hash,
@@ -66,6 +68,8 @@ from app.schemas.auth import (
     MFAVerifyRequest,
     SetupRequest,
     SetupStatus,
+    StepUpRequest,
+    StepUpResponse,
     TokenRefresh,
     TokenResponse,
     UserRegister,
@@ -76,7 +80,7 @@ from app.services.audit.audit_service import (
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.auth import mfa_service
+from app.services.auth import login_notifications, mfa_service, passkeys, security_policy, step_up
 from app.services.auth.auth_session_service import (
     device_hint,
     issue_session,
@@ -117,10 +121,12 @@ async def _audit_auth_event(
     ``user`` may be ``None`` for anonymous attempts (unknown email on a
     denied login) — the NULL actor *is* the anonymous marker. Accepts a
     ``UserModel`` (``id``) or a ``TokenData`` principal (``user_id``).
-    Never raises (``log_audit_action`` is best-effort and logs its
-    failures).
+    Fails closed (``required=True``, S3): an auth event that cannot be
+    recorded raises :class:`~app.services.audit.audit_service.AuditWriteError`
+    — an authentication decision must never succeed unrecorded.
     """
     await log_audit_action(
+        required=True,
         tenant_id=tenant_id or getattr(user, "tenant_id", None),
         user_id=(
             getattr(user, "id", None) or getattr(user, "user_id", None)
@@ -184,6 +190,17 @@ async def _is_initialized(db: AsyncSession) -> bool:
     return (result.scalar() or 0) > 0
 
 
+async def _count_system_context(db: AsyncSession) -> bool:
+    """``_is_initialized`` under the auth layer's bootstrap context.
+
+    Pre-auth instance fact (the login-vs-setup decision): the count spans
+    every tenant, so it runs system-side (ADR 0054 Phase 5) and answers
+    one bit, nothing more.
+    """
+    with tenant_context.system_scope("auth:setup-status"):
+        return await _is_initialized(db)
+
+
 @router.get("/setup-status", response_model=SetupStatus)
 async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     """First-run status — drives the frontend's login-vs-setup decision.
@@ -199,7 +216,7 @@ async def setup_status(request: Request, db: AsyncSession = Depends(get_db)):
     composes the one-click URL itself. Echoing the token here let any
     anonymous caller bootstrap the instance (audit 2026-08 C-1).
     """
-    initialized = await _is_initialized(db)
+    initialized = await _count_system_context(db)
     mode = setup_token.current_mode()
     token_required = False if initialized else setup_token.is_setup_token_required(request)
     return SetupStatus(
@@ -234,14 +251,17 @@ async def setup(
     email = normalize_email(payload.email)
     await check_account_limit("register", email)
 
-    if await _is_initialized(db):
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail=(
-                "This instance is already initialized. New accounts must be "
-                "created by an admin via an invite token (POST /auth/invite)."
-            ),
-        )
+    # Bootstrap context (ADR 0054 Phase 5): the wizard checks the user
+    # count across all tenants before any principal exists.
+    with tenant_context.system_scope("auth:setup"):
+        if await _is_initialized(db):
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail=(
+                    "This instance is already initialized. New accounts must be "
+                    "created by an admin via an invite token (POST /auth/invite)."
+                ),
+            )
 
     # Init-only instance facts (identity-auth §4): the empty DB consumes
     # HA_AUTH_MODE / HA_DEMO_MODE exactly here (and at boot), never again.
@@ -259,7 +279,9 @@ async def setup(
                 ),
             )
 
-    if await get_user_by_email(email):
+    with tenant_context.system_scope("auth:setup"):
+        email_taken = await get_user_by_email(email)
+    if email_taken:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
@@ -270,34 +292,44 @@ async def setup(
     # Race-protected bootstrap: the advisory lock serializes the count +
     # insert so two concurrent setup attempts cannot both succeed. Same
     # pattern as the old register bootstrap path.
-    await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY})
+    with tenant_context.system_scope("auth:setup"):
+        await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _BOOTSTRAP_ADVISORY_KEY})
 
-    # Re-check inside the lock — a concurrent setup may have initialized
-    # while we waited.
-    if await _is_initialized(db):
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail="This instance was just initialized by another request.",
+        # Re-check inside the lock — a concurrent setup may have initialized
+        # while we waited.
+        if await _is_initialized(db):
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This instance was just initialized by another request.",
+            )
+
+        new_tenant = await create_tenant(name=payload.tenant_name)
+        if not new_tenant:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not create the initial tenant.",
+            )
+
+        new_user_obj = UserModel(
+            email=email,
+            password_hash=hashed_password,
+            full_name=payload.full_name,
+            tenant_id=str(new_tenant.id),
+            role=Role.SYSTEM_ADMIN,
+            settings={"is_initial_admin": True},
         )
+        db.add(new_user_obj)
+        await db.commit()
+        await db.refresh(new_user_obj)
 
-    new_tenant = await create_tenant(name=payload.tenant_name)
-    if not new_tenant:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not create the initial tenant.",
+    # Everything below runs as the new system actor.
+    tenant_context.set_principal(
+        TokenData(
+            tenant_id=new_user_obj.tenant_id,
+            user_id=new_user_obj.id,
+            role=Role.SYSTEM_ADMIN.value,
         )
-
-    new_user_obj = UserModel(
-        email=email,
-        password_hash=hashed_password,
-        full_name=payload.full_name,
-        tenant_id=str(new_tenant.id),
-        role=Role.SYSTEM_ADMIN,
-        settings={"is_initial_admin": True},
     )
-    db.add(new_user_obj)
-    await db.commit()
-    await db.refresh(new_user_obj)
 
     # Invalidate the one-time token — the system is now initialized.
     setup_token.clear()
@@ -335,7 +367,13 @@ async def login(
     # from a botnet even when every IP stays under the per-IP budget.
     await check_account_limit("login", email)
 
-    user = await get_user_by_email(email)
+    # Bootstrap lookup (ADR 0054 Phase 5): the email is globally unique
+    # and no principal exists yet — the auth layer resolves it system-side,
+    # then the rest of the login runs under the user's tenant.
+    with tenant_context.system_scope("auth:login"):
+        user = await get_user_by_email(email)
+    if user is not None:
+        tenant_context.set_tenant(user.tenant_id, actor=str(user.id))
 
     # Uniform timing + message: verify against a dummy hash when the user
     # does not exist (or has no password) so response time cannot
@@ -354,7 +392,7 @@ async def login(
                 "auth.login",
                 user,
                 outcome=OUTCOME_DENIED,
-                new_value={"reason": "account_locked"},
+                new_value={"detail": "account_locked"},
             )
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
@@ -371,7 +409,7 @@ async def login(
                     "auth.login",
                     user,
                     outcome=OUTCOME_DENIED,
-                    new_value={"reason": "account_locked"},
+                    new_value={"detail": "account_locked"},
                 )
                 raise HTTPException(
                     status_code=status.HTTP_423_LOCKED,
@@ -381,7 +419,7 @@ async def login(
                 "auth.login",
                 user,
                 outcome=OUTCOME_DENIED,
-                new_value={"reason": "invalid_credentials"},
+                new_value={"detail": "invalid_credentials"},
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -395,7 +433,7 @@ async def login(
             "auth.login",
             None,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "invalid_credentials"},
+            new_value={"detail": "invalid_credentials"},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -410,12 +448,31 @@ async def login(
             "auth.login",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "account_disabled"},
+            new_value={"detail": "account_disabled"},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=GENERIC_LOGIN_ERROR,
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Tenant security policy (ADR 0054 Phase 3) — read per request, never
+    # token-cached. The IP allowlist gates session issuance; a policy-
+    # required MFA role forces the same challenge flow as admin-forced MFA
+    # (the §7 counter reset below applies identically — the password just
+    # succeeded). The demo principal is exempt only at the demo-login
+    # endpoint; a password login always answers to the policy.
+    policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+    if not policy.allows_ip(security_policy.request_client_ip(request)):
+        await _audit_auth_event(
+            "auth.login",
+            user,
+            outcome=OUTCOME_DENIED,
+            new_value={"detail": security_policy.DENY_IP},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=security_policy.DENY_IP,
         )
 
     # Plan 16 H5 (TOTP MFA): when a confirmed secret exists — or an admin
@@ -427,9 +484,20 @@ async def login(
     # verify). §7 interplay: the password just succeeded, so the failure
     # counter resets HERE; wrong MFA codes at /auth/mfa/verify then count
     # from zero toward the same 5-strike lockout (documented H5 decision).
-    if getattr(user, "mfa_secret_enc", None) or getattr(user, "mfa_enforced", False):
+    has_passkey = await passkeys.has_active_passkey(user.id)
+    if (
+        getattr(user, "mfa_secret_enc", None)
+        or has_passkey
+        or getattr(user, "mfa_enforced", False)
+        or policy.requires_mfa(user.role)
+    ):
         await reset_login_failures(user.id)
-        enrollment_needed = not getattr(user, "mfa_secret_enc", None)
+        enrollment_needed = not (getattr(user, "mfa_secret_enc", None) or has_passkey)
+        methods: list[str] = []
+        if has_passkey:
+            methods.append("webauthn")
+        if getattr(user, "mfa_secret_enc", None):
+            methods.append("totp")
         challenge_token, challenge_jti = create_mfa_challenge_token(str(user.id))
         await token_store.register_mfa_challenge(
             str(user.id), challenge_jti, MFA_CHALLENGE_TTL_SECONDS
@@ -437,7 +505,7 @@ async def login(
         await _audit_auth_event(
             "auth.mfa_challenge",
             user,
-            new_value={"enrollment_needed": enrollment_needed},
+            new_value={"enrollment_needed": enrollment_needed, "methods": methods},
         )
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -445,20 +513,71 @@ async def login(
                 "detail": "mfa_required",
                 "mfa_token": challenge_token,
                 "enrollment_needed": enrollment_needed,
+                "methods": methods,
             },
         )
 
     # Counters reset on successful login (§7).
     await reset_login_failures(user.id)
 
+    client_ip = security_policy.request_client_ip(request)
+    user_agent = request.headers.get("user-agent")
     issued = await issue_session(
         user,
         auth_mode=AUTH_MODE_PASSWORD,
-        client_label=device_hint(request.headers.get("user-agent")) or "login",
+        client_label=device_hint(user_agent) or "login",
+        ip=client_ip,
+        user_agent=user_agent,
     )
-    await _audit_auth_event("auth.login", user, new_value={"reason": "password"})
+    await _audit_auth_event("auth.login", user, new_value={"detail": "password"})
+    await login_notifications.notify_new_device(
+        user,
+        ip=client_ip,
+        user_agent=user_agent,
+        method="password",
+        family_id=issued.family_id,
+    )
     _set_auth_cookies(response, issued)
     return _token_response(issued)
+
+
+@router.post("/step-up", response_model=StepUpResponse)
+@policy(RouteClass.SESSION)
+async def step_up_verify(
+    payload: StepUpRequest,
+    current_user: TokenData = Depends(get_current_user),
+    _rl=Depends(rate_limit("step_up", max_requests=10, window=60, bucket="auth")),
+):
+    """Prove presence for one sensitive action (program 12C1).
+
+    A live session is not enough for a role change, an export, a break-glass
+    elevation or an admin-level grant: those endpoints answer
+    ``403 {"code": "step_up_required", "action": ...}`` until this call
+    records a proof for that action. The factors are the account's own —
+    the local password when one is set, TOTP/recovery when MFA is active —
+    and an SSO-only account may use its federated sign-in while the IdP's
+    ``auth_time`` is inside the window and a second factor was asserted.
+
+    The proof is bound to this sign-in family, to this one action and to a
+    10-minute window; every success/refusal is audited (``auth.step_up``).
+    Both an IP window and a per-account window apply, so a stolen session
+    cannot turn this into a password oracle.
+    """
+    await check_account_limit("step_up", str(current_user.user_id))
+    try:
+        action = step_up.StepUpAction(payload.action)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown step-up action {payload.action!r}",
+        ) from None
+    proof = await step_up.issue_proof(
+        current_user,
+        action=action,
+        password=payload.password,
+        code=payload.code,
+    )
+    return StepUpResponse(**proof.to_dict())
 
 
 @router.post("/demo-login", response_model=TokenResponse)
@@ -484,20 +603,23 @@ async def demo_login(
             "auth.demo_login",
             None,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "demo_mode_off"},
+            new_value={"detail": "demo_mode_off"},
         )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Demo login is not enabled on this instance.",
         )
 
-    user = await get_user_by_email(settings.HA_DEMO_EMAIL)
+    with tenant_context.system_scope("auth:demo_login"):
+        user = await get_user_by_email(settings.HA_DEMO_EMAIL)
+    if user is not None:
+        tenant_context.set_tenant(user.tenant_id, actor=str(user.id))
     if not user:
         await _audit_auth_event(
             "auth.demo_login",
             None,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "demo_user_missing"},
+            new_value={"detail": "demo_user_missing"},
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -512,7 +634,7 @@ async def demo_login(
             "auth.demo_login",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "account_disabled"},
+            new_value={"detail": "account_disabled"},
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -524,7 +646,7 @@ async def demo_login(
         auth_mode=AUTH_MODE_DEMO,
         client_label=device_hint(request.headers.get("user-agent")) or "demo",
     )
-    await _audit_auth_event("auth.demo_login", user, new_value={"reason": "demo"})
+    await _audit_auth_event("auth.demo_login", user, new_value={"detail": "demo"})
     _set_auth_cookies(response, issued)
     return _token_response(issued)
 
@@ -571,12 +693,17 @@ async def mfa_verify(
     # §7 per-account window, keyed by the challenge's user.
     await check_account_limit("mfa_verify", challenge_user_id)
 
-    user = await get_user_by_id(challenge_user_id)
+    # Bootstrap lookup (ADR 0054 Phase 5): the signed challenge carries
+    # only the user id — the auth layer resolves it system-side, then the
+    # verify runs under the user's tenant.
+    with tenant_context.system_scope("auth:mfa_verify"):
+        user = await get_user_by_id(challenge_user_id)
     if user is None or not getattr(user, "is_active", False):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired MFA challenge",
         )
+    tenant_context.set_tenant(user.tenant_id, actor=str(user.id))
 
     now = _utcnow()
     locked_until = _ensure_aware(getattr(user, "locked_until", None))
@@ -585,7 +712,7 @@ async def mfa_verify(
             "auth.mfa_verify",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "account_locked"},
+            new_value={"detail": "account_locked"},
         )
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
@@ -599,29 +726,49 @@ async def mfa_verify(
             "auth.mfa_verify",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "challenge_replayed"},
+            new_value={"detail": "challenge_replayed"},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired MFA challenge",
         )
 
+    # Tenant security policy (ADR 0054 Phase 3): the IP allowlist gates
+    # session *issuance*, and this verify mints the session — so the same
+    # check applies here (an address that passed the password step can
+    # change before the MFA step; program 12C1 closed that gap).
+    policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+    client_ip = security_policy.request_client_ip(request)
+    if not policy.allows_ip(client_ip):
+        await _audit_auth_event(
+            "auth.mfa_verify",
+            user,
+            outcome=OUTCOME_DENIED,
+            new_value={"detail": security_policy.DENY_IP},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=security_policy.DENY_IP,
+        )
+
     method: str | None = None
     if getattr(user, "mfa_secret_enc", None):
         method = await mfa_service.verify_code(user, payload.code)
-    elif getattr(user, "mfa_enforced", False):
-        # Admin-forced: the code must confirm the pending enrollment
-        # secret (provisioned via POST /auth/mfa/enroll with this
-        # challenge token) — the match activates MFA.
-        if await mfa_service.confirm_enrollment(user.id, payload.code):
-            method = "totp_enroll"
     else:
-        # MFA was cleared between the challenge and this verify — the
-        # user simply re-logs-in with the password.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired MFA challenge",
-        )
+        if getattr(user, "mfa_enforced", False) or policy.requires_mfa(user.role):
+            # Admin-forced (plan 16 H5) or tenant-policy-required (ADR 0054
+            # Phase 3): the code must confirm the *pending* enrollment
+            # secret (provisioned via POST /auth/mfa/enroll with this
+            # challenge token) — the match activates MFA.
+            if await mfa_service.confirm_enrollment(user.id, payload.code):
+                method = "totp_enroll"
+        else:
+            # MFA was cleared between the challenge and this verify — the
+            # user simply re-logs-in with the password.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired MFA challenge",
+            )
 
     if not method:
         failed = int(getattr(user, "failed_login_attempts", 0) or 0) + 1
@@ -633,7 +780,7 @@ async def mfa_verify(
             "auth.mfa_verify",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "invalid_code"},
+            new_value={"detail": "invalid_code"},
         )
         if locked is not None and locked > now:
             raise HTTPException(
@@ -646,14 +793,44 @@ async def mfa_verify(
         )
 
     # Success: consume the challenge (single-use), reset §7, sign in.
-    await token_store.consume_mfa_challenge(str(user.id), challenge_jti)
+    # The GETDEL result is the gate: a concurrent request carrying the same
+    # challenge + code must not mint a second session.
+    consumed = await token_store.consume_mfa_challenge(str(user.id), challenge_jti)
+    if not consumed:
+        await _audit_auth_event(
+            "auth.mfa_verify",
+            user,
+            outcome=OUTCOME_DENIED,
+            new_value={"detail": "challenge_replayed"},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired MFA challenge",
+        )
     await reset_login_failures(user.id)
+    # The challenge's origin decides the session mode: an SSO challenge
+    # completes as an OIDC session (never a password-mode demotion), and
+    # the local one as a password session.
+    challenge_origin = str(challenge.get("origin") or "")
+    auth_mode = AUTH_MODE_OIDC if challenge_origin == "sso" else AUTH_MODE_PASSWORD
+    client_ip = security_policy.request_client_ip(request)
+    user_agent = request.headers.get("user-agent")
+    label = "sso+mfa" if challenge_origin == "sso" else "mfa-login"
     issued = await issue_session(
         user,
-        auth_mode=AUTH_MODE_PASSWORD,
-        client_label=device_hint(request.headers.get("user-agent")) or "mfa-login",
+        auth_mode=auth_mode,
+        client_label=device_hint(user_agent) or label,
+        ip=client_ip,
+        user_agent=user_agent,
     )
     await _audit_auth_event("auth.mfa_verify", user, new_value={"method": method})
+    await login_notifications.notify_new_device(
+        user,
+        ip=client_ip,
+        user_agent=user_agent,
+        method="sso+totp" if challenge_origin == "sso" else "password+totp",
+        family_id=issued.family_id,
+    )
     _set_auth_cookies(response, issued)
     return _token_response(issued)
 
@@ -692,17 +869,21 @@ async def mfa_challenge_enroll(
             detail="Invalid or expired MFA challenge",
         )
 
-    user = await get_user_by_id(challenge_user_id)
+    with tenant_context.system_scope("auth:mfa_enroll"):
+        user = await get_user_by_id(challenge_user_id)
     if user is None or not getattr(user, "is_active", False):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired MFA challenge",
         )
+    tenant_context.set_tenant(user.tenant_id, actor=str(user.id))
     if not getattr(user, "mfa_enforced", False):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MFA enrollment is not required for this account.",
-        )
+        policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+        if not policy.requires_mfa(user.role):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="MFA enrollment is not required for this account.",
+            )
     if getattr(user, "mfa_secret_enc", None):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -777,6 +958,11 @@ async def register(
             detail="Tenant not found",
         )
 
+    # The invite token is signature-bound to this tenant (ADR 0054
+    # Phase 5): from here the registration runs under the target tenant's
+    # context; the global email-uniqueness check below stays system-side.
+    tenant_context.set_tenant(tenant.id, actor=email)
+
     ok, granted_role = verify_invite_token(
         user_data.invite_token,
         expected_tenant_id=str(tenant.id),
@@ -798,10 +984,11 @@ async def register(
             detail="This invite token has already been used.",
         )
 
-    if await get_user_by_email(email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
-        )
+    with tenant_context.system_scope("auth:register"):
+        if await get_user_by_email(email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
+            )
 
     hashed_password = get_password_hash(user_data.password)
 
@@ -862,6 +1049,22 @@ async def create_invite(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="SYSTEM_ADMIN cannot be granted via invite. Use the bootstrap path.",
+        )
+
+    try:
+        granted_role = Role(role)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid role: {role}.",
+        ) from None
+
+    # A MANAGER manages content, not accounts: they may only invite plain
+    # USERs. An ADMIN may invite up to their own level.
+    if current_user.role == Role.MANAGER.value and granted_role != Role.USER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="MANAGER may only invite USER accounts.",
         )
 
     # Cap the TTL: an invite is a short-lived onboarding artifact, not a
@@ -991,13 +1194,19 @@ async def refresh_token(
     # §7 per-account window on refresh, keyed by the token's user.
     await check_account_limit("refresh", str(user_id))
 
-    user = await get_user_by_id(user_id)
+    # Bootstrap verification (ADR 0054 Phase 5): refresh tokens carry no
+    # tenant claim (identity-auth §8) — the auth layer resolves the user
+    # and the session family system-side, then re-plants the user's
+    # tenant for issuance below.
+    with tenant_context.system_scope("auth:refresh"):
+        user = await get_user_by_id(user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    tenant_context.set_tenant(user.tenant_id, actor=str(user.id))
     if not getattr(user, "is_active", True):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1023,7 +1232,7 @@ async def refresh_token(
                 "auth.refresh",
                 user,
                 outcome=OUTCOME_DENIED,
-                new_value={"reason": "demo_refresh_on_non_demo_instance"},
+                new_value={"detail": "demo_refresh_on_non_demo_instance"},
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1061,7 +1270,7 @@ async def refresh_token(
             "auth.refresh_reuse",
             user,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "rotated_refresh_token_replayed"},
+            new_value={"detail": "rotated_refresh_token_replayed"},
         )
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
@@ -1075,6 +1284,55 @@ async def refresh_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Tenant security policy (ADR 0054 Phase 3) — per request: the IP
+    # allowlist gates refresh, the family row caps the session lifetime at
+    # ``session_max_hours`` (authoritative even after a Redis anchor loss)
+    # and the idle window rides the family anchor.
+    policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+    if not policy.allows_ip(security_policy.request_client_ip(request)):
+        await _audit_auth_event(
+            "auth.refresh",
+            user,
+            outcome=OUTCOME_DENIED,
+            new_value={"detail": security_policy.DENY_IP},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=security_policy.DENY_IP,
+        )
+
+    if policy.session_max_hours is not None:
+        created = _ensure_aware(getattr(family, "created_at", None))
+        if created is not None and now - created > timedelta(hours=policy.session_max_hours):
+            await revoke_family(family_id)
+            await _audit_auth_event(
+                "auth.refresh",
+                user,
+                outcome=OUTCOME_DENIED,
+                new_value={"detail": security_policy.DENY_MAX_AGE},
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=security_policy.DENY_MAX_AGE,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    window_denial = await security_policy.check_session_window(
+        policy, str(family_id) if family_id else None
+    )
+    if window_denial is not None:
+        await _audit_auth_event(
+            "auth.refresh",
+            user,
+            outcome=OUTCOME_DENIED,
+            new_value={"detail": window_denial},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=window_denial,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -1149,9 +1407,12 @@ async def logout(
     )
     payload = decode_refresh_token(presented_refresh) if presented_refresh else None
     if payload and payload.get("user_id") and payload.get("jti"):
-        await token_store.revoke_refresh(str(payload["user_id"]), str(payload["jti"]))
-        if payload.get("fid"):
-            await revoke_family(payload["fid"])
+        # A caller may only revoke their own family; a foreign token in the
+        # body (e.g. leaked from another tenant's logs) is ignored.
+        if str(payload["user_id"]) == str(current_user.user_id):
+            await token_store.revoke_refresh(str(payload["user_id"]), str(payload["jti"]))
+            if payload.get("fid"):
+                await revoke_family(payload["fid"])
     access_payload = verify_access_token(token)
     if access_payload and access_payload.get("jti"):
         await token_store.revoke_session(str(access_payload["user_id"]), str(access_payload["jti"]))

@@ -18,6 +18,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
+import pytest_asyncio
 
 from app.api.v1.endpoints import documents as docs_endpoint
 from app.models.enums import Role
@@ -68,6 +69,7 @@ def _doc(tenant_id, filename="report.pdf", file_path="/tmp/report.pdf", owner_id
     fake.filename = filename
     fake.file_path = file_path
     fake.owner_id = owner_id
+    fake.patient_id = None
     return fake
 
 
@@ -133,10 +135,15 @@ async def test_preview_with_valid_presigned_token_succeeds():
     tenant_a = uuid.uuid4()
     doc = _doc(tenant_a, filename="img.png")
     request = _request_with({})  # no Authorization header
-    db = MagicMock()
+    db = AsyncMock()  # S8 re-verification queries the live user row
 
+    claims = {
+        "doc_id": str(doc.id),
+        "tenant_id": str(tenant_a),
+        "user_id": str(uuid.uuid4()),
+    }
     with (
-        patch("app.core.security.verify_presigned_token", return_value=True),
+        patch("app.core.security.verify_presigned_token", return_value=claims),
         patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=doc)),
         patch("pathlib.Path.exists", lambda self: True),
         patch("builtins.open", _patched_open()),
@@ -312,8 +319,13 @@ async def test_preview_document_not_found_returns_404():
     request = _request_with({})
     db = MagicMock()
 
+    claims = {
+        "doc_id": str(uuid.uuid4()),
+        "tenant_id": str(uuid.uuid4()),
+        "user_id": str(uuid.uuid4()),
+    }
     with (
-        patch("app.core.security.verify_presigned_token", return_value=True),
+        patch("app.core.security.verify_presigned_token", return_value=claims),
         patch.object(docs_endpoint, "get_document", new=AsyncMock(return_value=None)),
     ):
         with pytest.raises(HTTPException) as exc:
@@ -366,3 +378,156 @@ async def test_preview_dead_code_branch_removed():
     assert "raise HTTPException(\n            status_code=500" not in src, (
         "Preview endpoint should re-raise, not craft its own 500 (audit A6)."
     )
+
+
+# ---------------------------------------------------------------------------
+# S7 — the Bearer preview path rides patient access (ADR 0054 D5)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def clean_audit_tenant() -> uuid.UUID:
+    """A fresh tenant for the patient-access world (mirrors test_audit_chain)."""
+    from tests._auth_helpers import create_tenant
+
+    return await create_tenant(name=f"Preview S7 {uuid.uuid4().hex[:6]}")
+
+
+async def _create_member(tenant):
+    from tests._auth_helpers import create_user
+
+    return await create_user(role=Role.USER, tenant_id=tenant)
+
+
+async def _seed_patient_document_world(tenant):
+    """One patient owned by ``patient_owner`` with an attached document, plus
+    a same-tenant member holding an active read grant on that patient."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.document_model import DocumentModel
+    from app.models.fhir.patient import Patient
+    from app.models.patient_access_grant import (
+        GrantPermission,
+        GrantSource,
+        GrantStatus,
+        PatientAccessGrant,
+    )
+    from tests._auth_helpers import create_user
+
+    patient_owner = await create_user(role=Role.USER, tenant_id=tenant)
+    granted_member = await create_user(role=Role.USER, tenant_id=tenant)
+
+    doc_id = uuid.uuid4()
+    async with AsyncSessionLocal() as db:
+        patient = Patient(
+            id=uuid.uuid4(),
+            tenant_id=tenant,
+            user_id=patient_owner.id,
+            name={"family": "Preview", "given": ["S7"]},
+            gender="UNKNOWN",
+        )
+        db.add(patient)
+        await db.flush()
+        db.add(
+            DocumentModel(
+                id=doc_id,
+                tenant_id=tenant,
+                owner_id=patient_owner.id,
+                patient_id=patient.id,
+                filename="s7-preview.png",
+                file_path="/tmp/does-not-exist-s7.png",
+                status="completed",
+            )
+        )
+        db.add(
+            PatientAccessGrant(
+                tenant_id=tenant,
+                patient_id=patient.id,
+                grantee_user_id=granted_member.id,
+                permission=GrantPermission.READ,
+                source=GrantSource.ADMIN,
+                status=GrantStatus.ACTIVE,
+                granted_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
+        await db.commit()
+    return {
+        "doc_id": doc_id,
+        "patient_owner": patient_owner,
+        "granted_member": granted_member,
+    }
+
+
+async def _preview_as_bearer(tenant, user, doc_id, *, patient_id=None):
+    """Call the preview endpoint with a Bearer session for ``user`` (a real
+    DB session — the patient-access check runs for real)."""
+    from unittest.mock import AsyncMock, patch
+
+    from fastapi import HTTPException
+
+    from app.core.database import AsyncSessionLocal
+    from app.schemas.user import TokenData
+
+    token_data = TokenData(
+        sub=f"{user.id}@test.local",
+        user_id=user.id,
+        tenant_id=tenant,
+        role=Role.USER.value,
+    )
+    request = _request_with({"Authorization": "Bearer preview-jwt"})
+    async with AsyncSessionLocal() as db:
+        with patch(
+            "app.core.security.authenticate_session_token",
+            new=AsyncMock(return_value=token_data),
+        ):
+            try:
+                return await docs_endpoint.get_document_preview_endpoint(
+                    request=request,
+                    document_id=str(doc_id),
+                    page=0,
+                    token=None,
+                    db=db,
+                )
+            except HTTPException as exc:
+                return exc
+
+
+@pytest.mark.asyncio
+async def test_preview_bearer_same_tenant_member_cannot_preview_other_patients_document(
+    clean_audit_tenant,
+):
+    """S7 — tenant match alone is not enough: a same-tenant USER without a
+    grant on the document's patient answers hidden-404, not the image."""
+    from fastapi import HTTPException
+
+    world = await _seed_patient_document_world(clean_audit_tenant)
+    outsider = await _create_member(clean_audit_tenant)
+    result = await _preview_as_bearer(clean_audit_tenant, outsider, world["doc_id"])
+    assert isinstance(result, HTTPException)
+    assert result.status_code == 404, (
+        "A same-tenant member without patient access must not render the document"
+    )
+
+
+@pytest.mark.asyncio
+async def test_preview_bearer_granted_member_can_preview(clean_audit_tenant):
+    """S7 — an active read grant on the document's patient previews it."""
+    world = await _seed_patient_document_world(clean_audit_tenant)
+    with patch("pathlib.Path.exists", lambda self: True), patch("builtins.open", _patched_open()):
+        result = await _preview_as_bearer(
+            clean_audit_tenant, world["granted_member"], world["doc_id"]
+        )
+    assert getattr(result, "status_code", None) == 200
+
+
+@pytest.mark.asyncio
+async def test_preview_bearer_patient_owner_can_preview(clean_audit_tenant):
+    """S7 — ownership of the patient (the implicit own-grant) previews it."""
+    world = await _seed_patient_document_world(clean_audit_tenant)
+    with patch("pathlib.Path.exists", lambda self: True), patch("builtins.open", _patched_open()):
+        result = await _preview_as_bearer(
+            clean_audit_tenant, world["patient_owner"], world["doc_id"]
+        )
+    assert getattr(result, "status_code", None) == 200

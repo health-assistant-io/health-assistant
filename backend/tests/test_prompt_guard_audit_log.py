@@ -172,7 +172,7 @@ def test_b12_audit_service_module_exists():
 
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_writes_row():
-    """B12: log_audit_action persists an AuditEvent entry via its own session."""
+    """B12: log_audit_action persists a chained AuditEvent via its own session."""
     from app.services.audit import audit_service
 
     captured = {}
@@ -181,27 +181,37 @@ async def test_b12_log_audit_action_writes_row():
         def __init__(self, **kwargs):
             captured.update(kwargs)
 
-    class FakeSession:
+    class FakeBegin:
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *a):
             return False
 
-        def add(self, obj):
-            captured["added"] = obj
+    class FakeSession:
+        """The dedicated audit lane session, context planting included."""
 
-        async def commit(self):
-            captured["committed"] = True
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def begin(self):
+            captured["began"] = True
+            return FakeBegin()
+
+        execute = AsyncMock()
 
     tenant = uuid4()
     user = uuid4()
     resource = uuid4()
 
     with (
-        patch.object(audit_service, "DATABASE_AVAILABLE", True),
-        patch.object(audit_service, "AsyncSessionLocal", return_value=FakeSession()),
+        patch.object(audit_service, "AUDIT_DATABASE_AVAILABLE", True),
+        patch.object(audit_service, "AuditSessionLocal", return_value=FakeSession()),
         patch.object(audit_service, "AuditEvent", FakeEntry),
+        patch.object(audit_service, "_chain_append", new_callable=AsyncMock) as append,
     ):
         await audit_service.log_audit_action(
             tenant_id=tenant,
@@ -219,19 +229,22 @@ async def test_b12_log_audit_action_writes_row():
     assert captured["resource_id"] == resource
     assert captured["outcome"] == "ok"
     assert captured["new_value"] == {"code": "glucose"}
-    assert captured.get("committed") is True
+    assert captured["chain_key"] == f"t:{tenant}"
+    assert captured["created_at"] is not None
+    assert captured.get("began") is True
+    append.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_never_raises():
-    """B12: a logging failure must not break the calling request."""
+    """B12: a best-effort logging failure must not break the calling request."""
     from app.services.audit import audit_service
 
     with (
-        patch.object(audit_service, "DATABASE_AVAILABLE", True),
-        patch.object(audit_service, "AsyncSessionLocal", side_effect=Exception("DB down")),
+        patch.object(audit_service, "AUDIT_DATABASE_AVAILABLE", True),
+        patch.object(audit_service, "AuditSessionLocal", side_effect=Exception("DB down")),
     ):
-        # Must not raise.
+        # Must not raise (the default lane; required writes raise instead).
         await audit_service.log_audit_action(
             tenant_id=uuid4(),
             user_id=uuid4(),
@@ -242,12 +255,12 @@ async def test_b12_log_audit_action_never_raises():
 
 @pytest.mark.asyncio
 async def test_b12_log_audit_action_noop_when_db_unavailable():
-    """B12: when DATABASE_AVAILABLE is False, the helper is a silent no-op."""
+    """B12: when the audit lane is unavailable, best-effort is a no-op."""
     from app.services.audit import audit_service
 
     with (
-        patch.object(audit_service, "DATABASE_AVAILABLE", False),
-        patch.object(audit_service, "AsyncSessionLocal") as mock_session,
+        patch.object(audit_service, "AUDIT_DATABASE_AVAILABLE", False),
+        patch.object(audit_service, "AuditSessionLocal") as mock_session,
     ):
         await audit_service.log_audit_action(
             tenant_id=uuid4(),

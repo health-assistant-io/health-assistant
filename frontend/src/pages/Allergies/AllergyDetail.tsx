@@ -178,7 +178,7 @@ function AllergyDetail() {
             <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
               {allergy.category}
             </span>
-            {allergy.is_custom && (
+            {allergy.scope && allergy.scope !== 'system' && (
               <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
                 {t('medications.custom_resource')}
               </span>

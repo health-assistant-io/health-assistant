@@ -32,6 +32,7 @@ from app.models.enums import (
     RecipientStatus,
     Role,
 )
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.notification import (
     AdminFeedResponse,
     InboxResponse,
@@ -275,7 +276,9 @@ async def create_trigger(
 ):
     """Create a scheduled/recurring reminder trigger."""
     if payload.patient_id:
-        await check_patient_access(str(payload.patient_id), current_user, db)
+        await check_patient_access(
+            str(payload.patient_id), current_user, db, required=GrantPermission.WRITE
+        )
 
     from app.models.enums import NotificationType as NT
     from app.models.enums import TriggerType as TT

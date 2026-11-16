@@ -36,21 +36,24 @@ export const allergyCategoryFacet: FacetDefinition<CatalogItem> = {
   },
 };
 
-export const allergyCustomFacet: FacetDefinition<CatalogItem> = {
-  id: 'is_custom',
+/** Ownership filter: `scope` is the one ownership representation (system
+ * rows are shared; `tenant`/`user` rows are the caller's custom entries). */
+export const allergyScopeFacet: FacetDefinition<CatalogItem> = {
+  id: 'scope',
   label: 'Custom only',
   kind: 'toggle',
   mode: 'client',
   icon: 'Pencil',
   predicate: (item, value) => {
     if (value.kind !== 'toggle' || !value.on) return true;
-    return item['is_custom'] === true;
+    const scope = strField('scope')(item);
+    return scope !== undefined && scope !== 'system';
   },
 };
 
 export const catalogAllergyFacets: FacetDefinition<CatalogItem>[] = [
   allergyCategoryFacet,
-  allergyCustomFacet,
+  allergyScopeFacet,
 ];
 
 // ── Vaccine ──────────────────────────────────────────────────────────────
@@ -75,20 +78,21 @@ export const catalogVaccineFacets: FacetDefinition<CatalogItem>[] = [
 
 // ── Medication ───────────────────────────────────────────────────────────
 
-export const medicationCustomFacet: FacetDefinition<CatalogItem> = {
-  id: 'is_custom',
+export const medicationScopeFacet: FacetDefinition<CatalogItem> = {
+  id: 'scope',
   label: 'Custom only',
   kind: 'toggle',
   mode: 'client',
   icon: 'Pencil',
   predicate: (item, value) => {
     if (value.kind !== 'toggle' || !value.on) return true;
-    return item['is_custom'] === true;
+    const scope = strField('scope')(item);
+    return scope !== undefined && scope !== 'system';
   },
 };
 
 export const catalogMedicationFacets: FacetDefinition<CatalogItem>[] = [
-  medicationCustomFacet,
+  medicationScopeFacet,
 ];
 
 // ── Concept ──────────────────────────────────────────────────────────────

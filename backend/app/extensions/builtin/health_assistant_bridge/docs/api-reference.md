@@ -31,7 +31,7 @@ GET {base_url}/api/v1/integrations/health_assistant_bridge/schema
 ```
 
 Authenticated (any logged-in user, like the documentation endpoint); carries
-no secrets. Authoring loop (plan 32 D11): **change the provider → regenerate
+no secrets. Authoring loop: **change the provider → regenerate
 the schema (`--update`) in the same commit → regenerate the SDK model layers
 (`integrations/health-assistant-bridge/scripts/generate_{python_models.py,ts_models.mjs}`)**
 — CI runs all three with `--check` and fails on drift. The cross-SDK
@@ -713,6 +713,15 @@ published schema's `errors.codes` is extracted from the live
 | `hitl_conflict` | 409 | The HITL proposal was already resolved (a repeat `resolve` call). |
 | `validation` | 400 | Malformed input or a failed guard: blank/oversized `message`/`title`, malformed ids, invalid base64, the upload size cap, unknown `/changes` types, bad enum values, and the `/ai/transcribe` input guards (empty audio, a MIME outside the shared audio allowlist, audio beyond `AI_STT_MAX_AUDIO_BYTES`, an unresolvable STT target). |
 | `stt_failed` | 502 | The upstream speech-to-text provider failed on `POST /ai/transcribe` (timeout, auth, non-2xx). The audio was not persisted — retry with a fresh recording. |
+
+**Service-layer refusals.** The proxy also maps the host's domain errors (the
+same typed class the web API answers): `403` `forbidden` when the integration's
+scoped principal does not hold the write/AI permission a handler needs (for
+example `clinical:write` on a medication mutation, `document:write` on an
+upload/delete, or `ai:use` on `/ai/*`), `404` `not_found`, `409` `conflict` and
+`400` `validation`. These come from a domain-error mapping rather than a
+`BridgeError` site, so — like `io` below — they are not part of the
+machine-extracted schema vocabulary.
 
 Unexpected server-side failures answer `500` with the same envelope and the
 charter `io` class; the raw exception text stays in the server log:

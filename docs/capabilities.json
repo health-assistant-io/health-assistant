@@ -1,7 +1,7 @@
 {
   "version": 1,
   "project": "health",
-  "updated": "2026-11-03",
+  "updated": "2026-11-11",
   "capabilities": [
     {
       "id": "own-your-records",
@@ -13,7 +13,8 @@
         "Nothing phones home — data lives where you deploy it",
         "LLM API keys are Fernet-encrypted at rest and masked in responses",
         "Prompt-injection screening on AI input; audit log on every clinical write",
-        "Export to a FHIR Bundle or ZIP backup with a SHA256 manifest"
+        "Export to a FHIR Bundle or ZIP backup with a SHA256 manifest",
+        "Rotate your password, revoke any device, and every session ends immediately"
       ],
       "links": [
         {
@@ -94,6 +95,83 @@
       ],
       "order": 30,
       "visual": "images/components/biomarker-trends-desktop.png"
+    },
+    {
+      "id": "curate-your-catalog",
+      "verb": "Add a missing drug, allergen or biomarker to your catalog from one dialog",
+      "summary": "From any record form, open the catalog browser and define the missing item once — it becomes a reusable, tenant-wide reference instead of one-off free text.",
+      "category": "discover",
+      "status": "shipped",
+      "proofs": [
+        "The catalog browser's New action opens the typed definition form per catalog (medication, allergy, vaccine, biomarker)",
+        "AI assist drafts medication definitions (description, indications, dosage, contraindications, side effects) on request",
+        "Created items are visible across the whole health record and every create is audited (catalog_audit_log)",
+        "Identity is server-owned: the record links to the new definition by id, never by typed name"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/ontology-catalog"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 35
+    },
+    {
+      "id": "share-your-care-team",
+      "verb": "Share your record with the people who treat you",
+      "summary": "Grant your doctor or a family caregiver access to specific records with a chosen permission level and optional expiry - you decide who sees what, and you can revoke in one click.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Patient-initiated sharing is request-based: the invited staff member must accept before any record is visible",
+        "Grants are ranked read/write/admin, optionally expiring, and revocation takes effect immediately",
+        "Every grant, acceptance, decline and revocation is audited and notifies the affected party",
+        "Clinic staff can be scoped to assigned patients only (tenant setting) instead of the whole tenant"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 36
+    },
+    {
+      "id": "source-your-catalog-content",
+      "verb": "Bring curated catalog content in from your own sources",
+      "summary": "Register git repos, registries or file uploads as seed-pack sources: every pack is digest-pinned, admin-approved and applied with full provenance, precedence and tenant overlays.",
+      "category": "integrate",
+      "status": "shipped",
+      "proofs": [
+        "Every pack version is digest-pinned and applied only after an admin approves that exact digest",
+        "Revoking a version re-applies the previous one and restores what it retired — rows are retired, never deleted",
+        "Remote fetches run through the SSRF-guarded transport with pinned refs and size/time caps; credentials live only in a secret slot",
+        "A user-edited row always wins; adopting an available pack update is an explicit, audited action",
+        "The Sources surface reviews the per-stage plan and keeps audited run history; the export emits the canonical pack, re-ingested zero-write"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/seeding-and-demos"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 37
     },
     {
       "id": "document-extraction",
@@ -265,6 +343,81 @@
       "order": 60
     },
     {
+      "id": "tenant-security-policy",
+      "verb": "Set your organization's security rules per tenant",
+      "summary": "Require MFA per role, cap session idle time and lifetime, limit concurrent sign-ins, and restrict logins to an IP allowlist — all enforced immediately, all audited.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Require TOTP MFA per role; SYSTEM_ADMIN can never opt out",
+        "Idle and lifetime session windows are enforced on every request and refresh",
+        "Concurrent-session limits evict the oldest device automatically (audited)",
+        "CIDR IP allowlists gate login and refresh; denials answer ip_not_allowed",
+        "Every policy change is audited with a before/after diff of the changed keys"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy-and-user-management"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 61
+    },
+    {
+      "id": "audit-you-can-verify",
+      "verb": "Watch and export a tamper-evident audit trail",
+      "summary": "Admins browse their tenant's audit stream with full filters and export it as CSV or JSON — every row carries its position in the SHA-256 hash chain, so deletions or edits are detectable.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Filter by actor, resource, action, outcome and date range, newest first",
+        "Exports stream CSV or JSONL with chain metadata (chain_key, seq, prev_hash, entry_hash)",
+        "Tenant admins see their own tenant; SYSTEM_ADMIN sees the system-wide view",
+        "The export itself is recorded in the audit stream",
+        "A chain verifier walks every entry and alarms on any gap or mismatch"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy-and-user-management"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 62
+    },
+    {
+      "id": "break-glass-elevation",
+      "verb": "Open an audited emergency-access window",
+      "summary": "Break-glass is a time-boxed, two-person-approved elevation: staff request a widening of permissions they already hold, a second admin approves, every use is audited and the window auto-expires.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Two-person law: the requester can never approve their own window (enforced by a database CHECK)",
+        "Tenant windows need a second ADMIN; system windows a second SYSTEM_ADMIN",
+        "Only permissions the requester already holds can be widened, capped at 240 minutes",
+        "Every transition and every use under a window writes a tamper-evident audit row",
+        "Windows auto-expire; single-admin hosts recover through the documented host rescue runbook"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/security"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 63
+    },
+    {
       "id": "fhir-r4-facade",
       "verb": "Integrate clinics over a standards-based FHIR R4 API",
       "summary": "An OAuth2 + SMART-scoped FHIR R4 facade serves 20 resource types with CapabilityStatement, search Bundles, Provenance-on-write and soft-delete tombstones.",
@@ -299,6 +452,138 @@
         "selfhosted"
       ],
       "order": 70
+    },
+    {
+      "id": "sso-and-scim",
+      "verb": "Sign in with your work identity",
+      "summary": "Each tenant can bind its own OpenID Connect provider (SSO) and push users and groups through SCIM 2.0 — with link-only identity binding, no account merging, and full audit trails.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Sign-in verifies the provider-signed ID token (PKCE, state, nonce, JWKS) — the identity provider never signs your internal session tokens",
+        "Link-only identity: one external identity maps to exactly one account in one tenant; verified email required, never merged",
+        "An SSO address matching an existing account confirms the link while signed in — it is never silently attached",
+        "JIT provisioning is capped by allowed domains and a group-to-role map that can never grant admin-only roles",
+        "SCIM deprovisioning kills every live session immediately; directory tokens are hashed at rest, shown once, revocable instantly"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 64
+    },
+    {
+      "id": "session-security",
+      "verb": "See every device, sign out the rest, prove presence for dangerous actions",
+      "summary": "Every sign-in is listed with its device, address and last activity; sign out one device or all the others without losing yours. Role changes, exports, break-glass and admin grants ask for a fresh password or TOTP first.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "Every sign-in is listed with device, IP and last seen; revoke one or all others without losing your own session",
+        "Role changes, exports, break-glass and admin grants require a fresh password or TOTP proof within ten minutes",
+        "A sign-in from an unseen device raises an in-app/push alert",
+        "SSO sign-ins obey the same MFA and IP policy as password logins"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy-and-user-management"
+        },
+        {
+          "kind": "source",
+          "href": "https://github.com/health-assistant-io/health-assistant"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 65
+    },
+    {
+      "id": "passkeys",
+      "verb": "Sign in with a passkey, not a password",
+      "summary": "Register Touch ID, Windows Hello or a security key as a passkey. It satisfies the tenant MFA policy, signs you in with user verification and steps up sensitive actions; the private key stays on the device.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "The authenticator's private key never leaves your device; the server stores only the public key and a signature counter",
+        "A passkey assertion requires user verification (biometric or device PIN), not just possession",
+        "A passkey satisfies the tenant MFA policy exactly like TOTP; password sign-ins then offer either factor",
+        "A cloned authenticator (signature counter regression) is disabled and audited immediately",
+        "Role changes, exports, break-glass and admin grants can be proved with a passkey"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/tenancy-and-user-management"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 66
+    },
+    {
+      "id": "scoped-api-tokens",
+      "verb": "Automate your records with a scoped token",
+      "summary": "Mint personal access tokens for scripts, CLIs and home automation. Each token carries only the permissions you pick, can be limited to specific patients or none, expires and rotates, and never becomes a full session.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "The token value is shown once; only a hash and a lookup prefix are stored",
+        "Every request is authorized by the token's own permission subset, re-checked against your current role",
+        "Patient scope limits a token to all reachable records, an explicit list, or none, and revoked care-team grants narrow it immediately",
+        "Expired, revoked and cross-tenant tokens stop working at once; rotation replaces a token and revokes its predecessor in one step",
+        "A token can never create another token, start a session or change your password, MFA or passkeys"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/api"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 67
+    },
+    {
+      "id": "scoped-integration-principals",
+      "verb": "Connect devices and labs without handing over your account",
+      "summary": "Every integration and extension runs as its own scoped identity instead of acting as the person who connected it. It gets only the permissions and patients you approve, and revocation is immediate.",
+      "category": "privacy",
+      "status": "shipped",
+      "proofs": [
+        "A connector acts as a service identity with its own permission subset, never as your role",
+        "Scopes are re-checked on every use against your current role and the extension's declared capabilities",
+        "Patient scope limits a connector to your reachable records, an explicit list, or none",
+        "Revoking the principal stops it immediately, even mid-sync; rotation replaces the secret and retires the old one",
+        "Undefined extension capabilities are refused by the host, and extension code never receives direct database access"
+      ],
+      "links": [
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/integrations"
+        },
+        {
+          "kind": "guide",
+          "href": "https://health-assistant.io/docs/api"
+        }
+      ],
+      "platforms": [
+        "selfhosted",
+        "web"
+      ],
+      "order": 68
     }
   ],
   "useCases": [

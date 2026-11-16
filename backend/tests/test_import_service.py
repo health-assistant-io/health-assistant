@@ -1248,7 +1248,7 @@ async def test_run_import_bare_catalog_json(tmp_path, monkeypatch):
     monkeypatch.setattr(svc, "_update_progress", AsyncMock())
     monkeypatch.setattr(svc, "_complete_job", AsyncMock())
     monkeypatch.setattr(svc, "_fail_job", AsyncMock())
-    monkeypatch.setattr(svc, "_restore_biomarker_catalog", AsyncMock(return_value=1))
+    monkeypatch.setattr(svc, "_restore_biomarker_catalog", AsyncMock(return_value=(1, [])))
 
     result = await svc.run_import(jid, str(path), uid)
 

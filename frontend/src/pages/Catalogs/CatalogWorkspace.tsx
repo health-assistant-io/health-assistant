@@ -38,7 +38,8 @@ import type { CatalogSelection } from '../../types/catalog';
 import { CatalogAuditHistoryModal } from '../../components/catalog/CatalogAuditHistoryModal';
 import { FormModal } from '../../components/ui/FormModal';
 import { getCatalogForm } from '../../components/catalog/forms/catalogForms';
-import { getWriteTarget, buildWritePayload } from '../../components/catalog/writeTarget';
+import { toWritePayload } from './catalogWritePayload';
+import { apiErrorDetail } from '../../utils/apiErrors';
 import { CatalogOntologyGraph } from '../../components/catalog/CatalogOntologyGraph';
 import { getCustomTabs } from '../../components/catalog/tabs/catalogTabs';
 import { getFacetsForType } from '../../components/catalog/catalogFacetRegistry';
@@ -53,6 +54,7 @@ import {
   updateCatalogItem,
   deleteCatalogItem,
 } from '../../services/catalogService';
+import { restoreConcept } from '../../services/conceptService';
 import biomarkerService from '../../services/biomarkerService';
 import type { BiomarkerReferenceRange } from '../../types/biomarker';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
@@ -432,31 +434,38 @@ export const CatalogWorkspace: React.FC = () => {
     if (!editing || saving) return;
     setSaving(true);
     try {
-      const writeTarget = getWriteTarget(activeType);
+      // One write path for every catalog type (plan A Phase 2 — ADR 0055 D5):
+      // the generic /catalogs/{type} routes, with the payload filtered to the
+      // type's declared create/update fields (the backend schemas are
+      // extra="forbid"). Updates send only the changed keys — the backend
+      // patches via exclude_unset and several update schemas reject
+      // server-echoed values (e.g. biomarker value_type).
+      const mode = isNew ? 'create' : 'update';
+      // Update diffs against the original row. When the row is not in the
+      // loaded page (deep-link edit, list filtered since), fetch the current
+      // row — toWritePayload refuses to build a full-field body without a
+      // baseline (server-echoed values like biomarker value_type would 422).
+      const original = isNew
+        ? null
+        : ((items.find((it) => String(it.id) === String(editing.id)) ??
+          (await getCatalogItem(activeType, String(editing.id)).catch(() => null))) as
+          | CatalogItem
+          | null);
+      const payload = toWritePayload(activeType, editing, mode, active?.write, original);
       let savedId: string | undefined;
       if (isNew) {
-        if (writeTarget) {
-          await writeTarget.create(buildWritePayload(activeType, editing, 'create'));
-        } else {
-          const created = await createCatalogItem(activeType, editing);
-          savedId = created?.id ? String(created.id) : undefined;
-        }
+        const created = await createCatalogItem(activeType, payload);
+        savedId = created?.id ? String(created.id) : undefined;
       } else {
         savedId = String(editing.id);
-        if (writeTarget) {
-          await writeTarget.update(savedId, buildWritePayload(activeType, editing, 'edit'));
-          // No returned row to patch locally for concept writes; a full
-          // load() below reconciles the list.
-        } else {
-          const saved = await updateCatalogItem(activeType, savedId, editing);
-          // Patch the returned row into the local list so the Info preview
-          // reflects the edit immediately (the response is the updated item).
-          setItems((prev) =>
-            prev.map((it) =>
-              String(it.id) === String(saved.id) ? { ...it, ...saved } : it,
-            ),
-          );
-        }
+        const saved = await updateCatalogItem(activeType, savedId, payload);
+        // Patch the returned row into the local list so the Info preview
+        // reflects the edit immediately (the response is the updated item).
+        setItems((prev) =>
+          prev.map((it) =>
+            String(it.id) === String(saved.id) ? { ...it, ...saved } : it,
+          ),
+        );
       }
       // Biomarker stratified reference ranges (audit B9/F3): the editor works
       // in draft mode (so ranges can be set on first create too). Reconcile
@@ -494,13 +503,15 @@ export const CatalogWorkspace: React.FC = () => {
       load();
     } catch (e: any) {
       // Previously this was `catch { /* toast */ }` — a silent swallow that
-      // hid backend errors (e.g. the is_custom 500), so edits appeared to do
-      // nothing. Surface the backend detail instead.
-      const detail = e?.response?.data?.detail;
+      // hid backend errors (e.g. a 409/400 from the write service), so edits appeared to do
+      // nothing. Surface the backend detail instead (or the payload-builder's
+      // own fail-loud message when no request was ever sent). A 422 array
+      // `detail` renders as its first readable `field: msg` (see
+      // `apiErrorDetail`).
       toast.error(
-        typeof detail === 'string'
-          ? detail
-          : t('common.save_failed', 'Could not save'),
+        apiErrorDetail(e) ??
+          ((e?.message as string | undefined) ||
+            t('common.save_failed', 'Could not save')),
       );
     } finally {
       setSaving(false);
@@ -545,12 +556,7 @@ export const CatalogWorkspace: React.FC = () => {
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          const writeTarget = getWriteTarget(activeType);
-          if (writeTarget) {
-            await writeTarget.remove(String(item.id));
-          } else {
-            await deleteCatalogItem(activeType, String(item.id));
-          }
+          await deleteCatalogItem(activeType, String(item.id));
           toast.success(t('common.delete_success', 'Deleted'));
           load();
         } catch (e: any) {
@@ -565,14 +571,17 @@ export const CatalogWorkspace: React.FC = () => {
     });
   };
 
+  /**
+   * Undo a concept's soft retire. Concepts are the only restorable catalog
+   * type — the generic `/catalogs` layer has no restore route (deletes are
+   * hard for the five scope-tiered catalogs), so this calls the concept
+   * domain endpoint explicitly.
+   */
   const handleRestore = async (item: CatalogItem) => {
     try {
-      const writeTarget = getWriteTarget(activeType);
-      if (writeTarget?.restore) {
-        await writeTarget.restore(String(item.id));
-        toast.success(t('catalogs.restore_success', 'Restored'));
-        load();
-      }
+      await restoreConcept(String(item.id));
+      toast.success(t('catalogs.restore_success', 'Restored'));
+      load();
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       toast.error(
@@ -741,7 +750,7 @@ export const CatalogWorkspace: React.FC = () => {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-              {selectedItem.status === 'retired' && getWriteTarget(activeType)?.restore && (
+              {activeType === 'concept' && selectedItem.status === 'retired' && (
                 <button
                   onClick={() => handleRestore(selectedItem)}
                   title={t('catalogs.restore', 'Restore')}

@@ -143,6 +143,10 @@ def test_no_retired_naming_in_model_docstrings_and_comments():
                     prose.append(doc)
         for token in tokenize.generate_tokens(io.StringIO(source).readline):
             if token.type == tokenize.COMMENT:
+                # `# gate-allow:` pragmas are machine directives for the
+                # legacy-vocabulary gates, not prose about a retired concept.
+                if "gate-allow:" in token.string:
+                    continue
                 prose.append(token.string)
 
         for block in prose:
@@ -187,6 +191,18 @@ def test_tenancy_nullability_is_explicit():
         # (operator-registered origins usable instance-wide); tenant rows
         # carry tenant_id (CASCADE).
         "extension_sources",
+        # Audit chain heads (ADR 0054 D3, Phase 4A): the system chain's head
+        # has NULL tenant; each tenant chain's head carries its tenant
+        # (CASCADE — the chain dies whole with the tenant).
+        "audit_chain_heads",
+        # Seed-pack sources (ADR 0056, 0015_seed_packs): NULL is a
+        # system-level source (the bundled pack, operator-registered remote
+        # origins); tenant overlay sources carry tenant_id (CASCADE).
+        "seed_sources",
+        # Break-glass elevations (ADR 0054 D1, 0017): NULL tenant is the
+        # instance-level system-scope window; tenant windows carry
+        # tenant_id (CASCADE).
+        "access_elevations",
     }
 
     engine = _sync_engine()

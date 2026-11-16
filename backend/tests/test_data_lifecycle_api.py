@@ -106,10 +106,15 @@ async def test_admin_delete_patient_endpoint_runs_the_walker(async_client):
 
 @pytest.mark.asyncio
 async def test_self_account_delete(async_client):
-    user = await create_user(role=Role.USER)
+    user = await create_user(role=Role.USER, password="self-delete-password")
     headers = await auth_headers(user)
 
-    response = await async_client.delete("/api/v1/users/me", headers=headers)
+    response = await async_client.request(
+        "DELETE",
+        "/api/v1/users/me",
+        headers=headers,
+        json={"password": "self-delete-password"},
+    )
     assert response.status_code == 200, response.text
     async with AsyncSessionLocal() as db:
         assert (

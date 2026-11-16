@@ -6,12 +6,12 @@
     "description": "Biomarker panel membership: each item links a biomarker definition (by slug) to a biomarker_panel concept (by slug) via a MEMBER_OF concept_edge."
   },
   "items": [
-    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-total" },
-    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-hdl" },
-    { "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-ldl" },
-    { "panel_slug": "lipid-panel", "biomarker_slug": "triglycerides" },
-    { "panel_slug": "cbc-panel", "biomarker_slug": "hemoglobin" },
-    { "panel_slug": "cbc-panel", "biomarker_slug": "wbc" },
-    { "panel_slug": "cbc-panel", "biomarker_slug": "platelets" }
+    { "seed_key": "panel-membership:lipid-panel/cholesterol-total", "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-total" },
+    { "seed_key": "panel-membership:lipid-panel/cholesterol-hdl", "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-hdl" },
+    { "seed_key": "panel-membership:lipid-panel/cholesterol-ldl", "panel_slug": "lipid-panel", "biomarker_slug": "cholesterol-ldl" },
+    { "seed_key": "panel-membership:lipid-panel/triglycerides", "panel_slug": "lipid-panel", "biomarker_slug": "triglycerides" },
+    { "seed_key": "panel-membership:cbc-panel/hemoglobin", "panel_slug": "cbc-panel", "biomarker_slug": "hemoglobin" },
+    { "seed_key": "panel-membership:cbc-panel/wbc", "panel_slug": "cbc-panel", "biomarker_slug": "wbc" },
+    { "seed_key": "panel-membership:cbc-panel/platelets", "panel_slug": "cbc-panel", "biomarker_slug": "platelets" }
   ]
 }

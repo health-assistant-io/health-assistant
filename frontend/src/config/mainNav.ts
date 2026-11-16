@@ -12,6 +12,10 @@ export interface MainNavSubItem {
   path: string;
   labelKey: string;
   roles?: string[];
+  /** Permission(s) the surface needs (ADR 0054) — hidden when the caller
+   * holds none of them. Filtered only when a `can` predicate is supplied;
+   * the roles gate still applies without one. */
+  permissions?: string[];
   /** When set, renders a section divider above this sub-item. */
   section?: string;
   /** Resolved dynamically — e.g. /patient-info becomes /patients/{id} or /patients. */
@@ -25,6 +29,7 @@ export interface MainNavItem {
   subItems?: MainNavSubItem[];
   requiresPatient?: boolean;
   roles?: string[];
+  permissions?: string[];
 }
 
 /** Primary sidebar registry — single source for the app shell. */
@@ -72,16 +77,24 @@ export const MAIN_NAV: MainNavItem[] = [
     roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'],
     subItems: [
       // ── System section ──
-      { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'] },
-      { path: '/admin/system/users', labelKey: 'admin.users', roles: ['SYSTEM_ADMIN'] },
-      { path: '/admin/system/settings', labelKey: 'admin.system_settings', roles: ['SYSTEM_ADMIN'] },
+      { path: '/admin/system/tenants', labelKey: 'admin.system_tenants', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'], permissions: ['tenant:read'] },
+      { path: '/admin/system/users', labelKey: 'admin.users', roles: ['SYSTEM_ADMIN'], permissions: ['user:read'] },
+      { path: '/admin/system/settings', labelKey: 'admin.system_settings', roles: ['SYSTEM_ADMIN'], permissions: ['settings:read'] },
+      { path: '/admin/system/seed-sources', labelKey: 'seed_sources.nav', section: 'admin.system_administration', roles: ['SYSTEM_ADMIN'], permissions: ['seed_source:read'] },
       // ── Tenant section ──
-      { path: '/admin/tenant/users', labelKey: 'admin.users', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-      { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-      { path: '/admin/tenant/oauth-clients', labelKey: 'admin.api_clients', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'] },
-      { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-      { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
-      { path: '/organizations', labelKey: 'common.organizations', roles: ['SYSTEM_ADMIN', 'ADMIN'] },
+      // user:read is ADMIN-side (ADR 0054 baseline) — MANAGER loses the
+      // user directory; integration:manage keeps OAuth clients off the
+      // MANAGER surface too.
+      { path: '/admin/tenant/users', labelKey: 'admin.users', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['user:read'] },
+      { path: '/admin/tenant/settings', labelKey: 'admin.tenant_settings', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'], permissions: ['settings:read'] },
+      { path: '/admin/tenant/security', labelKey: 'admin.security_policy', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'], permissions: ['settings:read'] },
+      { path: '/admin/tenant/access', labelKey: 'admin.access_management', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'], permissions: ['patient:grant', 'settings:read'] },
+      { path: '/admin/tenant/seed-sources', labelKey: 'seed_sources.nav', section: 'admin.tenant_management', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['seed_source:read'] },
+      { path: '/admin/audit', labelKey: 'admin.audit_viewer', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['audit:read'] },
+      { path: '/admin/tenant/oauth-clients', labelKey: 'admin.api_clients', roles: ['SYSTEM_ADMIN', 'ADMIN', 'MANAGER'], permissions: ['integration:manage'] },
+      { path: '/patients', labelKey: 'common.patients', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['patient:read'] },
+      { path: '/doctors', labelKey: 'common.doctors', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['clinical:read'] },
+      { path: '/organizations', labelKey: 'common.organizations', roles: ['SYSTEM_ADMIN', 'ADMIN'], permissions: ['clinical:read'] },
     ],
   },
 ];
@@ -95,19 +108,31 @@ export function resolveSubPath(path: string, currentPatientId?: string | number)
 }
 
 /**
- * Role-filter the registry, preserving section dividers on the first
- * surviving item of each section and dropping groups whose items are all
- * filtered out. undefined role = unauthenticated = only ungated items.
+ * Role+permission filter of the registry, preserving section dividers on
+ * the first surviving item of each section and dropping groups whose items
+ * are all filtered out. undefined role = unauthenticated = only ungated
+ * items. Permission gating applies only when a `can` predicate is supplied
+ * (the hydrated `/me/access` mirror); without one the roles gate alone
+ * applies.
  */
-export function filterNavByRole(items: MainNavItem[], role?: string): MainNavItem[] {
-  const allowed = (itemRoles?: string[]) =>
-    !itemRoles || (role != null && itemRoles.includes(role));
+export function filterNavByRole(
+  items: MainNavItem[],
+  role?: string,
+  can?: (permission: string) => boolean,
+): MainNavItem[] {
+  const allowed = (itemRoles?: string[], itemPermissions?: string[]) => {
+    if (itemRoles && (role == null || !itemRoles.includes(role))) return false;
+    if (itemPermissions && can && !itemPermissions.some((permission) => can(permission))) {
+      return false;
+    }
+    return true;
+  };
 
   return items
-    .filter((item) => allowed(item.roles))
+    .filter((item) => allowed(item.roles, item.permissions))
     .map((item) => {
       if (!item.subItems) return item;
-      const filteredSubItems = item.subItems.filter((sub) => allowed(sub.roles));
+      const filteredSubItems = item.subItems.filter((sub) => allowed(sub.roles, sub.permissions));
       // Preserve the section divider on the first surviving item of each section
       const seenSections = new Set<string>();
       const recomputed = filteredSubItems.map((sub) => {
@@ -118,7 +143,7 @@ export function filterNavByRole(items: MainNavItem[], role?: string): MainNavIte
         if (sub.section) seenSections.add(sub.section);
         return sub;
       });
-      if (recomputed.length === 0) return item; // group dropped below
+      if (recomputed.length === 0) return { ...item, subItems: [] }; // group dropped below
       return { ...item, subItems: recomputed };
     })
     .filter((item) => {
@@ -141,6 +166,7 @@ export function resolveActiveNavId(
   search: string,
   currentPatientId?: string | number,
   role?: string,
+  can?: (permission: string) => boolean,
 ): string | null {
   const isSubActive = (sub: MainNavSubItem): boolean => {
     if (sub.dynamicPath === 'patient-detail') {
@@ -158,7 +184,7 @@ export function resolveActiveNavId(
     return pathname === sub.path || pathname.startsWith(sub.path + '/');
   };
 
-  for (const item of filterNavByRole(MAIN_NAV, role)) {
+  for (const item of filterNavByRole(MAIN_NAV, role, can)) {
     if (item.subItems) {
       const active = item.subItems.find(isSubActive);
       if (active) return resolveSubPath(active.path, currentPatientId);

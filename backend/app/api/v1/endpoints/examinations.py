@@ -1,4 +1,4 @@
-# ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
+# ruff: noqa: B904 -- long immutable strings; reflow when touched
 import logging
 from uuid import UUID
 
@@ -12,8 +12,8 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.clinical_event import EventExaminationLink
 from app.models.doctor_model import DoctorModel
-from app.models.enums import Role
 from app.models.examination_model import ExaminationModel
+from app.models.patient_access_grant import GrantPermission
 from app.models.user_model import UserModel
 from app.schemas.examination import (
     ExaminationBulkDeleteRequest,
@@ -27,7 +27,11 @@ from app.schemas.examination import (
 from app.schemas.task_log import TaskLogResponse
 from app.schemas.user import TokenData
 from app.services.audit.audit_service import audit_read, log_audit_action
-from app.services.auth.access import check_examination_access, check_patient_access
+from app.services.auth.access import (
+    apply_patient_scope,
+    check_examination_access,
+    check_patient_access,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +75,7 @@ async def create_examination(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     # §17: clinical writes are audited (plan 16 H2).
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_examination",
@@ -88,7 +93,9 @@ async def update_examination(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    examination = await check_examination_access(examination_id, current_user, db)
+    examination = await check_examination_access(
+        examination_id, current_user, db, required=GrantPermission.WRITE
+    )
 
     update_data = examination_in.model_dump(exclude_unset=True)
     doctor_ids = update_data.pop("doctor_ids", None)
@@ -186,6 +193,7 @@ async def update_examination(
     )
     updated = result.scalar_one()
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_examination",
@@ -244,12 +252,11 @@ async def list_examinations(
     if patient_id:
         await check_patient_access(patient_id, current_user, db)
         query = query.where(ExaminationModel.patient_id == UUID(patient_id))
-    elif current_user.role == Role.USER.value:
-        # For standard users, if no patient_id is provided, only show examinations for their patients
-        from app.models.fhir.patient import Patient
-
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
-        query = query.where(ExaminationModel.patient_id.in_(patient_ids_query))
+    else:
+        # Grant-aware scope (ADR 0054 Phase 2): USER and a MANAGER under
+        # ``manager_scope=assigned`` see own + granted patients; staff keep
+        # the tenant-wide list.
+        query = await apply_patient_scope(query, ExaminationModel.patient_id, current_user, db)
 
     query = query.order_by(ExaminationModel.examination_date.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
@@ -428,7 +435,9 @@ async def extract_examination_data(
 
     try:
         # Verify ownership
-        await check_examination_access(examination_id, current_user, db)
+        await check_examination_access(
+            examination_id, current_user, db, required=GrantPermission.WRITE
+        )
 
         mode = request.mode if request else "full"
 
@@ -495,15 +504,14 @@ async def bulk_delete_examinations(
     from app.models.fhir import Medication, Observation
     from app.services.documents.document_service import delete_document
 
-    # Fetch all examinations to be deleted, verifying ownership
+    # Fetch all examinations to be deleted, verifying ownership.
+    # The central gate (clinical:delete @ grant) already restricts this
+    # endpoint to staff — USER never reaches the handler — so the query is
+    # tenant-scoped only; per-row reach is not re-derived here.
     query = select(ExaminationModel).where(
         ExaminationModel.id.in_(request.examination_ids),
         ExaminationModel.tenant_id == current_user.tenant_id,
     )
-    if current_user.role == Role.USER.value:
-        from app.models.fhir.patient import Patient
-
-        query = query.join(Patient).where(Patient.user_id == current_user.user_id)
 
     result = await db.execute(query)
     examinations = result.scalars().all()
@@ -519,7 +527,7 @@ async def bulk_delete_examinations(
     )
     documents = docs_result.scalars().all()
     for doc in documents:
-        await delete_document(str(doc.id), db, trigger_cumulative=False)
+        await delete_document(str(doc.id), db, current_user, trigger_cumulative=False)
 
     # 2. Explicitly delete clinical data
     await db.execute(delete(Observation).where(Observation.examination_id.in_(actual_ids)))
@@ -532,6 +540,7 @@ async def bulk_delete_examinations(
     await db.commit()
 
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="bulk_delete_examinations",
@@ -553,33 +562,18 @@ async def delete_examination(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    examination = await check_examination_access(examination_id, current_user, db)
-
-    # Delete all associated documents first (and their physical files)
-    from sqlalchemy import delete
-
-    from app.models.document_model import DocumentModel
-    from app.models.fhir import Medication, Observation
-    from app.services.documents.document_service import delete_document
-
-    # 1. Physical document deletion
-    docs_result = await db.execute(
-        select(DocumentModel).where(DocumentModel.examination_id == examination.id)
+    examination = await check_examination_access(
+        examination_id, current_user, db, required=GrantPermission.WRITE
     )
-    documents = docs_result.scalars().all()
-    for doc in documents:
-        # Pass trigger_cumulative=False to avoid starting a task for a deleted exam
-        await delete_document(str(doc.id), db, trigger_cumulative=False)
 
-    # 2. Explicitly delete clinical data (Observations & Medications)
-    # This is also handled by DB CASCADE but explicit is better for "no trash"
-    await db.execute(delete(Observation).where(Observation.examination_id == examination.id))
-    await db.execute(delete(Medication).where(Medication.examination_id == examination.id))
+    # The canonical delete seam owns document/file + FHIR cleanup and the
+    # scoped-credential guard (the bridge proxy calls the same function).
+    from app.services.clinical.examination_service import delete_examination as _delete
 
-    # 3. Delete the examination itself
-    await db.delete(examination)
-    await db.commit()
+    await _delete(db, examination, current_user)
+
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_examination",

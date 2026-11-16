@@ -8,6 +8,7 @@ import {
   Pill,
   Activity,
   ShieldAlert,
+  Syringe,
   User,
   Stethoscope,
   Building2,
@@ -65,7 +66,8 @@ export const DEFAULT_CREATE_ITEMS: CreateMenuItem[] = [
     id: 'examination',
     labelKey: 'common.new_examination',
     icon: FileText,
-    to: '/examinations/upload',
+    to: '/examinations?new=examination',
+    requiresPatient: true,
     category: 'clinical',
   },
   {
@@ -73,6 +75,14 @@ export const DEFAULT_CREATE_ITEMS: CreateMenuItem[] = [
     labelKey: 'common.new_medication',
     icon: Pill,
     to: '/medications?new=medication',
+    requiresPatient: true,
+    category: 'clinical',
+  },
+  {
+    id: 'vaccination',
+    labelKey: 'common.new_vaccination',
+    icon: Syringe,
+    to: '/vaccinations?new=vaccination',
     requiresPatient: true,
     category: 'clinical',
   },
@@ -113,6 +123,9 @@ export const DEFAULT_CREATE_ITEMS: CreateMenuItem[] = [
     icon: Building2,
     to: '/organizations?new=organization',
     category: 'demographics',
+    // POST /organizations is clinical:write @ tenant at the central gate —
+    // USER holds it at own only, so the entry would end in a denied call.
+    roles: ['ADMIN', 'MANAGER', 'SYSTEM_ADMIN'],
   },
 ];
 

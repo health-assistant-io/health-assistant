@@ -2,21 +2,24 @@
 
 import pytest
 
+from tests.seed_utils import seed_with_commit
+
 
 @pytest.mark.asyncio
 async def test_seed_concepts_idempotent():
-    """Running seed_concepts twice is idempotent (upsert by slug)."""
+    """Running seed_concepts twice is idempotent (upsert by identity)."""
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    stats1 = await svc.seed_concepts()
-    total1 = stats1["added"] + stats1["updated"]
+    stats1 = await seed_with_commit(svc.seed_concepts)
+    total1 = stats1["added"] + stats1["updated"] + stats1["unchanged"]
     assert total1 > 0, f"First run should add or update concepts: {stats1}"
     assert stats1["errors"] == 0, f"First run had errors: {stats1}"
 
-    stats2 = await svc.seed_concepts()
+    stats2 = await seed_with_commit(svc.seed_concepts)
     assert stats2["added"] == 0, f"Second run should add nothing: {stats2}"
-    assert stats2["updated"] == total1, "Second run should update all"
+    assert stats2["updated"] == 0, f"Second run should rewrite nothing: {stats2}"
+    assert stats2["unchanged"] == total1, "Second run should find every row unchanged"
     assert stats2["errors"] == 0
 
 
@@ -30,15 +33,15 @@ async def test_seed_concept_edges_idempotent():
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_concept_edges)
 
     async with AsyncSessionLocal() as session:
         count_after_first = await session.scalar(
             select(func.count()).select_from(ConceptEdge).where(ConceptEdge.tenant_id.is_(None))
         )
 
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concept_edges)
 
     async with AsyncSessionLocal() as session:
         count_after_second = await session.scalar(
@@ -64,7 +67,7 @@ async def test_seed_concepts_reconciles_kinds_on_existing_row():
 
     svc = SeedService()
     # First seed: runs the full file (concepts.json). Take a known concept.
-    await svc.seed_concepts()
+    await seed_with_commit(svc.seed_concepts)
 
     async with AsyncSessionLocal() as session:
         # Pick a concept that exists and mutate its kind_tags to a known-wrong
@@ -81,7 +84,7 @@ async def test_seed_concepts_reconciles_kinds_on_existing_row():
         await session.commit()
 
     # Re-seed: should diff DISEASE away and restore the file's kinds.
-    await svc.seed_concepts()
+    await seed_with_commit(svc.seed_concepts)
 
     async with AsyncSessionLocal() as session:
         cardiology = (
@@ -110,9 +113,9 @@ async def test_seed_concept_to_anatomy_edges():
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    await svc.seed_body_parts()  # creates heart, brain, …
-    await svc.seed_concepts()  # creates cardiology, …
-    await svc.seed_concept_edges()  # creates cardiology EXAMINES heart
+    await seed_with_commit(svc.seed_body_parts)
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_concept_edges)
 
     async with AsyncSessionLocal() as session:
         heart = (
@@ -146,7 +149,7 @@ async def test_seed_includes_all_expected_kinds():
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    await svc.seed_concepts()
+    await seed_with_commit(svc.seed_concepts)
 
     from sqlalchemy import func, select
 
@@ -186,8 +189,8 @@ async def test_seed_edges_create_graph():
     from app.services.seed.service import SeedService
 
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_concept_edges)
 
     from sqlalchemy import select
 

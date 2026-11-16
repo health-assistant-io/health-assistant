@@ -13,6 +13,7 @@ import { isAbnormal, formatUnit, formatBiomarkerValue } from '../../utils/biomar
 import LineChart from '../charts/LineChart';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_RED } from '../ui/SummaryCardHeader';
 import { LogBiomarkerReadingModal } from '../biomarkers/LogBiomarkerReadingModal';
+import { ExaminationModal } from '../examinations/ExaminationModal';
 
 interface Props {
   patientId: string;
@@ -34,6 +35,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isLogReadingOpen, setIsLogReadingOpen] = useState(false);
+  const [isExaminationOpen, setIsExaminationOpen] = useState(false);
   const loadingRef = useRef(false);
 
   const { biomarkers, getAbnormal } = useBiomarkers({ trendsData: trendsData || undefined });
@@ -234,7 +236,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
                 <span>{t('biomarkers.log_reading.button', 'Log Reading')}</span>
               </button>
               <button
-                onClick={() => navigate('/examinations/upload')}
+                onClick={() => setIsExaminationOpen(true)}
                 className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold"
               >
                 <Upload className="w-3 h-3" />
@@ -327,6 +329,20 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
         onClose={() => setIsLogReadingOpen(false)}
         patientId={patientId}
         onSuccess={fetchTrends}
+      />
+
+      <ExaminationModal
+        isOpen={isExaminationOpen}
+        onClose={() => setIsExaminationOpen(false)}
+        patientId={patientId}
+        onSuccess={(examinationId) => {
+          setIsExaminationOpen(false);
+          navigate(`/examinations/${examinationId}`);
+        }}
+        onAdvanced={() => {
+          setIsExaminationOpen(false);
+          navigate('/examinations/upload');
+        }}
       />
     </div>
   );

@@ -6,6 +6,7 @@
   },
   "items": [
     {
+      "seed_key": "concept:blood-laboratory",
       "slug": "blood-laboratory",
       "name": "Blood Laboratory",
       "color": "#dc2626",
@@ -20,6 +21,7 @@
       ]
     },
     {
+      "seed_key": "concept:vital-signs",
       "slug": "vital-signs",
       "name": "Vital Signs",
       "color": "#ef4444",
@@ -34,6 +36,7 @@
       ]
     },
     {
+      "seed_key": "concept:cardiology",
       "slug": "cardiology",
       "name": "Cardiology",
       "color": "#dc2626",
@@ -47,6 +50,7 @@
       ]
     },
     {
+      "seed_key": "concept:neurology",
       "slug": "neurology",
       "name": "Neurology",
       "coding_system": "snomed",
@@ -62,6 +66,7 @@
       ]
     },
     {
+      "seed_key": "concept:ophthalmology",
       "slug": "ophthalmology",
       "name": "Ophthalmology",
       "coding_system": "snomed",
@@ -78,6 +83,7 @@
       ]
     },
     {
+      "seed_key": "concept:pulmonology",
       "slug": "pulmonology",
       "name": "Pulmonology",
       "coding_system": "snomed",
@@ -93,6 +99,7 @@
       ]
     },
     {
+      "seed_key": "concept:gastroenterology",
       "slug": "gastroenterology",
       "name": "Gastroenterology",
       "coding_system": "snomed",
@@ -108,6 +115,7 @@
       ]
     },
     {
+      "seed_key": "concept:laboratory-tests",
       "slug": "laboratory-tests",
       "name": "Laboratory Tests",
       "color": "#f97316",
@@ -121,6 +129,7 @@
       ]
     },
     {
+      "seed_key": "concept:imaging-radiology",
       "slug": "imaging-radiology",
       "name": "Imaging & Radiology",
       "color": "#a855f7",
@@ -134,6 +143,7 @@
       ]
     },
     {
+      "seed_key": "concept:other",
       "slug": "other",
       "name": "Other",
       "color": "#6b7280",
@@ -148,6 +158,7 @@
       ]
     },
     {
+      "seed_key": "concept:specialty",
       "slug": "specialty",
       "name": "Medical Specialties",
       "description": "Root for doctor specialties",
@@ -156,6 +167,7 @@
       ]
     },
     {
+      "seed_key": "concept:endocrinology",
       "slug": "endocrinology",
       "name": "Endocrinology",
       "coding_system": "snomed",
@@ -170,6 +182,7 @@
       ]
     },
     {
+      "seed_key": "concept:dermatology",
       "slug": "dermatology",
       "name": "Dermatology",
       "coding_system": "snomed",
@@ -184,6 +197,7 @@
       ]
     },
     {
+      "seed_key": "concept:general-practice",
       "slug": "general-practice",
       "name": "General Practice",
       "coding_system": "snomed",
@@ -198,6 +212,7 @@
       ]
     },
     {
+      "seed_key": "concept:cardiovascular-system",
       "slug": "cardiovascular-system",
       "name": "Cardiovascular System",
       "color": "#dc2626",
@@ -210,6 +225,7 @@
       ]
     },
     {
+      "seed_key": "concept:nervous-system",
       "slug": "nervous-system",
       "name": "Nervous System",
       "color": "#6366f1",
@@ -222,6 +238,7 @@
       ]
     },
     {
+      "seed_key": "concept:respiratory-system",
       "slug": "respiratory-system",
       "name": "Respiratory System",
       "color": "#2dd4bf",
@@ -234,6 +251,7 @@
       ]
     },
     {
+      "seed_key": "concept:digestive-system",
       "slug": "digestive-system",
       "name": "Digestive System",
       "color": "#10b981",
@@ -246,6 +264,7 @@
       ]
     },
     {
+      "seed_key": "concept:endocrine-system",
       "slug": "endocrine-system",
       "name": "Endocrine System",
       "color": "#f59e0b",
@@ -258,6 +277,7 @@
       ]
     },
     {
+      "seed_key": "concept:urine-laboratory",
       "slug": "urine-laboratory",
       "name": "Urine Laboratory",
       "color": "#facc15",
@@ -270,6 +290,7 @@
       ]
     },
     {
+      "seed_key": "concept:dentistry",
       "slug": "dentistry",
       "name": "Dentistry",
       "color": "#94a3b8",
@@ -282,6 +303,7 @@
       ]
     },
     {
+      "seed_key": "concept:pathology",
       "slug": "pathology",
       "name": "Pathology",
       "color": "#b91c1c",
@@ -294,6 +316,7 @@
       ]
     },
     {
+      "seed_key": "concept:reproductive-health",
       "slug": "reproductive-health",
       "name": "Reproductive Health",
       "color": "#ec4899",
@@ -306,6 +329,7 @@
       ]
     },
     {
+      "seed_key": "concept:acute-chronic",
       "slug": "acute-chronic",
       "name": "Acute & Chronic",
       "color": "#ef4444",
@@ -318,6 +342,7 @@
       ]
     },
     {
+      "seed_key": "concept:specialized-care",
       "slug": "specialized-care",
       "name": "Specialized Care",
       "color": "#8b5cf6",
@@ -330,6 +355,7 @@
       ]
     },
     {
+      "seed_key": "concept:routine-wellness",
       "slug": "routine-wellness",
       "name": "Routine & Wellness",
       "color": "#10b981",
@@ -342,6 +368,7 @@
       ]
     },
     {
+      "seed_key": "concept:general-event",
       "slug": "general-event",
       "name": "General",
       "color": "#64748b",
@@ -355,6 +382,7 @@
       ]
     },
     {
+      "seed_key": "concept:urine-class",
       "slug": "urine-class",
       "name": "Urine",
       "color": "#facc15",
@@ -370,6 +398,7 @@
       ]
     },
     {
+      "seed_key": "concept:lipids-class",
       "slug": "lipids-class",
       "name": "Lipids",
       "color": "#f59e0b",
@@ -385,6 +414,7 @@
       ]
     },
     {
+      "seed_key": "concept:hematology-class",
       "slug": "hematology-class",
       "name": "Hematology",
       "color": "#dc2626",
@@ -400,6 +430,7 @@
       ]
     },
     {
+      "seed_key": "concept:endocrine-class",
       "slug": "endocrine-class",
       "name": "Endocrine",
       "color": "#f59e0b",
@@ -415,6 +446,7 @@
       ]
     },
     {
+      "seed_key": "concept:activity-class",
       "slug": "activity-class",
       "name": "Activity",
       "color": "#10b981",
@@ -430,6 +462,7 @@
       ]
     },
     {
+      "seed_key": "concept:lipid-panel",
       "slug": "lipid-panel",
       "name": "Lipid Panel",
       "coding_system": "loinc",
@@ -448,6 +481,7 @@
       ]
     },
     {
+      "seed_key": "concept:blood-pressure-panel",
       "slug": "blood-pressure-panel",
       "name": "Blood Pressure",
       "coding_system": "loinc",
@@ -466,6 +500,7 @@
       ]
     },
     {
+      "seed_key": "concept:cbc-panel",
       "slug": "cbc-panel",
       "name": "Complete Blood Count",
       "coding_system": "loinc",
@@ -484,6 +519,7 @@
       ]
     },
     {
+      "seed_key": "concept:basic-metabolic-panel",
       "slug": "basic-metabolic-panel",
       "name": "Basic Metabolic Panel",
       "coding_system": "loinc",
@@ -502,6 +538,7 @@
       ]
     },
     {
+      "seed_key": "concept:system",
       "slug": "system",
       "name": "System",
       "description": "A body system (e.g. cardiovascular)",
@@ -510,6 +547,7 @@
       ]
     },
     {
+      "seed_key": "concept:region",
       "slug": "region",
       "name": "Region",
       "description": "A body region (e.g. head, thorax)",
@@ -518,6 +556,7 @@
       ]
     },
     {
+      "seed_key": "concept:organ",
       "slug": "organ",
       "name": "Organ",
       "description": "A distinct organ (e.g. heart, liver)",
@@ -526,6 +565,7 @@
       ]
     },
     {
+      "seed_key": "concept:organ-part",
       "slug": "organ-part",
       "name": "Organ Part",
       "description": "A subdivided part of an organ",
@@ -534,6 +574,7 @@
       ]
     },
     {
+      "seed_key": "concept:tissue",
       "slug": "tissue",
       "name": "Tissue",
       "description": "A tissue type",
@@ -542,6 +583,7 @@
       ]
     },
     {
+      "seed_key": "concept:joint",
       "slug": "joint",
       "name": "Joint",
       "description": "A joint",
@@ -550,6 +592,7 @@
       ]
     },
     {
+      "seed_key": "concept:prescription-doc",
       "slug": "prescription-doc",
       "name": "Prescriptions",
       "color": "#3b82f6",
@@ -558,6 +601,7 @@
       ]
     },
     {
+      "seed_key": "concept:clinical-notes-doc",
       "slug": "clinical-notes-doc",
       "name": "Clinical Notes",
       "color": "#6b7280",
@@ -566,6 +610,7 @@
       ]
     },
     {
+      "seed_key": "concept:discharge-doc",
       "slug": "discharge-doc",
       "name": "Discharge Summaries",
       "color": "#10b981",
@@ -574,6 +619,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-c",
       "slug": "atc-c",
       "name": "Cardiovascular System",
       "coding_system": "atc",
@@ -584,6 +630,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-c10",
       "slug": "atc-c10",
       "name": "Lipid Modifying Agents",
       "coding_system": "atc",
@@ -594,6 +641,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-c10aa",
       "slug": "atc-c10aa",
       "name": "HMG CoA Reductase Inhibitors (Statins)",
       "coding_system": "atc",
@@ -607,6 +655,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-a",
       "slug": "atc-a",
       "name": "Alimentary Tract & Metabolism",
       "coding_system": "atc",
@@ -616,6 +665,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-a10",
       "slug": "atc-a10",
       "name": "Drugs Used in Diabetes",
       "coding_system": "atc",
@@ -626,6 +676,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-a10ba",
       "slug": "atc-a10ba",
       "name": "Biguanides",
       "coding_system": "atc",
@@ -639,6 +690,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-n",
       "slug": "atc-n",
       "name": "Nervous System",
       "coding_system": "atc",
@@ -648,6 +700,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-n02",
       "slug": "atc-n02",
       "name": "Analgesics",
       "coding_system": "atc",
@@ -661,6 +714,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-j",
       "slug": "atc-j",
       "name": "Antiinfectives for Systemic Use",
       "coding_system": "atc",
@@ -670,6 +724,7 @@
       ]
     },
     {
+      "seed_key": "concept:atc-j01",
       "slug": "atc-j01",
       "name": "Antibacterials for Systemic Use",
       "coding_system": "atc",

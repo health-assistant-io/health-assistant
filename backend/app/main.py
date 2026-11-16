@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+import anyio
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -9,8 +10,16 @@ from nx_auth.headers import HeaderPolicy, SecurityHeadersMiddleware
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 from starlette.requests import ClientDisconnect
 
+from app.api.readiness import router as readiness_router
 from app.api.v1 import api_router
-from app.catalogs.policy import CatalogConflict, CatalogPermissionDenied
+from app.catalogs.policy import (
+    CatalogConflict,
+    CatalogPermissionDenied,
+    CatalogReferenceError,
+    CatalogUniqueViolation,
+)
+from app.core import boot
+from app.core.authz.enforce import enforce_route_policy
 from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
 from app.core.cookies import CsrfMiddleware
 from app.core.csp import DOCUMENT_CSP
@@ -45,6 +54,21 @@ async def lifespan(app: FastAPI):
             logger.error("%s failed (production mode, aborting startup): %s", what, exc)
             raise exc
 
+    # Object storage is configuration, not a runtime fallback: resolve it
+    # once, probe it, and refuse to serve on a bad bucket/container/credential
+    # (ADR-0057). This runs before every other boot step so no handler can
+    # ever see a half-initialised storage seam.
+    from app.storage.bootstrap import open_configured_store, register
+    from app.storage.documents import DocumentStorage
+    from app.storage.health import StorageHealthProbe
+
+    storage_config, objects = open_configured_store(settings)
+    register(storage_config, objects)
+    app.state.storage_config = storage_config
+    app.state.objects = objects
+    app.state.storage_health = StorageHealthProbe(storage_config, objects)
+    app.state.document_storage = DocumentStorage(objects)
+
     # Startup
     if settings.DEBUG:
         try:
@@ -60,86 +84,44 @@ async def lifespan(app: FastAPI):
     # Background worker (Celery) is managed by the process supervisor
     # (systemd, Docker restart policy, etc.) — not auto-healed from the app.
 
-    # Cleanup stuck extractions from previous runs.
-    # Audit item A6: original code marked EVERY active-status exam as
-    # failed on every boot — including exams being actively processed by
-    # a worker at that moment (severe under rolling restarts). Now we
-    # only target exams whose ``updated_at`` is older than the Celery
-    # hard ``task_time_limit`` (900s) plus a safety margin (5 min) —
-    # matching the periodic ``cleanup_stuck_extractions`` beat.
-    import datetime as _dt
-
+    # Every database-touching boot step runs inside an explicit
+    # ``tenant_context.system_scope("boot:<step>")`` (app.core.boot — ADR
+    # 0054 D4): boot time has no request context, and under row-level
+    # security a closed context answers zero rows. The functions are the
+    # only way the lifespan touches the database and are exercised as the
+    # runtime role by tests/test_rls_boot.py.
+    from app.core import tenant_context
     from app.core.database import DATABASE_AVAILABLE
 
     if DATABASE_AVAILABLE:
+        # Stuck-extraction cleanup is best-effort even in prod — a stale
+        # row won't block boot, it just means a stuck exam gets cleaned
+        # up by the next periodic beat instead.
         try:
-            from sqlalchemy import update
-
-            from app.core.database import AsyncSessionLocal
-            from app.models.examination_model import ExaminationModel
-
-            async with AsyncSessionLocal() as db:
-                stuck_threshold = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=20)
-                # Target statuses that indicate the process is active.
-                stuck_statuses = [
-                    "aggregating",
-                    "analyzing_text",
-                    "defining_ontology",
-                    "persisting_results",
-                    "processing",
-                ]
-                result = await db.execute(
-                    update(ExaminationModel)
-                    .where(ExaminationModel.extraction_status.in_(stuck_statuses))
-                    .where(ExaminationModel.updated_at < stuck_threshold)
-                    .values(
-                        extraction_status="failed",
-                        extraction_progress=0,
-                        error_message="Task timeout (startup cleanup)",
-                    )
-                )
-                count = result.rowcount
-                if count > 0:
-                    await db.commit()
-                    logger.info(
-                        "Cleaned up %d stuck examinations (older than %s) from previous session.",
-                        count,
-                        stuck_threshold.isoformat(),
-                    )
+            await boot.cleanup_stuck_examinations()
         except Exception as e:
-            # Stuck-extraction cleanup is best-effort even in prod — a stale
-            # row won't block boot, it just means a stuck exam gets cleaned
-            # up by the next periodic beat instead.
             logger.error(f"Failed to cleanup stuck extractions: {e}")
 
-    # Seed initial data
-    from app.core.database import DATABASE_AVAILABLE
-    from app.extensions.registry import integration_registry
-    from app.services.seed.service import SeedService
-
-    if DATABASE_AVAILABLE:
         # Instance facts (identity-auth §4): init-only — the empty DB
         # consumes HA_AUTH_MODE / HA_DEMO_MODE exactly once (here and at
         # /auth/setup); post-init env flips are ignored with a loud warning.
         try:
-            from app.core import instance_state
-
-            await instance_state.initialize()
+            await boot.initialize_instance_state()
         except Exception as e:
             _abort_or_warn(e, "Instance settings initialization")
 
         try:
-            logger.info("Running seed stages in dependency order...")
-            all_stats = await SeedService().seed_all()
-            logger.info("All seed stages complete: %s", all_stats)
+            logger.info("Running bundled seed pack apply (digest-gated, ADR 0056)...")
+            boot_stats = await boot.apply_bundled_seed_pack()
+            if boot_stats is None:
+                logger.info("Bundled seed pack digest unchanged — no boot apply needed.")
+            else:
+                logger.info("Bundled seed pack applied: %s", boot_stats)
         except Exception as e:
             _abort_or_warn(e, "Catalog seeding")
 
         try:
-            from app.core.database import AsyncSessionLocal
-
-            async with AsyncSessionLocal() as db:
-                await integration_registry.initialize(db)
+            await boot.initialize_integration_registry()
         except Exception as e:
             _abort_or_warn(e, "Integration registry initialization")
 
@@ -157,99 +139,14 @@ async def lifespan(app: FastAPI):
         if await instance_state.demo_mode_enabled():
             try:
                 logger.info("demo_mode is on — seeding demo data...")
-                from scripts.seed_demo import seed as _seed_demo
-
-                await _seed_demo()
+                await boot.seed_demo_data()
             except Exception as e:
                 _abort_or_warn(e, "Demo data seeding")
 
-        # First-run setup token. If the system is uninitialized (zero
-        # users), prepare the setup token per SETUP_TOKEN_MODE and log
-        # mode-specific guidance. The wizard reads the mode + URL hint via
-        # /auth/setup-status. See app/core/setup_token.py +
-        # the family audit notes/setup-token-modes.md.
+        # First-run setup token (zero-user count + mode banners — see
+        # boot.prepare_first_run_setup_token).
         try:
-            from sqlalchemy import func, select
-
-            from app.core import setup_token
-            from app.core.database import AsyncSessionLocal
-            from app.models.user_model import UserModel
-
-            async with AsyncSessionLocal() as db:
-                count_result = await db.execute(select(func.count()).select_from(UserModel))
-                user_count = count_result.scalar() or 0
-
-            if user_count == 0:
-                mode = setup_token.current_mode()
-                if mode == "env":
-                    if setup_token.seed_from_env(settings.SETUP_BOOTSTRAP_TOKEN):
-                        logger.info(
-                            "\n══════════════════════════════════════════════════════\n"
-                            " FIRST-RUN SETUP REQUIRED (token mode: env)\n"
-                            " Open the launcher URL supplied by your installer — the\n"
-                            " setup token is injected via ?token= and the wizard\n"
-                            " auto-fills it. No log-grep needed.\n"
-                            "══════════════════════════════════════════════════════"
-                        )
-                    else:
-                        # config.py already downgraded to 'log' with a warning,
-                        # but be defensive in case the env var was unset after boot.
-                        logger.warning(
-                            "SETUP_TOKEN_MODE=env but SETUP_BOOTSTRAP_TOKEN is empty — "
-                            "falling back to 'log' mode for this boot."
-                        )
-                        token = setup_token.generate()
-                        logger.info(
-                            "\n══════════════════════════════════════════════════════\n"
-                            " FIRST-RUN SETUP REQUIRED\n"
-                            " Setup token (required if accessing remotely):\n"
-                            "   %s\n"
-                            " Retrieve later: docker compose ... logs backend"
-                            " | grep -i -A 1 'setup token'\n"
-                            " Localhost / dev access does not need the token.\n"
-                            "══════════════════════════════════════════════════════",
-                            token,
-                        )
-                elif mode == "time":
-                    setup_token.mark_boot_time()
-                    logger.info(
-                        "\n══════════════════════════════════════════════════════\n"
-                        " FIRST-RUN SETUP REQUIRED (token mode: time)\n"
-                        " The setup wizard is tokenless for the first %d minute(s).\n"
-                        " Complete first-run setup within that window, or a one-time\n"
-                        " token will be minted and logged after it expires.\n"
-                        " Localhost / dev access never needs the token.\n"
-                        "══════════════════════════════════════════════════════",
-                        settings.SETUP_TOKEN_GRACE_MINUTES,
-                    )
-                elif mode == "disabled":
-                    logger.warning(
-                        "\n══════════════════════════════════════════════════════\n"
-                        " FIRST-RUN SETUP REQUIRED (token mode: disabled)\n"
-                        " WARNING: SETUP_TOKEN_MODE=disabled skips the first-claim\n"
-                        " guard entirely. Anyone who reaches /setup before the\n"
-                        " operator can claim this instance. Only safe when the\n"
-                        " deployment is firewalled / VPN-gated / bound to 127.0.0.1.\n"
-                        "══════════════════════════════════════════════════════"
-                    )
-                else:  # "log"
-                    token = setup_token.generate()
-                    logger.info(
-                        "\n══════════════════════════════════════════════════════\n"
-                        " FIRST-RUN SETUP REQUIRED\n"
-                        " Open the app in your browser and complete the setup\n"
-                        " wizard to create your administrator account.\n"
-                        " Setup token (required if accessing remotely):\n"
-                        "   %s\n"
-                        " Retrieve later: docker compose ... logs backend"
-                        " | grep -i -A 1 'setup token'\n"
-                        " Localhost / dev access does not need the token.\n"
-                        "══════════════════════════════════════════════════════",
-                        token,
-                    )
-            else:
-                # Already initialized — ensure no stale token lingers.
-                setup_token.clear()
+            await boot.prepare_first_run_setup_token()
         except Exception as e:
             logger.warning("Could not check first-run setup status: %s", e)
 
@@ -262,14 +159,31 @@ async def lifespan(app: FastAPI):
 
         checkpoint_store = CheckpointStore()
         try:
-            await checkpoint_store.open()
+            # The checkpoint tables carry no tenant columns (no policies),
+            # but the scope keeps the boot invariant: no DB work without an
+            # explicit context.
+            with tenant_context.system_scope("boot:checkpoint-store"):
+                await checkpoint_store.open()
         except Exception as e:
             _abort_or_warn(e, "Checkpoint store initialization")
         bind_runtime_store(checkpoint_store)
         app.state.checkpoint_store = checkpoint_store
 
+    # Boot completed — /ready turns 200 (plan 64 §1.4). Hard checks still
+    # gate: the DB must be reachable at the release's Alembic head and
+    # required object storage must answer.
+    app.state.boot_complete = True
+
     yield
     # Shutdown
+    try:
+        from app.storage.bootstrap import reset_current_store
+
+        reset_current_store()
+        logger.info("Object storage closed.")
+    except Exception as e:
+        logger.warning(f"Failed to close object storage cleanly: {e}")
+
     if checkpoint_store is not None:
         try:
             from app.ai.graphs.checkpointer import bind_runtime_store
@@ -308,6 +222,11 @@ app = FastAPI(
     docs_url="/docs" if _docs_enabled else None,
     redoc_url="/redoc" if _docs_enabled else None,
     lifespan=lifespan,
+    # ADR 0054 1b — the central authorization gate runs before every HTTP
+    # route's own dependencies (session 401/403, token/public classes skip,
+    # unresolved routes fail closed). WebSocket handshakes do not solve
+    # Request parameters; the two WS handlers run the same policy check.
+    dependencies=[Depends(enforce_route_policy)],
 )
 
 
@@ -415,6 +334,41 @@ async def catalog_permission_denied_handler(request: Request, exc: CatalogPermis
     return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
+@app.exception_handler(CatalogReferenceError)
+async def catalog_reference_error_handler(request: Request, exc: CatalogReferenceError):
+    """Map a bad client reference (missing/invisible id or unresolvable slug)
+    to HTTP 400 — one handler for every door.
+
+    Raised by the unified write services when an explicit ``class_concept_id``,
+    concept ``parent_id`` or class slug points at a row the caller's tenant
+    cannot see (ADR 0055 Phase-3 hardening). Domain routes without their own
+    ``ValueError``→400 mapping (medication/allergy/vaccine/anatomy catalog
+    routes) stay typed here too; the message never carries the hidden row's
+    name or slug.
+    """
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(CatalogUniqueViolation)
+async def catalog_unique_violation_handler(request: Request, exc: CatalogUniqueViolation):
+    """Map a catalog uniqueness violation to HTTP 409 (one write contract).
+
+    Raised by the unified catalog write services when a create/update would
+    duplicate a natural/display key — ``seed_key``, ``(coding_system, code)``
+    or a per-scope slug — either via a pre-check or a translated
+    ``IntegrityError`` (rolled back first). The body carries the conflicting
+    field so the client can highlight it.
+    """
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": str(exc),
+            "code": "catalog_conflict",
+            "field": exc.field,
+        },
+    )
+
+
 @app.exception_handler(CatalogConflict)
 async def catalog_conflict_handler(request: Request, exc: CatalogConflict):
     """Map a scope-transition slug collision to HTTP 409.
@@ -489,6 +443,20 @@ app.add_middleware(
 
 
 # Security: CORS configuration
+# Cross-origin browser clients may read these response headers
+# (``Access-Control-Expose-Headers``). Beyond the pagination set, the
+# audit export reports stream truncation through
+# ``X-Audit-Export-Truncated``/``X-Audit-Export-Total`` (Phase 8) — a
+# viewer SPA served from another origin cannot read them unless they are
+# exposed, so both policies below share this list (pinned by tests).
+_CORS_EXPOSE_HEADERS = [
+    "X-Total-Pages",
+    "X-Current-Page",
+    "X-Total-Frames",
+    "X-Authz-Denied",
+    "X-Audit-Export-Truncated",
+    "X-Audit-Export-Total",
+]
 if settings.HA_APP_ENV == "development":
     # In development, allow any local network origin (LAN) via regex
     # (shared with the §10 WS Origin gate — app.core.config).
@@ -498,7 +466,7 @@ if settings.HA_APP_ENV == "development":
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
+        expose_headers=_CORS_EXPOSE_HEADERS,
     )
 else:
     # In production, restrict to specific trusted domains. Hostnames must be
@@ -514,14 +482,14 @@ else:
         # §10: X-CSRF-Token is the double-submit echo (browsers); the §9
         # Bearer clients use Authorization as before.
         allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
-        expose_headers=["X-Total-Pages", "X-Current-Page", "X-Total-Frames"],
+        expose_headers=_CORS_EXPOSE_HEADERS,
     )
 
 # Audit 2026-08 CFG-L1/INT-M4: Host-header validation. The integrations
 # OAuth flow builds redirect URIs from the request Host by fallback —
 # pinning the app to its configured host(s) blocks Host-header poisoning
 # and DCR registration attacks. Dev allows any host (LAN access).
-if settings.HA_APP_ENV == "development":
+if settings.HA_APP_ENV in ("development", "test", "testing"):
     _trusted_hosts = ["*"]
 else:
     _trusted_hosts = []
@@ -530,16 +498,28 @@ else:
             from urllib.parse import urlparse
 
             _h = urlparse(_u).hostname
-            if _h:
+            if _h and _h not in _trusted_hosts:
                 _trusted_hosts.append(_h)
         except Exception:
             pass
     if not _trusted_hosts:
-        _trusted_hosts = ["*"]
+        # Fail closed: silently allowing "*" disables Host-header poisoning
+        # protection exactly where it matters (production behind a proxy).
+        raise RuntimeError(
+            "APP_URL/FRONTEND_URL must be valid absolute URLs in production "
+            "so the Host-header allowlist can be derived."
+        )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=_trusted_hosts)
 
 # Include routers
 app.include_router(api_router)
+# /ready is a root-level ingress probe (plan 64 §1.4) — outside the
+# versioned API on purpose (no /api prefix; the session/CSRF middleware and
+# the authz route gate only ever touch /api/* paths, so the probe needs no
+# exempt carve-out). The route policy pins it PUBLIC (route_policy.py).
+app.include_router(readiness_router)
+# Readiness flips green only when the lifespan startup below completed.
+app.state.boot_complete = False
 
 
 @app.get("/.well-known/smart-configuration", tags=["oauth"])
@@ -551,12 +531,19 @@ async def smart_configuration():
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint (liveness — always 200; dependency states
-    ride the payload, never the status code: a degraded Redis must not
-    fail the probe containers act on)."""
+async def health_check(response: Response):
+    """Health check endpoint (liveness — 200 unless required storage fails;
+    dependency states ride the payload, never the status code: a degraded
+    Redis must not fail the probe containers act on).
+
+    Object storage is the exception to "always 200": a transient provider
+    failure degrades open (``storage.status: degraded``, 200), while a
+    required deployment (cloud profile or ``OBJECT_STORAGE_REQUIRED=true``)
+    or a sustained failure returns 503 so the container can be restarted.
+    """
     from app.core.database import DATABASE_AVAILABLE
     from app.core.redis import redis_client
+    from app.storage.health import STATUS_DEGRADED
 
     db_status = "connected" if DATABASE_AVAILABLE else "not_available"
     try:
@@ -564,7 +551,30 @@ async def health_check():
     except Exception:
         redis_status = "not_available"
 
-    return {"status": "healthy", "database": db_status, "redis": redis_status}
+    probe = getattr(app.state, "storage_health", None)
+    if probe is None:
+        storage = {
+            "backend": getattr(getattr(app.state, "storage_config", None), "backend", "unknown"),
+            "status": "unknown",
+            "required": False,
+        }
+    else:
+        snapshot = await anyio.to_thread.run_sync(probe.snapshot)
+        storage = snapshot.payload()
+        if snapshot.failed:
+            response.status_code = 503
+
+    status_label = "healthy"
+    if storage["status"] == STATUS_DEGRADED:
+        status_label = "degraded"
+    elif storage["status"] == "unavailable":
+        status_label = "unhealthy"
+    return {
+        "status": status_label,
+        "database": db_status,
+        "redis": redis_status,
+        "storage": storage,
+    }
 
 
 @app.get("/")

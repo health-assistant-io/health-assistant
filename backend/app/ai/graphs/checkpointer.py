@@ -22,7 +22,9 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-from app.core.config import settings
+from app.core.config import (
+    settings,  # noqa: F401  (kept: tests/monkeypatches reference this module's settings)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +42,16 @@ _CHECKPOINT_TABLES = (
 
 
 def get_checkpoint_conninfo() -> str:
-    """Libpq conninfo for the checkpoint tables (same DB as the app)."""
-    return (
-        f"host={settings.POSTGRES_HOST} "
-        f"port={settings.POSTGRES_PORT} "
-        f"user={settings.POSTGRES_USER} "
-        f"password={settings.POSTGRES_PASSWORD} "
-        f"dbname={settings.POSTGRES_DB}"
-    )
+    """Libpq conninfo for the checkpoint tables (same DB as the app).
+
+    Derived from ``HA_DATABASE_URL`` (ADR-0064): the serving container env
+    carries only the app role's DSN — no raw ``POSTGRES_PASSWORD``. The
+    ``POSTGRES_*`` settings remain the per-component fallback for the
+    dev/test assemble path (see app.core.db_conninfo).
+    """
+    from app.core.db_conninfo import checkpoint_conninfo
+
+    return checkpoint_conninfo()
 
 
 async def _checkpoint_tables_exist(saver: AsyncPostgresSaver) -> bool:

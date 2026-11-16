@@ -253,16 +253,39 @@ class IntegrationRegistry:
     def has_capability(self, domain: str, capability: str) -> bool:
         """Declared-capability gate (D3): the engine's ONLY answer to "can
         this extension do X?". Unloaded/unknown domains declare nothing."""
-        manifest = self.get_manifest(domain) or {}
-        return capability in (manifest.get("capabilities") or [])
+        return self.capability_grant(domain).allows(capability)
+
+    def capability_grant(self, domain: str, *, granted_capabilities: set[str] | None = None):
+        """The host-enforced :class:`~app.extensions.capabilities.CapabilityGrant`.
+
+        Bundled extensions are T1 (reviewed), so the declaration is the grant;
+        an imported extension must pass its consent intersection. An unloaded
+        domain grants nothing (fail closed).
+        """
+        from app.extensions import capabilities
+
+        manifest = self.get_manifest(domain)
+        if manifest is None:
+            if granted_capabilities is not None:
+                return capabilities.grant_for_manifest(
+                    capabilities.bundled_manifest(domain),
+                    bundled=True,
+                    granted_capabilities=granted_capabilities,
+                )
+            return capabilities.grant_for_domain(domain)
+        return capabilities.grant_for_manifest(
+            manifest, bundled=True, granted_capabilities=granted_capabilities
+        )
+
+    def require_capability(self, domain: str, capability: str) -> None:
+        """Refuse an undeclared/ungranted capability with a typed answer."""
+        self.capability_grant(domain).require(capability)
 
     def declared_data_classes(self, domain: str) -> frozenset[str]:
         """The connector-kind data-class profile: ``itemSchema`` property
         names are the item contracts the engine may pull (observations,
         clinical events, documents, …) — declared data, not probed hooks."""
-        manifest = self.get_manifest(domain) or {}
-        item_schema = manifest.get("itemSchema") or {}
-        return frozenset((item_schema.get("properties") or {}).keys())
+        return self.capability_grant(domain).data_classes
 
     def base_dir(self, domain: str) -> str:
         """Absolute path of a bundled extension's directory (docs, assets)."""

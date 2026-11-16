@@ -1,11 +1,10 @@
 # Sandbox isolation — graded posture (the law)
 
-**Status:** ratified with plan 39 v2 (owner decision D-39, 2026-10-20).
+**Status:** ratified 2026-10-20 (v2).
 **Scope:** how imported code (T2) is contained on every platform, and
 what each containment grade may honestly claim. The trust law is
-unchanged — imported code never runs with host trust (ADR-0040 /
-ADR-0011 / ADR-0030); this contract defines the *mechanism* per
-platform and the disclosure that goes with it.
+unchanged — imported code never runs with host trust; this contract defines
+the *mechanism* per platform and the disclosure that goes with it.
 
 ## 1. Why containment exists (the fact the grades encode)
 
@@ -34,7 +33,7 @@ and mirrored in `extension-charter.json` host profiles
 - **`none`** — no containment primitive on this platform; T2 is
   disabled with a surfaced remedy. Never run weak.
 
-## 3. Policy (D-39)
+## 3. Policy
 
 1. A host runs T2 only at `kernel`, or at `process` with the posture
    disclosed in the consent surface and the per-platform opt-in recorded

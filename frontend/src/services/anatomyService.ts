@@ -30,7 +30,6 @@ export interface AnatomyStructureInput {
   standard_system?: 'loinc' | 'snomed' | 'custom' | null;
   standard_code?: string | null;
   description?: string | null;
-  is_custom?: boolean;
   display?: AnatomyDisplay | null;
 }
 
@@ -42,7 +41,6 @@ export interface AnatomyStructurePatch {
   standard_system?: 'loinc' | 'snomed' | 'custom' | null;
   standard_code?: string | null;
   description?: string | null;
-  is_custom?: boolean;
   display?: AnatomyDisplay | null;
 }
 

@@ -32,6 +32,8 @@ from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition, Unit
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
+    AllergyCategory,
+    CatalogScope,
     CodingSystem,
     ConceptKind,
     ConceptProvenance,
@@ -101,6 +103,7 @@ def _make_concept(
     parent_id: UUID | None = None,
 ) -> Concept:
     c = Concept(
+        scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
         tenant_id=tenant_id,
         slug=slug,
         name=name,
@@ -256,18 +259,18 @@ async def test_gather_anatomy_returns_tenant_scoped_only(db):
     tenant_slug = _uslug("tenant-organ")
     global_slug = _uslug("g-organ")
     other_custom_slug = _uslug("other-custom")
-    custom = AnatomyStructure(tenant_id=tid, name="Custom Organ", slug=custom_slug, is_custom=True)
+    custom = AnatomyStructure(
+        tenant_id=tid, name="Custom Organ", slug=custom_slug, scope=CatalogScope.TENANT
+    )
     tenant_only = AnatomyStructure(
-        tenant_id=tid, name="Tenant Organ", slug=tenant_slug, is_custom=False
+        tenant_id=tid, name="Tenant Organ", slug=tenant_slug, scope=CatalogScope.TENANT
     )
-    global_seeded = AnatomyStructure(
-        tenant_id=None, name="Global", slug=global_slug, is_custom=False
-    )
+    global_seeded = AnatomyStructure(tenant_id=None, name="Global", slug=global_slug)
     other_custom = AnatomyStructure(
         tenant_id=other_tid,
         name="Other Custom",
         slug=other_custom_slug,
-        is_custom=True,
+        scope=CatalogScope.TENANT,
     )
     db.add_all([custom, tenant_only, global_seeded, other_custom])
     await db.flush()
@@ -311,6 +314,7 @@ async def test_gather_biomarker_catalog_emits_class_concept_slug(db):
     bio_slug = _uslug("glucose-fasting")
     db.add(
         BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if tid is not None else CatalogScope.SYSTEM),
             tenant_id=tid,
             slug=bio_slug,
             name="Fasting Glucose",
@@ -324,7 +328,6 @@ async def test_gather_biomarker_catalog_emits_class_concept_slug(db):
     out = await ExportService(db).gather_biomarker_catalog(tid)
     bio = next(b for b in out["biomarkers"] if b["slug"] == bio_slug)
     assert bio["class_concept_slug"] == cls.slug
-    assert bio["category"] == "Blood Laboratory"  # name, for readability
 
 
 # ---------- import (restore) ----------
@@ -462,7 +465,6 @@ async def test_restore_anatomy_relinks_class_concept(db):
                 "standard_system": None,
                 "standard_code": None,
                 "description": "custom",
-                "is_custom": True,
                 "display": None,
             }
         ],
@@ -494,7 +496,6 @@ async def test_restore_concept_edges_remaps_and_skips_dangling(db):
         tenant_id=None,
         name="Heart",
         slug=_uslug("heart"),
-        is_custom=False,
     )
     db.add(tgt_organ)
     await db.flush()
@@ -545,11 +546,9 @@ async def test_restore_concept_edges_remaps_and_skips_dangling(db):
 
 
 @pytest.mark.asyncio
-async def test_catalog_import_resolves_class_concept_slug_not_name(db):
-    """Headline regression: a biomarker whose class concept is named
-    'Blood Laboratory' must resolve to the concept when the export carries
-    class_concept_slug. Without the slug, the legacy name→slug translation
-    produced 'blood laboratory' (spaces) and failed."""
+async def test_catalog_import_resolves_class_concept_slug(db):
+    """The class link resolves from ``class_concept_slug`` — the only key the
+    import accepts (ADR 0055 D8 retired the ``category`` name string)."""
     await _new_tenant(db)
     cls = await _seed_global_concept(
         db, "blood-laboratory", "Blood Laboratory", [ConceptKind.BIOMARKER_CLASS]
@@ -572,53 +571,15 @@ async def test_catalog_import_resolves_class_concept_slug_not_name(db):
                 name="Fasting Glucose",
                 coding_system=CodingSystem.LOINC,
                 code="2345-7",
-                category="Blood Laboratory",  # the name (does NOT round-trip)
-                class_concept_slug=cls.slug,  # the fix
+                class_concept_slug=cls.slug,
                 preferred_unit_symbol=unit_sym,
             )
         ],
     )
-    stats = await CatalogImportService(db).import_catalog(payload)
+    result = await CatalogImportService(db).import_catalog(payload)
+    stats = result.stats
     assert stats["biomarkers_added"] == 1
 
-    bio = (
-        await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug))
-    ).scalar_one()
-    assert bio.class_concept_id == cls.id
-
-
-@pytest.mark.asyncio
-async def test_catalog_import_legacy_underscore_category_still_works(db):
-    """The ontology-catalog-URL path (underscore category, no slug) still works."""
-    cls = await _seed_global_concept(
-        db, "blood-laboratory", "Blood Laboratory", [ConceptKind.BIOMARKER_CLASS]
-    )
-    unit_sym = _uslug("mmol")
-    db.add(
-        Unit(
-            symbol=unit_sym,
-            name="mmol per L",
-            quantity_type=QuantityType.MOLAR_CONCENTRATION,
-        )
-    )
-    await db.commit()
-    bio_slug = _uslug("legacy-glucose")
-    # biomarker_category_to_concept_slug swaps '_' -> '-'; the concept slug is
-    # uuid-suffixed so we pass category = slug with '-' replaced by '_'.
-    legacy_category = cls.slug.replace("-", "_")
-    payload = CatalogImportPayload(
-        units=[],
-        biomarkers=[
-            BiomarkerCreate(
-                slug=bio_slug,
-                name="Legacy Glucose",
-                category=legacy_category,
-                preferred_unit_symbol=unit_sym,
-            )
-        ],
-    )
-    stats = await CatalogImportService(db).import_catalog(payload)
-    assert stats["biomarkers_added"] == 1
     bio = (
         await db.execute(select(BiomarkerDefinition).where(BiomarkerDefinition.slug == bio_slug))
     ).scalar_one()
@@ -640,7 +601,7 @@ async def _build_source_dataset(session, tid: UUID) -> dict[str, Any]:
         tenant_id=tid,
         name="My Organ",
         slug=_uslug("my-organ"),
-        is_custom=True,
+        scope=CatalogScope.TENANT,
     )
     session.add_all([panel, exam_cat, organ])
     await session.flush()
@@ -965,3 +926,232 @@ async def test_import_complete_and_fail_job_write_completed_at_datetime(db):
 
 def _uu(s: str) -> UUID:
     return UUID(str(s))
+
+
+# ===========================================================================
+# Layer 3 — tenant-scoped catalog restore (F3/F4/F5)
+# ===========================================================================
+
+
+def _medication(name, tenant_id, *, seed_key=None, description=None):
+    from app.models.fhir.medication import MedicationCatalog
+
+    return MedicationCatalog(
+        name=name,
+        seed_key=seed_key,
+        description=description,
+        tenant_id=tenant_id,
+        scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
+    )
+
+
+@pytest.mark.asyncio
+async def test_restore_medication_updates_only_the_job_tenant_row(db):
+    """F3: a tenant restore updates the job tenant's row in place."""
+    from app.models.fhir.medication import MedicationCatalog
+
+    tid = await _new_tenant(db)
+    seed = f"medication:restore-{uuid4().hex[:10]}"
+    row = _medication("Original", tid, seed_key=seed, description="old")
+    db.add(row)
+    await db.commit()
+
+    payload = {
+        "medications": [
+            {
+                "id": str(row.id),
+                "seed_key": seed,
+                "name": "Original",
+                "description": "restored",
+                "tenant_id": str(tid),
+            }
+        ]
+    }
+    created, errors, _warnings = await ImportService(db).restore_sidecar(
+        "medication_catalog.json", payload, tid, {}
+    )
+    await db.commit()
+
+    assert created["medication_catalog"] == 1
+    assert errors == []
+    stored = await db.get(MedicationCatalog, row.id)
+    assert stored.description == "restored"
+    assert stored.tenant_id == tid
+
+
+@pytest.mark.asyncio
+async def test_restore_medication_skips_exported_system_rows(db):
+    """F3: an exported ``tenant_id: null`` row never rewrites the system row."""
+    from app.models.fhir.medication import MedicationCatalog
+
+    tid = await _new_tenant(db)
+    seed = f"medication:system-{uuid4().hex[:10]}"
+    system_row = _medication("System", None, seed_key=seed, description="seed value")
+    db.add(system_row)
+    await db.commit()
+
+    payload = {
+        "medications": [
+            {
+                "id": str(system_row.id),
+                "seed_key": seed,
+                "name": "System",
+                "description": "tenant overwrite attempt",
+                "tenant_id": None,
+            }
+        ]
+    }
+    created, errors, _warnings = await ImportService(db).restore_sidecar(
+        "medication_catalog.json", payload, tid, {}
+    )
+    await db.commit()
+
+    assert created["medication_catalog"] == 0
+    assert errors == []
+    stored = await db.get(MedicationCatalog, system_row.id)
+    assert stored.description == "seed value"
+    assert stored.tenant_id is None
+
+
+@pytest.mark.asyncio
+async def test_restore_catalog_identity_prefers_tenant_with_shared_seed_key(db):
+    """F5: a system row and a tenant overlay may share ``seed_key``.
+
+    The identity lookup must return the tenant row (never raise
+    ``MultipleResultsFound``), and the restore must mutate only that row.
+    """
+    from app.models.fhir.allergy import AllergyCatalog
+
+    tid = await _new_tenant(db)
+    seed = f"allergy:shared-{uuid4().hex[:10]}"
+    system_row = AllergyCatalog(
+        name="Peanuts",
+        seed_key=seed,
+        category=AllergyCategory.FOOD,
+        description="system value",
+        tenant_id=None,
+        scope=CatalogScope.SYSTEM,
+    )
+    tenant_row = AllergyCatalog(
+        name="Peanuts",
+        seed_key=seed,
+        category=AllergyCategory.FOOD,
+        description="tenant value",
+        tenant_id=tid,
+        scope=CatalogScope.TENANT,
+    )
+    db.add_all([system_row, tenant_row])
+    await db.commit()
+
+    payload = {
+        "allergies": [
+            {
+                "seed_key": seed,
+                "name": "Peanuts",
+                "description": "restored tenant",
+                "tenant_id": str(tid),
+            }
+        ]
+    }
+    created, errors, _warnings = await ImportService(db).restore_sidecar(
+        "allergy_catalog.json", payload, tid, {}
+    )
+    await db.commit()
+
+    assert created["allergy_catalog"] == 1
+    assert errors == []
+    assert (await db.get(AllergyCatalog, tenant_row.id)).description == "restored tenant"
+    assert (await db.get(AllergyCatalog, system_row.id)).description == "system value"
+
+
+@pytest.mark.asyncio
+async def test_restore_catalog_never_adopts_a_foreign_payload_id(db):
+    """F3: a payload id owned by another tenant cannot select or claim its row."""
+    from app.models.fhir.medication import MedicationCatalog
+
+    tenant_a = await _new_tenant(db)
+    tenant_b = await _new_tenant(db)
+    foreign = _medication("Foreign", tenant_b, description="other tenant value")
+    db.add(foreign)
+    await db.commit()
+
+    payload = {
+        "medications": [
+            {
+                "id": str(foreign.id),
+                "name": "Restored",
+                "description": "restored in A",
+                "tenant_id": str(tenant_a),
+            }
+        ]
+    }
+    created, errors, _warnings = await ImportService(db).restore_sidecar(
+        "medication_catalog.json", payload, tenant_a, {}
+    )
+    await db.commit()
+
+    assert created["medication_catalog"] == 1
+    assert errors == []
+    stored_foreign = await db.get(MedicationCatalog, foreign.id)
+    assert stored_foreign.tenant_id == tenant_b
+    assert stored_foreign.description == "other tenant value"
+    restored = (
+        (
+            await db.execute(
+                select(MedicationCatalog).where(
+                    MedicationCatalog.tenant_id == tenant_a,
+                    MedicationCatalog.name == "Restored",
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert restored.id != foreign.id
+
+
+@pytest.mark.asyncio
+async def test_biomarker_sidecar_round_trip_into_a_fresh_tenant(db):
+    """F4/F3: the biomarker sidecar restores into the job tenant.
+
+    Pins the retired ``category`` argument (a validation error skipped every
+    item) and the tenant-scoped import: the source row's ``tenant_id`` stamp
+    does not block a fresh-install restore, and the restored row lands in the
+    *target* tenant.
+    """
+    from app.models.biomarker_model import BiomarkerDefinition
+
+    source = await _new_tenant(db)
+    target = await _new_tenant(db)
+    unit_symbol = _uslug("rt-unit")
+    db.add(Unit(symbol=unit_symbol, name="round trip unit", quantity_type=QuantityType.OTHER))
+    slug = _uslug("rt-bio")
+    db.add(
+        BiomarkerDefinition(
+            slug=slug,
+            name="Round Trip Bio",
+            coding_system=CodingSystem.LOINC,
+            code="9999-9",
+            tenant_id=source,
+            scope=CatalogScope.TENANT,
+        )
+    )
+    await db.commit()
+
+    payload = await ExportService(db).gather_biomarker_catalog(source)
+    created, errors, _warnings = await ImportService(db).restore_sidecar(
+        "biomarker_definitions.json", payload, target, {}
+    )
+    await db.commit()
+
+    assert created["biomarker_definitions"] >= 1
+    assert errors == []
+    restored = (
+        await db.execute(
+            select(BiomarkerDefinition).where(
+                BiomarkerDefinition.slug == slug,
+                BiomarkerDefinition.tenant_id == target,
+            )
+        )
+    ).scalar_one()
+    assert restored.scope == CatalogScope.TENANT

@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models.clinical_event import ClinicalEventType
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -24,7 +25,7 @@ async def _seeded_event_categories():
     catalog. Seed it here so this file passes on a clean database and when run
     alone — it used to depend on a catalog test having run earlier in the
     session. Idempotent, so it costs one upsert pass per test."""
-    await SeedService().seed_concepts()
+    await seed_with_commit(SeedService().seed_concepts)
 
 
 @pytest.mark.asyncio
@@ -33,14 +34,15 @@ async def test_shipped_seed_loads_without_errors():
     upserts cleanly. This catches any drift the moment the seed file is edited
     in a way that breaks the typed contract."""
     svc = SeedService()
-    stats = await svc.seed_clinical_event_types()
+    stats = await seed_with_commit(svc.seed_clinical_event_types)
     for k in ("added", "updated", "skipped", "errors"):
         assert k in stats and isinstance(stats[k], int), f"bad stats: {stats}"
     assert stats["errors"] == 0, (
         f"seed had validation errors (the shipped JSON is malformed): {stats}"
     )
-    # The shipped seed declares >=9 types; all should be added or updated.
-    assert stats["added"] + stats["updated"] >= 9, stats
+    # The shipped seed declares >=9 types; all should be added or updated (or
+    # already match — unchanged — on a warm DB).
+    assert stats["added"] + stats["updated"] + stats["unchanged"] >= 9, stats
 
 
 @pytest.mark.asyncio
@@ -48,7 +50,7 @@ async def test_shipped_seed_uses_new_catalog_select_shape():
     """The pain-episode type's body_location field must use the new
     catalog-select + catalogs shape (not the legacy creatable-select/source)."""
     svc = SeedService()
-    await svc.seed_clinical_event_types()
+    await seed_with_commit(svc.seed_clinical_event_types)
     async with AsyncSessionLocal() as db:
         row = (
             await db.execute(
@@ -80,12 +82,14 @@ async def test_malformed_metadata_schema_rejected_and_not_written():
     payload = {
         "items": [
             {
+                "seed_key": f"clinical-event-type:valid-no-schema-{ns}",
                 "slug": f"valid-no-schema-{ns}",
                 "name": "Valid No Schema",
                 "category_slug": "routine-wellness",
                 # No metadata_schema — fine (Optional).
             },
             {
+                "seed_key": f"clinical-event-type:valid-with-schema-{ns}",
                 "slug": f"valid-with-schema-{ns}",
                 "name": "Valid With Schema",
                 "category_slug": "routine-wellness",
@@ -101,6 +105,7 @@ async def test_malformed_metadata_schema_rejected_and_not_written():
                 },
             },
             {
+                "seed_key": f"clinical-event-type:bad-catalog-select-no-catalogs-{ns}",
                 "slug": f"bad-catalog-select-no-catalogs-{ns}",
                 "name": "Bad",
                 "category_slug": "routine-wellness",

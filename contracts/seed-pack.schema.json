@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://health-assistant.io/contracts/seed-pack.schema.json",
+  "title": "Seed pack manifest",
+  "description": "App-owned contract (ADR 0056) for a seed pack: one manifest plus hashed item files. A pack is the delivery unit for bundled, imported and exported seed data. Items reference the immutable seed_key (never slug/name); codes are attributes; slug is display-only (ADR 0055). This file describes the manifest; item files keep today's per-entity shapes from backend/data/seeds/*.json — each is an envelope: a metadata object plus list collections (items[] for the entity files, units[]/biomarkers[] for default_catalog.json, races[]/ethnicities[]/languages[] for the OMB picklist). Packs are data only: parsed and validated, never executed or imported as code.",
+  "type": "object",
+  "required": ["id", "schema_version", "version", "license", "scope", "priority", "item_files"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,63}$",
+      "description": "Stable pack identifier (kebab-case)."
+    },
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Pack format version the manifest was written for. A newer major than the app supports is a typed validation error, not a silent skip."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+      "description": "Pack content version (semver)."
+    },
+    "license": {
+      "type": "string",
+      "enum": ["Apache-2.0", "CC-BY-4.0", "CC-BY-SA-4.0", "CC0-1.0", "MIT"],
+      "description": "Content license; surfaced in the approval UI. The app validator (backend/app/core/seed_pack.py LICENSE_ALLOWLIST) is authoritative and emits LICENSE_NOT_ALLOWED; this enum must stay in parity with it (pinned by tests/test_seed_pack_schema.py)."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["system", "tenant"],
+      "description": "system packs write canonical (tenant_id NULL) rows; tenant packs write tenant overlays and may only target tenant-ownable types (the entity capability matrix is enforced by the apply engine)."
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 999,
+      "description": "Apply precedence, ascending: bundled (0) < curated remote (100) < tenant overlay (200+). The 0-999 range is schema-checked; the scope bands (system packs 0-199, tenant packs 200-999) are cross-field and enforced by the app validator (PRIORITY_SCOPE_MISMATCH), which is authoritative for them; equal priority with different content is a typed conflict at apply time."
+    },
+    "min_app_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+      "description": "Minimum app version that understands this pack's content."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-facing summary shown in the approval UI."
+    },
+    "replaces": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]{0,119}$" },
+      "maxItems": 500,
+      "uniqueItems": true,
+      "description": "seed_keys this pack retires/repoints (rename merge: new UUID, curated edges repointed, patient FKs untouched). Retire only applies where no other active approved source still provides the item."
+    },
+    "item_files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^\\.?[A-Za-z0-9][A-Za-z0-9._/-]*\\.json$",
+            "description": "Pack-relative path to an item file. No absolute paths, no path traversal, JSON only; binary anatomy figures stay bundled-only in v1. The app validator classifies the hostile forms (absolute/drive/backslash: ITEM_PATH_ABSOLUTE, .. segments: ITEM_PATH_TRAVERSAL, symlink escape at load time: ITEM_PATH_ESCAPE) and is authoritative."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Digest of the item file bytes; the source lane pins versions by digest (UNIQUE(source_id, digest) at the source layer)."
+          }
+        }
+      }
+    }
+  }
+}

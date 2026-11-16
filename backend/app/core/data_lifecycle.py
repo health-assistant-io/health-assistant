@@ -68,6 +68,14 @@ _CLASSES: dict[str, LifecycleClass] = {
     "system_settings": LifecycleClass.RECORD,
     "system_integrations": LifecycleClass.RECORD,
     "oauth_clients": LifecycleClass.RECORD,
+    "tenant_sso_configs": LifecycleClass.RECORD,
+    "user_identities": LifecycleClass.RECORD,
+    "scim_tokens": LifecycleClass.RECORD,
+    "api_tokens": LifecycleClass.RECORD,
+    "integration_principals": LifecycleClass.RECORD,
+    "webauthn_credentials": LifecycleClass.RECORD,
+    "scim_groups": LifecycleClass.RECORD,
+    "scim_group_members": LifecycleClass.RECORD,
     "auth_sessions": LifecycleClass.TRANSIENT,
     # --- clinical record ----------------------------------------------------
     "fhir_patients": LifecycleClass.RECORD,
@@ -89,6 +97,8 @@ _CLASSES: dict[str, LifecycleClass] = {
     "event_observation_links": LifecycleClass.RECORD,
     "patient_immunizations": LifecycleClass.RECORD,
     "patient_layouts": LifecycleClass.RECORD,
+    "patient_access_grants": LifecycleClass.RECORD,
+    "access_elevations": LifecycleClass.RECORD,
     "doctors": LifecycleClass.RECORD,
     "laboratories": LifecycleClass.RECORD,
     "biomarker_states": LifecycleClass.RECORD,
@@ -123,11 +133,13 @@ _CLASSES: dict[str, LifecycleClass] = {
     "import_jobs": LifecycleClass.OPERATIONAL,
     # --- operational history ------------------------------------------------
     "audit_events": LifecycleClass.OPERATIONAL,
+    "audit_chain_heads": LifecycleClass.OPERATIONAL,
     "catalog_audit_log": LifecycleClass.OPERATIONAL,
     "task_logs": LifecycleClass.OPERATIONAL,
     "ai_call_logs": LifecycleClass.OPERATIONAL,
     "ai_task_defs": LifecycleClass.OPERATIONAL,
     "ai_providers": LifecycleClass.RECORD,
+    "ai_price_overrides": LifecycleClass.RECORD,
     "ai_models": LifecycleClass.RECORD,
     "ai_task_assignments": LifecycleClass.RECORD,
     "proposal_kinds": LifecycleClass.OPERATIONAL,
@@ -150,6 +162,13 @@ _CLASSES: dict[str, LifecycleClass] = {
     "extension_source_versions": LifecycleClass.RECORD,
     "extension_consents": LifecycleClass.RECORD,
     "extension_isolation_posture": LifecycleClass.OPERATIONAL,
+    # --- seed pack lane (ADR 0056, 0015_seed_packs) -------------------------
+    "seed_sources": LifecycleClass.RECORD,
+    "seed_source_versions": LifecycleClass.RECORD,
+    "seed_import_runs": LifecycleClass.OPERATIONAL,
+    "seed_import_run_items": LifecycleClass.OPERATIONAL,
+    "seed_item_provenance": LifecycleClass.RECORD,
+    "seed_deferred_refs": LifecycleClass.OPERATIONAL,
 }
 
 LIFECYCLE_CLASSES: Mapping[str, LifecycleClass] = MappingProxyType(_CLASSES)

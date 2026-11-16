@@ -198,12 +198,20 @@ async def test_audit_policy_anonymizes_instead_of_deleting():
             old_value={"phi": "old"},
             new_value={"phi": "old"},
             created_at=NOW - timedelta(days=4000),
+            chain_key="system",
+            seq=900_001,
+            prev_hash="0" * 64,
+            entry_hash="a" * 64,
         )
         recent = AuditEvent(
             action="read_patient",
             resource_type="Patient",
             old_value={"phi": "recent"},
             new_value={"phi": "recent"},
+            chain_key="system",
+            seq=900_002,
+            prev_hash="a" * 64,
+            entry_hash="b" * 64,
         )
         db.add_all([old, recent])
         await db.commit()
@@ -410,3 +418,91 @@ def test_hitl_seen_codes_cursor_token_is_bounded():
     assert bounded[-1] == str(HITL_SEEN_CODES_LIMIT + 24)
     assert bounded[0] == "25"
     assert bound_seen_codes(["a", "b"]) == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_audit_chain_heads_retention_cannot_strand_a_live_chain():
+    """N4 — an enabled ``audit_chain_heads`` delete row only ever prunes
+    heads of *fully empty* chains: a head whose chain still carries rows
+    survives (deleting it would restart the sequence and strand every
+    future append), while a stale head left behind by the tenant-delete
+    cascade is fair game."""
+    from app.models.audit_model import AuditChainHead
+    from app.models.enums import RetentionAction
+    from app.services.data_lifecycle.retention_service import apply_policy, effective_policy
+
+    async with AsyncSessionLocal() as db:
+        tenant = TenantModel(name="Ret Heads", slug=f"ret-heads-{uuid.uuid4().hex[:10]}")
+        db.add(tenant)
+        await db.flush()
+
+        live_key = f"t:{tenant.id}"
+        stale_key = f"t:stale-{uuid.uuid4().hex[:12]}"[:64]
+        old_ts = NOW - timedelta(days=400)
+        db.add_all(
+            [
+                AuditChainHead(
+                    chain_key=live_key,
+                    tenant_id=tenant.id,
+                    seq=2,
+                    head_hash="c" * 64,
+                    updated_at=old_ts,
+                ),
+                AuditEvent(
+                    action="viewer8b.event",
+                    resource_type="ret_heads",
+                    chain_key=live_key,
+                    seq=2,
+                    prev_hash="b" * 64,
+                    entry_hash="c" * 64,
+                    created_at=NOW - timedelta(days=10),
+                ),
+                AuditChainHead(
+                    chain_key=stale_key,
+                    tenant_id=None,
+                    seq=7,
+                    head_hash="d" * 64,
+                    updated_at=old_ts,
+                ),
+            ]
+        )
+        await db.commit()
+
+        policy = await _policy(db, "audit_chain_heads")
+        original_enabled, original_days = policy.enabled, policy.days
+        try:
+            policy.enabled = True
+            policy.days = 90
+            await db.commit()
+
+            result = await apply_policy(
+                db,
+                await effective_policy(db, "audit_chain_heads", "operational"),
+                now=NOW,
+            )
+            assert result["action"] == RetentionAction.DELETE.value
+            assert result["rows"] == 1  # only the empty chain's head
+
+            surviving = set(
+                (
+                    await db.execute(
+                        select(AuditChainHead.chain_key).where(
+                            AuditChainHead.chain_key.in_([live_key, stale_key])
+                        )
+                    )
+                ).scalars()
+            )
+            assert live_key in surviving, "a live chain must never lose its head"
+            assert stale_key not in surviving, "the empty chain's stale head is prunable"
+        finally:
+            policy.enabled = original_enabled
+            policy.days = original_days
+            await db.commit()
+            await db.execute(
+                AuditChainHead.__table__.delete().where(
+                    AuditChainHead.chain_key.in_([live_key, stale_key])
+                )
+            )
+            await db.execute(AuditEvent.__table__.delete().where(AuditEvent.chain_key == live_key))
+            await db.execute(TenantModel.__table__.delete().where(TenantModel.id == tenant.id))
+            await db.commit()

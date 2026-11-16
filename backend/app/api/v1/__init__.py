@@ -1,14 +1,21 @@
 from fastapi import APIRouter, Depends
 
 from app.api.v1.endpoints.admin import router as admin_router
+from app.api.v1.endpoints.admin_elevations import router as admin_elevations_router
 from app.api.v1.endpoints.admin_integrations import router as admin_integrations_router
+from app.api.v1.endpoints.admin_seed_sources import router as admin_seed_sources_router
+from app.api.v1.endpoints.admin_sso import router as admin_sso_router
+from app.api.v1.endpoints.admin_storage import router as admin_storage_router
 from app.api.v1.endpoints.admin_tenants import router as admin_tenants_router
 from app.api.v1.endpoints.ai_assistance import router as ai_assistance_router
 from app.api.v1.endpoints.ai_config import router as ai_config_router
+from app.api.v1.endpoints.ai_pricing import router as ai_pricing_router
 from app.api.v1.endpoints.allergies import router as allergies_router
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.anatomy import router as anatomy_router
 from app.api.v1.endpoints.auth import router as auth_router
+from app.api.v1.endpoints.auth_passkeys import router as auth_passkeys_router
+from app.api.v1.endpoints.auth_sso import router as auth_sso_router
 from app.api.v1.endpoints.biomarkers import router as biomarkers_router
 from app.api.v1.endpoints.calendar import router as calendar_router
 from app.api.v1.endpoints.catalogs import router as catalogs_router
@@ -29,8 +36,15 @@ from app.api.v1.endpoints.extension_sources import router as extension_sources_r
 from app.api.v1.endpoints.fhir_r4 import router as fhir_r4_router
 from app.api.v1.endpoints.import_data import router as import_router
 from app.api.v1.endpoints.instances import router as instances_router
+from app.api.v1.endpoints.integration_principals import (
+    router as integration_principals_router,
+)
 from app.api.v1.endpoints.integrations import router as integrations_router
+from app.api.v1.endpoints.me import router as me_router
+from app.api.v1.endpoints.me_access import router as me_access_router
+from app.api.v1.endpoints.me_api_tokens import router as me_api_tokens_router
 from app.api.v1.endpoints.me_mfa import router as me_mfa_router
+from app.api.v1.endpoints.me_passkeys import router as me_passkeys_router
 from app.api.v1.endpoints.me_sessions import router as me_sessions_router
 from app.api.v1.endpoints.medications import router as medications_router
 from app.api.v1.endpoints.notification_rules import router as notification_rules_router
@@ -38,9 +52,11 @@ from app.api.v1.endpoints.notifications import router as notifications_router
 from app.api.v1.endpoints.oauth import router as oauth_router
 from app.api.v1.endpoints.observations import router as observations_router
 from app.api.v1.endpoints.organizations import router as organizations_router
+from app.api.v1.endpoints.patient_access import router as patient_access_router
 from app.api.v1.endpoints.patient_layout import router as patient_layout_router
 from app.api.v1.endpoints.patients import router as patients_router
 from app.api.v1.endpoints.public_config import router as public_config_router
+from app.api.v1.endpoints.scim import router as scim_router
 from app.api.v1.endpoints.search import router as search_router
 from app.api.v1.endpoints.settings import router as settings_router
 from app.api.v1.endpoints.setup_checklist import router as setup_checklist_router
@@ -60,6 +76,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(oauth_router)
 api_router.include_router(fhir_r4_router)
 api_router.include_router(public_config_router)
+api_router.include_router(scim_router)
 
 # --- Internal surface: session tokens only (frontend / mobile) -------------
 # The guard rejects ``token_kind="api"`` tokens on every domain route so an
@@ -70,13 +87,20 @@ api_router.include_router(public_config_router)
 session_gated_router = APIRouter(dependencies=[Depends(require_session_token)])
 
 session_gated_router.include_router(auth_router)
+session_gated_router.include_router(auth_passkeys_router)
+session_gated_router.include_router(me_router)
+session_gated_router.include_router(me_access_router)
+session_gated_router.include_router(me_api_tokens_router)
+session_gated_router.include_router(integration_principals_router)
 session_gated_router.include_router(me_sessions_router)
 session_gated_router.include_router(me_mfa_router)
+session_gated_router.include_router(me_passkeys_router)
 session_gated_router.include_router(tenants_router)
 session_gated_router.include_router(users_router)
 session_gated_router.include_router(documents_router)
 session_gated_router.include_router(examinations_router)
 session_gated_router.include_router(patients_router)
+session_gated_router.include_router(patient_access_router)
 session_gated_router.include_router(data_lifecycle_router)
 session_gated_router.include_router(observations_router)
 session_gated_router.include_router(telemetry_router)
@@ -93,18 +117,26 @@ session_gated_router.include_router(medications_router)
 session_gated_router.include_router(vaccines_router)
 session_gated_router.include_router(biomarkers_router)
 session_gated_router.include_router(ai_config_router)
+session_gated_router.include_router(ai_pricing_router)
 session_gated_router.include_router(task_monitor_router)
 session_gated_router.include_router(ai_assistance_router)
 session_gated_router.include_router(clinical_events_router)
 session_gated_router.include_router(anatomy_router, prefix="/anatomy", tags=["Anatomy Graph"])
 session_gated_router.include_router(admin_router)
 session_gated_router.include_router(admin_tenants_router)
+session_gated_router.include_router(admin_elevations_router)
+session_gated_router.include_router(admin_sso_router)
+session_gated_router.include_router(admin_storage_router)
+session_gated_router.include_router(auth_sso_router)
 session_gated_router.include_router(
     integrations_router, prefix="/integrations", tags=["Integrations"]
 )
 session_gated_router.include_router(calendar_router, prefix="/calendar", tags=["Calendar"])
 session_gated_router.include_router(
     admin_integrations_router, prefix="/admin/integrations", tags=["Admin Integrations"]
+)
+session_gated_router.include_router(
+    admin_seed_sources_router, prefix="/admin/seed-sources", tags=["Admin Seed Sources"]
 )
 session_gated_router.include_router(
     extension_sources_router, prefix="/extensions/sources", tags=["Extension Sources"]

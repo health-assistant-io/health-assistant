@@ -8,7 +8,7 @@ import api from '../api/axios';
  *
  * Read-only on the server — never writes data/seeds/.
  */
-export async function downloadSeedsZip(filename = 'health-assistant-seeds.zip'): Promise<void> {
+export async function downloadSeedsZip(filename = 'health-assistant-seed-pack.zip'): Promise<void> {
   const response = await api.get('/admin/seeds/export.zip', {
     responseType: 'blob',
   });

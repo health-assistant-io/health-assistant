@@ -16,13 +16,14 @@ from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import ConceptEdge
 from app.models.enums import (
     CodingSystem,
+    ConceptKind,
     ConceptProvenance,
     ConceptRelationType,
     EdgeApprovalStatus,
     EdgeEndpointType,
     QuantityType,
 )
-from app.services.catalog.concept_service import resolve_biomarker_class_concept
+from app.services.catalog.concept_service import resolve_concept_by_slug
 
 engine = create_async_engine(settings.HA_DATABASE_URL)
 LocalSession = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
@@ -146,7 +147,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "8480-6",
                 "name": "Systolic Blood Pressure",
-                "category": "vital_signs",
+                "class_concept_slug": "vital-signs",
                 "preferred_unit_symbol": "mmHg",
                 "aliases": [
                     "Systolic BP",
@@ -160,7 +161,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "8462-4",
                 "name": "Diastolic Blood Pressure",
-                "category": "vital_signs",
+                "class_concept_slug": "vital-signs",
                 "preferred_unit_symbol": "mmHg",
                 "aliases": [
                     "Diastolic BP",
@@ -174,7 +175,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "8867-4",
                 "name": "Heart Rate",
-                "category": "vital_signs",
+                "class_concept_slug": "vital-signs",
                 "preferred_unit_symbol": "bpm",
                 "aliases": ["Pulse", "HR"],
                 "is_telemetry": True,
@@ -184,7 +185,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "2708-6",
                 "name": "Oxygen Saturation",
-                "category": "vital_signs",
+                "class_concept_slug": "vital-signs",
                 "preferred_unit_symbol": "%",
                 "aliases": ["SpO2", "O2 Sat"],
                 "is_telemetry": True,
@@ -194,7 +195,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "41950-7",
                 "name": "Step Count",
-                "category": "activity",
+                "class_concept_slug": "activity",
                 "aliases": ["Steps"],
                 "is_telemetry": True,
             },
@@ -203,7 +204,7 @@ async def seed_data():
                 "coding_system": CodingSystem.LOINC,
                 "code": "41979-6",
                 "name": "Calories Burned",
-                "category": "activity",
+                "class_concept_slug": "activity",
                 "aliases": ["Active Energy", "Calories"],
                 "is_telemetry": True,
             },
@@ -215,11 +216,14 @@ async def seed_data():
             if pref_sym and pref_sym in unit_map:
                 b_data["preferred_unit_id"] = unit_map[pref_sym]
 
-            # Resolve legacy ``category`` (e.g. "vital_signs") to a
-            # ``biomarker_class`` concept ID; pop it off so the dict matches
-            # the new BiomarkerDefinition columns.
-            legacy_category = b_data.pop("category", None)
-            b_data["class_concept_id"] = await resolve_biomarker_class_concept(db, legacy_category)
+            # Resolve the class-concept slug (e.g. "vital-signs") to a
+            # ``biomarker_class`` concept and store the FK.
+            class_slug = b_data.pop("class_concept_slug", None)
+            b_data["class_concept_id"] = (
+                await resolve_concept_by_slug(db, class_slug, ConceptKind.BIOMARKER_CLASS)
+                if class_slug
+                else None
+            )
 
             result = await db.execute(
                 select(BiomarkerDefinition).where(BiomarkerDefinition.slug == b_data["slug"])

@@ -139,7 +139,6 @@ export const CreateClinicalEventHandler: React.FC<HitlHandlerProps> = ({ task, s
       <ClinicalEventForm
         patientId={patientId}
         prefill={proposalToPrefill(task.proposed_payload)}
-        showHeader={false}
         showActions
         submitLabel={t('ai_chat.hitl.confirm_create', 'Confirm & Create')}
         onSubmit={handleConfirm}

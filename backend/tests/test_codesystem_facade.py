@@ -19,6 +19,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.tenant_model import TenantModel
 from app.services.fhir.fhir_helpers import parse_fhir_resource
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 async def _tenant_and_headers(role="ADMIN"):
@@ -36,8 +37,8 @@ async def _tenant_and_headers(role="ADMIN"):
 
 async def _seed_diseases():
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
 
 
 # ---------------------------------------------------------------------------

@@ -50,7 +50,7 @@ from app.models.notification import (
     NotificationSubscription,
 )
 from app.models.user_model import UserModel
-from app.services.notifications.notification_kind_registry import resolve_kind
+from app.services.notifications.notification_kind_registry import is_immutable_type, resolve_kind
 from app.services.notifications.notification_targets import resolve_targets
 
 logger = logging.getLogger(__name__)
@@ -261,7 +261,13 @@ async def emit(
         # Apply per-user per-source/channel preferences (USER > TENANT >
         # SYSTEM > default). Users who opted out of the source entirely are
         # dropped; users who opted out of a channel drop just that channel.
-        user_channels = await _resolve_user_channel_preferences(s, resolved, source, channels)
+        user_channels = await _resolve_user_channel_preferences(
+            s,
+            resolved,
+            source,
+            channels,
+            ignore_source_mute=is_immutable_type(type),
+        )
 
         to_queue: list[tuple[UUID, UUID, NotificationChannel]] = []
         for user_id in resolved:
@@ -380,13 +386,17 @@ async def _resolve_user_channel_preferences(
     user_ids: set[UUID],
     source: NotificationSource,
     channels: Sequence[NotificationChannel],
+    *,
+    ignore_source_mute: bool = False,
 ) -> dict[UUID, list[NotificationChannel]]:
     """For each user, return the channels they actually want for ``source``.
 
     Reads the tiered settings store (USER > TENANT > SYSTEM > default) and
     filters out:
     * users who have disabled this source entirely
-      (``notifications.sources.<SOURCE> = false``)
+      (``notifications.sources.<SOURCE> = false``) — skipped when
+      ``ignore_source_mute`` is set (safety-critical types cannot be
+      silenced by muting the whole source; channel choices still apply)
     * channels disabled per-user (``notifications.channels.<CHANNEL> = false``)
 
     Returns ``{user_id: [channels they should receive on]}``. Users who
@@ -459,7 +469,7 @@ async def _resolve_user_channel_preferences(
     for uid, user_settings_raw, tenant_id in user_rows:
         user_settings = user_settings_raw or {}
 
-        if not resolve(source_key, True, user_settings, tenant_id):
+        if not ignore_source_mute and not resolve(source_key, True, user_settings, tenant_id):
             out[uid] = []
             continue
 

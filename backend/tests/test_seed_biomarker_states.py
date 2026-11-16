@@ -9,6 +9,7 @@ from sqlalchemy import select, text
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerState
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 # The minimum expected canonical states (subset of the full catalog). The
 # seed file is the source of truth — this guards against accidental deletion
@@ -33,11 +34,11 @@ EXPECTED_CORE_STATES = {
 @pytest.mark.asyncio
 async def test_seed_biomarker_states_loads_catalog():
     """Seeding populates the canonical state set."""
-    stats = await SeedService().seed_biomarker_states()
+    stats = await seed_with_commit(SeedService().seed_biomarker_states)
     assert stats["errors"] == 0, f"seed errors: {stats}"
-    # Either added (fresh DB) or updated (idempotent re-run). Total touched
-    # should be ≥ the seed file size.
-    assert stats["added"] + stats["updated"] >= 22
+    # Either added (fresh DB), updated, or already matching (unchanged) on a
+    # warm DB. Every seeded row must be accounted for.
+    assert stats["added"] + stats["updated"] + stats["unchanged"] >= 22
 
     async with AsyncSessionLocal() as session:
         rows = (await session.execute(select(BiomarkerState.code, BiomarkerState.system))).all()
@@ -48,19 +49,20 @@ async def test_seed_biomarker_states_loads_catalog():
 
 @pytest.mark.asyncio
 async def test_seed_biomarker_states_is_idempotent():
-    """Running twice doesn't add duplicates; all rows are 'updated' on the
-    second pass."""
-    await SeedService().seed_biomarker_states()  # ensure populated
-    second = await SeedService().seed_biomarker_states()
+    """Running twice doesn't add duplicates; the second pass rewrites nothing
+    (every row reports unchanged)."""
+    await seed_with_commit(SeedService().seed_biomarker_states)
+    second = await seed_with_commit(SeedService().seed_biomarker_states)
     assert second["added"] == 0, f"second run should not add rows: {second}"
     assert second["errors"] == 0
-    assert second["updated"] >= 22
+    assert second["updated"] == 0, f"second run should rewrite nothing: {second}"
+    assert second["unchanged"] >= 22, second
 
     async with AsyncSessionLocal() as session:
         total = (await session.execute(text("SELECT COUNT(*) FROM biomarker_states"))).scalar()
         # Each (code, system) appears exactly once.
-        assert total == second["updated"], (
-            f"row count {total} != updated count {second['updated']} — duplicate inserts?"
+        assert total == second["unchanged"], (
+            f"row count {total} != unchanged count {second['unchanged']} — duplicate inserts?"
         )
 
 
@@ -78,7 +80,7 @@ async def test_seed_reconciles_mutable_fields():
         await session.commit()
 
     # Re-seed → the row should be reconciled back to the seed value
-    await SeedService().seed_biomarker_states()
+    await seed_with_commit(SeedService().seed_biomarker_states)
 
     async with AsyncSessionLocal() as session:
         row = (

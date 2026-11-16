@@ -8,7 +8,7 @@ detector is gone.
 
 import inspect
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -76,9 +76,15 @@ async def test_upload_endpoint_passes_tenant_and_source(async_client):
             )
             return len(points)
 
-        with patch(
-            "app.api.v1.endpoints.telemetry.upload_telemetry_data",
-            new=fake_upload,
+        with (
+            patch(
+                "app.api.v1.endpoints.telemetry.check_patient_access",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "app.api.v1.endpoints.telemetry.upload_telemetry_data",
+                new=fake_upload,
+            ),
         ):
             response = await async_client.post(
                 "/api/v1/telemetry/data",

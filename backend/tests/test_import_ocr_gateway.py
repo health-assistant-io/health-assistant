@@ -151,10 +151,19 @@ async def test_ocr_endpoint_passes_caller_identity(async_client):
             failed_records=0,
         )
     )
+    patient_id = uuid4()
     try:
-        with patch.object(import_data.ImportService, "import_from_ocr", new=import_mock):
+        with (
+            patch.object(
+                import_data,
+                "check_patient_access",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch.object(import_data.ImportService, "import_from_ocr", new=import_mock),
+        ):
             response = await async_client.post(
                 "/api/v1/import/ocr",
+                data={"patient_id": str(patient_id)},
                 files={"file": ("scan.png", b"\x89PNG\r\n\x1a\n", "image/png")},
             )
     finally:

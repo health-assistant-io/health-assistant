@@ -44,16 +44,64 @@ class ResolvedRange:
         return self.low is not None and self.high is not None
 
 
-def compute_relative_score(value: float, low: float | None, high: float | None) -> float | None:
+_HIGH_FLAGS = frozenset({"high", "h"})
+_LOW_FLAGS = frozenset({"low", "l"})
+
+
+def correct_one_sided_range(
+    low: float | None,
+    high: float | None,
+    value: float | None,
+    interpretation: str | None,
+) -> tuple[float | None, float | None]:
+    """Move an inverted one-sided reference bound to its correct side.
+
+    One-sided convention (issue #159): a printed upper limit (``< X`` /
+    ``≤ X``) is stored as ``high=X, low=None`` and a printed lower limit
+    (``> X`` / ``≥ X``) as ``low=X, high=None`` — never the wrong side.
+    A model can fill the wrong side, so when the lab's own
+    ``interpretation`` flag AND the measured value both corroborate the
+    inversion (High + low-only + value > low, or Low + high-only +
+    value < high) the bound is moved to the other side.
+
+    Two-sided ranges, absent ranges and ambiguous cases (no flag, no
+    value, or value on the wrong side of the bound) come back untouched —
+    bounds are corrected, never dropped.
+    """
+    if value is None or not interpretation:
+        return low, high
+    flag = interpretation.strip().lower()
+    if low is not None and high is None and flag in _HIGH_FLAGS and value > low:
+        return None, low
+    if high is not None and low is None and flag in _LOW_FLAGS and value < high:
+        return high, None
+    return low, high
+
+
+def compute_relative_score(
+    value: float | None,
+    low: float | None,
+    high: float | None,
+    interpretation: str | None = None,
+) -> float | None:
     """Position of ``value`` within [low, high] as a clamped [0.0, 1.0] float.
 
     Returns ``0.5`` for an incomplete (one-sided) range, and ``None`` when
     there is no range at all. Mirrors the contract used by the OCR pipeline
     (``app.ai.pipeline.persistence``) and the integrations ``ObservationBuilder``
     so every write surface scores identically.
+
+    When ``interpretation`` is provided (labs print High/H, Low/L), an
+    inverted one-sided bound is first moved to its correct side via
+    :func:`correct_one_sided_range` so callers can normalize the pair
+    before persisting it. The score itself stays 0.5 for any one-sided
+    range (correct or corrected) — the persisted range shape, not the
+    score, is what carries the side information downstream — and
+    correctly-sided ranges are never modified.
     """
     if value is None:
         return None
+    low, high = correct_one_sided_range(low, high, value, interpretation)
     if low is not None and high is not None and high > low:
         return max(0.0, min(1.0, (value - low) / (high - low)))
     if low is not None or high is not None:

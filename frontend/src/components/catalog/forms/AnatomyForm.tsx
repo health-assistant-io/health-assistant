@@ -3,9 +3,10 @@
  * Catalogs workspace and the Anatomy Explorer's structure modal.
  *
  * Registered in ``CATALOG_FORMS`` so the catalog modal's ``getCatalogForm``
- * picks it up for ``type='anatomy'``. Writes route through ``/anatomy`` (not
- * ``/catalogs/anatomy``) via the anatomy write-target, so the class concept is
- * resolved server-side.
+ * picks it up for ``type='anatomy'``. Saves go through the generic
+ * ``/catalogs/anatomy`` write contract (the payload helper filters the draft
+ * to the descriptor's declared fields; the class concept is resolved
+ * server-side).
  *
  * Fields mirror the other catalog forms: name, slug (auto-derived on create),
  * class concept (CatalogItemPicker, anatomy_class kind), coding system + code,

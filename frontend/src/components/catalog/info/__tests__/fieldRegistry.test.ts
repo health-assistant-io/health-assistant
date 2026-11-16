@@ -73,7 +73,7 @@ describe('fieldRegistry', () => {
   });
 
   it('META_KEYS excludes the audit/scope fields never shown in the body', () => {
-    for (const k of ['id', 'tenant_id', 'created_at', 'updated_at', 'scope', 'version', 'is_custom']) {
+    for (const k of ['id', 'tenant_id', 'created_at', 'updated_at', 'scope', 'version']) {
       expect(META_KEYS.has(k)).toBe(true);
     }
   });

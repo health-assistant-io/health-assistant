@@ -17,11 +17,10 @@ export interface VaccineCatalogEntry {
   description?: string | null;
   coding_system?: string | null;
   code?: string | null;
-  target_diseases?: string[] | null;
   dose_schedule?: Record<string, unknown> | null;
   contraindications?: string | null;
   side_effects?: string[] | null;
-  is_custom: boolean;
+  scope?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

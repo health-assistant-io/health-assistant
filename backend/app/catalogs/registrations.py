@@ -19,7 +19,7 @@ from app.catalogs.adapters import (
     MedicationCatalogAdapter,
     VaccineCatalogAdapter,
 )
-from app.catalogs.descriptors import CatalogDescriptor
+from app.catalogs.descriptors import CatalogDescriptor, CatalogWriteContract
 from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.catalogs.protocol import CatalogUiMeta, ConceptLink
 from app.catalogs.registry import CatalogRegistry
@@ -30,6 +30,12 @@ from app.models.enums import EdgeEndpointType
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.fhir.vaccine import VaccineCatalog
+from app.schemas.allergy import AllergyCatalogCreate, AllergyCatalogUpdate
+from app.schemas.anatomy import AnatomyStructureCreate, AnatomyStructureUpdate
+from app.schemas.biomarker import BiomarkerCreate, BiomarkerUpdate
+from app.schemas.concept import ConceptCreate, ConceptUpdate
+from app.schemas.medication import MedicationCatalogCreate, MedicationCatalogUpdate
+from app.schemas.vaccine import VaccineCatalogCreate, VaccineCatalogUpdate
 from app.services.catalog.concept_endpoint_resolver import (
     _resolve_allergies,
     _resolve_anatomy,
@@ -47,10 +53,21 @@ def _register_all() -> None:
             model=BiomarkerDefinition,
             service=BiomarkerCatalogAdapter(),
             search_columns=("name", "slug", "aliases"),
+            search_fts_columns=(
+                "name",
+                "slug",
+                "description",
+                "info",
+                "code",
+                "aliases",
+            ),
+            search_trigram_columns=("slug",),
+            search_json_columns=("aliases",),
             concept_link=ConceptLink(fk_column="class_concept_id"),
             edge_endpoint_type=EdgeEndpointType.BIOMARKER,
             resolver=_resolve_biomarkers,
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(BiomarkerCreate, BiomarkerUpdate),
             ui=CatalogUiMeta(
                 label_key="catalogs.biomarker.label",
                 icon="Activity",
@@ -67,11 +84,19 @@ def _register_all() -> None:
             model=MedicationCatalog,
             service=MedicationCatalogAdapter(),
             search_columns=("name", "indications", "description"),
+            search_fts_columns=(
+                "name",
+                "description",
+                "indications",
+                "side_effects",
+                "contraindications",
+            ),
+            search_json_columns=("side_effects",),
             concept_link=ConceptLink(fk_column="class_concept_id"),
             edge_endpoint_type=EdgeEndpointType.MEDICATION,
             resolver=_resolve_medications,
-            fhir_projector=lambda obj: obj.to_fhir_dict(),
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(MedicationCatalogCreate, MedicationCatalogUpdate),
             ui=CatalogUiMeta(
                 label_key="catalogs.medication.label",
                 icon="Pill",
@@ -92,6 +117,7 @@ def _register_all() -> None:
             edge_endpoint_type=EdgeEndpointType.ALLERGY,
             resolver=_resolve_allergies,
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(AllergyCatalogCreate, AllergyCatalogUpdate),
             ui=CatalogUiMeta(
                 label_key="catalogs.allergy.label",
                 icon="ShieldAlert",
@@ -108,10 +134,13 @@ def _register_all() -> None:
             model=AnatomyStructure,
             service=AnatomyCatalogAdapter(),
             search_columns=("name", "slug", "standard_code", "description"),
+            search_fts_columns=("name", "slug", "description", "standard_code"),
+            search_trigram_columns=("slug",),
             concept_link=ConceptLink(fk_column="class_concept_id"),
             edge_endpoint_type=EdgeEndpointType.ANATOMY,
             resolver=_resolve_anatomy,
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(AnatomyStructureCreate, AnatomyStructureUpdate),
             ui=CatalogUiMeta(
                 label_key="catalogs.anatomy.label",
                 icon="PersonStanding",
@@ -131,8 +160,8 @@ def _register_all() -> None:
             concept_link=ConceptLink(fk_column="class_concept_id"),
             edge_endpoint_type=EdgeEndpointType.IMMUNIZATION,
             resolver=_resolve_vaccines,
-            fhir_projector=lambda obj: obj.to_fhir_dict(),
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(VaccineCatalogCreate, VaccineCatalogUpdate),
             ui=CatalogUiMeta(
                 label_key="catalogs.vaccine.label",
                 icon="Syringe",
@@ -149,10 +178,18 @@ def _register_all() -> None:
             model=Concept,
             service=ConceptCatalogAdapter(),
             search_columns=("name", "slug", "description"),
+            search_fts_columns=("name", "slug", "description", "code", "aliases"),
+            search_trigram_columns=("slug",),
+            search_json_columns=("aliases",),
             concept_link=None,
             edge_endpoint_type=EdgeEndpointType.CONCEPT,
             resolver=_resolve_concepts,
             rbac=DEFAULT_CATALOG_POLICY,
+            write=CatalogWriteContract(
+                ConceptCreate,
+                ConceptUpdate,
+                supports_promote=False,
+            ),
             ui=CatalogUiMeta(
                 label_key="catalogs.concept.label",
                 icon="Network",

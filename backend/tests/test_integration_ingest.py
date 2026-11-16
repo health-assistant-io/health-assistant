@@ -70,7 +70,7 @@ async def ctx():
                 tenant_id=tenant_id,
                 user_id=user_id,
                 patient_id=patient_id,
-                provider="test_ingest",
+                provider="dev_dummy",
                 instance_name="ingest-1",
                 status="ACTIVE",
                 user_config={},
@@ -328,7 +328,7 @@ async def test_telemetry_stream_uses_the_device_and_canonical_unit_seam(ctx):
             )
         ).scalar_one()
         assert device.external_ref == "watch-1"
-        assert device.source == "test_ingest"
+        assert device.source == "dev_dummy"
 
 
 @pytest.mark.asyncio

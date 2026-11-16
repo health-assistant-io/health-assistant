@@ -6,6 +6,9 @@
   },
   "items": [
     {
+      "seed_key": "medication:metformin",
+      "coding_system": "atc",
+      "code": "A10BA02",
       "name": "Metformin",
       "description": "Oral diabetes medicine that helps control blood sugar levels.",
       "indications": "Type 2 Diabetes mellitus",
@@ -19,6 +22,9 @@
       "dosage_info": "Usually 500mg or 850mg once or twice daily with meals."
     },
     {
+      "seed_key": "medication:lisinopril",
+      "coding_system": "atc",
+      "code": "C09AA03",
       "name": "Lisinopril",
       "description": "ACE inhibitor used to treat high blood pressure and heart failure.",
       "indications": "Hypertension, Congestive Heart Failure",
@@ -32,6 +38,9 @@
       "dosage_info": "Typically 10mg to 40mg once daily."
     },
     {
+      "seed_key": "medication:atorvastatin",
+      "coding_system": "atc",
+      "code": "C10AA05",
       "name": "Atorvastatin",
       "description": "Statin medication used to prevent cardiovascular disease and treat abnormal lipid levels.",
       "indications": "Hypercholesterolemia, Cardiovascular disease prevention",
@@ -45,6 +54,9 @@
       "dosage_info": "Usually 10mg to 80mg once daily."
     },
     {
+      "seed_key": "medication:aspirin",
+      "coding_system": "atc",
+      "code": "B01AC06",
       "name": "Aspirin",
       "description": "Nonsteroidal anti-inflammatory drug (NSAID) used to reduce pain, fever, or inflammation.",
       "indications": "Pain, Fever, Inflammation, Prevention of heart attack/stroke",
@@ -58,6 +70,9 @@
       "dosage_info": "75mg-81mg (low dose) for prevention, 325mg-650mg for pain."
     },
     {
+      "seed_key": "medication:amoxicillin",
+      "coding_system": "atc",
+      "code": "J01CA04",
       "name": "Amoxicillin",
       "description": "Penicillin-type antibiotic that fights bacteria.",
       "indications": "Bacterial infections (ear, nose, throat, skin, urinary tract)",
@@ -71,6 +86,9 @@
       "dosage_info": "Usually 250mg to 500mg every 8 hours or 500mg to 875mg every 12 hours."
     },
     {
+      "seed_key": "medication:levothyroxine",
+      "coding_system": "atc",
+      "code": "H03AA01",
       "name": "Levothyroxine",
       "description": "Thyroid medicine that replaces a hormone normally produced by your thyroid gland.",
       "indications": "Hypothyroidism",
@@ -84,6 +102,9 @@
       "dosage_info": "Varies widely based on weight and age, taken on an empty stomach."
     },
     {
+      "seed_key": "medication:amlodipine",
+      "coding_system": "atc",
+      "code": "C08CA01",
       "name": "Amlodipine",
       "description": "Calcium channel blocker that dilates blood vessels and improves blood flow.",
       "indications": "Hypertension, Angina",

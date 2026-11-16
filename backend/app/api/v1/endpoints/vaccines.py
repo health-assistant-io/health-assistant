@@ -11,9 +11,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.user import TokenData
 from app.schemas.vaccine import (
     PatientImmunizationCreate,
@@ -28,15 +28,10 @@ from app.services.auth.access import (
     check_immunization_access,
     check_patient_access,
 )
+from app.services.catalog import catalog_write_service
 from app.services.clinical import vaccine_service
 
 router = APIRouter(prefix="/vaccines", tags=["vaccines"])
-
-
-def _enforce_catalog_create(current_user: TokenData) -> None:
-    """Catalog creates are role-derived-scope: SYSTEM_ADMIN→system,
-    ADMIN/MANAGER→tenant, USER→user. Any authenticated role may create."""
-    DEFAULT_CATALOG_POLICY.create_scope(current_user.role)
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +45,10 @@ async def list_vaccine_catalog(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    return await vaccine_service.get_vaccine_catalog(db, current_user.tenant_id, search)
+    rows = await vaccine_service.get_vaccine_catalog(db, current_user.tenant_id, search)
+    return [
+        catalog_write_service.serialize_catalog_row(row, current_user.tenant_id) for row in rows
+    ]
 
 
 @router.get("/catalog/{catalog_id}", response_model=VaccineCatalogResponse)
@@ -62,18 +60,21 @@ async def get_vaccine_catalog_entry(
     result = await vaccine_service.get_catalog_vaccine(db, catalog_id, current_user.tenant_id)
     if not result:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
-    return result
+    return catalog_write_service.serialize_catalog_row(result, current_user.tenant_id)
 
 
-@router.post("/catalog", response_model=VaccineCatalogResponse)
+@router.post("/catalog", response_model=VaccineCatalogResponse, status_code=201)
 async def create_vaccine_catalog_entry(
     data: VaccineCatalogCreate,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a vaccine catalog entry (scope derived from role)."""
-    _enforce_catalog_create(current_user)
-    return await vaccine_service.create_catalog_vaccine(db, current_user, data)
+    """Create a vaccine catalog entry (scope derived from role).
+
+    The slug is derived server-side from the name (display-only — clients
+    never send it; a ``slug`` key → 422). Thin entry point onto the unified
+    write contract."""
+    return await catalog_write_service.create_vaccine(db, current_user, data)
 
 
 @router.put("/catalog/{catalog_id}", response_model=VaccineCatalogResponse)
@@ -83,8 +84,9 @@ async def update_vaccine_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update a vaccine catalog entry (scope + ownership enforced in service)."""
-    result = await vaccine_service.update_catalog_vaccine(db, catalog_id, current_user, data)
+    """Update a vaccine catalog entry (scope + ownership enforced in the
+    unified write service)."""
+    result = await catalog_write_service.update_vaccine(db, current_user, catalog_id, data)
     if not result:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
     return result
@@ -97,10 +99,10 @@ async def delete_vaccine_catalog_entry(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Delete a vaccine catalog entry (scope + ownership enforced)."""
-    success = await vaccine_service.delete_catalog_vaccine(db, catalog_id, current_user)
+    success = await catalog_write_service.delete_vaccine(db, current_user, catalog_id)
     if not success:
         raise HTTPException(status_code=404, detail="Vaccine not found in catalog")
-    return {"message": "Vaccine catalog entry deleted"}
+    return {"status": "success", "message": "vaccine item deleted"}
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +131,7 @@ async def add_patient_immunization(
     record = await vaccine_service.add_patient_immunization(db, current_user, data)
     # §17: clinical writes are audited (plan 16 H2).
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_immunization",
@@ -156,13 +159,16 @@ async def update_patient_immunization(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_immunization_access(immunization_id, current_user, db)
+    await check_immunization_access(
+        immunization_id, current_user, db, required=GrantPermission.WRITE
+    )
     result = await vaccine_service.update_patient_immunization(
-        db, immunization_id, current_user.tenant_id, data
+        db, immunization_id, current_user, data
     )
     if not result:
         raise HTTPException(status_code=404, detail="Immunization record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_immunization",
@@ -179,13 +185,14 @@ async def delete_patient_immunization(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_immunization_access(immunization_id, current_user, db)
-    success = await vaccine_service.delete_patient_immunization(
-        db, immunization_id, current_user.tenant_id
+    await check_immunization_access(
+        immunization_id, current_user, db, required=GrantPermission.WRITE
     )
+    success = await vaccine_service.delete_patient_immunization(db, immunization_id, current_user)
     if not success:
         raise HTTPException(status_code=404, detail="Immunization record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_immunization",

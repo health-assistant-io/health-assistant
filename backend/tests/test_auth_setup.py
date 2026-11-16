@@ -29,6 +29,13 @@ from app.schemas.auth import SetupRequest, UserRegister
 from ._auth_helpers import create_user
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def _local_request() -> MagicMock:
     req = MagicMock()
     req.client = MagicMock(host="127.0.0.1")

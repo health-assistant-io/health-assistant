@@ -2,6 +2,7 @@
 
 import logging
 
+from app.models.enums import CatalogScope
 from app.services.imports.types import (
     UUID,
     AllergyCatalog,
@@ -20,12 +21,29 @@ from app.services.imports.types import (
     EdgeEndpointType,
     MedicationCatalog,
     _uuid,
-    func,
     or_,
     select,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def payload_row_scope(item: dict[str, Any], tenant_id: UUID) -> str:
+    """Whether an exported catalog row is ``tenant`` data or a ``system`` row.
+
+    The payload's ``tenant_id`` is the *source* stamp, not a selector: a
+    non-null value is tenant data and lands in the **job** tenant (a backup
+    restored into a fresh install legitimately carries the old tenant id).
+    ``null`` marks a system row, which the seed lane owns and a tenant restore
+    skips. Payloads from before the stamp existed count as tenant rows.
+
+    ``tenant_id`` is accepted for call-site symmetry and future source checks;
+    the target row is always selected by the job tenant in
+    :meth:`_find_catalog_identity`.
+    """
+    if "tenant_id" not in item:
+        return "tenant"
+    return "system" if item.get("tenant_id") is None else "tenant"
 
 
 class TaxonomyAnatomyMixin:
@@ -161,6 +179,7 @@ class TaxonomyAnatomyMixin:
                     status=ConceptStatus.ACTIVE,
                     display_order=c.get("display_order", 0),
                     meta_data=c.get("meta_data"),
+                    scope=CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM,
                 )
                 await self._reconcile_kind_tags(new_c, kind_strs)
                 self.db.add(new_c)
@@ -252,7 +271,6 @@ class TaxonomyAnatomyMixin:
                     if class_concept_id is not None:
                         existing.class_concept_id = class_concept_id
                     existing.display = s.get("display", existing.display)
-                    existing.is_custom = bool(s.get("is_custom", existing.is_custom))
                     existing.standard_system = std_system
                     existing.standard_code = s.get("standard_code")
                     id_remap[str(s["id"])] = str(existing.id)
@@ -268,8 +286,8 @@ class TaxonomyAnatomyMixin:
                         standard_system=std_system,
                         standard_code=s.get("standard_code"),
                         description=s.get("description"),
-                        is_custom=bool(s.get("is_custom", True)),
                         display=s.get("display"),
+                        scope=CatalogScope.TENANT,
                     )
                     self.db.add(new_s)
                     await self.db.flush()
@@ -488,21 +506,101 @@ class TaxonomyAnatomyMixin:
             return None
         return (etype, cand)
 
-    async def _restore_medication_catalog(self, payload: dict[str, Any], tenant_id: UUID) -> int:
-        """Upsert MedicationCatalog entries by name (idempotent with seeds)."""
+    async def _find_catalog_identity(
+        self,
+        model: Any,
+        row_id: Any,
+        seed_key: str | None,
+        tenant_id: UUID,
+    ):
+        """Resolve an exported catalog row by identity: ``seed_key`` first,
+        then id — never by name.
+
+        The scope filter keeps a system row visible (ADR 0055 D2 lets a
+        system row and a tenant overlay share a ``seed_key``), while a
+        cross-tenant match stays impossible. The tenant row wins when both
+        exist: ``ORDER BY tenant_id IS NULL`` puts the overlay first and
+        ``LIMIT 1`` makes the lookup total instead of raising
+        ``MultipleResultsFound``. Callers still refuse to *mutate* a system
+        row — only the job tenant's row is a restore target.
+        """
+        visible = or_(model.tenant_id == tenant_id, model.tenant_id.is_(None))
+        if seed_key:
+            found = (
+                (
+                    await self.db.execute(
+                        select(model)
+                        .where(model.seed_key == seed_key, visible)
+                        .order_by(model.tenant_id.is_(None))
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if found is not None:
+                return found
+        if row_id is not None:
+            found = (
+                (
+                    await self.db.execute(
+                        select(model)
+                        .where(model.id == row_id, visible)
+                        .order_by(model.tenant_id.is_(None))
+                        .limit(1)
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if found is not None:
+                return found
+        return None
+
+    async def _adoptable_row_id(self, model: Any, row_id: Any) -> Any:
+        """The payload id when it is free, else ``None`` (a fresh UUID).
+
+        A payload id that already names any other row (system or another
+        tenant's) must never be claimed by the restored tenant overlay — that
+        would be a PK collision at best and identity theft at worst.
+        """
+        if row_id is None:
+            return None
+        taken = await self.db.scalar(select(model.id).where(model.id == row_id))
+        return None if taken is not None else row_id
+
+    async def _restore_medication_catalog(
+        self, payload: dict[str, Any], tenant_id: UUID
+    ) -> tuple[int, list[str]]:
+        """Restore tenant MedicationCatalog rows by ``seed_key`` / id (ADR 0055).
+
+        Only the job tenant's rows are targets. Exported system rows are
+        recreated by the seed lane, so they are skipped instead of rewritten;
+        another tenant's row is never visible to the lookup. When only a
+        *system* row carries the payload's ``seed_key`` the restore creates
+        the tenant overlay rather than mutating the system row.
+
+        A row that fails to restore is surfaced in the returned error list —
+        the job's ``restore_result`` names it (PARTIAL status) instead of a
+        silent ``logger.warning`` that loses catalog data without a trace.
+        """
         count = 0
+        errors: list[str] = []
         for m in payload.get("medications", []):
             name = m.get("name")
             if not name:
                 continue
+            scope = payload_row_scope(m, tenant_id)
+            if scope != "tenant":
+                logger.warning("medication catalog row %r skipped: %s row", name, scope)
+                continue
             try:
-                res = await self.db.execute(
-                    select(MedicationCatalog).where(
-                        func.lower(MedicationCatalog.name) == func.lower(name)
-                    )
+                row_id = _uuid(m.get("id"))
+                existing = await self._find_catalog_identity(
+                    MedicationCatalog, row_id, m.get("seed_key"), tenant_id
                 )
-                existing = res.scalar_one_or_none()
-                if existing:
+                tenant_row = existing is not None and existing.tenant_id == tenant_id
+                if tenant_row:
                     existing.description = m.get("description", existing.description)
                     existing.indications = m.get("indications", existing.indications)
                     existing.side_effects = m.get("side_effects", existing.side_effects)
@@ -510,30 +608,52 @@ class TaxonomyAnatomyMixin:
                         "contraindications", existing.contraindications
                     )
                     existing.dosage_info = m.get("dosage_info", existing.dosage_info)
+                    existing.coding_system = m.get("coding_system", existing.coding_system)
+                    existing.code = m.get("code", existing.code)
                 else:
+                    adoptable_id = await self._adoptable_row_id(MedicationCatalog, row_id)
                     self.db.add(
                         MedicationCatalog(
+                            **({"id": adoptable_id} if adoptable_id is not None else {}),
                             tenant_id=tenant_id,
                             name=name,
+                            seed_key=m.get("seed_key"),
+                            coding_system=m.get("coding_system"),
+                            code=m.get("code"),
                             description=m.get("description"),
                             indications=m.get("indications"),
                             side_effects=m.get("side_effects"),
                             contraindications=m.get("contraindications"),
                             dosage_info=m.get("dosage_info"),
+                            scope=CatalogScope.TENANT,
                         )
                     )
                 count += 1
             except Exception as e:
                 logger.warning(f"medication catalog row skipped: {e}")
+                errors.append(f"medication catalog row {name!r}: {e}")
         await self.db.flush()
-        return count
+        return count, errors
 
-    async def _restore_allergy_catalog(self, payload: dict[str, Any], tenant_id: UUID) -> int:
-        """Upsert AllergyCatalog entries by name (idempotent with seeds)."""
+    async def _restore_allergy_catalog(
+        self, payload: dict[str, Any], tenant_id: UUID
+    ) -> tuple[int, list[str]]:
+        """Restore tenant AllergyCatalog rows by ``seed_key`` / id (ADR 0055).
+
+        Same scope rule as the medication restore: exported system rows are
+        skipped, and a system row sharing the payload's ``seed_key`` is left
+        untouched while the tenant overlay is created. Failures are surfaced
+        in the returned error list (PARTIAL restore), not only logged.
+        """
         count = 0
+        errors: list[str] = []
         for a in payload.get("allergies", []):
             name = a.get("name")
             if not name:
+                continue
+            scope = payload_row_scope(a, tenant_id)
+            if scope != "tenant":
+                logger.warning("allergy catalog row %r skipped: %s row", name, scope)
                 continue
             try:
                 category_raw = (a.get("category") or "").strip().upper()
@@ -541,31 +661,39 @@ class TaxonomyAnatomyMixin:
                     category = AllergyCategory(category_raw) if category_raw else None
                 except ValueError:
                     category = AllergyCategory.OTHER if category_raw else None
-                res = await self.db.execute(
-                    select(AllergyCatalog).where(
-                        func.lower(AllergyCatalog.name) == func.lower(name)
-                    )
+                row_id = _uuid(a.get("id"))
+                existing = await self._find_catalog_identity(
+                    AllergyCatalog, row_id, a.get("seed_key"), tenant_id
                 )
-                existing = res.scalar_one_or_none()
-                if existing:
+                tenant_row = existing is not None and existing.tenant_id == tenant_id
+                if tenant_row:
                     if category is not None:
                         existing.category = category
                     existing.description = a.get("description", existing.description)
                     existing.typical_reactions = a.get(
                         "typical_reactions", existing.typical_reactions
                     )
+                    existing.coding_system = a.get("coding_system", existing.coding_system)
+                    existing.code = a.get("code", existing.code)
                 else:
+                    adoptable_id = await self._adoptable_row_id(AllergyCatalog, row_id)
                     self.db.add(
                         AllergyCatalog(
+                            **({"id": adoptable_id} if adoptable_id is not None else {}),
                             tenant_id=tenant_id,
                             name=name,
+                            seed_key=a.get("seed_key"),
+                            coding_system=a.get("coding_system"),
+                            code=a.get("code"),
                             category=category or AllergyCategory.OTHER,
                             description=a.get("description"),
                             typical_reactions=a.get("typical_reactions"),
+                            scope=CatalogScope.TENANT,
                         )
                     )
                 count += 1
             except Exception as e:
                 logger.warning(f"allergy catalog row skipped: {e}")
+                errors.append(f"allergy catalog row {name!r}: {e}")
         await self.db.flush()
-        return count
+        return count, errors

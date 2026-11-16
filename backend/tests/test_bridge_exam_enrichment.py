@@ -19,6 +19,7 @@ from app.models.clinical_event import ClinicalEvent, ClinicalEventStatus, EventE
 from app.models.concept_model import Concept
 from app.models.doctor_model import DoctorModel
 from app.models.document_model import DocumentModel
+from app.models.enums import CatalogScope
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.medication import Medication, MedicationIntent, MedicationStatus
 from app.models.fhir.organization import OrganizationModel
@@ -83,6 +84,7 @@ async def exam_ctx():
         )
         await db.flush()
         category = Concept(
+            scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             slug=f"lab-{tenant_id.hex[:6]}",

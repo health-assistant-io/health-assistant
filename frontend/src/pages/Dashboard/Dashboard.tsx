@@ -10,6 +10,7 @@ import { getPatientMedications } from '../../services/medicationService';
 import { getPatientAllergies } from '../../services/allergyService';
 import { getExaminations } from '../../services/examinationService';
 import { getPatientEvents } from '../../services/clinicalEventService';
+import { getPatient } from '../../services/patientService';
 import { 
   createPatientLayout, 
   updatePatientLayout,
@@ -240,7 +241,7 @@ function Dashboard() {
     latestLabs,
     recentDocuments 
   } = useDashboardStore();
-  const { currentPatient } = usePatientStore();
+  const { currentPatient, clearPatientContext } = usePatientStore();
   const { selectedBiomarker, setSelectedBiomarker } = useChartStore();
   const theme = useSettingsStore(state => state.theme);
   
@@ -273,8 +274,38 @@ function Dashboard() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const [patientValidated, setPatientValidated] = useState(false);
+
+  useEffect(() => {
+    if (!currentPatient?.id) {
+      setPatientValidated(true);
+      return;
+    }
+
+    let cancelled = false;
+    setPatientValidated(false);
+    getPatient(currentPatient.id)
+      .then(() => {
+        if (!cancelled) setPatientValidated(true);
+      })
+      .catch((err: unknown) => {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (!cancelled && (status === 404 || status === 403 || status === 400)) {
+          // The persisted selection outlived the record (DB reset, deletion,
+          // or a different tenant). Drop it instead of firing 404s at every
+          // dashboard endpoint.
+          clearPatientContext();
+        }
+        if (!cancelled) setPatientValidated(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPatient?.id, clearPatientContext]);
+
   const loadAllCardData = useCallback(async () => {
-    if (!currentPatient?.id) return;
+    if (!currentPatient?.id || !patientValidated) return;
     try {
       const biomarkerCards = cards.filter(c =>
         c.type === 'biomarker' || c.type === 'trends' || c.type === 'labs' ||
@@ -323,9 +354,10 @@ function Dashboard() {
     } catch (err) {
       console.error('Failed to load card data:', err);
     }
-  }, [currentPatient?.id, cards, selectedBiomarker]);
+  }, [currentPatient?.id, patientValidated, cards, selectedBiomarker]);
 
   const loadAvailableBiomarkers = useCallback(async () => {
+    if (!currentPatient?.id || !patientValidated) return;
     try {
       if (currentPatient?.id) {
          const cached = await getCachedBiomarkerTrends(currentPatient.id, 'all-time');
@@ -377,10 +409,10 @@ function Dashboard() {
     } catch (err) {
       console.error(err);
     }
-  }, [currentPatient?.id, selectedBiomarker, setSelectedBiomarker]);
+  }, [currentPatient?.id, patientValidated, selectedBiomarker, setSelectedBiomarker, setCards]);
 
   const loadDashboardData = useCallback(async () => {
-    if (!currentPatient?.id) return;
+    if (!currentPatient?.id || !patientValidated) return;
     
     // Attempt cache load first for instant feedback
     try {
@@ -432,10 +464,10 @@ function Dashboard() {
     } catch (error) {
       console.error(error);
     }
-  }, [currentPatient?.id, setDashboardData]);
+  }, [currentPatient?.id, patientValidated, setDashboardData]);
 
   const loadLayout = useCallback(async () => {
-    if (!currentPatient?.id) {
+    if (!currentPatient?.id || !patientValidated) {
       setIsLoading(false);
       return;
     }
@@ -474,7 +506,7 @@ function Dashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPatient?.id, setActiveLayout, setLayoutsList, t]);
+  }, [currentPatient?.id, patientValidated, setActiveLayout, setLayoutsList, t]);
 
   useEffect(() => {
     loadLayout();

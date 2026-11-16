@@ -18,6 +18,20 @@ Every push to `main` on GitHub runs the workflows in `.github/workflows/`:
 
 Releases are cut with `scripts/version_manager.py` — see the changelog-first flow in `CHANGELOG.md`; images and GitHub Releases publish only when a release is explicitly pushed.
 
+### Action pinning policy
+
+Every external action reference is pinned to a **full 40-character commit SHA** with the intended version in a trailing comment:
+
+```yaml
+uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+```
+
+Tags are mutable: a compromised or retargeted `v4` would run different code inside CI with the repository token, secrets, and checkout. A commit SHA cannot be moved. Local composite actions (`uses: ./.github/actions/...`) stay path references because they are part of the checked-out commit.
+
+- **Who updates what:** Dependabot already watches the `github-actions` ecosystem (`.github/dependabot.yml`, weekly) and opens PRs that bump both the SHA and the version comment. Review the diff as you would a dependency bump; do not auto-merge action updates.
+- **Gitea:** `.gitea/workflows/deploy.yml` is outside GitHub Dependabot, so its pins are bumped manually — especially `appleboy/ssh-action` / `appleboy/scp-action`, which receive `SSH_PRIVATE_KEY`.
+- **Do not "simplify" these back to tags.** The history is a supply-chain fix (audit 2026-11); `actionlint` / `zizmor` are the recommended workflow linters if the workflow set grows.
+
 ---
 
 ## 2. The self-hosted Gitea deploy pipeline (reference topology)

@@ -658,7 +658,7 @@ const ExportImport: React.FC = () => {
                           >
                             <span>Details</span>
                           </button>
-                          {job.status === 'COMPLETED' && job.file_path && (
+                          {job.status === 'COMPLETED' && (
                             <button
                               onClick={() => handleDownload(job)}
                               className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all"

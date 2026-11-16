@@ -119,7 +119,7 @@ truth and every migration matches it exactly.
   usage itself).
 - **Lifecycle + vocabulary inventories**: every table is classified
   `record|operational|transient` in `contracts/data-model.lifecycle.txt`
-  (gate D6, complete since plan 6) and mirrored in
+  and mirrored in
   `app/core/data_lifecycle.py`; every JSONB column is classified in
   `contracts/data-model.jsonb-inventory.txt` (gate D5). The classes drive the
   erasure walker (`app/services/data_lifecycle/erasure.py`) and the retention jobs
@@ -160,6 +160,24 @@ truth and every migration matches it exactly.
   [INSTALL.md → Upgrading from v0.8.0](./INSTALL.md#upgrading-from-v080).
 
 #### Migration notes (newest first)
+
+**2026-11-10 — `0014_audit_chain` (audit tamper-evidence).**
+Adds the hash chain to `audit_events` — `chain_key` (`"system"` for the
+NULL-tenant chain, `"t:<tenant_id>"` for a tenant chain; a row-level key
+instead of a `(tenant_id, seq)` uniqueness so the system chain has no
+NULL-distinct holes), `seq` (1-based per chain), `prev_hash` (genesis:
+64 zeros) and `entry_hash` (canonical SHA-256 over the immutable fields) —
+with `unique (chain_key, seq)` (a deleted middle row leaves a detectable
+gap, not a renumbered tail), plus `audit_chain_heads` (one row per chain:
+the append lock + head-hash anchor; `tenant_id` mirrors the chain's tenant
+so a deleted tenant's chain vanishes whole via CASCADE). Existing rows are
+backfilled per chain in `(created_at, id)` order with the appender's
+canonical function; the chain proves append-only sequence integrity (the
+mutable payload — actor + diffs — sits outside the hash by design so
+sanctioned erasure/retention anonymization never false-alarms). Lifecycle:
+`audit_chain_heads :: operational` (the disabled retention row records
+"lives as long as its chain"). Downgrade drops the constraint, the four
+columns and the head table.
 
 **2026-10-24 — `0008_extension_sources` (the imported-extension lane).**
 Four tables backing the T2/T3 import lane (extension-charter persistence):

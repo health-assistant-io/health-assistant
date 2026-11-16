@@ -83,9 +83,11 @@ def test_log_mode_remote_requires_token(monkeypatch):
     assert setup_token.is_setup_token_required(_remote_request()) is True
 
 
-def test_log_mode_local_never_requires_token(monkeypatch):
+def test_log_mode_local_requires_token_in_production(monkeypatch):
+    """Localhost is not a bypass: a host-level proxy makes remote requests
+    look local, so production always requires the token."""
     _set_mode(monkeypatch, "log", HA_APP_ENV="production")
-    assert setup_token.is_setup_token_required(_local_request()) is False
+    assert setup_token.is_setup_token_required(_local_request()) is True
 
 
 def test_log_mode_dev_env_never_requires_token(monkeypatch):

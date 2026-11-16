@@ -70,7 +70,7 @@ def normalize_webcal(url: str) -> str:
     """``webcal://`` is an ``https://`` subscription in disguise."""
     stripped = url.strip()
     if stripped.lower().startswith("webcal://"):
-        return "https://" + stripped[len("webcal://"):]
+        return "https://" + stripped[len("webcal://") :]
     return stripped
 
 

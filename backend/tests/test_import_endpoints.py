@@ -34,7 +34,7 @@ def _setup_db(db_mock):
 
 @pytest.mark.asyncio
 async def test_import_backup_enqueues_celery_task(async_client: AsyncClient, tmp_path):
-    app.dependency_overrides[get_current_user] = _override_user
+    app.dependency_overrides[get_current_user] = lambda: _override_user("ADMIN")
     db_mock = AsyncMock()
     job = ImportJobModel(
         id=uuid.uuid4(),
@@ -70,6 +70,7 @@ async def test_import_backup_enqueues_celery_task(async_client: AsyncClient, tmp
 
 @pytest.mark.asyncio
 async def test_get_import_job_returns_status(async_client: AsyncClient):
+    """USER reading their own job — the owner gate lets it through."""
     app.dependency_overrides[get_current_user] = _override_user
     jid = uuid.uuid4()
     job = ImportJobModel(
@@ -110,9 +111,148 @@ async def test_get_import_job_404_when_missing(async_client: AsyncClient):
     app.dependency_overrides = {}
 
 
+# ---------- Object-level job-detail gate (mirrors export jobs) ----------
+
+
+def _job_owned_by(owner_user_id, jid=None):
+    return ImportJobModel(
+        id=jid or uuid.uuid4(),
+        tenant_id=TEST_TENANT_ID,
+        user_id=owner_user_id,
+        source_filename="theirs.zip",
+        status=JobStatus.COMPLETED,
+        progress=100,
+        restore_result={"manifest_verified": True},
+        errors=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_cannot_read_foreign_import_job(async_client: AsyncClient):
+    """A foreign job answers the same 404 as a nonexistent one — no
+    existence disclosure (mirrors the export detail gate)."""
+    app.dependency_overrides[get_current_user] = _override_user
+    jid = uuid.uuid4()
+    job = _job_owned_by(uuid.uuid4(), jid)
+    db_mock = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = job
+    db_mock.execute = AsyncMock(return_value=res)
+    app.dependency_overrides[get_db] = _setup_db(db_mock)
+    response = await async_client.get(f"/api/v1/import/jobs/{jid}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Import job not found"
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+async def test_manager_reads_any_tenant_import_job(async_client: AsyncClient):
+    """MANAGER keeps the tenant-wide detail view."""
+    app.dependency_overrides[get_current_user] = lambda: _override_user("MANAGER")
+    jid = uuid.uuid4()
+    job = _job_owned_by(uuid.uuid4(), jid)
+    db_mock = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = job
+    db_mock.execute = AsyncMock(return_value=res)
+    app.dependency_overrides[get_db] = _setup_db(db_mock)
+    response = await async_client.get(f"/api/v1/import/jobs/{jid}")
+    assert response.status_code == 200
+    assert response.json()["id"] == str(jid)
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+async def test_system_admin_reads_any_tenant_import_job(async_client: AsyncClient):
+    """SYSTEM_ADMIN passes through the owner gate."""
+    app.dependency_overrides[get_current_user] = lambda: _override_user("SYSTEM_ADMIN")
+    jid = uuid.uuid4()
+    job = _job_owned_by(uuid.uuid4(), jid)
+    db_mock = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = job
+    db_mock.execute = AsyncMock(return_value=res)
+    app.dependency_overrides[get_db] = _setup_db(db_mock)
+    response = await async_client.get(f"/api/v1/import/jobs/{jid}")
+    assert response.status_code == 200
+    assert response.json()["id"] == str(jid)
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+async def test_list_import_jobs_user_sees_only_own_jobs(async_client: AsyncClient):
+    """USER is filtered to its own jobs in the query itself (same answer as
+    export jobs) — the tenant-wide list must not leak other members' import
+    metadata (filenames, status, record counts), and own jobs are not
+    crowded out by staff rows before the limit."""
+    app.dependency_overrides[get_current_user] = _override_user
+    own = ImportJobModel(
+        id=uuid.uuid4(),
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        source_filename="mine.zip",
+        status=JobStatus.COMPLETED,
+        progress=100,
+    )
+    db_mock = AsyncMock()
+    res = MagicMock()
+    res.scalars.return_value.all.return_value = [own]
+    captured = {}
+
+    async def fake_execute(stmt, *args, **kwargs):
+        captured["stmt"] = stmt
+        return res
+
+    db_mock.execute = AsyncMock(side_effect=fake_execute)
+    app.dependency_overrides[get_db] = _setup_db(db_mock)
+
+    response = await async_client.get("/api/v1/import/jobs")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [item["id"] for item in items] == [str(own.id)]
+    assert response.json()["total"] == 1
+    assert all(item["source_filename"] != "theirs.zip" for item in items)
+    params = captured["stmt"].compile().params
+    assert TEST_TENANT_ID in params.values()
+    assert TEST_USER_ID in params.values()
+    app.dependency_overrides = {}
+
+
+@pytest.mark.asyncio
+async def test_list_import_jobs_staff_sees_the_tenant_list(async_client: AsyncClient):
+    """MANAGER keeps the tenant-wide list (their scope covers own)."""
+    app.dependency_overrides[get_current_user] = lambda: _override_user("MANAGER")
+    own = ImportJobModel(
+        id=uuid.uuid4(),
+        tenant_id=TEST_TENANT_ID,
+        user_id=TEST_USER_ID,
+        source_filename="mine.zip",
+        status=JobStatus.COMPLETED,
+        progress=100,
+    )
+    foreign = ImportJobModel(
+        id=uuid.uuid4(),
+        tenant_id=TEST_TENANT_ID,
+        user_id=uuid.uuid4(),
+        source_filename="theirs.zip",
+        status=JobStatus.PENDING,
+        progress=0,
+    )
+    db_mock = AsyncMock()
+    res = MagicMock()
+    res.scalars.return_value.all.return_value = [own, foreign]
+    db_mock.execute = AsyncMock(return_value=res)
+    app.dependency_overrides[get_db] = _setup_db(db_mock)
+
+    response = await async_client.get("/api/v1/import/jobs")
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    app.dependency_overrides = {}
+
+
 @pytest.mark.asyncio
 async def test_import_fhir_endpoint_restores_bundle(async_client: AsyncClient, tmp_path):
-    app.dependency_overrides[get_current_user] = _override_user
+    app.dependency_overrides[get_current_user] = lambda: _override_user("ADMIN")
     db_mock = AsyncMock()
     db_mock.commit = AsyncMock()
     app.dependency_overrides[get_db] = _setup_db(db_mock)
@@ -140,7 +280,7 @@ async def test_import_fhir_endpoint_restores_bundle(async_client: AsyncClient, t
 
 @pytest.mark.asyncio
 async def test_import_fhir_rejects_non_json(async_client: AsyncClient):
-    app.dependency_overrides[get_current_user] = _override_user
+    app.dependency_overrides[get_current_user] = lambda: _override_user("ADMIN")
     db_mock = AsyncMock()
     app.dependency_overrides[get_db] = _setup_db(db_mock)
     response = await async_client.post(

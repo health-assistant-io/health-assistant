@@ -19,6 +19,8 @@
 audit_events.new_value :: keep-open   write diff
 audit_events.old_value :: keep-open   write diff
 catalog_audit_log.details :: keep-open   audit detail payload
+access_elevations.permissions :: typed-out   closed Permission-catalog subset (service-validated values; queried with @> containment)
+access_elevations.metadata :: keep-open   operator context attached to the request (open payload, never queried by shape)
 
 # --- ai ---
 ai_call_logs.meta :: keep-open   per-call audit payload (no prompts/completions; meta_schema_version guards shape)
@@ -40,7 +42,6 @@ medication_catalog.side_effects :: keep-open   catalog payload
 units.dashboard_config :: keep-open   render hints
 vaccine_catalog.dose_schedule :: keep-open   catalog payload
 vaccine_catalog.side_effects :: keep-open   catalog payload
-vaccine_catalog.target_diseases :: keep-open   catalog payload
 
 # --- clinical ---
 clinical_event_occurrences.metadata :: keep-open   per-type occurrence metadata
@@ -154,3 +155,23 @@ extension_isolation_posture.posture :: keep-open   graded isolation DETECTION ev
 calendar_bindings.options :: keep-open   provider bind options from the catalog (validated at bind time)
 calendar_bindings.scopes :: keep-open   granted OAuth scopes (provider-defined list)
 calendar_sync_logs.counts :: keep-open   per-run counters (source-dependent shape)
+
+# --- seed pack lane (ADR 0056, 0015_seed_packs) ---
+seed_source_versions.manifest :: keep-open   the pack manifest envelope (validated by contracts/seed-pack.schema.json; stored and read as data)
+seed_import_runs.plan :: keep-open   the planner diff document (plan shape versioned; never queried by shape)
+seed_import_runs.stats :: keep-open   per-run counters + details
+seed_import_run_items.conflict :: keep-open   the losing/overridden side's payload (poisoning visibility)
+seed_deferred_refs.payload :: keep-open   the typed deferred-reference payload to retry on the next approval
+
+# --- enterprise identity lane (ADR 0054 D2, 0018_enterprise_identity) ---
+tenant_sso_configs.allowed_domains :: typed-out   lowercase email-domain list (string array, read as a set)
+tenant_sso_configs.group_role_map :: typed-out   group display name → SSO role value (flat string map, service-validated)
+tenant_sso_configs.scopes :: typed-out   OIDC scope strings requested at the authorization endpoint
+tenant_sso_configs.metadata :: keep-open   operator context (open payload, never queried by shape)
+scim_tokens.scopes :: typed-out   closed SCIM-token scope vocabulary (v1: ["scim"])
+scim_tokens.metadata :: keep-open   operator context (open payload, never queried by shape)
+api_tokens.permissions :: typed-out   closed Permission-catalog subset (service-validated at create/update/use; read as a set)
+api_tokens.patient_ids :: typed-out   explicit patient allowlist for patient_scope=granted (UUID list, intersected with owner reach)
+webauthn_credentials.transports :: typed-out   WebAuthn transport hints (string array from the closed usb/nfc/ble/internal/hybrid vocabulary)
+integration_principals.scopes :: typed-out   closed Permission-catalog subset (owner ∩ manifest ceiling, re-intersected at use; read as a set)
+integration_principals.patient_ids :: typed-out   explicit patient allowlist for patient_scope=granted (UUID list, intersected with owner reach)

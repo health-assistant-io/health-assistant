@@ -1,11 +1,16 @@
 """
 Task-monitor endpoints — operational visibility on OCR + extraction jobs.
 
-All endpoints are **tenant-scoped** (audit item B1). A non-``SYSTEM_ADMIN``
-caller only ever sees rows whose ``tenant_id`` matches their token, and any
-tenant-scoped retry (``/documents/retry/{id}``, ``/examinations/retry/{id}``)
-returns ``404`` if the row belongs to a different tenant — so an attacker
-cannot probe for the existence of other tenants' resources.
+All endpoints are **tenant-scoped** (audit item B1) and **patient-scoped**
+(ADR 0054 Phase 2): a non-``SYSTEM_ADMIN`` caller only ever sees rows whose
+``tenant_id`` matches their token, and restricted roles (USER; a MANAGER
+under ``manager_scope=assigned``) only rows whose patient they can reach —
+their own records or through an active grant. Documents with no patient
+stay uploader-only for those roles: a grant reaches a patient, never an
+unattached file. Any tenant-scoped retry (``/documents/retry/{id}``,
+``/examinations/retry/{id}``) returns ``404`` if the row belongs to a
+different tenant or an unreachable patient — so an attacker cannot probe
+for the existence of other tenants' resources.
 
 ``SYSTEM_ADMIN`` is the deliberate exception: the role is reserved for the
 platform operator and bypasses the tenant filter for global monitoring.
@@ -36,6 +41,42 @@ def _apply_tenant_filter(stmt, model, current_user: TokenData):
     return stmt.where(model.tenant_id == current_user.tenant_id)
 
 
+async def _apply_owner_filter(stmt, model, current_user: TokenData, db: AsyncSession):
+    """Restrict ``stmt`` to rows whose patient the caller can reach.
+
+    ADMIN/SYSTEM_ADMIN keep the tenant-wide view; a MANAGER's reach follows
+    the tenant's ``manager_scope`` (tenant-wide by default, own + grants
+    under ``assigned``); a USER sees rows for their own patients or through
+    an active grant (``accessible_patient_ids``). Both models carry a
+    nullable ``patient_id``; for documents with **no** patient the row stays
+    uploader-only for restricted roles — patient access cannot reach an
+    unattached file (ADR 0054 D5).
+    """
+    from app.services.auth.access import accessible_patient_ids, patient_scope_condition
+
+    if current_user.role in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
+        return stmt
+    scope = patient_scope_condition(
+        model.patient_id, await accessible_patient_ids(current_user, db)
+    )
+    if scope is None:
+        return stmt
+    if model is DocumentModel:
+        from sqlalchemy import or_
+
+        return stmt.where(or_(scope, DocumentModel.owner_id == current_user.user_id))
+    return stmt.where(scope)
+
+
+def _visible_error(current_user: TokenData, message: str | None, status: str | None) -> str | None:
+    """Raw worker exceptions stay admin-only; USERs get a typed marker."""
+    if not message:
+        return None
+    if current_user.role in (Role.ADMIN.value, Role.MANAGER.value, Role.SYSTEM_ADMIN.value):
+        return message
+    return "Processing failed" if status == "failed" else None
+
+
 @router.get("/documents/processing")
 async def get_processing_documents(
     patient_id: UUID | None = None,
@@ -52,6 +93,7 @@ async def get_processing_documents(
     """
     query = select(DocumentModel).where(DocumentModel.status.in_(["processing", "uploaded"]))
     query = _apply_tenant_filter(query, DocumentModel, current_user)
+    query = await _apply_owner_filter(query, DocumentModel, current_user, db)
 
     if patient_id:
         query = query.where(DocumentModel.patient_id == patient_id)
@@ -76,7 +118,7 @@ async def get_processing_documents(
             "age_minutes": (
                 (datetime.now(UTC) - doc.created_at).total_seconds() / 60 if doc.created_at else 0
             ),
-            "error_message": doc.error_message,
+            "error_message": _visible_error(current_user, doc.error_message, doc.status),
         }
         for doc in documents
     ]
@@ -103,6 +145,7 @@ async def get_processing_examinations(
         )
     )
     query = _apply_tenant_filter(query, ExaminationModel, current_user)
+    query = await _apply_owner_filter(query, ExaminationModel, current_user, db)
 
     if patient_id:
         query = query.where(ExaminationModel.patient_id == patient_id)
@@ -126,7 +169,9 @@ async def get_processing_examinations(
             "age_minutes": (
                 (datetime.now(UTC) - exam.created_at).total_seconds() / 60 if exam.created_at else 0
             ),
-            "error_message": exam.error_message,
+            "error_message": _visible_error(
+                current_user, exam.error_message, exam.extraction_status
+            ),
         }
         for exam in examinations
     ]
@@ -145,6 +190,7 @@ async def retry_document_ocr(
     """
     query = select(DocumentModel).where(DocumentModel.id == document_id)
     query = _apply_tenant_filter(query, DocumentModel, current_user)
+    query = await _apply_owner_filter(query, DocumentModel, current_user, db)
     result = await db.execute(query)
     doc = result.scalar_one_or_none()
 
@@ -164,9 +210,15 @@ async def retry_document_ocr(
     await db.commit()
 
     # Trigger Celery OCR task
+    from app.storage.documents import astorage_key_or_legacy
     from app.workers.ai_tasks import ocr_document
 
-    ocr_document.delay(str(document_id), doc.file_path, str(doc.tenant_id))
+    ocr_document.delay(
+        str(document_id),
+        await astorage_key_or_legacy(doc),
+        str(doc.tenant_id),
+        str(doc.owner_id),
+    )
 
     return {"message": "Document OCR will be retried", "document_id": str(document_id)}
 
@@ -184,6 +236,7 @@ async def retry_examination_extraction(
     """
     query = select(ExaminationModel).where(ExaminationModel.id == examination_id)
     query = _apply_tenant_filter(query, ExaminationModel, current_user)
+    query = await _apply_owner_filter(query, ExaminationModel, current_user, db)
     result = await db.execute(query)
     exam = result.scalar_one_or_none()
 
@@ -219,6 +272,7 @@ async def get_task_statistics(
 
     doc_stmt = select(DocumentModel.status, func.count(DocumentModel.id).label("count"))
     doc_stmt = _apply_tenant_filter(doc_stmt, DocumentModel, current_user)
+    doc_stmt = await _apply_owner_filter(doc_stmt, DocumentModel, current_user, db)
     doc_stmt = doc_stmt.group_by(DocumentModel.status)
     doc_result = await db.execute(doc_stmt)
     doc_stats = dict(doc_result.all())
@@ -228,6 +282,7 @@ async def get_task_statistics(
         func.count(ExaminationModel.id).label("count"),
     )
     exam_stmt = _apply_tenant_filter(exam_stmt, ExaminationModel, current_user)
+    exam_stmt = await _apply_owner_filter(exam_stmt, ExaminationModel, current_user, db)
     exam_stmt = exam_stmt.group_by(ExaminationModel.extraction_status)
     exam_result = await db.execute(exam_stmt)
     exam_stats = dict(exam_result.all())
@@ -240,6 +295,7 @@ async def get_task_statistics(
         DocumentModel.created_at < stalled_time,
     )
     stalled_doc_stmt = _apply_tenant_filter(stalled_doc_stmt, DocumentModel, current_user)
+    stalled_doc_stmt = await _apply_owner_filter(stalled_doc_stmt, DocumentModel, current_user, db)
     stalled_docs = (await db.execute(stalled_doc_stmt)).scalar() or 0
 
     stalled_exam_stmt = select(func.count(ExaminationModel.id)).where(
@@ -247,6 +303,9 @@ async def get_task_statistics(
         ExaminationModel.created_at < stalled_time,
     )
     stalled_exam_stmt = _apply_tenant_filter(stalled_exam_stmt, ExaminationModel, current_user)
+    stalled_exam_stmt = await _apply_owner_filter(
+        stalled_exam_stmt, ExaminationModel, current_user, db
+    )
     stalled_exams = (await db.execute(stalled_exam_stmt)).scalar() or 0
 
     return {

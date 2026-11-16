@@ -3,7 +3,14 @@
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+def validate_password_bytes(value: str) -> str:
+    """bcrypt only consumes the first 72 bytes; reject longer input (§7)."""
+    if len(value.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes")
+    return value
 
 
 class PublicUser(BaseModel):
@@ -36,6 +43,40 @@ class UserCreate(UserBase):
     full_name: str = Field(default="", max_length=200)
     tenant_id: UUID | None = None
 
+    @field_validator("password")
+    @classmethod
+    def _password_within_bcrypt_limit(cls, value: str) -> str:
+        return validate_password_bytes(value)
+
+
+class PasswordChangeRequest(BaseModel):
+    """Self-service password rotation (identity-auth §12)."""
+
+    current_password: str = Field(..., min_length=1, max_length=100)
+    new_password: str = Field(..., min_length=10, max_length=100)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_within_bcrypt_limit(cls, value: str) -> str:
+        return validate_password_bytes(value)
+
+
+class SelfDeleteRequest(BaseModel):
+    """Account erasure re-authentication (§12: access + password)."""
+
+    password: str = Field(..., min_length=1, max_length=100)
+
+
+class PasswordResetRequest(BaseModel):
+    """Admin-initiated password reset (identity-auth §12)."""
+
+    new_password: str = Field(..., min_length=10, max_length=100)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_within_bcrypt_limit(cls, value: str) -> str:
+        return validate_password_bytes(value)
+
 
 class UserUpdate(BaseModel):
     """User update schema"""
@@ -58,8 +99,11 @@ class UserResponse(PublicUser):
     role: str = Field(default="user", description="User role: admin, manager, or user")
     tenant_id: UUID
     settings: dict[str, Any] = Field(default_factory=dict)
-    mfa_enabled: bool = Field(default=False, description="TOTP MFA is active.")
+    mfa_enabled: bool = Field(
+        default=False, description="MFA is active (TOTP or at least one passkey)."
+    )
     mfa_enforced: bool = Field(default=False, description="An admin requires MFA.")
+    passkey_count: int = Field(default=0, description="Active passkeys on the account.")
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -78,6 +122,12 @@ class TokenData(BaseModel):
       * ``original_tenant_id`` — the admin's real tenant.
       * ``original_user_id``   — the admin's real user id.
       * ``switched``           — flag distinguishing a switched session.
+
+    Federated authentication facts (OIDC sign-ins only, program 12C1):
+      * ``amr``       — the IdP's asserted authentication methods (RFC 8176).
+      * ``auth_time`` — when the IdP authenticated the user (epoch seconds).
+    Both are evidence for step-up freshness (:mod:`app.services.auth.step_up`)
+    and are dropped at refresh, so freshness decays with the sign-in.
 
     API-token claims (only present on OAuth2 client-credentials tokens issued
     for the FHIR facade — see ``docs/API_LAYERS.md``):
@@ -98,6 +148,8 @@ class TokenData(BaseModel):
     ver: int | None = None
     auth_mode: str | None = None
     fid: str | None = None
+    amr: list[str] | None = None
+    auth_time: int | None = None
     client_id: str | None = None
     original_tenant_id: UUID | None = None
     original_user_id: UUID | None = None
@@ -108,6 +160,25 @@ class TokenData(BaseModel):
     aud: Any | None = None
     iss: str | None = None
     bound_patient_id: UUID | None = None
+    # Scoped personal-access-token claims (ADR 0054 Phase 6, program 12C2B).
+    # Present only on a resolved ``pat`` principal: ``pat_permissions`` is
+    # already intersected with the owner's live role, and the patient scope
+    # bounds every patient-scoped resource check.
+    pat_id: str | None = None
+    pat_prefix: str | None = None
+    pat_permissions: list[str] | None = None
+    pat_patient_scope: str | None = None
+    pat_patient_ids: list[str] | None = None
+    # Scoped integration/extension principal claims (ADR 0054 D8, Phase 13).
+    # Present only on a resolved ``integration_principal`` bearer or service
+    # actor: ``integration_permissions`` is already intersected with the
+    # owner's live role and the manifest declaration; the patient scope bounds
+    # every patient-scoped resource check exactly like a PAT.
+    integration_principal_id: str | None = None
+    integration_name: str | None = None
+    integration_permissions: list[str] | None = None
+    integration_patient_scope: str | None = None
+    integration_patient_ids: list[str] | None = None
 
     @property
     def scope_set(self) -> set[str]:

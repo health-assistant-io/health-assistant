@@ -22,6 +22,9 @@ vi.mock('../../api/axios', () => {
     UNAUTHENTICATED_EVENT: 'nx:unauthenticated',
     csrfToken: () => null,
     refreshSession: vi.fn(async () => false),
+    consumeSessionEndReason: vi.fn(() => null),
+    sessionEndReasonOf: vi.fn(() => null),
+    storeSessionEndReason: vi.fn(),
   };
 });
 

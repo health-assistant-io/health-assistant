@@ -52,10 +52,18 @@ dependencies = [
     # (app/ai/decide/) behind the DecisionEngine seam; alignment gate SDK_RE.
     "typesafe-sdk>=0.7,<0.8",
     "uvicorn>=0.52",
+    # WebAuthn/passkey ceremonies (program 12C2) — server-side attestation
+    # and assertion verification; a virtual authenticator drives the tests.
+    "webauthn>=3.0,<4",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
+# Family object storage (ADR-0057): installed in the web backend/worker images
+# only. The local backend is stdlib-only, so no deployment needs an SDK unless
+# it selects s3/azure_blob.
+object-storage-s3 = ["boto3>=1.34"]
+object-storage-azure = ["azure-storage-blob>=12.19", "azure-identity>=1.17"]
 # Local AI/OCR processing (former requirements.optional.txt) — local
 # models instead of the OpenAI API. `scispacy` is deliberately excluded:
 # every released scispacy pins spacy<3.8 + numpy<2, which is
@@ -63,7 +71,7 @@ dynamic = ["version"]
 # requirements file could never co-install either) — use a dedicated
 # environment for biomedical NLP models.
 local-ai = [
-    "nltk>=3.10.3",
+    "nltk>=3.10.4",
     "spacy>=3.8.16",
     "torch>=2.1.2",
     "transformers>=4.57.6",
@@ -95,23 +103,27 @@ packages = ["app"]
 line-length = 100
 target-version = "py312"
 # Vendored family contract modules must stay BYTE-identical to their dev
-# canonicals (ADR-0031/0035/0040) — excluded from the formatter too, since
-# `ruff format` does not honor the lint per-file-ignores below and would
-# reflow them (plan 81 C review, 2026-10-21).
+# canonicals (ADR-0031/0035/0040) — excluded from lint and format; findings
+# belong to the canonical, not the vendored copy (same accommodation for the
+# cloud, retrieval, vector/tokenizer and model-pricing contracts).
 extend-exclude = [
     "app/extensions/contract.py",
     "app/extensions/polite_http.py",
     "app/extensions/conformance.py",
+    "app/extensions/extension_sources.py",
     "app/extensions/search/providers_contract.py",
     "app/extensions/isolation.py",
     "app/ai/flow_events.py",
-    # Cloud-connector contract (ADR-0052): vendored byte-identical from
-    # the family contract canonical via the sync tooling — lint findings belong to
-    # the family canonical, never to a vendored copy (same accommodation as
-    # contract.py above).
     "app/extensions/cloud/cloud_calendar.py",
     "app/extensions/cloud/cloud_files.py",
     "app/extensions/cloud/cloud_providers.py",
+    "app/storage/retrieval_ops.py",
+    "app/storage/vector_contract.py",
+    "app/storage/tokenizer_contract.py",
+    "app/storage/object_storage.py",
+    "app/storage/object_storage_migrate.py",
+    "app/ai/model_pricing.py",
+    "app/ai/model_pricing_data.py",
     "tests/cloud_conformance.py",
 ]
 
@@ -141,6 +153,7 @@ extend-immutable-calls = [
 "app/extensions/polite_http.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 "app/extensions/contract.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 "app/extensions/conformance.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+"app/extensions/extension_sources.py" = ["E", "W", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 
 [tool.ruff.format]
 # The generated presets module (sync-ai-presets.mjs from the dev canonical)
@@ -152,6 +165,8 @@ exclude = [
   "app/extensions/polite_http.py",
   "app/extensions/contract.py",
   "app/extensions/conformance.py",
+  "app/extensions/extension_sources.py",
+  "app/storage/object_storage.py",
 ]
 
 [tool.mypy]

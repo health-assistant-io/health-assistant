@@ -4,8 +4,9 @@ import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import ClassVar
+from urllib.parse import urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.ai.providers.presets_data import PRESETS as _CANONICAL_PRESETS
@@ -201,6 +202,11 @@ class Settings(BaseSettings):
     # validator below refuses to boot with empty/known-weak credentials outside
     # development environments.
     POSTGRES_PASSWORD: str = ""
+    # The runtime role's secret (ADR-0064 split): distinct from
+    # POSTGRES_PASSWORD (the owner credential). The db service forwards it to
+    # init-roles.sh / the migrate provisioning seam so the app role can be
+    # (re)created; serving containers never receive it — their DSN embeds it.
+    POSTGRES_APP_PASSWORD: str = ""
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     # deployment.md / ADR-0022 naming: neuronection_<product>. Demo/test flavors use
@@ -209,6 +215,17 @@ class Settings(BaseSettings):
     # Full URL override — wins over the POSTGRES_* parts above (audit item
     # e: renamed DATABASE_URL -> HA_DATABASE_URL, plan 20 D2 prefixed-only).
     HA_DATABASE_URL: str | None = None
+    # The OWNER DSN (ADR-0064): injected only into the one-shot `migrate`
+    # service (alembic, provisioning, checkpoint setup prefer it over
+    # HA_DATABASE_URL). Serving containers must never receive it. When unset,
+    # DDL entrypoints fall back to HA_DATABASE_URL (legacy single-DSN dev
+    # setups); `HA_DB_SPLIT=1` without it refuses to run (the ADR's "broken"
+    # state — fail closed, no silent fallback).
+    HA_MIGRATIONS_DATABASE_URL: str | None = None
+    # The split marker (ADR-0064 tri-state): `1` declares the install uses
+    # the owner/app split. The compose migrate service always sets it; with
+    # it set but no migrations URL, the DDL entrypoints refuse to run.
+    HA_DB_SPLIT: str | None = None
 
     @model_validator(mode="after")
     def assemble_db_connection(self) -> "Settings":
@@ -245,6 +262,11 @@ class Settings(BaseSettings):
         return self
 
     DATABASE_POOL_SIZE: int = 10
+
+    #: The audit lane's own pool (ADR 0054 D3 — sized + test-pinned: PHI
+    #: reads fail closed through this lane, so it must not starve behind
+    #: the request pool, nor exhaust the database for it).
+    AUDIT_DB_POOL_SIZE: int = 4
 
     # Redis
     REDIS_HOST: str = "localhost"
@@ -515,7 +537,35 @@ class Settings(BaseSettings):
     # the Android/integrations HMAC bridge is unchanged). ``HA_COOKIE_SECURE``
     # also switches the access cookie to the ``__Host-`` prefix (TLS
     # deployments — the prefix demands Secure + Path=/).
-    HA_COOKIE_SECURE: bool = False
+    #
+    # Plan 64 §1.6: Secure is DERIVED, never a static default. Leave the env
+    # unset (or empty — the compose files render ``${HA_COOKIE_SECURE:-}``)
+    # and the validator below derives it from the public scheme: APP_URL
+    # served over https, or the explicit ``HA_TLS`` flag for BYO TLS proxies
+    # that terminate elsewhere. LAN/VPN deployments on plain HTTP derive
+    # ``false`` so login keeps working. An explicit ``HA_COOKIE_SECURE``
+    # value always wins over the derivation.
+    HA_COOKIE_SECURE: bool | None = None
+    # Explicit TLS flag for deployments whose APP_URL lags the public scheme
+    # (e.g. a BYO TLS proxy in front of an http:// APP_URL): ``HA_TLS=true``
+    # derives Secure without hard-coding ``HA_COOKIE_SECURE=true``.
+    HA_TLS: bool = False
+
+    @field_validator("HA_COOKIE_SECURE", mode="before")
+    @classmethod
+    def _cookie_secure_unset_means_derive(cls, value: object) -> object:
+        """Empty-string env (compose ``${HA_COOKIE_SECURE:-}``) = derive."""
+        if value is None or (isinstance(value, str) and value.strip() == ""):
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _derive_cookie_secure_from_public_scheme(self) -> "Settings":
+        if self.HA_COOKIE_SECURE is None:
+            parsed = urlparse(self.APP_URL or "")
+            self.HA_COOKIE_SECURE = bool(parsed.scheme == "https") or bool(self.HA_TLS)
+        return self
+
     # SameSite knob (§10 default Lax). ``none`` requires Secure — browsers
     # reject SameSite=None without it.
     HA_COOKIE_SAMESITE: str = "lax"
@@ -524,6 +574,95 @@ class Settings(BaseSettings):
     # APP_URL/FRONTEND_URL (the CORS list; the dev LAN regex applies in
     # development).
     HA_WS_ALLOWED_ORIGINS: str | None = None
+    # Per-tenant OIDC SSO (Phase 12B): the absolute base the IdP is told to
+    # redirect back to — ``{HA_SSO_REDIRECT_BASE}/api/v1/auth/sso/callback``.
+    # Must be an externally reachable URL (behind a proxy, the public one);
+    # when unset the callback base derives from the incoming request, which
+    # is correct on loopback/dev and wrong behind TLS-terminating proxies.
+    HA_SSO_REDIRECT_BASE: str | None = None
+
+    # --- WebAuthn/passkeys (program 12C2) --------------------------------
+    # The relying party the browser ceremony is bound to. ``HA_WEBAUTHN_RP_ID``
+    # is the registrable domain (no scheme/port/path); ``HA_WEBAUTHN_ORIGIN``
+    # is a comma-separated list of the exact page origins allowed to run the
+    # ceremony (the SPA origin, plus the API origin when they differ). Unset
+    # in development/test defaults to the FRONTEND_URL/APP_URL origins with
+    # ``localhost`` as the RP id; in any other environment WebAuthn stays
+    # disabled (503 typed refusal) until both are configured deliberately.
+    HA_WEBAUTHN_RP_ID: str | None = None
+    HA_WEBAUTHN_RP_NAME: str = "Health Assistant"
+    HA_WEBAUTHN_ORIGIN: str | None = None
+
+    def webauthn_origins(self) -> list[str]:
+        """The configured ceremony origins, defaults folded in for dev/test."""
+        raw = (self.HA_WEBAUTHN_ORIGIN or "").strip()
+        if raw:
+            return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+        defaults = []
+        for url in (self.FRONTEND_URL, self.APP_URL):
+            parsed = urlparse(url or "")
+            if parsed.scheme and parsed.netloc:
+                origin = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+                if origin not in defaults:
+                    defaults.append(origin)
+        return defaults
+
+    def webauthn_rp_id(self) -> str:
+        """The relying-party id: explicit, else the first origin's hostname."""
+        if self.HA_WEBAUTHN_RP_ID:
+            return self.HA_WEBAUTHN_RP_ID.strip()
+        origins = self.webauthn_origins()
+        if origins:
+            return urlparse(origins[0]).hostname or "localhost"
+        return "localhost"
+
+    def webauthn_configured(self) -> bool:
+        """Whether the ceremony is deliberately configured for this instance.
+
+        Development/test instances default to localhost so the feature works
+        out of the box; everywhere else an operator must pin the RP id and
+        origin (a localhost default in production would silently accept the
+        wrong audience).
+        """
+        if self.HA_APP_ENV in ("development", "test", "testing"):
+            return True
+        return bool(self.HA_WEBAUTHN_RP_ID and self.HA_WEBAUTHN_ORIGIN)
+
+    @model_validator(mode="after")
+    def _validate_webauthn_config(self) -> "Settings":
+        """Fail fast on an RP id/origin pair the browser would reject."""
+        rp_id = (self.HA_WEBAUTHN_RP_ID or "").strip()
+        if rp_id and ("://" in rp_id or "/" in rp_id or ":" in rp_id or " " in rp_id):
+            raise ValueError(
+                "HA_WEBAUTHN_RP_ID must be a bare registrable domain (no scheme, port or path)."
+            )
+        raw_origins = self.HA_WEBAUTHN_ORIGIN
+        if raw_origins:
+            secure_context = self.HA_APP_ENV not in ("development", "test", "testing")
+            for raw in (item.strip() for item in raw_origins.split(",")):
+                if not raw:
+                    continue
+                parsed = urlparse(raw)
+                if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                    raise ValueError(f"HA_WEBAUTHN_ORIGIN entry {raw!r} is not an http(s) origin.")
+                if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+                    raise ValueError(
+                        f"HA_WEBAUTHN_ORIGIN entry {raw!r} must be an origin (no path/query)."
+                    )
+                local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+                if secure_context and not local and parsed.scheme != "https":
+                    raise ValueError(
+                        "HA_WEBAUTHN_ORIGIN requires https outside development/test "
+                        "(WebAuthn is a secure-context API)."
+                    )
+                if rp_id and not (
+                    parsed.hostname == rp_id or parsed.hostname.endswith(f".{rp_id}")
+                ):
+                    raise ValueError(
+                        f"HA_WEBAUTHN_ORIGIN host {parsed.hostname!r} is not the RP id "
+                        f"{rp_id!r} or a subdomain of it."
+                    )
+        return self
 
     @model_validator(mode="after")
     def _validate_auth_lifetimes(self) -> "Settings":
@@ -719,6 +858,18 @@ class Settings(BaseSettings):
     INTEGRATION_ALLOWED_HOSTS: str = ""
     INTEGRATION_BLOCK_PRIVATE_RANGES: bool = True
     INTEGRATION_ALLOW_PRIVATE: bool = False
+    # Seed source lane (ADR 0056 Phase 3) — the shared fetch transport's
+    # policy, routed through Settings into the vendored guard's injectable
+    # config (the transport module reads these; polite_http itself reads no
+    # environment). Trusted self-hosted hostnames exempt from the
+    # private-range block, the wholesale private-range hatch, and the
+    # per-fetch budget. Startup never fetches; these only bound admin/
+    # worker syncs.
+    HA_SEED_SOURCE_ALLOWED_HOSTS: str = ""
+    HA_SEED_SOURCE_BLOCK_PRIVATE_RANGES: bool = True
+    HA_SEED_SOURCE_ALLOW_PRIVATE: bool = False
+    HA_SEED_FETCH_TIMEOUT_SECONDS: int = 300
+    HA_SEED_FETCH_MAX_BYTES: int = 64 * 1024 * 1024
     MCP_CONNECTION_IDLE_TIMEOUT: int = 900
     MCP_PER_INSTANCE_CONCURRENCY: int = 4
     MCP_ALLOW_INSECURE_HTTP: bool = False
@@ -726,6 +877,48 @@ class Settings(BaseSettings):
     # File Storage (audit item e: UPLOAD_DIR -> HA_UPLOAD_DIR, prefixed-only)
     HA_UPLOAD_DIR: str = "/var/healthassistant/uploads"
     MAX_UPLOAD_SIZE: int = 50  # MB
+
+    # --- Family object storage (optional in web mode; cloud requires it) ---
+    # The contract resolves one backend at boot: ``local`` (default, the
+    # HA_UPLOAD_DIR volume), ``s3`` (AWS or any S3-compatible endpoint) or
+    # ``azure_blob``. A declared cloud profile forbids ``local`` and requires
+    # provider-side SSE. Health is a server-only product, so the contract
+    # entrypoint is always ``server``. Keep every knob prefixed (ADR-0028).
+    HA_CLOUD_PROFILE: str = ""
+    HA_OBJECT_STORAGE_BACKEND: str = ""
+    HA_OBJECT_STORAGE_REQUIRED: bool | None = None
+    # Empty means "HA_UPLOAD_DIR" — the same durable volume as before.
+    HA_OBJECT_STORAGE_LOCAL_ROOT: str = ""
+    # Unset binds to MAX_UPLOAD_SIZE (the host's effective upload ceiling).
+    HA_OBJECT_STORAGE_MAX_MB: int | None = None
+    HA_OBJECT_STORAGE_PRESIGN_TTL: int | None = None
+    HA_S3_BUCKET: str = ""
+    HA_S3_REGION: str = ""
+    HA_S3_ENDPOINT_URL: str = ""
+    HA_S3_ACCESS_KEY_ID: str = ""
+    HA_S3_SECRET_ACCESS_KEY: str = ""
+    HA_S3_SESSION_TOKEN: str = ""
+    HA_S3_PATH_STYLE: bool | None = None
+    HA_S3_SSE: str = ""
+    HA_S3_KMS_KEY_ID: str = ""
+    HA_S3_PREFIX: str = ""
+    HA_S3_VERIFY_TLS: bool | None = None
+    HA_S3_CONNECT_TIMEOUT: float | None = None
+    HA_S3_READ_TIMEOUT: float | None = None
+    HA_S3_MAX_ATTEMPTS: int | None = None
+    HA_AZURE_STORAGE_CONTAINER: str = ""
+    HA_AZURE_STORAGE_CONNECTION_STRING: str = ""
+    HA_AZURE_STORAGE_ACCOUNT_URL: str = ""
+    HA_AZURE_STORAGE_ACCOUNT_NAME: str = ""
+    HA_AZURE_STORAGE_CREDENTIAL: str = ""
+    HA_AZURE_STORAGE_PREFIX: str = ""
+    HA_AZURE_CONNECT_TIMEOUT: float | None = None
+    HA_AZURE_READ_TIMEOUT: float | None = None
+    HA_AZURE_MAX_ATTEMPTS: int | None = None
+    # The export archive is its own object class (a full backup is much
+    # larger than one upload). It is bounded independently of the 50 MB
+    # upload ceiling; the contract hard maximum is 1024 MB.
+    HA_EXPORT_MAX_MB: int = Field(default=1024, ge=1, le=1024)
 
     # Email
     SMTP_HOST: str = ""

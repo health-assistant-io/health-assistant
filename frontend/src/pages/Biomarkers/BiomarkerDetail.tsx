@@ -211,7 +211,7 @@ const BiomarkerDetail: React.FC = () => {
     <div className="flex flex-col space-y-2">
       <div className="flex items-center flex-wrap gap-2">
         <span className="px-3 py-1 bg-gray-100 dark:bg-dark-bg rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-dark-muted border border-gray-200 dark:border-dark-border w-fit">
-          {biomarker?.category || 'General'}
+          {biomarker?.class_concept_name || 'General'}
         </span>
         {biomarker?.is_telemetry ? (
           <span className="flex items-center space-x-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100 dark:border-indigo-900/30 w-fit" title="High-frequency telemetry data from IoT devices">
@@ -234,7 +234,7 @@ const BiomarkerDetail: React.FC = () => {
         )}
       </div>
     </div>
-  ), [biomarker?.category, biomarker?.is_telemetry, trends.length, interpretation, t]);
+  ), [biomarker?.class_concept_name, biomarker?.is_telemetry, trends.length, interpretation, t]);
 
   const filteredTrends = React.useMemo(() => {
     if (!trends || trends.length === 0) return [];
@@ -279,7 +279,6 @@ const BiomarkerDetail: React.FC = () => {
                 id: decodedId,
                 slug: decodedId,
                 name: latest.name || decodedId,
-                category: 'Uncategorized',
                 info: '',
                 reference_range_min: null,
                 reference_range_max: null,

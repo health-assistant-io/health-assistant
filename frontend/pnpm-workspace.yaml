@@ -1,5 +1,5 @@
 minimumReleaseAgeExclude:
-  - '@neuronection/assistant-ui@0.60.0 || 0.61.0 || 0.64.0 || 0.64.1 || 0.65.0 || 0.67.0 || 0.81.0'
+  - '@neuronection/assistant-ui@0.60.0 || 0.61.0 || 0.64.0 || 0.64.1 || 0.65.0 || 0.67.0 || 0.81.0 || 0.82.0 || 0.86.0 || 0.88.0'
 
 overrides:
   brace-expansion@1: 1.1.21
@@ -10,6 +10,7 @@ overrides:
   follow-redirects: 1.16.2
   katex: 0.19.1
   markdown-it: 14.3.3
+  minimatch@>=10.0.0 <11.0.1: 11.0.1
   postcss-selector-parser: 7.1.6
   quill: 2.0.2
   serialize-javascript: 7.1.3

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.enums import Role
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.user import TokenData
 from app.services.audit.audit_service import audit_read, log_audit_action
 from app.services.auth.access import check_patient_access
@@ -62,7 +63,7 @@ async def create_observation_endpoint(
             patient_id = ref.split("/")[-1]
 
     if patient_id:
-        await check_patient_access(patient_id, current_user, db)
+        await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
     elif current_user.role == Role.USER.value:
         raise HTTPException(status_code=400, detail="Patient reference required")
 
@@ -71,6 +72,7 @@ async def create_observation_endpoint(
 
     observation = await create_observation(observation_data, current_user.tenant_id)
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_observation",
@@ -97,16 +99,18 @@ async def update_observation_endpoint(
     if not existing:
         raise HTTPException(status_code=404, detail="Observation not found")
 
-    # Patient-scoped access check for USER role.
-    if current_user.role == Role.USER.value:
-        patient_id = existing.patient_id
-        if patient_id:
-            await check_patient_access(str(patient_id), current_user, db)
+    # Patient-scoped row-level check (grant-aware; narrows an assigned MANAGER too).
+    patient_id = existing.patient_id
+    if patient_id:
+        await check_patient_access(
+            str(patient_id), current_user, db, required=GrantPermission.WRITE
+        )
 
     updated = await update_observation(observation_id, updates, current_user.tenant_id)
     if not updated:
         raise HTTPException(status_code=404, detail="Observation not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_observation",
@@ -129,16 +133,22 @@ async def get_observation_endpoint(
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
 
-    # API-M2 (audit 2026-08): USER role may only read observations of
-    # patients linked to them — same gate as PUT.
-    if current_user.role == Role.USER.value:
-        patient_id = getattr(observation, "patient_id", None)
-        if patient_id:
-            await check_patient_access(str(patient_id), current_user, db)
-        else:
-            subject_ref = (observation.subject or {}).get("reference", "")
-            if subject_ref.startswith("Patient/"):
-                await check_patient_access(subject_ref.split("/", 1)[1], current_user, db)
+    # API-M2 (audit 2026-08): restricted roles may only read observations of
+    # reachable patients (own + grants) — same gate as PUT.
+    def _field(name):
+        if isinstance(observation, dict):
+            return observation.get(name)
+        return getattr(observation, name, None)
+
+    patient_id = _field("patient_id")
+    if not patient_id:
+        subject = _field("subject") or {}
+        if isinstance(subject, dict):
+            subject_ref = subject.get("reference", "")
+            if isinstance(subject_ref, str) and subject_ref.startswith("Patient/"):
+                patient_id = subject_ref.split("/", 1)[1]
+    if patient_id:
+        await check_patient_access(str(patient_id), current_user, db)
     return observation
 
 
@@ -153,22 +163,23 @@ async def delete_observation_endpoint(
     if not observation:
         raise HTTPException(status_code=404, detail="Observation not found")
 
-    if current_user.role == Role.USER.value:
-        patient_id = None
+    patient_id = observation.patient_id
+    if not patient_id:
         subject = observation.subject
         if subject and "reference" in subject:
             ref = subject["reference"]
             if "Patient/" in ref:
                 patient_id = ref.split("/")[-1]
 
-        if patient_id:
-            await check_patient_access(patient_id, current_user, db)
+    if patient_id:
+        await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
 
     prior_snapshot = observation.to_dict() if hasattr(observation, "to_dict") else None
     success = await delete_observation(observation_id, current_user.tenant_id)
     if not success:
         raise HTTPException(status_code=404, detail="Observation not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_observation",

@@ -1,8 +1,10 @@
 from app.models.enums import ImmunizationStatus
 
+from .access_elevation import AccessElevation
 from .ai_provider_model import AIModel, AIProviderModel, AITaskAssignment
-from .ai_task_model import AICallLog, AITaskDef
+from .ai_task_model import AICallLog, AIPriceOverride, AITaskDef
 from .anatomy_model import AnatomyFigure, AnatomyStructure
+from .api_token import ApiToken, PatientScope
 from .associations import examination_doctors, organization_doctors
 from .audit_model import AuditEvent
 from .auth_session_model import AuthSessionModel
@@ -60,6 +62,11 @@ from .fhir.device import DeviceModel
 from .fhir.organization import OrganizationModel
 from .fhir.provenance import ProvenanceModel
 from .instance_setting_model import InstanceSettingModel
+from .integration_principal import (
+    IntegrationPrincipal,
+    IntegrationPrincipalKind,
+    IntegrationPrincipalStatus,
+)
 from .notification import (
     Notification,
     NotificationCategory,
@@ -82,8 +89,19 @@ from .notification_rule import (
     NotificationRuleType,
 )
 from .oauth import OAuthClient
+from .patient_access_grant import GrantPermission, GrantSource, GrantStatus, PatientAccessGrant
 from .patient_layout import PatientLayoutModel
 from .proposal import Proposal, ProposalKind
+from .scim_group import ScimGroup, ScimGroupMember
+from .scim_token import ScimToken
+from .seed_source_model import (
+    SeedDeferredRef,
+    SeedImportRun,
+    SeedImportRunItem,
+    SeedItemProvenance,
+    SeedSource,
+    SeedSourceVersion,
+)
 from .system_integration import SystemIntegration
 from .system_setting import SystemSetting
 from .task_log import TaskLog
@@ -93,6 +111,8 @@ from .telemetry_model import (
     TelemetryDeviceModel,
 )
 from .tenant_model import TenantModel
+from .tenant_sso_config import TenantSSOConfig
+from .user_identity import UserIdentity
 from .user_integration import (
     IntegrationCredential,
     IntegrationSyncLog,
@@ -100,13 +120,16 @@ from .user_integration import (
     UserIntegration,
 )
 from .user_model import Role, UserModel
+from .webauthn_credential import WebAuthnCredential
 
 __all__ = [
     "AICallLog",
     "AIModel",
+    "AIPriceOverride",
     "AIProviderModel",
     "AITaskAssignment",
     "AITaskDef",
+    "AccessElevation",
     "AllergyCatalog",
     "AllergyCategory",
     "AllergyClinicalStatus",
@@ -114,6 +137,7 @@ __all__ = [
     "AllergyIntolerance",
     "AnatomyFigure",
     "AnatomyStructure",
+    "ApiToken",
     "AuditEvent",
     "AuditMixin",
     "AuthSessionModel",
@@ -150,10 +174,16 @@ __all__ = [
     "ExtensionIsolationPosture",
     "ExtensionSource",
     "ExtensionSourceVersion",
+    "GrantPermission",
+    "GrantSource",
+    "GrantStatus",
     "ImmunizationStatus",
     "ImportJobModel",
     "InstanceSettingModel",
     "IntegrationCredential",
+    "IntegrationPrincipal",
+    "IntegrationPrincipalKind",
+    "IntegrationPrincipalStatus",
     "IntegrationSyncLog",
     "IntegrationSyncState",
     "Laboratory",
@@ -175,8 +205,10 @@ __all__ = [
     "Observation",
     "OrganizationModel",
     "Patient",
+    "PatientAccessGrant",
     "PatientImmunization",
     "PatientLayoutModel",
+    "PatientScope",
     "Proposal",
     "ProposalKind",
     "ProvenanceModel",
@@ -184,6 +216,15 @@ __all__ = [
     "RecipientStatus",
     "RetentionPolicy",
     "Role",
+    "ScimGroup",
+    "ScimGroupMember",
+    "ScimToken",
+    "SeedDeferredRef",
+    "SeedImportRun",
+    "SeedImportRunItem",
+    "SeedItemProvenance",
+    "SeedSource",
+    "SeedSourceVersion",
     "SystemIntegration",
     "SystemSetting",
     "TaskLog",
@@ -192,13 +233,16 @@ __all__ = [
     "TelemetryDeviceModel",
     "TenantMixin",
     "TenantModel",
+    "TenantSSOConfig",
     "TriggerType",
     "UUIDMixin",
     "Unit",
+    "UserIdentity",
     "UserIntegration",
     "UserModel",
     "VaccineCatalog",
     "VersionedMixin",
+    "WebAuthnCredential",
     "examination_doctors",
     "organization_doctors",
 ]

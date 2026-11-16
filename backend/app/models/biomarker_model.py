@@ -58,6 +58,7 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
     __tablename__ = "biomarker_definitions"
 
     slug = Column(String(255), nullable=False, index=True)
+    seed_key = Column(String(120), nullable=True)
     coding_system = Column(Enum(CodingSystem), nullable=False, default=CodingSystem.LOINC)
     code = Column(String(100), nullable=True)
     name = Column(String(255), nullable=False)
@@ -149,13 +150,14 @@ class BiomarkerDefinition(Base, UUIDMixin, AuditMixin, TimestampMixin, Versioned
             "value_type != 'state' OR preferred_unit_id IS NULL",
             name="state_no_unit",
         ),
+        # Tenancy invariants (ADR 0055) — mirrored in 0010_catalog_identity.
+        CheckConstraint("scope <> 'system' OR tenant_id IS NULL", name="scope_system_no_tenant"),
+        CheckConstraint(
+            "(scope <> 'tenant' AND scope <> 'user') OR tenant_id IS NOT NULL",
+            name="scope_scoped_has_tenant",
+        ),
+        CheckConstraint("scope <> 'user' OR created_by IS NOT NULL", name="scope_user_has_creator"),
     )
-
-    @property
-    def category(self) -> str | None:
-        """Backward-compat: the old ``category`` column was replaced by the
-        ``class_concept_id`` FK to ``concepts``. Return the concept name."""
-        return self.class_concept.name if self.class_concept else None
 
 
 class BiomarkerReferenceRange(Base, UUIDMixin, AuditMixin, TimestampMixin):

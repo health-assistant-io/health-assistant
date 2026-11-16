@@ -3,15 +3,22 @@
 # /docker-entrypoint-initdb.d, on first boot of an empty data volume;
 # extensions are handled by init-db.sql which sorts first).
 #
-# Creates the family roles from deployment.md / ADR-0022:
-#   neuronection_health_owner — POSTGRES_USER: owns the schema and runs migrations (DDL).
+# Creates the two-role credential model (ADR-0064 / deployment.md):
+#   neuronection_health_owner — POSTGRES_USER: owns the schema and runs
+#                               migrations (DDL). Its secret is
+#                               POSTGRES_PASSWORD (the image bootstrap
+#                               password, sourced from the deployment's
+#                               owner credential; scripts/restore.sh and
+#                               the one-shot `migrate` service use it too).
 #   neuronection_health_app   — runtime role: CONNECT + DML only, never DDL.
+#                               Its secret is POSTGRES_APP_PASSWORD —
+#                               DISTINCT from the owner password (ADR-0064:
+#                               the compose files pass HA_DB_PASSWORD here;
+#                               a shared value refuses to init).
 #
-# Both roles share one password (POSTGRES_PASSWORD) so the env surface stays
-# at POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD (+ HA_DATABASE_URL); the
-# split is privilege-based, not credential-based. Consequence: the app
-# containers hold the owner password (the one-shot `migrate` service must,
-# to run alembic), while the runtime role can never alter the schema.
+# The app containers only ever receive the app credential (via
+# HA_DATABASE_URL), so a leaked app container cannot CREATE or DROP
+# anything.
 #
 # Optionally creates the companion test database (POSTGRES_TEST_DB) next to
 # the main DB — the dev-db flavor sets it to neuronection_health_test (backend
@@ -21,11 +28,19 @@ set -e
 DB="${POSTGRES_DB:-neuronection_health}"
 OWNER="${POSTGRES_USER:-neuronection_health_owner}"
 APP_USER="${POSTGRES_APP_USER:-neuronection_health_app}"
-APP_PASSWORD="${POSTGRES_PASSWORD:-}"
+APP_PASSWORD="${POSTGRES_APP_PASSWORD:-}"
 TEST_DB="${POSTGRES_TEST_DB:-}"
 
 if [ -z "$APP_PASSWORD" ]; then
-  echo "POSTGRES_PASSWORD must be set — cannot create role '${APP_USER}'." >&2
+  echo "POSTGRES_APP_PASSWORD must be set — cannot create role '${APP_USER}' (ADR-0064: distinct owner/app credentials)." >&2
+  exit 1
+fi
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+  echo "POSTGRES_PASSWORD must be set — cannot bootstrap the owner role." >&2
+  exit 1
+fi
+if [ "$APP_PASSWORD" = "$POSTGRES_PASSWORD" ]; then
+  echo "Refusing: POSTGRES_APP_PASSWORD equals POSTGRES_PASSWORD (ADR-0064 requires distinct owner/app secrets)." >&2
   exit 1
 fi
 

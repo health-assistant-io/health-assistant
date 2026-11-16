@@ -5,6 +5,13 @@ import pytest
 from httpx import AsyncClient
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def make_token(role="USER", user_id=None, tenant_id=None):
     token = MagicMock()
     token.role = role
@@ -137,8 +144,11 @@ async def test_create_observation_user_role_without_patient_400(async_client: As
 
 
 @pytest.mark.asyncio
+@patch("app.api.v1.endpoints.observations.check_patient_access", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
-async def test_get_observation_success(mock_get, async_client: AsyncClient, observation_dict):
+async def test_get_observation_success(
+    mock_get, mock_check, async_client: AsyncClient, observation_dict
+):
     from app.core.security import get_current_user
     from app.main import app
 
@@ -148,6 +158,7 @@ async def test_get_observation_success(mock_get, async_client: AsyncClient, obse
     response = await async_client.get(f"/api/v1/observations/{observation_dict['id']}")
     assert response.status_code == 200
     assert response.json()["id"] == observation_dict["id"]
+    mock_check.assert_awaited_once()
 
     app.dependency_overrides = {}
 
@@ -230,8 +241,9 @@ async def test_update_observation_not_found(mock_get, mock_update, async_client:
 @patch("app.api.v1.endpoints.observations.log_audit_action", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.observations.delete_observation", new_callable=AsyncMock)
 @patch("app.api.v1.endpoints.observations.get_observation", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.observations.check_patient_access", new_callable=AsyncMock)
 async def test_delete_observation_success(
-    mock_get, mock_delete, mock_audit, async_client: AsyncClient, observation_dict
+    mock_check, mock_get, mock_delete, mock_audit, async_client: AsyncClient, observation_dict
 ):
     from app.core.security import get_current_user
     from app.main import app
@@ -239,6 +251,7 @@ async def test_delete_observation_success(
     app.dependency_overrides[get_current_user] = lambda: make_token(role="ADMIN")
     obs = MagicMock()
     obs.id = uuid4()
+    obs.patient_id = uuid4()
     obs.subject = observation_dict["subject"]
     obs.to_dict.return_value = observation_dict
     mock_get.return_value = obs
@@ -246,6 +259,7 @@ async def test_delete_observation_success(
 
     response = await async_client.delete(f"/api/v1/observations/{observation_dict['id']}")
     assert response.status_code == 200
+    mock_check.assert_awaited_once()
     mock_delete.assert_awaited_once()
     mock_audit.assert_awaited_once()
     assert mock_audit.call_args.kwargs["action"] == "delete_observation"

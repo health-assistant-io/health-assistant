@@ -107,6 +107,14 @@ export interface CatalogItemPickerProps {
     selection: CatalogSelection,
     idx: number,
   ) => React.ReactNode;
+  /**
+   * Opt-in: offer **New <type>** in the browse dialog's list header, opening
+   * {@link CreateCatalogItemModal} — the one manual definition surface.
+   * Only shown when the field allows exactly one catalog type and the picker
+   * is in `single` mode; the graph view never offers it. Default `false`:
+   * a picker that only picks existing items must not sprout a create action.
+   */
+  allowCreate?: boolean;
 }
 
 export { selectionKey };
@@ -125,6 +133,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
   block = false,
   displayMode = 'chips',
   renderCardFooter,
+  allowCreate = false,
 }) => {
   const { t } = useTranslation();
 
@@ -155,11 +164,14 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
     [allowedList, conceptKind, relationDefault],
   );
 
-  const { browseModalProps, onBrowseOpenChange } = useCatalogPickerBrowse({
-    allowedList,
-    conceptKind,
-    relationDefault,
-  });
+  const { browseModalProps, onBrowseOpenChange, createDialog } =
+    useCatalogPickerBrowse({
+      allowedList,
+      conceptKind,
+      relationDefault,
+      mode,
+      allowCreate,
+    });
 
   const pickerValue = useMemo(
     () => value.map((sel) => toPickerSelection(sel, relationDefault)),
@@ -258,6 +270,7 @@ export const CatalogItemPicker: React.FC<CatalogItemPickerProps> = ({
         onBrowseOpenChange={onBrowseOpenChange}
         className={block ? 'w-full' : undefined}
       />
+      {createDialog}
 
       {value.length > 0 && displayMode === 'cards' && (
         <div className="flex flex-col gap-2">

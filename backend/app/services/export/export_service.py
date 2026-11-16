@@ -2,12 +2,14 @@ import hashlib
 import json
 import logging
 import os
+import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import anyio
 from sqlalchemy import or_, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,9 +129,26 @@ class ExportService:
         counts: dict[str, int],
         manifest: BackupManifest | None = None,
     ) -> None:
+        """Finish a job; ``file_path``/``manifest_path`` hold object keys.
+
+        The two columns keep their historical names (no schema churn) but a
+        value in them is a server-generated key under the tenant prefix, never
+        a host path. The manifest is its own object, not a filesystem sidecar.
+        """
         manifest_path = None
         if manifest:
-            manifest_path = file_path + ".manifest.json"
+            from app.storage.artifacts import ArtifactStorage
+
+            # Same tenant/category prefix as the archive, its own object.
+            manifest_path = f"{file_path.rsplit('/', 1)[0]}/{job_id}.manifest.json"
+            payload = manifest.model_dump_json(indent=2).encode("utf-8")
+
+            def _write_manifest() -> None:
+                ArtifactStorage().put_bytes(
+                    manifest_path, payload, content_type="application/json"
+                )
+
+            await anyio.to_thread.run_sync(_write_manifest)
         await self.db.execute(
             sa_update(ExportJobModel)
             .where(ExportJobModel.id == job_id)
@@ -144,8 +163,6 @@ class ExportService:
             )
         )
         await self.db.commit()
-        if manifest and manifest_path:
-            Path(manifest_path).write_text(manifest.model_dump_json(indent=2))
 
     async def fail_job(self, job_id: UUID, error: str) -> None:
         await self.db.execute(
@@ -375,11 +392,10 @@ class ExportService:
 
         Global/seeded body parts (``tenant_id IS NULL``) are recreated by
         ``SeedService`` on the target, so we export only rows owned by this
-        tenant — that already includes every custom organ an admin here
-        created (custom rows are tenant-scoped). We deliberately do NOT use
-        ``OR is_custom = True``: that would leak other tenants' private custom
-        anatomy and break tenant isolation. Relations are included only when
-        both endpoints are in the exported set."""
+        tenant — that already includes every anatomy structure an admin here
+        created (tenant rows carry ``tenant_id``; ownership is exactly
+        ``scope`` + ``tenant_id``). Relations are included only when both
+        endpoints are in the exported set."""
         struct_res = await self.db.execute(
             select(AnatomyStructure).where(AnatomyStructure.tenant_id == tenant_id)
         )
@@ -440,14 +456,6 @@ class ExportService:
                     "coding_system": b.coding_system.value if b.coding_system else None,
                     "code": b.code,
                     "name": b.name,
-                    "category": b.category,
-                    # The class concept *slug* — the canonical, stable key the
-                    # import resolves against ``concepts.slug``. The
-                    # ``category`` field above is the concept *name* (human-
-                    # readable) which does NOT round-trip through
-                    # ``biomarker_category_to_concept_slug`` (it only swaps
-                    # ``_``→``-``, leaving spaces). Without this slug the
-                    # biomarker's class link is silently dropped on restore.
                     "class_concept_slug": b.class_concept.slug
                     if b.class_concept and getattr(b.class_concept, "slug", None)
                     else None,
@@ -487,7 +495,10 @@ class ExportService:
             "medications": [
                 {
                     "id": str(m.id),
+                    "seed_key": m.seed_key,
                     "name": m.name,
+                    "coding_system": m.coding_system,
+                    "code": m.code,
                     "description": m.description,
                     "indications": m.indications,
                     "side_effects": m.side_effects or [],
@@ -512,7 +523,10 @@ class ExportService:
             "allergies": [
                 {
                     "id": str(a.id),
+                    "seed_key": a.seed_key,
                     "name": a.name,
+                    "coding_system": a.coding_system,
+                    "code": a.code,
                     "category": a.category.value if a.category else None,
                     "description": a.description,
                     "typical_reactions": a.typical_reactions or [],
@@ -741,13 +755,6 @@ class ExportService:
 
     # ---------------- write ----------------
 
-    def _exports_dir(self, tenant_id: UUID) -> Path:
-        from app.services.documents.document_service import HA_UPLOAD_DIR as RESOLVED_UPLOAD_DIR
-
-        base = Path(RESOLVED_UPLOAD_DIR) / EXPORT_DIR_NAME / str(tenant_id)
-        base.mkdir(parents=True, exist_ok=True)
-        return base
-
     @staticmethod
     def compute_sha256(path: str | Path) -> str:
         h = hashlib.sha256()
@@ -760,6 +767,20 @@ class ExportService:
     def _sha256_bytes(data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
 
+    @staticmethod
+    def _check_export_size(size: int) -> None:
+        """Refuse an archive over the host export ceiling or the store cap."""
+        from app.storage.artifacts import ArtifactStorage
+        from app.storage.bootstrap import export_max_bytes
+        from app.storage.object_storage import ObjectTooLarge
+
+        limit = min(export_max_bytes(), ArtifactStorage().store.config.max_object_bytes)
+        if size > limit:
+            raise ObjectTooLarge(
+                f"export is {size} bytes; limit is {limit} bytes "
+                "(raise HA_EXPORT_MAX_MB for larger backups)"
+            )
+
     def write_fhir_only_file(
         self,
         bundle: dict[str, Any],
@@ -767,15 +788,16 @@ class ExportService:
         job_id: UUID,
         manifest: BackupManifest,
     ) -> tuple[str, int, BackupManifest]:
-        out_dir = self._exports_dir(tenant_id)
-        file_path = out_dir / f"{job_id}.fhir.json"
+        from app.storage.artifacts import ArtifactStorage, export_key
+
         bundle_bytes = json.dumps(bundle, indent=2, default=str).encode("utf-8")
-        file_path.write_bytes(bundle_bytes)
+        self._check_export_size(len(bundle_bytes))
+        key = export_key(tenant_id, job_id, "json", stem="fhir")
+        ArtifactStorage().put_bytes(key, bundle_bytes, content_type="application/json")
         sha = self._sha256_bytes(bundle_bytes)
         manifest.files = [ManifestFile(path="fhir/bundle.json", sha256=sha, size=len(bundle_bytes))]
         manifest.counts = {"bundle_entries": len(bundle.get("entry", []))}
-        size = len(bundle_bytes)
-        return str(file_path), size, manifest
+        return key, len(bundle_bytes), manifest
 
     def write_catalog_file(
         self,
@@ -784,10 +806,12 @@ class ExportService:
         job_id: UUID,
         manifest: BackupManifest,
     ) -> tuple[str, int, BackupManifest]:
-        out_dir = self._exports_dir(tenant_id)
-        file_path = out_dir / f"{job_id}.catalog.json"
+        from app.storage.artifacts import ArtifactStorage, export_key
+
         payload_bytes = json.dumps(catalog, indent=2, default=str).encode("utf-8")
-        file_path.write_bytes(payload_bytes)
+        self._check_export_size(len(payload_bytes))
+        key = export_key(tenant_id, job_id, "json", stem="catalog")
+        ArtifactStorage().put_bytes(key, payload_bytes, content_type="application/json")
         sha = self._sha256_bytes(payload_bytes)
         manifest.files = [ManifestFile(path="catalog.json", sha256=sha, size=len(payload_bytes))]
         manifest.counts = {
@@ -797,7 +821,7 @@ class ExportService:
             "medication_catalog": len(catalog.get("medication_catalog", {}).get("medications", [])),
             "allergy_catalog": len(catalog.get("allergy_catalog", {}).get("allergies", [])),
         }
-        return str(file_path), len(payload_bytes), manifest
+        return key, len(payload_bytes), manifest
 
     def write_full_backup_zip(
         self,
@@ -808,70 +832,82 @@ class ExportService:
         job_id: UUID,
         manifest: BackupManifest,
     ) -> tuple[str, int, BackupManifest]:
-        out_dir = self._exports_dir(tenant_id)
-        zip_path = out_dir / f"{job_id}.zip"
+        from app.storage.artifacts import ArtifactStorage, export_key
+
         files: list[ManifestFile] = []
-
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            bundle_bytes = json.dumps(bundle, indent=2, default=str).encode("utf-8")
-            zf.writestr("fhir/bundle.json", bundle_bytes)
-            files.append(
-                ManifestFile(
-                    path="fhir/bundle.json",
-                    sha256=self._sha256_bytes(bundle_bytes),
-                    size=len(bundle_bytes),
-                )
-            )
-
-            for name, payload in sidecars.items():
-                data = json.dumps(payload, indent=2, default=str).encode("utf-8")
-                zf.writestr(f"nonfhir/{name}", data)
+        descriptor, temp_name = tempfile.mkstemp(prefix="ha-export-", suffix=".zip")
+        os.close(descriptor)
+        zip_path = Path(temp_name)
+        try:
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                bundle_bytes = json.dumps(bundle, indent=2, default=str).encode("utf-8")
+                zf.writestr("fhir/bundle.json", bundle_bytes)
                 files.append(
                     ManifestFile(
-                        path=f"nonfhir/{name}",
-                        sha256=self._sha256_bytes(data),
-                        size=len(data),
+                        path="fhir/bundle.json",
+                        sha256=self._sha256_bytes(bundle_bytes),
+                        size=len(bundle_bytes),
                     )
                 )
 
-            for doc in documents:
-                ext = os.path.splitext(doc.filename or "")[1] or ".bin"
-                archive_name = f"documents/{doc.id}{ext}"
-                src = doc.file_path
-                if src and os.path.exists(src):
-                    with open(src, "rb") as fh:
-                        data = fh.read()
-                    zf.writestr(archive_name, data)
+                for name, payload in sidecars.items():
+                    data = json.dumps(payload, indent=2, default=str).encode("utf-8")
+                    zf.writestr(f"nonfhir/{name}", data)
                     files.append(
                         ManifestFile(
-                            path=archive_name,
+                            path=f"nonfhir/{name}",
                             sha256=self._sha256_bytes(data),
                             size=len(data),
                         )
                     )
 
-            manifest.files = files
-            manifest.counts = {
-                f: sum(1 for x in files if x.path.startswith(f))
-                for f in ["fhir", "nonfhir", "documents"]
-            }
-            manifest_bytes = manifest.model_dump_json(indent=2).encode("utf-8")
-            zf.writestr("manifest.json", manifest_bytes)
-            sha256_lines = "\n".join(f"{f.sha256}  {f.path}" for f in files) + "\n"
-            zf.writestr("manifest-sha256.txt", sha256_lines.encode("utf-8"))
-            zf.writestr(
-                "bag-info.txt",
-                f"Health-Assistant-Export\n"
-                f"Tenant-Id: {tenant_id}\n"
-                f"Job-Id: {job_id}\n"
-                f"Exported-At: {manifest.exported_at.isoformat()}\n"
-                f"Schema-Version: {BACKUP_SCHEMA_VERSION}\n"
-                f"FHIR-Version: {FHIR_VERSION}\n"
-                f"Smart-Scope: {manifest.smart_scope}\n".encode(),
-            )
+                # Document bytes come through the storage facade (object first,
+                # legacy local path for pre-contract rows), never from a path in
+                # the export job's process.
+                from app.storage.documents import DocumentStorage
 
-        size = zip_path.stat().st_size
-        return str(zip_path), size, manifest
+                storage = DocumentStorage()
+                for doc in documents:
+                    ext = os.path.splitext(doc.filename or "")[1] or ".bin"
+                    archive_name = f"documents/{doc.id}{ext}"
+                    data = storage.read(doc)
+                    if data is not None:
+                        zf.writestr(archive_name, data)
+                        files.append(
+                            ManifestFile(
+                                path=archive_name,
+                                sha256=self._sha256_bytes(data),
+                                size=len(data),
+                            )
+                        )
+
+                manifest.files = files
+                manifest.counts = {
+                    f: sum(1 for x in files if x.path.startswith(f))
+                    for f in ["fhir", "nonfhir", "documents"]
+                }
+                manifest_bytes = manifest.model_dump_json(indent=2).encode("utf-8")
+                zf.writestr("manifest.json", manifest_bytes)
+                sha256_lines = "\n".join(f"{f.sha256}  {f.path}" for f in files) + "\n"
+                zf.writestr("manifest-sha256.txt", sha256_lines.encode("utf-8"))
+                zf.writestr(
+                    "bag-info.txt",
+                    f"Health-Assistant-Export\n"
+                    f"Tenant-Id: {tenant_id}\n"
+                    f"Job-Id: {job_id}\n"
+                    f"Exported-At: {manifest.exported_at.isoformat()}\n"
+                    f"Schema-Version: {BACKUP_SCHEMA_VERSION}\n"
+                    f"FHIR-Version: {FHIR_VERSION}\n"
+                    f"Smart-Scope: {manifest.smart_scope}\n".encode(),
+                )
+
+            size = zip_path.stat().st_size
+            self._check_export_size(size)
+            key = export_key(tenant_id, job_id)
+            ArtifactStorage().put_file(key, zip_path, content_type="application/zip")
+            return key, size, manifest
+        finally:
+            zip_path.unlink(missing_ok=True)
 
     def build_manifest(
         self,
@@ -919,8 +955,8 @@ class ExportService:
                 catalog["medication_catalog"] = await self.gather_medication_catalog(tenant_id)
                 catalog["allergy_catalog"] = await self.gather_allergy_catalog(tenant_id)
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
-                file_path, size, manifest = self.write_catalog_file(
-                    catalog, tenant_id, job_id, manifest
+                file_path, size, manifest = await anyio.to_thread.run_sync(
+                    self.write_catalog_file, catalog, tenant_id, job_id, manifest
                 )
                 counts = dict(manifest.counts)
                 await self.complete_job(job_id, file_path, size, counts, manifest)
@@ -957,8 +993,8 @@ class ExportService:
 
             if export_type == ExportType.FHIR_ONLY:
                 manifest = self.build_manifest(tenant_id, scope, export_type, options)
-                file_path, size, manifest = self.write_fhir_only_file(
-                    bundle, tenant_id, job_id, manifest
+                file_path, size, manifest = await anyio.to_thread.run_sync(
+                    self.write_fhir_only_file, bundle, tenant_id, job_id, manifest
                 )
                 manifest.counts = {**fhir_counts, **manifest.counts}
                 await self.complete_job(job_id, file_path, size, manifest.counts, manifest)
@@ -1008,8 +1044,14 @@ class ExportService:
             )
 
             manifest = self.build_manifest(tenant_id, scope, export_type, options, notes=notes)
-            file_path, size, manifest = self.write_full_backup_zip(
-                bundle, sidecars, documents, tenant_id, job_id, manifest
+            file_path, size, manifest = await anyio.to_thread.run_sync(
+                self.write_full_backup_zip,
+                bundle,
+                sidecars,
+                documents,
+                tenant_id,
+                job_id,
+                manifest,
             )
             counts = {**fhir_counts, **sidecar_counts}
             await self.complete_job(job_id, file_path, size, counts, manifest)

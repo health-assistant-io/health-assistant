@@ -1,15 +1,12 @@
 import asyncio
-import json
 import os
 import sys
-from pathlib import Path
 
 # Ensure backend path is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
-from app.schemas.biomarker import CatalogImportPayload
-from app.services.catalog.catalog_import_service import CatalogImportService
+from app.services.seed.service import SeedService
 
 
 async def main():
@@ -17,34 +14,26 @@ async def main():
         print("❌ Error: Database is not available.")
         sys.exit(1)
 
-    catalog_path = Path(__file__).parent.parent / "data" / "seeds" / "default_catalog.json"
+    print("🚀 Starting default catalog seed (identity upsert)...")
 
-    if not catalog_path.exists():
-        print(f"❌ Error: Default catalog not found at {catalog_path}")
-        sys.exit(1)
+    # The seeder never owns the transaction (ADR 0056): one session, one commit.
+    async with AsyncSessionLocal() as session:
+        stats = await SeedService().seed_default_catalog(session)
+        await session.commit()
+    details = stats.get("details", {})
 
-    print("🚀 Starting default catalog import...")
+    print("-" * 30)
+    print("✅ Catalog sync complete!")
+    print(f"🧬 Biomarkers Added:     {details.get('biomarkers_added', 0)}")
+    print(f"🧬 Biomarkers Updated:   {details.get('biomarkers_updated', 0)}")
+    print(f"🧬 Biomarkers Unchanged: {details.get('biomarkers_unchanged', 0)}")
+    print(f"📏 Units Added:          {details.get('units_added', 0)}")
+    print(f"📏 Units Updated:        {details.get('units_updated', 0)}")
+    print(f"📏 Units Unchanged:      {details.get('units_unchanged', 0)}")
+    print(f"❌ Errors:               {stats.get('errors', 0)}")
+    print("-" * 30)
 
-    try:
-        with open(catalog_path, encoding="utf-8") as f:
-            data = json.load(f)
-
-        payload = CatalogImportPayload.model_validate(data)
-
-        async with AsyncSessionLocal() as session:
-            import_service = CatalogImportService(session)
-            stats = await import_service.import_catalog(payload)
-
-            print("-" * 30)
-            print("✅ Catalog Sync complete!")
-            print(f"🧬 Biomarkers Added:   {stats.get('biomarkers_added', 0)}")
-            print(f"🧬 Biomarkers Updated: {stats.get('biomarkers_updated', 0)}")
-            print(f"📏 Units Added:        {stats.get('units_added', 0)}")
-            print(f"📏 Units Updated:      {stats.get('units_updated', 0)}")
-            print("-" * 30)
-
-    except Exception as e:
-        print(f"❌ Error importing catalog: {e}")
+    if stats.get("errors"):
         sys.exit(1)
 
 

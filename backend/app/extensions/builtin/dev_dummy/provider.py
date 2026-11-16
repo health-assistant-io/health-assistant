@@ -612,7 +612,7 @@ class DevDummyProvider(BaseHealthProvider):
     # §J — Chat tools (LangChain)
     # ==================================================================
 
-    async def get_tools(self, integration: UserIntegration) -> list[Any]:
+    async def get_tools(self, integration: UserIntegration, *, principal: Any = None) -> list[Any]:
         """Return LangChain tools the chat assistant can call.
 
         The platform tool aggregator merges these with the built-in
@@ -785,7 +785,7 @@ class DevDummyProvider(BaseHealthProvider):
             biomarker_proposal(
                 name="Dev Dummy Sleep Quality Score",
                 slug="dev_dummy_sleep_quality_score",
-                category="Sleep",
+                class_concept_slug="sleep",
                 coding_system="custom",
                 code="DevDummySleepQuality",
                 preferred_unit_symbol="score",

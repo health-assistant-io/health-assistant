@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Save, Activity, Info, FlaskConical, X, Calendar, Stethoscope } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Activity, Info, Calendar, Stethoscope } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
 import { UnitSelector } from '../ui/UnitSelector';
 import { DatePicker } from '../ui/DatePicker';
@@ -8,7 +8,7 @@ import { CatalogItemPicker } from '../catalog/CatalogItemPicker';
 import biomarkerService from '../../services/biomarkerService';
 import { Biomarker, Unit } from '../../types/biomarker';
 import { Observation } from '../../types/observation';
-import { CreateBiomarkerModal } from './CreateBiomarkerModal';
+import { RecordFormFooter } from '../records/RecordFormFooter';
 import { useTranslation } from 'react-i18next';
 import { matchBiomarker } from '../../utils/searchUtils';
 import type { CatalogSelection } from '../../types/catalog';
@@ -49,15 +49,23 @@ interface AddBiomarkerFormProps {
   onReject?: () => void;
   submitLabel?: string;
   rejectLabel?: string;
-  /** Render the inline header (icon + title + AI assist + close). HITL hides it
-   *  and uses the host modal's uniform header instead. */
-  showHeader?: boolean;
-  /** Render the footer action buttons (cancel/reject/submit). */
+  /** Owned by the shell; set as the native `<form id>` so a footer button
+   *  outside the form (the popup) can submit it through the `form` attribute. */
+  formId?: string;
+  /** Inline footer for the HITL chat-card placement; the popup shell renders
+   *  its own `RecordFormFooter` instead. */
   showActions?: boolean;
-  /** Title override for the inline header. Falls back to the i18n key. */
-  headerTitleKey?: string;
-  /** Subtitle override for the inline header badge. */
-  headerSubtitleKey?: string;
+  /** Reports validity/loading to the shell so its footer can drive Save. */
+  onStateChange?: (state: { canSubmit: boolean; loading: boolean }) => void;
+  /**
+   * One-shot programmatic pick (HITL confirm-after-create): set the picker to
+   * this biomarker and run the full definition hydration (`handlePickerChange`
+   * → `getBiomarkerById`) so `selectedBiomarker` is set and Save is enabled.
+   * Applies when `catalog_id` CHANGES and the picker does not already hold
+   * it; never re-applies after the user clears the chip; a remount with the
+   * same value is a no-op (the ref seeds from the prop).
+   */
+  catalogSelection?: { catalog_id: string; text: string };
 }
 
 export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
@@ -70,10 +78,10 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
   onReject,
   submitLabel,
   rejectLabel,
-  showHeader = true,
+  formId,
   showActions = true,
-  headerTitleKey,
-  headerSubtitleKey,
+  onStateChange,
+  catalogSelection,
 }) => {
   const { t } = useTranslation();
   const [selectedBiomarker, setSelectedBiomarker] = useState<Biomarker | null>(null);
@@ -84,7 +92,6 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
   const [pickerValue, setPickerValue] = useState<CatalogSelection[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // Standalone-mode extras (hidden when examinationId is supplied). The
   // measurement date defaults to "now" so a saved reading sorts to the top
@@ -176,6 +183,22 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
     }
   };
 
+  // One-shot programmatic pick (HITL confirm-after-create). Delegates to the
+  // same hydration bridge as a manual pick so `selectedBiomarker` is set and
+  // Save is enabled. The ref seeds from the prop so a remount with the same
+  // value is a no-op, and the value never re-applies once the user clears.
+  const appliedCatalogRef = useRef<string | null>(catalogSelection?.catalog_id ?? null);
+  useEffect(() => {
+    const id = catalogSelection?.catalog_id;
+    if (!id || appliedCatalogRef.current === id) return;
+    appliedCatalogRef.current = id;
+    if (pickerValue.some((s) => s.id === id)) return;
+    void handlePickerChange([
+      { type: 'biomarker', id, label: catalogSelection?.text ?? '' },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogSelection]);
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!selectedBiomarker || !formData.value) return;
@@ -259,20 +282,21 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
     }
   };
 
+  const canSubmit = !loading && Boolean(selectedBiomarker) && Boolean(formData.value);
+
+  const reportedState = useRef('');
+  useEffect(() => {
+    const key = `${canSubmit}|${loading}`;
+    if (reportedState.current === key) return;
+    reportedState.current = key;
+    onStateChange?.({ canSubmit, loading });
+  }, [canSubmit, loading, onStateChange]);
+
   return (
     <>
-      {showHeader && (
-        <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-              <FlaskConical className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text">{t(headerTitleKey || 'examination_detail.add_biomarker.title')}</h2>
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-0.5">{t(headerSubtitleKey || 'examination_detail.add_biomarker.manual_entry')}</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
+      <form id={formId} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8">
+          <div className="flex items-center justify-end">
             <AIAssistButton
               taskType="fill_biomarker_form"
               context={{ patientId, examinationId: examinationId || undefined }}
@@ -302,16 +326,7 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
                 }
               }}
             />
-            {onCancel && (
-              <button onClick={onCancel} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
-            )}
           </div>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8">
         {/* Locked-biomarker badge — surfaces the target biomarker so the user
             has clear context (otherwise the whole catalog-search block, which
             contains the name, is hidden in lock mode). */}
@@ -337,7 +352,8 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
         {/* Biomarker Selection — hidden when the caller locks the biomarker
             (BiomarkerDetail "Log Reading" flow skips the catalog search).
             Uses the project's CatalogItemPicker so the user gets the same
-            search + Browse-modal experience as the rest of the catalog UIs. */}
+            search + Browse-modal experience as the rest of the catalog UIs;
+            definitions are created from the browse dialog (allowCreate). */}
         {!lockedBiomarker && (
           <div className="space-y-3">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
@@ -351,20 +367,8 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
               placeholder={t('examination_detail.add_biomarker.search_placeholder')}
               displayMode="cards"
               block
+              allowCreate
             />
-            {/* Create-definition CTA — surfaced when nothing matches. */}
-            <button
-              type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="w-full text-left px-4 py-3 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 rounded-2xl border border-dashed border-blue-200 dark:border-blue-900/40 transition-all"
-            >
-              <div className="p-2 bg-blue-600 text-white rounded-xl">
-                <Plus className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-sm font-bold italic">{t('examination_detail.add_biomarker.create_new_definition')}</p>
-              </div>
-            </button>
           </div>
         )}
 
@@ -474,55 +478,25 @@ export const AddBiomarkerForm: React.FC<AddBiomarkerFormProps> = ({
             />
           </div>
         </div>
-      </form>
-
-      {showActions && (
-        <div className="px-8 py-6 bg-gray-50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border flex items-center justify-end space-x-4">
-          {onReject && (
-            <button
-              type="button"
-              onClick={onReject}
-              disabled={loading}
-              className="px-6 py-2.5 text-sm font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 transition-colors uppercase tracking-widest disabled:opacity-50"
-            >
-              {rejectLabel || t('ai_chat.hitl.reject')}
-            </button>
-          )}
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={loading}
-              className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-dark-muted transition-colors uppercase tracking-widest disabled:opacity-50"
-            >
-              {t('common.cancel')}
-            </button>
-          )}
-          <button
-            onClick={(e) => { e.preventDefault(); handleSubmit(); }}
-            disabled={loading || !selectedBiomarker || !formData.value}
-            className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-2 uppercase tracking-widest"
-          >
-            {loading ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            <span>{submitLabel || t('examination_detail.add_biomarker.add_result')}</span>
-          </button>
         </div>
-      )}
 
-      <CreateBiomarkerModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        initialName=""
-        onSuccess={(bio) => {
-          setSelectedBiomarker(bio);
-          setPickerValue([{ type: 'biomarker', id: bio.id, label: bio.name }]);
-          setFormData({ ...formData, unit: bio.preferred_unit_symbol || '' });
-        }}
-      />
+        {showActions && (
+          <div className="flex shrink-0 items-center border-t border-gray-50 bg-gray-50 px-8 py-6 dark:border-dark-border dark:bg-dark-bg/50">
+            <RecordFormFooter
+              formId={formId}
+              canSubmit={canSubmit}
+              loading={loading}
+              submitLabel={
+                submitLabel || t('examination_detail.add_biomarker.add_result')
+              }
+              cancelLabel={t('common.cancel')}
+              onCancel={onCancel}
+              rejectLabel={rejectLabel}
+              onReject={onReject}
+            />
+          </div>
+        )}
+      </form>
     </>
   );
 };

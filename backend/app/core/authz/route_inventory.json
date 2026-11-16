@@ -1,0 +1,2172 @@
+{
+  "schema": 1,
+  "rule": "every route declares a policy or holds an entry; entries may only be removed into retired (monotonic shrink — ADR 0054)",
+  "entries": [
+    {
+      "route": "DELETE /api/v1/admin/tenants/{tenant_id}",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "DELETE /api/v1/ai-assistance/sessions/{session_id}",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "DELETE /api/v1/ai-config/models/{model_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "DELETE /api/v1/ai-config/providers/{provider_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "DELETE /api/v1/ai-config/task-assignments/{assignment_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "DELETE /api/v1/allergies/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "DELETE /api/v1/allergies/{allergy_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "DELETE /api/v1/anatomy/figures/{slug}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "DELETE /api/v1/anatomy/{identifier}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "DELETE /api/v1/biomarkers/{biomarker_id}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "DELETE /api/v1/biomarkers/{biomarker_id}/reference-ranges/{range_id}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "DELETE /api/v1/calendar/bindings/{binding_id}",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "DELETE /api/v1/catalogs/{type}/{item_id}",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "DELETE /api/v1/clinical-events/types/{type_id}/biomarkers/{biomarker_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "DELETE /api/v1/clinical-events/{event_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "DELETE /api/v1/clinical-events/{event_id}/occurrences/{occurrence_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "DELETE /api/v1/clinical-events/{event_id}/unlink-anatomy/{anatomy_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "DELETE /api/v1/concept-edges/{edge_id}",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "DELETE /api/v1/concepts/{concept_id}",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "DELETE /api/v1/doctors/{doctor_id}",
+      "route_class": "session",
+      "owner": "doctors"
+    },
+    {
+      "route": "DELETE /api/v1/documents/{document_id}",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "DELETE /api/v1/examinations/{examination_id}",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "DELETE /api/v1/fhir/R4/{resource_type}/{resource_id}",
+      "route_class": "token_fhir",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "DELETE /api/v1/integrations/instance/{integration_id}",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "DELETE /api/v1/integrations/{domain}/api/{integration_id}/{path:path}",
+      "route_class": "tokenless_hmac",
+      "owner": "integrations"
+    },
+    {
+      "route": "DELETE /api/v1/me/mfa",
+      "route_class": "session",
+      "owner": "me_mfa"
+    },
+    {
+      "route": "DELETE /api/v1/me/mfa/passkeys/{credential_id}",
+      "route_class": "session",
+      "owner": "me_passkeys"
+    },
+    {
+      "route": "DELETE /api/v1/me/sessions/{session_id}",
+      "route_class": "session",
+      "owner": "me_sessions"
+    },
+    {
+      "route": "DELETE /api/v1/medications/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "DELETE /api/v1/medications/{medication_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "DELETE /api/v1/notification-rules/{rule_id}",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "DELETE /api/v1/notifications/triggers/{trigger_id}",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "DELETE /api/v1/oauth/clients/{client_row_id}",
+      "route_class": "session",
+      "owner": "oauth"
+    },
+    {
+      "route": "DELETE /api/v1/observations/{observation_id}",
+      "route_class": "session",
+      "owner": "observations"
+    },
+    {
+      "route": "DELETE /api/v1/organizations/{organization_id}",
+      "route_class": "session",
+      "owner": "organizations"
+    },
+    {
+      "route": "DELETE /api/v1/patients/{patient_id}",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "DELETE /api/v1/patients/{patient_id}/access/{grant_id}",
+      "route_class": "session",
+      "owner": "patient_access"
+    },
+    {
+      "route": "DELETE /api/v1/patients/{patient_id}/layouts/{layout_id}",
+      "route_class": "session",
+      "owner": "patient_layout"
+    },
+    {
+      "route": "DELETE /api/v1/users/me",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "DELETE /api/v1/users/{user_id}",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "DELETE /api/v1/vaccines/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "DELETE /api/v1/vaccines/{immunization_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "GET /",
+      "route_class": "public",
+      "owner": "main"
+    },
+    {
+      "route": "GET /.well-known/smart-configuration",
+      "route_class": "public",
+      "owner": "main"
+    },
+    {
+      "route": "GET /api/v1/admin/access-elevations",
+      "route_class": "session",
+      "owner": "admin_elevations"
+    },
+    {
+      "route": "GET /api/v1/admin/audit",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "GET /api/v1/admin/audit/export",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "GET /api/v1/admin/audit/retention",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "GET /api/v1/admin/audit/verify",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "GET /api/v1/admin/integrations",
+      "route_class": "session",
+      "owner": "admin_integrations"
+    },
+    {
+      "route": "GET /api/v1/admin/integrations/registration-failures",
+      "route_class": "session",
+      "owner": "admin_integrations"
+    },
+    {
+      "route": "GET /api/v1/admin/seed-sources",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "GET /api/v1/admin/seed-sources/versions/{version_id}/plan",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "GET /api/v1/admin/seed-sources/{source_id}/runs",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "GET /api/v1/admin/seed-sources/{source_id}/runs/{run_id}",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "GET /api/v1/admin/seed-sources/{source_id}/versions",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "GET /api/v1/admin/seeds/export.zip",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "GET /api/v1/admin/system/storage",
+      "route_class": "session",
+      "owner": "admin_storage"
+    },
+    {
+      "route": "GET /api/v1/admin/tenants",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "GET /api/v1/admin/tenants/{tenant_id}",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "GET /api/v1/admin/tenants/{tenant_id}/audit",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "GET /api/v1/admin/tenants/{tenant_id}/users",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "GET /api/v1/ai-assistance/sessions",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "GET /api/v1/ai-assistance/sessions/{session_id}/messages",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "GET /api/v1/ai-assistance/sessions/{session_id}/tree",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "GET /api/v1/ai-assistance/tools",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "GET /api/v1/ai-config/default-for-task/{task_type}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/models/{model_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/provider-presets",
+      "route_class": "public",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/providers",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/providers/{provider_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/providers/{provider_id}/fetch-external-models",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/providers/{provider_id}/models",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/providers/{provider_id}/with-models",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/summary",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/task-assignments",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/task-assignments/active/{task_type}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/task-assignments/{assignment_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "GET /api/v1/ai-config/usage",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "DELETE /api/v1/ai/prices/{override_id}",
+      "route_class": "session",
+      "owner": "ai_pricing"
+    },
+    {
+      "route": "GET /api/v1/ai/prices",
+      "route_class": "session",
+      "owner": "ai_pricing"
+    },
+    {
+      "route": "GET /api/v1/ai/usage/costs",
+      "route_class": "session",
+      "owner": "ai_pricing"
+    },
+    {
+      "route": "PUT /api/v1/ai/prices",
+      "route_class": "session",
+      "owner": "ai_pricing"
+    },
+    {
+      "route": "GET /api/v1/allergies/active",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/allergies/catalog",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/allergies/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/allergies/catalog/{catalog_id}/usage",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/allergies/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/allergies/{allergy_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "GET /api/v1/analytics/anomalies",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/available-categories",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/category/{category_name}",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/dashboard",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/reference-ranges",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/summary",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/analytics/trends",
+      "route_class": "session",
+      "owner": "analytics"
+    },
+    {
+      "route": "GET /api/v1/anatomy",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/figures",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/figures/{slug}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/figures/{slug}/image",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/figures/{slug}/source-image",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/{identifier}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/{identifier}/graph",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/anatomy/{identifier}/related",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "GET /api/v1/auth/me",
+      "route_class": "session",
+      "owner": "auth"
+    },
+    {
+      "route": "GET /api/v1/auth/setup-status",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "GET /api/v1/auth/validate",
+      "route_class": "session",
+      "owner": "auth"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/slug/{slug}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/states",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/units",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/{biomarker_id}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/biomarkers/{biomarker_id}/reference-ranges",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "GET /api/v1/calendar/bindings",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "GET /api/v1/calendar/bindings/{binding_id}/logs",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "GET /api/v1/calendar/oauth/callback",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "GET /api/v1/calendar/providers",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "GET /api/v1/catalogs",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/graph",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/relation-types",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/search",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/{type}",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/{type}/{item_id}",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/{type}/{item_id}/history",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/catalogs/{type}/{item_id}/relations",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "GET /api/v1/clinical-events",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "GET /api/v1/clinical-events/types",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "GET /api/v1/clinical-events/types/{type_id}/biomarkers",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "GET /api/v1/clinical-events/{event_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "GET /api/v1/clinical-events/{event_id}/insights",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "GET /api/v1/concept-edges",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/concept-edges/schema",
+      "route_class": "public",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/concepts",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/concepts/search",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/concepts/{concept_id}",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/concepts/{concept_id}/neighbors",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "GET /api/v1/config/public",
+      "route_class": "public",
+      "owner": "public_config"
+    },
+    {
+      "route": "GET /api/v1/data-lifecycle/erasures",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "GET /api/v1/data-lifecycle/erasures/{request_id}",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "GET /api/v1/data-lifecycle/retention-policies",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "GET /api/v1/doctors",
+      "route_class": "session",
+      "owner": "doctors"
+    },
+    {
+      "route": "GET /api/v1/doctors/{doctor_id}",
+      "route_class": "session",
+      "owner": "doctors"
+    },
+    {
+      "route": "GET /api/v1/documents",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}/dicom-metadata",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}/download",
+      "route_class": "token_presign",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}/extract/status",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}/presign",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/documents/{document_id}/preview",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "GET /api/v1/examinations",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/examinations/categories",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/examinations/{examination_id}",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/examinations/{examination_id}/documents",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/examinations/{examination_id}/logs",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/examinations/{examination_id}/status",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "GET /api/v1/export/jobs",
+      "route_class": "session",
+      "owner": "export"
+    },
+    {
+      "route": "GET /api/v1/export/jobs/{job_id}",
+      "route_class": "session",
+      "owner": "export"
+    },
+    {
+      "route": "GET /api/v1/export/jobs/{job_id}/download",
+      "route_class": "session",
+      "owner": "export"
+    },
+    {
+      "route": "GET /api/v1/extensions/sources",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "GET /api/v1/extensions/sources/versions/{version_id}/posture",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "GET /api/v1/fhir/R4/metadata",
+      "route_class": "public",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "GET /api/v1/fhir/R4/{resource_type}",
+      "route_class": "token_fhir",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "GET /api/v1/fhir/R4/{resource_type}/{resource_id}",
+      "route_class": "token_fhir",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "GET /api/v1/import/jobs",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "GET /api/v1/import/jobs/{job_id}",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "GET /api/v1/instances/search",
+      "route_class": "session",
+      "owner": "instances"
+    },
+    {
+      "route": "GET /api/v1/integrations/active",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/available",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/consents/pending",
+      "route_class": "session",
+      "owner": "extension_consents"
+    },
+    {
+      "route": "GET /api/v1/integrations/consents/versions/{version_id}/delta",
+      "route_class": "session",
+      "owner": "extension_consents"
+    },
+    {
+      "route": "GET /api/v1/integrations/consents/versions/{version_id}/secrets",
+      "route_class": "session",
+      "owner": "extension_consents"
+    },
+    {
+      "route": "GET /api/v1/integrations/host-profile",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/instance/{integration_id}/debug-logs",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/instance/{integration_id}/details",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/instance/{integration_id}/proposals",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/instance/{integration_id}/proposals/{proposal_id}",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/{domain}/api/{integration_id}/{path:path}",
+      "route_class": "tokenless_hmac",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/{domain}/config-flow",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/{domain}/documentation",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/{domain}/oauth/callback",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/integrations/{domain}/schema",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "GET /api/v1/me/access",
+      "route_class": "session",
+      "owner": "me_access"
+    },
+    {
+      "route": "GET /api/v1/me/access/grants",
+      "route_class": "session",
+      "owner": "me_access"
+    },
+    {
+      "route": "GET /api/v1/me/elevations",
+      "route_class": "session",
+      "owner": "me_access"
+    },
+    {
+      "route": "GET /api/v1/me/mfa",
+      "route_class": "session",
+      "owner": "me_mfa"
+    },
+    {
+      "route": "GET /api/v1/me/mfa/passkeys",
+      "route_class": "session",
+      "owner": "me_passkeys"
+    },
+    {
+      "route": "GET /api/v1/me/sessions",
+      "route_class": "session",
+      "owner": "me_sessions"
+    },
+    {
+      "route": "GET /api/v1/medications/catalog",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "GET /api/v1/medications/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "GET /api/v1/medications/catalog/{catalog_id}/usage",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "GET /api/v1/medications/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "GET /api/v1/medications/{medication_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "GET /api/v1/notification-rules",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "GET /api/v1/notification-rules/{rule_id}",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "GET /api/v1/notifications/admin",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/admin/stats",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/admin/{notification_id}/delivery",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/inbox",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/preferences",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/triggers",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/unread-count",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/notifications/vapid-public-key",
+      "route_class": "public",
+      "owner": "notifications"
+    },
+    {
+      "route": "GET /api/v1/oauth/clients",
+      "route_class": "session",
+      "owner": "oauth"
+    },
+    {
+      "route": "GET /api/v1/observations",
+      "route_class": "session",
+      "owner": "observations"
+    },
+    {
+      "route": "GET /api/v1/observations/{observation_id}",
+      "route_class": "session",
+      "owner": "observations"
+    },
+    {
+      "route": "GET /api/v1/organizations",
+      "route_class": "session",
+      "owner": "organizations"
+    },
+    {
+      "route": "GET /api/v1/organizations/{organization_id}",
+      "route_class": "session",
+      "owner": "organizations"
+    },
+    {
+      "route": "GET /api/v1/patients",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "GET /api/v1/patients/{patient_id}",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "GET /api/v1/patients/{patient_id}/access",
+      "route_class": "session",
+      "owner": "patient_access"
+    },
+    {
+      "route": "GET /api/v1/patients/{patient_id}/layouts",
+      "route_class": "session",
+      "owner": "patient_layout"
+    },
+    {
+      "route": "GET /api/v1/patients/{patient_id}/layouts/active",
+      "route_class": "session",
+      "owner": "patient_layout"
+    },
+    {
+      "route": "GET /api/v1/search",
+      "route_class": "session",
+      "owner": "search"
+    },
+    {
+      "route": "GET /api/v1/settings/definitions",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "GET /api/v1/settings/effective",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "GET /api/v1/settings/system",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "GET /api/v1/settings/tenant",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "GET /api/v1/settings/user",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "GET /api/v1/setup/checklist",
+      "route_class": "session",
+      "owner": "setup_checklist"
+    },
+    {
+      "route": "GET /api/v1/setup/extension-catalog",
+      "route_class": "session",
+      "owner": "setup_checklist"
+    },
+    {
+      "route": "GET /api/v1/task-monitor/documents/processing",
+      "route_class": "session",
+      "owner": "task_monitor"
+    },
+    {
+      "route": "GET /api/v1/task-monitor/examinations/processing",
+      "route_class": "session",
+      "owner": "task_monitor"
+    },
+    {
+      "route": "GET /api/v1/task-monitor/stats",
+      "route_class": "session",
+      "owner": "task_monitor"
+    },
+    {
+      "route": "GET /api/v1/tenants",
+      "route_class": "session",
+      "owner": "tenants"
+    },
+    {
+      "route": "GET /api/v1/tenants/{tenant_id}",
+      "route_class": "session",
+      "owner": "tenants"
+    },
+    {
+      "route": "GET /api/v1/tenants/{tenant_id}/security-policy",
+      "route_class": "session",
+      "owner": "tenants"
+    },
+    {
+      "route": "GET /api/v1/users",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "GET /api/v1/users/me",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "GET /api/v1/users/{user_id}",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "GET /api/v1/vaccines/catalog",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "GET /api/v1/vaccines/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "GET /api/v1/vaccines/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "GET /api/v1/vaccines/{immunization_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "GET /health",
+      "route_class": "public",
+      "owner": "main"
+    },
+    {
+      "route": "GET /ready",
+      "route_class": "public",
+      "owner": "main"
+    },
+    {
+      "route": "PATCH /api/v1/admin/tenants/{tenant_id}",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "PATCH /api/v1/admin/tenants/{tenant_id}/users/{user_id}",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "PATCH /api/v1/admin/tenants/{tenant_id}/users/{user_id}/mfa",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "PATCH /api/v1/ai-assistance/sessions/{session_id}",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "PATCH /api/v1/anatomy/figures/{slug}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "PATCH /api/v1/anatomy/{identifier}",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "PATCH /api/v1/biomarkers/{biomarker_id}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "PATCH /api/v1/calendar/bindings/{binding_id}",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "PATCH /api/v1/data-lifecycle/retention-policies/{policy_id}",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "PATCH /api/v1/documents/{document_id}",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "PATCH /api/v1/me/password",
+      "route_class": "session",
+      "owner": "me"
+    },
+    {
+      "route": "PATCH /api/v1/notifications/{recipient_id}/dismiss",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "PATCH /api/v1/notifications/{recipient_id}/read",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "PATCH /api/v1/oauth/clients/{client_row_id}",
+      "route_class": "session",
+      "owner": "oauth"
+    },
+    {
+      "route": "PATCH /api/v1/patients/{patient_id}/access/{grant_id}",
+      "route_class": "session",
+      "owner": "patient_access"
+    },
+    {
+      "route": "PATCH /api/v1/tenants/{tenant_id}",
+      "route_class": "session",
+      "owner": "tenants"
+    },
+    {
+      "route": "PATCH /api/v1/tenants/{tenant_id}/security-policy",
+      "route_class": "session",
+      "owner": "tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/access-elevations",
+      "route_class": "session",
+      "owner": "admin_elevations"
+    },
+    {
+      "route": "POST /api/v1/admin/access-elevations/{elevation_id}/approve",
+      "route_class": "session",
+      "owner": "admin_elevations"
+    },
+    {
+      "route": "POST /api/v1/admin/access-elevations/{elevation_id}/deny",
+      "route_class": "session",
+      "owner": "admin_elevations"
+    },
+    {
+      "route": "POST /api/v1/admin/access-elevations/{elevation_id}/revoke",
+      "route_class": "session",
+      "owner": "admin_elevations"
+    },
+    {
+      "route": "POST /api/v1/admin/catalogs/import/file",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "POST /api/v1/admin/catalogs/import/url",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "POST /api/v1/admin/integrations/{domain}/disable",
+      "route_class": "session",
+      "owner": "admin_integrations"
+    },
+    {
+      "route": "POST /api/v1/admin/integrations/{domain}/enable",
+      "route_class": "session",
+      "owner": "admin_integrations"
+    },
+    {
+      "route": "POST /api/v1/admin/notifications/broadcast",
+      "route_class": "session",
+      "owner": "admin"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/versions/{version_id}/apply",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/versions/{version_id}/approve",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/versions/{version_id}/reject",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/versions/{version_id}/revoke",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/adopt",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/disable",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/enable",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/retire",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/sync",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/seed-sources/{source_id}/upload",
+      "route_class": "session",
+      "owner": "admin_seed_sources"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants/exit-switch",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants/{tenant_id}/deactivate",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants/{tenant_id}/invite",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants/{tenant_id}/reactivate",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/admin/tenants/{tenant_id}/switch",
+      "route_class": "session",
+      "owner": "admin_tenants"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/assist",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/messages/{message_id}/edit",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/messages/{message_id}/regenerate",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/messages/{message_id}/select",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/sessions/{session_id}/resume",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/sessions/{session_id}/tasks/{proposal_id}/resolve",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/stream",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-assistance/transcribe",
+      "route_class": "session",
+      "owner": "ai_assistance"
+    },
+    {
+      "route": "POST /api/v1/ai-config/providers",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "POST /api/v1/ai-config/providers/{preset_key}/setup",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "POST /api/v1/ai-config/providers/{provider_id}/models",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "POST /api/v1/ai-config/task-assignments",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "POST /api/v1/allergies/catalog",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "POST /api/v1/allergies/catalog/{catalog_id}/reprocess",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "POST /api/v1/allergies/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "POST /api/v1/anatomy",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "POST /api/v1/anatomy/figures",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "POST /api/v1/anatomy/import",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "POST /api/v1/anatomy/relations",
+      "route_class": "session",
+      "owner": "anatomy"
+    },
+    {
+      "route": "POST /api/v1/auth/demo-login",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/invite",
+      "route_class": "session",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/login",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/logout",
+      "route_class": "session",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/logout-all",
+      "route_class": "session",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/mfa/enroll",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/mfa/verify",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/passkeys/options",
+      "route_class": "public_auth",
+      "owner": "auth_passkeys"
+    },
+    {
+      "route": "POST /api/v1/auth/passkeys/verify",
+      "route_class": "public_auth",
+      "owner": "auth_passkeys"
+    },
+    {
+      "route": "POST /api/v1/auth/refresh",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/register",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/setup",
+      "route_class": "public_auth",
+      "owner": "auth"
+    },
+    {
+      "route": "POST /api/v1/auth/step-up/passkeys/options",
+      "route_class": "session",
+      "owner": "auth_passkeys"
+    },
+    {
+      "route": "POST /api/v1/auth/step-up/passkeys/verify",
+      "route_class": "session",
+      "owner": "auth_passkeys"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/bulk-delete",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/units",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/{biomarker_id}/reference-ranges",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/{biomarker_id}/remap",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/biomarkers/{biomarker_id}/retry-migration",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/inbound/{clinical_event_id}/confirm",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/inbound/{clinical_event_id}/dismiss",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/oauth/start",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/secret",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/sync",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/calendar/bindings/{binding_id}/test",
+      "route_class": "session",
+      "owner": "calendar"
+    },
+    {
+      "route": "POST /api/v1/catalogs/{type}",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "POST /api/v1/catalogs/{type}/{item_id}/promote",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "POST /api/v1/clinical-events",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/types",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/types/{type_id}/biomarkers",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/{event_id}/link-anatomy",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/{event_id}/link-examination",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/{event_id}/link-observation",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/clinical-events/{event_id}/occurrences",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "POST /api/v1/concept-edges",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "POST /api/v1/concepts",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "POST /api/v1/concepts/{concept_id}/restore",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "POST /api/v1/data-lifecycle/erasures",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "POST /api/v1/data-lifecycle/ledger/replay",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "POST /api/v1/data-lifecycle/retention/run",
+      "route_class": "session",
+      "owner": "data_lifecycle"
+    },
+    {
+      "route": "POST /api/v1/doctors",
+      "route_class": "session",
+      "owner": "doctors"
+    },
+    {
+      "route": "POST /api/v1/documents",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "POST /api/v1/documents/preview-temp",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "POST /api/v1/documents/{document_id}/edit",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "POST /api/v1/documents/{document_id}/extract",
+      "route_class": "session",
+      "owner": "documents"
+    },
+    {
+      "route": "POST /api/v1/examinations",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "POST /api/v1/examinations/bulk-delete",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "POST /api/v1/examinations/{examination_id}/extract",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "POST /api/v1/export",
+      "route_class": "session",
+      "owner": "export"
+    },
+    {
+      "route": "POST /api/v1/extensions/sources",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "POST /api/v1/extensions/sources/versions/{version_id}/approve",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "POST /api/v1/extensions/sources/versions/{version_id}/revoke",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "POST /api/v1/extensions/sources/{source_id}/sync",
+      "route_class": "session",
+      "owner": "extension_sources"
+    },
+    {
+      "route": "POST /api/v1/fhir/R4/{resource_type}",
+      "route_class": "token_fhir",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "POST /api/v1/import/backup",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "POST /api/v1/import/csv",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "POST /api/v1/import/fhir",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "POST /api/v1/import/ocr",
+      "route_class": "session",
+      "owner": "import_data"
+    },
+    {
+      "route": "POST /api/v1/integrations/consents/versions/{version_id}",
+      "route_class": "session",
+      "owner": "extension_consents"
+    },
+    {
+      "route": "POST /api/v1/integrations/instance/{integration_id}/action/{action_id}",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/instance/{integration_id}/proposals/{proposal_id}/resolve",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/instance/{integration_id}/rotate-secret",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/instance/{integration_id}/sync",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/instance/{integration_id}/toggle-debug",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/{domain}/api/{integration_id}/{path:path}",
+      "route_class": "tokenless_hmac",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/{domain}/config-flow",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/{domain}/notification-action/{integration_id}/{action_id}",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/{domain}/oauth/start",
+      "route_class": "session",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/integrations/{domain}/webhook/{integration_id}",
+      "route_class": "tokenless_hmac",
+      "owner": "integrations"
+    },
+    {
+      "route": "POST /api/v1/me/access/grants/{grant_id}/accept",
+      "route_class": "session",
+      "owner": "me_access"
+    },
+    {
+      "route": "POST /api/v1/me/access/grants/{grant_id}/decline",
+      "route_class": "session",
+      "owner": "me_access"
+    },
+    {
+      "route": "POST /api/v1/me/mfa/confirm",
+      "route_class": "session",
+      "owner": "me_mfa"
+    },
+    {
+      "route": "POST /api/v1/me/mfa/enroll",
+      "route_class": "session",
+      "owner": "me_mfa"
+    },
+    {
+      "route": "POST /api/v1/me/mfa/passkeys/options",
+      "route_class": "session",
+      "owner": "me_passkeys"
+    },
+    {
+      "route": "POST /api/v1/me/mfa/passkeys/verify",
+      "route_class": "session",
+      "owner": "me_passkeys"
+    },
+    {
+      "route": "POST /api/v1/medications/catalog",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "POST /api/v1/medications/catalog/{catalog_id}/reprocess",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "POST /api/v1/medications/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "POST /api/v1/notification-rules",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "POST /api/v1/notification-rules/{rule_id}/test",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "POST /api/v1/notifications/read-all",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "POST /api/v1/notifications/subscribe",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "POST /api/v1/notifications/triggers",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "POST /api/v1/notifications/triggers/{trigger_id}/test",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "POST /api/v1/oauth/clients",
+      "route_class": "session",
+      "owner": "oauth"
+    },
+    {
+      "route": "POST /api/v1/oauth/clients/{client_row_id}/rotate-secret",
+      "route_class": "session",
+      "owner": "oauth"
+    },
+    {
+      "route": "POST /api/v1/oauth/revoke",
+      "route_class": "token_oauth",
+      "owner": "oauth"
+    },
+    {
+      "route": "POST /api/v1/oauth/token",
+      "route_class": "token_oauth",
+      "owner": "oauth"
+    },
+    {
+      "route": "POST /api/v1/observations",
+      "route_class": "session",
+      "owner": "observations"
+    },
+    {
+      "route": "POST /api/v1/organizations",
+      "route_class": "session",
+      "owner": "organizations"
+    },
+    {
+      "route": "POST /api/v1/patients",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "POST /api/v1/patients/{patient_id}/access",
+      "route_class": "session",
+      "owner": "patient_access"
+    },
+    {
+      "route": "POST /api/v1/patients/{patient_id}/layouts",
+      "route_class": "session",
+      "owner": "patient_layout"
+    },
+    {
+      "route": "POST /api/v1/setup/checklist/manual-complete",
+      "route_class": "session",
+      "owner": "setup_checklist"
+    },
+    {
+      "route": "POST /api/v1/task-monitor/documents/retry/{document_id}",
+      "route_class": "session",
+      "owner": "task_monitor"
+    },
+    {
+      "route": "POST /api/v1/task-monitor/examinations/retry/{examination_id}",
+      "route_class": "session",
+      "owner": "task_monitor"
+    },
+    {
+      "route": "POST /api/v1/telemetry/data",
+      "route_class": "session",
+      "owner": "telemetry"
+    },
+    {
+      "route": "POST /api/v1/users",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "POST /api/v1/users/{user_id}/force-logout",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "POST /api/v1/users/{user_id}/reset-password",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "POST /api/v1/vaccines/catalog",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "POST /api/v1/vaccines/patient/{patient_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "PUT /api/v1/ai-config/models/{model_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "PUT /api/v1/ai-config/providers/{provider_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "PUT /api/v1/ai-config/providers/{provider_id}/set-default",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "PUT /api/v1/ai-config/settings",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "PUT /api/v1/ai-config/task-assignments/{assignment_id}",
+      "route_class": "session",
+      "owner": "ai_config"
+    },
+    {
+      "route": "PUT /api/v1/allergies/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "PUT /api/v1/allergies/{allergy_id}",
+      "route_class": "session",
+      "owner": "allergies"
+    },
+    {
+      "route": "PUT /api/v1/biomarkers/{biomarker_id}/reference-ranges/{range_id}",
+      "route_class": "session",
+      "owner": "biomarkers"
+    },
+    {
+      "route": "PUT /api/v1/catalogs/{type}/{item_id}",
+      "route_class": "session",
+      "owner": "catalogs"
+    },
+    {
+      "route": "PUT /api/v1/clinical-events/{event_id}",
+      "route_class": "session",
+      "owner": "clinical_events"
+    },
+    {
+      "route": "PUT /api/v1/concepts/{concept_id}",
+      "route_class": "session",
+      "owner": "concepts"
+    },
+    {
+      "route": "PUT /api/v1/doctors/{doctor_id}",
+      "route_class": "session",
+      "owner": "doctors"
+    },
+    {
+      "route": "PUT /api/v1/examinations/{examination_id}",
+      "route_class": "session",
+      "owner": "examinations"
+    },
+    {
+      "route": "PUT /api/v1/fhir/R4/{resource_type}/{resource_id}",
+      "route_class": "token_fhir",
+      "owner": "fhir_r4"
+    },
+    {
+      "route": "PUT /api/v1/integrations/{domain}/api/{integration_id}/{path:path}",
+      "route_class": "tokenless_hmac",
+      "owner": "integrations"
+    },
+    {
+      "route": "PUT /api/v1/medications/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "PUT /api/v1/medications/{medication_id}",
+      "route_class": "session",
+      "owner": "medications"
+    },
+    {
+      "route": "PUT /api/v1/notification-rules/{rule_id}",
+      "route_class": "session",
+      "owner": "notification_rules"
+    },
+    {
+      "route": "PUT /api/v1/notifications/preferences/{kind_id}",
+      "route_class": "session",
+      "owner": "notifications"
+    },
+    {
+      "route": "PUT /api/v1/observations/{observation_id}",
+      "route_class": "session",
+      "owner": "observations"
+    },
+    {
+      "route": "PUT /api/v1/organizations/{organization_id}",
+      "route_class": "session",
+      "owner": "organizations"
+    },
+    {
+      "route": "PUT /api/v1/patients/{patient_id}",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "PUT /api/v1/patients/{patient_id}/layout",
+      "route_class": "session",
+      "owner": "patients"
+    },
+    {
+      "route": "PUT /api/v1/patients/{patient_id}/layouts/{layout_id}",
+      "route_class": "session",
+      "owner": "patient_layout"
+    },
+    {
+      "route": "PUT /api/v1/settings/system",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "PUT /api/v1/settings/tenant",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "PUT /api/v1/settings/user",
+      "route_class": "session",
+      "owner": "settings"
+    },
+    {
+      "route": "PUT /api/v1/users/{user_id}",
+      "route_class": "session",
+      "owner": "users"
+    },
+    {
+      "route": "PUT /api/v1/vaccines/catalog/{catalog_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "PUT /api/v1/vaccines/{immunization_id}",
+      "route_class": "session",
+      "owner": "vaccines"
+    },
+    {
+      "route": "WS /api/v1/ws/notifications",
+      "route_class": "websocket",
+      "owner": "websockets"
+    },
+    {
+      "route": "WS /api/v1/ws/tasks",
+      "route_class": "websocket",
+      "owner": "websockets"
+    }
+  ],
+  "retired": []
+}

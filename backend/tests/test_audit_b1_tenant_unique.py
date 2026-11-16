@@ -50,7 +50,7 @@ def _biomarker_sql() -> str:
     return (
         "INSERT INTO biomarker_definitions "
         "(id, slug, name, coding_system, aliases, is_telemetry, scope, tenant_id) "
-        "VALUES (gen_random_uuid(), :slug, 'b1', 'CUSTOM', '[]', false, 'system', :tenant)"
+        "VALUES (gen_random_uuid(), :slug, 'b1', 'CUSTOM', '[]', false, :scope, :tenant)"
     )
 
 
@@ -71,15 +71,21 @@ async def test_same_slug_allowed_across_tenants_but_not_within():
         await session.commit()
 
         # Same slug in tenant A then tenant B -> both allowed.
-        await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a})
-        await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_b})
+        await session.execute(
+            text(_biomarker_sql()), {"slug": slug, "scope": "tenant", "tenant": tenant_a}
+        )
+        await session.execute(
+            text(_biomarker_sql()), {"slug": slug, "scope": "tenant", "tenant": tenant_b}
+        )
         await session.commit()
         created_slugs.append(slug)
 
         # Same slug again in tenant A -> must be rejected.
         with pytest.raises(IntegrityError) as exc_info:
             async with session.begin_nested():
-                await session.execute(text(_biomarker_sql()), {"slug": slug, "tenant": tenant_a})
+                await session.execute(
+                    text(_biomarker_sql()), {"slug": slug, "scope": "tenant", "tenant": tenant_a}
+                )
         assert "ix_biomarker_definitions_slug_tenant" in str(exc_info.value)
 
         # Cleanup.
@@ -99,7 +105,7 @@ async def test_two_null_tenant_rows_with_same_slug_collide():
     slug = f"b1-null-{uuid.uuid4().hex[:8]}"
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text(_biomarker_sql().replace(":tenant", "NULL")),
+            text(_biomarker_sql().replace(":tenant", "NULL").replace(":scope", "'system'")),
             {"slug": slug},
         )
         await session.commit()
@@ -109,7 +115,7 @@ async def test_two_null_tenant_rows_with_same_slug_collide():
         with pytest.raises(IntegrityError) as exc_info:
             async with session.begin_nested():
                 await session.execute(
-                    text(_biomarker_sql().replace(":tenant", "NULL")),
+                    text(_biomarker_sql().replace(":tenant", "NULL").replace(":scope", "'system'")),
                     {"slug": slug},
                 )
         assert "ix_biomarker_definitions_slug_tenant" in str(exc_info.value)

@@ -1,5 +1,6 @@
 import { format, parseISO, startOfDay, addDays, isSameDay } from 'date-fns';
 import { MedicationRecord } from '../services/medicationService';
+import { isActiveMedication } from './medicationStatus';
 import { AllergyIntolerance } from '../services/allergyService';
 import { ClinicalEvent as ClinicalEventModel, ClinicalEventStatus, ScheduleKind, RecurrenceFrequency } from '../services/clinicalEventService';
 import { CalendarEvent } from '../types/calendar';
@@ -12,7 +13,7 @@ export const adaptMedicationToEvents = (
   rangeStart: Date,
   rangeEnd: Date
 ): CalendarEvent[] => {
-  if (!med.frequency || med.status !== 'active') {
+  if (!med.frequency || !isActiveMedication(med.status)) {
     // Non-active medications only show on their start date if within range
     const date = med.start_date ? parseISO(med.start_date) : new Date(med.created_at || '');
     if (date >= rangeStart && date <= rangeEnd) {

@@ -1,0 +1,159 @@
+name: Cloud storage smoke
+
+# Manual provider smoke for the S3 and Azure Blob backends.
+#
+# Normal PRs never run this workflow: it is workflow_dispatch-only and the
+# regular suite keeps provider tests skipped (local backend only). Run it
+# before a release, or after provisioning a bucket/container, from
+# Actions → Cloud storage smoke → Run workflow.
+#
+# Required configuration (Settings → Secrets and variables → Actions):
+#   secrets.AWS_ACCESS_KEY_ID, secrets.AWS_SECRET_ACCESS_KEY
+#       Test-only AWS credentials whose policy allows the `test/*` prefix on
+#       the bucket (list + get/put/delete objects; kms:GenerateDataKey and
+#       kms:Decrypt when SSE=aws:kms).
+#   vars.AWS_S3_TEST_BUCKET      (default: study-assistant-test)
+#   vars.AWS_S3_TEST_REGION      (default: eu-north-1)
+#   secrets.AZURE_STORAGE_CONNECTION_STRING
+#       Test-only container connection string.
+#   vars.AZURE_STORAGE_TEST_CONTAINER (default: study-data-tst-01)
+#
+# `prefix` must stay inside the identity's policy prefix (test/…). Each test
+# adds its own random sub-prefix and deletes what it wrote.
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Provider to smoke
+        type: choice
+        options: [all, aws, azure]
+        default: all
+      prefix:
+        description: Key prefix (inside the IAM/container policy)
+        type: string
+        default: test/health-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  aws:
+    name: AWS S3
+    if: ${{ inputs.provider == 'all' || inputs.provider == 'aws' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: neuronection_health_test
+          POSTGRES_USER: neuronection_health_owner
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U neuronection_health_owner -d neuronection_health_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env: &health-smoke-env
+      POSTGRES_USER: neuronection_health_owner
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: neuronection_health_test
+      REDIS_URL: redis://localhost:6379
+      HA_TEST_PROVIDER_SMOKE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require AWS credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          : "${AWS_ACCESS_KEY_ID:?secret AWS_ACCESS_KEY_ID is required}"
+          : "${AWS_SECRET_ACCESS_KEY:?secret AWS_SECRET_ACCESS_KEY is required}"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: S3 conformance
+        working-directory: backend
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          HA_OBJECT_STORAGE_BACKEND: s3
+          HA_S3_BUCKET: ${{ vars.AWS_S3_TEST_BUCKET || 'study-assistant-test' }}
+          HA_S3_REGION: ${{ vars.AWS_S3_TEST_REGION || 'eu-north-1' }}
+          HA_S3_PREFIX: ${{ inputs.prefix }}
+        run: |
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
+          uv run --with boto3 pytest -q tests/test_object_storage_provider_smoke.py -k s3
+
+  azure:
+    name: Azure Blob
+    if: ${{ inputs.provider == 'all' || inputs.provider == 'azure' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg16
+        env:
+          POSTGRES_DB: neuronection_health_test
+          POSTGRES_USER: neuronection_health_owner
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U neuronection_health_owner -d neuronection_health_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env: *health-smoke-env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Azure credentials
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+        run: |
+          : "${AZURE_STORAGE_CONNECTION_STRING:?secret AZURE_STORAGE_CONNECTION_STRING is required}"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Azure conformance
+        working-directory: backend
+        env:
+          HA_OBJECT_STORAGE_BACKEND: azure_blob
+          HA_AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_TEST_CONTAINER || 'study-data-tst-01' }}
+          HA_AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          HA_AZURE_STORAGE_PREFIX: ${{ inputs.prefix }}
+        run: |
+          export PYTHONPATH="$(cd .. && pwd):$(pwd)"
+          uv run --with azure-storage-blob pytest -q tests/test_object_storage_provider_smoke.py -k azure

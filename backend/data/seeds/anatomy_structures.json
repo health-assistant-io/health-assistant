@@ -7,6 +7,7 @@
   },
   "items": [
     {
+      "seed_key": "anatomy:whole-body",
       "slug": "whole-body",
       "name": "Whole Body",
       "class_concept_slug": "region",
@@ -15,6 +16,7 @@
       "description": "The entire human body"
     },
     {
+      "seed_key": "anatomy:head",
       "slug": "head",
       "name": "Head",
       "class_concept_slug": "region",
@@ -23,6 +25,7 @@
       "description": "The upper part of the human body containing the brain, eyes, ears, nose, and mouth"
     },
     {
+      "seed_key": "anatomy:face",
       "slug": "face",
       "name": "Face",
       "class_concept_slug": "region",
@@ -31,6 +34,7 @@
       "description": "The front part of the head"
     },
     {
+      "seed_key": "anatomy:eyes",
       "slug": "eyes",
       "name": "Eyes",
       "class_concept_slug": "organ",
@@ -50,6 +54,7 @@
       }
     },
     {
+      "seed_key": "anatomy:ears",
       "slug": "ears",
       "name": "Ears",
       "class_concept_slug": "organ",
@@ -69,6 +74,7 @@
       }
     },
     {
+      "seed_key": "anatomy:nose",
       "slug": "nose",
       "name": "Nose",
       "class_concept_slug": "organ",
@@ -88,6 +94,7 @@
       }
     },
     {
+      "seed_key": "anatomy:mouth",
       "slug": "mouth",
       "name": "Mouth",
       "class_concept_slug": "organ",
@@ -107,6 +114,7 @@
       }
     },
     {
+      "seed_key": "anatomy:brain",
       "slug": "brain",
       "name": "Brain",
       "class_concept_slug": "organ",
@@ -126,6 +134,7 @@
       }
     },
     {
+      "seed_key": "anatomy:neck",
       "slug": "neck",
       "name": "Neck",
       "class_concept_slug": "region",
@@ -134,6 +143,7 @@
       "description": "The part of the body connecting the head to the torso"
     },
     {
+      "seed_key": "anatomy:throat",
       "slug": "throat",
       "name": "Throat",
       "class_concept_slug": "organ",
@@ -153,6 +163,7 @@
       }
     },
     {
+      "seed_key": "anatomy:thyroid",
       "slug": "thyroid",
       "name": "Thyroid",
       "class_concept_slug": "organ",
@@ -172,6 +183,7 @@
       }
     },
     {
+      "seed_key": "anatomy:chest",
       "slug": "chest",
       "name": "Chest",
       "class_concept_slug": "region",
@@ -180,6 +192,7 @@
       "description": "The upper part of the torso between the neck and abdomen"
     },
     {
+      "seed_key": "anatomy:heart",
       "slug": "heart",
       "name": "Heart",
       "class_concept_slug": "organ",
@@ -199,6 +212,7 @@
       }
     },
     {
+      "seed_key": "anatomy:left-lung",
       "slug": "left-lung",
       "name": "Left Lung",
       "class_concept_slug": "organ",
@@ -218,6 +232,7 @@
       }
     },
     {
+      "seed_key": "anatomy:right-lung",
       "slug": "right-lung",
       "name": "Right Lung",
       "class_concept_slug": "organ",
@@ -237,6 +252,7 @@
       }
     },
     {
+      "seed_key": "anatomy:abdomen",
       "slug": "abdomen",
       "name": "Abdomen",
       "class_concept_slug": "region",
@@ -245,6 +261,7 @@
       "description": "The part of the body between the chest and pelvis"
     },
     {
+      "seed_key": "anatomy:liver",
       "slug": "liver",
       "name": "Liver",
       "class_concept_slug": "organ",
@@ -264,6 +281,7 @@
       }
     },
     {
+      "seed_key": "anatomy:stomach",
       "slug": "stomach",
       "name": "Stomach",
       "class_concept_slug": "organ",
@@ -283,6 +301,7 @@
       }
     },
     {
+      "seed_key": "anatomy:pancreas",
       "slug": "pancreas",
       "name": "Pancreas",
       "class_concept_slug": "organ",
@@ -302,6 +321,7 @@
       }
     },
     {
+      "seed_key": "anatomy:spleen",
       "slug": "spleen",
       "name": "Spleen",
       "class_concept_slug": "organ",
@@ -321,6 +341,7 @@
       }
     },
     {
+      "seed_key": "anatomy:left-kidney",
       "slug": "left-kidney",
       "name": "Left Kidney",
       "class_concept_slug": "organ",
@@ -340,6 +361,7 @@
       }
     },
     {
+      "seed_key": "anatomy:right-kidney",
       "slug": "right-kidney",
       "name": "Right Kidney",
       "class_concept_slug": "organ",
@@ -359,6 +381,7 @@
       }
     },
     {
+      "seed_key": "anatomy:small-intestine",
       "slug": "small-intestine",
       "name": "Small Intestine",
       "class_concept_slug": "organ",
@@ -378,6 +401,7 @@
       }
     },
     {
+      "seed_key": "anatomy:large-intestine",
       "slug": "large-intestine",
       "name": "Large Intestine",
       "class_concept_slug": "organ",
@@ -397,6 +421,7 @@
       }
     },
     {
+      "seed_key": "anatomy:bladder",
       "slug": "bladder",
       "name": "Bladder",
       "class_concept_slug": "organ",
@@ -416,6 +441,7 @@
       }
     },
     {
+      "seed_key": "anatomy:upper-back",
       "slug": "upper-back",
       "name": "Upper Back",
       "class_concept_slug": "region",
@@ -424,6 +450,7 @@
       "description": "The upper posterior region of the torso"
     },
     {
+      "seed_key": "anatomy:lower-back",
       "slug": "lower-back",
       "name": "Lower Back",
       "class_concept_slug": "region",
@@ -432,6 +459,7 @@
       "description": "The lower posterior region of the torso"
     },
     {
+      "seed_key": "anatomy:shoulder-left",
       "slug": "shoulder-left",
       "name": "Shoulder (Left)",
       "class_concept_slug": "joint",
@@ -451,6 +479,7 @@
       }
     },
     {
+      "seed_key": "anatomy:shoulder-right",
       "slug": "shoulder-right",
       "name": "Shoulder (Right)",
       "class_concept_slug": "joint",
@@ -470,6 +499,7 @@
       }
     },
     {
+      "seed_key": "anatomy:arm-left",
       "slug": "arm-left",
       "name": "Arm (Left)",
       "class_concept_slug": "region",
@@ -478,6 +508,7 @@
       "description": "The left upper limb"
     },
     {
+      "seed_key": "anatomy:arm-right",
       "slug": "arm-right",
       "name": "Arm (Right)",
       "class_concept_slug": "region",
@@ -486,6 +517,7 @@
       "description": "The right upper limb"
     },
     {
+      "seed_key": "anatomy:elbow-left",
       "slug": "elbow-left",
       "name": "Elbow (Left)",
       "class_concept_slug": "joint",
@@ -505,6 +537,7 @@
       }
     },
     {
+      "seed_key": "anatomy:elbow-right",
       "slug": "elbow-right",
       "name": "Elbow (Right)",
       "class_concept_slug": "joint",
@@ -524,6 +557,7 @@
       }
     },
     {
+      "seed_key": "anatomy:wrist-left",
       "slug": "wrist-left",
       "name": "Wrist (Left)",
       "class_concept_slug": "joint",
@@ -543,6 +577,7 @@
       }
     },
     {
+      "seed_key": "anatomy:wrist-right",
       "slug": "wrist-right",
       "name": "Wrist (Right)",
       "class_concept_slug": "joint",
@@ -562,6 +597,7 @@
       }
     },
     {
+      "seed_key": "anatomy:hand-left",
       "slug": "hand-left",
       "name": "Hand (Left)",
       "class_concept_slug": "region",
@@ -570,6 +606,7 @@
       "description": "The left hand"
     },
     {
+      "seed_key": "anatomy:hand-right",
       "slug": "hand-right",
       "name": "Hand (Right)",
       "class_concept_slug": "region",
@@ -578,6 +615,7 @@
       "description": "The right hand"
     },
     {
+      "seed_key": "anatomy:hip-left",
       "slug": "hip-left",
       "name": "Hip (Left)",
       "class_concept_slug": "joint",
@@ -597,6 +635,7 @@
       }
     },
     {
+      "seed_key": "anatomy:hip-right",
       "slug": "hip-right",
       "name": "Hip (Right)",
       "class_concept_slug": "joint",
@@ -616,6 +655,7 @@
       }
     },
     {
+      "seed_key": "anatomy:leg-left",
       "slug": "leg-left",
       "name": "Leg (Left)",
       "class_concept_slug": "region",
@@ -624,6 +664,7 @@
       "description": "The left lower limb"
     },
     {
+      "seed_key": "anatomy:leg-right",
       "slug": "leg-right",
       "name": "Leg (Right)",
       "class_concept_slug": "region",
@@ -632,6 +673,7 @@
       "description": "The right lower limb"
     },
     {
+      "seed_key": "anatomy:knee-left",
       "slug": "knee-left",
       "name": "Knee (Left)",
       "class_concept_slug": "joint",
@@ -651,6 +693,7 @@
       }
     },
     {
+      "seed_key": "anatomy:knee-right",
       "slug": "knee-right",
       "name": "Knee (Right)",
       "class_concept_slug": "joint",
@@ -670,6 +713,7 @@
       }
     },
     {
+      "seed_key": "anatomy:ankle-left",
       "slug": "ankle-left",
       "name": "Ankle (Left)",
       "class_concept_slug": "joint",
@@ -689,6 +733,7 @@
       }
     },
     {
+      "seed_key": "anatomy:ankle-right",
       "slug": "ankle-right",
       "name": "Ankle (Right)",
       "class_concept_slug": "joint",
@@ -708,6 +753,7 @@
       }
     },
     {
+      "seed_key": "anatomy:foot-left",
       "slug": "foot-left",
       "name": "Foot (Left)",
       "class_concept_slug": "region",
@@ -716,6 +762,7 @@
       "description": "The left foot"
     },
     {
+      "seed_key": "anatomy:foot-right",
       "slug": "foot-right",
       "name": "Foot (Right)",
       "class_concept_slug": "region",
@@ -724,6 +771,7 @@
       "description": "The right foot"
     },
     {
+      "seed_key": "anatomy:cardiovascular-system",
       "slug": "cardiovascular-system",
       "name": "Cardiovascular System",
       "class_concept_slug": "system",
@@ -732,6 +780,7 @@
       "description": "The system that circulates blood through the body"
     },
     {
+      "seed_key": "anatomy:respiratory-system",
       "slug": "respiratory-system",
       "name": "Respiratory System",
       "class_concept_slug": "system",
@@ -740,6 +789,7 @@
       "description": "The system responsible for gas exchange"
     },
     {
+      "seed_key": "anatomy:digestive-system",
       "slug": "digestive-system",
       "name": "Digestive System",
       "class_concept_slug": "system",
@@ -748,6 +798,7 @@
       "description": "The system that processes food"
     },
     {
+      "seed_key": "anatomy:nervous-system",
       "slug": "nervous-system",
       "name": "Nervous System",
       "class_concept_slug": "system",
@@ -756,6 +807,7 @@
       "description": "The system that controls bodily functions via electrical signals"
     },
     {
+      "seed_key": "anatomy:endocrine-system",
       "slug": "endocrine-system",
       "name": "Endocrine System",
       "class_concept_slug": "system",
@@ -764,6 +816,7 @@
       "description": "The system of glands that produce hormones"
     },
     {
+      "seed_key": "anatomy:urinary-system",
       "slug": "urinary-system",
       "name": "Urinary System",
       "class_concept_slug": "system",
@@ -772,6 +825,7 @@
       "description": "The system that produces and excretes urine"
     },
     {
+      "seed_key": "anatomy:musculoskeletal-system",
       "slug": "musculoskeletal-system",
       "name": "Musculoskeletal System",
       "class_concept_slug": "system",

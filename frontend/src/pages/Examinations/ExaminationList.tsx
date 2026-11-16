@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Search, Plus, ChevronDown, 
   Calendar, Trash2, Info, X, 
-  Stethoscope, CheckSquare, Square, Settings
+  Stethoscope, CheckSquare, Square, Settings, Sparkles
 } from 'lucide-react';
 import { getExaminations, getExaminationDocuments, getExaminationStatus, getExamination, getExaminationCategories, bulkDeleteExaminations, getCachedExaminations } from '../../services/examinationService';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -30,6 +30,8 @@ import { ExaminationPreview } from '../../components/examinations/ExaminationPre
 import { PageContainer } from '../../components/ui/PageContainer';
 import { DatePicker } from '../../components/ui/DatePicker';
 import { sanitizeHtml } from '../../utils/sanitize';
+import { useCreateIntent } from '../../hooks/useCreateIntent';
+import { ExaminationModal } from '../../components/examinations/ExaminationModal';
 
 function ExaminationList() {
   const { t } = useTranslation();
@@ -65,8 +67,11 @@ function ExaminationList() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const lastSelectedId = useRef<string | null>(null);
   const hasUserSelected = useRef<boolean>(false);
+
+  useCreateIntent(() => setIsCreateOpen(true), 'examination');
 
   const { isLargeScreen, handleItemClick, containerRef } = useMasterDetail({
     detailPath: (id) => `/examinations/${id}`,
@@ -648,11 +653,20 @@ function ExaminationList() {
             </div>
 
             <button 
-              onClick={() => navigate('/examinations/upload')}
+              onClick={() => setIsCreateOpen(true)}
               className="w-full sm:w-auto flex items-center justify-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none font-bold active:scale-95 whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden lg:inline">{t('common.new_examination')}</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/examinations/upload')}
+              title={t('examinations.smart_bulk_upload', 'Smart & bulk upload')}
+              className="w-full sm:w-auto flex items-center justify-center space-x-2 px-4 py-2.5 bg-white dark:bg-dark-surface text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/40 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all font-bold active:scale-95 whitespace-nowrap"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden xl:inline">{t('examinations.smart_bulk_upload', 'Smart & bulk upload')}</span>
             </button>
           </div>
         }
@@ -761,6 +775,19 @@ function ExaminationList() {
               </div>
            </div>
         </div>
+      )}
+
+      {currentPatient?.id && (
+        <ExaminationModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+          patientId={currentPatient.id}
+          onSuccess={(examinationId) => navigate(`/examinations/${examinationId}`)}
+          onAdvanced={() => {
+            setIsCreateOpen(false);
+            navigate('/examinations/upload');
+          }}
+        />
       )}
     </PageContainer>
   );

@@ -31,6 +31,7 @@ from app.models.document_model import DocumentModel
 from app.models.enums import CodingSystem, QuantityType
 from app.models.fhir.medication import Medication, MedicationCatalog, MedicationStatus
 from app.models.fhir.patient import Observation
+from app.services.biomarkers.reference_ranges import correct_one_sided_range
 from app.services.fhir.fhir_helpers import (
     FhirSerializationError,
     _normalize_interpretation,
@@ -296,9 +297,28 @@ async def save_observation(
     # position within the reference range as a [0.0, 1.0] float. The
     # previous OCR path never set relative_score, leaving the biomarker
     # engine's flagship scoring feature silently disabled for OCR data.
+    #
+    # Issue #159 sanitizer (defense in depth behind the pass-1 prompt
+    # convention): a one-sided bound the model stored on the wrong side
+    # (e.g. "< 10" as min=10) is moved to its correct side when the
+    # extracted interpretation flag and the measured value both
+    # corroborate the inversion. Two-sided ranges pass through untouched.
     relative_score: float | None = None
-    ref_min = b.reference_range_min
-    ref_max = b.reference_range_max
+    ref_min, ref_max = correct_one_sided_range(
+        b.reference_range_min, b.reference_range_max, val_float, b.interpretation_flag
+    )
+    if (ref_min, ref_max) != (b.reference_range_min, b.reference_range_max):
+        logger.warning(
+            "Corrected inverted one-sided reference range for %s: "
+            "min=%s/max=%s -> min=%s/max=%s (interpretation=%s, value=%s)",
+            b.matched_slug,
+            b.reference_range_min,
+            b.reference_range_max,
+            ref_min,
+            ref_max,
+            b.interpretation_flag,
+            val_float,
+        )
     if val_float is not None and ref_min is not None and ref_max is not None and ref_max > ref_min:
         relative_score = (val_float - ref_min) / (ref_max - ref_min)
         relative_score = max(0.0, min(1.0, relative_score))
@@ -345,9 +365,7 @@ async def save_observation(
             raw_unit_id = new_unit.id
 
     lab_ref_range = (
-        {"min": b.reference_range_min, "max": b.reference_range_max}
-        if b.reference_range_min or b.reference_range_max
-        else None
+        {"min": ref_min, "max": ref_max} if ref_min is not None or ref_max is not None else None
     )
     coding = []
     if target_bio:

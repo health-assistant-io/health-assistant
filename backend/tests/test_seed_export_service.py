@@ -19,7 +19,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
@@ -28,12 +28,14 @@ from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
+    CatalogScope,
     CodingSystem,
     ConceptKind,
     ConceptRelationType,
     EdgeEndpointType,
 )
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 def _uslug(base: str) -> str:
@@ -42,6 +44,7 @@ def _uslug(base: str) -> str:
 
 def _make_concept(slug, name, kinds, tenant_id=None, primary=None) -> Concept:
     c = Concept(
+        scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
         tenant_id=tenant_id,
         slug=slug,
         name=name,
@@ -82,6 +85,7 @@ async def test_anatomy_seed_prefers_class_concept_slug_over_legacy_category(db):
     payload = {
         "nodes": [
             {
+                "seed_key": f"anatomy:{node_slug}",
                 "slug": node_slug,
                 "name": "Widget Organ",
                 "category": "ORGAN",  # legacy — would resolve to "organ"
@@ -117,6 +121,7 @@ async def test_anatomy_seed_class_concept_slug_handles_non_legacy_class(db):
     payload = {
         "nodes": [
             {
+                "seed_key": f"anatomy:{node_slug}",
                 "slug": node_slug,
                 "name": "Lymph Node",
                 "class_concept_slug": niche.slug,  # no legacy category at all
@@ -136,13 +141,21 @@ async def test_anatomy_seed_class_concept_slug_handles_non_legacy_class(db):
 @pytest.mark.asyncio
 async def test_concept_edge_seed_resolves_biomarker_endpoint(db):
     """The concept-edge seed ingest resolves a ``biomarker`` endpoint type by
-    BiomarkerDefinition.slug (not just concept/anatomy). Unblocks round-tripping
-    biomarker-level edges beyond panel membership."""
+    identity (the uuid5 of ``biomarker:<key>`` / the ``seed_key`` column) —
+    not just concept/anatomy. Unblocks round-tripping biomarker-level edges
+    beyond panel membership."""
+    from app.core.catalog_identity import seed_key_uuid
+
     svc = SeedService()
-    panel = _make_concept(_uslug("my-panel"), "My Panel", [ConceptKind.BIOMARKER_PANEL])
-    db.add(panel)
-    bio_slug = _uslug("widget-biomarker")
+    panel_key = _uslug("my-panel")
+    panel = _make_concept(panel_key, "My Panel", [ConceptKind.BIOMARKER_PANEL])
+    panel.id = seed_key_uuid("concept", panel_key)
+    panel.seed_key = f"concept:{panel_key}"
+    bio_key = _uslug("widget-biomarker")
+    bio_slug = bio_key
     bio = BiomarkerDefinition(
+        id=seed_key_uuid("biomarker", bio_key),
+        seed_key=f"biomarker:{bio_key}",
         slug=bio_slug,
         name="Widget Biomarker",
         coding_system=CodingSystem.CUSTOM,
@@ -154,9 +167,9 @@ async def test_concept_edge_seed_resolves_biomarker_endpoint(db):
         "items": [
             {
                 "src_type": "biomarker",
-                "src_slug": bio_slug,
+                "src_slug": bio_key,
                 "dst_type": "concept",
-                "dst_slug": panel.slug,
+                "dst_slug": panel_key,
                 "relation": "MEMBER_OF",
             }
         ]
@@ -202,16 +215,17 @@ async def seeded_db():
 
     svc = SeedService()
     # Ordered so dependencies exist (concepts before edges/catalog/panels).
-    await svc.seed_concepts()
-    await svc.seed_diseases()
-    await svc.seed_body_parts()
-    await svc.seed_vaccines()
-    await svc.seed_medications()
-    await svc.seed_concept_edges()
-    await svc.seed_default_catalog()
-    await svc.seed_biomarker_panels()
-    await svc.seed_clinical_event_types()
-    await svc.seed_allergies()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
+    await seed_with_commit(svc.seed_body_parts)
+    await seed_with_commit(svc.seed_vaccines)
+    await seed_with_commit(svc.seed_medications)
+    await seed_with_commit(svc.seed_concept_edges)
+    await seed_with_commit(svc.seed_default_catalog)
+    await seed_with_commit(svc.seed_biomarker_panels)
+    await seed_with_commit(svc.seed_biomarker_states)
+    await seed_with_commit(svc.seed_clinical_event_types)
+    await seed_with_commit(svc.seed_allergies)
     async with AsyncSessionLocal() as session:
         yield session
 
@@ -426,6 +440,93 @@ async def test_export_concepts_then_reingest_is_idempotent(db):
 
 
 @pytest.mark.asyncio
+async def test_fresh_install_from_export_reuses_exported_unit_ids(tmp_path):
+    """A fresh install built from an export recreates every unit under the
+    EXPORTED id (units carry no ``seed_key`` — the id is the identity), so a
+    re-export is stable instead of drifting to new random ids."""
+    from sqlalchemy import delete
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.biomarker_model import Unit
+    from app.services.seed.seed_export_service import SeedExportService
+
+    svc = SeedService()
+    await seed_with_commit(svc.seed_default_catalog)
+
+    async with AsyncSessionLocal() as session:
+        exported = await SeedExportService(session).export_default_catalog()
+    units = exported["units"]
+    assert len(units) >= 7, "the curated units must export"
+    assert all("id" in u for u in units), "every exported unit carries its id"
+    exported_ids = {u["symbol"]: u["id"] for u in units}
+
+    # Simulate the fresh install: no units at all, then re-ingest the export
+    # (biomarkers filtered to the curated set — non-curated rows are not seed
+    # data and would fail the mandatory-key validation).
+    async with AsyncSessionLocal() as session:
+        await session.execute(delete(Unit))
+        await session.commit()
+
+    export_dir = tmp_path / "seeds"
+    export_dir.mkdir()
+    payload = {
+        **exported,
+        "biomarkers": [b for b in exported["biomarkers"] if b.get("seed_key")],
+    }
+    (export_dir / "default_catalog.json").write_bytes(SeedExportService._serialize(payload))
+
+    fresh = SeedService()
+    fresh.seeds_dir = export_dir
+    export_data = json.loads((export_dir / "default_catalog.json").read_bytes())
+    stats = await seed_with_commit(fresh.seed_default_catalog, export_data)
+    assert stats["details"]["units_added"] == len(units), stats
+    assert stats["details"]["errors"] == 0, stats
+
+    async with AsyncSessionLocal() as session:
+        for symbol, uid in exported_ids.items():
+            row = await session.get(Unit, UUID(uid))
+            assert row is not None, f"unit {symbol!r} not recreated under the exported id"
+            assert row.symbol == symbol
+
+    # Re-export is stable on unit ids (no drift).
+    async with AsyncSessionLocal() as session:
+        reexport = await SeedExportService(session).export_default_catalog()
+    assert {u["symbol"]: u["id"] for u in reexport["units"]} == exported_ids
+
+
+@pytest.mark.asyncio
+async def test_unit_import_conflicting_explicit_id_is_a_typed_error(db):
+    """A unit item claiming an id already owned by another unit is a typed
+    per-item conflict (``SeedIdentityConflict`` → ``errors``), never a raw
+    PK ``IntegrityError``, and the clashing unit is not written."""
+    from sqlalchemy import func as sa_func
+
+    from app.models.biomarker_model import Unit
+    from app.schemas.biomarker import CatalogImportPayload, UnitCreate
+    from app.services.catalog.catalog_import_service import CatalogImportService
+
+    existing = (await db.execute(select(Unit).limit(1))).scalar_one()
+    assert existing is not None, "a unit must exist to clash against"
+    clash_symbol = _uslug("clash-unit")
+
+    payload = CatalogImportPayload(
+        units=[UnitCreate(id=existing.id, symbol=clash_symbol, name="Clash Unit")],
+        biomarkers=[],
+    )
+    result = await CatalogImportService(db).import_catalog(payload)
+    assert result.stats["errors"] == 1, result.stats
+    assert result.stats["units_added"] == 0, result.stats
+    assert result.failures, "the clashing unit must appear as a typed failed outcome"
+
+    created = (
+        await db.execute(
+            select(sa_func.count()).select_from(Unit).where(Unit.symbol == clash_symbol)
+        )
+    ).scalar_one()
+    assert created == 0, "the clashing unit must not be written"
+
+
+@pytest.mark.asyncio
 async def test_export_anatomy_emits_class_concept_slug_for_non_legacy(db):
     """Lossless-field guard: an anatomy structure whose class concept is NOT in
     the legacy enum map exports ``class_concept_slug`` (the legacy ``category``
@@ -442,7 +543,6 @@ async def test_export_anatomy_emits_class_concept_slug_for_non_legacy(db):
             name="Lymph Node",
             slug=struct_slug,
             class_concept_id=niche.id,
-            is_custom=False,
         )
     )
     await db.commit()
@@ -517,6 +617,8 @@ async def test_cli_write_creates_files_and_backup(tmp_path, monkeypatch, capsys)
     # every shipped seed file is present
     expected = {
         "concepts.json",
+        "diseases.json",
+        "vaccines.json",
         "concept_edges.json",
         "anatomy_structures.json",
         "default_catalog.json",
@@ -570,22 +672,42 @@ def test_cli_source_parser():
 
 @pytest.mark.asyncio
 async def test_build_zip_bytes_produces_valid_zip_with_all_files(seeded_db):
-    """build_zip_bytes returns a valid ZIP whose flat layout contains every
-    seed file and each parses as the expected envelope."""
+    """build_zip_bytes returns the **canonical pack zip** (``manifest.json`` +
+    ``items/*.json``, ADR 0056): every registered item file is pinned by the
+    manifest, each parses as the expected envelope, and the archive is
+    deterministic (fixed entry order, fixed timestamps)."""
     import zipfile
 
+    from app.core.seed_pack import content_digest, parse_pack
     from app.services.seed.seed_export_service import SeedExportService
 
-    data = await SeedExportService(seeded_db).build_zip_bytes()
+    svc = SeedExportService(seeded_db)
+    data = await svc.build_zip_bytes()
     assert data[:2] == b"PK"  # ZIP magic
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        names = set(zf.namelist())
-        expected = set(SeedExportService.EXPORTERS.keys())
-        assert expected <= names, f"missing files: {expected - names}"
-        # each file is valid JSON with a metadata block
-        for name in expected:
-            payload = json.loads(zf.read(name))
-            assert "metadata" in payload
+        infos = zf.infolist()
+        assert [i.filename for i in infos] == [
+            "manifest.json",
+            *(sorted(f"items/{fn}" for fn in svc.EXPORTERS)),
+        ], "canonical order: manifest first, then items sorted by path"
+        assert all(i.date_time == (1980, 1, 1, 0, 0, 0) for i in infos), "no timestamps"
+        manifest = json.loads(zf.read("manifest.json"))
+        files = {name: zf.read(name) for name in zf.namelist() if name != "manifest.json"}
+        assert manifest["scope"] == "system"
+        for entry in manifest["item_files"]:
+            assert content_digest(files[entry["path"]]) == entry["sha256"], "pins match bytes"
+    parsed, errors = parse_pack(manifest, files)
+    assert not errors
+    assert parsed is not None
+
+    # Deterministic: two builds are byte-identical.
+    again = await svc.build_zip_bytes()
+    assert again == data
+
+    # A template-tenant export is still a system-scoped pack (scope stripped).
+    tenant_svc = SeedExportService(seeded_db, tenant_id=uuid4())
+    tmanifest, _ = await tenant_svc.build_pack()
+    assert tmanifest["scope"] == "system"
 
 
 @pytest.mark.asyncio
@@ -602,8 +724,8 @@ async def test_seeds_export_endpoint_system_admin_200(monkeypatch):
 
     # Seed the global taxonomy so the export has content.
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_body_parts()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_body_parts)
 
     tid = uuid4()
     monkeypatch.setattr(
@@ -623,8 +745,9 @@ async def test_seeds_export_endpoint_system_admin_200(monkeypatch):
         assert "attachment" in resp.headers["content-disposition"]
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             names = set(zf.namelist())
-            assert "concepts.json" in names
-            assert "anatomy_structures.json" in names
+            assert "manifest.json" in names
+            assert "items/concepts.json" in names
+            assert "items/anatomy_structures.json" in names
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
@@ -705,3 +828,215 @@ def test_unpack_seeds_zip_rejects_unknown_entries(tmp_path, monkeypatch):
         unpack.main()
     # nothing extracted
     assert not (out / "concepts.json").exists()
+
+
+# ===========================================================================
+# ADR 0056 Phase 6 — the canonical pack export (coverage, determinism, gates)
+# ===========================================================================
+
+
+def test_export_covers_every_pack_item_file():
+    """The exporter covers **every** registered pack item file — the coverage
+    matrix is the whole truth, so the canonical export ships all twelve files
+    (vaccines, biomarker states, OMB picklist and panels included)."""
+    from app.core.seed_pack import BUNDLED_ITEM_FILES
+    from app.services.seed.seed_export_service import SeedExportService
+
+    assert set(SeedExportService.EXPORTERS) == set(BUNDLED_ITEM_FILES)
+
+
+@pytest.mark.asyncio
+async def test_export_biomarker_states_preserves_seeded_data(seeded_db):
+    """Every shipped biomarker state is exported with its code/system/display/
+    category/sort_order, identity rows carrying their mechanical seed_key."""
+    from app.services.seed.seed_export_service import SeedExportService
+
+    out = await SeedExportService(seeded_db).export_biomarker_states()
+    shipped = _load_shipped("biomarker_states.json")["items"]
+    by_slug = {i["slug"]: i for i in out["items"]}
+    assert len(out["items"]) >= len(shipped), "export dropped states"
+    for s in shipped:
+        got = by_slug.get(s["slug"])
+        assert got is not None, f"missing state {s['slug']}"
+        assert got["seed_key"] == s["seed_key"]
+        assert got["code"] == s["code"]
+        assert got["system"] == s["system"]
+        assert got["display"] == s["display"]
+        assert got["category"] == s["category"]
+        assert got["sort_order"] == s["sort_order"]
+
+
+@pytest.mark.asyncio
+async def test_export_omb_picklist_normalizes_pack_data(seeded_db):
+    """The OMB picklist exports as a deterministic pass-through of the pack
+    path: the three collections sorted by seed_key, the schema note kept, the
+    timestamp gone."""
+    from app.services.seed.seed_export_service import SeedExportService
+
+    out = await SeedExportService(seeded_db).export_omb_picklist()
+    assert "races" in out and "ethnicities" in out and "languages" in out
+    shipped = _load_shipped("omb_race_ethnicity.json")
+    for key in ("races", "ethnicities", "languages"):
+        got = out[key]
+        expected = {(r["seed_key"], r["code"], r["display"]) for r in shipped[key]}
+        assert {(r["seed_key"], r["code"], r["display"]) for r in got} == expected, key
+        keys = [r["seed_key"] for r in got]
+        assert keys == sorted(keys), f"{key} sorted by seed_key"
+    assert "last_updated" not in out["metadata"]
+    assert out["metadata"]["schema_note"] == shipped["metadata"]["schema_note"]
+
+
+@pytest.mark.asyncio
+async def test_export_is_byte_deterministic_no_timestamps(seeded_db):
+    """The canonical export carries **no timestamps anywhere** — serializing
+    two export_all runs byte-for-byte is identical (the CI ``--check`` gate
+    and git-diff review both rely on this)."""
+    from app.services.seed.seed_export_service import SeedExportService
+
+    svc = SeedExportService(seeded_db)
+    a = await svc.export_all()
+    b = await svc.export_all()
+    assert set(a) == set(b)
+    for fn in a:
+        sa = SeedExportService._serialize(a[fn])
+        sb = SeedExportService._serialize(b[fn])
+        assert sa == sb, f"{fn} not byte-deterministic"
+        assert b"last_updated" not in sa, f"{fn} carries a timestamp"
+        assert "last_updated" not in a[fn].get("metadata", {})
+
+
+@pytest.mark.asyncio
+async def test_build_pack_is_contract_valid_and_deterministic(seeded_db):
+    """build_pack emits a manifest + item files that pass the pack contract,
+    with a stable whole-pack digest across builds (round-trip identity with
+    the source lane: the same digest always registers the same version)."""
+    from app.core.seed_pack import pack_digest, parse_pack, validate_pack
+    from app.services.seed.seed_export_service import SeedExportService
+
+    svc = SeedExportService(seeded_db)
+    manifest, files = await svc.build_pack()
+    assert not validate_pack(manifest, files)
+    assert pack_digest(manifest)
+
+    manifest_b, files_b = await svc.build_pack()
+    assert manifest == manifest_b
+    assert files == files_b
+
+    parsed, errors = parse_pack(manifest, files)
+    assert not errors
+    assert parsed is not None
+    assert parsed.stage_items("concepts"), "the pack parses into stages"
+
+
+def test_seed_pack_cli_check_detects_drift(tmp_path, monkeypatch, capsys):
+    """``seed_pack.py pack --check`` is green on a current pack and exits
+    non-zero with typed findings once the checked-in copy drifts."""
+    import scripts.seed_pack as cli
+
+    out = tmp_path / "pack"
+    monkeypatch.setattr(sys, "argv", ["seed_pack.py", "pack", "--out", str(out)])
+    assert cli.main() == 0
+
+    monkeypatch.setattr(sys, "argv", ["seed_pack.py", "pack", "--out", str(out), "--check"])
+    assert cli.main() == 0
+
+    drift = out / "items" / "allergies.json"
+    original = drift.read_bytes()
+    drift.write_bytes(original + b'{"tampered": true}')
+    monkeypatch.setattr(sys, "argv", ["seed_pack.py", "pack", "--out", str(out), "--check"])
+    assert cli.main() == 1
+    assert "items/allergies.json differs" in capsys.readouterr().out
+
+    drift.write_bytes(original)
+    (out / "items" / "medications.json").unlink()
+    assert cli.main() == 1
+    assert "missing from" in capsys.readouterr().out
+
+
+def test_unpack_seeds_zip_accepts_canonical_pack_and_verifies_pins(tmp_path, monkeypatch):
+    """The canonical pack zip unpacks (items/ stripped, manifest skipped) and
+    every sha256 pin is verified — a tampered archive never lands."""
+    import hashlib
+    import zipfile as zf_mod
+
+    import scripts.unpack_seeds_zip as unpack
+
+    manifest = {
+        "id": "unit-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "CC0-1.0",
+        "scope": "system",
+        "priority": 100,
+        "item_files": [],
+    }
+    files = {
+        "concepts.json": b'{"metadata": {"version": "1"}, "items": []}',
+        "allergies.json": b'{"metadata": {"version": "1"}, "items": []}',
+    }
+    for name, content in files.items():
+        manifest["item_files"].append(
+            {"path": f"items/{name}", "sha256": hashlib.sha256(content).hexdigest()}
+        )
+
+    zip_path = tmp_path / "pack.zip"
+    with zf_mod.ZipFile(zip_path, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(manifest))
+        for name, content in files.items():
+            zf.writestr(f"items/{name}", content)
+
+    out = tmp_path / "seeds"
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
+    unpack.main()
+    assert (out / "concepts.json").read_bytes() == files["concepts.json"]
+    assert not (out / "manifest.json").exists(), "the manifest never lands in data/seeds"
+
+    # Tampered content does not match its pin.
+    tampered = tmp_path / "tampered.zip"
+    with zf_mod.ZipFile(tampered, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(manifest))
+        for name, content in files.items():
+            zf.writestr(f"items/{name}", content + b"pwned" if name == "concepts.json" else content)
+    out2 = tmp_path / "seeds2"
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(tampered), "--out", str(out2)])
+    with pytest.raises(SystemExit):
+        unpack.main()
+    assert not out2.exists() or not (out2 / "concepts.json").exists()
+
+    # A manifest-pinned file missing from the archive is a refusal too.
+    incomplete = tmp_path / "incomplete.zip"
+    with zf_mod.ZipFile(incomplete, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(manifest))
+        zf.writestr("items/concepts.json", files["concepts.json"])
+    out3 = tmp_path / "seeds3"
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(incomplete), "--out", str(out3)])
+    with pytest.raises(SystemExit):
+        unpack.main()
+
+
+def test_unpack_seeds_zip_still_accepts_a_flat_archive(tmp_path, monkeypatch):
+    """A hand-rolled flat zip of seed files unpacks whitelist-only (the
+    whitelist is the full registered file set)."""
+    import zipfile as zf_mod
+
+    import scripts.unpack_seeds_zip as unpack
+
+    out = tmp_path / "seeds"
+    zip_path = tmp_path / "flat.zip"
+    with zf_mod.ZipFile(zip_path, "w") as zf:
+        zf.writestr("biomarker_states.json", '{"metadata": {}, "items": []}')
+        zf.writestr("omb_race_ethnicity.json", '{"metadata": {}, "races": []}')
+        zf.writestr("unregistered.json", "{}")
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_path), "--out", str(out)])
+    with pytest.raises(SystemExit):
+        unpack.main()
+    assert not (out / "biomarker_states.json").exists()
+
+    zip_ok = tmp_path / "flat-ok.zip"
+    with zf_mod.ZipFile(zip_ok, "w") as zf:
+        zf.writestr("biomarker_states.json", '{"metadata": {}, "items": []}')
+        zf.writestr("omb_race_ethnicity.json", '{"metadata": {}, "races": []}')
+    monkeypatch.setattr(sys, "argv", ["unpack_seeds_zip.py", str(zip_ok), "--out", str(out)])
+    unpack.main()
+    assert (out / "biomarker_states.json").exists()
+    assert (out / "omb_race_ethnicity.json").exists()

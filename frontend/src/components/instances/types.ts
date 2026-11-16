@@ -133,7 +133,8 @@ export interface InstanceQuery {
  * Per-entity adapter. Generic in `T` (the entity record type) so facet
  * predicates and row projection are fully type-safe. This is the instance
  * counterpart of the catalog side's registry glue
- * (`writeTarget.ts` + `catalogFacetRegistry.ts`) combined into one interface.
+ * (`catalogFacetRegistry.ts` + the `/catalogs` write metadata) combined into
+ * one interface.
  *
  * Register via {@link registerAdapter}; resolve via {@link getAdapter}.
  */

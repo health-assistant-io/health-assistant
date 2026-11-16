@@ -13,8 +13,10 @@ Encapsulates every operation the ``/admin/tenants`` surface performs:
 The class is instantiated per-request with the request's ``AsyncSession``
 (the preferred style for new complex services — see the backend service
 conventions). Mutating methods persist an ``AuditEvent`` entry via
-``audit_service.log_audit_action`` so every administrative action is
-traceable (identity-auth §17).
+``audit_service.log_audit_action`` — on the request session, so the row
+commits (or rolls back) **in the same transaction as the action** (S1) —
+so every administrative action is traceable (identity-auth §17) and an
+unrecordable action is refused outright.
 """
 
 from __future__ import annotations
@@ -22,12 +24,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-from datetime import timedelta
+from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -272,10 +275,11 @@ class TenantAdminService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A tenant with that slug already exists.",
             )
-        await self.db.commit()
-        await self.db.refresh(tenant)
-
+        # Same-transaction audit (S1): the row commits together with the
+        # tenant — a failed audit write rolls the create back.
         await log_audit_action(
+            required=True,
+            session=self.db,
             tenant_id=tenant.id,
             user_id=actor_id,
             action="tenant.create",
@@ -283,6 +287,8 @@ class TenantAdminService:
             resource_id=tenant.id,
             new_value=tenant.to_dict(),
         )
+        await self.db.commit()
+        await self.db.refresh(tenant)
         return tenant
 
     async def update_tenant(
@@ -306,10 +312,9 @@ class TenantAdminService:
             tenant.slug = candidate
 
         tenant.updated_by = actor_id
-        await self.db.commit()
-        await self.db.refresh(tenant)
-
         await log_audit_action(
+            required=True,
+            session=self.db,
             tenant_id=tenant.id,
             user_id=actor_id,
             action="tenant.update",
@@ -318,6 +323,8 @@ class TenantAdminService:
             old_value=prior_snapshot,  # gate-allow: *, audit diff
             new_value=tenant.to_dict(),
         )
+        await self.db.commit()
+        await self.db.refresh(tenant)
         return tenant
 
     async def set_active(self, tenant_id: UUID, active: bool, actor_id: UUID) -> TenantModel:
@@ -327,9 +334,9 @@ class TenantAdminService:
             return tenant
         tenant.is_active = active
         tenant.updated_by = actor_id
-        await self.db.commit()
-        await self.db.refresh(tenant)
         await log_audit_action(
+            required=True,
+            session=self.db,
             tenant_id=tenant.id,
             user_id=actor_id,
             action="tenant.deactivate" if not active else "tenant.reactivate",
@@ -338,6 +345,8 @@ class TenantAdminService:
             old_value={"is_active": prior_active},  # gate-allow: *, audit diff
             new_value={"is_active": active},
         )
+        await self.db.commit()
+        await self.db.refresh(tenant)
         return tenant
 
     async def hard_delete_tenant(
@@ -361,6 +370,7 @@ class TenantAdminService:
             dry_run=False,
         )
         await log_audit_action(
+            required=True,
             tenant_id=None,
             user_id=actor_id,
             action="tenant.delete",
@@ -411,6 +421,7 @@ class TenantAdminService:
         )
 
         await log_audit_action(
+            required=True,
             tenant_id=tenant.id,
             user_id=actor.user_id,
             action="tenant.switch_into",
@@ -453,6 +464,7 @@ class TenantAdminService:
         )
 
         await log_audit_action(
+            required=True,
             tenant_id=original_tenant_id,
             user_id=original_user_id,
             action="tenant.switch_back",
@@ -546,21 +558,34 @@ class TenantAdminService:
             user.is_active = payload.is_active
 
         user.updated_by = actor_id
-        await self.db.commit()
-        await self.db.refresh(user)
-
+        new_snapshot = {
+            "role": user.role.value if user.role else None,
+            "is_active": user.is_active,
+        }
+        # Same-transaction audit (S1): the row commits together with the
+        # role/active change — a failed audit write rolls the change back.
         await log_audit_action(
+            required=True,
+            session=self.db,
             tenant_id=tenant_id,
             user_id=actor_id,
             action="tenant_user.update",
             resource_type="tenant_user",
             resource_id=user.id,
             old_value=prior_snapshot,  # gate-allow: *, audit diff
-            new_value={
-                "role": user.role.value if user.role else None,
-                "is_active": user.is_active,
-            },
+            new_value=new_snapshot,
         )
+        await self.db.commit()
+        await self.db.refresh(user)
+
+        # Role/active changes must take effect immediately: the role claim
+        # is read from the session JWT, so bump ``token_version`` and kill
+        # the Redis hot layer exactly like ``PUT /users/{id}`` does.
+        if prior_snapshot != new_snapshot:
+            from app.services.tenancy.user_service import bump_token_version
+
+            await bump_token_version(str(user.id))
+            await token_store.revoke_everything(str(user.id))
         return user
 
     async def mint_invite(
@@ -589,6 +614,7 @@ class TenantAdminService:
         )
         # §17: invite minting is an admin action — audit it.
         await log_audit_action(
+            required=True,
             tenant_id=tenant.id,
             user_id=actor_id,
             action="tenant.invite",
@@ -645,32 +671,185 @@ class TenantAdminService:
         action: str | None = None,
         outcome: str | None = None,
         user_id: UUID | None = None,
+        resource_type: str | None = None,
+        resource_id: UUID | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AuditEvent], int]:
         """Cross-tenant audit viewer (identity-auth §17, plan 16 H2).
 
-        SYSTEM_ADMIN-only at the endpoint layer. ``tenant_id=None`` returns
-        every tenant's stream **plus** the system-level rows (NULL tenant —
-        tenant deletes, auth denials for unknown principals).
+        ``tenant_id=None`` returns every tenant's stream **plus** the
+        system-level rows (NULL tenant — tenant deletes, auth denials for
+        unknown principals). The full filter set (actor / resource /
+        action / outcome / date range) feeds both the JSON viewer and the
+        CSV/JSONL export.
         """
         limit = max(1, min(limit, 250))
         offset = max(0, offset)
         query = select(AuditEvent)
         count_query = select(func.count()).select_from(AuditEvent)
-        if tenant_id is not None:
-            query = query.where(AuditEvent.tenant_id == tenant_id)
-            count_query = count_query.where(AuditEvent.tenant_id == tenant_id)
-        if action:
-            query = query.where(AuditEvent.action == action)
-            count_query = count_query.where(AuditEvent.action == action)
-        if outcome:
-            query = query.where(AuditEvent.outcome == outcome)
-            count_query = count_query.where(AuditEvent.outcome == outcome)
-        if user_id is not None:
-            query = query.where(AuditEvent.user_id == user_id)
-            count_query = count_query.where(AuditEvent.user_id == user_id)
+        query, count_query = self._audit_filters(
+            query,
+            count_query,
+            tenant_id=tenant_id,
+            action=action,
+            outcome=outcome,
+            user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
         total = (await self.db.execute(count_query)).scalar() or 0
         query = query.order_by(AuditEvent.created_at.desc()).limit(limit).offset(offset)
         items = (await self.db.execute(query)).scalars().all()
         return list(items), int(total)
+
+    async def count_audit_entries_all(
+        self,
+        *,
+        tenant_id: UUID | None = None,
+        action: str | None = None,
+        outcome: str | None = None,
+        user_id: UUID | None = None,
+        resource_type: str | None = None,
+        resource_id: UUID | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> int:
+        """The row count behind the shared viewer/export filter set — the
+        export's truncation notice needs it before streaming starts."""
+        # ``Select`` is immutable, so handing the same statement to both
+        # parameter slots of the shared filter helper yields one statement
+        # with each condition applied exactly once.
+        query = select(func.count()).select_from(AuditEvent)
+        query, _ = self._audit_filters(
+            query,
+            query,
+            tenant_id=tenant_id,
+            action=action,
+            outcome=outcome,
+            user_id=user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        return int((await self.db.execute(query)).scalar() or 0)
+
+    async def iter_audit_entries_all(
+        self,
+        *,
+        tenant_id: UUID | None = None,
+        action: str | None = None,
+        outcome: str | None = None,
+        user_id: UUID | None = None,
+        resource_type: str | None = None,
+        resource_id: UUID | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        page_size: int = 500,
+        max_rows: int = 10000,
+    ) -> AsyncIterator[AuditEvent]:
+        """Stream the filtered audit stream newest-first for the export
+        surface (keyset pagination on ``(created_at, id)`` — bounded memory
+        for large streams, capped at ``max_rows``).
+
+        The keyset carries ``id`` as the tie-breaker: rows sharing one
+        ``created_at`` (a burst of appends within one clock tick) must all
+        be exported — a ``created_at``-only cursor would skip every tie
+        member after the first page boundary. Each row is yielded exactly
+        once.
+        """
+        last_created: datetime | None = None
+        last_id: UUID | None = None
+        yielded = 0
+        while yielded < max_rows:
+            query = select(AuditEvent)
+            count_query = select(func.count()).select_from(AuditEvent)
+            query, _ = self._audit_filters(
+                query,
+                count_query,
+                tenant_id=tenant_id,
+                action=action,
+                outcome=outcome,
+                user_id=user_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            if last_created is not None and last_id is not None:
+                query = query.where(
+                    tuple_(AuditEvent.created_at, AuditEvent.id) < tuple_(last_created, last_id)
+                )
+            batch = list(
+                (
+                    await self.db.execute(
+                        query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(
+                            min(page_size, max_rows - yielded)
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not batch:
+                return
+            for row in batch:
+                yield row
+                yielded += 1
+            last_created = batch[-1].created_at
+            last_id = batch[-1].id
+
+    @staticmethod
+    def _audit_filters(
+        query,
+        count_query,
+        *,
+        tenant_id: UUID | None,
+        action: str | None,
+        outcome: str | None,
+        user_id: UUID | None,
+        resource_type: str | None,
+        resource_id: UUID | None,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ):
+        """Apply the shared viewer/export filters to both the page query and
+        the count query (same predicate, same answer)."""
+        if tenant_id is not None:
+            cond = AuditEvent.tenant_id == tenant_id
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if action:
+            cond = AuditEvent.action == action
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if outcome:
+            cond = AuditEvent.outcome == outcome
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if user_id is not None:
+            cond = AuditEvent.user_id == user_id
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if resource_type:
+            cond = AuditEvent.resource_type == resource_type
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if resource_id is not None:
+            cond = AuditEvent.resource_id == resource_id
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if date_from is not None:
+            cond = AuditEvent.created_at >= date_from
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        if date_to is not None:
+            cond = AuditEvent.created_at < date_to
+            query = query.where(cond)
+            count_query = count_query.where(cond)
+        return query, count_query

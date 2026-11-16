@@ -6,11 +6,14 @@ from httpx import AsyncClient
 
 
 def override_get_current_user():
+    """An ADMIN principal: layout routes are patient-scoped (PATIENT_*), and
+    the handler's user-ownership branch applies only to USER — the old
+    lowercase-role fixture leaned on that accidentally; pin ADMIN instead."""
     from app.schemas.user import TokenData
 
     uid = uuid.uuid4()
     tid = uuid.uuid4()
-    return TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="user")
+    return TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="ADMIN")
 
 
 @pytest.fixture

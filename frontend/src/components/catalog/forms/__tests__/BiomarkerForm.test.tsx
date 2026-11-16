@@ -66,3 +66,46 @@ describe('BiomarkerForm value-type discriminator', () => {
     expect(screen.queryByText('Ref. min')).not.toBeInTheDocument();
   });
 });
+
+describe('BiomarkerForm slug ownership', () => {
+  // The Name input is the first textbox in the DOM (the slug field is second).
+  const nameInput = () => screen.getAllByRole('textbox')[0] as HTMLInputElement;
+  const slugInput = () =>
+    screen.getByPlaceholderText('auto-generated-from-name') as HTMLInputElement;
+
+  it('keeps the slug editable by default (the workspace explicit-slug door)', () => {
+    const onChange = vi.fn();
+    render(<BiomarkerForm values={{ name: 'Ferritin' }} onChange={onChange} mode="create" />);
+    expect(slugInput()).toBeEnabled();
+    expect(screen.getByText('Auto-generated from name — edit to override')).toBeInTheDocument();
+    fireEvent.change(slugInput(), { target: { value: 'ferritin-custom' } });
+    expect(onChange).toHaveBeenCalledWith({ slug: 'ferritin-custom' });
+  });
+
+  it('disables the slug field when the server owns identity (serverOwnedSlug)', () => {
+    const onChange = vi.fn();
+    render(
+      <BiomarkerForm
+        values={{ name: 'Ferritin' }}
+        onChange={onChange}
+        mode="create"
+        serverOwnedSlug
+      />,
+    );
+    // No editable slug: the dialog strips it from the wire, so an edit there
+    // would be silently dropped — the field is disabled instead.
+    expect(slugInput()).toBeDisabled();
+    expect(screen.queryByText('Auto-generated from name — edit to override')).not.toBeInTheDocument();
+    expect(screen.getByText('Derived from the name on save')).toBeInTheDocument();
+  });
+
+  it('still derives the slug for display from the name while server-owned', () => {
+    const onChange = vi.fn();
+    render(<BiomarkerForm values={{ name: '' }} onChange={onChange} mode="create" serverOwnedSlug />);
+    fireEvent.change(nameInput(), { target: { value: 'Fasting Glucose' } });
+    // The display-only derivation still runs (the dialog shows what the
+    // backend will derive) and the slug field itself emits no edit.
+    expect(onChange).toHaveBeenCalledWith({ name: 'Fasting Glucose', slug: 'fasting-glucose' });
+    expect(slugInput()).toBeDisabled();
+  });
+});
