@@ -40,6 +40,7 @@ import json
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol, cast
 
 from fastapi.routing import APIRoute, APIWebSocketRoute
 from starlette.routing import Route, WebSocketRoute
@@ -148,9 +149,29 @@ def enumerate_routes(routes: object) -> Iterator[EnumeratedRoute]:
     skipped — their presence is an environment toggle, not an application
     policy.
     """
-    if hasattr(routes, "routes"):
-        routes = routes.routes
-    yield from _walk_routes(list(routes), "")
+    source: Any = routes
+    if hasattr(source, "routes"):
+        source = source.routes
+    yield from _walk_routes(list(source), "")
+
+
+class _IncludedContext(Protocol):
+    """The shape of the include context FastAPI hangs off a lazy include."""
+
+    prefix: str | None
+    dependencies: Iterable[object] | None
+
+
+class _IncludedRouterNode(Protocol):
+    """The shape of FastAPI's private lazy ``_IncludedRouter`` node.
+
+    The class is not importable (private, versioned with FastAPI), so the
+    walk identifies it by name and this protocol pins the three attributes
+    it composes.
+    """
+
+    include_context: _IncludedContext
+    original_router: Any
 
 
 def _walk_routes(
@@ -158,12 +179,13 @@ def _walk_routes(
 ) -> Iterator[EnumeratedRoute]:
     for route in routes:
         if type(route).__name__ == "_IncludedRouter":
-            child_prefix = prefix + (route.include_context.prefix or "")
+            included = cast("_IncludedRouterNode", route)
+            child_prefix = prefix + (included.include_context.prefix or "")
             child_dependencies = inherited_dependencies + tuple(
-                route.include_context.dependencies or ()
+                included.include_context.dependencies or ()
             )
             yield from _walk_routes(
-                list(route.original_router.routes), child_prefix, child_dependencies
+                list(included.original_router.routes), child_prefix, child_dependencies
             )
             continue
         if not isinstance(route, (APIRoute, APIWebSocketRoute, Route, WebSocketRoute)):
@@ -304,7 +326,7 @@ def _declared_policy_violations(route: EnumeratedRoute) -> list[str]:
 
 def _policy_violations(route: EnumeratedRoute, route_class: object) -> list[str]:
     """The central-resolver checks for one route (ADR 0054, Phase 1b)."""
-    if route_class not in RouteClass:
+    if not isinstance(route_class, (RouteClass, str)):
         return []  # reported by the closed-vocabulary rule above
     policy = resolve_route_policy(route.method, route.path, route_class)
     if policy is None:

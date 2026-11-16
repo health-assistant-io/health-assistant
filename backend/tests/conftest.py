@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 
 import pytest
@@ -42,6 +43,41 @@ def run_migrations():
 
     # Load alembic configuration from the backend root
     alembic_cfg = Config("alembic.ini")
+
+    # Provision the runtime role when the cluster lacks it (ADR-0064
+    # credential split). Production clusters get both roles from the compose
+    # init scripts / provision_db.py; a bare test cluster — the CI Postgres
+    # service container or a developer machine — creates only the owner, so
+    # the harness creates the app role with the owner's password: the same
+    # shared-password fallback tests/_db_roles.py documents for pre-split
+    # volumes. Roles are cluster-level, so one CREATE ROLE also covers the
+    # scratch databases the migration/RLS tests build and connect to as the
+    # app role.
+    import psycopg2
+
+    from app.core.config import settings
+    from tests._db_roles import APP_ROLE, app_role_password
+
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", APP_ROLE):
+        raise ValueError(f"APP_ROLE {APP_ROLE!r} is not a valid role name")
+    _role_conn = psycopg2.connect(
+        host=settings.POSTGRES_HOST,
+        port=settings.POSTGRES_PORT,
+        user=settings.POSTGRES_USER,
+        password=settings.POSTGRES_PASSWORD,
+        dbname=settings.POSTGRES_DB,
+    )
+    try:
+        with _role_conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (APP_ROLE,))
+            if cur.fetchone() is None:
+                cur.execute(
+                    f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD %s",
+                    (app_role_password(),),
+                )
+        _role_conn.commit()
+    finally:
+        _role_conn.close()
 
     # Run migrations
     command.upgrade(alembic_cfg, "head")

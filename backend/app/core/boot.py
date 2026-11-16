@@ -26,6 +26,9 @@ tenant-scoped or NULL-tenant-scoped does.
 from __future__ import annotations
 
 import logging
+from typing import cast
+
+from sqlalchemy.sql.elements import ColumnElement
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +71,12 @@ async def cleanup_stuck_examinations() -> int:
             result = await db.execute(
                 update(ExaminationModel)
                 .where(ExaminationModel.extraction_status.in_(stuck_statuses))
-                .where(ExaminationModel.updated_at < stuck_threshold)
+                # Column attributes assigned in a (non-declarative) mixin class
+                # body resolve to `Never` under the mypy 2.3 x SQLAlchemy 2.1
+                # inline types, so the `<` comparison falls back to `bool`.
+                # The cast re-states the comparison's real type; runtime is
+                # untouched (cast is a no-op).
+                .where(cast("ColumnElement[bool]", ExaminationModel.updated_at < stuck_threshold))
                 .values(
                     extraction_status="failed",
                     extraction_progress=0,

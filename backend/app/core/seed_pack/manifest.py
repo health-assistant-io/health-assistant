@@ -25,6 +25,12 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
+from typing import TYPE_CHECKING
+
+# items.py imports PackError from this module at runtime, so the objects
+# parse_pack dispatches into can only be imported for type checking here.
+if TYPE_CHECKING:
+    from app.core.seed_pack.items import ParsedItemFile, ParsedPack
 
 PACK_SCHEMA_VERSION = "1.0"
 
@@ -414,9 +420,12 @@ def _validate_item_file_entries(item_files: object) -> Iterable[PackError]:
         path_code = item_path_error(path)
         if path_code is not None:
             yield PackError(path_code, "item_files", f"{path!r} is not a pack-relative JSON path")
-        elif path in seen:
-            yield PackError("DUPLICATE_ITEM_PATH", "item_files", path)
-        seen.add(path)
+        elif isinstance(path, str):
+            # item_path_error returned None, so path is a validated pack-relative
+            # str — the isinstance narrows it for the duplicate check below.
+            if path in seen:
+                yield PackError("DUPLICATE_ITEM_PATH", "item_files", path)
+            seen.add(path)
         if not isinstance(digest, str) or not _SHA256_RE.match(digest):
             yield PackError(
                 "ITEM_DIGEST_INVALID", "item_files", f"{digest!r} is not a sha256 hex digest"
@@ -570,7 +579,7 @@ def validate_pack(
             continue
         path = entry.get("path")
         digest = entry.get("sha256")
-        if item_path_error(path) is not None:
+        if not isinstance(path, str) or item_path_error(path) is not None:
             continue
         if path not in files:
             errors.append(
@@ -668,7 +677,7 @@ def parse_pack(
     files: Mapping[str, str | bytes],
     *,
     app_version: str | None = None,
-) -> tuple[object | None, list[PackError]]:
+) -> tuple[ParsedPack | None, list[PackError]]:
     """Validate a pack and dispatch it into a :class:`ParsedPack`.
 
     Returns ``(None, errors)`` when the pack does not validate; otherwise the
@@ -681,8 +690,9 @@ def parse_pack(
     if errors:
         return None, errors
 
-    parsed_files: dict[str, object] = {}
-    for entry in manifest.get("item_files", []) or []:
+    parsed_files: dict[str, ParsedItemFile] = {}
+    declared_item_files = manifest.get("item_files", [])
+    for entry in declared_item_files if isinstance(declared_item_files, list) else []:
         if not isinstance(entry, Mapping):
             continue
         path = entry.get("path")

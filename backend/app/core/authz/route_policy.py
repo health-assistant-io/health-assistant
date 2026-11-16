@@ -60,7 +60,7 @@ from app.core.authz.permissions import Permission
 from app.core.authz.policy import RouteClass, RoutePolicy
 from app.core.authz.scopes import AccessScope
 
-type _Policy = tuple[Permission, AccessScope]
+type _Policy = tuple[Permission, AccessScope] | None
 
 _API_PREFIXES = ("/api/v1", "/api/v2")
 
@@ -96,7 +96,7 @@ def _p(permission: Permission, scope: AccessScope) -> _Policy:
 def _rule(
     name: str,
     path: str,
-    methods: frozenset[str],
+    methods: frozenset[str] | None,
     *,
     read: _Policy = None,
     write: _Policy = None,
@@ -1270,6 +1270,8 @@ def resolve_route_policy(
     auth-only self-service rule; every other class resolves to its class
     with no permission.
     """
+    if route_class is None:
+        return None
     rule = resolve_route_rule(method, path, route_class)
     if rule is None:
         return None

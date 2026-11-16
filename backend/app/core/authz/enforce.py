@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import cast
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -114,20 +115,29 @@ def _inventory_index() -> _InventoryIndex:
 def _token_or_none(request: Request) -> str | None:
     """Extract the session credential without raising (cookie, then Bearer)."""
     try:
-        return get_token(request, request.headers.get("authorization"))
+        # No Authorization header must not skip the cookie path: get_token
+        # checks cookies FIRST (§10) and treats a falsy header as absent.
+        return get_token(request, request.headers.get("authorization") or "")
     except HTTPException:
         return None
 
 
-async def get_optional_session_user(request: Request = None) -> TokenData | None:
+async def get_optional_session_user(request: Request = None) -> TokenData | None:  # type: ignore[assignment]
     """The verified session principal for this request, or ``None``.
 
-    Reuses the ``get_token`` extraction (cookie first, then Bearer) without
-    raising and verifies through the single session path
+    Reuses the ``get_token`` extraction (cookie first, then Bearer) and verifies
+    through the single session path
     (:func:`app.core.security.authenticate_session_token`). The result — and
     a failed verification — is cached on ``request.state`` so
     ``get_current_user`` neither re-verifies nor changes the answer.
     WebSocket scopes never receive a ``Request``; they yield ``None``.
+
+    The ``= None`` default is load-bearing, not sloppy typing: FastAPI injects
+    a ``Request`` only when the annotation is exactly ``Request`` (a
+    ``Request | None`` union is treated as a Pydantic field and fails route
+    registration), and it leaves the default in place for WebSocket scopes,
+    which is how this dependency answers ``None`` there. The same applies to
+    ``enforce_route_policy`` below and ``security.get_current_user``.
     """
     if request is None or request.scope.get("type") != "http":
         return None
@@ -266,9 +276,12 @@ async def _active_elevation(request: Request, session_user: TokenData) -> Elevat
         return None
     cached = getattr(request.state, "elevation_decision", False)
     if cached is not False:
-        return cached
+        return cast("ElevationDecision | None", cached)
     from app.core.database import AsyncSessionLocal
 
+    # A session principal (scoped credentials returned above) always carries
+    # its user id — the elevation ladder is keyed by it.
+    assert session_user.user_id is not None
     decision = None
     async with AsyncSessionLocal() as db:
         decision = await active_elevation_decision(
@@ -337,7 +350,7 @@ def resolve_ws_policy_or_none(path: str) -> RoutePolicy | None:
 
 
 async def enforce_route_policy(
-    request: Request = None,
+    request: Request = None,  # type: ignore[assignment]  # FastAPI DI needs the exact Request annotation; WS scopes keep the None default (see get_optional_session_user)
     session_user: TokenData | None = Depends(get_optional_session_user),
 ) -> None:
     """The app-level authorization gate (ADR 0054 1b) — see module docs.
@@ -446,7 +459,7 @@ async def enforce_route_policy(
         raise _deny(_UNRESOLVED_DETAIL)
     if decision is not None and decision.covers(policy.permission):
         await _audit_elevation_use(request, session_user, served, decision, policy.permission.value)
-    if elevation_covered:
+    if elevation_covered and decision is not None:
         logger.info(
             "authz: %s %s allowed under elevation %s (%s scope)",
             served.method,

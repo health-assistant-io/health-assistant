@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 _PREFIX = "refresh"
 
 
+def _decoded(value: bytes | str | None) -> str | None:
+    """Narrow a redis reply for the type check.
+
+    The client is built with ``decode_responses=True`` (app.core.redis), so a
+    reply is always ``str``; a ``bytes`` reply (client misconfiguration) is
+    treated as absent — the same fail-closed answer as a miss.
+    """
+    return value if isinstance(value, str) else None
+
+
 def _key(user_id: str, jti: str) -> str:
     return f"{_PREFIX}:{user_id}:{jti}"
 
@@ -348,7 +358,7 @@ async def bind_session_family(family_id: str, jti: str) -> None:
 async def session_family_jti(family_id: str) -> str | None:
     """The bound access jti of a family, or ``None`` (unbound / Redis out)."""
     try:
-        return await redis_client.get(_session_family_key(family_id))
+        return _decoded(await redis_client.get(_session_family_key(family_id)))
     except Exception as e:
         logger.warning("token_store: could not read session family binding: %s", e)
         return None
@@ -426,7 +436,7 @@ async def peek_sso_state(state: str) -> str | None:
     it is burned. Never degrades open.
     """
     try:
-        return await redis_client.get(_sso_state_key(state))
+        return _decoded(await redis_client.get(_sso_state_key(state)))
     except Exception as e:
         logger.warning("sso state unavailable (fail-closed): %s", e)
         return None
@@ -448,7 +458,7 @@ async def consume_sso_state(state: str) -> str | None:
     outage fails the callback, it does not skip the check.
     """
     try:
-        return await redis_client.getdel(_sso_state_key(state))
+        return _decoded(await redis_client.getdel(_sso_state_key(state)))
     except Exception as e:
         logger.warning("sso state unavailable (fail-closed): %s", e)
         return None
@@ -526,7 +536,7 @@ async def register_step_up(family_id: str, action: str, proof: str, ttl_seconds:
 async def read_step_up(family_id: str, action: str) -> str | None:
     """Read the proof for ``(family, action)`` or ``None`` (absent/outage)."""
     try:
-        return await redis_client.get(_step_up_key(family_id, action))
+        return _decoded(await redis_client.get(_step_up_key(family_id, action)))
     except Exception as e:
         logger.warning("step-up store unavailable (fail-closed): %s", e)
         return None
@@ -553,7 +563,7 @@ async def register_webauthn_challenge(key: str, payload: str, ttl_seconds: int) 
 async def consume_webauthn_challenge(key: str) -> str | None:
     """Atomically read + delete a ceremony challenge (single-use)."""
     try:
-        return await redis_client.getdel(key)
+        return _decoded(await redis_client.getdel(key))
     except Exception as e:
         logger.warning("webauthn challenge store unavailable (fail-closed): %s", e)
         return None

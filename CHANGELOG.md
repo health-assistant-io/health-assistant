@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-11-16
+
 ### Added (create menu)
 - **“New Vaccination” is back in the sidebar create menu** (the ⨁ button),
   next to New Examination / Medication / Event / Allergy. It routes to

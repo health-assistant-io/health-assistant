@@ -163,7 +163,16 @@ def record_migration_head(connection: Connection) -> None:
     # it to a safe identifier shape before interpolation.
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", app_role):
         raise ValueError(f"POSTGRES_APP_USER {app_role!r} is not a valid role name")
-    connection.execute(text(f"GRANT SELECT ON migration_state TO {app_role}"))
+    # Grant only when the runtime role exists — the same pg_roles guard the
+    # RLS migrations (0016/0018…) apply to their grants. Test/CI databases
+    # provisioned without the app role (and pre-provisioning environments)
+    # skip the grant; production grants normally (the marker stays readable
+    # by the app role either way — see /ready).
+    role_exists = connection.execute(
+        text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": app_role}
+    ).scalar()
+    if role_exists:
+        connection.execute(text(f"GRANT SELECT ON migration_state TO {app_role}"))
     connection.execute(
         text(
             "INSERT INTO migration_state (id, head_revision) VALUES (1, :head) "

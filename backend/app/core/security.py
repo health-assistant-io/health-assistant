@@ -327,12 +327,12 @@ def get_token(request: Request, authorization: str = Header(None)):
 
 def is_pat_token(token: str | None) -> bool:
     """Whether a presented bearer is a PAT-shape opaque secret."""
-    return bool(token) and token.startswith(PAT_TOKEN_PREFIX)
+    return token is not None and token.startswith(PAT_TOKEN_PREFIX)
 
 
 def is_integration_principal_token(token: str | None) -> bool:
     """Whether a presented bearer is an integration-principal opaque secret."""
-    return bool(token) and token.startswith(INTEGRATION_PRINCIPAL_TOKEN_PREFIX)
+    return token is not None and token.startswith(INTEGRATION_PRINCIPAL_TOKEN_PREFIX)
 
 
 def is_scoped_credential(value: TokenData) -> bool:
@@ -546,7 +546,7 @@ async def authenticate_session_token(token: str) -> TokenData:
     # max-age cap from the authoritative auth_sessions row.
     from app.services.auth import security_policy
 
-    policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+    policy = await security_policy.tenant_security_policy_for(str(user.tenant_id))
     family_id = payload.get("fid")
     denial = await security_policy.check_session_window(
         policy, str(family_id) if family_id else None
@@ -571,7 +571,7 @@ async def authenticate_session_token(token: str) -> TokenData:
     return token_data
 
 
-async def get_current_user(request: Request = None, token: str = Depends(get_token)):
+async def get_current_user(request: Request = None, token: str = Depends(get_token)):  # type: ignore[assignment]
     """Resolve the caller principal: session JWT **or** opaque PAT.
 
     Session tokens run the family verification path
@@ -581,6 +581,12 @@ async def get_current_user(request: Request = None, token: str = Depends(get_tok
     When the central route gate (``app.core.authz.enforce``) already
     verified this request's token, the cached principal is returned — one
     verification per request (and the same surface refusal applies).
+
+    ``request: Request = None`` mirrors the FastAPI DI constraint documented
+    in ``app.core.authz.enforce.get_optional_session_user``: the exact
+    ``Request`` annotation is what FastAPI injects against, and the None
+    default serves the direct callers below (e.g.
+    ``get_current_user_id``) that run outside a request.
     """
     if request is not None:
         cached = getattr(request.state, "session_user", None)
@@ -659,7 +665,10 @@ async def require_admin(
 
 async def get_current_user_id(token: str = Depends(get_token)) -> str:
     """Get current user ID from JWT token"""
-    payload = await get_current_user(None, token)
+    # No request → no request.state cache; the None default above is the
+    # documented direct-call convention (FastAPI DI constraint), hence the
+    # targeted ignore.
+    payload = await get_current_user(None, token)  # type: ignore[arg-type]
     return str(payload.user_id)
 
 
