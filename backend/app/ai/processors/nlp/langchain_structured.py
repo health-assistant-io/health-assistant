@@ -116,6 +116,11 @@ Instructions:
 4. If it absolutely does not match, add it to `unknown_*` list.
 5. NUMERIC biomarkers: parse numerical values strictly as floats, including
    result `value`, `reference_range_min`, and `reference_range_max`.
+   ONE-SIDED references keep their side: a printed upper limit ("< X",
+   "≤ X") maps to `reference_range_max = X` with `reference_range_min`
+   null; a printed lower limit ("> X", "≥ X") maps to `reference_range_min
+   = X` with `reference_range_max` null. NEVER move a one-sided bound to
+   the other side.
 6. STATE biomarkers (the catalog marks these as `value_type: "state"``):
    do NOT extract a numeric `value`. Instead pick a `value_state_code` from
    the biomarker's `allowed_states` list (e.g. POS/NEG/IND). The matching
@@ -169,9 +174,9 @@ IMPORTANT RULES:
 4. If the coding system is known, provide the exact `proposed_code` (e.g. '2345-7' for LOINC glucose). If custom, make a brief ID.
 5. Categorize appropriately (e.g., blood_laboratory, vital_signs, urine).
 6. Suggest common abbreviations or aliases.
-7. If the input data contains `reference_range_min` or `reference_range_max`, YOU MUST use those values as the definition's reference ranges.
+7. If the input data contains `reference_range_min` or `reference_range_max`, YOU MUST use those values as the definition's reference ranges, each on the SAME side it came from: a one-sided upper limit ("< X", "≤ X") is `reference_range_max = X` with `reference_range_min` null; a one-sided lower limit ("> X", "≥ X") is `reference_range_min = X` with `reference_range_max` null. NEVER move a one-sided bound to the other side.
 8. Provide a `preferred_unit_symbol` (e.g. mg/dL, mmol/L) that is the standard for this biomarker in clinical practice.
-9. If those values are NOT in the input, but you know the standard clinical ranges for this biomarker, you may provide them.
+9. If those values are NOT in the input, but you know the standard clinical ranges for this biomarker, you may provide them. Follow the same one-sided convention as rule 7, and NEVER provide a range that contradicts the input's `value` + `interpretation_flag`: a result flagged High/H must lie ABOVE the range you give, and a result flagged Low/L must lie BELOW it.
 10. Set `is_telemetry` to true if this metric is tracked continuously via IoT/wearables (e.g. heart rate, steps, continuous glucose, etc.).
 11. ALL values must be returned as floats.
 12. FOR EACH BIOMARKER, you MUST generate the `info` field in Markdown format. If you don't have specific clinical knowledge for a rare biomarker, provide the best possible general medical explanation or mark the section as 'Consult your physician for details'.
@@ -190,12 +195,17 @@ IMPORTANT RULES:
    Any additional useful clinical context.
 """
 
+        def _json_safe(value):
+            return value if isinstance(value, str | int | float | bool | type(None)) else None
+
         biomarker_data = [
             {
                 "raw_name": b.raw_name,
                 "unit": b.unit_symbol,
-                "reference_range_min": b.reference_range_min,
-                "reference_range_max": b.reference_range_max,
+                "value": _json_safe(b.value),
+                "reference_range_min": _json_safe(b.reference_range_min),
+                "reference_range_max": _json_safe(b.reference_range_max),
+                "interpretation_flag": _json_safe(b.interpretation_flag),
             }
             for b in unknown_biomarkers
         ]

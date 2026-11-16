@@ -32,6 +32,15 @@ This guide covers local development for Health Assistant — a self-hosted, open
    - **API Documentation (Backend):** [http://localhost:8000/docs](http://localhost:8000/docs) - *Interactive developer documentation for the backend API.*
    - **Flower (Celery Monitoring):** [http://localhost:5555](http://localhost:5555) - *Real-time view of background workers, queues, and task history.*
 
+   **Worktrees:** `.env` (and `backend/.env.test`) are untracked and are not
+   shared between git worktrees. Copy the primary checkout's `.env`, or pass
+   `--env-file /path/to/primary/.env`. `run-dev.sh` now fails fast when no
+   environment is configured, when the configured Postgres/Redis port does
+   not match the running dev containers, or when the service is unreachable —
+   instead of letting Alembic and the worker retry a default
+   `localhost:5432`. Use `--no-env-check` only for a deliberately external
+   database/cache.
+
    The unified script (`scripts/run-dev.sh`) runs every dev process under
    [honcho](https://github.com/nickstenxing/honcho) using `Procfile.dev`:
    `backend`, `worker`, `beat`, `flower`, and `frontend`. A single `Ctrl+C`
@@ -58,7 +67,7 @@ This guide covers local development for Health Assistant — a self-hosted, open
    ```
 
    The app now has zero users, so visiting http://localhost:3000 redirects
-   to `/setup`. (Localhost/dev skips the setup token.)
+   to `/setup`. (Dev/test instances skip the setup token; production requires it.)
 
    **Wiping the dev database:** when a migration diverges from your local
    schema or seed data gets into a bad state, `scripts/reset-dev-db.sh`
@@ -66,8 +75,8 @@ This guide covers local development for Health Assistant — a self-hosted, open
    brings up a fresh empty database + cache (it confirms before destroying
    anything and waits for Postgres to be healthy). Flags: `-y` (skip
    confirm), `--keep-redis`, `--no-start`, `--migrate`, `--purge-dangling`.
-   Pair with `./scripts/run-dev.sh` afterwards — it re-runs `seed_all()` on
-   the fresh DB.
+   Pair with `./scripts/run-dev.sh` afterwards — it re-applies the bundled
+   seed pack on the fresh DB.
 
    ```bash
    ./scripts/reset-dev-db.sh -y        # wipe + restart the dev DB stack
@@ -172,7 +181,7 @@ pnpm run lint
 
 ## Seed System
 
-All reference/catalog data (medications, clinical event types, allergies, anatomy, the taxonomy, the default biomarker catalog, biomarker panel memberships) is seeded on every application startup by `SeedService.seed_all()` — a single ordered pipeline (`backend/app/services/seed/` — the entity-family modules behind `SeedService`). The order is declared in `_SEED_STAGE_NAMES` so dependencies land first (e.g. `concepts` before `concept_edges`; `body_parts` before `concept_edges` which resolve anatomy slugs).
+All reference/catalog data (medications, clinical event types, allergies, anatomy, the taxonomy, the default biomarker catalog, biomarker panel memberships) ships as the **bundled seed pack** (`backend/data/seeds/`). Boot re-checks the pack digest and applies it through the pack planner/applier **only when the digest changed** (or nothing applied it yet) — audited, one transaction per stage, with provenance, precedence, deferred-reference retries and retirement (see [SEEDING_AND_DEMOS.md §0b](SEEDING_AND_DEMOS.md)). The stage order is declared in `_SEED_STAGE_NAMES` so dependencies land first (e.g. `concepts` before `concept_edges`; `body_parts` before `concept_edges` which resolve anatomy slugs).
 
 Each stage returns a standard stats contract `{added, updated, skipped, errors}` and is **idempotent** — re-runs reconcile existing rows to the JSON (including a concept's multi-kind tags), so editing a seed file and restarting is the normal way to evolve catalog data. Seed files live under `backend/data/seeds/` and use a standard `{metadata, items}` envelope.
 
@@ -180,9 +189,22 @@ To re-run a single stage against a running DB (without restarting the app):
 ```bash
 cd backend && # (uv manages the environment)
 export PYTHONPATH=.:../
-python -c "import asyncio; from app.core.database import AsyncSessionLocal; from app.services.seed.service import SeedService; asyncio.run(SeedService().seed_concepts())"
+python -c "
+import asyncio
+from app.core.database import AsyncSessionLocal
+from app.services.seed.service import SeedService
+
+async def main():
+    async with AsyncSessionLocal() as session:
+        print(await SeedService().seed_concepts(session))
+        await session.commit()
+
+asyncio.run(main())
+"
 ```
-(replace `seed_concepts` with any of the `_SEED_STAGE_NAMES` methods.)
+(replace `seed_concepts` with any of the `_SEED_STAGE_NAMES` methods; the
+seeder takes the session and never commits — the caller owns the
+transaction.)
 
 **Exporting an instance back to seeds** — the inverse of seeding. Build the
 canonical taxonomy/anatomy/catalog in a running instance (UI + AI), then

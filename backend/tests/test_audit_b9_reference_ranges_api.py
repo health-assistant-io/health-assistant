@@ -14,6 +14,7 @@ import pytest
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.tenant_model import TenantModel
 from tests._auth_helpers import headers_for_claims
 
@@ -21,6 +22,7 @@ from tests._auth_helpers import headers_for_claims
 async def _make_biomarker(*, tenant_id=None, slug=None) -> str:
     async with AsyncSessionLocal() as db:
         bio = BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
             id=uuid.uuid4(),
             slug=slug or f"bio-{uuid.uuid4().hex[:8]}",
             name="TSH",

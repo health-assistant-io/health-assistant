@@ -62,11 +62,12 @@ def test_a5_cleanup_filters_by_updated_at():
 
 
 def test_a6_startup_cleanup_filters_by_updated_at():
-    """The startup cleanup in main.lifespan must NOT mark every active
-    exam failed — it must filter by updated_at < threshold."""
-    from app import main
+    """The boot cleanup (``app.core.boot``, called from ``main.lifespan``)
+    must NOT mark every active exam failed — it must filter by
+    updated_at < threshold."""
+    from app.core import boot
 
-    src = inspect.getsource(main.lifespan)
+    src = inspect.getsource(boot.cleanup_stuck_examinations)
     # Must include the threshold predicate AND the updated_at filter.
     assert "stuck_threshold" in src or "updated_at" in src, (
         "startup cleanup must compute a threshold and filter updated_at"
@@ -82,9 +83,9 @@ def test_a6_startup_cleanup_filters_by_updated_at():
 def test_a6_startup_cleanup_threshold_at_or_beyond_celery_hard_limit():
     """The startup cleanup threshold must also respect the > 900s margin
     so a rolling restart doesn't kill a task mid-flight."""
-    from app import main
+    from app.core import boot
 
-    src = inspect.getsource(main.lifespan)
+    src = inspect.getsource(boot.cleanup_stuck_examinations)
     assert "minutes=20" in src, (
         "startup cleanup threshold should be 20 minutes (parity with the "
         "periodic cleanup_stuck_extractions task and a 5-min margin beyond "

@@ -256,7 +256,6 @@ class AnatomyImportNode(BaseModel):
     )
     standard_code: str | None = Field(None, description="The official identifier code")
     description: str | None = Field(None, description="Brief description")
-    is_custom: bool = Field(True, description="Always true for AI-generated")
 
 
 class AnatomyImportEdge(BaseModel):

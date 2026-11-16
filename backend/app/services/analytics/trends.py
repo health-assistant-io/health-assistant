@@ -27,6 +27,16 @@ from app.services.analytics.types import (
 logger = logging.getLogger(__name__)
 
 
+def _class_label(b_def) -> str | None:
+    """The biomarker's class-concept name (the displayed clinical grouping).
+
+    Class membership lives on ``class_concept_id``; the retired ``category``
+    property was only ever a read of ``class_concept.name``.
+    """
+    concept = getattr(b_def, "class_concept", None) if b_def is not None else None
+    return concept.name if concept is not None else None
+
+
 async def get_biomarker_trends(
     tenant_id: str,
     biomarker_codes: str | None = None,
@@ -312,7 +322,7 @@ async def get_biomarker_trends(
         if key not in trends:
             trends[key] = []
 
-        technical_category = b_def.category if b_def else "other"
+        technical_category = _class_label(b_def) or "other"
 
         # Clinical Groups mapping with fallback to technical category
         clinical_groups = bio_to_groups.get(obs.biomarker_id) if obs.biomarker_id else None
@@ -320,12 +330,8 @@ async def get_biomarker_trends(
             clinical_groups = bio_to_groups.get(b_def.id)
 
         if not clinical_groups:
-            if b_def and b_def.category:
-                # Convert technical category (e.g. 'blood_laboratory') to readable (e.g. 'Blood Laboratory')
-                fallback = b_def.category.replace("_", " ").replace("-", " ").title()
-                clinical_groups = [fallback]
-            else:
-                clinical_groups = ["Uncategorized"]
+            fallback = _class_label(b_def)
+            clinical_groups = [fallback] if fallback else ["Uncategorized"]
 
         # STATE biomarkers carry their value in valueCodeableConcept (the
         # numeric columns are NULL by design — see fhir_service.create_observation).
@@ -630,26 +636,30 @@ async def get_biomarker_trends(
         # The CAgg path covers every current and future telemetry biomarker
         # via ``WHERE slug = :slug`` — no per-metric branching.
         if bucket == "1 hour":
-            table_name = "telemetry_hourly"
+            table_name = "telemetry_hourly_scoped"
             time_col = "bucket"
             avg_expr = "AVG(avg_val)"
             max_expr = "MAX(max_val)"
             min_expr = "MIN(min_val)"
         elif bucket == "1 day":
-            table_name = "telemetry_daily"
+            table_name = "telemetry_daily_scoped"
             time_col = "bucket"
             avg_expr = "AVG(avg_val)"
             max_expr = "MAX(max_val)"
             min_expr = "MIN(min_val)"
         elif bucket == "1 month":
-            table_name = "telemetry_monthly"
+            table_name = "telemetry_monthly_scoped"
             time_col = "bucket"
             avg_expr = "AVG(avg_val)"
             max_expr = "MAX(max_val)"
             min_expr = "MIN(min_val)"
         else:
-            # Raw hypertable — single-level aggregation (no double-wrapping).
-            table_name = "telemetry_data"
+            # Raw hypertable horizons (no matching continuous aggregate).
+            # Read through the GUC-filtered scoped view, never the raw
+            # ``telemetry_data`` hypertable: it cannot carry RLS (Timescale
+            # refuses it on compressed hypertables), so the view plants the
+            # context filter inside its definition (ADR 0054 phase 11).
+            table_name = "telemetry_live_scoped"
             time_col = "timestamp"
             avg_expr = "AVG(value)"
             max_expr = "MAX(value)"
@@ -700,16 +710,12 @@ async def get_biomarker_trends(
                     trends[slug] = []
 
                 b_def = telemetry_defs[slug]
-                technical_category = b_def.category if b_def else "other"
+                technical_category = _class_label(b_def) or "other"
 
                 clinical_groups = bio_to_groups.get(b_def.id) if b_def else None
                 if not clinical_groups:
-                    if b_def and b_def.category:
-                        clinical_groups = [
-                            b_def.category.replace("_", " ").replace("-", " ").title()
-                        ]
-                    else:
-                        clinical_groups = ["Telemetry"]
+                    fallback = _class_label(b_def)
+                    clinical_groups = [fallback] if fallback else ["Telemetry"]
 
                 for row in rows:
                     bucket_date = row.bucket

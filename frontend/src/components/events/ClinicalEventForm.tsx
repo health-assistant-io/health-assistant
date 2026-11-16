@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Info, Plus, Activity, CheckCircle2, Search, ArrowLeft, Calendar as CalendarIcon, Clock, ChevronDown, Save, X, PauseCircle, HelpCircle
+  Info, Plus, Activity, CheckCircle2, Search, ArrowLeft, Calendar as CalendarIcon, Clock, ChevronDown, X, PauseCircle, HelpCircle
 } from 'lucide-react';
 import {
   getEventIcon,
@@ -29,6 +29,7 @@ import { DatePicker } from '../ui/DatePicker';
 import { TimePicker } from '../ui/TimePicker';
 import { ScaleSlider } from '../ui/ScaleSlider';
 import { CodingSystemSelect } from '../ui/CodingSystemSelect';
+import { RecordFormFooter } from '../records/RecordFormFooter';
 
 export interface ClinicalEventFormPayload {
   title: string;
@@ -77,8 +78,14 @@ interface ClinicalEventFormProps {
   submitLabel?: string;
   rejectLabel?: string;
   isEdit?: boolean;
-  showHeader?: boolean;
+  /** Owned by the shell; set as the native `<form id>` so a footer button
+   *  outside the form (the popup) can submit it through the `form` attribute. */
+  formId?: string;
+  /** Inline footer for the HITL chat-card placement; the popup shell renders
+   *  its own `RecordFormFooter` instead. */
   showActions?: boolean;
+  /** Reports validity/loading to the shell so its footer can drive Save. */
+  onStateChange?: (state: { canSubmit: boolean; loading: boolean }) => void;
 }
 
 const DEFAULT_RECURRENCE = {
@@ -171,8 +178,9 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
       submitLabel,
       rejectLabel,
       isEdit,
-      showHeader = true,
+      formId,
       showActions = true,
+      onStateChange,
     },
     ref
   ) {
@@ -429,6 +437,16 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useImperativeHandle(ref, () => ({ submit: () => handleSubmit() }));
 
+    const canSubmit = !loading && Boolean(formData.title) && Boolean(selectedTypeId);
+
+    const reportedState = useRef('');
+    useEffect(() => {
+      const key = `${canSubmit}|${loading}`;
+      if (reportedState.current === key) return;
+      reportedState.current = key;
+      onStateChange?.({ canSubmit, loading });
+    }, [canSubmit, loading, onStateChange]);
+
     const updateExamReason = (examId: string, reason: string) => {
       setFormData({
         ...formData,
@@ -484,52 +502,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
       'w-full px-5 py-4 bg-gray-50 dark:bg-dark-bg border border-transparent rounded-2xl text-gray-900 dark:text-dark-text focus:ring-4 focus:ring-blue-500/10 focus:bg-white dark:focus:bg-dark-surface outline-hidden font-bold transition-all';
 
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        {/* Header */}
-        {showHeader && (
-          <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between bg-white dark:bg-dark-surface shrink-0">
-            <div className="flex items-center space-x-4">
-              <div
-                className="p-3 rounded-2xl shadow-xs transition-all duration-500"
-                style={{ backgroundColor: selectedType?.color ? selectedType.color + '20' : '#3b82f620' }}
-              >
-                <div style={{ color: selectedType?.color || '#3b82f6' }}>
-                  {getEventIcon(selectedType?.slug || 'default')}
-                </div>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text tracking-tight">
-                  {editMode ? t('events.update_title') : t('events.new_title')}
-                </h2>
-                <div className="flex items-center mt-1 space-x-2">
-                  <span className="text-[10px] text-gray-500 dark:text-dark-muted font-bold uppercase tracking-widest">
-                    {selectedType
-                      ? t(`events.type.${selectedType.slug}.name`, selectedType.name)
-                      : t('events.select_type')}
-                  </span>
-                  {selectedType?.category_concept && (
-                    <>
-                      <span className="w-1 h-1 rounded-full bg-gray-300" />
-                      <span className="text-[10px] text-blue-500 font-black uppercase tracking-widest">
-                        {t(`events.category.${selectedType.category_concept.slug}.name`, selectedType.category_concept.name)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors"
-                aria-label={t('common.cancel', 'Close')}
-              >
-                <X className="w-5 h-5 text-gray-400" />
-              </button>
-            )}
-          </div>
-        )}
+      <form id={formId} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
 
         {/* Phase 8f: 2-step flow. Step 1 = type picker (categories grid).
             Step 2 = the actual form. Mutually exclusive — picker replaces
@@ -735,7 +708,7 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
           </div>
         ) : (
         <>
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-8 space-y-10 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto p-8 space-y-10 custom-scrollbar">
           {/* Selected-type bar — visible whenever the form is shown and a type
               is resolved (new events only). Edit mode hides it. Clicking
               "Change" re-opens the picker, hiding the form entirely. */}
@@ -1287,50 +1260,29 @@ export const ClinicalEventForm = forwardRef<ClinicalEventFormHandle, ClinicalEve
               </div>
             </div>
           </div>
-        </form>
+        </div>
 
           {/* Footer */}
           {showActions && (
-            <div className="px-8 py-6 bg-gray-50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border flex items-center shrink-0">
-              {onReject && (
-                <button
-                  type="button"
-                  onClick={onReject}
-                  disabled={loading}
-                  className="px-5 py-2.5 text-sm font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {rejectLabel ?? t('ai_chat.hitl.reject', 'Reject')}
-                </button>
-              )}
-              <div className="ml-auto flex items-center space-x-4">
-                {onCancel && (
-                  <button
-                    type="button"
-                    onClick={onCancel}
-                    disabled={loading}
-                    className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-dark-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                )}
-                <button
-                  onClick={() => handleSubmit()}
-                  disabled={loading || !formData.title || !selectedTypeId}
-                  className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-2"
-                >
-                  {loading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                  <span>{submitLabel ?? (editMode ? t('events.update_event') : t('events.save_event'))}</span>
-                </button>
-              </div>
+            <div className="flex shrink-0 items-center border-t border-gray-50 bg-gray-50 px-8 py-6 dark:border-dark-border dark:bg-dark-bg/50">
+              <RecordFormFooter
+                formId={formId}
+                canSubmit={canSubmit}
+                loading={loading}
+                submitLabel={
+                  submitLabel ??
+                  (editMode ? t('events.update_event') : t('events.save_event'))
+                }
+                cancelLabel={t('common.cancel')}
+                onCancel={onCancel}
+                rejectLabel={rejectLabel}
+                onReject={onReject}
+              />
             </div>
           )}
         </>
         )}
-      </div>
+      </form>
     );
   }
 );

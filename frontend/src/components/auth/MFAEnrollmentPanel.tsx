@@ -4,36 +4,11 @@
  * pair), the base32 secret as copyable text, and the single-use
  * recovery codes with copy-all.
  */
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, KeyRound, ShieldAlert } from 'lucide-react';
+import { KeyRound, ShieldAlert } from 'lucide-react';
+import { CopyButton } from '../ui/CopyButton';
 import type { MFAEnrollment } from '../../services/mfaService';
-
-function CopyButton({ value, label }: { value: string; label?: string }) {
-  const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      // Clipboard unavailable (insecure context) — the text stays selectable.
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-      title={label ?? t('mfa.copy', 'Copy')}
-    >
-      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-      <span>{copied ? t('mfa.copied', 'Copied') : (label ?? t('mfa.copy', 'Copy'))}</span>
-    </button>
-  );
-}
 
 export function MFAEnrollmentPanel({ enrollment }: { enrollment: MFAEnrollment }) {
   const { t } = useTranslation();
@@ -51,7 +26,7 @@ export function MFAEnrollmentPanel({ enrollment }: { enrollment: MFAEnrollment }
             <code className="flex-1 min-w-0 px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-xs font-mono break-all dark:text-dark-text">
               {enrollment.secret}
             </code>
-            <CopyButton value={enrollment.secret} />
+            <CopyButton value={enrollment.secret} label={t('mfa.copy', 'Copy')} />
           </div>
           <div className="flex items-center gap-2 min-w-0">
             <code className="flex-1 min-w-0 px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl text-[10px] font-mono break-all dark:text-dark-text">

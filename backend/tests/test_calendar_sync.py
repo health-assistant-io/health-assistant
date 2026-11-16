@@ -251,10 +251,14 @@ async def test_second_run_is_idempotent(data_key):
     assert len(transport.put) == 1, "a no-change rerun must not write to the provider"
     async with AsyncSessionLocal() as db:
         links = (
-            await db.execute(
-                select(CalendarEventLink).where(CalendarEventLink.binding_id == binding.id)
+            (
+                await db.execute(
+                    select(CalendarEventLink).where(CalendarEventLink.binding_id == binding.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(links) == 1
 
 
@@ -272,9 +276,7 @@ async def test_local_change_updates_the_remote(data_key):
 
     async with AsyncSessionLocal() as db:
         exam_row = (
-            await db.execute(
-                select(ExaminationModel).where(ExaminationModel.id == exam.id)
-            )
+            await db.execute(select(ExaminationModel).where(ExaminationModel.id == exam.id))
         ).scalar_one()
         exam_row.examination_date = FUTURE_DAY + timedelta(days=1)
         await db.commit()
@@ -398,9 +400,7 @@ async def test_pull_of_accepted_event_creates_a_clinical_record(data_key):
     assert outcome.counts.get("create-local") == 1  # the accepted remote event
     async with AsyncSessionLocal() as db:
         pulled = (
-            await db.execute(
-                select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid)
-            )
+            await db.execute(select(ClinicalEvent).where(ClinicalEvent.external_id == remote_uid))
         ).scalar_one()
         assert pulled is not None
         assert pulled.tenant_id == binding.tenant_id

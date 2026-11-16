@@ -5,6 +5,7 @@ import {
   exitTenantSwitch as apiExitSwitch,
   type Tenant,
 } from '../../services/tenantService';
+import { useAccessStore } from './accessSlice';
 
 /**
  * Tenant-switch state for SYSTEM_ADMIN.
@@ -73,6 +74,8 @@ export const useTenantSwitchStore = create<TenantSwitchState>()(
         } finally {
           set({ switched: false, originalTenantId: null, scopedTenant: null, pendingRestore: false });
         }
+        // Back on the admin's own session — re-mirror its permission set.
+        useAccessStore.getState().hydrate();
       },
 
       clear: () => {
@@ -124,5 +127,8 @@ export async function performTenantSwitch(tenantId: string): Promise<Tenant> {
   const result = await apiSwitchIntoTenant(tenantId);
   // Record the switch state for the banner / exit button.
   useTenantSwitchStore.getState().enterTenant(result.tenant, result.original_tenant_id);
+  // The scoped session can carry a different role + tenant — re-mirror the
+  // permission set so guards and nav answer for the tenant being visited.
+  useAccessStore.getState().hydrate();
   return result.tenant;
 }

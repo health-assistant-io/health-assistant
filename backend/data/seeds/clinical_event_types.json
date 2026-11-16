@@ -7,6 +7,7 @@
   },
   "items": [
     {
+      "seed_key": "clinical-event-type:pregnancy",
       "slug": "pregnancy",
       "name": "Pregnancy",
       "category_slug": "reproductive-health",
@@ -23,6 +24,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:pain-episode",
       "slug": "pain-episode",
       "name": "Pain Episode",
       "category_slug": "acute-chronic",
@@ -39,6 +41,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:flare-up",
       "slug": "flare-up",
       "name": "Chronic Flare-up",
       "category_slug": "acute-chronic",
@@ -55,6 +58,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:accident",
       "slug": "accident",
       "name": "Acute Accident",
       "category_slug": "acute-chronic",
@@ -71,6 +75,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:surgical-recovery",
       "slug": "surgical-recovery",
       "name": "Surgical Recovery",
       "category_slug": "specialized-care",
@@ -86,6 +91,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:dental",
       "slug": "dental",
       "name": "Dental Journey",
       "category_slug": "specialized-care",
@@ -101,6 +107,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:vision",
       "slug": "vision",
       "name": "Vision & Ophthalmology",
       "category_slug": "specialized-care",
@@ -116,6 +123,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:aesthetic",
       "slug": "aesthetic",
       "name": "Aesthetic & Skin",
       "category_slug": "specialized-care",
@@ -131,6 +139,7 @@
       }
     },
     {
+      "seed_key": "clinical-event-type:maintenance",
       "slug": "maintenance",
       "name": "Routine Maintenance",
       "category_slug": "routine-wellness",

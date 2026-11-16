@@ -41,7 +41,10 @@ async def seed_base():
         sys.exit(1)
 
     print("🫀 Starting anatomy graph catalog sync (base seed)...")
-    stats = await SeedService().seed_body_parts()
+    # The seeder never owns the transaction (ADR 0056): one session, one commit.
+    async with AsyncSessionLocal() as session:
+        stats = await SeedService().seed_body_parts(session)
+        await session.commit()
 
     print("-" * 40)
     print("✅ Base anatomy sync complete!")

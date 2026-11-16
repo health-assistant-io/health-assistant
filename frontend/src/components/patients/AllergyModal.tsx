@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { ShieldAlert } from 'lucide-react';
 import {
   AllergyIntolerance,
   addPatientAllergy,
   updatePatientAllergy,
 } from '../../services/allergyService';
-import { createCatalogItem } from '../../services/catalogService';
 import {
   AllergyForm,
   AllergyFormPayload,
@@ -14,6 +15,8 @@ import {
   selectionsToLinkInputs,
 } from '../../services/conceptEdges';
 import { Modal } from '../ui/Modal';
+import { RecordFormFooter } from '../records/RecordFormFooter';
+import { RecordFormIcon } from '../records/RecordFormIcon';
 
 interface Props {
   isOpen: boolean;
@@ -25,27 +28,19 @@ interface Props {
 
 /**
  * Thin modal wrapper around the headless `AllergyForm`. The form owns the
- * draft state; this component handles catalog row creation (when defining a
- * new allergen inline), graph-link persistence, and the patient-instance
- * commit via the canonical REST endpoints.
+ * draft state; this component commits the patient-instance via the canonical
+ * REST endpoint and persists graph links on the picked catalog entry. The
+ * shell owns the chrome.
  */
 export const AllergyModal: React.FC<Props> = ({ isOpen, onClose, patientId, allergy, onSuccess }) => {
+  const { t } = useTranslation();
+  const formId = useId();
+  const [formState, setFormState] = useState({ canSubmit: false, loading: false });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (payload: AllergyFormPayload) => {
-    let catalogId = payload.code.catalog_id;
-    let allergenName = payload.code.text;
-
-    if (payload.is_new_catalog_entry) {
-      const created = await createCatalogItem('allergy', {
-        name: payload.code.text,
-        category: payload.category,
-        description: payload.description,
-        typical_reactions: payload.typical_reactions ?? [],
-      });
-      catalogId = String(created.id);
-      allergenName = String(created.name ?? created.id);
-    }
+    const catalogId = payload.code.catalog_id;
 
     const commitPayload: any = {
       clinical_status: payload.clinical_status,
@@ -59,10 +54,7 @@ export const AllergyModal: React.FC<Props> = ({ isOpen, onClose, patientId, alle
       reactions: payload.reactions,
       code: allergy
         ? allergy.code
-        : {
-            text: allergenName,
-            catalog_id: catalogId,
-          },
+        : payload.code,
     };
 
     if (allergy) {
@@ -85,10 +77,41 @@ export const AllergyModal: React.FC<Props> = ({ isOpen, onClose, patientId, alle
   };
 
   return (
-    <Modal open={isOpen} onOpenChange={(o) => !o && onClose()} title="" hideHeader footer={undefined} bodyClassName="p-0">
+    <Modal
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
+      title={
+        allergy
+          ? t('allergies.modal.update_title')
+          : t('allergies.modal.new_title')
+      }
+      description={t('allergies.modal.clinical_records', 'Clinical record')}
+      headerIcon={<RecordFormIcon icon={ShieldAlert} tone="blue" />}
+      closeLabel={t('common.close')}
+      footer={
+        <RecordFormFooter
+          formId={formId}
+          canSubmit={formState.canSubmit}
+          loading={formState.loading}
+          submitLabel={
+            allergy
+              ? t('allergies.modal.update_record')
+              : t('allergies.modal.save_allergy')
+          }
+          cancelLabel={t('common.cancel')}
+          onCancel={onClose}
+        />
+      }
+      bodyFill
+      bodyClassName="p-0"
+      size="lg"
+    >
       <AllergyForm
         patientId={patientId}
         allergy={allergy}
+        formId={formId}
+        showActions={false}
+        onStateChange={setFormState}
         onSubmit={handleSubmit}
         onCancel={onClose}
       />

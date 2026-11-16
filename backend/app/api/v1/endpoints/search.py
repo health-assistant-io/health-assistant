@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.clinical_event import ClinicalEvent
 from app.models.document_model import DocumentModel
-from app.models.enums import Role
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
 from app.schemas.user import TokenData
+from app.services.auth.access import accessible_patient_ids
 from app.services.catalog.catalog_search_service import search_catalogs
 
 router = APIRouter()
@@ -39,18 +39,21 @@ async def global_search(
     # patients (and their records) — matches GET /patients. Tenant-wide
     # entity search previously enumerated every patient's name + MRN to
     # any tenant member, feeding BOLA discovery elsewhere.
+    # Phase 2 (ADR 0054): the reachable set is grant-aware — own + active
+    # grants for USER / an assigned-scope MANAGER; unrestricted for staff.
+    reachable_patient_ids = await accessible_patient_ids(current_user, db)
     own_patient_ids = (
         select(Patient.id).where(
             Patient.tenant_id == tenant_id,
-            Patient.user_id == current_user.user_id,
+            Patient.id.in_(reachable_patient_ids) if reachable_patient_ids else false(),
         )
-        if current_user.role == Role.USER.value
+        if reachable_patient_ids is not None
         else None
     )
 
     patient_where = [Patient.tenant_id == tenant_id]
-    if current_user.role == Role.USER.value:
-        patient_where.append(Patient.user_id == current_user.user_id)
+    if own_patient_ids is not None:
+        patient_where.append(Patient.id.in_(own_patient_ids))
 
     # 1. Search Patients
     patients_result = await db.execute(

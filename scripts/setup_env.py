@@ -351,7 +351,11 @@ if not os.path.exists(".env.example"):
 # (plan 16 H4): two independent signing secrets + the Fernet at-rest key.
 ha_session_key = secrets.token_urlsafe(48)
 ha_refresh_key = secrets.token_urlsafe(48)
+# ADR-0064: DB owner + app secrets are generated INDEPENDENTLY — a shared
+# value refuses to boot the db init (init-roles.sh) and the gate fails the
+# stack.
 postgres_password = secrets.token_urlsafe(24)
+ha_db_password = secrets.token_urlsafe(24)
 flower_password = secrets.token_urlsafe(24)
 redis_password = secrets.token_urlsafe(24)
 
@@ -380,6 +384,7 @@ config = {
     "HA_SESSION_KEY": ha_session_key,
     "HA_REFRESH_KEY": ha_refresh_key,
     "POSTGRES_PASSWORD": postgres_password,
+    "HA_DB_PASSWORD": ha_db_password,
     "FLOWER_PASSWORD": flower_password,
     "REDIS_PASSWORD": redis_password,
     "HA_DATA_KEY": ha_data_key,
@@ -443,7 +448,7 @@ try:
     print("   - HA_SESSION_KEY / HA_REFRESH_KEY (JWT signing, §8 key separation)")
     print("   - HA_DATA_KEY (Fernet at-rest encryption)")
     print("   - VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (Web Push)")
-    print("   - POSTGRES_PASSWORD")
+    print("   - POSTGRES_PASSWORD / HA_DB_PASSWORD (ADR-0064: distinct DB owner/app secrets)")
     print("   - FLOWER_PASSWORD")
     
     if setup_mode == "1":

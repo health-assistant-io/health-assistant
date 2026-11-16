@@ -28,9 +28,27 @@ from app.services.catalog.catalog_import_service import CatalogImportService
 SEED_PATH = Path(__file__).resolve().parents[1] / "data" / "seeds" / "default_catalog.json"
 
 
+def _strip_identity(data: dict):
+    """Drop the identity keys (``seed_key``/``id``) the typed import payload
+    does not carry — the seeder strips them before ``model_validate``."""
+    return {
+        **data,
+        "units": [
+            {k: v for k, v in u.items() if k not in ("seed_key", "id")}
+            for u in data.get("units", [])
+        ],
+        "biomarkers": [
+            {k: v for k, v in b.items() if k not in ("seed_key", "id")}
+            for b in data.get("biomarkers", [])
+        ],
+    }
+
+
 def test_seed_file_parses_and_carries_stratified_ranges():
     """The seed must validate against CatalogImportPayload and include stratified examples."""
-    payload = CatalogImportPayload.model_validate(json.loads(SEED_PATH.read_text()))
+    payload = CatalogImportPayload.model_validate(
+        _strip_identity(json.loads(SEED_PATH.read_text()))
+    )
     assert len(payload.biomarkers) >= 10
     stratified = {b.slug for b in payload.biomarkers if b.reference_ranges}
     # Hemoglobin (♂/♀) + TSH (pediatric) are the canonical demo cases.
@@ -125,7 +143,7 @@ async def test_importer_is_idempotent_and_preserves_user_ranges():
     async with AsyncSessionLocal() as db:
         svc = CatalogImportService(db)
         try:
-            await svc.import_catalog(payload)  # commits internally
+            await svc.import_catalog(payload)  # same-session reads see the flushed rows
             bio = (
                 await db.execute(
                     select(BiomarkerDefinition).where(BiomarkerDefinition.slug == slug)

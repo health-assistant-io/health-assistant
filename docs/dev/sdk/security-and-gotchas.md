@@ -112,6 +112,16 @@ cards / enablement), and the model never authors the subsystem:
 registration, enablement and imports are admin/user acts, never chat
 outcomes.
 
+At the execution seam the class is authorized, not just declared: the MCP
+tool adapter maps it through `CapabilityGrant.authorize_tool` to the
+permission family the declaration carries and requires the acting
+principal (the integration's scoped identity when present) to hold one of
+those permissions. A proxy whose declaration carries no data classes has
+no database family to authorize — that is the passthrough case, bounded by
+`ai:use`, patient access, the per-tool allowlist and result caps. Either
+way the tool process runs outside the app's perimeter and never receives a
+database handle.
+
 ## Gotchas authors actually hit
 
 - **Manifest rejected at registration** — envelope violations throw

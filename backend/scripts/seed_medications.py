@@ -6,7 +6,7 @@ import sys
 # Ensure backend path is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.core.database import DATABASE_AVAILABLE
+from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
 from app.services.seed.service import SeedService
 
 
@@ -16,7 +16,10 @@ async def main():
         return
 
     print("🚀 Starting manual medication catalog sync...")
-    stats = await SeedService().seed_medications()
+    # The seeder never owns the transaction (ADR 0056): one session, one commit.
+    async with AsyncSessionLocal() as session:
+        stats = await SeedService().seed_medications(session)
+        await session.commit()
 
     print("-" * 30)
     print("✅ Sync complete!")

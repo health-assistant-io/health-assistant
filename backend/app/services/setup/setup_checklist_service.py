@@ -39,7 +39,6 @@ valid end-state; an optional ``dismissed_steps`` flag is a later iteration).
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -659,16 +658,21 @@ _OMB_SEED_CACHE: dict[str, Any] | None = None
 
 
 def _load_omb_seed() -> dict[str, Any]:
-    """Load + cache the OMB race/ethnicity/language picklist seed."""
+    """Load + cache the OMB race/ethnicity/language picklist via the pack path.
+
+    The picklist is a bundled-pack item (ADR 0056): it is read through the
+    pack parser (validated with everything else, digest-pinned), never as a
+    raw file at request time.
+    """
     global _OMB_SEED_CACHE
     if _OMB_SEED_CACHE is not None:
         return _OMB_SEED_CACHE
-    seed_path = _SEEDS_DIR / "omb_race_ethnicity.json"
     try:
-        with open(seed_path, encoding="utf-8") as fh:
-            _OMB_SEED_CACHE = json.load(fh)
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        logger.warning("could not load OMB seed %s: %s", seed_path, exc)
+        from app.core.seed_pack.bundled import omb_picklist
+
+        _OMB_SEED_CACHE = dict(omb_picklist(_SEEDS_DIR))
+    except Exception as exc:
+        logger.warning("could not load the OMB picklist from the bundled pack: %s", exc)
         _OMB_SEED_CACHE = {}
     return _OMB_SEED_CACHE
 

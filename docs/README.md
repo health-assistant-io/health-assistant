@@ -20,6 +20,7 @@ guides for the architecture and API.
 - [Security](SECURITY.md)
 - [Testing](TESTING.md)
 - [Deployment](DEPLOYMENT.md)
+- [Object storage](dev/storage.md)
 
 The machine-readable navigation source of truth is `docs-tree.json`; every
 page listed there exists in this tree.

@@ -18,6 +18,7 @@ import { listPatients } from '../../services/patientService';
 import { listDoctors } from '../../services/doctorService';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { AccessRequestsCard } from '../../components/account/AccessRequestsCard';
 
 function MyAccount() {
   const { t } = useTranslation();
@@ -159,6 +160,9 @@ function MyAccount() {
 
         {/* Right Column: Linked Records + Metadata */}
         <div className="lg:col-span-2 space-y-8">
+          {/* Care-team access: incoming share requests + active grants */}
+          <AccessRequestsCard />
+
           {/* Linked Clinical Profiles */}
           <div className="bg-white dark:bg-dark-surface rounded-3xl shadow-xs border border-gray-100 dark:border-dark-border overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-100 dark:border-dark-border flex items-center justify-between bg-gray-50/30 dark:bg-dark-bg/20">

@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "product": "health",
+  "tiers": [
+    "T1",
+    "T2"
+  ],
+  "profiles": [
+    "household",
+    "clinic"
+  ],
+  "limits": {
+    "min_ram_gb": 8
+  },
+  "probes": {
+    "liveness": "/health",
+    "readiness": "/ready",
+    "readinessHard": [
+      "boot-complete",
+      "db-at-alembic-head",
+      "required-object-storage"
+    ],
+    "readinessSoft": [
+      "redis",
+      "celery-workers",
+      "queue-backlog"
+    ]
+  },
+  "backupPolicy": {
+    "offhost": true,
+    "encrypted": "required",
+    "mechanism": "scripts/backup.sh (host timer): encrypt + upload to BACKUP_DESTINATION (s3://|azure://|rclone) + backup_runs ledger row",
+    "sidecarPolicy": "compose --profile backup sidecar is a same-host convenience copy; deployments relying on it are labelled non-DR (the backup policy)"
+  },
+  "credentials": {
+    "model": "the credential policy split: neuronection_health_owner (DDL, POSTGRES_PASSWORD) + neuronection_health_app (DML, HA_DB_PASSWORD); owner DSN only in the one-shot migrate service",
+    "provisioning": "migrate: scripts/provision_db.py pre (extensions, app role, grants, backup_runs) → alembic (publishes migration_state head marker) → checkpoint tables → post (default-privilege re-assert + DML-only verification)"
+  },
+  "paths": [
+    {
+      "path": "compose-selfhosted",
+      "support": "best-effort",
+      "verified": null
+    },
+    {
+      "path": "cloud-vm",
+      "support": "best-effort",
+      "verified": null
+    },
+    {
+      "path": "terraform",
+      "support": "best-effort",
+      "verified": null
+    }
+  ]
+}

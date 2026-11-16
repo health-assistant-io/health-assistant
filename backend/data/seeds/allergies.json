@@ -6,31 +6,37 @@
   },
   "items": [
     {
+      "seed_key": "allergy:penicillin",
       "name": "Penicillin",
       "category": "MEDICATION",
       "description": "Antibiotic allergy"
     },
     {
+      "seed_key": "allergy:amoxicillin",
       "name": "Amoxicillin",
       "category": "MEDICATION",
       "description": "Antibiotic allergy"
     },
     {
+      "seed_key": "allergy:ibuprofen",
       "name": "Ibuprofen",
       "category": "MEDICATION",
       "description": "NSAID allergy"
     },
     {
+      "seed_key": "allergy:aspirin",
       "name": "Aspirin",
       "category": "MEDICATION",
       "description": "NSAID allergy"
     },
     {
+      "seed_key": "allergy:sulfa-drugs",
       "name": "Sulfa drugs",
       "category": "MEDICATION",
       "description": "Antibiotic allergy"
     },
     {
+      "seed_key": "allergy:peanuts",
       "name": "Peanuts",
       "category": "FOOD",
       "description": "Nut allergy",
@@ -41,6 +47,7 @@
       ]
     },
     {
+      "seed_key": "allergy:tree-nuts",
       "name": "Tree Nuts",
       "category": "FOOD",
       "description": "Includes walnuts, almonds, cashews",
@@ -50,31 +57,37 @@
       ]
     },
     {
+      "seed_key": "allergy:shellfish",
       "name": "Shellfish",
       "category": "FOOD",
       "description": "Includes shrimp, crab, lobster"
     },
     {
+      "seed_key": "allergy:dairy-milk",
       "name": "Dairy / Milk",
       "category": "FOOD",
       "description": "Milk protein allergy"
     },
     {
+      "seed_key": "allergy:eggs",
       "name": "Eggs",
       "category": "FOOD",
       "description": "Egg protein allergy"
     },
     {
+      "seed_key": "allergy:wheat",
       "name": "Wheat",
       "category": "FOOD",
       "description": "Wheat allergy (not Celiac)"
     },
     {
+      "seed_key": "allergy:soy",
       "name": "Soy",
       "category": "FOOD",
       "description": "Soy protein allergy"
     },
     {
+      "seed_key": "allergy:pollen",
       "name": "Pollen",
       "category": "ENVIRONMENT",
       "description": "Seasonal hay fever",
@@ -84,26 +97,31 @@
       ]
     },
     {
+      "seed_key": "allergy:dust-mites",
       "name": "Dust Mites",
       "category": "ENVIRONMENT",
       "description": "Indoor allergen"
     },
     {
+      "seed_key": "allergy:mold",
       "name": "Mold",
       "category": "ENVIRONMENT",
       "description": "Fungal spores"
     },
     {
+      "seed_key": "allergy:pet-dander",
       "name": "Pet Dander",
       "category": "ENVIRONMENT",
       "description": "Allergy to cats/dogs"
     },
     {
+      "seed_key": "allergy:latex",
       "name": "Latex",
       "category": "BIOLOGIC",
       "description": "Natural rubber latex"
     },
     {
+      "seed_key": "allergy:bee-stings",
       "name": "Bee Stings",
       "category": "BIOLOGIC",
       "description": "Insect venom allergy",

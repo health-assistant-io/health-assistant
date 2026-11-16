@@ -547,6 +547,20 @@ async def resume_hitl_session(
     """
     service = AIAssistanceService(db)
 
+    # Validate ownership BEFORE taking the turn lock: otherwise a caller
+    # holding another user's session UUID can 409-lock their chat for the
+    # lock TTL without being authorized to touch it.
+    from app.services.chat.chat_session_service import ChatSessionService
+
+    owned = await ChatSessionService(db).get_owned_session(
+        session_id, current_user.user_id, current_user.tenant_id
+    )
+    if owned is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chat session not found",
+        )
+
     try:
         lock_token = await acquire_turn(session_id)
     except TurnConflictError as e:

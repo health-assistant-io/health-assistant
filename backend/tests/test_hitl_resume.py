@@ -273,7 +273,13 @@ async def test_resume_endpoint_streams_content(async_client):
         )
         yield 'data: {"event": "delta", "text": "world"}\n\n'
 
-    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
+    with (
+        patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls,
+        patch(
+            "app.services.chat.chat_session_service.ChatSessionService.get_owned_session",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+    ):
         mock_instance = MagicMock()
         # Plain lambda (not AsyncMock) — mirrors the real async-generator
         # function: `service.resume_after_hitl(...)` returns the gen directly.
@@ -303,7 +309,13 @@ async def test_resume_endpoint_proceeds_with_pending_tasks(async_client):
         yield 'data: {"event": "delta", "text": "Acknowledged your partial review."}\n\n'
         yield 'data: {"event": "flow_finished"}\n\n'
 
-    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
+    with (
+        patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls,
+        patch(
+            "app.services.chat.chat_session_service.ChatSessionService.get_owned_session",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+    ):
         mock_instance = MagicMock()
         mock_instance.resume_after_hitl = lambda **kw: _fake_resume(**kw)
         mock_cls.return_value = mock_instance
@@ -331,7 +343,13 @@ async def test_resume_endpoint_passes_message_id_selector(async_client):
         if False:  # pragma: no cover
             yield ""
 
-    with patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls:
+    with (
+        patch("app.api.v1.endpoints.ai_assistance.AIAssistanceService") as mock_cls,
+        patch(
+            "app.services.chat.chat_session_service.ChatSessionService.get_owned_session",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+    ):
         mock_instance = MagicMock()
         mock_instance.resume_after_hitl = lambda **kw: _fake_resume(**kw)
         mock_cls.return_value = mock_instance

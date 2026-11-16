@@ -81,7 +81,24 @@ async def aggregate(
         ):
             continue
         try:
-            tools = await provider.get_tools(integration)
+            # The integration's scoped identity lets the provider authorize
+            # tool risk classes against its permission subset (ADR 0054 D8 /
+            # T3). Read-only lookup: listing tools never provisions or stamps
+            # a principal; a missing one leaves the decision to the route's
+            # own permission + patient-access gates.
+            from app.services.integration import integration_principals
+
+            principal = None
+            try:
+                principal = await integration_principals.active_principal(db, integration)
+            except Exception as principal_error:
+                logger.debug(
+                    "No scoped principal for %s/%s: %s",
+                    integration.provider,
+                    integration.id,
+                    principal_error,
+                )
+            tools = await provider.get_tools(integration, principal=principal)
         except Exception as e:
             logger.warning(
                 f"Skipping tools from {integration.provider}/{integration.id} "

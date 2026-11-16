@@ -1,4 +1,11 @@
 import api from '../api/axios';
+import {
+  normalizeMedicationStatus,
+  toApiMedicationStatus,
+  type MedicationStatus,
+} from '../utils/medicationStatus';
+
+export type { MedicationStatus };
 
 export interface MedicationCatalogEntry {
   id: string;
@@ -8,7 +15,7 @@ export interface MedicationCatalogEntry {
   side_effects: string[];
   contraindications?: string;
   dosage_info?: string;
-  is_custom: boolean;
+  scope?: string | null;
 }
 
 export interface MedicationTiming {
@@ -27,7 +34,7 @@ export interface MedicationRecord {
   patient_id: string;
   tenant_id: string;
   examination_id?: string;
-  status: 'active' | 'completed' | 'entered-in-error' | 'intended' | 'stopped' | 'on-hold' | 'unknown';
+  status: MedicationStatus;
   code: {
     text: string;
     catalog_id?: string;
@@ -64,24 +71,40 @@ export async function updateCatalogMedication(catalogId: string, data: Partial<M
   return response.data;
 }
 
+/**
+ * The wire enum is uppercase/underscore; the UI enum is FHIR-style
+ * lowercase/hyphen. Keep the translation in the service so every caller
+ * (modal, HITL handler, calendar, scheduler, adapters) sees one vocabulary.
+ */
+function fromApiRecord(record: MedicationRecord): MedicationRecord {
+  return { ...record, status: normalizeMedicationStatus(record.status) };
+}
+
+type MedicationApiPayload = Omit<Partial<MedicationRecord>, 'status'> & { status?: string };
+
+function toApiPayload(data: Partial<MedicationRecord>): MedicationApiPayload {
+  if (data.status === undefined) return data;
+  return { ...data, status: toApiMedicationStatus(data.status) };
+}
+
 export async function getPatientMedications(patientId: string): Promise<MedicationRecord[]> {
   const response = await api.get<MedicationRecord[]>(`/medications/patient/${patientId}`);
-  return response.data;
+  return response.data.map(fromApiRecord);
 }
 
 export async function getMedication(medicationId: string): Promise<MedicationRecord> {
   const response = await api.get<MedicationRecord>(`/medications/${medicationId}`);
-  return response.data;
+  return fromApiRecord(response.data);
 }
 
 export async function addPatientMedication(patientId: string, data: Partial<MedicationRecord>): Promise<MedicationRecord> {
-  const response = await api.post<MedicationRecord>(`/medications/patient/${patientId}`, data);
-  return response.data;
+  const response = await api.post<MedicationRecord>(`/medications/patient/${patientId}`, toApiPayload(data));
+  return fromApiRecord(response.data);
 }
 
 export async function updatePatientMedication(medicationId: string, data: Partial<MedicationRecord>): Promise<MedicationRecord> {
-  const response = await api.put<MedicationRecord>(`/medications/${medicationId}`, data);
-  return response.data;
+  const response = await api.put<MedicationRecord>(`/medications/${medicationId}`, toApiPayload(data));
+  return fromApiRecord(response.data);
 }
 
 export async function deletePatientMedication(medicationId: string): Promise<{ message: string }> {
@@ -100,7 +123,10 @@ export interface MedicationUsage {
 
 export async function getMedicationUsage(catalogId: string): Promise<MedicationUsage[]> {
   const response = await api.get<MedicationUsage[]>(`/medications/catalog/${catalogId}/usage`);
-  return response.data;
+  return response.data.map(usage => ({
+    ...usage,
+    medication: fromApiRecord(usage.medication),
+  }));
 }
 
 export async function reprocessMedication(catalogId: string): Promise<MedicationCatalogEntry> {

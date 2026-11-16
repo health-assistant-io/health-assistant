@@ -141,7 +141,7 @@ async def test_organization_update_invokes_validation_gate():
 @pytest.mark.asyncio
 async def test_medication_catalog_create_invokes_validation_gate():
     from app.schemas.medication import MedicationCatalogCreate
-    from app.services.clinical import medication_service
+    from app.services.catalog import catalog_write_service
 
     db = AsyncMock(spec=AsyncSession)
     payload = MedicationCatalogCreate(name="Ibuprofen")
@@ -150,10 +150,10 @@ async def test_medication_catalog_create_invokes_validation_gate():
     actor.tenant_id = "00000000-0000-0000-0000-000000000000"
     actor.user_id = "00000000-0000-0000-0000-000000000001"
 
-    with patch("app.services.clinical.medication_service.assert_valid_fhir") as mock_gate:
+    with patch("app.services.catalog.catalog_write_service.assert_valid_fhir") as mock_gate:
         mock_gate.side_effect = FhirSerializationError("invalid Medication")
         with pytest.raises(FhirSerializationError):
-            await medication_service.create_catalog_medication(
+            await catalog_write_service.create_medication(
                 db=db,
                 actor=actor,
                 data=payload,
@@ -165,7 +165,7 @@ async def test_medication_catalog_create_invokes_validation_gate():
 @pytest.mark.asyncio
 async def test_medication_catalog_update_invokes_validation_gate():
     from app.schemas.medication import MedicationCatalogUpdate
-    from app.services.clinical import medication_service
+    from app.services.catalog import catalog_write_service
 
     db = AsyncMock(spec=AsyncSession)
     existing = MagicMock()
@@ -177,19 +177,19 @@ async def test_medication_catalog_update_invokes_validation_gate():
     actor.tenant_id = "00000000-0000-0000-0000-000000000000"
     actor.user_id = "00000000-0000-0000-0000-000000000001"
 
-    # Patch the SELECT inside update_catalog_medication by making execute
-    # return a result whose scalar_one_or_none yields the existing row.
+    # Patch the SELECT inside update_medication by making execute return a
+    # result whose scalar_one_or_none yields the existing row.
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = existing
     db.execute = AsyncMock(return_value=result_mock)
 
-    with patch("app.services.clinical.medication_service.assert_valid_fhir") as mock_gate:
+    with patch("app.services.catalog.catalog_write_service.assert_valid_fhir") as mock_gate:
         mock_gate.side_effect = FhirSerializationError("invalid Medication")
         with pytest.raises(FhirSerializationError):
-            await medication_service.update_catalog_medication(
+            await catalog_write_service.update_medication(
                 db=db,
-                catalog_id="00000000-0000-0000-0000-000000000002",
                 actor=actor,
+                item_id="00000000-0000-0000-0000-000000000002",
                 data=payload,
             )
         mock_gate.assert_called_once()

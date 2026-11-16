@@ -10,7 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.tools import tool
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, or_, select
 
 from app.ai.tools.registry import ToolContext, register_chat_tool
 from app.models.biomarker_model import BiomarkerDefinition
@@ -114,7 +114,7 @@ def build(ctx: ToolContext) -> list[Any]:
         Tenant-scoped + globals. If search_term is omitted, lists common
         biomarkers.
 
-        Returns JSON: [{id, name, slug, category, is_telemetry, preferred_unit,
+        Returns JSON: [{id, name, slug, class_concept_name, is_telemetry, preferred_unit,
                         coding_system, code, matched_on, snippet}].
         """
         from app.services.catalog.catalog_search_service import search_catalogs as _search
@@ -131,7 +131,7 @@ def build(ctx: ToolContext) -> list[Any]:
                         "id": str(b.id),
                         "name": b.name,
                         "slug": b.slug,
-                        "category": b.category,
+                        "class_concept_name": b.class_concept.name if b.class_concept else None,
                         "is_telemetry": b.is_telemetry,
                         "preferred_unit": b.preferred_unit.symbol if b.preferred_unit else None,
                     }
@@ -155,7 +155,7 @@ def build(ctx: ToolContext) -> list[Any]:
                     "id": r["id"],
                     "name": r.get("name") or r.get("label"),
                     "slug": r.get("slug"),
-                    "category": r.get("category"),
+                    "class_concept_name": r.get("class_concept_name"),
                     "is_telemetry": r.get("is_telemetry"),
                     "preferred_unit": r.get("preferred_unit_symbol"),
                     "coding_system": r.get("coding_system"),
@@ -258,17 +258,16 @@ def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def get_biomarker_details(biomarker_id_or_slug: str) -> str:
         """Fetch full clinical definition, reference ranges, and informational text for a specific biomarker."""
+        visible = or_(
+            BiomarkerDefinition.tenant_id.is_(None),
+            BiomarkerDefinition.tenant_id == ctx.tenant_id,
+        )
         try:
-            # Try by UUID first
-            bio_uuid = UUID(biomarker_id_or_slug)
-            query = select(BiomarkerDefinition).where(BiomarkerDefinition.id == bio_uuid)
+            column = BiomarkerDefinition.id == UUID(biomarker_id_or_slug)
         except ValueError:
-            # Try by slug
-            query = select(BiomarkerDefinition).where(
-                BiomarkerDefinition.slug == biomarker_id_or_slug
-            )
+            column = BiomarkerDefinition.slug == biomarker_id_or_slug
 
-        result = await ctx.db.execute(query)
+        result = await ctx.db.execute(select(BiomarkerDefinition).where(column, visible))
         bio = result.scalars().first()
         if not bio:
             return "Biomarker definition not found."
@@ -278,7 +277,7 @@ def build(ctx: ToolContext) -> list[Any]:
                 "id": str(bio.id),
                 "name": bio.name,
                 "slug": bio.slug,
-                "category": bio.category,
+                "class_concept_name": bio.class_concept.name if bio.class_concept else None,
                 "description": bio.description,
                 "info": bio.info,
                 "reference_range": {

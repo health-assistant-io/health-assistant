@@ -28,7 +28,7 @@ from app.core.config import settings
 
 BACKEND = Path(__file__).resolve().parents[1]
 V080_HEAD = "b1y2o3k4s5e6"
-CURRENT_HEAD = "0009_calendar_bindings"
+CURRENT_HEAD = "0025_document_object_key"
 
 
 def _admin_dsn() -> dict:

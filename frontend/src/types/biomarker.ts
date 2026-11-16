@@ -75,7 +75,9 @@ export interface Biomarker {
   coding_system?: CodingSystemType;
   code?: string;
   name: string;
-  category?: string;
+  class_concept_id?: string | null;
+  class_concept_slug?: string | null;
+  class_concept_name?: string | null;
   aliases: string[];
   preferred_unit_id?: string;
   preferred_unit_symbol?: string;

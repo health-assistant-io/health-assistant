@@ -292,6 +292,14 @@ async def run_sync(
         # instead of syncing unauthenticated.
         await hydrate(db, integration)
         await require_credentials(db, integration)
+        from app.services.integration.integration_principals import (
+            provision_for_integration,
+        )
+
+        await provision_for_integration(db, integration)
+        from app.services.integration.integration_principals import record_use
+
+        await record_use(db, integration)
         # ---- pull + the one inbound funnel ----
         (
             observations_data,

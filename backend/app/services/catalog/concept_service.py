@@ -44,6 +44,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalogs.policy import CatalogReferenceError, CatalogUniqueViolation
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
     CatalogScope,
@@ -57,6 +58,45 @@ from app.models.enums import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ConceptNotFoundError(ValueError):
+    """The concept id does not exist or is not visible to the caller.
+
+    Typed path for the write contract (→ HTTP 404) — replaces the old
+    ``"not found"`` substring matching on a bare ``ValueError``. Subclasses
+    ``ValueError`` so callers that treat any concept lookup miss as a value
+    error keep working.
+    """
+
+
+async def require_visible_concept(
+    db: AsyncSession, concept_id: UUID | None, tenant_id: UUID | None
+) -> UUID | None:
+    """Validate an explicit concept reference against tenant visibility.
+
+    Returns ``concept_id`` unchanged when the target exists and is visible —
+    a system row (``tenant_id IS NULL``) or the caller's own tenant, and not
+    soft-deleted. Raises :class:`~app.catalogs.policy.CatalogReferenceError`
+    (→ HTTP 400) otherwise. Shared by every write-contract path that accepts
+    an explicit concept id (``class_concept_id``, concept ``parent_id``) so a
+    tenant can never link to another tenant's private concept; the error
+    message carries no name/slug of the hidden row.
+    """
+    if concept_id is None:
+        return None
+    row = (
+        await db.execute(
+            select(Concept.id).where(
+                Concept.id == concept_id,
+                or_(Concept.tenant_id.is_(None), Concept.tenant_id == tenant_id),
+                Concept.deleted_at.is_(None),
+            )
+        )
+    ).first()
+    if row is None:
+        raise CatalogReferenceError("concept")
+    return concept_id
 
 
 def concepts_with_kind(kind: ConceptKind):
@@ -122,37 +162,6 @@ async def resolve_concept_by_slug(
         stmt = stmt.where(concepts_with_kind(kind))
     row = (await db.execute(stmt)).first()
     return row[0] if row else None
-
-
-def biomarker_category_to_concept_slug(category: str | None) -> str | None:
-    """Convert a biomarker ``category`` string (e.g. ``blood_laboratory``,
-    ``vital_signs``) into the matching concept slug.
-
-    The category strings use underscores; concept slugs use hyphens
-    (e.g. ``blood_laboratory`` -> ``blood-laboratory``). After the multi-kind
-    consolidation the biomarker-class concepts share their slug with the
-    examination/document categories (no ``-class`` suffix), so a single concept
-    carries all relevant kind tags.
-    Returns ``None`` if no mapping is possible.
-    """
-    if not category:
-        return None
-    raw = category.strip().lower()
-    if not raw:
-        return None
-    return raw.replace("_", "-")
-
-
-async def resolve_biomarker_class_concept(
-    db: AsyncSession,
-    category: str | None,
-    tenant_id: UUID | None = None,
-) -> UUID | None:
-    """Resolve a biomarker ``category`` string to a concept ID."""
-    slug = biomarker_category_to_concept_slug(category)
-    if not slug:
-        return None
-    return await resolve_concept_by_slug(db, slug, ConceptKind.BIOMARKER_CLASS, tenant_id=tenant_id)
 
 
 class ConceptService:
@@ -354,7 +363,13 @@ class ConceptService:
             await self.db.flush()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise ValueError(f"Concept with slug='{slug}' already exists") from exc
+            # Typed 409 contract (subclass of ValueError — callers that treat
+            # conflicts as value errors keep working).
+            raise CatalogUniqueViolation(
+                "slug",
+                slug,
+                message=f"Concept with slug='{slug}' already exists",
+            ) from exc
         await self._audit(actor, "create", concept)
         return concept
 
@@ -374,7 +389,7 @@ class ConceptService:
         """
         concept = await self.get_concept(concept_id, tenant_id)
         if concept is None:
-            raise ValueError("Concept not found")
+            raise ConceptNotFoundError("Concept not found")
 
         if concept.is_global and role != Role.SYSTEM_ADMIN.value:
             raise PermissionError("Only SYSTEM_ADMIN can edit global concepts")
@@ -435,7 +450,7 @@ class ConceptService:
         """
         concept = await self.get_concept(concept_id, tenant_id)
         if concept is None:
-            raise ValueError("Concept not found")
+            raise ConceptNotFoundError("Concept not found")
 
         if concept.is_global and role != Role.SYSTEM_ADMIN.value:
             raise PermissionError("Only SYSTEM_ADMIN can delete global concepts")
@@ -492,7 +507,7 @@ class ConceptService:
         )
         concept = (await self.db.execute(stmt)).scalar_one_or_none()
         if concept is None:
-            raise ValueError("Concept not found")
+            raise ConceptNotFoundError("Concept not found")
 
         if concept.is_global and role != Role.SYSTEM_ADMIN.value:
             raise PermissionError("Only SYSTEM_ADMIN can restore global concepts")
@@ -702,14 +717,28 @@ class ConceptService:
         await self.db.flush()
 
     async def approve_edge(self, edge_id: UUID, role: str) -> ConceptEdge:
-        """Approve a proposed edge (SYSTEM_ADMIN / ADMIN only)."""
+        """Approve a proposed edge (SYSTEM_ADMIN / ADMIN only).
+
+        Raises the same conflict ``ValueError`` as :meth:`create_edge` when a
+        second proposed row with the same identity is approved (the approved-
+        only partial unique rejects the flush); the session is rolled back so
+        the caller gets a typed error instead of a raw IntegrityError.
+        """
         self._check_write_role(role)
         stmt = select(ConceptEdge).where(ConceptEdge.id == edge_id)
         edge = (await self.db.execute(stmt)).scalar_one_or_none()
         if edge is None:
             raise ValueError("Edge not found")
         edge.status = EdgeApprovalStatus.APPROVED
-        await self.db.flush()
+        conflict = (
+            f"Edge already exists: {edge.src_type.value}:{edge.src_id} "
+            f"-[{edge.relation.value}]-> {edge.dst_type.value}:{edge.dst_id}"
+        )
+        try:
+            await self.db.flush()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise ValueError(conflict) from exc
         return edge
 
     # ------------------------------------------------------------------
@@ -724,7 +753,7 @@ class ConceptService:
         """Assert that a concept exists and is visible to the caller."""
         c = await self.get_concept(concept_id, tenant_id)
         if c is None:
-            raise ValueError(f"Concept {concept_id} not found")
+            raise ConceptNotFoundError(f"Concept {concept_id} not found")
 
     async def _count_active_edges_for_concept(
         self, concept_id: UUID, tenant_id: UUID | None

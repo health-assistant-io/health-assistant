@@ -80,7 +80,7 @@ export interface AnatomyStructure {
   standard_system?: CodingSystem | null;
   standard_code?: string | null;
   description?: string | null;
-  is_custom: boolean;
+  scope?: string | null;
   display?: AnatomyDisplay | null;
   tenant_id?: string | null;
 }
@@ -134,7 +134,6 @@ export interface AnatomyImportNode {
   standard_system?: CodingSystem | null;
   standard_code?: string | null;
   description?: string | null;
-  is_custom?: boolean;
   display?: AnatomyDisplay | null;
 }
 

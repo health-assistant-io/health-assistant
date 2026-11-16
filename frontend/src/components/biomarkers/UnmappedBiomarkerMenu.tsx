@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Zap, Plus, Link2, Search, X, Check, Activity } from 'lucide-react';
 import { toast } from 'react-toastify';
 import biomarkerService from '../../services/biomarkerService';
-import { CreateBiomarkerModal } from '../examinations/CreateBiomarkerModal';
+import { CreateCatalogItemModal } from '../catalog/CreateCatalogItemModal';
 import { filterBiomarkers } from '../../utils/searchUtils';
 import { Biomarker } from '../../types/biomarker';
+import type { CatalogItem } from '../../types/catalog';
 import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
 
 interface UnmappedBiomarkerMenuProps {
@@ -59,17 +60,17 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
     reset();
   };
 
-  const handleCreateSuccess = async (newBiomarker: Biomarker) => {
+  const handleCreateSuccess = async (newBiomarker: CatalogItem) => {
     // Auto-relink the unmapped observations to the freshly-created definition
     setIsWorking(true);
     try {
       const res = await biomarkerService.remapObservations(
-        newBiomarker.id,
+        String(newBiomarker.id),
         rawName,
         patientId
       );
       toast.success(
-        `Created "${newBiomarker.name}" and linked ${res.observations_remapped} result(s).`
+        `Created "${String(newBiomarker.name)}" and linked ${res.observations_remapped} result(s).`
       );
       refreshBiomarkerDefinitions();
       onRemapped?.();
@@ -250,11 +251,12 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
         )}
       </div>
 
-      <CreateBiomarkerModal
+      <CreateCatalogItemModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={handleCreateSuccess}
+        type="biomarker"
         initialName={rawName}
+        onCreated={handleCreateSuccess}
       />
     </>
   );

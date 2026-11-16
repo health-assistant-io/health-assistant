@@ -310,9 +310,7 @@ async def test_options_cannot_smuggle_credentials(client, owner_env):
 async def test_sync_without_secret_is_a_typed_needs_secret(client, owner_env):
     _, headers, patient_id = owner_env
     binding = await _create_binding(client, headers, patient_id)
-    response = await client.post(
-        f"/api/v1/calendar/bindings/{binding['id']}/sync", headers=headers
-    )
+    response = await client.post(f"/api/v1/calendar/bindings/{binding['id']}/sync", headers=headers)
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is False
@@ -345,9 +343,7 @@ async def test_delete_removes_slots_and_links_but_not_records(client, owner_env,
         await db.commit()
     await client.post(f"/api/v1/calendar/bindings/{binding['id']}/sync", headers=headers)
 
-    deleted = await client.delete(
-        f"/api/v1/calendar/bindings/{binding['id']}", headers=headers
-    )
+    deleted = await client.delete(f"/api/v1/calendar/bindings/{binding['id']}", headers=headers)
     assert deleted.status_code == 200
     assert deleted.json()["secrets_deleted"] >= 1
 
@@ -365,9 +361,7 @@ async def test_delete_removes_slots_and_links_but_not_records(client, owner_env,
             )
         ).scalars().all() == []
         surviving = (
-            await db.execute(
-                select(ExaminationModel).where(ExaminationModel.id == exam.id)
-            )
+            await db.execute(select(ExaminationModel).where(ExaminationModel.id == exam.id))
         ).scalar_one()
         assert surviving.id == exam.id  # the clinical record survives unbind
 

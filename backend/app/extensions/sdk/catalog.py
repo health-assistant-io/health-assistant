@@ -65,7 +65,7 @@ class CatalogProposal(BaseModel):
         {
             "name": "Sleep Quality Score",
             "slug": "sleep_quality_score",         # optional; derived from name if absent
-            "category": "Sleep",                   # optional; resolved to a biomarker_class concept
+            "class_concept_slug": "sleep",         # optional; resolved to a biomarker_class concept
             "coding_system": "custom",             # optional; default "loinc"
             "code": "HKSleepQualityScore",         # optional
             "preferred_unit_symbol": "score",      # optional
@@ -161,7 +161,7 @@ def biomarker_proposal(
     *,
     name: str,
     slug: str | None = None,
-    category: str | None = None,
+    class_concept_slug: str | None = None,
     coding_system: str | None = None,
     code: str | None = None,
     preferred_unit_symbol: str | None = None,
@@ -181,8 +181,8 @@ def biomarker_proposal(
     payload: dict[str, Any] = {"name": name}
     if slug is not None:
         payload["slug"] = slug
-    if category is not None:
-        payload["category"] = category
+    if class_concept_slug is not None:
+        payload["class_concept_slug"] = class_concept_slug
     if coding_system is not None:
         payload["coding_system"] = coding_system
     if code is not None:

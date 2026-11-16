@@ -115,6 +115,22 @@ Declared with the ladder, not sprinkled across revisions:
 base table's `device_id` type (a TimescaleDB type-change requirement); the
 ladder shape itself did not change.
 
+**Tenant scoping (Phase 11).** Continuous aggregates read Timescale's
+internal materialization, which row-level security can never cover — and
+the raw `telemetry_data` hypertable itself cannot carry RLS either
+(Timescale refuses it on compressed hypertables, and the compression is a
+deliberate storage feature). The aggregate surface is therefore
+views-only for the runtime role: the raw caggs are **revoked** from
+`neuronection_health_app`, and every query goes through the
+`telemetry_hourly_scoped` / `telemetry_daily_scoped` /
+`telemetry_monthly_scoped` views (migration `0016_rls`), which wrap the
+cagg with a tenant filter that reads the request's `app.tenant_id`
+setting inside the view definition — a missing or foreign context answers
+zero rows, unconditionally. Analytical queries keep their explicit
+`tenant_id` filters (the second wall is never a replacement), and anomaly
+detection's `telemetry_hourly_scoped` reads run under the same context
+the rest of the request carries.
+
 ## One analytical contract
 
 - **Web:** `/api/v1/analytics/*` is the single web-facing read surface —

@@ -22,6 +22,7 @@ from app.models.concept_model import Concept
 from app.models.enums import ConceptKind
 from app.services.catalog.concept_service import concepts_with_kind
 from app.services.seed.service import SeedService
+from tests.seed_utils import seed_with_commit
 
 
 def _seed_items():
@@ -40,11 +41,11 @@ async def test_seed_diseases_creates_disease_concepts():
     # Diseases depend on the concepts stage having run (parent_slug refs etc.),
     # but diseases.json has no parent_slug refs, so it can run standalone. Run
     # concepts first anyway to mirror the real pipeline ordering.
-    await svc.seed_concepts()
-    stats = await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    stats = await seed_with_commit(svc.seed_diseases)
 
     items = _seed_items()
-    assert stats["added"] + stats["updated"] == len(items), stats
+    assert stats["added"] + stats["updated"] + stats["unchanged"] == len(items), stats
     assert stats["errors"] == 0, stats
 
     slugs = _seed_slugs()
@@ -69,8 +70,8 @@ async def test_seed_diseases_creates_disease_concepts():
 async def test_seed_diseases_has_icd10_codes():
     """Every seeded disease concept carries a coding_system + code."""
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
 
     slugs = _seed_slugs()
     async with AsyncSessionLocal() as session:
@@ -96,8 +97,8 @@ async def test_seed_diseases_has_icd10_codes():
 async def test_seed_diseases_idempotent():
     """Running ``seed_diseases`` twice doesn't duplicate rows."""
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
 
     slugs = _seed_slugs()
     async with AsyncSessionLocal() as session:
@@ -110,7 +111,7 @@ async def test_seed_diseases_idempotent():
             )
         )
 
-    stats2 = await svc.seed_diseases()
+    stats2 = await seed_with_commit(svc.seed_diseases)
     assert stats2["added"] == 0, f"second run should add nothing: {stats2}"
     assert stats2["errors"] == 0
 
@@ -133,8 +134,8 @@ async def test_seed_diseases_idempotent():
 async def test_seed_diseases_includes_vaccine_targets():
     """The vaccine-preventable disease slugs are present so PREVENTS edges resolve."""
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
 
     needed = [
         "measles",
@@ -172,8 +173,8 @@ async def test_seed_diseases_includes_vaccine_targets():
 async def test_seed_diseases_disease_kind_tagged():
     """Every seeded disease concept carries the ``disease`` kind tag."""
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
 
     slugs = _seed_slugs()
     async with AsyncSessionLocal() as session:

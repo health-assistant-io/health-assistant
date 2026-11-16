@@ -16,7 +16,10 @@
       "observation": { "type": "string", "title": "Biomarker observation / telemetry sample" },
       "examination": { "type": "string", "title": "Client-pushed examination" },
       "document": { "type": "string", "title": "Client-pushed document bytes" },
-      "clinical_event": { "type": "string", "title": "Client-pushed clinical event" }
+      "clinical_event": { "type": "string", "title": "Client-pushed clinical event" },
+      "medication": { "type": "string", "title": "Client-pushed patient medication" },
+      "allergy": { "type": "string", "title": "Client-pushed patient allergy" },
+      "immunization": { "type": "string", "title": "Client-pushed patient immunization" }
     }
   },
   "supportsIncremental": false,

@@ -12,13 +12,23 @@ from app.models.enums import (
 )
 
 # --- Allergy Catalog ---
+# Write contract (plan A Phase 2 / ADR 0055 D5): extra="forbid" — unknown or
+# system-owned fields (scope, tenant_id, seed_key, created_by, id, timestamps)
+# are rejected with 422. ``coding_system``/``code`` (SNOMED) are writable;
+# ``seed_key`` is response-only.
 
 
 class AllergyCatalogBase(BaseModel):
     name: str
+    coding_system: str | None = Field(default=None, max_length=50)
+    code: str | None = Field(default=None, max_length=100)
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     category: AllergyCategory = AllergyCategory.OTHER
     description: str | None = None
     typical_reactions: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("typical_reactions", mode="before")
     @classmethod
@@ -40,27 +50,40 @@ class AllergyCatalogCreate(AllergyCatalogBase):
 
 
 class AllergyCatalogUpdate(BaseModel):
-    """Partial update for an allergy catalog entry (all fields optional)."""
+    """Partial update for an allergy catalog entry (all fields optional).
 
+    Class-concept precedence matches ``MedicationCatalogUpdate``: a sent
+    ``class_concept_id`` wins (an explicit ``null`` clears the link, any slug
+    sent alongside is ignored); a bare slug re-resolves tenant-explicitly.
+    """
+
+    coding_system: str | None = Field(default=None, max_length=50)
+    code: str | None = Field(default=None, max_length=100)
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     name: str | None = None
     category: AllergyCategory | None = None
     description: str | None = None
     typical_reactions: list[str] | None = None
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class AllergyCatalogResponse(AllergyCatalogBase):
     id: UUID
-    is_custom: bool
-    scope: str | None = None
-    class_concept_id: UUID | None = None
-    class_concept_slug: str | None = None
     class_concept_name: str | None = None
+    seed_key: str | None = None
+    scope: str | None = None
     tenant_id: UUID | None = None
     created_by: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        extra="ignore",
+    )
 
 
 # --- Allergy Intolerance (Patient Record) ---

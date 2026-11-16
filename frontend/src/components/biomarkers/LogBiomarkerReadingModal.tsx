@@ -1,9 +1,13 @@
-import React, { useEffect } from 'react';
+import React, { useId, useState } from 'react';
 import { AddBiomarkerForm } from '../examinations/AddBiomarkerForm';
 import { createObservation } from '../../services/observationService';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
+import { Activity } from 'lucide-react';
 import type { Biomarker } from '../../types/biomarker';
+import { Modal } from '../ui/Modal';
+import { RecordFormFooter } from '../records/RecordFormFooter';
+import { RecordFormIcon } from '../records/RecordFormIcon';
 
 interface Props {
   isOpen: boolean;
@@ -20,8 +24,8 @@ interface Props {
 
 /**
  * Standalone biomarker-reading entry modal. Wraps the headless
- * ``AddBiomarkerForm`` in a portal and persists via ``createObservation``
- * — no examination required.
+ * ``AddBiomarkerForm`` in the record-form popup shell and persists via
+ * ``createObservation`` — no examination required.
  *
  * Used from three entry points:
  *   • ``BiomarkerDetail`` StickyToolbar (passes ``lockedBiomarker``)
@@ -41,20 +45,8 @@ export const LogBiomarkerReadingModal: React.FC<Props> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
-
-  // Esc-to-close + body scroll lock while the modal is open.
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [isOpen, onClose]);
+  const formId = useId();
+  const [formState, setFormState] = useState({ canSubmit: false, loading: false });
 
   if (!isOpen) return null;
 
@@ -76,26 +68,36 @@ export const LogBiomarkerReadingModal: React.FC<Props> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
-      role="dialog"
-      aria-modal="true"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white dark:bg-dark-surface w-full max-w-xl rounded-3xl shadow-2xl border border-gray-100 dark:border-dark-border overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-        <AddBiomarkerForm
-          patientId={patientId}
-          lockedBiomarker={lockedBiomarker}
-          onSubmit={handleSubmit}
+    <Modal
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
+      title={t('biomarkers.log_reading.title')}
+      description={t('biomarkers.log_reading.subtitle')}
+      headerIcon={<RecordFormIcon icon={Activity} tone="blue" />}
+      closeLabel={t('common.close')}
+      footer={
+        <RecordFormFooter
+          formId={formId}
+          canSubmit={formState.canSubmit}
+          loading={formState.loading}
+          submitLabel={t('examination_detail.add_biomarker.add_result')}
+          cancelLabel={t('common.cancel')}
           onCancel={onClose}
-          showHeader
-          showActions
-          headerTitleKey="biomarkers.log_reading.title"
-          headerSubtitleKey="biomarkers.log_reading.subtitle"
         />
-      </div>
-    </div>
+      }
+      bodyFill
+      bodyClassName="p-0"
+      size="md"
+    >
+      <AddBiomarkerForm
+        patientId={patientId}
+        lockedBiomarker={lockedBiomarker}
+        onSubmit={handleSubmit}
+        onCancel={onClose}
+        formId={formId}
+        showActions={false}
+        onStateChange={setFormState}
+      />
+    </Modal>
   );
 };

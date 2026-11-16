@@ -1,49 +1,51 @@
 # ruff: noqa: B904,E501 -- long immutable strings; reflow when touched
 import contextlib
-import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+import anyio
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import false, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.document_model import DocumentModel
+from app.schemas.user import TokenData
 from app.services.fhir.fhir_helpers import assert_valid_fhir
+from app.storage.bootstrap import (
+    current_config,
+    effective_max_upload_bytes,
+)
+from app.storage.documents import (
+    DocumentStorage,
+    astorage_key_or_legacy,
+    document_key,
+    document_object_key,
+)
+from app.storage.object_storage import ObjectTooLarge, StorageError
 from app.utils.image_utils import edit_image
 
 
-# Ensure upload directory exists and is writable
-def get_upload_dir():
-    # Try configured path
-    paths_to_try = [
-        Path(settings.HA_UPLOAD_DIR),
-        Path(os.getcwd()) / "uploads",
-        Path("/tmp/health_assistant/uploads"),
-    ]
-
-    for path in paths_to_try:
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            # Test writability
-            test_file = path / ".write_test"
-            test_file.touch()
-            test_file.unlink()
-            return path
-        except Exception:
-            continue
-
-    # Absolute fallback
-    fallback = Path("/tmp/health_assistant_uploads")
-    fallback.mkdir(parents=True, exist_ok=True)
-    return fallback
+def effective_upload_max_bytes() -> int:
+    """The enforced upload cap: ``min(host MAX_UPLOAD_SIZE, contract cap)``."""
+    return effective_max_upload_bytes(current_config(), settings)
 
 
-HA_UPLOAD_DIR = get_upload_dir()
+def _render_document_edit(workdir: str, render, storage: DocumentStorage, original) -> bytes:
+    """Materialize the source, render into a temp path, return the bytes.
+
+    Runs in a worker thread (``anyio.to_thread``): both the store read and the
+    Pillow edit are blocking, and neither may hold the event loop.
+    """
+    suffix = Path(original.filename).suffix or ".png"
+    with storage.materialize(original) as source:
+        dest = Path(workdir) / f"edited{suffix}"
+        render(source, dest)
+        return dest.read_bytes()
 
 # Allowed upload extensions (audit A3). Deliberately EXCLUDES types that can
 # carry active content executable in the browser at the app origin — svg,
@@ -164,7 +166,7 @@ async def upload_document(
     ``UploadFile`` can use the same ingestion path (workstream C of the
     integrations follow-ups pass).
     """
-    max_bytes = settings.MAX_UPLOAD_SIZE * 1024 * 1024
+    max_bytes = effective_upload_max_bytes()
     content = await _read_capped(file, max_bytes)
     return await ingest_document_bytes(
         filename=file.filename or "unknown",
@@ -193,6 +195,7 @@ async def ingest_document_bytes(
     category_concept_id: str | UUID | None = None,
     source_integration_id: str | UUID | None = None,
     external_id: str | None = None,
+    principal: Any | None = None,
 ) -> DocumentModel:
     """Persist a document from raw bytes — the canonical ingestion path.
 
@@ -233,6 +236,10 @@ async def ingest_document_bytes(
             UI uploads leave both unset and bypass dedup.
         external_id: Optional upstream stable document id. See
             ``source_integration_id`` above.
+        principal: Optional acting principal (a scoped integration/PAT
+            ``TokenData``). When supplied, the write is refused unless it
+            holds ``document:write`` — the ingest/bridge seams that bypass
+            the route gate pass it so a read-only credential cannot write.
 
     Returns:
         The persisted :class:`DocumentModel` (refreshed + ready to
@@ -241,7 +248,13 @@ async def ingest_document_bytes(
     """
     import logging
 
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
+
     logger = logging.getLogger(__name__)
+
+    if principal is not None:
+        require_principal_permission(principal, Permission.DOCUMENT_WRITE)
 
     # Integration-key dedup (item 3 of integrations-sdk-improvements plan).
     # Mirrors the pattern on examination_service + clinical_event_service:
@@ -268,26 +281,16 @@ async def ingest_document_bytes(
             return existing
 
     doc_id = uuid4()
-    file_extension = _validate_upload_extension(filename)
-    safe_filename = f"{doc_id}{file_extension}"
-
-    tenant_dir = HA_UPLOAD_DIR / str(tenant_id)
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-    file_path = tenant_dir / safe_filename
-
-    try:
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to save file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+    _validate_upload_extension(filename)
+    object_key = document_key(tenant_id, doc_id, filename)
 
     document = DocumentModel(
         id=doc_id,
         filename=filename,
-        file_path=str(file_path),
+        # The wire never sees this; the facade dual-reads it for rows written
+        # before object storage. New rows keep no server path at all.
+        file_path="",
+        object_key=object_key,
         owner_id=owner_id,
         tenant_id=tenant_id,
         patient_id=UUID(str(patient_id)) if patient_id else None,
@@ -298,6 +301,20 @@ async def ingest_document_bytes(
         progress=0,
         updated_at=datetime.now(),
     )
+
+    storage = DocumentStorage()
+    try:
+        await storage.aput(document, content, key=object_key)
+    except ObjectTooLarge as e:
+        raise HTTPException(
+            status_code=413, detail="File too large for the configured storage limit."
+        ) from e
+    except StorageError as e:
+        logger.error("Failed to store uploaded document: %s", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Document storage is unavailable") from e
+    except Exception as e:
+        logger.error("Failed to store uploaded document: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file") from e
     if source_integration_id is not None:
         document.source_integration_id = UUID(str(source_integration_id))
     if external_id is not None:
@@ -331,7 +348,15 @@ async def ingest_document_bytes(
                 external_id,
                 existing.id,
             )
+            # The losing row's object is an orphan; provider lifecycle is the
+            # net, but remove it eagerly when the store is reachable.
+            with contextlib.suppress(Exception):
+                await storage.adelete(document)
             return existing
+        raise
+    except Exception:
+        with contextlib.suppress(Exception):
+            await storage.adelete(document)
         raise
     await db.refresh(document)
 
@@ -342,7 +367,7 @@ async def ingest_document_bytes(
             cast(Any, ocr_document).apply_async(
                 args=[
                     str(document.id),
-                    str(document.file_path),
+                    document_object_key(document),
                     str(document.tenant_id),
                     str(document.owner_id),
                 ]
@@ -459,8 +484,13 @@ async def get_documents(
     limit: int = 50,
     offset: int = 0,
     db: AsyncSession | None = None,
+    patient_ids: set | None = None,
 ) -> list[DocumentModel]:
-    """Get documents with optional filtering (hides originals if edited versions exist)"""
+    """Get documents with optional filtering (hides originals if edited versions exist).
+
+    ``patient_ids`` (the grant-aware reachable set) ORs with ``owner_id``:
+    documents of reachable patients plus the caller's unattached uploads.
+    """
     from uuid import UUID
 
     from sqlalchemy import not_
@@ -482,7 +512,25 @@ async def get_documents(
         not_(DocumentModel.id.in_(parent_ids_subquery)),
     )
 
-    if owner_id:
+    if patient_ids is not None:
+        if owner_id:
+            from uuid import UUID as UUIDType
+
+            owner_uuid = UUIDType(owner_id) if isinstance(owner_id, str) else owner_id
+            if patient_ids:
+                base_query = base_query.where(
+                    or_(
+                        DocumentModel.patient_id.in_(patient_ids),
+                        DocumentModel.owner_id == owner_uuid,
+                    )
+                )
+            else:
+                base_query = base_query.where(DocumentModel.owner_id == owner_uuid)
+        else:
+            base_query = base_query.where(
+                DocumentModel.patient_id.in_(patient_ids) if patient_ids else false()
+            )
+    elif owner_id:
         from uuid import UUID as UUIDType
 
         owner_uuid = UUIDType(owner_id) if isinstance(owner_id, str) else owner_id
@@ -513,8 +561,8 @@ async def update_document(
 
 
 async def download_document(document: DocumentModel) -> str:
-    """Download document file"""
-    return str(document.file_path)
+    """Return the document's storage key (never a host path)."""
+    return document_object_key(document)
 
 
 async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
@@ -536,7 +584,7 @@ async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
         cast(Any, ocr_document).apply_async(
             args=[
                 str(document.id),
-                str(document.file_path),
+                await astorage_key_or_legacy(document),
                 str(document.tenant_id),
                 str(document.owner_id),
             ]
@@ -672,10 +720,7 @@ async def edit_document_service(
         )
 
     new_doc_id = uuid4()
-    safe_filename = f"{new_doc_id}{file_extension}"
-    tenant_dir = HA_UPLOAD_DIR / str(original.tenant_id)
-    tenant_dir.mkdir(parents=True, exist_ok=True)
-    new_file_path = tenant_dir / safe_filename
+    new_object_key = document_key(original.tenant_id, new_doc_id, original.filename)
 
     # Prepare crop tuple
     crop = None
@@ -691,11 +736,15 @@ async def edit_document_service(
         )
         logger.info(f"Prepared crop tuple: {crop}")
 
-    # Perform edit
-    try:
+    # Perform edit. The source is materialized from the store (or the legacy
+    # local file) and the result is written back through the store — the
+    # temporary paths never outlive this call.
+    storage = DocumentStorage()
+
+    def _render(src: Path, dest: Path) -> None:
         edit_image(
-            str(original.file_path),
-            str(new_file_path),
+            str(src),
+            str(dest),
             crop=crop,
             perspective_points=edit_params.get("perspective_points"),
             brightness=float(edit_params.get("brightness", 1.0)),
@@ -703,6 +752,12 @@ async def edit_document_service(
             sharpness=float(edit_params.get("sharpness", 1.0)),
             rotation=int(edit_params.get("rotation", 0)),
         )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="ha-edit-") as workdir:
+            data = await anyio.to_thread.run_sync(
+                _render_document_edit, workdir, _render, storage, original
+            )
     except Exception as e:
         logger.error(f"Failed to edit image: {e}")
         raise HTTPException(status_code=500, detail="Failed to edit image")
@@ -711,7 +766,8 @@ async def edit_document_service(
     new_document = DocumentModel(
         id=new_doc_id,
         filename=f"edited_{original.filename}",
-        file_path=str(new_file_path),
+        file_path="",
+        object_key=new_object_key,
         owner_id=original.owner_id,
         tenant_id=original.tenant_id,
         patient_id=original.patient_id,
@@ -723,6 +779,15 @@ async def edit_document_service(
         is_edited=True,
         updated_at=datetime.now(),
     )
+    try:
+        await storage.aput(new_document, data, key=new_object_key)
+    except ObjectTooLarge as e:
+        raise HTTPException(
+            status_code=413, detail="Edited file exceeds the configured storage limit."
+        ) from e
+    except StorageError as e:
+        logger.error("Failed to store edited document: %s", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Document storage is unavailable") from e
 
     # Deactivate original in extraction if it was active
     if original.include_in_extraction:
@@ -734,9 +799,16 @@ async def edit_document_service(
 
     # FHIR validation gate (audit: write-time gate coverage). Verifies the
     # edited-copy DocumentModel projects to a valid DocumentReference.
-    assert_valid_fhir(new_document)
-    db.add(new_document)
-    await db.commit()
+    try:
+        assert_valid_fhir(new_document)
+        db.add(new_document)
+        await db.commit()
+    except Exception:
+        # The object was written before the row. Remove it so a validation or
+        # commit failure cannot leave orphaned PHI behind the database.
+        with contextlib.suppress(Exception):
+            await storage.adelete(new_document)
+        raise
     await db.refresh(new_document)
 
     # Trigger OCR for new document if extraction is enabled
@@ -750,9 +822,24 @@ async def edit_document_service(
 
 
 async def delete_document(
-    document_id: str, db: AsyncSession, trigger_cumulative: bool = True
+    document_id: str,
+    db: AsyncSession,
+    current_user: TokenData,
+    *,
+    trigger_cumulative: bool = True,
 ) -> bool:
-    """Delete a document"""
+    """Delete a document and its extracted observations.
+
+    Takes the request actor so the scoped-credential write guard runs at the
+    same seam as the upload: the ingest/bridge paths that call this directly
+    never run the route gate, so a read-only PAT/integration principal must be
+    refused here (ADR 0054 D8).
+    """
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
+
+    require_principal_permission(current_user, Permission.DOCUMENT_WRITE)
+
     document = await get_document(document_id, db)
 
     if not document:
@@ -764,9 +851,17 @@ async def delete_document(
         if parent and document.include_in_extraction:
             parent.include_in_extraction = True
 
-    file_path = Path(str(document.file_path))
-    if file_path.exists():
-        file_path.unlink()
+    # Remove the bytes through the storage seam (object first, then the
+    # legacy local file). A provider failure must not wedge the DB delete;
+    # it is logged and the lifecycle rule / migration sweep is the net.
+    try:
+        await DocumentStorage().adelete(document)
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to delete stored document %s: %s", document.id, e
+        )
 
     examination_id = document.examination_id
 

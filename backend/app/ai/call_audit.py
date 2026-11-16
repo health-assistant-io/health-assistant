@@ -17,10 +17,13 @@ Rules:
 * rows carry **no prompts or completions** (PHI): only task, route, provider/
   model ids, timings, token counts, integer micro-costs, status, a typed
   ``error_class`` and an open ``meta`` payload with a schema version;
-* ``cost_micros`` is integer micro-units, computed from the model row's declared
-  pricing settings (``cost_per_1k_input_micros`` / ``cost_per_1k_output_micros``).
-  No pricing table is hardcoded here — a deployment that declared no prices gets
-  ``0`` and never a stale guess.
+* ``cost_micros`` is integer micro-units resolved **at write time** from the
+  tenant override, the vendored family built-in catalog, loopback locality, or
+  the pre-contract model ``settings`` rates. ``NULL`` means the price was unknown at
+  call time — never ``0``.
+* provenance is stored beside the cost (``usage_source``/``estimate_method``/
+  ``price_source``/``price_version``) so a later price change never rewrites
+  history.
 """
 
 from __future__ import annotations
@@ -28,9 +31,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from langchain_core.callbacks import AsyncCallbackHandler
@@ -67,6 +72,9 @@ class CallAuditContext:
     trace_id: str = field(default_factory=new_trace_id)
     route: AICallRoute | None = None
     model_name: str | None = None
+    provider_key: str | None = None
+    provider_row_id: str | None = None
+    is_local: bool = False
     cost_per_1k_input_micros: int | None = None
     cost_per_1k_output_micros: int | None = None
 
@@ -93,6 +101,11 @@ def _pricing_from_model(model: Any) -> tuple[int | None, int | None]:
     return _as_int("cost_per_1k_input_micros"), _as_int("cost_per_1k_output_micros")
 
 
+def _is_local_url(url: str | None) -> bool:
+    host = (urlparse(url or "").hostname or "").lower()
+    return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".local")
+
+
 def context_for_task(
     task_id: str,
     *,
@@ -105,6 +118,11 @@ def context_for_task(
 ) -> CallAuditContext:
     """Build an audit context from the resolved provider/model rows."""
     cost_in, cost_out = _pricing_from_model(model)
+    model_local = getattr(model, "is_local", None)
+    provider_local = getattr(provider, "is_local", None)
+    is_local = (
+        bool(model_local) if model_local is not None else bool(provider_local)
+    ) or _is_local_url(getattr(provider, "api_base", None))
     return CallAuditContext(
         task_id=str(task_id),
         tenant_id=tenant_id,
@@ -114,6 +132,9 @@ def context_for_task(
         model_id=getattr(model, "id", None),
         trace_id=trace_id or new_trace_id(),
         model_name=getattr(model, "model_name", None),
+        provider_key=getattr(provider, "preset_key", None),
+        provider_row_id=str(provider.id) if getattr(provider, "id", None) else None,
+        is_local=is_local,
         cost_per_1k_input_micros=cost_in,
         cost_per_1k_output_micros=cost_out,
     )
@@ -122,13 +143,73 @@ def context_for_task(
 def estimate_cost_micros(
     ctx: CallAuditContext, prompt_tokens: int | None, completion_tokens: int | None
 ) -> int:
-    """Integer micro-units from the model row's declared per-1k-token prices."""
+    """Integer micro-units from the pre-contract model row's declared per-1k prices."""
     total = 0
     if prompt_tokens and ctx.cost_per_1k_input_micros:
         total += round(prompt_tokens * ctx.cost_per_1k_input_micros / 1000)
     if completion_tokens and ctx.cost_per_1k_output_micros:
         total += round(completion_tokens * ctx.cost_per_1k_output_micros / 1000)
     return total
+
+
+def _has_pre_contract_price(ctx: CallAuditContext) -> bool:
+    """Whether a complete pre-contract per-1k price pair was declared.
+
+    A half-declared pair cannot produce an honest total: pricing the declared
+    side and silently treating the other as free would fabricate a number.
+    """
+    return ctx.cost_per_1k_input_micros is not None and ctx.cost_per_1k_output_micros is not None
+
+
+def _override_rows(overrides: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "providerRef": str(row.provider_ref) if row.provider_ref else None,
+            "provider": row.provider_key,
+            "model": row.model,
+            "match": row.match,
+            "inputMicrosPerMillion": int(row.input_micros_per_million),
+            "outputMicrosPerMillion": int(row.output_micros_per_million),
+            "metering": row.metering,
+            "id": str(row.id),
+            "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
+        }
+        for row in overrides
+    ]
+
+
+def resolve_call_price(
+    ctx: CallAuditContext,
+    overrides: list[Mapping[str, Any]],
+    prompt_tokens: int | None,
+    completion_tokens: int | None,
+) -> tuple[int | None, str, str | None]:
+    """Return ``(cost_micros, price_source, price_version)`` for one call."""
+    from app.ai.model_pricing import resolve_price
+    from app.ai.model_pricing_data import MODEL_PRICING_COMPILED, MODEL_PRICING_ROWS
+
+    resolution = resolve_price(
+        rows=MODEL_PRICING_ROWS,
+        compiled=MODEL_PRICING_COMPILED,
+        model=ctx.model_name or "",
+        provider_key=ctx.provider_key,
+        provider_row_id=ctx.provider_row_id,
+        is_local=ctx.is_local,
+        user_rows=overrides,
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+    )
+    if resolution is not None:
+        return resolution.cost_micros, resolution.source, resolution.price_version
+    if _has_pre_contract_price(ctx):
+        if prompt_tokens is None or completion_tokens is None:
+            return None, "legacy", "pre-contract"  # gate-allow: legacy
+        return (
+            estimate_cost_micros(ctx, prompt_tokens, completion_tokens),
+            "legacy",  # gate-allow: legacy
+            "pre-contract",
+        )
+    return None, "unknown", None
 
 
 def classify_error(error: BaseException) -> tuple[AICallStatus, str]:
@@ -181,7 +262,26 @@ async def record_call(
                 logger.warning("AI call audit skipped: unknown task '%s'", ctx.task_id)
                 await db.rollback()
                 return False
-            from app.models.ai_task_model import AICallLog
+            from sqlalchemy import select
+
+            from app.models.ai_task_model import AICallLog, AIPriceOverride
+
+            overrides = []
+            if ctx.tenant_id is not None:
+                rows = await db.execute(
+                    select(AIPriceOverride).where(AIPriceOverride.tenant_id == ctx.tenant_id)
+                )
+                overrides = _override_rows(list(rows.scalars()))
+            usage_source = (
+                "provider"
+                if prompt_tokens is not None and completion_tokens is not None
+                else "partial"
+                if prompt_tokens is not None or completion_tokens is not None
+                else "unknown"
+            )
+            cost_micros, price_source, price_version = resolve_call_price(
+                ctx, overrides, prompt_tokens, completion_tokens
+            )
 
             db.add(
                 AICallLog(
@@ -194,7 +294,12 @@ async def record_call(
                     latency_ms=max(int(latency_ms), 0),
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
-                    cost_micros=estimate_cost_micros(ctx, prompt_tokens, completion_tokens),
+                    provider_key=ctx.provider_key,
+                    cost_micros=cost_micros,
+                    usage_source=usage_source,
+                    estimate_method=None,
+                    price_source=price_source,
+                    price_version=price_version,
                     status=status,
                     error_class=(error_class or None),
                     trace_id=ctx.trace_id,

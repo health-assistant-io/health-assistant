@@ -10,7 +10,7 @@ def override_get_current_user():
 
     uid = uuid.uuid4()
     tid = uuid.uuid4()
-    return TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="user")
+    return TokenData(user_id=uid, sub=str(uid), tenant_id=tid, role="USER")
 
 
 @pytest.fixture
@@ -79,10 +79,14 @@ async def test_create_doctor(mock_create, async_client: AsyncClient, mock_doctor
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.doctors.delete_doctor")
 async def test_delete_doctor(mock_delete, async_client: AsyncClient):
+    """ADMIN principal: clinical:delete is ADMIN-side in the ADR 0054
+    baseline — a USER principal is denied at the central route gate."""
     from app.core.security import get_current_user
     from app.main import app
+    from app.schemas.user import TokenData
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    admin = TokenData(user_id=uuid.uuid4(), sub="x", tenant_id=uuid.uuid4(), role="ADMIN")
+    app.dependency_overrides[get_current_user] = lambda: admin
     mock_delete.return_value = True
 
     doctor_id = str(uuid.uuid4())

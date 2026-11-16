@@ -19,6 +19,7 @@ import pytest
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
@@ -50,10 +51,24 @@ async def _make_shared_tenant(
 
 def _model_factory(type: str) -> Callable:
     if type == "biomarker":
-        return lambda tid, name: BiomarkerDefinition(slug=f"slug-{name}", name=name, tenant_id=tid)
+        return lambda tid, name: BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if tid is not None else CatalogScope.SYSTEM),
+            slug=f"slug-{name}",
+            name=name,
+            tenant_id=tid,
+        )
     if type == "allergy":
-        return lambda tid, name: AllergyCatalog(name=name, category="FOOD", tenant_id=tid)
-    return lambda tid, name: MedicationCatalog(name=name, tenant_id=tid)
+        return lambda tid, name: AllergyCatalog(
+            scope=(CatalogScope.TENANT if tid is not None else CatalogScope.SYSTEM),
+            name=name,
+            category="FOOD",
+            tenant_id=tid,
+        )
+    return lambda tid, name: MedicationCatalog(
+        scope=(CatalogScope.TENANT if tid is not None else CatalogScope.SYSTEM),
+        name=name,
+        tenant_id=tid,
+    )
 
 
 async def _create_row(type: str, tenant_id, name: str) -> str:

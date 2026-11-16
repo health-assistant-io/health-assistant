@@ -14,6 +14,7 @@ from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.document_model import DocumentModel
+from app.models.enums import CatalogScope
 from app.models.examination_model import ExaminationModel
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
@@ -113,6 +114,7 @@ async def rich_content_ctx():
         db.add_all([doc_a, doc_b])
         await db.flush()
         biomarker = BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             name="LDL Cholesterol",

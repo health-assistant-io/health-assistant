@@ -21,7 +21,6 @@ const emptyDraft = (): CatalogItem => ({
   standard_system: null,
   standard_code: null,
   description: null,
-  is_custom: true,
 });
 
 const toDraft = (s: AnatomyStructure): CatalogItem => ({
@@ -33,7 +32,6 @@ const toDraft = (s: AnatomyStructure): CatalogItem => ({
   standard_system: s.standard_system ?? null,
   standard_code: s.standard_code ?? null,
   description: s.description ?? null,
-  is_custom: s.is_custom,
 });
 
 export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved, structure }) => {
@@ -70,7 +68,6 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
           | null,
         standard_code: (draft.standard_code as string | null) ?? null,
         description: (draft.description as string | null)?.trim() || null,
-        is_custom: Boolean(draft.is_custom ?? true),
       };
       const saved = isEditing
         ? await anatomyService.update(structure!.slug, payload)
@@ -100,6 +97,31 @@ export const AnatomyStructureForm: React.FC<Props> = ({ isOpen, onClose, onSaved
             has_concept_link: true,
             edge_endpoint_type: 'anatomy',
             search_columns: [],
+            // Mirrors the backend AnatomyStructureCreate/Update write contract
+            // (GET /catalogs `write`); this modal posts straight to /anatomy.
+            write: {
+              create_fields: [
+                'class_concept_id',
+                'class_concept_slug',
+                'description',
+                'display',
+                'name',
+                'slug',
+                'standard_code',
+                'standard_system',
+              ],
+              update_fields: [
+                'class_concept_id',
+                'class_concept_slug',
+                'description',
+                'display',
+                'name',
+                'slug',
+                'standard_code',
+                'standard_system',
+              ],
+              supports_promote: true,
+            },
           }}
           values={draft}
           onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}

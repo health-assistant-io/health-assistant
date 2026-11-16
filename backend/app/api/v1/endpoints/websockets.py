@@ -38,6 +38,7 @@ from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
 from app.core.cookies import access_cookie_candidates, parse_cookies
 from app.core.redis import redis_client
 from app.core.security import get_session_user_ws
+from app.models.enums import Role
 from app.schemas.user import TokenData
 
 logger = logging.getLogger(__name__)
@@ -146,15 +147,31 @@ async def _extract_token(websocket: WebSocket) -> str | None:
 
 
 async def _authenticate_handshake(websocket: WebSocket) -> TokenData | None:
-    """Origin gate + token verification for a WS handshake (§10).
+    """Origin gate + token verification + route policy for a WS handshake (§10).
 
     Returns the authenticated ``TokenData``, or ``None`` after closing
-    the socket with 1008 (policy violation) — callers return early.
+    the socket with 1008 (policy violation) — callers return early. The
+    central route gate (``app.core.authz.enforce``) does not solve
+    ``Request`` on WebSocket scopes, so the policy check runs here: the
+    handshake path must resolve under the ``websocket`` class to an
+    auth-only policy (ADR 0054) — anything else fails closed.
     """
     if not _origin_allowed(websocket):
         logger.info(
             "WebSocket handshake rejected: Origin %r not allowed",
             websocket.headers.get("origin"),
+        )
+        await websocket.close(code=1008)
+        return None
+
+    from app.core.authz.enforce import resolve_ws_policy_or_none
+
+    resolved_path = websocket.scope.get("path", "")
+    policy = resolve_ws_policy_or_none(resolved_path)
+    if policy is None:
+        logger.warning(
+            "WebSocket handshake rejected: no route policy resolved for %r (fail closed)",
+            resolved_path,
         )
         await websocket.close(code=1008)
         return None
@@ -173,6 +190,17 @@ async def _authenticate_handshake(websocket: WebSocket) -> TokenData | None:
         return None
 
 
+def _tasks_channel(current_user: TokenData) -> str:
+    """USER -> own task channel; MANAGER+ -> tenant-wide stream."""
+    if current_user.role in (
+        Role.ADMIN.value,
+        Role.MANAGER.value,
+        Role.SYSTEM_ADMIN.value,
+    ):
+        return f"tenant:{current_user.tenant_id}:tasks"
+    return f"user:{current_user.user_id}:tasks"
+
+
 def _negotiated_subprotocol(websocket: WebSocket) -> str | None:
     """Echo the first requested subprotocol so the client knows we
     honoured it; accept without one when none was requested."""
@@ -188,9 +216,11 @@ def _negotiated_subprotocol(websocket: WebSocket) -> str | None:
 async def websocket_tasks_endpoint(
     websocket: WebSocket,
 ):
-    """Live task-progress stream for the caller's tenant.
+    """Live task-progress stream for the caller.
 
-    Auth (§10): the ``nx_access`` cookie (browsers) or the
+    USERs receive only their own task events (``user:<id>:tasks``);
+    MANAGER/ADMIN/SYSTEM_ADMIN receive the tenant-wide stream. Auth (§10):
+    the ``nx_access`` cookie (browsers) or the
     Sec-WebSocket-Protocol subprotocol ``["bearer", token]`` (§9 clients);
     the ``?token=`` query fallback stays removed (audit 2026-08 AUTH-L4).
     The handshake ``Origin`` is verified against the configured
@@ -206,7 +236,9 @@ async def websocket_tasks_endpoint(
     tenant_id = current_user.tenant_id
 
     pubsub = redis_client.pubsub()
-    channel = f"tenant:{tenant_id}:tasks"
+    # A USER only sees their own task rows (the worker publishes to both
+    # channels); MANAGER+ keep the tenant-wide operational stream.
+    channel = _tasks_channel(current_user)
 
     try:
         await pubsub.subscribe(channel)

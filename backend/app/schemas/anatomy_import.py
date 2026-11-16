@@ -16,7 +16,6 @@ class AnatomyImportNode(BaseModel):
     standard_system: CodingSystem | None = None
     standard_code: str | None = None
     description: str | None = None
-    is_custom: bool = False
     display: dict[str, Any] | None = None
 
 

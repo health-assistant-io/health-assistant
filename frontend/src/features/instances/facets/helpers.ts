@@ -12,7 +12,7 @@
  * strategies.
  *
  * Catalog (definition) facets live separately in `catalogFacetRegistry` —
- * catalog rows are a different domain (is_custom, coding_system, …) from
+ * catalog rows are a different domain (scope, coding_system, …) from
  * patient-record rows (status, interpretation).
  */
 import type {

@@ -6,6 +6,7 @@ import {
   format
 } from 'date-fns';
 import { MedicationRecord } from '../services/medicationService';
+import { isActiveMedication } from './medicationStatus';
 
 export interface ScheduledMedication {
   id: string;
@@ -30,7 +31,7 @@ export function getMedicationOccurrences(
   const days = eachDayOfInterval(interval);
 
   medications.forEach(med => {
-    if (med.status !== 'active') return;
+    if (!isActiveMedication(med.status)) return;
 
     const medStart = med.start_date ? startOfDay(parseISO(med.start_date)) : null;
     const medEnd = med.end_date ? endOfDay(parseISO(med.end_date)) : null;

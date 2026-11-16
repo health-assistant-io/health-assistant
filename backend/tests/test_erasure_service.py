@@ -59,6 +59,10 @@ from app.models.fhir.medication import Medication
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.fhir.provenance import ProvenanceModel
 from app.models.fhir.vaccine import PatientImmunization
+from app.models.integration_principal import (
+    IntegrationPrincipal,
+    IntegrationPrincipalKind,
+)
 from app.models.notification import (
     MobilePushTarget,
     Notification,
@@ -367,6 +371,27 @@ async def _seed_patient_graph(db, tmp_path: Path) -> dict:
         ]
     )
 
+    # A live connector principal: ``integration_principals.integration_id`` is
+    # ON DELETE SET NULL while the integration-kind check rejects a NULL
+    # binding, so the walker must delete the row before its integration. A
+    # second, service-kind principal has no integration and follows its owner.
+    bound_principal = IntegrationPrincipal(
+        tenant_id=tenant.id,
+        owner_user_id=user.id,
+        name="erase connector principal",
+        kind=IntegrationPrincipalKind.INTEGRATION,
+        integration_id=integration.id,
+        scopes=[],
+    )
+    owned_principal = IntegrationPrincipal(
+        tenant_id=tenant.id,
+        owner_user_id=user.id,
+        name="erase service principal",
+        kind=IntegrationPrincipalKind.SERVICE,
+        scopes=[],
+    )
+    db.add_all([bound_principal, owned_principal])
+
     task_def = (await db.execute(select(AITaskDef).limit(1))).scalar_one()
     task_log = TaskLog(
         tenant_id=tenant.id,
@@ -394,6 +419,10 @@ async def _seed_patient_graph(db, tmp_path: Path) -> dict:
         resource_id=patient.id,
         old_value={"name": "Erase"},
         new_value={"name": "Erase"},
+        chain_key=f"t:{tenant.id}",
+        seq=1,
+        prev_hash="0" * 64,
+        entry_hash="e" * 64,
     )
     db.add_all([task_log, ai_call, audit])
 
@@ -434,6 +463,8 @@ async def _seed_patient_graph(db, tmp_path: Path) -> dict:
         "user_id": user.id,
         "patient_id": patient.id,
         "integration_id": integration.id,
+        "bound_principal_id": bound_principal.id,
+        "owned_principal_id": owned_principal.id,
         "chat_id": chat.id,
         "document_path": doc_path,
         "export_path": export_path,
@@ -500,6 +531,7 @@ async def test_patient_erasure_dry_run_matches_real_run(tmp_path):
         assert dry_counts["chat_messages"] == 2
         assert dry_counts["proposals"] == 1
         assert dry_counts["integration_credentials"] == 1
+        assert dry_counts["integration_principals"] == 1
         assert dry_files["documents"] == 1
         assert dry_files["export_artifacts"] == 2
         assert dry_secrets["integration_credentials"] == 1
@@ -554,6 +586,25 @@ async def test_patient_erasure_dry_run_matches_real_run(tmp_path):
                     IntegrationCredential.user_integration_id == ids["integration_id"],
                 )
                 == 0
+            )
+            # The connector's live principal went before its integration; the
+            # account's service principal (no integration) stays for the user
+            # walk.
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.id == ids["bound_principal_id"],
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.id == ids["owned_principal_id"],
+                )
+                == 1
             )
             checkpoint_rows = (
                 await db.execute(
@@ -705,6 +756,15 @@ async def test_user_erasure_removes_account_owned_patients_and_push_targets(tmp_
             assert (
                 await _count(db, UserIntegration, UserIntegration.id == ids["integration_id"]) == 0
             )
+            # Every principal of the account is gone (owner + binding filters).
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.tenant_id == ids["tenant_id"],
+                )
+                == 0
+            )
     finally:
         await _cleanup(ids)
 
@@ -739,6 +799,14 @@ async def test_tenant_erasure_purges_hypertable_rows_and_keeps_the_ledger(tmp_pa
             assert (
                 await _count(
                     db, TelemetryDataModel, TelemetryDataModel.tenant_id == ids["tenant_id"]
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.tenant_id == ids["tenant_id"],
                 )
                 == 0
             )
@@ -842,7 +910,138 @@ async def test_export_before_erase_produces_the_precondition_artifact(tmp_path, 
             job = (
                 await db.execute(select(ExportJobModel).where(ExportJobModel.id == job_id))
             ).scalar_one()
-            assert job.file_path and Path(job.file_path).exists()
+            assert job.file_path and Path(job.file_path).exists() is False
+            from app.storage.artifacts import ArtifactStorage
+
+            assert ArtifactStorage().exists(job.file_path)
             assert job.status.value == "COMPLETED"
     finally:
         await _cleanup(ids)
+
+
+@pytest.mark.asyncio
+async def test_live_principal_does_not_fail_the_patient_or_user_walk():
+    """F1 regression: a live connector principal must not break erasure.
+
+    Deleting ``user_integrations`` first nulls ``integration_principals.
+    integration_id``, while ``ck_integration_principals_integration_kind_
+    requires_binding`` rejects a NULL binding for an ``integration``-kind row
+    — so the whole walk used to abort and the request landed ``failed``. The
+    principal rows are now deleted before their integration in the patient,
+    user and tenant walks.
+    """
+    tenant = TenantModel(name="Erase principals", slug=f"erase-principal-{uuid.uuid4().hex[:10]}")
+    async with AsyncSessionLocal() as db:
+        db.add(tenant)
+        await db.flush()
+        user = UserModel(
+            email=f"erase-principal-{uuid.uuid4().hex[:10]}@test.local",
+            password_hash="x",
+            tenant_id=tenant.id,
+            role=Role.USER,
+        )
+        db.add(user)
+        await db.flush()
+        patient = Patient(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            name=[{"family": "Principal", "given": ["Erase"]}],
+            gender=Gender.OTHER,
+        )
+        db.add(patient)
+        await db.flush()
+        integration = UserIntegration(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            patient_id=patient.id,
+            provider="fhir_server",
+            user_config={},
+        )
+        db.add(integration)
+        await db.flush()
+        bound = IntegrationPrincipal(
+            tenant_id=tenant.id,
+            owner_user_id=user.id,
+            name="bound principal",
+            kind=IntegrationPrincipalKind.INTEGRATION,
+            integration_id=integration.id,
+            scopes=[],
+        )
+        owned = IntegrationPrincipal(
+            tenant_id=tenant.id,
+            owner_user_id=user.id,
+            name="service principal",
+            kind=IntegrationPrincipalKind.SERVICE,
+            scopes=[],
+        )
+        db.add_all([bound, owned])
+        await db.commit()
+        ids = {
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "patient_id": patient.id,
+            "bound_principal_id": bound.id,
+            "owned_principal_id": owned.id,
+        }
+
+    try:
+        async with AsyncSessionLocal() as db:
+            request = await run_erasure(
+                db,
+                subject_type=ErasureSubjectType.PATIENT,
+                subject_id=ids["patient_id"],
+                requested_by=ids["user_id"],
+                dry_run=False,
+            )
+        assert request.status is ErasureStatus.DONE
+        assert request.report["counts"]["integration_principals"] == 1
+        async with AsyncSessionLocal() as db:
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.id == ids["bound_principal_id"],
+                )
+                == 0
+            )
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.id == ids["owned_principal_id"],
+                )
+                == 1
+            )
+
+        async with AsyncSessionLocal() as db:
+            request = await run_erasure(
+                db,
+                subject_type=ErasureSubjectType.USER,
+                subject_id=ids["user_id"],
+                requested_by=ids["user_id"],
+                dry_run=False,
+            )
+        assert request.status is ErasureStatus.DONE
+        assert request.report["counts"]["integration_principals"] == 1
+        async with AsyncSessionLocal() as db:
+            assert (
+                await _count(
+                    db,
+                    IntegrationPrincipal,
+                    IntegrationPrincipal.tenant_id == ids["tenant_id"],
+                )
+                == 0
+            )
+            assert await _count(db, UserModel, UserModel.id == ids["user_id"]) == 0
+    finally:
+        async with AsyncSessionLocal() as db:
+            for subject_id in (ids["patient_id"], ids["user_id"]):
+                await db.execute(
+                    ErasureRequest.__table__.delete().where(
+                        ErasureRequest.__table__.c.subject_id == subject_id
+                    )
+                )
+            await db.execute(
+                TenantModel.__table__.delete().where(TenantModel.__table__.c.id == ids["tenant_id"])
+            )
+            await db.commit()

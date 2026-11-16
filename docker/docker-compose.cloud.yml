@@ -1,0 +1,51 @@
+# Health Assistant — cloud object-storage overlay (family object storage).
+#
+# Compose override for a deployment whose bytes live in a provider bucket or
+# container instead of the `uploads` volume:
+#
+#   docker compose --env-file .env \
+#     -f docker/docker-compose.prod.yml \
+#     -f docker/docker-compose.cloud.yml up -d
+#
+# Required in the env file for AWS S3 / an S3-compatible gateway:
+#   HA_CLOUD_PROFILE=aws|gcp|cloud
+#   HA_S3_BUCKET, HA_S3_REGION, HA_S3_PREFIX
+#   (credentials via the instance/task role, or HA_S3_ACCESS_KEY_ID +
+#    HA_S3_SECRET_ACCESS_KEY; never a raw expiring token)
+#
+# For Azure:
+#   HA_CLOUD_PROFILE=azure
+#   HA_AZURE_STORAGE_CONTAINER, HA_AZURE_STORAGE_PREFIX
+#   HA_AZURE_STORAGE_ACCOUNT_URL + HA_AZURE_STORAGE_CREDENTIAL=managed_identity
+#   (or HA_AZURE_STORAGE_CONNECTION_STRING)
+#
+# The backend refuses to boot when the profile resolves to `local`, when the
+# bucket/container is missing, when SSE is disabled, or when the endpoint is
+# not TLS. Object bytes are provider-durable: the `uploads` volume is removed
+# from the stateless services, and the backup sidecar keeps taking database
+# dumps while skipping the uploads archive (its own env guard).
+services:
+  backend:
+    environment:
+      HA_CLOUD_PROFILE: ${HA_CLOUD_PROFILE:?Set HA_CLOUD_PROFILE (aws|azure|gcp|cloud)}
+      HA_OBJECT_STORAGE_BACKEND: ${HA_OBJECT_STORAGE_BACKEND:?Set HA_OBJECT_STORAGE_BACKEND (s3|azure_blob)}
+      HA_OBJECT_STORAGE_REQUIRED: "true"
+      # Health keeps PHI behind provider-managed encryption; a cloud profile
+      # rejects SSE=none. Override only with aws:kms + HA_S3_KMS_KEY_ID.
+      HA_S3_SSE: ${HA_S3_SSE:-AES256}
+      HA_S3_PATH_STYLE: ${HA_S3_PATH_STYLE:-true}
+      HA_S3_VERIFY_TLS: ${HA_S3_VERIFY_TLS:-true}
+    volumes: !reset []
+
+  worker:
+    environment:
+      HA_CLOUD_PROFILE: ${HA_CLOUD_PROFILE:?Set HA_CLOUD_PROFILE (aws|azure|gcp|cloud)}
+      HA_OBJECT_STORAGE_BACKEND: ${HA_OBJECT_STORAGE_BACKEND:?Set HA_OBJECT_STORAGE_BACKEND (s3|azure_blob)}
+      HA_OBJECT_STORAGE_REQUIRED: "true"
+      HA_S3_SSE: ${HA_S3_SSE:-AES256}
+      HA_S3_PATH_STYLE: ${HA_S3_PATH_STYLE:-true}
+      HA_S3_VERIFY_TLS: ${HA_S3_VERIFY_TLS:-true}
+    # Workers materialize objects into private temp files. Budget temp space
+    # as concurrency × max object size; the container filesystem (not the
+    # removed uploads volume) is where those temps live.
+    volumes: !reset []

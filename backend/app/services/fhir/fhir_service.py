@@ -6,10 +6,10 @@ from datetime import datetime as dt
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import String, and_, cast, false, func, or_, select
 
 from app.core.database import DATABASE_AVAILABLE, AsyncSessionLocal
-from app.models.enums import BiomarkerValueType
+from app.models.enums import BiomarkerValueType, CatalogScope
 from app.models.fhir import DiagnosticReport, Medication, Observation, Patient
 from app.services.biomarkers.observation_value_validator import validate_observation_value
 from app.services.fhir.fhir_extensions import validate_patient_extensions
@@ -238,8 +238,15 @@ async def list_patients(
     limit: int = 10,
     offset: int = 0,
     user_id: str | UUID | None = None,
+    patient_ids: set[UUID] | None = None,
 ) -> dict[str, Any]:
-    """List patients (with pagination and filtering)"""
+    """List patients (with pagination and filtering).
+
+    ``patient_ids`` (the grant-aware reachable set from
+    :func:`accessible_patient_ids`) wins over ``user_id`` — the caller is
+    restricted to that explicit set; ``None`` means unrestricted within
+    ``tenant_id``.
+    """
     if not DATABASE_AVAILABLE:
         return {"items": [], "total": 0}
 
@@ -256,14 +263,24 @@ async def list_patients(
         if tenant_id:
             query = query.where(Patient.tenant_id == tenant_id)
 
-        if user_id:
+        if patient_ids is not None:
+            query = (
+                query.where(Patient.id.in_(patient_ids)) if patient_ids else query.where(false())
+            )
+        elif user_id:
             query = query.where(Patient.user_id == user_id)
 
         # Total count
         count_query = select(func.count(Patient.id))
         if tenant_id:
             count_query = count_query.where(Patient.tenant_id == tenant_id)
-        if user_id:
+        if patient_ids is not None:
+            count_query = (
+                count_query.where(Patient.id.in_(patient_ids))
+                if patient_ids
+                else count_query.where(false())
+            )
+        elif user_id:
             count_query = count_query.where(Patient.user_id == user_id)
 
         total = await session.execute(count_query)
@@ -1176,21 +1193,23 @@ async def map_observations_to_biomarkers(
                 bdef = res.scalars().first()
 
                 if not bdef:
-                    # Resolve the ``category`` slug to a ``biomarker_class``
-                    # concept. Vital signs ("rate"/"pressure") map to
-                    # "vital-signs-class"; everything else falls back to "other"
-                    # (which resolves to no concept -> ``class_concept_id`` is NULL).
-                    category_slug = (
-                        "vital_signs"
+                    # Resolve the class-concept slug: vital signs
+                    # ("rate"/"pressure") map to "vital-signs"; everything else
+                    # falls back to "other" (which resolves to no concept ->
+                    # ``class_concept_id`` is NULL).
+                    class_slug = (
+                        "vital-signs"
                         if "rate" in text.lower() or "pressure" in text.lower()
                         else "other"
                     )
-                    from app.services.catalog.concept_service import (
-                        resolve_biomarker_class_concept,
-                    )
+                    from app.models.enums import ConceptKind
+                    from app.services.catalog.concept_service import resolve_concept_by_slug
 
-                    class_concept_id = await resolve_biomarker_class_concept(
-                        db, category_slug, tenant_id=obs.tenant_id
+                    class_concept_id = await resolve_concept_by_slug(
+                        db,
+                        class_slug,
+                        ConceptKind.BIOMARKER_CLASS,
+                        tenant_id=obs.tenant_id,
                     )
                     # High-frequency wearable vitals default to telemetry routing so
                     # they land in the TimescaleDB store (not FHIR bloat). These are
@@ -1204,6 +1223,7 @@ async def map_observations_to_biomarkers(
                         name=text,
                         class_concept_id=class_concept_id,
                         is_telemetry=is_telemetry,
+                        scope=CatalogScope.TENANT,
                         tenant_id=obs.tenant_id,
                     )
                     db.add(bdef)

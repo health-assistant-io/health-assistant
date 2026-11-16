@@ -10,7 +10,7 @@ The Bridge ships three strictly-typed client SDKs in the repository — you don'
 
 All three SDKs are versioned (`SDK_VERSION`) and the signed `/status` tier returns the server's advertised `latest_sdks` so the client can warn when a newer SDK is available.
 
-**Schema-first model layers (plan 32 D11).** The payload models, typed error
+**Schema-first model layers.** The payload models, typed error
 codes and stream event types regenerate from the published sub-API schema
 ([API Reference](api-reference.md#machine-readable-schema-schema-first-authoring)):
 `integrations/health-assistant-bridge/scripts/generate_python_models.py`

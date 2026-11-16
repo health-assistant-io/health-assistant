@@ -1,0 +1,752 @@
+{
+  "schema": 1,
+  "contract": "model-pricing-fixtures",
+  "currency": "USD",
+  "unit": "micros_per_million_tokens",
+  "compiled": "2026-11-11",
+  "models": [
+    {
+      "provider": "openai",
+      "match": {
+        "exact": [
+          "gpt-6.1-sol"
+        ],
+        "prefix": [
+          "gpt-6.1-sol-"
+        ],
+        "aliases": [
+          "gpt-6.1"
+        ]
+      },
+      "inputMicrosPerMillion": 1250000,
+      "outputMicrosPerMillion": 10000000,
+      "metering": "tokens",
+      "basis": "list",
+      "reviewed": "2026-11-01",
+      "source": "https://example.com/fixture/openai-chat",
+      "retiredAt": null
+    },
+    {
+      "provider": "openai",
+      "match": {
+        "exact": [
+          "text-embedding-3-small"
+        ],
+        "prefix": [],
+        "aliases": []
+      },
+      "inputMicrosPerMillion": 20000,
+      "outputMicrosPerMillion": 0,
+      "metering": "input_only",
+      "basis": "list",
+      "reviewed": "2026-11-01",
+      "source": "https://example.com/fixture/openai-embedding",
+      "retiredAt": null
+    },
+    {
+      "provider": "anthropic",
+      "match": {
+        "exact": [
+          "claude-sonnet-5"
+        ],
+        "prefix": [
+          "claude-sonnet-5-"
+        ],
+        "aliases": []
+      },
+      "inputMicrosPerMillion": 3000000,
+      "outputMicrosPerMillion": 15000000,
+      "metering": "tokens",
+      "basis": "list",
+      "reviewed": "2026-11-01",
+      "source": "https://example.com/fixture/anthropic-chat",
+      "retiredAt": null
+    },
+    {
+      "provider": "openai",
+      "match": {
+        "exact": [
+          "gpt-free"
+        ],
+        "prefix": [],
+        "aliases": []
+      },
+      "inputMicrosPerMillion": 0,
+      "outputMicrosPerMillion": 0,
+      "metering": "tokens",
+      "basis": "free",
+      "reviewed": "2026-11-01",
+      "source": "https://example.com/fixture/free",
+      "retiredAt": null
+    },
+    {
+      "provider": "openai",
+      "match": {
+        "exact": [
+          "retired-model"
+        ],
+        "prefix": [],
+        "aliases": []
+      },
+      "inputMicrosPerMillion": 1000000,
+      "outputMicrosPerMillion": 2000000,
+      "metering": "tokens",
+      "basis": "list",
+      "reviewed": "2026-11-01",
+      "source": "https://example.com/fixture/retired",
+      "retiredAt": "2026-01-01"
+    }
+  ],
+  "cases": [
+    {
+      "id": "exact",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": false,
+        "inputTokens": 1000,
+        "outputTokens": 500
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-6.1-sol"
+            ],
+            "prefix": [
+              "gpt-6.1-sol-"
+            ],
+            "aliases": [
+              "gpt-6.1"
+            ]
+          },
+          "inputMicrosPerMillion": 1250000,
+          "outputMicrosPerMillion": 10000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-chat",
+          "retiredAt": null
+        },
+        "costMicros": 6250,
+        "priceVersion": "model-pricing/1:2026-11-11:fc37fe09",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1250000,
+        "outputMicrosPerMillion": 10000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "dated-snapshot",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": "gpt-6.1-sol-2026-01-01",
+        "model": "gpt-6.1",
+        "isLocal": false,
+        "inputTokens": 100,
+        "outputTokens": 50
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-6.1-sol"
+            ],
+            "prefix": [
+              "gpt-6.1-sol-"
+            ],
+            "aliases": [
+              "gpt-6.1"
+            ]
+          },
+          "inputMicrosPerMillion": 1250000,
+          "outputMicrosPerMillion": 10000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-chat",
+          "retiredAt": null
+        },
+        "costMicros": 625,
+        "priceVersion": "model-pricing/1:2026-11-11:fc37fe09",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1250000,
+        "outputMicrosPerMillion": 10000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-6.1"
+      }
+    },
+    {
+      "id": "alias",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-6.1-sol"
+            ],
+            "prefix": [
+              "gpt-6.1-sol-"
+            ],
+            "aliases": [
+              "gpt-6.1"
+            ]
+          },
+          "inputMicrosPerMillion": 1250000,
+          "outputMicrosPerMillion": 10000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-chat",
+          "retiredAt": null
+        },
+        "costMicros": 11,
+        "priceVersion": "model-pricing/1:2026-11-11:fc37fe09",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1250000,
+        "outputMicrosPerMillion": 10000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-6.1"
+      }
+    },
+    {
+      "id": "prefix-only",
+      "input": {
+        "provider": "anthropic",
+        "resolvedModel": null,
+        "model": "claude-sonnet-5-2026-01-01",
+        "isLocal": false,
+        "inputTokens": 10,
+        "outputTokens": 10
+      },
+      "expect": {
+        "row": {
+          "provider": "anthropic",
+          "match": {
+            "exact": [
+              "claude-sonnet-5"
+            ],
+            "prefix": [
+              "claude-sonnet-5-"
+            ],
+            "aliases": []
+          },
+          "inputMicrosPerMillion": 3000000,
+          "outputMicrosPerMillion": 15000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/anthropic-chat",
+          "retiredAt": null
+        },
+        "costMicros": 180,
+        "priceVersion": "model-pricing/1:2026-11-11:9144c542",
+        "source": "builtin",
+        "inputMicrosPerMillion": 3000000,
+        "outputMicrosPerMillion": 15000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "claude-sonnet-5-2026-01-01"
+      }
+    },
+    {
+      "id": "delimiter-no-match",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.10",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": null
+    },
+    {
+      "id": "case-and-whitespace-no-fold",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": " GPT-6.1 ",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": null
+    },
+    {
+      "id": "provider-mismatch",
+      "input": {
+        "provider": "openrouter",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": null
+    },
+    {
+      "id": "user-override",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": false,
+        "inputTokens": 1000,
+        "outputTokens": 500,
+        "userRows": [
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol",
+            "match": "exact",
+            "inputMicrosPerMillion": 1000000,
+            "outputMicrosPerMillion": 2000000,
+            "metering": "tokens"
+          }
+        ]
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "model": "gpt-6.1-sol",
+          "match": "exact",
+          "inputMicrosPerMillion": 1000000,
+          "outputMicrosPerMillion": 2000000,
+          "metering": "tokens"
+        },
+        "costMicros": 2000,
+        "priceVersion": "model-pricing/1:2026-11-11:2121765d",
+        "source": "user",
+        "inputMicrosPerMillion": 1000000,
+        "outputMicrosPerMillion": 2000000,
+        "metering": "tokens",
+        "reviewedAt": null,
+        "matchedModel": "gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "user-base-beats-builtin-dated-prefix",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": "gpt-6.1-sol-2026-01-01",
+        "model": "gpt-6.1",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "userRows": [
+          {
+            "provider": "openai",
+            "model": "gpt-6.1",
+            "match": "exact",
+            "inputMicrosPerMillion": 1000000,
+            "outputMicrosPerMillion": 2000000,
+            "metering": "tokens"
+          }
+        ]
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "model": "gpt-6.1",
+          "match": "exact",
+          "inputMicrosPerMillion": 1000000,
+          "outputMicrosPerMillion": 2000000,
+          "metering": "tokens"
+        },
+        "costMicros": 3,
+        "priceVersion": "model-pricing/1:2026-11-11:ef7928fb",
+        "source": "user",
+        "inputMicrosPerMillion": 1000000,
+        "outputMicrosPerMillion": 2000000,
+        "metering": "tokens",
+        "reviewedAt": null,
+        "matchedModel": "gpt-6.1"
+      }
+    },
+    {
+      "id": "legacy-blank-row-does-not-price-loopback",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": true,
+        "inputTokens": 1000,
+        "outputTokens": 500,
+        "userRows": [
+          {
+            "model": "gpt-6.1-sol",
+            "match": "exact",
+            "inputMicrosPerMillion": 1000000,
+            "outputMicrosPerMillion": 2000000,
+            "metering": "tokens"
+          }
+        ]
+      },
+      "expect": {
+        "row": null,
+        "costMicros": 0,
+        "priceVersion": null,
+        "source": "local",
+        "inputMicrosPerMillion": 0,
+        "outputMicrosPerMillion": 0,
+        "metering": "tokens",
+        "reviewedAt": null,
+        "matchedModel": null
+      }
+    },
+    {
+      "id": "provider-row-may-price-loopback",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": true,
+        "inputTokens": 1000,
+        "outputTokens": 500,
+        "userRows": [
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol",
+            "match": "exact",
+            "inputMicrosPerMillion": 1000000,
+            "outputMicrosPerMillion": 2000000,
+            "metering": "tokens"
+          }
+        ]
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "model": "gpt-6.1-sol",
+          "match": "exact",
+          "inputMicrosPerMillion": 1000000,
+          "outputMicrosPerMillion": 2000000,
+          "metering": "tokens"
+        },
+        "costMicros": 2000,
+        "priceVersion": "model-pricing/1:2026-11-11:2121765d",
+        "source": "user",
+        "inputMicrosPerMillion": 1000000,
+        "outputMicrosPerMillion": 2000000,
+        "metering": "tokens",
+        "reviewedAt": null,
+        "matchedModel": "gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "user-prefix",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol-2026-01-01",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "userRows": [
+          {
+            "provider": "openai",
+            "model": "gpt-6.1-sol-",
+            "match": "prefix",
+            "inputMicrosPerMillion": 1000000,
+            "outputMicrosPerMillion": 2000000,
+            "metering": "tokens"
+          }
+        ]
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "model": "gpt-6.1-sol-",
+          "match": "prefix",
+          "inputMicrosPerMillion": 1000000,
+          "outputMicrosPerMillion": 2000000,
+          "metering": "tokens"
+        },
+        "costMicros": 3,
+        "priceVersion": "model-pricing/1:2026-11-11:5cb43e66",
+        "source": "user",
+        "inputMicrosPerMillion": 1000000,
+        "outputMicrosPerMillion": 2000000,
+        "metering": "tokens",
+        "reviewedAt": null,
+        "matchedModel": "gpt-6.1-sol-2026-01-01"
+      }
+    },
+    {
+      "id": "input-only-embedding",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "text-embedding-3-small",
+        "isLocal": false,
+        "inputTokens": 2000,
+        "outputTokens": null
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "text-embedding-3-small"
+            ],
+            "prefix": [],
+            "aliases": []
+          },
+          "inputMicrosPerMillion": 20000,
+          "outputMicrosPerMillion": 0,
+          "metering": "input_only",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-embedding",
+          "retiredAt": null
+        },
+        "costMicros": 40,
+        "priceVersion": "model-pricing/1:2026-11-11:4fcd7a5d",
+        "source": "builtin",
+        "inputMicrosPerMillion": 20000,
+        "outputMicrosPerMillion": 0,
+        "metering": "input_only",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "text-embedding-3-small"
+      }
+    },
+    {
+      "id": "free-row",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-free",
+        "isLocal": false,
+        "inputTokens": 1000,
+        "outputTokens": 500
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-free"
+            ],
+            "prefix": [],
+            "aliases": []
+          },
+          "inputMicrosPerMillion": 0,
+          "outputMicrosPerMillion": 0,
+          "metering": "tokens",
+          "basis": "free",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/free",
+          "retiredAt": null
+        },
+        "costMicros": 0,
+        "priceVersion": "model-pricing/1:2026-11-11:52d10068",
+        "source": "builtin",
+        "inputMicrosPerMillion": 0,
+        "outputMicrosPerMillion": 0,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-free"
+      }
+    },
+    {
+      "id": "retired-row-new-call",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "retired-model",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": null
+    },
+    {
+      "id": "retired-row-history",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "retired-model",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1,
+        "includeRetired": true
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "retired-model"
+            ],
+            "prefix": [],
+            "aliases": []
+          },
+          "inputMicrosPerMillion": 1000000,
+          "outputMicrosPerMillion": 2000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/retired",
+          "retiredAt": "2026-01-01"
+        },
+        "costMicros": 3,
+        "priceVersion": "model-pricing/1:2026-11-11:da21aeb3",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1000000,
+        "outputMicrosPerMillion": 2000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "retired-model"
+      }
+    },
+    {
+      "id": "routing-alias-unknown",
+      "input": {
+        "provider": "openrouter",
+        "resolvedModel": null,
+        "model": "openrouter/auto",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "expect": null
+    },
+    {
+      "id": "rounding-half-up",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": false,
+        "inputTokens": 1,
+        "outputTokens": 0
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-6.1-sol"
+            ],
+            "prefix": [
+              "gpt-6.1-sol-"
+            ],
+            "aliases": [
+              "gpt-6.1"
+            ]
+          },
+          "inputMicrosPerMillion": 1250000,
+          "outputMicrosPerMillion": 10000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-chat",
+          "retiredAt": null
+        },
+        "costMicros": 1,
+        "priceVersion": "model-pricing/1:2026-11-11:fc37fe09",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1250000,
+        "outputMicrosPerMillion": 10000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "partial-tokens-unpriced",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "gpt-6.1-sol",
+        "isLocal": false,
+        "inputTokens": 100,
+        "outputTokens": null
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "gpt-6.1-sol"
+            ],
+            "prefix": [
+              "gpt-6.1-sol-"
+            ],
+            "aliases": [
+              "gpt-6.1"
+            ]
+          },
+          "inputMicrosPerMillion": 1250000,
+          "outputMicrosPerMillion": 10000000,
+          "metering": "tokens",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-chat",
+          "retiredAt": null
+        },
+        "costMicros": null,
+        "priceVersion": "model-pricing/1:2026-11-11:fc37fe09",
+        "source": "builtin",
+        "inputMicrosPerMillion": 1250000,
+        "outputMicrosPerMillion": 10000000,
+        "metering": "tokens",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "gpt-6.1-sol"
+      }
+    },
+    {
+      "id": "embedding-no-tokens-unpriced",
+      "input": {
+        "provider": "openai",
+        "resolvedModel": null,
+        "model": "text-embedding-3-small",
+        "isLocal": false,
+        "inputTokens": null,
+        "outputTokens": null
+      },
+      "expect": {
+        "row": {
+          "provider": "openai",
+          "match": {
+            "exact": [
+              "text-embedding-3-small"
+            ],
+            "prefix": [],
+            "aliases": []
+          },
+          "inputMicrosPerMillion": 20000,
+          "outputMicrosPerMillion": 0,
+          "metering": "input_only",
+          "basis": "list",
+          "reviewed": "2026-11-01",
+          "source": "https://example.com/fixture/openai-embedding",
+          "retiredAt": null
+        },
+        "costMicros": null,
+        "priceVersion": "model-pricing/1:2026-11-11:4fcd7a5d",
+        "source": "builtin",
+        "inputMicrosPerMillion": 20000,
+        "outputMicrosPerMillion": 0,
+        "metering": "input_only",
+        "reviewedAt": "2026-11-01",
+        "matchedModel": "text-embedding-3-small"
+      }
+    }
+  ]
+}

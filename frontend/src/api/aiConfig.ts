@@ -449,3 +449,91 @@ export function setupErrorDetail(err: unknown): ProviderSetupErrorDetail | null 
   }
   return null;
 }
+// ---------------------------------------------------------------------------
+// Model pricing (plan 58 P2) — tenant-scoped overrides + call costs
+// ---------------------------------------------------------------------------
+
+export interface AIPriceOverride {
+  id: string;
+  tenant_id?: string | null;
+  provider_key: string | null;
+  provider_ref: string | null;
+  model: string;
+  match: 'exact' | 'prefix';
+  input_micros_per_million: number;
+  output_micros_per_million: number;
+  metering: 'tokens' | 'input_only' | 'output_only';
+  updated_at: string;
+}
+
+export interface EffectiveAIPrice {
+  provider: string | null;
+  provider_id: string | null;
+  model: string;
+  source: string;
+  input_micros_per_million: number;
+  output_micros_per_million: number;
+  metering: string;
+  reviewed_at: string | null;
+  price_version: string | null;
+}
+
+export interface AIPricesResponse {
+  tenant_id: string;
+  overrides: AIPriceOverride[];
+  effective: EffectiveAIPrice[];
+}
+
+export interface AICostRow {
+  provider: string;
+  model: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost_micros: number | null;
+  priced_calls: number;
+  unpriced_calls: number;
+}
+
+export interface AICostsResponse {
+  window_days: number;
+  since: string;
+  rows: AICostRow[];
+}
+
+export interface AIPriceOverrideInput {
+  tenant_id?: string;
+  provider_key?: string | null;
+  provider_ref?: string | null;
+  model: string;
+  match?: 'exact' | 'prefix';
+  input_micros_per_million: number;
+  output_micros_per_million: number;
+  metering?: 'tokens' | 'input_only' | 'output_only';
+}
+
+export async function getAIPrices(tenantId?: string): Promise<AIPricesResponse> {
+  const response = await api.get<AIPricesResponse>('/ai/prices', {
+    params: tenantId ? { tenant_id: tenantId } : undefined,
+  });
+  return response.data;
+}
+
+export async function saveAIPrice(body: AIPriceOverrideInput): Promise<AIPriceOverride> {
+  const response = await api.put<AIPriceOverride>('/ai/prices', body);
+  return response.data;
+}
+
+export async function deleteAIPrice(id: string): Promise<void> {
+  await api.delete(`/ai/prices/${id}`);
+}
+
+export async function getAICosts(
+  windowDays = 30,
+  tenantId?: string,
+): Promise<AICostsResponse> {
+  const response = await api.get<AICostsResponse>('/ai/usage/costs', {
+    params: { window_days: windowDays, ...(tenantId ? { tenant_id: tenantId } : {}) },
+  });
+  return response.data;
+}

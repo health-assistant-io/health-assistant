@@ -3,9 +3,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.medication import (
     MedicationCatalogCreate,
     MedicationCatalogResponse,
@@ -17,17 +17,10 @@ from app.schemas.medication import (
 from app.schemas.user import TokenData
 from app.services.audit.audit_service import audit_read, log_audit_action
 from app.services.auth.access import check_medication_access, check_patient_access
+from app.services.catalog import catalog_write_service
 from app.services.clinical import medication_service
 
 router = APIRouter(prefix="/medications", tags=["medications"])
-
-
-def _enforce_catalog_create(current_user: TokenData) -> None:
-    """Catalog creates are role-derived-scope: SYSTEM_ADMIN→system,
-    ADMIN/MANAGER→tenant, USER→user. Any authenticated role may create (the
-    scope varies). Raises ``CatalogPermissionDenied`` (→ HTTP 403) never —
-    kept as a hook for future per-type lock-down (Phase F)."""
-    DEFAULT_CATALOG_POLICY.create_scope(current_user.role)
 
 
 @router.get("/catalog", response_model=list[MedicationCatalogResponse])
@@ -36,7 +29,10 @@ async def get_medication_catalog(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    return await medication_service.get_medication_catalog(db, current_user.tenant_id, search)
+    rows = await medication_service.get_medication_catalog(db, current_user.tenant_id, search)
+    return [
+        catalog_write_service.serialize_catalog_row(row, current_user.tenant_id) for row in rows
+    ]
 
 
 @router.get("/catalog/{catalog_id}", response_model=MedicationCatalogResponse)
@@ -48,18 +44,22 @@ async def get_catalog_medication(
     result = await medication_service.get_catalog_medication(db, catalog_id, current_user.tenant_id)
     if not result:
         raise HTTPException(status_code=404, detail="Medication not found in catalog")
-    return result
+    return catalog_write_service.serialize_catalog_row(result, current_user.tenant_id)
 
 
-@router.post("/catalog", response_model=MedicationCatalogResponse)
+@router.post("/catalog", response_model=MedicationCatalogResponse, status_code=201)
 async def create_catalog_medication(
     data: MedicationCatalogCreate,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create a medication catalog entry (scope derived from role)."""
-    _enforce_catalog_create(current_user)
-    return await medication_service.create_catalog_medication(db, current_user, data)
+    """Create a medication catalog entry (scope derived from role).
+
+    Thin entry point onto the unified write contract — the same service the
+    generic ``POST /catalogs/medication`` route calls. Unknown/read-only
+    fields are rejected 422 by the schema; duplicate codes → 409.
+    """
+    return await catalog_write_service.create_medication(db, current_user, data)
 
 
 @router.put("/catalog/{catalog_id}", response_model=MedicationCatalogResponse)
@@ -70,8 +70,8 @@ async def update_catalog_medication(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Update a medication catalog entry. Scope + ownership enforced in the
-    service (raises ``CatalogPermissionDenied`` → 403)."""
-    result = await medication_service.update_catalog_medication(db, catalog_id, current_user, data)
+    write service (raises ``CatalogPermissionDenied`` → 403)."""
+    result = await catalog_write_service.update_medication(db, current_user, catalog_id, data)
     if not result:
         raise HTTPException(status_code=404, detail="Medication not found in catalog")
     return result
@@ -84,10 +84,10 @@ async def delete_catalog_medication(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Delete a medication catalog entry (scope + ownership enforced)."""
-    success = await medication_service.delete_catalog_medication(db, catalog_id, current_user)
+    success = await catalog_write_service.delete_medication(db, current_user, catalog_id)
     if not success:
         raise HTTPException(status_code=404, detail="Medication not found in catalog")
-    return {"message": "Medication catalog entry deleted"}
+    return {"status": "success", "message": "medication item deleted"}
 
 
 @router.get("/patient/{patient_id}", response_model=list[MedicationRecordResponse])
@@ -111,6 +111,7 @@ async def add_patient_medication(
     record = await medication_service.add_patient_medication(db, current_user, data)
     # §17: clinical writes are audited (plan 16 H2).
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_medication",
@@ -128,13 +129,14 @@ async def update_patient_medication(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_medication_access(medication_id, current_user, db)
+    await check_medication_access(medication_id, current_user, db, required=GrantPermission.WRITE)
     result = await medication_service.update_patient_medication(
-        db, medication_id, current_user.tenant_id, data
+        db, medication_id, current_user, data
     )
     if not result:
         raise HTTPException(status_code=404, detail="Medication record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_medication",
@@ -161,13 +163,12 @@ async def delete_patient_medication(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_medication_access(medication_id, current_user, db)
-    success = await medication_service.delete_patient_medication(
-        db, medication_id, current_user.tenant_id
-    )
+    await check_medication_access(medication_id, current_user, db, required=GrantPermission.WRITE)
+    success = await medication_service.delete_patient_medication(db, medication_id, current_user)
     if not success:
         raise HTTPException(status_code=404, detail="Medication record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_medication",
@@ -195,4 +196,4 @@ async def reprocess_medication(
     result = await medication_service.reprocess_medication(db, catalog_id, current_user.tenant_id)
     if not result:
         raise HTTPException(status_code=404, detail="Medication not found in catalog")
-    return result
+    return catalog_write_service.serialize_catalog_row(result, current_user.tenant_id)

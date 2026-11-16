@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.database import AsyncSessionLocal
 from app.models.concept_model import Concept, ConceptEdge, ConceptKindTag
 from app.models.enums import (
+    CatalogScope,
     ConceptKind,
     ConceptProvenance,
     ConceptRelationType,
@@ -50,8 +51,16 @@ def _slug(label: str = "") -> str:
 
 
 def _make_concept(slug, name, kind, **extra):
-    """Build a concept with a primary_kind + a matching kind tag."""
+    """Build a concept with a primary_kind + a matching kind tag.
+
+    The scope/tenant invariant (ADR 0055) is derived here so a tenant-scoped
+    concept never carries the system scope by omission.
+    """
     extra.setdefault("status", ConceptStatus.ACTIVE)
+    if "scope" not in extra:
+        extra["scope"] = (
+            CatalogScope.TENANT if extra.get("tenant_id") is not None else CatalogScope.SYSTEM
+        )
     c = Concept(slug=slug, name=name, primary_kind=kind, **extra)
     c.kind_tags.append(ConceptKindTag(kind=kind))
     return c

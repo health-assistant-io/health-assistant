@@ -132,9 +132,7 @@ class GuardedCalendarClient:
                     )
                 hop += 1
                 if hop > self._max_redirects:
-                    raise CalendarError(
-                        "provider", f"too many redirects (>{self._max_redirects})"
-                    )
+                    raise CalendarError("provider", f"too many redirects (>{self._max_redirects})")
                 current = urljoin(current, location)
                 content = None  # a redirect body is never re-sent
                 continue

@@ -4,7 +4,87 @@ The Health Assistant platform uses a dynamic, JSON-based clinical ontology. This
 
 Catalogs can be imported via the **System Administration -> Clinical Ontology** UI by providing a URL to a JSON file (e.g., a raw GitHub URL) or uploading a `.json` file directly.
 
-> Biomarker definitions, medication, allergy, and vaccine catalogs are unified under a declarative `CatalogRegistry` (`app/catalogs/`) with one CRUD/scope-tier-access/search/FHIR/edge contract, reachable via the `/catalogs/{type}` meta-layer, unified search (`GET /catalogs/search`), and the cross-domain knowledge graph (`GET /catalogs/{type}/{id}/relations`). See [ARCHITECTURE.md § Catalog Registry](ARCHITECTURE.md#catalog-registry--cross-domain-knowledge-graph-appcatalogs) and [API.md § Catalogs & Search](API.md). The import flow below remains the primary path for bulk-loading LOINC biomarker definitions.
+> Biomarker definitions, medication, allergy, vaccine, anatomy and concept catalogs are unified under a declarative `CatalogRegistry` (`app/catalogs/`) with one CRUD/scope-tier-access/search/FHIR/edge contract, reachable via the `/catalogs/{type}` meta-layer, unified search (`GET /catalogs/search`), and the cross-domain knowledge graph (`GET /catalogs/{type}/{id}/relations`). See [ARCHITECTURE.md § Catalog Registry](ARCHITECTURE.md#catalog-registry--cross-domain-knowledge-graph-appcatalogs) and [API.md § Catalogs & Search](API.md). The import flow below remains the primary path for bulk-loading LOINC biomarker definitions.
+
+## One write contract per catalog (writes)
+
+Every catalog type has exactly **one** write path: typed Pydantic create/update
+schemas (``extra="forbid"``) + one service function per operation in
+`app/services/catalog/catalog_write_service.py`. Both entry points dispatch to
+it — the generic `POST/PUT/DELETE /catalogs/{type}` routes (validate the raw
+body against the descriptor's schema, then call the service via the adapter)
+and the domain routes (`POST /medications/catalog`, `POST /biomarkers/`,
+`POST /concepts`, `POST /anatomy`, ...), which are thin: validate → call the
+same service → response model. No field is ever silently dropped.
+
+Contract rules:
+
+- **Unknown / system-owned fields are rejected with `422`**, not ignored:
+  `scope`, `tenant_id`, `created_by`, `seed_key`, `id` and timestamps are not
+  on any write schema. `seed_key` (the immutable natural key) is
+  response-only — it is written by seeds/imports, never by API clients.
+- **`coding_system` + `code` are writable** on medication/allergy (and carried
+  by biomarker/vaccine/concept where the columns exist).
+- **Scope is derived from the caller's role** (SYSTEM_ADMIN→system,
+  ADMIN/MANAGER→tenant, USER→user); concepts follow `ConceptService`'s
+  curated-taxonomy RBAC (USER is read-only, globals are SYSTEM_ADMIN-only).
+- **Conflicts are typed `409`s** (`{"code": "catalog_conflict", "field": ...}`):
+  duplicate `(coding_system, code)` (medication/allergy, per tenant scope),
+  duplicate derived slug (vaccine, per tenant scope), duplicate concept slug.
+  Services translate `IntegrityError` after rollback — a constraint violation
+  never surfaces as a 500.
+- **Server-side derivations**: the vaccine `slug` is derived from the name
+  (clients never send it — a `slug` key → 422); the biomarker `slug` may be
+  omitted — the service derives it from the name the same way (deterministic,
+  unique per tenant scope via an auto-suffix) and an explicit slug stays
+  honored (duplicate → 409), so prefilled dialogs never send one; the
+  biomarker `preferred_unit_symbol` → unit id (unknown symbol → 400), and
+  `class_concept_slug` → tenant-scoped `biomarker_class` concept (an
+  explicit `class_concept_id` wins, an unresolvable slug is a 400); anatomy
+  `class_concept_slug` → `anatomy_class` concept (system + caller's tenant
+  only, so one tenant can never shadow another's resolution); reference
+  ranges and `allowed_states` persist on create.
+- **Ownership has exactly one representation**: `scope`
+  (`system`/`tenant`/`user`) + `tenant_id` (+ `created_by` for user rows).
+  The former `is_custom` boolean was a derived duplicate and is gone from
+  every catalog response and filter (the Catalogs UI's "Custom only" toggle
+  reads `scope`).
+- **Vaccine → disease links are graph rows, not a field**: `vaccines.json`'s
+  readable `target_diseases` refs materialize as approved `PREVENTS`
+  `concept_edges` rows (migration `0012` dropped the JSONB column); edits go
+  through the graph-links API (`POST /concept-edges`,
+  `edge_endpoint_type=immunization`), never a vaccine write field.
+- **Every write is audited** (`catalog_audit_log`), whichever door it entered;
+  the full serialized row — the same keys the read endpoints return, including
+  computed fields (`class_concept_slug`, `preferred_unit_symbol`,
+  `allowed_states`, codes, `seed_key`) — comes back from create, update and
+  promote.
+
+## One manual definition surface (the browse dialog)
+
+Users create catalog definitions from the **catalog browse dialog**, not from
+the record forms: every catalog-backed picker (`CatalogItemPicker`) can opt
+into a **New \<type\>** action in its browse list header (single-type fields,
+single-select mode, list view). It opens one shared create dialog per type —
+medication, allergy, vaccine and biomarker — built on the same registry forms
+the admin workspace uses, and writes through the generic `POST /catalogs/{type}`
+contract above. The dialog never sends `slug`/`seed_key` (server-owned
+identity — the backend derives the biomarker slug from the name when the
+payload omits it, and the form renders the slug field disabled so an edit
+that would be silently dropped can never happen); after the create it
+reconciles biomarker stratified reference
+ranges (`POST /biomarkers/{id}/reference-ranges/...` sync) and persists graph
+links (`POST /concept-edges` batch, `src_type` from the type descriptor's
+`edge_endpoint_type`), then selects the new item in the picker.
+
+Record forms (prescriptions, allergies, vaccinations, biomarker readings)
+only **pick existing** catalog items — there is no inline define-new panel and
+no catalog row is created on record submit. The created definition is
+reusable and visible to the whole health record (tenant), even when scoped to
+its creator (`scope=user` rows stay tenant-visible). Medication definitions
+offer an AI assist (`define_medication`) that drafts
+description/indications/dosage/contraindications/side effects for review;
+there is deliberately no such assist for allergy or biomarker.
 
 ## JSON Schema Structure
 
@@ -32,7 +112,7 @@ The root of the JSON file must contain three main arrays/objects: `metadata`, `u
       "coding_system": "loinc",
       "code": "2345-7",
       "name": "Fasting Glucose",
-      "category": "blood_laboratory",
+      "class_concept_slug": "blood-laboratory",
       "preferred_unit_symbol": "mg/dL",
       "aliases": ["FBS", "Fasting Blood Sugar"],
       "reference_range_min": 70,
@@ -77,7 +157,7 @@ Defines the medical tests, vital signs, and measurements.
   - `custom` (For proprietary hospital codes or unstandardized metrics)
 - **`code`** (String, Optional): The exact identifier from the `coding_system` (e.g., `"2345-7"` for LOINC Glucose).
 - **`name`** (String, Required): The clean, display name of the biomarker.
-- **`category`** (String, Optional): The clinical grouping (e.g., `blood_laboratory`, `vital_signs`, `ophthalmology`). On import this is translated — via `biomarker_category_to_concept_slug` — to a `biomarker_class` **concept** stored on `biomarker_definitions.class_concept_id` (see [TAXONOMY.md](TAXONOMY.md)); it is not stored as a free-text column.
+- **`class_concept_slug`** (String, Optional): The biomarker-class **concept** slug (e.g., `blood-laboratory`, `vital-signs`), resolved to `biomarker_definitions.class_concept_id` (see [TAXONOMY.md](TAXONOMY.md)). It is the only class key the import accepts — there is no free-text `category` column and no name translation; an explicit `class_concept_id` wins over the slug.
 - **`preferred_unit_symbol`** (String, Optional): The `symbol` of the unit defined in the `units` array that this biomarker should default to for rendering charts.
 - **`aliases`** (Array of Strings, Optional): Synonyms or common abbreviations used by the AI to match OCR data to this definition (e.g., `["WBC", "White Count"]`).
 - **`reference_range_min`** (Float, Optional): The standard clinical lower bound. QUANTITY biomarkers only — STATE biomarkers use `allowed_states` with `is_normal` flags instead.
@@ -111,7 +191,7 @@ When external data enters the system (via OCR Document Extraction, API integrati
 ### Retroactive Remapping
 
 When observations exist without a `biomarker_id` link (e.g., imported before a definition existed), they appear in biomarker lists with raw, unformatted names and a ⚡ "unmapped" indicator. Users can resolve these inline via a popup that offers:
-- **Create biomarker**: creates a new definition from the raw name and auto-relinks.
+- **Create biomarker**: opens the shared definition dialog prefilled with the raw name and auto-relinks after the create.
 - **Map to existing**: searches the catalog and relinks to a chosen definition.
 
 Both call `POST /api/v1/biomarkers/{biomarker_id}/remap` with a `source_name` (matched against `code.text`) and optional `patient_id` scope. On the analytics side, the trends query (`GET /analytics/trends`) also expands `biomarker_codes` filters against definition names/aliases so unmapped observations appear in the detail page even before remapping.

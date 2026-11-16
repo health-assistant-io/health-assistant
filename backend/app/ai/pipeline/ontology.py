@@ -11,14 +11,14 @@ forward to the functions here.
 import logging
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.biomarker_model import BiomarkerDefinition, Unit
-from app.models.enums import QuantityType
+from app.models.enums import CatalogScope, ConceptKind, QuantityType
 from app.models.fhir.medication import MedicationCatalog
 from app.schemas.biomarker import sanitize_slug
-from app.services.catalog.concept_service import resolve_biomarker_class_concept
+from app.services.catalog.concept_service import resolve_concept_by_slug
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +60,18 @@ async def process_unknown_biomarkers(
                     unit_map[u_lower] = new_unit
                     preferred_unit_id = new_unit.id
 
-            # ``def_data.category`` is a slug like "blood_laboratory" —
-            # resolve it to a ``biomarker_class`` concept ID. The helper
-            # normalizes to the concept slug ("blood-laboratory-class").
-            class_concept_id = await resolve_biomarker_class_concept(
-                db, def_data.category, tenant_id=tenant_id
+            # ``def_data.category`` is a readable category ("blood_laboratory",
+            # "vital_signs"); the concept slug is its hyphen form.
+            class_slug = (def_data.category or "").strip().lower().replace("_", "-") or None
+            class_concept_id = (
+                await resolve_concept_by_slug(
+                    db,
+                    class_slug,
+                    ConceptKind.BIOMARKER_CLASS,
+                    tenant_id=tenant_id,
+                )
+                if class_slug
+                else None
             )
 
             db.add(
@@ -80,6 +87,7 @@ async def process_unknown_biomarkers(
                     preferred_unit_id=preferred_unit_id,
                     info=def_data.info,
                     is_telemetry=def_data.is_telemetry,
+                    scope=CatalogScope.TENANT,
                     tenant_id=tenant_id,
                 )
             )
@@ -91,12 +99,22 @@ async def process_unknown_medications(
     new_med_defs = await nlp_extractor.parse_document_pass_2_medications(unknown_meds)
     for def_data in new_med_defs.definitions:
         name_map[def_data.raw_name_match] = def_data.name
+        # A tenant overlay and a system row may share the same name (ADR 0055
+        # D2); the tenant row wins and LIMIT 1 keeps this dedupe total instead
+        # of raising MultipleResultsFound.
         existing = await db.execute(
-            select(MedicationCatalog).where(
-                func.lower(MedicationCatalog.name) == func.lower(def_data.name)
+            select(MedicationCatalog)
+            .where(
+                func.lower(MedicationCatalog.name) == func.lower(def_data.name),
+                or_(
+                    MedicationCatalog.tenant_id.is_(None),
+                    MedicationCatalog.tenant_id == tenant_id,
+                ),
             )
+            .order_by(MedicationCatalog.tenant_id.is_(None))
+            .limit(1)
         )
-        if not existing.scalar_one_or_none():
+        if existing.scalars().first() is None:
             db.add(
                 MedicationCatalog(
                     name=def_data.name,
@@ -105,6 +123,7 @@ async def process_unknown_medications(
                     side_effects=def_data.side_effects,
                     contraindications=def_data.contraindications,
                     dosage_info=def_data.dosage_info,
+                    scope=CatalogScope.TENANT,
                     tenant_id=tenant_id,
                 )
             )

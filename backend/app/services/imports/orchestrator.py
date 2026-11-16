@@ -14,6 +14,35 @@ from app.services.imports.types import (
 
 logger = logging.getLogger(__name__)
 
+# A compressed upload is already capped at MAX_UPLOAD_SIZE; the decompressed
+# bytes are not, so a ~10 MiB zip could expand to gigabytes in RAM. Bound
+# both a single entry and the whole archive before reading anything.
+MAX_ZIP_ENTRY_BYTES = 64 * 1024 * 1024
+MAX_ZIP_TOTAL_BYTES = 512 * 1024 * 1024
+
+
+def _guard_zip_expansion(zf) -> None:
+    """Reject zip archives whose declared uncompressed size exceeds the caps.
+
+    The central directory is advisory, but reading a lying entry fails its
+    CRC after at most the declared bytes, so the guard bounds the realistic
+    amplification path (a truthful bomb); entry count is bounded upstream by
+    the upload body cap.
+    """
+    total = 0
+    for info in zf.infolist():
+        if info.file_size > MAX_ZIP_ENTRY_BYTES:
+            raise ValueError(
+                f"Archive entry {info.filename!r} exceeds the "
+                f"{MAX_ZIP_ENTRY_BYTES // (1024 * 1024)} MiB import limit."
+            )
+        total += info.file_size
+        if total > MAX_ZIP_TOTAL_BYTES:
+            raise ValueError(
+                f"Archive expands beyond the {MAX_ZIP_TOTAL_BYTES // (1024 * 1024)} MiB "
+                "import limit."
+            )
+
 
 class OrchestratorMixin:
     # ---------------- orchestrator ----------------
@@ -92,6 +121,7 @@ class OrchestratorMixin:
         fhir_validated = False
 
         with zipfile.ZipFile(archive_path, "r") as zf:
+            _guard_zip_expansion(zf)
             ok, _manifest, merrors = self.verify_manifest_from_zip(zf)
             manifest_verified = ok
             if not ok:
@@ -200,8 +230,9 @@ class OrchestratorMixin:
             return created, updated, errors, warnings, False, ok
 
         if "biomarkers" in data or "units" in data:
-            n = await self._restore_biomarker_catalog(data, tenant_id)
+            n, biomarker_errors = await self._restore_biomarker_catalog(data, tenant_id)
             created["biomarker_definitions"] = n
+            errors.extend(biomarker_errors)
             await self.db.commit()
             return created, updated, errors, warnings, False, False
 

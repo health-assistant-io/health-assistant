@@ -615,3 +615,37 @@ describe('groupActiveConditionsByCategory', () => {
     expect(groups[0].label).toBe('Uncategorized');
   });
 });
+
+describe('adaptMedicationToEvents — wire-cased status', () => {
+  it('expands an ACTIVE wire value into occurrences', () => {
+    const med = {
+      id: 'med-wire',
+      patient_id: 'p-1',
+      tenant_id: 't-1',
+      status: 'ACTIVE' as never,
+      code: { text: 'Amoxicillin' },
+      start_date: '2026-03-01',
+      dosage: '500mg',
+      frequency: { type: 'daily', frequency: 1, time_of_day: ['09:00'] },
+      created_at: '2026-01-01',
+    } as MedicationRecord;
+    const events = adaptMedicationToEvents(med, RANGE_START, RANGE_END);
+    expect(events.length).toBeGreaterThan(1);
+  });
+
+  it('treats ON_HOLD as non-active (single start event)', () => {
+    const med = {
+      id: 'med-wire-hold',
+      patient_id: 'p-1',
+      tenant_id: 't-1',
+      status: 'ON_HOLD' as never,
+      code: { text: 'Amoxicillin' },
+      start_date: '2026-03-05',
+      dosage: '500mg',
+      frequency: { type: 'daily', frequency: 1, time_of_day: ['09:00'] },
+      created_at: '2026-01-01',
+    } as MedicationRecord;
+    const events = adaptMedicationToEvents(med, RANGE_START, RANGE_END);
+    expect(events).toHaveLength(1);
+  });
+});

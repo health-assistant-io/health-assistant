@@ -1,4 +1,12 @@
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    Column,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -26,9 +34,20 @@ from app.services.fhir.fhir_helpers import (
 
 
 class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
+    """The canonical allergen reference definition (ADR 0055 identity model).
+
+    ``seed_key`` is the immutable natural key (``allergy:<kebab-key>``),
+    unique per tenant scope via ``ix_allergy_catalog_seed_key_tenant``;
+    ``coding_system`` + ``code`` (SNOMED) are attributes, never identity.
+    ``slug`` is deliberately absent. Scope CHECKs pin the tenancy invariants.
+    """
+
     __tablename__ = "allergy_catalog"
 
     name = Column(String(255), nullable=False)
+    seed_key = Column(String(120), nullable=True)
+    coding_system = Column(String(50), nullable=True)
+    code = Column(String(100), nullable=True)
     category = Column(Enum(AllergyCategory), nullable=False)
     description = Column(Text, nullable=True)
     typical_reactions = Column(JSONB, nullable=True)  # List of common symptoms
@@ -56,6 +75,15 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
         index=True,
     )
 
+    __table_args__ = (
+        CheckConstraint("scope <> 'system' OR tenant_id IS NULL", name="scope_system_no_tenant"),
+        CheckConstraint(
+            "(scope <> 'tenant' AND scope <> 'user') OR tenant_id IS NOT NULL",
+            name="scope_scoped_has_tenant",
+        ),
+        CheckConstraint("scope <> 'user' OR created_by IS NOT NULL", name="scope_user_has_creator"),
+    )
+
     class_concept = relationship(
         "Concept",
         foreign_keys="[AllergyCatalog.class_concept_id]",
@@ -63,23 +91,31 @@ class AllergyCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     )
 
     @property
-    def is_custom(self):
-        return self.tenant_id is not None
+    def class_concept_slug(self) -> str | None:
+        return self.class_concept.slug if self.class_concept else None
+
+    @property
+    def class_concept_name(self) -> str | None:
+        return self.class_concept.name if self.class_concept else None
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "name": self.name,
+            "seed_key": self.seed_key,
+            "coding_system": self.coding_system,
+            "code": self.code,
             "category": self.category.value if self.category else "other",
             "description": self.description,
-            "typical_reactions": self.typical_reactions,
+            "typical_reactions": self.typical_reactions or [],
             "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
-            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
-            "class_concept_name": self.class_concept.name if self.class_concept else None,
+            "class_concept_slug": self.class_concept_slug,
+            "class_concept_name": self.class_concept_name,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
-            "is_custom": self.is_custom,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def to_fhir_dict(self) -> dict:
@@ -160,6 +196,16 @@ class AllergyIntolerance(
 
     # The substance/allergen
     code = Column(JSONB, nullable=False)  # {"text": "Peanuts", "catalog_id": "..."}
+
+    # The canonical catalog row this instance was authored from (ADR 0055 D6:
+    # FK + snapshot). Nullable — the JSONB ``code`` snapshot keeps the record
+    # standing alone; ``ON DELETE SET NULL`` leaves history intact.
+    allergy_catalog_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("allergy_catalog.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Timeline
     onset_date = Column(DateTime(timezone=True), nullable=True)

@@ -10,7 +10,15 @@ read; session/account self-actions live on ``/me/*``):
 * ``POST   /me/mfa/confirm``— code check against the pending secret ⇒
   active
 * ``DELETE /me/mfa``        — password-confirmed removal; refused while
-  ``mfa_enforced`` (an admin requirement is not self-cancellable)
+  ``mfa_enforced`` or while the tenant security policy requires MFA for
+  the role (neither requirement is self-cancellable)
+
+Enrollment itself is a factor change and therefore step-up gated
+(``mfa_change``, program 12C1): TOTP is an accepted step-up method, so an
+ungated enroll would let a stolen bearer mint proofs for export, role
+changes, break-glass and admin grants. The pre-session forced-enrollment
+door (``POST /auth/mfa/enroll``, driven by the login challenge token) is a
+different surface and stays unaffected.
 
 Every state change lands in ``audit_events`` via ``log_audit_action``
 (the H2 chokepoint) with an outcome.
@@ -31,7 +39,13 @@ from app.services.audit.audit_service import (
     OUTCOME_OK,
     log_audit_action,
 )
-from app.services.auth import mfa_service
+from app.services.auth import (
+    login_notifications,
+    mfa_service,
+    passkeys,
+    security_policy,
+    step_up,
+)
 from app.services.tenancy.user_service import get_user_by_id
 
 router = APIRouter(prefix="/me", tags=["mfa"])
@@ -49,7 +63,7 @@ async def _live_user(current_user: TokenData):
 async def get_my_mfa(current_user: TokenData = Depends(get_current_user)):
     """MFA status for the caller — drives the settings-page card."""
     user = await _live_user(current_user)
-    return MFAStatusResponse(**mfa_service.mfa_status(user))
+    return MFAStatusResponse(**await mfa_service.status_for(user))
 
 
 @router.post("/mfa/enroll", response_model=MFAEnrollResponse)
@@ -62,7 +76,11 @@ async def enroll_my_mfa(current_user: TokenData = Depends(get_current_user)):
     matching code; calling enroll again simply replaces the pending
     secret (e.g. a abandoned wizard). Active MFA must be disabled first
     (this is enrollment, not re-enrollment).
+
+    Step-up gated (``mfa_change``): adding a factor changes what can mint
+    future step-up proofs, so a stolen bearer alone cannot enroll one.
     """
+    await step_up.enforce(current_user, step_up.StepUpAction.MFA_CHANGE)
     user = await _live_user(current_user)
     if getattr(user, "mfa_secret_enc", None):
         raise HTTPException(
@@ -71,6 +89,7 @@ async def enroll_my_mfa(current_user: TokenData = Depends(get_current_user)):
         )
     data = await mfa_service.begin_enrollment(user)
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="mfa.enroll",
@@ -86,23 +105,30 @@ async def confirm_my_mfa(
     payload: MFAConfirmRequest,
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Activate the pending enrollment (code check ⇒ active)."""
+    """Activate the pending enrollment (code check ⇒ active).
+
+    Step-up gated like ``enroll`` — otherwise the pending secret could be
+    completed by whoever holds the stolen session.
+    """
+    await step_up.enforce(current_user, step_up.StepUpAction.MFA_CHANGE)
     user = await _live_user(current_user)
     if not await mfa_service.confirm_enrollment(user.id, payload.code):
         await log_audit_action(
+            required=True,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
             action="mfa.confirm",
             resource_type="auth",
             resource_id=user.id,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "invalid_code"},
+            new_value={"cause": "invalid_code"},
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code — MFA was not activated.",
         )
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="mfa.confirm",
@@ -111,7 +137,18 @@ async def confirm_my_mfa(
         outcome=OUTCOME_OK,
     )
     fresh = await _live_user(current_user)
-    return MFAStatusResponse(**mfa_service.mfa_status(fresh))
+    await login_notifications.notify_security_event(
+        fresh,
+        event="totp_added",
+        title="Two-factor authentication was added to your account",
+        body=(
+            "An authenticator app can now sign in to your account with a "
+            "one-time code. If this was not you, remove it in "
+            "Settings → Security."
+        ),
+        dedup=str(fresh.id),
+    )
+    return MFAStatusResponse(**await mfa_service.status_for(fresh))
 
 
 @router.delete("/mfa", response_model=MFAStatusResponse)
@@ -132,33 +169,39 @@ async def disable_my_mfa(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="MFA is not active on this account.",
         )
-    if getattr(user, "mfa_enforced", False):
+    others = await passkeys.active_credentials(user.id)
+    policy = await security_policy.tenant_security_policy_for(user.tenant_id)
+    required = bool(getattr(user, "mfa_enforced", False)) or policy.blocks_mfa_disable(user.role)
+    if required and not others:
         await log_audit_action(
+            required=True,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
             action="mfa.disable",
             resource_type="auth",
             resource_id=user.id,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "mfa_enforced"},
+            new_value={"cause": "mfa_enforced"},
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "MFA is required by policy on this account and cannot be "
-                "disabled. Contact your administrator."
+                "MFA is required by policy on this account and this is the last "
+                "factor; enroll a passkey before disabling TOTP, or contact your "
+                "administrator."
             ),
         )
     stored_hash = getattr(user, "password_hash", None)
     if not stored_hash or not verify_password(payload.password, stored_hash):
         await log_audit_action(
+            required=True,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
             action="mfa.disable",
             resource_type="auth",
             resource_id=user.id,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "invalid_password"},
+            new_value={"cause": "invalid_password"},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -166,6 +209,7 @@ async def disable_my_mfa(
         )
     await mfa_service.clear_mfa(user.id)
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="mfa.disable",
@@ -174,4 +218,4 @@ async def disable_my_mfa(
         outcome=OUTCOME_OK,
     )
     fresh = await _live_user(current_user)
-    return MFAStatusResponse(**mfa_service.mfa_status(fresh))
+    return MFAStatusResponse(**await mfa_service.status_for(fresh))

@@ -6,8 +6,31 @@ vi.mock('../../utils/auth', () => ({
   clearAuthData: vi.fn(async () => undefined),
 }));
 
+// The access mirror (ADR 0054) — observe hydrate/clear wiring, not HTTP.
+// One stable mock instance: authSlice calls `useAccessStore.getState()`,
+// so the assertions must see the very same vi.fn objects.
+const { accessMocks } = vi.hoisted(() => ({
+  accessMocks: {
+    hydrate: vi.fn(async () => undefined),
+    clear: vi.fn(),
+  },
+}));
+vi.mock('./accessSlice', () => ({
+  useAccessStore: { getState: () => accessMocks },
+}));
+
+// The cookie-mode axios instance (logout POST + CSRF interceptor).
+vi.mock('../../api/axios', () => ({
+  default: {
+    get: vi.fn(async () => ({ data: {} })),
+    post: vi.fn(async () => ({ status: 200 })),
+    interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
+  },
+}));
+
 import { validateSession } from '../../utils/auth';
 import { useAuthStore } from './authSlice';
+import api from '../../api/axios';
 
 describe('authSlice (§10 cookie mode, plan 16 H3)', () => {
   beforeEach(() => {
@@ -80,5 +103,63 @@ describe('authSlice (§10 cookie mode, plan 16 H3)', () => {
     expect(state.isDemoMode).toBe(false);
     expect(state.isLoading).toBe(false);
     expect(state.claims).toBeNull();
+    // The permission mirror dies with the session (ADR 0054).
+    expect(accessMocks.clear).toHaveBeenCalled();
+  });
+
+  it('initialize() hydrates the access mirror for a live session', async () => {
+    vi.mocked(validateSession).mockResolvedValue({
+      valid: true,
+      user_id: 'u1',
+      role: 'ADMIN',
+      tenant_id: 't1',
+      auth_mode: 'password',
+      switched: false,
+      original_tenant_id: null,
+    });
+
+    await useAuthStore.getState().initialize();
+
+    expect(accessMocks.hydrate).toHaveBeenCalled();
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
+  });
+
+  it('login() hydrates the fresh session permission set', async () => {
+    vi.mocked(validateSession).mockResolvedValue({
+      valid: true,
+      user_id: 'u2',
+      role: 'USER',
+      tenant_id: 't1',
+      auth_mode: 'password',
+      switched: false,
+      original_tenant_id: null,
+    });
+
+    useAuthStore.getState().login();
+
+    // The re-sync (and the hydrate with it) is async — flush it.
+    await vi.waitFor(() => {
+      expect(accessMocks.hydrate).toHaveBeenCalled();
+    });
+  });
+
+  it('resetSession() clears the access mirror without a server call', () => {
+    useAuthStore.getState().resetSession();
+    expect(accessMocks.clear).toHaveBeenCalled();
+  });
+
+  it('logout() clears the access mirror', async () => {
+    vi.mocked(api.post).mockResolvedValue({ status: 200 });
+    // jsdom cannot navigate — replace location so the post-logout redirect
+    // (a store contract since plan 16) stays silent in the test run. Only
+    // this test in the file touches it; vitest re-creates jsdom per file.
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { href: '/dashboard' },
+    });
+    await useAuthStore.getState().logout();
+    expect(api.post).toHaveBeenCalledWith('/auth/logout');
+    expect(accessMocks.clear).toHaveBeenCalled();
   });
 });

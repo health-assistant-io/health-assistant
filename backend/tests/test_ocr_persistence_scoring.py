@@ -20,6 +20,10 @@ Post-fix contract pinned here:
 3. ``normalized_value`` is now expressed in the biomarker's *preferred* unit.
    If no preferred unit is set, it falls back to the base SI unit so trends
    are at least consistent across labs reporting in different raw units.
+ 4. Issue #159: one-sided reference ranges follow the printed-side convention
+    (upper limit "< 10" → max-only, lower limit "> X" → min-only) and a bound
+    the model stored on the wrong side is corrected at write time when the
+    extracted interpretation flag + the measured value corroborate it.
 """
 
 import uuid
@@ -68,7 +72,7 @@ def _exam(tenant_id, patient_id, exam_id):
     )
 
 
-def _build_extract(value, ref_min=None, ref_max=None, unit="mg/dL"):
+def _build_extract(value, ref_min=None, ref_max=None, unit="mg/dL", interpretation_flag=None):
     return KnownBiomarkerExtract(
         name="Glucose",
         matched_slug="glucose",
@@ -76,6 +80,7 @@ def _build_extract(value, ref_min=None, ref_max=None, unit="mg/dL"):
         unit_symbol=unit,
         reference_range_min=ref_min,
         reference_range_max=ref_max,
+        interpretation_flag=interpretation_flag,
     )
 
 
@@ -339,3 +344,196 @@ async def test_c8_normalized_value_when_no_preferred_unit_falls_back_to_base():
         "Without a preferred unit, normalized_value should fall back to base SI "
         "(2000 mg/dL), not the raw value (2 g/dL) — otherwise trends mix units."
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #159: one-sided reference-range convention + write-time sanitizer
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_issue159_upper_limit_stays_max_only():
+    """A printed upper limit ("< 10") extracts as max-only and is stored as-is.
+
+    Pass-1 prompt convention: "< X" → reference_range_max=X, min=null.
+    The sanitizer must not touch an already-correctly-sided one-sided
+    range, even when the result is flagged High.
+    """
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=15.0, ref_max=10.0, interpretation_flag="High")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": None, "max": 10.0}
+    assert obs.relative_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_issue159_lower_limit_stays_min_only():
+    """A printed lower limit ("> 5") extracts as min-only and is stored as-is."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=3.0, ref_min=5.0, interpretation_flag="Low")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": 5.0, "max": None}
+    assert obs.relative_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_issue159_inverted_min_only_with_high_flag_is_corrected():
+    """The regression pin: "< 10" stored as min-only + High result → corrected.
+
+    The model put the upper limit on the wrong side (min=10, max=None).
+    Flag High + value 15 > 10 corroborates the inversion, so the bound
+    moves to max-only: lab_reference_range becomes {"min": None, "max":
+    10.0} — the shape the frontend status logic reads as High (previously
+    the inverted "10 - ∞" shape fell through to a false "Normal").
+    relative_score stays 0.5: the one-sided score contract is unchanged;
+    the corrected stored range is what flips the user-visible status.
+    """
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=15.0, ref_min=10.0, interpretation_flag="High")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": None, "max": 10.0}
+    assert obs.relative_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_issue159_inverted_max_only_with_low_flag_is_corrected():
+    """Mirror case: "> 5" stored as max-only + Low result → moved to min-only."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=3.0, ref_max=5.0, interpretation_flag="Low")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": 5.0, "max": None}
+    assert obs.relative_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_issue159_genuine_two_sided_range_is_never_touched():
+    """A real two-sided range passes through the sanitizer unchanged."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=15.0, ref_min=0.0, ref_max=10.0, interpretation_flag="High")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": 0.0, "max": 10.0}
+    assert obs.relative_score == 1.0
+
+
+@pytest.mark.asyncio
+async def test_issue159_one_sided_without_corroboration_is_untouched():
+    """No interpretation flag → direction is unknowable, the bound stays put."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=15.0, ref_min=10.0)
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": 10.0, "max": None}
+    assert obs.relative_score == 0.5
+
+
+@pytest.mark.asyncio
+async def test_issue159_one_sided_value_at_bound_is_untouched():
+    """A value exactly at the bound does not corroborate a direction."""
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    b = _build_extract(value=10.0, ref_min=10.0, interpretation_flag="High")
+    exam = _exam(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+
+    await save_observation(
+        db,
+        b,
+        target_bio=_biomarker(uuid.uuid4()),
+        units_by_symbol={"mg/dl": _unit(uuid.uuid4(), "mg/dL", 1.0)},
+        exam=exam,
+        patient_ref=f"Patient/{exam.patient_id}",
+        effective_date=datetime.now(UTC),
+    )
+
+    obs = _intercept_obs(db)
+    assert obs.lab_reference_range == {"min": 10.0, "max": None}

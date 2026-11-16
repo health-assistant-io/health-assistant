@@ -42,6 +42,15 @@ event_examination_links :: record    event↔examination join rows
 event_observation_links :: record    event↔observation join rows
 patient_immunizations :: record      immunization records (tombstoned)
 patient_layouts      :: record       per-user patient layout documents
+patient_access_grants :: record      care-team / patient sharing decisions; erased with the tenant/patient/grantee (cascade)
+access_elevations    :: record       break-glass elevation decisions (two-person, auto-expiring); erased with the tenant/requester/approver (cascade)
+tenant_sso_configs   :: record       per-tenant OIDC SSO bindings; erased with the tenant (cascade)
+user_identities      :: record       link-only external identities (one identity = one tenant, ADR 0054 D2); erased with the tenant/user (cascade)
+scim_tokens          :: record       tenant-bounded SCIM bearer credentials (sha256 at rest); erased with the tenant (cascade)
+api_tokens           :: record       scoped personal access tokens (sha256 at rest, permission subset); erased with the owner/tenant (cascade), revoked rows stay as the ledger
+scim_groups          :: record       SCIM directory groups; erased with the tenant (cascade)
+scim_group_members   :: record       SCIM membership rows; erased with their group/user (cascade)
+webauthn_credentials :: record       registered passkeys/security keys (public keys + counters, no secrets); erased with the user/tenant (cascade)
 doctors              :: record       care-team profiles
 laboratories         :: record       tenant lab registry
 biomarker_states     :: record       categorical state catalog (seeded, retained with the instance)
@@ -75,11 +84,13 @@ import_jobs          :: operational import/restore job records
 
 # --- operational history ---
 audit_events         :: operational  append-only audit stream; bounded by the audit retention policy
+audit_chain_heads    :: operational  per-chain append position + head-hash anchor (ADR 0054 D3); lives as long as its chain — the disabled retention row records that decision
 catalog_audit_log    :: operational  catalog change history
 task_logs            :: operational  background-task logs
 ai_call_logs         :: operational  one row per AI model call; bounded retention
 ai_task_defs         :: operational  seeded task vocabulary (bounded by the registry; no pruning job)
 ai_providers         :: record       AI provider configuration
+ai_price_overrides   :: record       tenant model price overrides; erased with the tenant (cascade)
 ai_models            :: record       AI model configuration
 ai_task_assignments :: record        per-task provider/model assignments
 proposal_kinds       :: operational  seeded HITL proposal-kind vocabulary (bounded by the contract)
@@ -104,3 +115,12 @@ extension_sources    :: record       imported-content origins; erased with the t
 extension_source_versions :: record  immutable digest-pinned content versions (the consent anchor)
 extension_consents   :: record       version-bound per-capability consent decisions
 extension_isolation_posture :: operational  per-version isolation evidence (DETECTION, bounded retention)
+
+# --- seed pack lane (ADR 0056, 0015_seed_packs) ---
+seed_sources         :: record       pack origins; erased with the tenant (system rows NULL-tenant)
+seed_source_versions :: record       immutable digest-pinned pack versions (the approval anchor)
+seed_import_runs     :: operational  per-version plan/apply history; bounded retention
+seed_import_run_items :: operational per-item run outcomes (cascade with their run)
+seed_item_provenance :: record       curated-row provenance; lives with the instance catalogs (retire-not-delete)
+seed_deferred_refs   :: operational  deferred-reference retry queue; prunable once landed/abandoned
+integration_principals :: record       scoped integration/extension service identities (sha256 secret at rest, permission subset); erased with the owner/tenant/integration (cascade/set-null), revoked/rotated rows stay as the ledger

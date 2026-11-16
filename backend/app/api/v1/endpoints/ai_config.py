@@ -867,7 +867,8 @@ async def get_ai_usage(
     errors = func.count(AICallLog.id).filter(AICallLog.status != AICallStatus.OK)
     prompt_tokens = func.coalesce(func.sum(AICallLog.prompt_tokens), 0)
     completion_tokens = func.coalesce(func.sum(AICallLog.completion_tokens), 0)
-    cost = func.coalesce(func.sum(AICallLog.cost_micros), 0)
+    cost = func.sum(AICallLog.cost_micros)
+    priced_calls = func.count(AICallLog.id).filter(AICallLog.cost_micros.is_not(None))
     avg_latency = func.avg(AICallLog.latency_ms)
     last_call = func.max(AICallLog.started_at)
 
@@ -880,6 +881,7 @@ async def get_ai_usage(
                 prompt_tokens,
                 completion_tokens,
                 cost,
+                priced_calls,
                 avg_latency,
                 last_call,
             )
@@ -897,18 +899,26 @@ async def get_ai_usage(
             errors=int(error_count or 0),
             prompt_tokens=int(prompt or 0),
             completion_tokens=int(completion or 0),
-            cost_micros=int(cost_micros or 0),
+            cost_micros=int(cost_micros) if cost_micros is not None else None,
+            priced_calls=int(priced or 0),
+            unpriced_calls=int(count or 0) - int(priced or 0),
             avg_latency_ms=float(avg) if avg is not None else None,
             last_call_at=last,
         )
-        for code, count, error_count, prompt, completion, cost_micros, avg, last in rows
+        for code, count, error_count, prompt, completion, cost_micros, priced, avg, last in rows
     ]
     return AIUsageResponse(
         window_days=window_days,
         since=since,
         total_calls=sum(row.calls for row in task_rows),
         total_errors=sum(row.errors for row in task_rows),
-        total_cost_micros=sum(row.cost_micros for row in task_rows),
+        total_cost_micros=(
+            sum(row.cost_micros or 0 for row in task_rows)
+            if any(row.cost_micros is not None for row in task_rows)
+            else None
+        ),
+        priced_calls=sum(row.priced_calls for row in task_rows),
+        unpriced_calls=sum(row.unpriced_calls for row in task_rows),
         tasks=task_rows,
     )
 

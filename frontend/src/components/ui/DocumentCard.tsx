@@ -6,7 +6,7 @@ import {
 interface DocumentCardProps {
   file: File;
   onRemove: () => void;
-  onPreview: () => void;
+  onPreview?: () => void;
   onToggleInclusion: () => void;
   includeInExtraction: boolean;
   draggable?: boolean;
@@ -34,8 +34,8 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
     <div 
       draggable={draggable}
       onDragStart={onDragStart}
-      onClick={(e) => { e.stopPropagation(); onPreview(); }}
-      className="group relative w-40 h-40 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs hover:shadow-xl transition-all hover:-translate-y-1 cursor-pointer overflow-hidden"
+      onClick={(e) => { e.stopPropagation(); onPreview?.(); }}
+      className={`group relative w-40 h-40 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border shadow-xs transition-all overflow-hidden ${onPreview ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : ''}`}
     >
       <div className="h-24 w-full bg-gray-50 dark:bg-dark-bg flex items-center justify-center relative overflow-hidden">
         {isImage && previewUrl ? (
@@ -77,9 +77,11 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
         </button>
 
         <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div className="p-2 bg-white/90 dark:bg-dark-surface/90 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
-            <Eye className="w-4 h-4 text-blue-500" />
-          </div>
+          {onPreview ? (
+            <div className="p-2 bg-white/90 dark:bg-dark-surface/90 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+              <Eye className="w-4 h-4 text-blue-500" />
+            </div>
+          ) : null}
         </div>
       </div>
 

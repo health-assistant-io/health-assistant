@@ -14,18 +14,27 @@ export interface MFAEnrollment {
   recovery_codes: string[];
 }
 
-/** Self-service status (`GET /me/mfa`). */
+/** Self-service status (`GET /me/mfa`) — factor-aware. */
 export interface MFAStatus {
   enabled: boolean;
   enforced: boolean;
   pending: boolean;
+  totp_enabled: boolean;
+  passkey_enabled: boolean;
+  passkey_count: number;
 }
+
+export type MfaMethod = 'totp' | 'webauthn';
 
 /** The 401 login challenge body (`detail === 'mfa_required'`). */
 export interface MFAChallengeBody {
   detail: 'mfa_required';
   mfa_token: string;
   enrollment_needed: boolean;
+  /** Factors that can complete this challenge (post-12C2). */
+  methods?: MfaMethod[];
+  /** `sso` when the challenge came from the OIDC callback. */
+  origin?: string;
 }
 
 /** True when an axios error is the login MFA challenge (401 + body). */

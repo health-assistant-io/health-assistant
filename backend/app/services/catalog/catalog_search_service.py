@@ -39,10 +39,11 @@ The result payload is enriched with:
 - ``snippet`` — ``ts_headline`` excerpt of the matching text.
 - ``score`` — the RRF score (for transparency / debugging).
 
-Indexes live in migration ``j1a2b3c4d5e6_hybrid_search_indexes``. The FTS
-expression string in :data:`_CATALOG_SPECS` MUST match the migration's
-expression verbatim for the GIN index to be used — there is a test
-(``test_catalog_search.py::test_fts_index_is_used``) that catches drift.
+Indexes live in the migration lane: ``0024_catalog_cleanup`` builds them from
+each catalog's declared search surface (:mod:`app.core.catalog_search_index`),
+and this service derives its FTS expression from the very same surface — the
+index and the query cannot drift. ``tests/test_catalog_search_index.py``
+pins the surface snapshot and asserts the planner picks the index.
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ from uuid import UUID
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.catalog_search_index import CatalogSearchSurface
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept
@@ -109,10 +111,10 @@ def _normalize(query: str | None) -> str | None:
 class _CatalogSearchSpec:
     """Declarative spec for one catalog's hybrid search.
 
-    The ``fts_expression`` MUST match the expression used in the migration's
-    GIN expression index verbatim, or Postgres will not recognise the index
-    match and will seq-scan. Keep in sync with
-    ``alembic/versions/j1a2b3c4d5e6_hybrid_search_indexes.py``.
+    Every field is derived from the catalog's
+    :class:`~app.core.catalog_search_index.CatalogSearchSurface` (see
+    :func:`_build_spec`): the FTS expression is the very string the migration
+    indexed, so Postgres always recognises the index match.
     """
 
     # The registry type key ("biomarker", "medication", ...).
@@ -145,131 +147,98 @@ class _CatalogSearchSpec:
         return self.model.__tablename__
 
 
-# FTS expression strings — kept in lockstep with migration
-# j1a2b3c4d5e6_hybrid_search_indexes.py. The expressions use lower-case
-# unquoted column names which Postgres normalises anyway; ``coalesce`` is the
-# only function used so the planner recognises the index.
-_BIOMARKER_FTS = (
-    "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
-    "coalesce(description, '') || ' ' || coalesce(info, '') || ' ' || "
-    "coalesce(code, '') || ' ' || coalesce(aliases::text, '')"
-)
-_MEDICATION_FTS = (
-    "coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || "
-    "coalesce(indications, '') || ' ' || "
-    "coalesce(side_effects::text, '') || ' ' || "
-    "coalesce(contraindications, '')"
-)
-_ALLERGY_FTS = "coalesce(name, '') || ' ' || coalesce(description, '')"
-_ANATOMY_FTS = (
-    "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
-    "coalesce(description, '') || ' ' || coalesce(standard_code, '')"
-)
-_VACCINE_FTS = "coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || coalesce(code, '')"
-_CONCEPT_FTS = (
-    "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || "
-    "coalesce(description, '') || ' ' || coalesce(code, '') || ' ' || "
-    "coalesce(aliases::text, '')"
-)
-
-
-_CATALOG_SPECS: tuple[_CatalogSearchSpec, ...] = (
-    _CatalogSearchSpec(
-        type_name="biomarker",
-        model=BiomarkerDefinition,
-        label_column="name",
-        extra_trgm_columns=("slug",),
-        extra_ilike_columns=("description", "info", "code"),
-        alias_column="aliases",
-        snippet_column="info",
-        fts_expression=_BIOMARKER_FTS,
-    ),
-    _CatalogSearchSpec(
-        type_name="medication",
-        model=MedicationCatalog,
-        label_column="name",
-        extra_ilike_columns=("description", "indications", "contraindications"),
-        snippet_column="description",
-        fts_expression=_MEDICATION_FTS,
-    ),
-    _CatalogSearchSpec(
-        type_name="allergy",
-        model=AllergyCatalog,
-        label_column="name",
-        extra_ilike_columns=("description",),
-        snippet_column="description",
-        fts_expression=_ALLERGY_FTS,
-    ),
-    _CatalogSearchSpec(
-        type_name="anatomy",
-        model=None,  # populated lazily to avoid an import cycle at module load
-        label_column="name",
-        extra_trgm_columns=("slug",),
-        extra_ilike_columns=("description", "standard_code"),
-        snippet_column="description",
-        fts_expression=_ANATOMY_FTS,
-    ),
-    _CatalogSearchSpec(
-        type_name="vaccine",
-        model=None,  # populated lazily
-        label_column="name",
-        extra_ilike_columns=("description", "code"),
-        snippet_column="description",
-        fts_expression=_VACCINE_FTS,
-    ),
-    _CatalogSearchSpec(
-        type_name="concept",
-        model=Concept,
-        label_column="name",
-        extra_trgm_columns=("slug",),
-        extra_ilike_columns=("description",),
-        alias_column="aliases",
-        snippet_column="description",
-        fts_expression=_CONCEPT_FTS,
-        extra_where_sql=("AND t.status = 'active' AND t.deleted_at IS NULL"),
-        soft_delete=True,
-    ),
-    _CatalogSearchSpec(
-        type_name="clinical_event_type",
-        model=ClinicalEventType,
-        label_column="name",
-        extra_trgm_columns=("slug",),
-        extra_ilike_columns=("description",),
-        snippet_column="description",
-        fts_expression=(
-            "coalesce(name, '') || ' ' || coalesce(slug, '') || ' ' || coalesce(description, '')"
-        ),
+# Search-only surfaces: taxonomy entities with a hybrid-search consumer but no
+# catalog descriptor (no workspace type, no write contract). Everything else is
+# declared on its descriptor — see :func:`catalog_search_surfaces`.
+_SEARCH_ONLY_SURFACES: tuple[CatalogSearchSurface, ...] = (
+    CatalogSearchSurface(
+        catalog_type="clinical_event_type",
+        table="clinical_event_types",
+        fts_columns=("name", "slug", "description"),
+        trigram_columns=("slug",),
     ),
 )
 
+# Lifecycle predicates the surface cannot express (a status vocabulary, not a
+# searched column). Soft-deleted rows are filtered from ``soft_delete`` alone.
+_LIFECYCLE_PREDICATES: dict[str, str] = {
+    "concept": "AND t.status = 'active'",
+}
 
-def _specs_by_type() -> dict:
-    """Lazily resolve the model imports (anatomy/vaccine) and index by type."""
+
+def catalog_search_surfaces() -> tuple[CatalogSearchSurface, ...]:
+    """Every indexed search surface: one per registered catalog, plus the
+    search-only taxonomy surfaces."""
+    from app.catalogs.registry import CatalogRegistry
+
+    return (
+        tuple(descriptor.search_surface for descriptor in CatalogRegistry.all())
+        + _SEARCH_ONLY_SURFACES
+    )
+
+
+def _build_spec(
+    surface: CatalogSearchSurface, model: type, *, soft_delete: bool
+) -> _CatalogSearchSpec:
+    """Derive one catalog's search spec from its surface.
+
+    Match strategies follow from the surface: the label (first FTS column) is
+    the trigram target, the extra trigram columns add per-column similarity,
+    the remaining plain-text columns get the substring fallback, and the JSONB
+    members are matched through their ``::text`` projection. The snippet column
+    prefers the descriptive ``info`` text, else ``description``.
+    """
+    columns = surface.fts_columns
+    label = surface.label_column
+    json_columns = set(surface.json_columns)
+    trigram_extras = tuple(column for column in surface.trigram_columns if column != label)
+    ilike_columns = tuple(
+        column
+        for column in columns
+        if column != label and column not in trigram_extras and column not in json_columns
+    )
+    alias_column = "aliases" if "aliases" in json_columns else None
+    if "info" in columns:
+        snippet_column = "info"
+    elif "description" in columns:
+        snippet_column = "description"
+    else:
+        snippet_column = None
+    return _CatalogSearchSpec(
+        type_name=surface.catalog_type,
+        model=model,
+        label_column=label,
+        extra_trgm_columns=trigram_extras,
+        extra_ilike_columns=ilike_columns,
+        alias_column=alias_column,
+        snippet_column=snippet_column,
+        fts_expression=surface.fts_expression(),
+        extra_where_sql=_LIFECYCLE_PREDICATES.get(surface.catalog_type, ""),
+        soft_delete=soft_delete,
+    )
+
+
+def _specs_by_type() -> dict[str, _CatalogSearchSpec]:
+    """Resolve each surface's ORM model and build its spec."""
+    from app.catalogs.registry import CatalogRegistry
     from app.models.anatomy_model import AnatomyStructure
+    from app.models.clinical_event import ClinicalEventType
     from app.models.fhir.vaccine import VaccineCatalog
 
-    model_map = {
-        "anatomy": AnatomyStructure,
-        "vaccine": VaccineCatalog,
+    search_only_models = {
+        "anatomy": (AnatomyStructure, False),
+        "vaccine": (VaccineCatalog, False),
+        "clinical_event_type": (ClinicalEventType, False),
     }
-    out = {}
-    for spec in _CATALOG_SPECS:
-        model = spec.model or model_map.get(spec.type_name)
-        if model is None:
-            continue
-        # Re-build the spec with the resolved model (frozen dataclass).
-        out[spec.type_name] = _CatalogSearchSpec(
-            type_name=spec.type_name,
-            model=model,
-            label_column=spec.label_column,
-            extra_trgm_columns=spec.extra_trgm_columns,
-            extra_ilike_columns=spec.extra_ilike_columns,
-            alias_column=spec.alias_column,
-            snippet_column=spec.snippet_column,
-            fts_expression=spec.fts_expression,
-            extra_where_sql=spec.extra_where_sql,
-            soft_delete=spec.soft_delete,
-        )
+    out: dict[str, _CatalogSearchSpec] = {}
+    for surface in catalog_search_surfaces():
+        if surface.catalog_type in search_only_models:
+            model, soft_delete = search_only_models[surface.catalog_type]
+        else:
+            descriptor = CatalogRegistry.get(surface.catalog_type)
+            model = descriptor.model
+            soft_delete = bool(getattr(descriptor.service, "soft_delete", False))
+        out[surface.catalog_type] = _build_spec(surface, model, soft_delete=soft_delete)
     return out
 
 
@@ -344,6 +313,19 @@ def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
 
     tenant_filter = "(t.tenant_id IS NULL OR t.tenant_id = :tenant_id)"
     extra_where = spec.extra_where_sql
+    if spec.soft_delete:
+        extra_where = f"{extra_where} AND t.deleted_at IS NULL"
+
+    # Optional per-column match flags. A name-only surface (label column +
+    # FTS, no extra columns) has none — emitting the join unconditionally
+    # would leave a dangling comma and an invalid statement.
+    extra_flag_names = [
+        statement.split(" AS ")[-1]
+        for statement in match_flag_selects
+        if not statement.startswith("CASE WHEN t." + label)
+        and not statement.startswith("CASE WHEN to_tsvector")
+    ]
+    extra_flags_sql = "".join(", r." + name for name in extra_flag_names)
 
     sql = f"""
     WITH q_ts AS (SELECT websearch_to_tsquery('simple', :q) AS tsq),
@@ -370,15 +352,7 @@ def _build_hybrid_sql(spec: _CatalogSearchSpec) -> str:
         r.row_id,
         r.label,
         r.snippet,
-        r.m_label_tri, r.m_label_ilike, r.m_fts,
-        {
-        ", ".join(
-            "r." + s.split(" AS ")[-1]
-            for s in match_flag_selects
-            if not s.startswith("CASE WHEN t." + label)
-            and not s.startswith("CASE WHEN to_tsvector")
-        )
-    },
+        r.m_label_tri, r.m_label_ilike, r.m_fts{extra_flags_sql},
         (CASE WHEN r.tri_score > 0 THEN 1.0 / ({RRF_K} + r.tri_rank) ELSE 0 END)
         + (CASE WHEN r.fts_score > 0 THEN 1.0 / ({RRF_K} + r.fts_rank) ELSE 0 END)
         AS rrf_score

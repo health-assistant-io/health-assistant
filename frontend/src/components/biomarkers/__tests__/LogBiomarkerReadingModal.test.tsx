@@ -3,9 +3,14 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 
 // Stub i18n — return the key (so we can assert presence) like the other tests.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (_: string, fallback?: string) => fallback ?? 't-key' }),
-}));
+vi.mock('react-i18next', () => {
+  const t = (key: string, fallback?: string) =>
+    fallback ?? String(key).split('.').pop();
+  return {
+    useTranslation: () => ({ t, i18n: { language: 'en' } }),
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  };
+});
 
 // Stub the observation service so no real network call fires.
 const createObservationMock = vi.fn().mockResolvedValue({ id: 'obs-1' });
@@ -126,12 +131,9 @@ describe('LogBiomarkerReadingModal', () => {
     const valueInput = screen.getByPlaceholderText('0.00') as HTMLInputElement;
     fireEvent.change(valueInput, { target: { value: '95' } });
 
-    // The submit button is the only button with bg-blue-600 inside the
-    // footer (the body has bg-blue-600 interpretation toggles too, but they
-    // live in the form, not the footer).
-    const footer = document.querySelector('div.bg-gray-50.dark\\:bg-dark-bg\\/50.border-t') as HTMLElement;
-    expect(footer).toBeTruthy();
-    const submitButton = footer.querySelector('button.bg-blue-600') as HTMLButtonElement;
+    // The submit button is the shell footer's native submit (associated with
+    // the record form through the `form` attribute).
+    const submitButton = document.querySelector('button[type="submit"]') as HTMLButtonElement;
     expect(submitButton).toBeTruthy();
 
     await waitFor(() => expect(submitButton.disabled).toBe(false));
@@ -169,9 +171,8 @@ describe('LogBiomarkerReadingModal', () => {
         lockedBiomarker={GLUCOSE}
       />,
     );
-    // Find the header close button — it's the X-icon button in the header
-    // (which is the first icon-only button in the document).
-    const closeBtn = document.querySelector('div.flex.items-center.justify-between button:last-child') as HTMLButtonElement;
+    // The shell's single close button.
+    const closeBtn = screen.getByRole('button', { name: 'close' });
     fireEvent.click(closeBtn);
     expect(createObservationMock).not.toHaveBeenCalled();
   });

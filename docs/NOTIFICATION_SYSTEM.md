@@ -38,7 +38,7 @@ Two supporting tables:
 | `AGENT` | HITL proposal created by the AI agent | `hitl` | `_notify_hitl_proposal` helper in `ai/tools/hitl_proposals.py` (called from all 6 propose tools) |
 | `INTEGRATION` | Wearable/lab sync outcome (baseline) **+ provider-authored rich events** (threshold alerts, HITL prompts, daily summaries, etc.) | `integration` / `alert` / `hitl` / `agent` / `system` | `_notify_sync_outcome` (baseline) + `_emit_provider_notifications` (opt-in via the declared `notify` capability) — both called from `integration_sync_service.post_sync_notifications` after `run_sync` AND after webhook processing |
 | `CLINICAL` | Clinical event created | `clinical_event` | `POST /clinical-events` → `emit` to the care team |
-| `SYSTEM` | Admin broadcast (`POST /admin/notifications/broadcast`) | `system` | admin endpoint → `emit` with `TENANT` or `SYSTEM` targets |
+| `SYSTEM` | Admin broadcast (`POST /admin/notifications/broadcast`) **+ sign-in alerts** (`SECURITY_EVENT` when a login comes from a device/address the account has never used) | `system` / `security` | admin endpoint → `emit`; `services/auth/login_notifications.py` → `emit` after a successful sign-in |
 
 ## Integration-driven notifications (provider-opt-in)
 
@@ -113,7 +113,22 @@ All three layers are exposed through one abstraction — the **notification kind
 
 `emit()` stamps the resolved kind into `payload.preferences` automatically (best-effort, non-blocking) so the frontend can render an inline "Turn off this kind" button + "Notification settings" link on each notification without deriving semantics itself.
 
-**Immutable kinds** (safety-critical): `SYSTEM_ERROR` type, and `severity=critical` for `SYSTEM`/`CLINICAL` sources. The mute button is hidden; the manage link remains.
+**Immutable kinds** (safety-critical): the `SYSTEM_ERROR` and `SECURITY_EVENT`
+types, and `severity=critical` for `SYSTEM`/`CLINICAL` sources. The mute
+button is hidden; the manage link remains. For a type-level immutable kind
+`emit` also **ignores the source-level mute** — muting the whole `SYSTEM`
+source cannot blind a user to a failure or a new-device sign-in — while
+channel preferences (e.g. push off) still apply.
+
+**Sign-in alerts** (`SECURITY_EVENT`, category `security`, severity
+`warning`): a successful sign-in — password, MFA completion or SSO — whose
+`(ip, user agent)` matches **no live `auth_sessions` family** of the account
+emits one event to that user (in-app + push, never email) carrying the
+device label, the address and the method; a per-device 24-hour dedup key
+stops a crash-looping client from flooding the inbox. "Known device" is the
+authoritative family record, so a family stored before migration
+`0019_session_metadata` (NULL device facts) counts as unknown — re-alerting
+beats missing a compromise.
 
 **Unified endpoints** (`backend/app/api/v1/endpoints/notifications.py`):
 - `GET /notifications/preferences[?integration_id=X]` — all addressable kinds + their current `enabled` state. Optional `integration_id` scopes to one instance (the per-instance tab).

@@ -73,3 +73,35 @@ describe('medicationScheduler', () => {
     expect(result.length).toBe(0);
   });
 });
+
+describe('medicationScheduler — wire-cased status', () => {
+  const base: MedicationRecord = {
+    id: 'med-wire',
+    patient_id: 'p-1',
+    tenant_id: 't-1',
+    status: 'active',
+    code: { text: 'Aspirin' },
+    start_date: '2026-03-01',
+    dosage: '100mg',
+    frequency: { type: 'daily', frequency: 1, time_of_day: ['08:00'] },
+    created_at: '2026-01-01',
+  };
+
+  it('treats the backend ACTIVE value as active', () => {
+    const med = {
+      ...base,
+      status: 'ACTIVE' as never,
+    } as MedicationRecord;
+    const result = getMedicationOccurrences([med], parseISO('2026-03-01'), parseISO('2026-03-01'));
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('does not schedule a non-active wire value', () => {
+    const med = {
+      ...base,
+      status: 'ON_HOLD' as never,
+    } as MedicationRecord;
+    const result = getMedicationOccurrences([med], parseISO('2026-03-01'), parseISO('2026-03-01'));
+    expect(result).toHaveLength(0);
+  });
+});

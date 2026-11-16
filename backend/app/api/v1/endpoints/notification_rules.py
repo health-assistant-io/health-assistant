@@ -2,7 +2,10 @@
 
 Tenant-scoped. Patient-scoped routes additionally call ``check_patient_access``
 so a ``USER``-role caller can only create rules for patients assigned to
-them; ``ADMIN``/``MANAGER`` see the tenant-wide view.
+them. The unfiltered list follows the caller's patient reach: ADMIN and a
+tenant-scope MANAGER see the tenant-wide view; a USER or an assigned-scope
+MANAGER sees only rules attached to patients they can reach (ADR 0054
+Phase 2) — never another patient's rules or tenant-wide rules.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.notification import (
     NotificationRuleCreate,
     NotificationRuleListResponse,
@@ -21,7 +25,7 @@ from app.schemas.notification import (
     NotificationRuleUpdate,
 )
 from app.schemas.user import TokenData
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import accessible_patient_ids, check_patient_access
 from app.services.notifications import notification_rule_service
 
 logger = logging.getLogger(__name__)
@@ -37,7 +41,9 @@ async def create_rule(
 ):
     """Create a notification rule (e.g. a biomarker threshold check)."""
     if payload.patient_id:
-        await check_patient_access(str(payload.patient_id), current_user, db)
+        await check_patient_access(
+            str(payload.patient_id), current_user, db, required=GrantPermission.WRITE
+        )
 
     rule = await notification_rule_service.create_rule(
         payload.to_dict(), tenant_id=current_user.tenant_id
@@ -57,18 +63,35 @@ async def list_rules(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List notification rules for the tenant (optionally filtered)."""
+    """List notification rules for the tenant (optionally filtered).
+
+    An explicit ``patient_id`` rides ``check_patient_access`` as before.
+    Without one, tenant-wide roles (SYSTEM_ADMIN/ADMIN, a MANAGER under the
+    default ``manager_scope=tenant``) see the tenant-wide list, while a USER
+    or an assigned-scope MANAGER sees only rules attached to patients they
+    can reach (own + active grants) — other patients' rules and tenant-wide
+    rules stay hidden (fail closed).
+    """
     if patient_id:
         await check_patient_access(patient_id, current_user, db)
-
-    rules = await notification_rule_service.list_rules(
-        tenant_id=current_user.tenant_id,
-        patient_id=patient_id,
-        biomarker_id=biomarker_id,
-        enabled=enabled,
-        limit=limit,
-        offset=offset,
-    )
+        rules = await notification_rule_service.list_rules(
+            tenant_id=current_user.tenant_id,
+            patient_id=patient_id,
+            biomarker_id=biomarker_id,
+            enabled=enabled,
+            limit=limit,
+            offset=offset,
+        )
+    else:
+        reachable = await accessible_patient_ids(current_user, db)
+        rules = await notification_rule_service.list_rules(
+            tenant_id=current_user.tenant_id,
+            patient_ids=reachable,
+            biomarker_id=biomarker_id,
+            enabled=enabled,
+            limit=limit,
+            offset=offset,
+        )
     items = [NotificationRuleRead.model_validate(r.to_dict()) for r in rules]
     return NotificationRuleListResponse(items=items, total=len(items))
 
@@ -94,7 +117,9 @@ async def update_rule(
 ):
     """Update a rule (tenant-scoped)."""
     if payload.patient_id is not None:
-        await check_patient_access(str(payload.patient_id), current_user, db)
+        await check_patient_access(
+            str(payload.patient_id), current_user, db, required=GrantPermission.WRITE
+        )
 
     rule = await notification_rule_service.update_rule(
         rule_id, payload.to_updates(), current_user.tenant_id

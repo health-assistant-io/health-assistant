@@ -1,7 +1,10 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import { offlineService } from '../services/offlineService';
+import { notifyAccessDenied } from './accessDeniedToast';
+import { stepUpChallengeOf } from '../services/stepUpTypes';
+import { resolveStepUp } from '../components/auth/stepUpController';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,6 +25,55 @@ const api = axios.create({
 /** Fired when a request cannot be authenticated even after a refresh
  * attempt — listeners drop back to the login screen. */
 export const UNAUTHENTICATED_EVENT = 'nx:unauthenticated';
+
+// ---------------------------------------------------------------------------
+// Tenant security policy denials (ADR 0054 Phase 3): when the refresh fails
+// with a typed policy reason, the reason must survive the hard redirect to
+// /login so the login node can explain *why* the session ended (idle /
+// max-age window, IP allowlist) instead of a bare sign-in form. sessionStorage
+// — tab-local, cleared on consumption, never carries credentials.
+// ---------------------------------------------------------------------------
+
+const SESSION_END_KEY = 'nx_session_end';
+
+/** The typed denial details the backend answers with (stable strings). */
+export type SessionEndReason = 'session_idle_expired' | 'session_max_age_expired' | 'ip_not_allowed';
+
+const SESSION_END_REASONS: readonly SessionEndReason[] = [
+  'session_idle_expired',
+  'session_max_age_expired',
+  'ip_not_allowed',
+];
+
+/** Persist a typed policy denial for the login node to surface (best
+ * effort — a blocked storage just means the generic message shows). */
+export function storeSessionEndReason(reason: SessionEndReason): void {
+  try {
+    sessionStorage.setItem(SESSION_END_KEY, reason);
+  } catch {
+    // storage unavailable — the login page falls back to its generic copy
+  }
+}
+
+/** Read + clear the stored reason (null when the session ended silently). */
+export function consumeSessionEndReason(): SessionEndReason | null {
+  try {
+    const reason = sessionStorage.getItem(SESSION_END_KEY) as SessionEndReason | null;
+    if (reason) sessionStorage.removeItem(SESSION_END_KEY);
+    return reason && SESSION_END_REASONS.includes(reason) ? reason : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The typed policy denial carried by an auth error response (401 idle/
+ * max-age, 403 ip_not_allowed) — null for any other failure. */
+export function sessionEndReasonOf(error: unknown): SessionEndReason | null {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof detail === 'string' && (SESSION_END_REASONS as readonly string[]).includes(detail)
+    ? (detail as SessionEndReason)
+    : null;
+}
 
 /** Read the JS-readable CSRF cookie (double-submit — identity-auth §10). */
 export function csrfToken(): string | null {
@@ -103,6 +155,26 @@ api.interceptors.response.use(
 
     const originalRequest = error.config;
 
+    // Step-up (ADR 0054 / program 12C1): a gated write answers 403 with a
+    // typed body. Prompt for a fresh proof, then replay the original
+    // request exactly once — never loop, and never intercept the step-up
+    // ceremony itself. A user who cancels keeps the original error.
+    const stepUp = stepUpChallengeOf(error);
+    if (
+      stepUp &&
+      stepUp.code === 'step_up_required' &&
+      originalRequest &&
+      !originalRequest._stepUpRetry &&
+      !isStepUpRequest(originalRequest.url)
+    ) {
+      const satisfied = await resolveStepUp(stepUp);
+      if (satisfied) {
+        originalRequest._stepUpRetry = true;
+        return api(originalRequest);
+      }
+      return Promise.reject(error);
+    }
+
     // Check if it's a network error (potentially offline during request)
     if (!error.response && isNetworkError(error)) {
        const isModification = ['post', 'put', 'patch', 'delete'].includes(originalRequest.method?.toLowerCase() || '');
@@ -148,12 +220,27 @@ api.interceptors.response.use(
       }
     }
 
+    // 403 (ADR 0054): only the central gate's denials surface as one clear
+    // toast — they carry the `X-Authz-Denied` marker header (exposed to the
+    // SPA via CORS `expose_headers`). Row-level denials (ownership checks)
+    // answer with the same status but no marker: they are business answers
+    // the caller handles, and toasting them would mislabel them as "your
+    // role does not allow this action". Never retried, never redirected.
+    if (error.response?.status === 403 && error.response?.headers?.['x-authz-denied']) {
+      notifyAccessDenied();
+    }
+
     return Promise.reject(error);
   }
 );
 
 function isNetworkError(error: any) {
   return error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.message === 'Network Error';
+}
+
+/** The step-up ceremony itself must never trigger another step-up prompt. */
+function isStepUpRequest(url: string | undefined): boolean {
+  return Boolean(url && url.includes('/auth/step-up'));
 }
 
 // Single-flight refresh (audit 2026-08 FE-H4): N concurrent 401s share one
@@ -164,6 +251,22 @@ function isNetworkError(error: any) {
 // the server rotates the whole cookie triple. Returns true when a new
 // session was established.
 let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Quiet session probe (bare axios, no interceptors): used by the SSO
+ * popup poller while the callback tab holds the cookies. A false answer is
+ * a normal intermediate state, never a logout trigger.
+ */
+export async function probeSession(): Promise<boolean> {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/auth/validate`, {
+      withCredentials: true,
+    });
+    return response.status < 400 && response.data?.valid !== false;
+  } catch {
+    return false;
+  }
+}
 
 export function refreshSession(): Promise<boolean> {
   if (refreshInFlight) {
@@ -180,7 +283,14 @@ export function refreshSession(): Promise<boolean> {
       );
       // Body tokens are for §9 clients; the browser ignores them.
       return response.status < 400;
-    } catch {
+    } catch (refreshError) {
+      // A typed policy denial (ADR 0054 Phase 3) is the *reason* the
+      // session ended — persist it so /login can explain instead of a
+      // bare sign-in form (no retry loop: the caller redirects once).
+      const reason = sessionEndReasonOf(refreshError);
+      if (reason) {
+        storeSessionEndReason(reason);
+      }
       return false;
     } finally {
       refreshInFlight = null;

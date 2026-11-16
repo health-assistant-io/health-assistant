@@ -19,7 +19,9 @@ import pytest
 from sqlalchemy import delete, func, select, text
 
 from app.core.database import AsyncSessionLocal
+from app.core.tenant_context import tenant_scope
 from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.enums import CatalogScope
 from app.models.fhir.patient import Patient
 from app.models.telemetry_model import (
     TelemetryAnomalyModel,
@@ -107,6 +109,7 @@ async def _seed_definition(
             await db.flush()
             unit_id = unit.id
         definition = BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if TENANT is not None else CatalogScope.SYSTEM),
             id=uuid.uuid4(),
             tenant_id=TENANT,
             slug=slug,
@@ -278,15 +281,21 @@ async def test_anomaly_engine_detects_once_and_resolves_on_recovery(telemetry_en
     await _refresh_hourly()
 
     async with AsyncSessionLocal() as db:
-        detected = await detect_telemetry_anomalies(
-            db, tenant_id=TENANT, lookback_days=2, threshold=2.5
-        )
+        # The scoped aggregate view answers only under the tenant's
+        # context (Phase 11) — plant it the way a request/worker would.
+        with tenant_scope(TENANT):
+            detected = await detect_telemetry_anomalies(
+                db, tenant_id=TENANT, lookback_days=2, threshold=2.5
+            )
     assert len(detected) == 1
     assert detected[0]["kind"].value == "spike"
 
     # Re-running the same detection must update, not duplicate.
     async with AsyncSessionLocal() as db:
-        await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
+        # The scoped aggregate view answers only under the tenant's
+        # context (Phase 11) — plant it the way a request/worker would.
+        with tenant_scope(TENANT):
+            await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
         count = (
             await db.execute(
                 select(func.count(TelemetryAnomalyModel.id)).where(
@@ -315,7 +324,10 @@ async def test_anomaly_engine_detects_once_and_resolves_on_recovery(telemetry_en
     await _refresh_hourly()
 
     async with AsyncSessionLocal() as db:
-        await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
+        # The scoped aggregate view answers only under the tenant's
+        # context (Phase 11) — plant it the way a request/worker would.
+        with tenant_scope(TENANT):
+            await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
         rows = (
             (
                 await db.execute(
@@ -350,7 +362,10 @@ async def test_dedup_key_keeps_patients_and_devices_apart(telemetry_env):
     await _refresh_hourly()
 
     async with AsyncSessionLocal() as db:
-        await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
+        # The scoped aggregate view answers only under the tenant's
+        # context (Phase 11) — plant it the way a request/worker would.
+        with tenant_scope(TENANT):
+            await detect_telemetry_anomalies(db, tenant_id=TENANT, lookback_days=2, threshold=2.5)
         rows = (
             (
                 await db.execute(

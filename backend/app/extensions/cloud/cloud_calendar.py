@@ -1684,13 +1684,11 @@ def reconcile(
             if direction == SyncDirection.PULL:
                 skipped += 1
                 continue
-            if deletions == DeletionPolicy.KEEP_REMOTE and remote_writable:
-                actions.append(
-                    SyncAction(ActionKind.CREATE_REMOTE, uid, local_id=local_record.local_id,
-                               event=_with_uid(local_record.event, uid), reason="remote-vanished")
-                )
-            else:
-                actions.append(SyncAction(ActionKind.UNLINK, uid, local_id=local_record.local_id, reason="remote-vanished"))
+            # E2: a remote-vanished event is not re-created under KEEP_REMOTE;
+            # UNLINK lets the host keep the link row as a tombstone.
+            actions.append(
+                SyncAction(ActionKind.UNLINK, uid, local_id=local_record.local_id, reason="remote-vanished")
+            )
             continue
 
         # E3: compare each side against ITS OWN pin. A missing pin reads as

@@ -40,6 +40,8 @@ wheels/
 .env.local
 .env.*.local
 .env.*.example
+!.env.ci.example
+!.env.onprem.example
 .env.backup*
 
 # IDE

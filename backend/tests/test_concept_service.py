@@ -368,6 +368,46 @@ async def test_ai_proposed_edge_lands_as_proposed(tenant_with_data):
 
 
 @pytest.mark.asyncio
+async def test_approving_second_proposed_duplicate_raises_typed_conflict(tenant_with_data):
+    """Two proposed rows with the same identity may coexist; approving the
+    second hits the approved-only partial unique and must raise the same
+    typed conflict as ``create_edge`` — with the session healthy afterwards,
+    the first approval still in place and further proposed repeats allowed."""
+    tid, cardio_id, _, _, panel_id, _ = tenant_with_data
+    async with AsyncSessionLocal() as session:
+        svc = ConceptService(session)
+        proposed = {
+            "src_type": EdgeEndpointType.CONCEPT,
+            "src_id": cardio_id,
+            "dst_type": EdgeEndpointType.CONCEPT,
+            "dst_id": panel_id,
+            "relation": ConceptRelationType.ORDERS,
+            "tenant_id": None,
+            "role": "SYSTEM_ADMIN",
+            "source": ConceptProvenance.AI,
+            "status": EdgeApprovalStatus.PROPOSED,
+        }
+        first = await svc.create_edge(**proposed)
+        duplicate = await svc.create_edge(**proposed)
+        await session.commit()
+
+        approved = await svc.approve_edge(first.id, "SYSTEM_ADMIN")
+        await session.commit()
+        assert approved.status == EdgeApprovalStatus.APPROVED
+
+        with pytest.raises(ValueError, match="Edge already exists"):
+            await svc.approve_edge(duplicate.id, "SYSTEM_ADMIN")
+
+        repeat = await svc.create_edge(**proposed)
+        await session.commit()
+        assert repeat.status == EdgeApprovalStatus.PROPOSED
+        edges = await svc.get_edges(tid, src_id=cardio_id, include_proposed=True)
+        statuses = {e.id: e.status for e in edges}
+        assert statuses[first.id] == EdgeApprovalStatus.APPROVED
+        assert statuses[duplicate.id] == EdgeApprovalStatus.PROPOSED
+
+
+@pytest.mark.asyncio
 async def test_search_concepts_by_name(tenant_with_data):
     tid, *_ = tenant_with_data
     async with AsyncSessionLocal() as session:

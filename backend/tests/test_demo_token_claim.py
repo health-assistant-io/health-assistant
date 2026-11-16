@@ -59,7 +59,7 @@ async def test_demo_token_accepted_with_demo_mode():
     user = await create_user()
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
     with patch.object(instance_state, "get_state", new=_state_with(demo_mode=True)):
-        token_data = await get_current_user(token)
+        token_data = await get_current_user(None, token)
     assert str(token_data.user_id) == str(user.id)
 
 
@@ -69,7 +69,7 @@ async def test_demo_token_rejected_without_demo_mode():
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_DEMO)
     with patch.object(instance_state, "get_state", new=_state_with(demo_mode=False)):
         with pytest.raises(HTTPException) as exc:
-            await get_current_user(token)
+            await get_current_user(None, token)
     assert exc.value.status_code == 401
 
 
@@ -78,5 +78,5 @@ async def test_regular_token_unaffected():
     user = await create_user()
     token = await _mint_session_token(user, auth_mode=AUTH_MODE_PASSWORD)
     with patch.object(instance_state, "get_state", new=_state_with(demo_mode=False)):
-        token_data = await get_current_user(token)
+        token_data = await get_current_user(None, token)
     assert str(token_data.user_id) == str(user.id)

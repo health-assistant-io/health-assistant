@@ -22,6 +22,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.authz.permissions import Permission
 from app.core.errors import DomainError
 from app.models.biomarker_model import (
     BiomarkerDefinition,
@@ -42,9 +43,9 @@ from app.models.enums import (
     ConceptRelationType,
     EdgeApprovalStatus,
     EdgeEndpointType,
-    Role,
 )
-from app.models.fhir.patient import Observation, Patient
+from app.models.fhir.patient import Observation
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.clinical_event import (
     ClinicalEventCreate,
     ClinicalEventOccurrenceCreate,
@@ -52,10 +53,12 @@ from app.schemas.clinical_event import (
 )
 from app.schemas.user import TokenData
 from app.services.auth.access import (
+    apply_patient_scope,
     check_event_access,
     check_examination_access,
     check_observation_access,
     check_patient_access,
+    require_principal_permission,
 )
 
 logger = logging.getLogger(__name__)
@@ -203,10 +206,10 @@ async def list_events(
     if patient_id:
         await check_patient_access(patient_id, current_user, db)
         query = query.where(ClinicalEvent.patient_id == patient_id)
-    elif current_user.role == Role.USER.value:
-        # Force filter by user's patients.
-        patient_ids_query = select(Patient.id).where(Patient.user_id == current_user.user_id)
-        query = query.where(ClinicalEvent.patient_id.in_(patient_ids_query))
+    else:
+        # Grant-aware scope (ADR 0054 Phase 2): USER and an assigned-scope
+        # MANAGER see own + granted patients only.
+        query = await apply_patient_scope(query, ClinicalEvent.patient_id, current_user, db)
 
     if examination_id:
         query = query.where(
@@ -311,7 +314,8 @@ async def create_event(
     pattern on ``examinations``. UI callers leave both as ``None`` and get
     the original create-always behavior.
     """
-    await check_patient_access(payload.patient_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_patient_access(payload.patient_id, current_user, db, required=GrantPermission.WRITE)
 
     # The engine passes ``external_id`` as a kwarg; UI callers leave it
     # ``None``. Either way, fall back to ``payload.external_id`` so the
@@ -398,7 +402,8 @@ async def update_event(
     payload: ClinicalEventUpdate,
 ) -> dict[str, Any]:
     """Partial update with full-replace link sync; notify on resolve/edit."""
-    event = await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    event = await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
 
     will_resolve = _detect_resolve_transition(event, payload)
 
@@ -428,7 +433,8 @@ async def update_event(
 
 async def soft_delete_event(db: AsyncSession, event_id: UUID, current_user: TokenData) -> None:
     """Tombstone an event (set ``deleted_at``) and emit the deletion notice."""
-    event = await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    event = await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
     event.deleted_at = _dt.datetime.now(_dt.UTC)
     event.updated_by = current_user.user_id
     await db.commit()
@@ -445,8 +451,9 @@ async def link_examination(
     """Add a single examination link (rejects duplicates)."""
     from fastapi import HTTPException
 
-    await check_event_access(event_id, current_user, db)
-    await check_examination_access(examination_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
+    await check_examination_access(examination_id, current_user, db, required=GrantPermission.WRITE)
 
     existing = await db.execute(
         select(EventExaminationLink).where(
@@ -482,8 +489,9 @@ async def link_observation(
     """
     from fastapi import HTTPException
 
-    await check_event_access(event_id, current_user, db)
-    await check_observation_access(observation_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
+    await check_observation_access(observation_id, current_user, db, required=GrantPermission.WRITE)
 
     existing = await db.execute(
         select(EventObservationLink).where(
@@ -569,7 +577,8 @@ async def add_occurrence(
     payload: ClinicalEventOccurrenceCreate,
 ) -> dict[str, Any]:
     """Append a discrete occurrence to a journey and re-fetch the event."""
-    await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
 
     occurrence = ClinicalEventOccurrence(
         event_id=event_id,
@@ -595,7 +604,8 @@ async def delete_occurrence(
     """Remove a single occurrence from a journey (access-checked)."""
     from fastapi import HTTPException
 
-    await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
 
     result = await db.execute(
         select(ClinicalEventOccurrence).where(
@@ -631,7 +641,8 @@ async def link_anatomy(
     """
     from fastapi import HTTPException
 
-    await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
 
     # Anatomy existence (any tenant — anatomy is reference data).
     from app.models.anatomy_model import AnatomyStructure
@@ -671,7 +682,8 @@ async def unlink_anatomy(
     """Remove an anatomy link from an event (access-checked)."""
     from fastapi import HTTPException
 
-    await check_event_access(event_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_event_access(event_id, current_user, db, required=GrantPermission.WRITE)
 
     result = await db.execute(
         select(EventAnatomyLink).where(
@@ -775,6 +787,7 @@ async def add_correlated_biomarker(
     event_type_id: UUID,
     biomarker_id: UUID,
     *,
+    actor: TokenData,
     correlation_type: str = "monitoring",
     description: str | None = None,
 ) -> dict[str, Any]:
@@ -787,6 +800,7 @@ async def add_correlated_biomarker(
     """
     from fastapi import HTTPException
 
+    require_principal_permission(actor, Permission.CATALOG_CREATE)
     etype = (
         await db.execute(select(ClinicalEventType).where(ClinicalEventType.id == event_type_id))
     ).scalar_one_or_none()
@@ -841,9 +855,13 @@ async def remove_correlated_biomarker(
     db: AsyncSession,
     event_type_id: UUID,
     biomarker_id: UUID,
+    *,
+    actor: TokenData,
 ) -> None:
     """Delete the biomarker↔event-type MONITORS edge (404 if not found)."""
     from fastapi import HTTPException
+
+    require_principal_permission(actor, Permission.CATALOG_MODERATE)
 
     edge = (
         await db.execute(

@@ -26,6 +26,7 @@ from app.models.associations import examination_doctors
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.doctor_model import DoctorModel
 from app.models.enums import (
+    CatalogScope,
     ComparisonOperator,
     NotificationCategory,
     NotificationChannel,
@@ -285,6 +286,7 @@ async def test_emit_no_push_delivery_without_subscription(monkeypatch):
 
 async def _make_biomarker(tenant_id, low=70.0, high=100.0) -> BiomarkerDefinition:
     bio = BiomarkerDefinition(
+        scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
         tenant_id=tenant_id,
         slug=f"bio-{uuid4().hex[:6]}",
         coding_system="custom",

@@ -20,8 +20,9 @@ not a runtime guess. Operators choose one of four modes through
 - ``disabled``           — never required. Logs a security warning on boot.
                            Only safe behind a firewall / VPN / 127.0.0.1 bind.
 
-Hosts that already bypass the token — localhost requests and the family standards/test envs —
-keep bypassing in every mode (these are not deployment-target decisions).
+Only an explicitly dev/test instance (``HA_APP_ENV``) bypasses the token.
+The raw TCP peer is deliberately NOT a bypass signal: behind a host-level
+reverse proxy every remote request looks like 127.0.0.1.
 
 State is module-level: the standalone HTTP stack is a single uvicorn process
 (migration to Redis unchanged in shape if multi-worker ever lands). With
@@ -45,7 +46,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_LOCALHOST_HOSTS = {"127.0.0.1", "::1", "localhost"}
 _DEV_ENVS = {"development", "test", "testing"}
 
 _current_token: str | None = None
@@ -133,18 +133,6 @@ def clear() -> None:
     _post_grace_token_minted = False
 
 
-def _request_host(request: Request) -> str:
-    host = getattr(request, "client", None)
-    if host and getattr(host, "host", None):
-        return host.host
-    return ""
-
-
-def is_local_request(request: Request) -> bool:
-    """True if the request originates from localhost."""
-    return _request_host(request) in _LOCALHOST_HOSTS
-
-
 def _is_dev_env() -> bool:
     return settings.HA_APP_ENV in _DEV_ENVS
 
@@ -183,7 +171,8 @@ def is_setup_token_required(request: Request) -> bool:
 
     Decision tree (see the design notes §D1):
 
-    1. Localhost request OR the family standards/test env → never required (escape hatch).
+    1. The family standards/test env (``HA_APP_ENV`` dev/test) → never
+       required (escape hatch). Localhost is not a bypass.
     2. Mode dispatch:
        - ``log``      → required (the active token was minted+logged on boot).
        - ``env``      → required (token was seeded from SETUP_BOOTSTRAP_TOKEN).
@@ -191,7 +180,11 @@ def is_setup_token_required(request: Request) -> bool:
                         (lazily mints + logs a token if no env seed).
        - ``disabled`` → never required.
     """
-    if is_local_request(request) or _is_dev_env():
+    # Only an explicitly dev/test instance bypasses the token. The raw TCP
+    # peer is NOT a trustworthy signal: behind a host-level reverse proxy
+    # every remote request appears to come from 127.0.0.1, which would
+    # re-open unauthenticated first-claim on such deployments.
+    if _is_dev_env():
         return False
 
     mode = current_mode()

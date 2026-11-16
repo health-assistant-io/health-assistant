@@ -20,6 +20,11 @@ invite       invited email (or "")      jti (single-use, consumed), email,
 download     requesting user id (or "") jti, doc_id (presign pattern, short TTL)
 mfa_challenge user id (password-      jti (consumed on the first successful
              verified, pre-session)   /auth/mfa/verify), user_id
+pat          owner user id            opaque, NOT a JWT: prefix + sha256
+             (resolved from          against ``api_tokens``; carries the
+             ``api_tokens``)         owner's tenant/role mirror, the
+                                     intersected permission set and the
+                                     patient scope
 ===========  =========================  ===========================================
 
 Signing keys are resolved per purpose through ``app.core.keys`` (the
@@ -38,7 +43,9 @@ from uuid import uuid4
 import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException, Request, status
+from nx_auth.opaque import parse
 
+from app.core import tenant_context
 from app.core.config import settings
 from app.core.keys import key_for, verification_keys
 from app.models.enums import Role
@@ -56,6 +63,36 @@ API_TOKEN_KIND = "api"
 INVITE_TOKEN_KIND = "invite"
 DOWNLOAD_TOKEN_KIND = "download"
 MFA_CHALLENGE_TOKEN_KIND = "mfa_challenge"
+PAT_TOKEN_KIND = "pat"
+
+#: The opaque prefix every personal access token starts with (ADR 0054
+#: Phase 6, program 12C2B). PATs are **not** JWTs — they resolve by
+#: prefix + sha256 against ``api_tokens`` and are never minted here.
+PAT_TOKEN_PREFIX = "ha_pat_"
+
+#: The opaque prefix every integration/extension principal secret starts with
+#: (ADR 0054 D8, Phase 13). Like a PAT it is not a JWT: it resolves by
+#: prefix + sha256 against ``integration_principals``.
+INTEGRATION_PRINCIPAL_TOKEN_PREFIX = "ha_int_"
+
+#: Credential-management surfaces a scoped machine credential (PAT or
+#: integration principal) must never reach: minting another credential,
+#: rotating a password, adding a factor, revoking a device or stepping up
+#: would be privilege escalation from a bearer secret. Scoped credentials
+#: authenticate **domain** routes only.
+SESSION_ONLY_SCOPED_DENIED_PREFIXES: tuple[str, ...] = (
+    "/api/v1/auth",
+    "/api/v1/me/password",
+    "/api/v1/me/mfa",
+    "/api/v1/me/passkeys",
+    "/api/v1/me/sessions",
+    "/api/v1/me/api-tokens",
+    "/api/v1/me/integration-principals",
+    "/api/v1/integration-principals",
+    "/api/v1/me/access",
+    "/api/v1/setup",
+    "/api/v1/scim",
+)
 
 AUTH_MODE_LOCAL_BOOT = "local-boot"
 AUTH_MODE_PASSWORD = "password"
@@ -152,6 +189,8 @@ def _mint(kind: str, data: dict, ttl: timedelta) -> tuple[str, str]:
         if not user_id:
             raise ValueError("mfa_challenge tokens require a user_id claim")
         to_encode["sub"] = str(user_id)
+    elif kind == PAT_TOKEN_KIND:
+        raise ValueError("pat tokens are opaque secrets — never minted as a JWT")
     else:
         raise ValueError(f"unknown token kind {kind!r}")
 
@@ -286,6 +325,118 @@ def get_token(request: Request, authorization: str = Header(None)):
     )
 
 
+def is_pat_token(token: str | None) -> bool:
+    """Whether a presented bearer is a PAT-shape opaque secret."""
+    return token is not None and token.startswith(PAT_TOKEN_PREFIX)
+
+
+def is_integration_principal_token(token: str | None) -> bool:
+    """Whether a presented bearer is an integration-principal opaque secret."""
+    return token is not None and token.startswith(INTEGRATION_PRINCIPAL_TOKEN_PREFIX)
+
+
+def is_scoped_credential(value: TokenData) -> bool:
+    """Whether a resolved principal is a scoped machine credential."""
+    return isinstance(getattr(value, "pat_id", None), str) or isinstance(
+        getattr(value, "integration_principal_id", None), str
+    )
+
+
+def _scoped_denied_on_path(path: str | None) -> bool:
+    if not path:
+        return False
+    for prefix in SESSION_ONLY_SCOPED_DENIED_PREFIXES:
+        if path == prefix or path.startswith(prefix + "/"):
+            return True
+    return False
+
+
+def reject_scoped_principal_on_session_only_surface(
+    principal: TokenData, request: Request | None
+) -> None:
+    """Refuse a scoped credential on credential-management surfaces.
+
+    A PAT or integration principal authenticates domain routes; letting it
+    rotate its owner's password, enroll a factor, revoke devices, step up or
+    mint another credential would turn one bounded bearer into permanent
+    account control. The refusal is explicit (403) rather than a generic 401
+    so the client can tell an operator what to use instead.
+    """
+    if not is_scoped_credential(principal):
+        return
+    if request is None:
+        return
+    path = getattr(getattr(request, "url", None), "path", None)
+    if _scoped_denied_on_path(path):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Scoped credentials cannot be used on credential-management endpoints",
+        )
+
+
+async def authenticate_pat_token(token: str) -> TokenData:
+    """Resolve an opaque ``pat`` bearer to its scoped principal.
+
+    The lookup is prefix + sha256 against ``api_tokens``; the service
+    enforces active/expiry/owner/tenant and re-intersects the permission
+    set with the owner's live role. Invalid credentials answer the same
+    401 as a failed session verification and write one ``api_token.denied``
+    audit row (fail-closed). The audit prefix comes from the kit's strict
+    ``parse``: a bearer that cannot have been minted in the PAT shape
+    records ``token_prefix: null`` instead of a junk segment.
+    """
+    from app.services.auth import api_tokens
+
+    principal = await api_tokens.resolve_principal(token)
+    if principal is None:
+        presented = parse(token.strip(), brand=api_tokens.PAT_TOKEN_BRAND) if token else None
+        await api_tokens.audit_denied(
+            reason="invalid_token", prefix=presented[0] if presented else None
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return principal
+
+
+async def authenticate_integration_principal_token(token: str) -> TokenData:
+    """Resolve an opaque ``ha_int_`` bearer to its scoped principal.
+
+    Same shape as the PAT path: prefix + sha256 against
+    ``integration_principals``, owner/tenant pairing verified, the scope set
+    re-intersected with the owner's live role and the extension declaration.
+    Failures answer 401 and write one ``integration_principal.denied`` row.
+    """
+    from app.services.integration import integration_principals
+
+    principal = await integration_principals.resolve_principal(token)
+    if principal is None:
+        await integration_principals.audit_denied(
+            reason="invalid_token", prefix=integration_principals.secret_prefix_of(token)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return principal
+
+
+async def authenticate_bearer_token(token: str) -> TokenData:
+    """Dispatch a bearer by shape: opaque credentials, else the session JWT.
+
+    Neither opaque kind mints or refreshes anything — they carry their own
+    permission and patient scope and are re-intersected on every use.
+    """
+    if is_pat_token(token):
+        return await authenticate_pat_token(token)
+    if is_integration_principal_token(token):
+        return await authenticate_integration_principal_token(token)
+    return await authenticate_session_token(token)
+
+
 async def authenticate_session_token(token: str) -> TokenData:
     """The single session-verification path (identity-auth §4/§7/§8).
 
@@ -324,6 +475,20 @@ async def authenticate_session_token(token: str) -> TokenData:
     ver = payload.get("ver")
     if not user_id or not jti or ver is None or auth_mode is None:
         _deny()
+
+    # RLS context from the signature-verified claims (ADR 0054 D4) — the
+    # verifier's own lookups below (the live user row) run under the
+    # planted context. A switched SYSTEM_ADMIN's user row lives in its
+    # home tenant (``original_tenant_id``), so that claim drives the
+    # planted tenant GUC (the system flag stays role-driven — full reach);
+    # the authoritative set after the live-user check plants the same
+    # context again (idempotent). A malformed claim set clears the context
+    # and the verifier rejects below.
+    try:
+        tenant_context.set_principal(TokenData(**payload))
+    except Exception:
+        tenant_context.clear()
+
     if auth_mode not in (
         AUTH_MODE_LOCAL_BOOT,
         AUTH_MODE_PASSWORD,
@@ -374,16 +539,65 @@ async def authenticate_session_token(token: str) -> TokenData:
         # token_version bump = global sign-out (logout-all, admin change).
         _deny("Token has been revoked")
 
+    # Tenant security policy (ADR 0054 Phase 3) — read per request, never
+    # token-cached: a policy flip applies mid-session. The idle/max-age
+    # window rides the family's Redis anchor (sesspol:{fid}) and degrades
+    # open on a Redis outage; the refresh path additionally enforces the
+    # max-age cap from the authoritative auth_sessions row.
+    from app.services.auth import security_policy
+
+    policy = await security_policy.tenant_security_policy_for(str(user.tenant_id))
+    family_id = payload.get("fid")
+    denial = await security_policy.check_session_window(
+        policy, str(family_id) if family_id else None
+    )
+    if denial is not None:
+        _deny(denial)
+
+    if family_id:
+        # Device-list activity (0019): throttled to one write per minute per
+        # family, best-effort. Bookkeeping must never fail a verified
+        # request, so the helper swallows its own errors.
+        from app.services.auth import auth_session_service
+
+        await auth_session_service.touch_last_seen(str(family_id))
+
+    # Authoritative context (ADR 0054 D4): the operation tenant rides the
+    # token claim for authorization (the switch target when switched — the
+    # live user row carries the home tenant), the system flag the resolved
+    # role; set_principal plants the home tenant on the GUC for a switched
+    # principal (identity-honesty — see its docstring).
+    tenant_context.set_principal(token_data)
     return token_data
 
 
-async def get_current_user(token: str = Depends(get_token)):
-    """Get current user from the session JWT (identity-auth §12).
+async def get_current_user(request: Request = None, token: str = Depends(get_token)):  # type: ignore[assignment]
+    """Resolve the caller principal: session JWT **or** opaque PAT.
 
-    Session tokens only; verified against live instance state and the live
-    user row via :func:`authenticate_session_token`.
+    Session tokens run the family verification path
+    (:func:`authenticate_session_token`); a ``ha_pat_`` bearer resolves
+    through :func:`authenticate_pat_token` and carries its own permission
+    and patient scope. PATs are refused on credential-management surfaces.
+    When the central route gate (``app.core.authz.enforce``) already
+    verified this request's token, the cached principal is returned — one
+    verification per request (and the same surface refusal applies).
+
+    ``request: Request = None`` mirrors the FastAPI DI constraint documented
+    in ``app.core.authz.enforce.get_optional_session_user``: the exact
+    ``Request`` annotation is what FastAPI injects against, and the None
+    default serves the direct callers below (e.g.
+    ``get_current_user_id``) that run outside a request.
     """
-    return await authenticate_session_token(token)
+    if request is not None:
+        cached = getattr(request.state, "session_user", None)
+        if cached is not None:
+            reject_scoped_principal_on_session_only_surface(cached, request)
+            return cached
+    token_data = await authenticate_bearer_token(token)
+    reject_scoped_principal_on_session_only_surface(token_data, request)
+    if request is not None:
+        request.state.session_user = token_data
+    return token_data
 
 
 async def get_session_user_ws(token: str):
@@ -410,6 +624,11 @@ class RoleChecker:
         self.allowed_roles = [r.value if isinstance(r, Role) else r for r in allowed_roles]
 
     def __call__(self, current_user: TokenData = Depends(get_current_user)):
+        if is_scoped_credential(current_user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Scoped credentials cannot satisfy a role gate",
+            )
         if (
             current_user.role not in self.allowed_roles
             and current_user.role != Role.SYSTEM_ADMIN.value
@@ -427,8 +646,15 @@ async def require_admin(
     """Identity-auth §12 dependency name.
 
     Health's ``is_admin`` is derived from the Class S role enum
-    (ADMIN/SYSTEM_ADMIN — see ``UserModel.is_admin``).
+    (ADMIN/SYSTEM_ADMIN — see ``UserModel.is_admin``). A scoped machine
+    credential never satisfies a role gate: its authorization is its own
+    permission set, checked by the central route gate.
     """
+    if is_scoped_credential(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Scoped credentials cannot satisfy a role gate",
+        )
     if current_user.role not in (Role.ADMIN.value, Role.SYSTEM_ADMIN.value):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -439,38 +665,60 @@ async def require_admin(
 
 async def get_current_user_id(token: str = Depends(get_token)) -> str:
     """Get current user ID from JWT token"""
-    payload = await get_current_user(token)
+    # No request → no request.state cache; the None default above is the
+    # documented direct-call convention (FastAPI DI constraint), hence the
+    # targeted ignore.
+    payload = await get_current_user(None, token)  # type: ignore[arg-type]
     return str(payload.user_id)
 
 
 # --- download (presign) tokens --------------------------------------------
 
 
-def create_presigned_token(document_id: str, user_id: str | None = None) -> str:
+def create_presigned_token(
+    document_id: str,
+    user_id: str | None = None,
+    tenant_id: str | None = None,
+) -> str:
     """Create a short-lived ``download`` token for one file (presign pattern).
 
-    ``token_kind="download"`` + ``doc_id`` binding, 5-minute TTL. The
-    Class S presign semantics are unchanged (not single-use consumed —
-    the frontend <img> preview may re-fetch); only the claims moved to the
-    contract shape.
+    ``token_kind="download"`` + ``doc_id``/``tenant_id`` binding, 5-minute
+    TTL (S8). The Class S presign semantics are unchanged (not single-use
+    consumed — the frontend <img> preview may re-fetch). ``tenant_id`` is
+    verified against the document's tenant at download/preview time, so a
+    token minted by one tenant never serves another tenant's file, and the
+    ``user_id`` claim is re-checked against the live user row (active,
+    same id) — deactivating or deleting a user kills their outstanding
+    tokens within the TTL window.
     """
     token, _ = _mint(
         DOWNLOAD_TOKEN_KIND,
         {
             "doc_id": document_id,
             "user_id": str(user_id) if user_id else None,
+            "tenant_id": str(tenant_id) if tenant_id else None,
         },
         timedelta(minutes=5),
     )
     return token
 
 
-def verify_presigned_token(token: str, expected_doc_id: str) -> bool:
-    """Verify a short-lived ``download`` token"""
+def verify_presigned_token(token: str, expected_doc_id: str) -> dict | None:
+    """Verify a short-lived ``download`` token; return its claims or ``None``.
+
+    Checks the JWT signature, the ``token_kind == "download"`` claim, the
+    ``exp`` window and the ``doc_id`` binding. The ``tenant_id``/``user_id``
+    claims are validated against the loaded document and the live user row
+    by the download/preview endpoints
+    (``app.api.v1.endpoints.documents._validate_presign_claims``) — the
+    token alone proves issuance, not authorization.
+    """
     payload = _decode_with(token, key_for(DOWNLOAD_TOKEN_KIND))
     if not _kind_is(payload, DOWNLOAD_TOKEN_KIND):
-        return False
-    return payload is not None and payload.get("doc_id") == expected_doc_id
+        return None
+    if payload is None or payload.get("doc_id") != expected_doc_id:
+        return None
+    return payload
 
 
 # --- MFA challenge tokens (plan 16 H5) -------------------------------------
@@ -480,24 +728,33 @@ MFA_CHALLENGE_TTL_SECONDS = 5 * 60
 
 
 def create_mfa_challenge_token(
-    user_id: str, expires_delta: timedelta | None = None
+    user_id: str,
+    expires_delta: timedelta | None = None,
+    *,
+    origin: str | None = None,
 ) -> tuple[str, str]:
     """Mint a short-lived ``mfa_challenge`` JWT. Returns ``(token, jti)``.
 
-    Issued by ``POST /auth/login`` after the password verifies but a
-    TOTP/recovery code is still owed. Signed with the session key family
-    (§8 — a first-party, short-lived credential) yet **mutually
-    exclusive** with session tokens: ``verify_access_token`` rejects it,
-    so a challenge can never ride the domain API. Binds ``sub`` to the
-    user id; the caller must register the jti via
-    ``token_store.register_mfa_challenge`` (single-use — consumed by the
-    first successful verify) and the TTL is 5 minutes.
+    Issued by ``POST /auth/login`` (and the SSO callback, program 12C1)
+    after the first factor verifies but a TOTP/recovery code is still owed.
+    Signed with the session key family (§8 — a first-party, short-lived
+    credential) yet **mutually exclusive** with session tokens:
+    ``verify_access_token`` rejects it, so a challenge can never ride the
+    domain API. Binds ``sub`` to the user id; the caller must register the
+    jti via ``token_store.register_mfa_challenge`` (single-use — consumed by
+    the first successful verify) and the TTL is 5 minutes.
+
+    ``origin`` records which first factor produced the challenge
+    (``"sso"`` for the OIDC callback). The verify endpoint mints the
+    session with the matching ``auth_mode``, so an SSO sign-in never
+    downgrades to a password-mode session at the MFA step — and a failed
+    SSO MFA challenge can never fall back to the local password path.
     """
     if expires_delta is None:
         expires_delta = timedelta(seconds=MFA_CHALLENGE_TTL_SECONDS)
     return _mint(
         MFA_CHALLENGE_TOKEN_KIND,
-        {"user_id": str(user_id)},
+        {"user_id": str(user_id), "origin": origin},
         expires_delta,
     )
 
@@ -699,13 +956,18 @@ async def get_api_principal(
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        return TokenData(**payload)
+        principal = TokenData(**payload)
     except Exception:
         raise HTTPException(  # noqa: B904 -- bare raise; add explicit chaining when touched
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # RLS context from the verified facade principal (ADR 0054 D4): the
+    # client's tenant, its patient binding for ``patient/``-scoped
+    # clients, never the system flag.
+    tenant_context.set_principal(principal)
+    return principal
 
 
 async def require_session_token(

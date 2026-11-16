@@ -13,7 +13,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.anatomy_model import AnatomyStructure
 from app.models.biomarker_model import BiomarkerDefinition
 from app.models.concept_model import Concept
-from app.models.enums import ConceptStatus
+from app.models.enums import CatalogScope, ConceptStatus
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
@@ -119,6 +119,7 @@ async def test_search_catalogs_tenant_scoped():
     async with AsyncSessionLocal() as db:
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if other_tenant is not None else CatalogScope.SYSTEM),
                 slug=f"secret-{uuid.uuid4().hex[:6]}",
                 name="secrettenant biomarker",
                 tenant_id=other_tenant,

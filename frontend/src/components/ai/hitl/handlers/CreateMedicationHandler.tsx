@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Pill, Calendar, Tag } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
 import { HitlOutcomeDetail, buildLinkOutcomeChips } from '../outcome';
+import { SuggestedDefinitionChip } from '../SuggestedDefinitionChip';
 import {
   MedicationForm,
   MedicationFormPrefill,
   MedicationFormPayload,
 } from '../../../patients/MedicationForm';
 import { addPatientMedication } from '../../../../services/medicationService';
-import { createCatalogItem } from '../../../../services/catalogService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
 import {
   createLinksFor,
@@ -18,7 +18,8 @@ import {
   type LinkCreateResult,
 } from '../../../../services/conceptEdges';
 import { LinksSection } from '../LinksSection';
-import type { CatalogSelection } from '../../../../types/catalog';
+import type { CreateCatalogItemMeta } from '../../../catalog/CreateCatalogItemModal';
+import type { CatalogItem, CatalogSelection } from '../../../../types/catalog';
 
 /** Convert the backend's link-snapshot shape to CatalogSelection[]. */
 function proposalLinksToSelections(raw: unknown): CatalogSelection[] {
@@ -45,11 +46,6 @@ function proposalToPrefill(proposed: Record<string, any> | undefined): Medicatio
     name: proposed.name,
     catalog_id: proposed.catalog_id,
     matched: proposed.matched,
-    is_new: proposed.is_new,
-    indications: proposed.indications,
-    side_effects: proposed.side_effects,
-    contraindications: proposed.contraindications,
-    dosage_info: proposed.dosage_info,
     dosage: proposed.dosage,
     frequency_label: proposed.frequency_label,
     reason: proposed.reason,
@@ -110,23 +106,50 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
 
   const patientId = task.context?.patient_id as string | undefined;
 
+  // The prefill is computed ONCE per mount: the chip dialog's open/close cycle
+  // (and any parent re-render) must never re-hydrate the form — edits made
+  // before/after defining the medication survive.
+  const [prefill] = useState(() => proposalToPrefill(task.proposed_payload));
+
+  // Unmatched proposal → the persistent "define it" chip opens the create
+  // dialog with the proposal's DEFINITION fields only. Patient-instance text
+  // (dosage, frequency, reason, note, dates) never enters the catalog draft.
+  const proposed = task.proposed_payload as Record<string, any> | undefined;
+  const isNew = proposed?.is_new === true;
+  const [catalogSelection, setCatalogSelection] = useState<
+    { catalog_id: string; text: string } | undefined
+  >(undefined);
+  // The links the chip dialog already persisted on the created definition
+  // (only the ones it actually WROTE — a failed link stays pending here and
+  // is retried at confirm); confirm re-persists only links NOT in this set
+  // (no duplicate edges, no dropped links).
+  const dialogPersistedLinksRef = useRef<CatalogSelection[]>([]);
+
+  const definitionDraft = useMemo<Partial<CatalogItem> | undefined>(() => {
+    if (!proposed) return undefined;
+    return {
+      name: proposed.name,
+      description: proposed.description,
+      indications: proposed.indications,
+      dosage_info: proposed.dosage_info,
+      contraindications: proposed.contraindications,
+      side_effects: proposed.side_effects,
+    };
+  }, [proposed]);
+
+  const handleCreated = (row: CatalogItem, meta?: CreateCatalogItemMeta) => {
+    dialogPersistedLinksRef.current = meta?.persistedLinks ?? [];
+    setCatalogSelection({
+      catalog_id: String(row.id ?? ''),
+      text: String(row.name ?? proposed?.name ?? ''),
+    });
+  };
+
   const handleConfirm = async (payload: MedicationFormPayload) => {
     setError(null);
     setSubmitting(true);
     try {
-      let catalogId = payload.code.catalog_id;
-      let drugName = payload.code.text;
-
-      if (payload.is_new_catalog_entry) {
-        const created = await createCatalogItem('medication', {
-          name: payload.code.text,
-          indications: payload.indications,
-          side_effects: payload.side_effects || [],
-          dosage_info: payload.dosage || undefined,
-        });
-        catalogId = String(created.id);
-        drugName = String(created.name ?? created.id);
-      }
+      const catalogId = payload.code.catalog_id;
 
       const commitPayload: any = {
         status: payload.status,
@@ -136,23 +159,28 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
         end_date: payload.end_date,
         reason: payload.reason,
         note: payload.note,
-        code: {
-          text: drugName,
-          catalog_id: catalogId
-        }
+        code: payload.code
       };
 
       const created = await addPatientMedication(patientId!, commitPayload);
 
       // Persist graph links to the medication CATALOG entry (best-effort).
       // The links describe the drug (e.g. TREATS disease) — they belong on the
-      // catalog row, not the patient prescription.
+      // catalog row, not the patient prescription. The chip dialog already
+      // persisted the proposed links on the created definition at create time,
+      // so only links added after it go through here.
       let linkResults: LinkCreateResult[] = [];
-      if (payload.links.length > 0 && catalogId) {
+      const pendingLinks = payload.links.filter(
+        (l) =>
+          !dialogPersistedLinksRef.current.some(
+            (p) => p.type === l.type && p.id === l.id && p.relation === l.relation,
+          ),
+      );
+      if (pendingLinks.length > 0 && catalogId) {
         linkResults = await createLinksFor(
           'medication',
           catalogId,
-          selectionsToLinkInputs(payload.links),
+          selectionsToLinkInputs(pendingLinks),
         );
       }
       const failedLinks = linkResults.filter(r => !r.ok).length;
@@ -226,10 +254,19 @@ export const CreateMedicationHandler: React.FC<HitlHandlerProps> = ({ task, sess
           <span className="wrap-break-word">{error}</span>
         </div>
       )}
+      {isNew && proposed && (
+        <SuggestedDefinitionChip
+          type="medication"
+          name={proposed.name}
+          initialDraft={definitionDraft}
+          initialLinks={prefill.links}
+          onCreated={handleCreated}
+        />
+      )}
       <MedicationForm
         patientId={patientId}
-        prefill={proposalToPrefill(task.proposed_payload)}
-        showHeader={false}
+        prefill={prefill}
+        catalogSelection={catalogSelection}
         showActions
         submitLabel={t('ai_chat.hitl.add_medication.confirm', 'Confirm & Add Medication')}
         onSubmit={handleConfirm}

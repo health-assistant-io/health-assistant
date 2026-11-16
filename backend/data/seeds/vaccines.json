@@ -3,10 +3,11 @@
     "version": "1.0.0",
     "source": "Health Assistant — CDC CVX codes (public factual data)",
     "last_updated": "2026-07-08",
-    "description": "CVX-coded vaccine reference definitions. PREVENTS edges to disease concepts are seeded separately in Phase 6 (once disease concepts exist)."
+    "description": "CVX-coded vaccine reference definitions. The target_diseases lists are readable refs resolved to PREVENTS concept_edges by the vaccine seeder (disease concepts from diseases.json)."
   },
   "items": [
     {
+      "seed_key": "vaccine:mmr",
       "slug": "mmr",
       "name": "MMR (Measles, Mumps, Rubella)",
       "coding_system": "cvx",
@@ -18,6 +19,7 @@
       "side_effects": ["Fever", "Rash", "Mild joint pain"]
     },
     {
+      "seed_key": "vaccine:influenza-inactivated",
       "slug": "influenza-inactivated",
       "name": "Influenza, inactivated",
       "coding_system": "cvx",
@@ -29,6 +31,7 @@
       "side_effects": ["Soreness at injection site", "Low-grade fever", "Muscle aches"]
     },
     {
+      "seed_key": "vaccine:covid19-mrna",
       "slug": "covid19-mrna",
       "name": "COVID-19, mRNA",
       "coding_system": "cvx",
@@ -40,17 +43,19 @@
       "side_effects": ["Injection-site pain", "Fatigue", "Headache", "Fever"]
     },
     {
+      "seed_key": "vaccine:tdap",
       "slug": "tdap",
       "name": "Tdap (Tetanus, Diphtheria, Pertussis)",
       "coding_system": "cvx",
       "code": "115",
       "description": "Combined tetanus, diphtheria, and acellular pertussis vaccine.",
-      "target_diseases": ["tetanus", "diphtheria", "pertussis"],
+      "target_diseases": ["diphtheria", "pertussis", "tetanus"],
       "dose_schedule": {"doses": 1, "intervals": ["booster every 10 years"]},
       "contraindications": "Encephalopathy within 7 days of prior pertussis vaccine.",
       "side_effects": ["Injection-site pain", "Fatigue", "Headache"]
     },
     {
+      "seed_key": "vaccine:hepatitis-b",
       "slug": "hepatitis-b",
       "name": "Hepatitis B",
       "coding_system": "cvx",
@@ -62,23 +67,25 @@
       "side_effects": ["Injection-site soreness", "Low-grade fever"]
     },
     {
+      "seed_key": "vaccine:hpv",
       "slug": "hpv",
       "name": "HPV (Human Papillomavirus)",
       "coding_system": "cvx",
       "code": "137",
       "description": "9-valent HPV vaccine.",
-      "target_diseases": ["hpv", "cervical-cancer"],
+      "target_diseases": ["cervical-cancer", "hpv-infection"],
       "dose_schedule": {"doses": 2, "intervals": ["0, 6-12 months (under 15)"]},
       "contraindications": "Hypersensitivity to yeast.",
       "side_effects": ["Injection-site pain", "Fainting (adolescents)"]
     },
     {
+      "seed_key": "vaccine:pneumococcal-conjugate",
       "slug": "pneumococcal-conjugate",
       "name": "Pneumococcal Conjugate (PCV)",
       "coding_system": "cvx",
       "code": "152",
       "description": "Pneumococcal conjugate vaccine.",
-      "target_diseases": ["pneumococcal-disease"],
+      "target_diseases": ["pneumococcal-pneumonia"],
       "dose_schedule": {"doses": 4, "intervals": ["pediatric schedule 2,4,6,12-15 months"]},
       "contraindications": "Anaphylaxis to prior dose.",
       "side_effects": ["Fever", "Injection-site reaction", "Irritability (infants)"]

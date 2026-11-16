@@ -28,6 +28,11 @@ class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin,
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
     filename = Column(String(255), nullable=False, index=True)
     file_path = Column(String(500), nullable=False)
+    # Server-generated object key (``tenants/<tenant>/documents/<id><ext>``)
+    # once bytes live behind the family object-storage contract. Nullable so
+    # pre-contract rows keep working through the facade's dual-read branch;
+    # ``migrate-objects --backfill-db`` fills it from tenant/id/ext.
+    object_key = Column(String(1024), nullable=True, index=True)
     owner_id = Column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -125,7 +130,11 @@ class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin,
         return {
             "id": str(self.id) if self.id else None,
             "filename": self.filename,
-            "file_path": self.file_path,
+            # Never expose the durable storage location: responses carry the
+            # row identity only, and downloads go through the authorized
+            # stream/presign route. The column stays for the pre-contract
+            # local read window (dual-read), not for the wire.
+            "file_path": "",
             "owner_id": str(self.owner_id) if self.owner_id else None,
             "practitioner_id": str(self.practitioner_id)
             if getattr(self, "practitioner_id", None)
@@ -205,7 +214,7 @@ class DocumentModel(Base, UUIDMixin, AuditMixin, VersionedMixin, TimestampMixin,
             "contentType": "application/octet-stream",
             "title": self.filename or "Untitled",
         }
-        if self.file_path:
+        if self.file_path or getattr(self, "object_key", None):
             attachment["url"] = f"urn:ha-document:{self.id}"
 
         data = {

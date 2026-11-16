@@ -3,23 +3,27 @@
  *
  * Owns the API writes so the form stays a pure controlled component:
  *  - add / edit a patient immunization (`/vaccines/*`)
- *  - optionally create a vaccine catalog entry inline (the "define new" flow)
- *  - persist graph links on the catalog entry via `createLinksFor`
+ *  - persist graph links on the vaccine catalog entry via `createLinksFor`
  *    (`srcType="immunization"`) after the primary record is committed
+ *  (the vaccine definition itself always exists — it is picked from the
+ *  catalog or created from the browse dialog before this modal commits)
  *
- * Mirrors `MedicationModal`. Links only persist when a `catalog_id` is known
- * (picked or just-created) — links can't attach to a denormalized record with
- * no catalog entry.
+ * The popup shell owns the chrome: header (icon · title · description · one
+ * close), the scrolling body and the footer. The form renders fields only and
+ * reports validity/loading so the shell can drive its Save button.
  */
-import React from 'react';
+import React, { useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Syringe } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import {
   VaccinationForm,
   type VaccinationFormPayload,
 } from './VaccinationForm';
+import { RecordFormFooter } from '../records/RecordFormFooter';
+import { RecordFormIcon } from '../records/RecordFormIcon';
 import type { PatientImmunization } from '../../types/vaccine';
 import { addPatientImmunization, updatePatientImmunization } from '../../services/vaccineService';
-import { createCatalogItem } from '../../services/catalogService';
 import {
   createLinksFor,
   selectionsToLinkInputs,
@@ -40,22 +44,14 @@ export const VaccinationModal: React.FC<Props> = ({
   immunization,
   onSuccess,
 }) => {
+  const { t } = useTranslation();
+  const formId = useId();
+  const [formState, setFormState] = useState({ canSubmit: false, loading: false });
+
   if (!isOpen) return null;
 
   const handleSubmit = async (payload: VaccinationFormPayload) => {
-    let catalogId = payload.vaccine_code.catalog_id ?? null;
-    let drugName = payload.vaccine_code.text;
-
-    // Inline "define new vaccine" → create a minimal catalog entry. Disease
-    // association is handled in the catalog via LinksSection (PREVENTS edges),
-    // not as free text here.
-    if (payload.is_new_catalog_entry) {
-      const created = await createCatalogItem('vaccine', {
-        name: payload.vaccine_code.text,
-      });
-      catalogId = String((created as { id?: string }).id ?? '');
-      drugName = String((created as { name?: string }).name ?? drugName);
-    }
+    const catalogId = payload.vaccine_code.catalog_id ?? null;
 
     const commit: Partial<PatientImmunization> = {
       status: payload.status as PatientImmunization['status'],
@@ -68,7 +64,7 @@ export const VaccinationModal: React.FC<Props> = ({
       note: payload.note ?? null,
       vaccine_code: immunization
         ? immunization.vaccine_code
-        : { text: drugName, catalog_id: catalogId ?? undefined },
+        : payload.vaccine_code,
     };
 
     if (immunization) {
@@ -78,7 +74,7 @@ export const VaccinationModal: React.FC<Props> = ({
         vaccine_catalog_id: catalogId,
         ...commit,
         vaccine_code: {
-          text: drugName,
+          text: payload.vaccine_code.text,
           catalog_id: catalogId ?? null,
         },
       });
@@ -101,15 +97,38 @@ export const VaccinationModal: React.FC<Props> = ({
     <Modal
       open={isOpen}
       onOpenChange={(o) => !o && onClose()}
-      title=""
-      hideHeader
-      footer={undefined}
+      title={
+        immunization
+          ? t('vaccinations.modal.update_title')
+          : t('vaccinations.modal.new_title')
+      }
+      description={t('vaccinations.modal.subtitle')}
+      headerIcon={<RecordFormIcon icon={Syringe} tone="rose" />}
+      closeLabel={t('common.close')}
+      footer={
+        <RecordFormFooter
+          formId={formId}
+          canSubmit={formState.canSubmit}
+          loading={formState.loading}
+          submitLabel={
+            immunization
+              ? t('vaccinations.modal.update_record')
+              : t('vaccinations.modal.save')
+          }
+          cancelLabel={t('common.cancel')}
+          onCancel={onClose}
+        />
+      }
+      bodyFill
       bodyClassName="p-0"
       size="lg"
     >
       <VaccinationForm
         patientId={patientId}
         immunization={immunization}
+        formId={formId}
+        showActions={false}
+        onStateChange={setFormState}
         onSubmit={handleSubmit}
         onCancel={onClose}
       />

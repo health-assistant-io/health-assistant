@@ -5,6 +5,13 @@ import pytest
 from httpx import AsyncClient
 
 
+@pytest.fixture(autouse=True)
+def _no_real_audit_writes(stub_audit_write):
+    """Stub principals carry synthetic tenants — the fail-closed audit lane
+    would refuse these requests. Endpoint behavior is the subject here."""
+    yield
+
+
 def make_token(role="USER", user_id=None, tenant_id=None):
     """Build a TokenData-like object for dependency override."""
     token = MagicMock()
@@ -49,22 +56,30 @@ async def test_list_patients_success(mock_list, async_client: AsyncClient, patie
 
 @pytest.mark.asyncio
 @patch("app.api.v1.endpoints.patients.list_patients", new_callable=AsyncMock)
-async def test_list_patients_user_role_forced_user_id(mock_list, async_client: AsyncClient):
-    from app.core.security import get_current_user
-    from app.main import app
+async def test_list_patients_user_role_reachable_set(mock_list):
+    """Handler-level defense-in-depth (ADR 0054 Phase 2): the USER branch of
+    the list endpoint filters by the grant-aware reachable set (own + active
+    grants) — never the raw ``user_id`` query parameter. At the HTTP
+    boundary the central gate already denies USER the tenant-wide list
+    (tests/test_authz_enforce.py) — this pins the residual in-handler
+    filter for a principal that ever reaches it."""
+    from uuid import uuid4
+
+    from app.api.v1.endpoints.patients import list_patients_endpoint
 
     user_id = uuid4()
     token = make_token(role="USER", user_id=user_id)
-    app.dependency_overrides[get_current_user] = lambda: token
     mock_list.return_value = {"items": [], "total": 0}
 
-    response = await async_client.get("/api/v1/patients")
-    assert response.status_code == 200
-    # USER role forces user_id == current_user.user_id
-    _, kwargs = mock_list.call_args
-    assert kwargs["user_id"] == str(user_id)
+    db = AsyncMock()
+    empty = MagicMock()
+    empty.all.return_value = []
+    db.execute.return_value = empty
 
-    app.dependency_overrides = {}
+    await list_patients_endpoint(current_user=token, db=db)
+    _, kwargs = mock_list.call_args
+    assert "user_id" not in kwargs
+    assert kwargs["patient_ids"] == set()
 
 
 # ---------- POST /patients (create) ----------

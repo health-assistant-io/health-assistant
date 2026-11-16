@@ -23,11 +23,13 @@ class McpClientProvider(BaseHealthProvider):
 
     # --- Tool exposure (SDK contract) ---
 
-    async def get_tools(self, integration: UserIntegration) -> list[Any]:
+    async def get_tools(self, integration: UserIntegration, *, principal: Any = None) -> list[Any]:
         """Return LangChain tools for this MCP instance.
 
         Swallows per-instance errors and returns ``[]`` on failure so one
-        bad server doesn't break the whole chat turn.
+        bad server doesn't break the whole chat turn. ``principal`` is the
+        integration's scoped identity; the adapter authorizes the declared
+        tool risk class against it before exposing anything.
         """
         from app.extensions.builtin.mcp_client.connection_manager import mcp_connection_manager
         from app.extensions.builtin.mcp_client.tool_adapter import filter_and_adapt_tools
@@ -40,7 +42,9 @@ class McpClientProvider(BaseHealthProvider):
                 f"({integration.instance_name}): {e}"
             )
             return []
-        return filter_and_adapt_tools(integration, mcp_tools, mcp_connection_manager)
+        return filter_and_adapt_tools(
+            integration, mcp_tools, mcp_connection_manager, principal=principal
+        )
 
     async def close(self):
         """Close the shared httpx client + all live MCP subprocesses."""

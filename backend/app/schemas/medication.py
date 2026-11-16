@@ -7,15 +7,25 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.enums import MedicationIntent, MedicationStatus
 
 # --- Medication Catalog ---
+# Write contract (plan A Phase 2 / ADR 0055 D5): extra="forbid" — unknown or
+# system-owned fields (scope, tenant_id, seed_key, created_by, id, timestamps)
+# are rejected with a 422 instead of silently dropped. ``seed_key`` is
+# response-only; ``coding_system``/``code`` (RxNorm/ATC) are writable.
 
 
 class MedicationCatalogBase(BaseModel):
     name: str
+    coding_system: str | None = Field(default=None, max_length=50)
+    code: str | None = Field(default=None, max_length=100)
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     description: str | None = None
     indications: str | None = None
     side_effects: list[str] = Field(default_factory=list)
     contraindications: str | None = None
     dosage_info: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("side_effects", mode="before")
     @classmethod
@@ -39,6 +49,18 @@ class MedicationCatalogCreate(MedicationCatalogBase):
 
 
 class MedicationCatalogUpdate(BaseModel):
+    """Partial update (all fields optional; extra keys → 422).
+
+    Class-concept precedence (uniform across every catalog type): a sent
+    ``class_concept_id`` wins over ``class_concept_slug`` — an explicit
+    ``null`` id clears the link and any slug sent alongside is ignored; a
+    bare slug re-resolves tenant-explicitly (unknown → 400).
+    """
+
+    coding_system: str | None = Field(default=None, max_length=50)
+    code: str | None = Field(default=None, max_length=100)
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     name: str | None = None
     description: str | None = None
     indications: str | None = None
@@ -46,14 +68,24 @@ class MedicationCatalogUpdate(BaseModel):
     contraindications: str | None = None
     dosage_info: str | None = None
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class MedicationCatalogResponse(MedicationCatalogBase):
     id: UUID
-    is_custom: bool
+    class_concept_name: str | None = None
+    seed_key: str | None = None
+    scope: str | None = None
+    tenant_id: UUID | None = None
+    created_by: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        extra="ignore",
+    )
 
 
 # --- Medication Record (Patient) ---

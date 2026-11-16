@@ -227,6 +227,44 @@ detection is truth. A host that cannot provide the kernel grade answers
 the typed `unsupported` with the reason and the remedy — never a silent
 spawn below the kernel boundary.
 
+### Capability enforcement — the declaration is the grant
+
+`app/extensions/capabilities.py` turns the manifest into one typed
+`CapabilityGrant` and every host seam asks the grant, never the extension
+object:
+
+- **T0** is declarative data only — no capabilities, no permissions, no
+  code, no database handle.
+- **T1** (bundled, reviewed) gets exactly its declared capabilities and
+  data classes; the engine calls only what the grant allows, so a provider
+  method that is not declared is never invoked (declaration, not display).
+- **T2** (imported + `entry`) gets the declared set **intersected with the
+  granted consents**; a capability the user never granted is not in the
+  set, and there is no database access — only the host-mediated
+  `cap.net.fetch` / `cap.state.*` / `cap.items.emit` / `cap.secrets.need`
+  seams. An undeclared or ungranted call is the typed `unsupported`.
+- **T3** (imported + `entry` + `mcp`) is a separate out-of-process MCP
+  server; the host never hands it a database handle. Tool exposure is
+  authorized at the adapter seam: the extension's declared tool risk class
+  is mapped through `CapabilityGrant.authorize_tool` (`read-only` → reads,
+  `state-changing` → writes, `destructive` → a delete permission) to the
+  permission family the declaration carries, and the acting principal — the
+  integration's scoped identity, passed in only when one is provisioned —
+  must hold at least one of those permissions. When no scoped principal
+  exists the adapter makes no permission decision of its own: the call is
+  bounded by the chat route's `ai:use` + patient-access gates and the
+  per-tool allowlist. A passthrough proxy that declares no data classes
+  (the `mcp_client` connector) therefore maps to no permission family at
+  all, and those route gates plus the allowlist and result caps are its
+  whole database-side boundary; its external effects are outside the
+  database-permission model by design.
+
+Integration/extension writes additionally resolve a scoped
+`integration_principals` identity: the principal's stored
+scopes are re-intersected with its owner's live role and this same
+manifest-derived set on every use, so a consent revocation, a demotion or
+a manifest change narrows the very next sync.
+
 ### Status of the lane
 
 Local (`file`) sources import end-to-end on a dev box: register → sync →

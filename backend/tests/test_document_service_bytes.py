@@ -9,8 +9,7 @@ DB-row + OCR-dispatch contract is covered end-to-end.
 import io
 import uuid
 from datetime import date
-from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -105,12 +104,14 @@ async def test_ingest_document_bytes_writes_file_and_db_row(
         assert doc.progress == 0
         assert doc.include_in_extraction is False
 
-        # The on-disk file lives under HA_UPLOAD_DIR/<tenant_id>/<uuid>.pdf
-        file_path = Path(doc.file_path)
-        assert file_path.exists()
-        assert file_path.read_bytes() == content
-        assert file_path.parent.name == str(tenant_id)
-        assert file_path.suffix == ".pdf"
+        # The bytes live under the tenant's object prefix; the row stores a
+        # key, never a host path.
+        assert doc.object_key
+        assert doc.object_key.startswith(f"tenants/{tenant_id}/documents/")
+        assert doc.file_path == ""
+        stored = document_service.DocumentStorage().read(doc)
+        assert stored == content
+        assert doc.object_key.endswith(".pdf")
 
 
 @pytest.mark.asyncio
@@ -175,7 +176,7 @@ async def test_ingest_document_bytes_dispatches_ocr_when_requested(
 ):
     """When ``include_in_extraction=True``, the service dispatches the
     ``ocr_document`` Celery task with the 4-arg form
-    ``(document_id, file_path, tenant_id, owner_id)``. The dispatch is
+    ``(document_id, object_key, tenant_id, owner_id)``. The dispatch is
     best-effort: a broker-down failure is swallowed."""
     tenant_id, user_id, _patient_id = tenant_user_patient
 
@@ -199,9 +200,36 @@ async def test_ingest_document_bytes_dispatches_ocr_when_requested(
             )
             dispatched_args = mock_apply.call_args.kwargs.get("args") or mock_apply.call_args.args
             assert len(dispatched_args) == 4
-            # The 4-arg form: id, path, tenant, owner.
+            # The 4-arg form: id, object key, tenant, owner.
+            assert dispatched_args[1].startswith(f"tenants/{tenant_id}/documents/")
             assert dispatched_args[2] == str(tenant_id)
             assert dispatched_args[3] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_ingest_maps_object_too_large_to_413(monkeypatch):
+    """The store cap is a client error at the upload boundary, not a 500/503."""
+    from fastapi import HTTPException
+
+    from app.storage.object_storage import ObjectTooLarge
+
+    class FullStore:
+        async def aput(self, *_args, **_kwargs):
+            raise ObjectTooLarge("cap")
+
+    monkeypatch.setattr(document_service, "DocumentStorage", lambda: FullStore())
+    with pytest.raises(HTTPException) as caught:
+        await document_service.ingest_document_bytes(
+            filename="big.pdf",
+            content=b"x",
+            content_type="application/pdf",
+            tenant_id=uuid.uuid4(),
+            patient_id=None,
+            owner_id=uuid.uuid4(),
+            db=AsyncMock(),
+            include_in_extraction=False,
+        )
+    assert caught.value.status_code == 413
 
 
 @pytest.mark.asyncio
@@ -341,4 +369,4 @@ async def test_upload_document_delegates_to_ingest_document_bytes(
             )
 
         assert doc.filename == "wrapped.pdf"
-        assert Path(doc.file_path).read_bytes() == content
+        assert document_service.DocumentStorage().read(doc) == content

@@ -199,7 +199,7 @@ async def test_demo_refresh_refusal_writes_denied_audit_row(async_client):
             .all()
         )
     assert rows, "expected a denied auth.refresh audit row for the demo family"
-    assert rows[0].new_value["reason"] == "demo_refresh_on_non_demo_instance"
+    assert rows[0].new_value["detail"] == "demo_refresh_on_non_demo_instance"
 
 
 @pytest.mark.asyncio
@@ -299,7 +299,7 @@ async def test_demo_login_404_and_audited_off_demo(async_client):
             .all()
         )
     assert rows
-    assert rows[0].new_value["reason"] == "demo_mode_off"
+    assert rows[0].new_value["detail"] == "demo_mode_off"
 
 
 @pytest.mark.asyncio

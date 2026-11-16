@@ -11,6 +11,7 @@ import pytest
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
 
@@ -34,6 +35,53 @@ async def test_list_catalog_types(async_client, system_admin_headers):
         assert entry["ui"]["icon"]
         assert entry["edge_endpoint_type"]
         assert isinstance(entry["search_columns"], list)
+
+
+@pytest.mark.asyncio
+async def test_list_catalog_types_exposes_write_contract(async_client, system_admin_headers):
+    """Every registered type exposes its ``write`` contract, and the field
+    lists mirror the Pydantic create/update schemas exactly (ADR 0055 D5 —
+    the single source of truth for client payload allowlists)."""
+    from app.catalogs import CatalogRegistry
+
+    resp = await async_client.get("/api/v1/catalogs", headers=system_admin_headers)
+    assert resp.status_code == 200
+    by_type = {t["type"]: t for t in resp.json()["types"]}
+
+    for descriptor in CatalogRegistry.all():
+        write = by_type[descriptor.type]["write"]
+        assert write["create_fields"] == sorted(descriptor.write.create_schema.model_fields)
+        assert write["update_fields"] == sorted(descriptor.write.update_schema.model_fields)
+        assert write["supports_promote"] is descriptor.write.supports_promote
+
+    # Spot-check the contract properties the frontend write path relies on.
+    concept = by_type["concept"]["write"]
+    assert concept["supports_promote"] is False
+    assert "slug" in concept["create_fields"]  # client-supplied on create
+    assert "slug" not in concept["update_fields"]  # immutable after creation
+    vaccine = by_type["vaccine"]["write"]
+    assert "slug" not in vaccine["create_fields"]  # derived server-side (display-only)
+    assert "slug" not in vaccine["update_fields"]
+    medication = by_type["medication"]["write"]
+    assert {"coding_system", "code"} <= set(medication["create_fields"])
+    # Response-only / system-owned fields are on no write schema.
+    for type_name in by_type:
+        write = by_type[type_name]["write"]
+        for leaked in (
+            "id",
+            "scope",
+            "tenant_id",
+            "created_by",
+            "seed_key",
+            "created_at",
+            "updated_at",
+        ):
+            assert leaked not in write["create_fields"], (type_name, leaked)
+            assert leaked not in write["update_fields"], (type_name, leaked)
+    # The stratified ranges are create-only (update reconciles them via the
+    # domain reference-ranges routes).
+    assert "reference_ranges" in by_type["biomarker"]["write"]["create_fields"]
+    assert "reference_ranges" not in by_type["biomarker"]["write"]["update_fields"]
 
 
 @pytest.mark.asyncio
@@ -92,11 +140,17 @@ async def test_biomarker_list_tenant_scoped(async_client, system_admin_headers):
                     slug=f"global-{suffix}", name=f"Global {suffix}", tenant_id=None
                 ),
                 BiomarkerDefinition(
+                    scope=(
+                        CatalogScope.TENANT if caller_tenant is not None else CatalogScope.SYSTEM
+                    ),
                     slug=f"mine-{suffix}",
                     name=f"Mine {suffix}",
                     tenant_id=caller_tenant,
                 ),
                 BiomarkerDefinition(
+                    scope=(
+                        CatalogScope.TENANT if other_tenant is not None else CatalogScope.SYSTEM
+                    ),
                     slug=f"theirs-{suffix}",
                     name=f"Theirs {suffix}",
                     tenant_id=other_tenant,
@@ -140,8 +194,9 @@ async def test_biomarker_item_has_expected_shape(async_client, system_admin_head
         "coding_system",
         "code",
         "name",
-        "category",
         "aliases",
+        "class_concept_id",
+        "class_concept_slug",
         "preferred_unit_id",
         "info",
         "reference_range_min",
@@ -173,7 +228,10 @@ async def test_biomarker_get_cross_tenant_hidden(async_client, system_admin_head
         await db.commit()
     async with AsyncSessionLocal() as db:
         bio = BiomarkerDefinition(
-            slug=f"secret-{suffix}", name=f"Secret {suffix}", tenant_id=other_tenant
+            scope=(CatalogScope.TENANT if other_tenant is not None else CatalogScope.SYSTEM),
+            slug=f"secret-{suffix}",
+            name=f"Secret {suffix}",
+            tenant_id=other_tenant,
         )
         db.add(bio)
         await db.commit()

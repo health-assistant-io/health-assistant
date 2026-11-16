@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.enums import ImmunizationStatus
 
 # --- Vaccine Catalog ---
+# Write contract (plan A Phase 2 / ADR 0055 D4/D5): the slug is DISPLAY-ONLY
+# and derived server-side from the name — clients never send it (a ``slug``
+# key is rejected with 422). ``seed_key`` is response-only. ``extra="forbid"``
+# rejects unknown / system-owned fields instead of silently dropping them.
 
 
 class VaccineCodeableConcept(BaseModel):
@@ -20,16 +24,21 @@ class VaccineCodeableConcept(BaseModel):
 
 
 class VaccineCatalogBase(BaseModel):
-    slug: str
+    """Vaccine disease links are graph data (``PREVENTS`` concept_edges,
+    migration 0012) — there is no ``target_diseases`` write/read field; the
+    curated seeder materializes the seed file's readable lists as edges."""
+
     name: str
-    description: str | None = None
     coding_system: str | None = "cvx"
     code: str | None = None
-    target_diseases: list[str] | None = None
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
+    description: str | None = None
     dose_schedule: dict[str, Any] | None = None
     contraindications: str | None = None
     side_effects: list[str] | None = None
-    class_concept_id: UUID | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class VaccineCatalogCreate(VaccineCatalogBase):
@@ -37,23 +46,39 @@ class VaccineCatalogCreate(VaccineCatalogBase):
 
 
 class VaccineCatalogUpdate(BaseModel):
+    """Partial update (all fields optional; ``slug`` stays server-derived).
+
+    Class-concept precedence matches ``MedicationCatalogUpdate``: a sent
+    ``class_concept_id`` wins (an explicit ``null`` clears the link, any slug
+    sent alongside is ignored); a bare slug re-resolves tenant-explicitly
+    against vaccine-class concepts.
+    """
+
+    coding_system: str | None = None
+    code: str | None = None
+    class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     name: str | None = None
     description: str | None = None
-    code: str | None = None
-    target_diseases: list[str] | None = None
     dose_schedule: dict[str, Any] | None = None
     contraindications: str | None = None
     side_effects: list[str] | None = None
-    class_concept_id: UUID | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class VaccineCatalogResponse(VaccineCatalogBase):
     id: UUID
-    is_custom: bool
+    class_concept_name: str | None = None
+    slug: str
+    seed_key: str | None = None
+    scope: str | None = None
+    tenant_id: UUID | None = None
+    created_by: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 # --- Patient Immunization (instance) ---

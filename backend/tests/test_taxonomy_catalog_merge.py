@@ -450,34 +450,75 @@ async def test_user_cannot_create_concept(clean_concept_namespace):
 
 
 @pytest.mark.asyncio
-async def test_catalog_concept_write_returns_405(async_client, system_admin_headers):
-    """The generic catalog write endpoints return 405 for ``type=concept`` —
-    the read-only adapter contract is enforced server-side."""
+async def test_catalog_concept_write_dispatches_to_concept_service(
+    async_client, system_admin_headers
+):
+    """The generic catalog write endpoints dispatch ``type=concept`` to
+    ConceptService (the ONE write contract) — no more 405. Promote stays 405:
+    scope is derived at create and no tier transition exists."""
+    p = f"wc-dispatch-{uuid.uuid4().hex[:8]}"
     resp = await async_client.post(
         "/api/v1/catalogs/concept",
-        json={"slug": "should-fail", "name": "Fail", "kinds": ["disease"]},
+        json={"slug": p, "name": "Dispatched", "kinds": ["disease"], "tenant_scoped": True},
         headers=system_admin_headers,
     )
-    assert resp.status_code == 405
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["slug"] == p
+
+    promote = await async_client.post(
+        f"/api/v1/catalogs/concept/{resp.json()['id']}/promote",
+        json={"scope": "system"},
+        headers=system_admin_headers,
+    )
+    assert promote.status_code == 405
 
 
 @pytest.mark.asyncio
-async def test_catalog_concept_update_returns_405(async_client, system_admin_headers):
-    resp = await async_client.put(
+async def test_catalog_concept_update_and_delete_dispatch(async_client, system_admin_headers):
+    """PUT/DELETE on ``/catalogs/concept/{id}`` flow through ConceptService —
+    update applies, delete retires/soft-deletes (never a hard delete)."""
+    p = f"wc-disp2-{uuid.uuid4().hex[:8]}"
+    from app.services.catalog.concept_service import ConceptService
+
+    create = await async_client.post(
+        "/api/v1/catalogs/concept",
+        json={"slug": p, "name": "Disp2", "kinds": ["disease"], "tenant_scoped": True},
+        headers=system_admin_headers,
+    )
+    assert create.status_code == 201, create.text
+    concept_id = create.json()["id"]
+
+    update = await async_client.put(
+        f"/api/v1/catalogs/concept/{concept_id}",
+        json={"name": "Renamed"},
+        headers=system_admin_headers,
+    )
+    assert update.status_code == 200, update.text
+    assert update.json()["name"] == "Renamed"
+
+    delete = await async_client.delete(
+        f"/api/v1/catalogs/concept/{concept_id}",
+        headers=system_admin_headers,
+    )
+    assert delete.status_code == 200
+    async with AsyncSessionLocal() as db:
+        svc = ConceptService(db)
+        assert await svc.get_concept(uuid.UUID(concept_id), None) is None  # soft-deleted
+
+
+@pytest.mark.asyncio
+async def test_catalog_concept_write_on_missing_404(async_client, system_admin_headers):
+    update = await async_client.put(
         f"/api/v1/catalogs/concept/{uuid.uuid4()}",
         json={"name": "Fail"},
         headers=system_admin_headers,
     )
-    assert resp.status_code == 405
-
-
-@pytest.mark.asyncio
-async def test_catalog_concept_delete_returns_405(async_client, system_admin_headers):
-    resp = await async_client.delete(
+    assert update.status_code == 404
+    delete = await async_client.delete(
         f"/api/v1/catalogs/concept/{uuid.uuid4()}",
         headers=system_admin_headers,
     )
-    assert resp.status_code == 405
+    assert delete.status_code == 404
 
 
 # ---------------------------------------------------------------------------

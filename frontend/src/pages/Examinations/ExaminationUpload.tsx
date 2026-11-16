@@ -53,7 +53,7 @@ function ExaminationUpload() {
   const [isCreatingDoctor, setIsCreatingDoctor] = useState(false);
 
   // New states for Smart Mode and Bulk Create
-  const [isSmartMode, setIsSmartMode] = useState(false);
+  const [isSmartMode, setIsSmartMode] = useState(true);
   const [isBulkMode, setIsBulkMode] = useState(false);
   
   // States for new Bulk Upload Manager
@@ -407,8 +407,11 @@ function ExaminationUpload() {
   return (
     <div className={`${isBulkMode ? 'max-w-5xl' : 'max-w-2xl'} mx-auto transition-all duration-500`}>
       <PageHeader
-        title="New Examination"
-        subtitle="Upload and analyze clinical documents"
+        title={t('examinations.smart_bulk_upload', 'Smart & bulk upload')}
+        subtitle={t(
+          'examinations.smart_bulk_subtitle',
+          'AI extraction and bulk grouping across documents',
+        )}
         icon={headerIcon}
         showBackButton={true}
       />

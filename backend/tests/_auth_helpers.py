@@ -29,7 +29,9 @@ from app.services.auth.auth_session_service import issue_session
 __all__ = [
     "AUTH_MODE_DEMO",
     "AUTH_MODE_PASSWORD",
+    "allow_step_up",
     "auth_headers",
+    "bearer_token",
     "create_tenant",
     "create_user",
     "make_user_headers",
@@ -102,27 +104,45 @@ async def sign_in(
 
 
 async def auth_headers(
-    user: UserModel, *, auth_mode: str = AUTH_MODE_PASSWORD, extra_claims: dict | None = None
+    user: UserModel,
+    *,
+    auth_mode: str = AUTH_MODE_PASSWORD,
+    extra_claims: dict | None = None,
+    step_up: bool = False,
 ) -> dict:
-    """Bearer headers carrying a verified session token for ``user``."""
+    """Bearer headers carrying a verified session token for ``user``.
+
+    ``step_up=True`` also records step-up proofs for the caller's sign-in
+    family (all four actions), for suites whose subject is not the step-up
+    gate itself — they exercise an action *behind* the gate (export, grant,
+    elevation, role change). The gate's own refusals live in
+    ``tests/test_step_up.py`` and use the default (no proofs).
+    """
     issued = await issue_session(
         user,
         auth_mode=auth_mode,
         client_label="pytest",
         extra_claims=extra_claims,
-        with_refresh=False,
+        with_refresh=step_up,
     )
-    return {"Authorization": f"Bearer {issued.access_token}"}
+    headers = {"Authorization": f"Bearer {issued.access_token}"}
+    if step_up:
+        from app.services.auth.step_up import StepUpAction
+
+        await allow_step_up(issued.access_token, *(action.value for action in StepUpAction))
+    return headers
 
 
 async def make_user_headers(
     role=Role.SYSTEM_ADMIN,
     tenant_id: uuid.UUID | None = None,
+    *,
+    step_up: bool = False,
     **kwargs,
 ) -> tuple[UserModel, dict]:
     """(user, headers) for one fresh account — the common test shape."""
     user = await create_user(role=role, tenant_id=tenant_id, **kwargs)
-    return user, await auth_headers(user)
+    return user, await auth_headers(user, step_up=step_up)
 
 
 _SWITCH_CLAIMS = (
@@ -151,3 +171,37 @@ async def headers_for_claims(claims: dict) -> dict:
     )
     extra = {k: claims[k] for k in _SWITCH_CLAIMS if k in claims}
     return await auth_headers(user, extra_claims=extra or None)
+
+
+# --- step-up proofs (program 12C1) -----------------------------------------
+
+
+def bearer_token(headers: dict) -> str:
+    """The raw bearer token out of an ``Authorization`` header dict."""
+    return str(headers.get("Authorization", "")).removeprefix("Bearer ").strip()
+
+
+async def allow_step_up(token: str, *actions: str) -> None:
+    """Record step-up proofs for ``actions`` on the token's session family.
+
+    Test-side shortcut for suites whose subject is *not* step-up: the real
+    ``POST /auth/step-up`` path (password/TOTP verification, audit) has its
+    own suite, these proofs only satisfy the enforcement seam. A proof is a
+    10-minute window per (family, action), so one call covers a test's
+    retries.
+    """
+    import json
+    import time
+
+    from app.core import token_store
+    from app.core.security import verify_access_token
+
+    payload = verify_access_token(token)
+    assert payload and payload.get("fid"), "allow_step_up needs a family token"
+    for action in actions:
+        await token_store.register_step_up(
+            str(payload["fid"]),
+            action,
+            json.dumps({"issued_at": int(time.time()), "methods": ["password"]}),
+            600,
+        )

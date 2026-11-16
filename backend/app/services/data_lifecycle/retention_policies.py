@@ -41,6 +41,23 @@ RETENTION_DEFAULTS: tuple[tuple[str, str, str, int, str, bool], ...] = (
     (RetentionScope.TABLE, "ai_call_logs", RetentionAction.DELETE, 180, "started_at", True),
     (RetentionScope.TABLE, "ai_task_defs", RetentionAction.DELETE, 0, "created_at", False),
     (RetentionScope.TABLE, "audit_events", RetentionAction.ANONYMIZE, 3650, "created_at", True),
+    # ``audit_chain_heads`` is deliberately disabled: the head row is the
+    # chain's append lock + sequence anchor, so pruning it under a live
+    # chain would strand the chain (the next append would restart at
+    # seq=1 and violate the ``(chain_key, seq)`` uniqueness — every audit
+    # write would fail). The retention executor additionally refuses to
+    # delete heads whose chain still carries rows (retention_service), so
+    # even an operator-enabled row can only prune heads of fully-empty
+    # chains (the stale head left behind by the sanctioned tenant-delete
+    # cascade, which removes rows and head together).
+    (
+        RetentionScope.TABLE,
+        "audit_chain_heads",
+        RetentionAction.DELETE,
+        0,
+        "updated_at",
+        False,
+    ),
     (RetentionScope.TABLE, "auth_sessions", RetentionAction.DELETE, 1, "absolute_expires_at", True),
     (
         RetentionScope.TABLE,

@@ -275,7 +275,8 @@ async def test_get_neighbors_endpoint(async_client, system_admin_headers):
 
 @pytest.mark.asyncio
 async def test_invalid_kind_rejected(async_client, system_admin_headers):
-    """Invalid kind value returns 400."""
+    """Invalid kind value is a schema violation → 422 (validated by the typed
+    write schema, shared with the generic /catalogs/concept route)."""
     resp = await async_client.post(
         "/api/v1/concepts",
         json={
@@ -285,7 +286,7 @@ async def test_invalid_kind_rejected(async_client, system_admin_headers):
         },
         headers=system_admin_headers,
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

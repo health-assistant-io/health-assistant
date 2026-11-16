@@ -17,7 +17,9 @@
 #   D6  lifecycle inventory — every mapped table is classified
 #       record|operational|transient in contracts/data-model.lifecycle.txt (§7)
 #   D7  no legacy naming (vocabulary: check-data-model.patterns.txt) in
-#       backend/app + frontend/src (§8)
+#       backend/app + frontend/src (§8). Binary/data payloads and
+#       byte-identical vendored copies are not host vocabulary and are
+#       skipped (their words are owned by the family canonical).
 #
 # Modes: strict (findings fail) or transition (findings reported, exit 0) —
 # repos mid-migration run transition until their schema work lands
@@ -463,11 +465,26 @@ compiled = [re.compile(e) for e in entries]
 pragma_re = re.compile(r"#\s*gate-allow:\s*(.+?)\s*$")
 findings = []
 
+# D7 owns HOST vocabulary. Binary/data payloads are not identifiers, and a
+# byte-identical vendored copy is family-owned (its words are checked in the
+# canonical repo, never here) — both are skipped rather than exempted by name.
+BINARY_SUFFIXES = (
+    ".gz", ".zip", ".tar", ".tgz", ".whl", ".png", ".jpg", ".jpeg", ".gif",
+    ".webp", ".ico", ".pdf", ".woff", ".woff2", ".ttf", ".otf", ".mp3", ".mp4",
+    ".wav", ".ogg", ".opus", ".wasm", ".db", ".sqlite3", ".dump", ".parquet",
+)
+VENDORED_MARKERS = (
+    "VENDORED FILE",
+    "Canonical copy lives in the family standards",
+)
+
 for scan in ("backend/app", "frontend/src"):
     base = os.path.join(root, scan)
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "node_modules")]
         for name in sorted(filenames):
+            if os.path.splitext(name)[1].lower() in BINARY_SUFFIXES:
+                continue
             path = os.path.join(dirpath, name)
             try:
                 with open(path, "rb") as fh:
@@ -476,6 +493,9 @@ for scan in ("backend/app", "frontend/src"):
                     continue
                 text = blob.decode("utf-8", errors="replace")
             except OSError:
+                continue
+            head = text[:600]
+            if any(marker in head for marker in VENDORED_MARKERS):
                 continue
             for lineno, line in enumerate(text.splitlines(), 1):
                 allowed = set()

@@ -84,6 +84,8 @@ async def update_doctor_endpoint(
         doctor_id=doctor_id,
         tenant_id=current_user.tenant_id,
         db=db,
+        actor_user_id=current_user.user_id,
+        actor_role=current_user.role,
         **doctor_data.model_dump(exclude_unset=True),
     )
 
@@ -98,7 +100,13 @@ async def delete_doctor_endpoint(
     current_user: TokenData = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    success = await delete_doctor(doctor_id, current_user.tenant_id, db)
+    success = await delete_doctor(
+        doctor_id,
+        current_user.tenant_id,
+        db,
+        actor_user_id=current_user.user_id,
+        actor_role=current_user.role,
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Doctor not found")
     return None

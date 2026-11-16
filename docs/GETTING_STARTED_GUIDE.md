@@ -112,13 +112,16 @@ The AI is optional — every kind of record can be created manually:
 
 ## 4. Upload a lab report
 
-This is the fastest way to populate a record. Go to **Examinations →
-Upload** (`/examinations/upload`) or use **Create → New examination**.
+This is the fastest way to populate a record. Use **Create → New
+examination** — a popup that records a visit. Attach one or more
+documents there (PDF, image, or a photo), or save without files and add
+them later. For several visits at once or AI grouping, open
+**Examinations → Smart & bulk upload** (`/examinations/upload`).
 
 1. **Pick the person** (already set if you selected one in the header).
-2. **Add files** — drag in a PDF, an image, or snap a photo. The page
-   supports three modes:
-   - **Single** — one examination, one or more attached files.
+2. **Add files** — drag in a PDF, an image, or snap a photo. One visit
+   can carry one or more files. The advanced **Smart & bulk upload** page
+   adds:
    - **Bulk** — several examinations at once, each with its own files.
    - **Smart** — many files auto-grouped into one examination.
 3. **Set the basics** — date, category (e.g. *Clinical*, *Lab*),
@@ -165,7 +168,8 @@ An **examination** is the container for a clinical visit — its
 documents, your notes, and the biomarker results that came out of it.
 Even without a file upload you can create one:
 
-1. **Create → New examination** (or a patient's detail page).
+1. **Create → New examination** (or a patient's detail page) opens the
+   examination popup. Leave the documents empty.
 2. Set the date, category, and optionally the doctor/organization.
 3. Write notes in the rich-text editor (Markdown supported).
 4. Save. You can attach documents and link biomarkers to it later from
@@ -215,7 +219,9 @@ sidebar, and are all per-person:
 There's a useful distinction: the **catalog** (`/catalogs`) is the
 shared reference library of drugs, vaccines, biomarkers, etc., while the
 items above are **your** instances of them. If a drug isn't in the
-catalog yet, you can define it inline while adding a prescription.
+catalog yet, open the picker's **Browse** dialog and use **New medication**
+to define it once — the definition is reusable and visible to the whole
+health record, and every record form only picks existing items.
 
 ---
 

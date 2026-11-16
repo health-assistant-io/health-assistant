@@ -8,6 +8,7 @@ import pytest_asyncio
 
 from app.ai.tools.registry import ToolContext
 from app.ai.tools.taxonomy import build
+from tests.seed_utils import seed_with_commit
 
 
 @pytest_asyncio.fixture
@@ -23,8 +24,8 @@ async def taxonomy_ctx():
         await session.commit()
 
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_concept_edges)
 
     async with AsyncSessionLocal() as session:
         ctx = ToolContext(

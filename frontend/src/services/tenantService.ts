@@ -239,3 +239,16 @@ export async function getTenant(tenantId: string): Promise<Tenant> {
   const r = await api.get<Tenant>(`/tenants/${tenantId}`);
   return r.data;
 }
+
+// ---- Tenant-admin self-service settings (ADR 0054 phase 2) ----
+// `PATCH /tenants/{id}` — ADMIN/SYSTEM_ADMIN on their own tenant (name /
+// description / settings only); the SYSTEM_ADMIN-wide surface is
+// `PATCH /admin/tenants/{id}`.
+
+export async function updateMyTenant(
+  tenantId: string,
+  patch: { name?: string; description?: string; settings?: Record<string, any> }
+): Promise<Tenant> {
+  const r = await api.patch<Tenant>(`/tenants/${tenantId}`, patch);
+  return r.data;
+}

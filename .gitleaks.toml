@@ -5,10 +5,14 @@
 # because their contents are, by design, fake fixtures and doc examples;
 # real secrets committed anywhere else (backend/app/, integrations/, etc.) are
 # still caught by the default rules.
+# Config form: `[[allowlists]]` (gitleaks >= 8.25; CI pins the 8.30.1 binary
+# in security-scan.yml). The deprecated singular `[allowlist]` form cannot
+# coexist with `[[allowlists]]` in one file — gitleaks 8.30.x refuses to load
+# such a config.
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Test fixtures, docs placeholders, settings label keys"
 # The regexes below are written against the finding LINE (e.g.
 # `key="appearance.precision_below_10"`); gitleaks ≥8.19 defaults
@@ -37,3 +41,24 @@ regexes = [
   # exact values (career e70b392, auth-kit S7).
   '''auth=auth, verify=ssl_ctx''',
 ]
+
+# contracts/extension-contract.fixtures.json carries two ghp_-shaped
+# literals under sources/invalid[*] (cases "inline-token-as-slot" and
+# "credential-value-field", lines 1352/1368): synthetic negative-test
+# fixtures for the charter's "no value field in credentials" schema rule —
+# the token body is the ordered alphabet (ghp_ +
+# 0123456789abcdefghijklmnopqrstuvwxyz), not a real PAT. Both occurrences
+# share that one literal; the fixture file is vendored byte-identically
+# from the dev contract repo, so this allowlist (not the fixture) is the
+# repo-side fix. AND-scoped to path + exact value (family allowlist law):
+# the same token under any other path, or any other token-shaped value in
+# this file, is still reported.
+# Note: modern gitleaks floors the github-pat rule with entropy = 3
+# (verified: present in v8.24.0+ configs, absent in 8.16), so the CI-pinned
+# 8.30.1 skips this low-entropy literal anyway; older binaries (e.g. the
+# distro 8.16) fire on it, and this entry keeps those green too.
+[[allowlists]]
+description = "Contract negative-test fixtures: synthetic ghp_ alphabet tokens"
+condition = "AND"
+paths = ['''contracts/extension-contract\.fixtures\.json''']
+regexes = []

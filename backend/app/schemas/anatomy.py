@@ -16,8 +16,9 @@ class AnatomyStructureBase(BaseModel):
     standard_system: CodingSystem | None = None
     standard_code: str | None = None
     description: str | None = None
-    is_custom: bool = False
     display: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AnatomyStructureCreate(AnatomyStructureBase):
@@ -25,6 +26,14 @@ class AnatomyStructureCreate(AnatomyStructureBase):
 
 
 class AnatomyStructureUpdate(BaseModel):
+    """Partial update (all fields optional).
+
+    Class-concept precedence matches ``MedicationCatalogUpdate``: a sent
+    ``class_concept_id`` wins (an explicit ``null`` clears the link, any slug
+    sent alongside is ignored); a bare slug re-resolves tenant-explicitly
+    against anatomy-class concepts.
+    """
+
     name: str | None = None
     slug: str | None = None
     class_concept_id: UUID | None = None
@@ -32,8 +41,9 @@ class AnatomyStructureUpdate(BaseModel):
     standard_system: CodingSystem | None = None
     standard_code: str | None = None
     description: str | None = None
-    is_custom: bool | None = None
     display: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class AnatomyStructureResponse(AnatomyStructureBase):
@@ -43,7 +53,7 @@ class AnatomyStructureResponse(AnatomyStructureBase):
     tenant_id: UUID | None = None
     created_by: UUID | None = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class AnatomyRelationBase(BaseModel):

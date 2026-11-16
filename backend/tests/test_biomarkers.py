@@ -59,11 +59,10 @@ def _mock_biomarker(value_type="quantity", **overrides):
     bio.id = overrides.get("id", uuid.uuid4())
     bio.slug = overrides.get("slug", "new-biomarker")
     bio.name = overrides.get("name", "New Biomarker")
-    bio.category = overrides.get("category")
     bio.aliases = overrides.get("aliases", [])
     bio.preferred_unit_id = overrides.get("preferred_unit_id")
     bio.info = overrides.get("info")
-    bio.coding_system = overrides.get("coding_system", "loinc")
+    bio.coding_system = overrides.get("coding_system", MagicMock(value="loinc"))
     bio.code = overrides.get("code")
     bio.meta_data = overrides.get("meta_data", {})
     bio.reference_range_min = overrides.get("reference_range_min")
@@ -73,6 +72,15 @@ def _mock_biomarker(value_type="quantity", **overrides):
     bio.supports_multi_state = overrides.get("supports_multi_state", False)
     bio.allowed_states = overrides.get("allowed_states", [])
     bio.reference_ranges = overrides.get("reference_ranges", [])
+    # Unified write-contract serializer fields (scope/tenant/creator/class).
+    bio.seed_key = None
+    bio.description = None
+    bio.class_concept_id = None
+    bio.class_concept = None
+    bio.preferred_unit = MagicMock(symbol="mg/dL")
+    bio.scope = MagicMock(value="tenant")
+    bio.tenant_id = None
+    bio.created_by = None
     return bio
 
 
@@ -105,11 +113,10 @@ async def test_get_biomarkers(async_client: AsyncClient):
     mock_bio.id = uuid.uuid4()
     mock_bio.slug = "glucose"
     mock_bio.name = "Glucose"
-    mock_bio.category = "Blood Laboratory"  # read-only property -> concept name
     mock_bio.aliases = ["GLU"]
     mock_bio.preferred_unit_id = uuid.uuid4()
     mock_bio.info = "Test info"
-    mock_bio.coding_system = "loinc"
+    mock_bio.coding_system = MagicMock(value="loinc")
     mock_bio.code = "1234-5"
     mock_bio.meta_data = {}
     # State-biomarker fields (default QUANTITY shape — no allowed_states).
@@ -119,8 +126,16 @@ async def test_get_biomarkers(async_client: AsyncClient):
     mock_bio.supports_multi_state = False
     mock_bio.allowed_states = []
     mock_bio.reference_ranges = []
+    mock_bio.seed_key = None
+    mock_bio.description = None
+    mock_bio.class_concept_id = None
+    mock_bio.class_concept = None
+    mock_bio.preferred_unit = MagicMock(symbol="mg/dL")
+    mock_bio.scope = MagicMock(value="system")
+    mock_bio.tenant_id = None
+    mock_bio.created_by = None
 
-    app.dependency_overrides[get_db] = get_mock_db([(mock_bio, "mg/dL")])
+    app.dependency_overrides[get_db] = get_mock_db([mock_bio])
 
     response = await async_client.get("/api/v1/biomarkers/")
     assert response.status_code == 200
@@ -206,13 +221,12 @@ async def test_create_biomarker(async_client: AsyncClient):
         json={
             "slug": "new-biomarker",
             "name": "New Biomarker",
-            "category": "custom",
             "aliases": ["NB"],
             "preferred_unit_symbol": "mg/dL",
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["slug"] == "new-biomarker"
     assert data["name"] == "New Biomarker"
@@ -271,14 +285,13 @@ async def test_create_telemetry_biomarker(async_client: AsyncClient):
         json={
             "slug": "heart-rate",
             "name": "Heart Rate",
-            "category": "telemetry",
             "aliases": ["HR"],
             "preferred_unit_symbol": "bpm",
             "is_telemetry": True,
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["slug"] == "heart-rate"
     assert data["is_telemetry"] is True

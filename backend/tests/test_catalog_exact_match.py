@@ -1,4 +1,3 @@
-# ruff: noqa: E501 -- long immutable strings; reflow when touched
 """Regression tests for MedicationCatalog / AllergyCatalog uniqueness matching (C9).
 
 Pre-fix contract: catalog "uniqueness" checks at three sites used
@@ -10,15 +9,19 @@ single char) or ``"Vitamin B12"`` — silently deduping distinct entries.
 ``"HCTZ_50"`` would match ``"HCTZ-50"``. The intent (case-insensitive
 exact match) was right; the implementation was wrong.
 
-Post-fix contract pinned here: all three catalog uniqueness sites use
+Post-fix contract pinned here: the remaining creation-dedupe site uses
 ``func.lower(Catalog.name) == func.lower(name)`` instead of ``ilike``.
 This treats ``_`` and ``%`` as literals and produces a strict
 case-insensitive exact match.
 
-The fix is applied at three sites (MedicationCatalog + AllergyCatalog):
+One name-matching site remains — the AI pipeline's create-dedupe, now
+tenant-scoped:
 - ``app/ai/pipeline/ontology.py`` — ``process_unknown_medications``
-- ``app/services/seed_service.py`` — ``_process_medications`` and ``_process_allergies``
-- ``app/services/imports/taxonomy.py`` — ``_restore_medication_catalog`` and ``_restore_allergy_catalog``
+
+(ADR 0055 removed name-matching from the SEEDERS and then from the sidecar
+import: both upsert by deterministic id/seed_key — see
+``tests/test_seed_identity.py`` and ``tests/test_catalog_writer_scope.py`` —
+so those sites no longer compare names at all.)
 
 Catalog *search* features (``catalog_search_service.py``,
 ``allergy_service.py``) legitimately use ``ilike('%q%')`` for substring
@@ -47,45 +50,52 @@ def test_c9_ontology_uses_case_insensitive_exact_match():
     assert "MedicationCatalog.name.ilike(def_data.name)" not in src
 
 
-def test_c9_seed_service_medication_catalog_uses_exact_match():
-    """seed_service medication seeding: no ilike(item['name']), uses func.lower ==."""
+def test_c9_seed_service_medication_catalog_never_matches_by_name():
+    """seed_service medication seeding: upserts by identity (id/seed_key) —
+    name matching is gone entirely (ADR 0055; supersedes the func.lower fix)."""
     from app.services.seed import medications as seed_medications
 
-    # The medication seeding method lives in the medications family module;
-    # check the whole module source for the catalog-uniqueness pattern.
     src = inspect.getsource(seed_medications)
-    assert 'func.lower(MedicationCatalog.name) == func.lower(item["name"])' in src, (
-        "seed_service medication seeding must use case-insensitive exact match."
+    assert "func.lower(MedicationCatalog.name)" not in src, (
+        "seed_service medication seeding must not match rows by name (ADR 0055 "
+        "identity upsert: id, then seed_key — never name/slug)."
     )
-    # The ilike form must NOT be used as a uniqueness check.
-    assert 'MedicationCatalog.name.ilike(item["name"])' not in src
+    assert "MedicationCatalog.name.ilike" not in src
+    assert "upsert_by_identity" in src, "seeder must go through the identity upsert"
 
 
-def test_c9_seed_service_allergy_catalog_uses_exact_match():
-    """seed_service allergy seeding: no ilike(item['name']), uses func.lower ==."""
+def test_c9_seed_service_allergy_catalog_never_matches_by_name():
+    """seed_service allergy seeding: upserts by identity (id/seed_key)."""
     from app.services.seed import allergies as seed_allergies
 
     src = inspect.getsource(seed_allergies)
-    assert 'func.lower(AllergyCatalog.name) == func.lower(item["name"])' in src
-    assert 'AllergyCatalog.name.ilike(item["name"])' not in src
+    assert "func.lower(AllergyCatalog.name)" not in src
+    assert "AllergyCatalog.name.ilike" not in src
+    assert "upsert_by_identity" in src
 
 
-def test_c9_import_service_medication_catalog_uses_exact_match():
-    """import_service._restore_medication_catalog: no ilike(name), uses func.lower ==."""
+def test_c9_import_service_medication_catalog_never_matches_by_name():
+    """import_service._restore_medication_catalog: identity upsert (id →
+    ``seed_key``), never a name comparison of any form (ADR 0055)."""
     from app.services.imports.service import ImportService
 
     src = inspect.getsource(ImportService._restore_medication_catalog)
-    assert "func.lower(MedicationCatalog.name) == func.lower(name)" in src
-    assert "MedicationCatalog.name.ilike(name)" not in src
+    assert "_find_catalog_identity" in src
+    assert "MedicationCatalog.name ==" not in src
+    assert "MedicationCatalog.name.ilike" not in src
+    assert "func.lower(MedicationCatalog.name)" not in src
 
 
-def test_c9_import_service_allergy_catalog_uses_exact_match():
-    """import_service._restore_allergy_catalog: no ilike(name), uses func.lower ==."""
+def test_c9_import_service_allergy_catalog_never_matches_by_name():
+    """import_service._restore_allergy_catalog: identity upsert, never a name
+    comparison (ADR 0055)."""
     from app.services.imports.service import ImportService
 
     src = inspect.getsource(ImportService._restore_allergy_catalog)
-    assert "func.lower(AllergyCatalog.name) == func.lower(name)" in src
-    assert "AllergyCatalog.name.ilike(name)" not in src
+    assert "_find_catalog_identity" in src
+    assert "AllergyCatalog.name ==" not in src
+    assert "AllergyCatalog.name.ilike" not in src
+    assert "func.lower(AllergyCatalog.name)" not in src
 
 
 def test_c9_catalog_search_uses_hybrid_pipeline():

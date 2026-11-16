@@ -1,4 +1,3 @@
-
 """Calendar connector API (ADR-0052 / plan 52 P2).
 
 The settings surface for health's calendar bindings: the provider
@@ -308,9 +307,7 @@ async def create_binding(
     """Bind a provider calendar for one patient record."""
     provider, auth_kind = _validate_provider(payload.provider, payload.auth_kind)
     if payload.direction not in DIRECTIONS:
-        raise HTTPException(
-            status_code=422, detail=f"direction must be one of {list(DIRECTIONS)}"
-        )
+        raise HTTPException(status_code=422, detail=f"direction must be one of {list(DIRECTIONS)}")
     redaction = _validate_redaction(payload.redaction, payload.consent_full_details)
 
     try:
@@ -410,12 +407,8 @@ def _validate_options(
 
     accept_all = options.get("accept_all", options.get("acceptAll"))
     if accept_all is not None and not isinstance(accept_all, bool):
-        raise HTTPException(
-            status_code=422, detail="options.accept_all must be a boolean"
-        )
-    accept_categories = options.get(
-        "accept_categories", options.get("acceptCategories")
-    )
+        raise HTTPException(status_code=422, detail="options.accept_all must be a boolean")
+    accept_categories = options.get("accept_categories", options.get("acceptCategories"))
     if accept_categories is not None and (
         not isinstance(accept_categories, list)
         or any(not isinstance(item, str) for item in accept_categories)
@@ -692,13 +685,17 @@ async def binding_sync_logs(
 
     binding = await _load_owned_binding(binding_id, current_user=current_user, db=db)
     rows = (
-        await db.execute(
-            select(CalendarSyncLog)
-            .where(CalendarSyncLog.binding_id == binding.id)
-            .order_by(CalendarSyncLog.started_at.desc())
-            .limit(max(1, min(limit, 100)))
+        (
+            await db.execute(
+                select(CalendarSyncLog)
+                .where(CalendarSyncLog.binding_id == binding.id)
+                .order_by(CalendarSyncLog.started_at.desc())
+                .limit(max(1, min(limit, 100)))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [
         {
             "id": str(row.id),
@@ -880,9 +877,11 @@ async def oauth_start(
         "code_challenge_method": "S256",
         "scope": " ".join(scopes),
     }
-    authorize_url = provider.oauth.authorize_url + (
-        "&" if "?" in provider.oauth.authorize_url else "?"
-    ) + urlencode(params)
+    authorize_url = (
+        provider.oauth.authorize_url
+        + ("&" if "?" in provider.oauth.authorize_url else "?")
+        + urlencode(params)
+    )
     return {"authorize_url": authorize_url, "state": state}
 
 
@@ -924,10 +923,7 @@ async def oauth_callback(
         raise HTTPException(status_code=400, detail="Malformed identifiers in state.") from exc
 
     # The completing session must be the principal that started the flow.
-    if (
-        current_user.user_id != user_uuid
-        or current_user.tenant_id != tenant_uuid
-    ):
+    if current_user.user_id != user_uuid or current_user.tenant_id != tenant_uuid:
         raise HTTPException(
             status_code=403,
             detail="This OAuth state belongs to a different session — flow refused.",
@@ -960,9 +956,7 @@ async def oauth_callback(
     except Exception:
         return Response(
             status_code=302,
-            headers={
-                "Location": f"{landing}?calendar_binding={binding_id}&status=error"
-            },
+            headers={"Location": f"{landing}?calendar_binding={binding_id}&status=error"},
         )
 
     scopes = _scope_list(token.get("scope")) or _scope_list(pending.get("scope"))

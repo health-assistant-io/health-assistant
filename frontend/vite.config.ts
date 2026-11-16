@@ -62,8 +62,17 @@ export default defineConfig({
     exclude: [excludedLib],
     include: [
       ...libDeps,
+      // The family library is excluded from pre-bundling, so its direct
+      // imports must be listed here explicitly. @tiptap/react 3.32.x ships
+      // ESM that named-imports the CJS use-sync-external-store shims; without
+      // these entries Vite serves the raw CJS files to the browser.
+      '@tiptap/react',
+      '@tiptap/starter-kit',
+      'tiptap-markdown',
       'use-sync-external-store',
+      'use-sync-external-store/shim/index.js',
       'use-sync-external-store/shim/with-selector',
+      'use-sync-external-store/shim/with-selector.js',
       'zustand/vanilla',
       'zustand/traditional',
       'zustand/shallow',

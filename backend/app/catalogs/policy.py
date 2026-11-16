@@ -68,6 +68,55 @@ class CatalogConflict(Exception):
         super().__init__(f"a {target_scope}-scope item with slug '{slug}' already exists ({label})")
 
 
+class CatalogUniqueViolation(ValueError):
+    """Raised when a create/update violates a catalog uniqueness rule.
+
+    The unified write services translate DB ``IntegrityError``s (seed_key /
+    ``(coding_system, code)`` / slug uniques) and their pre-checks into this
+    typed error — after rolling back, never leaking a raw 500. The global
+    handler maps it to HTTP 409.
+
+    Subclasses :class:`ValueError` so existing callers that treat conflicts as
+    value errors (the proposal engine's race handling, ``ConceptService``) keep
+    working unchanged.
+    """
+
+    def __init__(
+        self,
+        field: str,
+        value: str | None = None,
+        *,
+        message: str | None = None,
+    ) -> None:
+        self.field = field
+        self.value = value
+        self.message = message or (
+            f"catalog {field} {value!r} already exists" if value else f"catalog {field} conflict"
+        )
+        super().__init__(self.message)
+
+
+class CatalogReferenceError(ValueError):
+    """Raised when a client-supplied reference id (a ``class_concept_id``, a
+    concept ``parent_id``, an anatomy/biomarker class) points at a row that
+    does not exist or is not visible to the caller's tenant.
+
+    Mapped to HTTP **400** — a bad client value, never 409/500 (ADR 0055
+    Phase-3 hardening: explicit reference ids are visibility-checked, exactly
+    like slug resolution). Subclasses :class:`ValueError` so the endpoint
+    ValueError→400 mappings keep working. The message never carries the
+    hidden row's name or slug — the caller learns only that the reference is
+    unusable, not that it exists elsewhere.
+    """
+
+    def __init__(self, field: str, *, message: str | None = None) -> None:
+        self.field = field
+        self.message = message or (
+            f"referenced {field} does not exist or is not visible to this tenant"
+        )
+        super().__init__(self.message)
+
+
 def _norm(role: RoleLike) -> str:
     return role.value if isinstance(role, Role) else str(role)
 

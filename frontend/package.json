@@ -1,6 +1,6 @@
 {
   "name": "health-assistant",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Universal Health Data Platform",
   "scripts": {
     "dev": "vite",
@@ -16,8 +16,11 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@neuronection/assistant-ui": "^0.81.0",
+    "@neuronection/assistant-ui": "^0.88.0",
+    "@simplewebauthn/browser": "^13.3.0",
     "@tailwindcss/typography": "^0.5.20",
+    "@tiptap/react": "^3.32.2",
+    "@tiptap/starter-kit": "^3.32.2",
     "@types/d3-force": "^3.0.10",
     "@types/dagre": "^0.7.54",
     "@types/react-grid-layout": "^2.1.0",
@@ -33,7 +36,7 @@
     "html-to-image": "^1.11.13",
     "i18next": "^26.4.2",
     "i18next-browser-languagedetector": "^8.2.1",
-    "i18next-http-backend": "^4.0.2",
+    "i18next-http-backend": "^4.0.10",
     "lucide-react": "^1.45.0",
     "marked": "^18.0.13",
     "qrcode.react": "^4.2.0",
@@ -51,6 +54,8 @@
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "simple-icons": "^16.31.0",
+    "tiptap-markdown": "^0.9.0",
+    "use-sync-external-store": "^1.6.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

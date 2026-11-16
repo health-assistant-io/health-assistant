@@ -80,18 +80,23 @@ Every model call writes **one row** — not one per user turn: a three-tool agen
 | `tenant_id` / `user_id` / `patient_id` | tenant cascade on erasure; no patient FK (the row outlives the patient) |
 | `started_at` / `latency_ms` | wall-clock start + measured duration |
 | `prompt_tokens` / `completion_tokens` | provider-reported usage when available (nullable) |
-| `cost_micros` | **integer micro-units**, computed from the model row's declared `settings.cost_per_1k_{input,output}_micros` — no hardcoded price table and no float money; `0` when the deployment declared none |
+| `provider_key` | the family preset key at call time (nullable) |
+| `cost_micros` | **integer micro-units, nullable**: resolved at write time from the tenant override → family built-in catalog → loopback (`0`) → legacy model `settings.cost_per_1k_*` → `NULL`/unpriced. A null price is never stored as `0` |
+| `usage_source` | `provider \| estimated \| partial \| unknown` |
+| `estimate_method` | named method when `usage_source='estimated'` (null otherwise) |
+| `price_source` | `user \| builtin \| local \| legacy \| unknown` |
+| `price_version` | the contract/override version used at call time; `pre-contract` for migrated history |
 | `status` | `ok \| error \| timeout \| cancelled` (native PG enum) |
 | `error_class` | the typed machine class (e.g. `APITimeoutError`), never a message or prompt fragment |
 | `trace_id` | correlation id minted at the gateway (shared by every call from one model construction) |
 | `meta` + `meta_schema_version` | open payload (model name, `streamed`); **never prompts or completions** (PHI) |
 
-Writes are **fail-soft** (a failed audit insert is logged and dropped — it never breaks the model call), rows carry no PHI payload, and retention is the `operational` class owned by the plan-6 retention job. `GET /ai-config/usage?window_days=N` (tenant-scoped, admin-only) aggregates the table per task: calls, errors, tokens, `cost_micros`, average latency.
+Writes are **fail-soft** (a failed audit insert is logged and dropped — it never breaks the model call), rows carry no PHI payload, and retention is the `operational` class owned by the retention job. `GET /ai-config/usage?window_days=N` (tenant-scoped, admin-only) aggregates the table per task: calls, errors, tokens, priced/unpriced calls, `cost_micros`, average latency. `cost_micros` is `NULL` when no call in the aggregate was priced, never a fabricated `0`. The Data & Cost page (`/admin/tenant/data-cost`, `/admin/system/data-cost`) shows the same ledger per provider/model plus the effective price rows; admins edit tenant-scoped overrides there through `/ai/prices`. Price edits never reprice historical rows.
 
 **Health delta worth knowing:** the embeddings (`run_embed`) and speech-to-text (`transcribe_audio`) paths are direct HTTP clients outside the LangChain gateway; the `embed`/`stt` routes are already in the vocabulary, and their emission lands when those seams grow the tenant/trace context plumbing (tracked as a follow-up, not a silent omission).
 
 ### UI Management
-Administrators can manage AI settings via the UI at `/settings/ai-config`:
+Administrators can manage AI settings via the UI at `/settings/ai-config`, and AI spend/prices at Data & Cost (`/admin/tenant/data-cost` / `/admin/system/data-cost`):
 1. **Add a Provider:** Specify the API Base URL and API Key.
 2. **Add Models:** For each provider, define available models, token limits, and desired temperature (e.g., `0.7` for NLP, `0.0` for structured extraction).
 3. **Assign Tasks:** Map system tasks to the desired model.
@@ -186,7 +191,7 @@ Messages form a branch tree per session (`chat_messages.parent_id` + per-node `a
 
 The chatbot can **propose** write actions via the `propose_*` tool family. **The AI never writes clinical data.** A `propose_*` tool only builds a draft and returns a `{"__hitl__": true, "task": {...}}` marker; the streaming layer detects it, **proactively saves** the card immediately (surviving stream interruptions), and emits a `task` payload event; the frontend renders a **review card** (compact summary) which opens a **modal** with the full prefilled form; the human edits and explicitly **Approves**, which commits through the **canonical, tenant-scoped, RBAC-enforced REST endpoint** (identical to a manual create). A dedicated `/resolve` endpoint then records the outcome (`confirmed` / `dismissed`) — it performs no writes.
 
-**One proposal store (schema plan 5).** A card is a row in the `proposals` table — `source='chat'`, `source_ref` = the assistant message id, `ordinal` = card order — never JSONB on the message (`chat_messages.tasks` is gone, with no replacement column). `kind_id` points at the seeded `proposal_kinds` vocabulary (`create_event`, `create_examination`, `add_medication`, `add_biomarker_to_examination` plus the catalog/chat kinds); `kind.card_variant` is the family HITL card-contract key the UI registers a handler under, so the card contract is unchanged. `payload` is the versioned card document (`payload_schema_version`), `final_payload` the user-approved shape (validated against the kind's contract schema before any server-side write), and `resolution_trace` the audit trail (who resolved what when). Extension proposals land in the same table with `source='extension'` and `source_ref` = the integration instance id; approving one runs the kind's server-side resolver and transitions `proposed → approved → applied` (or `failed`).
+**One proposal store.** A card is a row in the `proposals` table — `source='chat'`, `source_ref` = the assistant message id, `ordinal` = card order — never JSONB on the message (`chat_messages.tasks` is gone, with no replacement column). `kind_id` points at the seeded `proposal_kinds` vocabulary (`create_event`, `create_examination`, `add_medication`, `add_biomarker_to_examination` plus the catalog/chat kinds); `kind.card_variant` is the family HITL card-contract key the UI registers a handler under, so the card contract is unchanged. `payload` is the versioned card document (`payload_schema_version`), `final_payload` the user-approved shape (validated against the kind's contract schema before any server-side write), and `resolution_trace` the audit trail (who resolved what when). Extension proposals land in the same table with `source='extension'` and `source_ref` = the integration instance id; approving one runs the kind's server-side resolver and transitions `proposed → approved → applied` (or `failed`).
 
 **State machine + idempotent resolve.** The closed state machine is
 `proposed | approved | rejected | applied | failed | expired | superseded`,

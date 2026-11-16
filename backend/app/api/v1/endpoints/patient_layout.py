@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.patient_layout import (
     PatientLayoutCreate,
     PatientLayoutResponse,
@@ -59,7 +60,7 @@ async def create_layout(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new layout for a specific patient"""
-    await check_patient_access(patient_id, current_user, db)
+    await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
 
     return await create_patient_layout(
         user_id=current_user.user_id,
@@ -81,7 +82,7 @@ async def update_layout(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing layout"""
-    await check_patient_access(patient_id, current_user, db)
+    await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
     updated_layout = await update_patient_layout(
         layout_id=layout_id,
         user_id=current_user.user_id,
@@ -105,7 +106,7 @@ async def delete_layout(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a layout"""
-    await check_patient_access(patient_id, current_user, db)
+    await check_patient_access(patient_id, current_user, db, required=GrantPermission.WRITE)
     success = await delete_patient_layout(layout_id, current_user.user_id)
     if not success:
         raise HTTPException(

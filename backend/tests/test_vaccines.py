@@ -123,11 +123,13 @@ async def test_vaccine_catalog_crud(async_client):
     suffix = uuid.uuid4().hex[:8]
     create = await async_client.post(
         "/api/v1/vaccines/catalog",
-        json={"slug": f"vc-{suffix}", "name": f"Vaccine {suffix}", "code": "99"},
+        json={"name": f"Vaccine {suffix}", "code": "99"},
         headers=headers,
     )
-    assert create.status_code == 200, create.text
+    assert create.status_code == 201, create.text
     vid = create.json()["id"]
+    # The slug is derived server-side from the name (ADR 0055 D4).
+    assert create.json()["slug"] == f"vaccine-{suffix}"
 
     get = await async_client.get(f"/api/v1/vaccines/catalog/{vid}", headers=headers)
     assert get.status_code == 200
@@ -152,10 +154,10 @@ async def test_vaccine_catalog_user_creates_user_scope(async_client):
     _, headers = await _tenant_and_headers("USER")
     resp = await async_client.post(
         "/api/v1/vaccines/catalog",
-        json={"slug": "u", "name": "U"},
+        json={"name": "U"},
         headers=headers,
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
 
 
 @pytest.mark.asyncio

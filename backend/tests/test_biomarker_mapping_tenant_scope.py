@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.fhir.patient import Observation, Patient
 from app.models.tenant_model import TenantModel
 from app.services.fhir.fhir_service import map_observations_to_biomarkers
@@ -35,6 +36,7 @@ async def two_tenants_with_hr_biomarker():
         await db.flush()
         # Tenant A already has a Heart Rate definition.
         a_hr = BiomarkerDefinition(
+            scope=(CatalogScope.TENANT if tenant_a is not None else CatalogScope.SYSTEM),
             slug="heart-rate",
             coding_system="loinc",
             code=LOINC,
@@ -89,6 +91,7 @@ async def test_does_not_cross_link_to_another_tenants_biomarker(two_tenants_with
             )
         ).scalar_one()
         assert linked.tenant_id == ctx["tenant_b"]
+        assert linked.scope == CatalogScope.TENANT
 
 
 @pytest.mark.asyncio
@@ -116,3 +119,5 @@ async def test_auto_created_vital_defaults_to_telemetry(two_tenants_with_hr_biom
             )
         ).scalar_one()
         assert linked.is_telemetry is True  # HR is a high-frequency wearable vital
+        assert linked.scope == CatalogScope.TENANT
+        assert linked.tenant_id == ctx["tenant_b"]

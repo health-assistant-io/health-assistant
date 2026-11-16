@@ -1,6 +1,6 @@
 # Cloud calendars — implementation notes
 
-Family law: ADR-0052 + the family cloud-connector standard. This page is the
+Family law: the family cloud-connector standard. This page is the
 **health host map**; the canonical catalog and engines are vendored
 byte-identically from the family contract canonical and are read-only here.
 

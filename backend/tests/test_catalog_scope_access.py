@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
@@ -86,7 +87,8 @@ def _create_payload(type: str, suffix: str) -> dict[str, Any]:
     if type == "allergy":
         return {"name": name, "category": "FOOD"}
     if type == "vaccine":
-        return {"slug": f"item-{suffix}", "name": name}
+        # slug is derived server-side (ADR 0055 D4) — never client-sent.
+        return {"name": name}
     return {"name": name}
 
 
@@ -351,6 +353,8 @@ async def test_scope_filter_narrows_list():
             row = MedicationCatalog(name=f"filter-{scope.value}-{tenant_id.hex[:6]}")
             row.tenant_id = tid
             row.scope = scope
+            if scope is CatalogScope.USER:
+                row.created_by = tenant_id
             db.add(row)
         await db.commit()
 
@@ -408,15 +412,32 @@ async def test_backfill_derives_scope_from_tenant_id():
         db.add(TenantModel(id=tenant_id, name="BF", slug=f"bf-{tenant_id}"))
         await db.commit()
 
-    # Insert two rows in the "pre-backfill" state (scope forced to system).
+    # The system scope is legal for a NULL tenant; the "unclassified" shape
+    # (system + tenant set) is DB law now (0010_catalog_identity) and cannot
+    # be inserted even to simulate a pre-backfill state.
     async with AsyncSessionLocal() as db:
         global_row = MedicationCatalog(name="bf-global")
         global_row.tenant_id = None
         global_row.scope = CatalogScope.SYSTEM
+        db.add(global_row)
+        await db.commit()
+
+    async with AsyncSessionLocal() as db:
         tenant_row = MedicationCatalog(name="bf-tenant")
         tenant_row.tenant_id = tenant_id
         tenant_row.scope = CatalogScope.SYSTEM
-        db.add_all([global_row, tenant_row])
+        db.add(tenant_row)
+        with pytest.raises(IntegrityError):
+            await db.commit()
+        await db.rollback()
+
+    # Seed the legal tenant row and re-apply the derivation rule; it stays a
+    # no-op for rows that already classify correctly.
+    async with AsyncSessionLocal() as db:
+        tenant_row = MedicationCatalog(name="bf-tenant")
+        tenant_row.tenant_id = tenant_id
+        tenant_row.scope = CatalogScope.TENANT
+        db.add(tenant_row)
         await db.commit()
 
     # Re-apply the migration's derivation rule to the test rows.

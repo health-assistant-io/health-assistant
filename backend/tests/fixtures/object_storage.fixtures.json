@@ -1,0 +1,356 @@
+{
+  "schema": 1,
+  "adr": "ADR-0057",
+  "plan": 55,
+  "contract": "object-storage/1.1",
+  "description": "Cross-product acceptance wall for the family object-storage contract (ADR-0057 / plan 55 P0). Every vendored copy of contracts/object_storage.py must satisfy these rows — key validation and builders, extension safety, the entrypoint/cloud-profile resolution law, presign bounds, backend error classification, redaction, env naming and boot-time config validation. Same law, one table, never per-repo edits.",
+  "defaults": {
+    "presignTtl": 300,
+    "presignMin": 60,
+    "presignMax": 3600,
+    "maxObjectMb": 100,
+    "hardMaxObjectMb": 1024,
+    "maxKeyLength": 1024,
+    "backends": ["local", "s3", "azure_blob"],
+    "objectBackends": ["s3", "azure_blob"],
+    "entrypoints": ["desktop", "server"],
+    "cloudProfiles": ["aws", "azure", "gcp", "cloud"],
+    "sseModes": ["none", "AES256", "aws:kms"],
+    "cloudRequiredSse": ["AES256", "aws:kms"]
+  },
+  "keys": [
+    {"name": "simple", "key": "a/b", "expected": "a/b"},
+    {"name": "tenant-doc", "key": "tenants/t1/documents/d1.pdf", "expected": "tenants/t1/documents/d1.pdf"},
+    {"name": "uuid-segments", "key": "tenants/7f6c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f/documents/x.bin", "expected": "tenants/7f6c2f4e-1a2b-4c3d-8e9f-0a1b2c3d4e5f/documents/x.bin"},
+    {"name": "dots-dashes-underscores", "key": "a.b/c-d/e_f/g~h", "expected": "a.b/c-d/e_f/g~h"},
+    {"name": "empty", "key": "", "error": "InvalidObjectKey"},
+    {"name": "absolute", "key": "/etc/passwd", "error": "InvalidObjectKey"},
+    {"name": "double-slash", "key": "a//b", "error": "InvalidObjectKey"},
+    {"name": "trailing-slash", "key": "a/b/", "error": "InvalidObjectKey"},
+    {"name": "dot-segment", "key": "a/./b", "error": "InvalidObjectKey"},
+    {"name": "dotdot-segment", "key": "a/../b", "error": "InvalidObjectKey"},
+    {"name": "backslash", "key": "a\\b", "error": "InvalidObjectKey"},
+    {"name": "nul", "key": "a/\u0000b", "error": "InvalidObjectKey"},
+    {"name": "non-ascii", "key": "café/x", "error": "InvalidObjectKey"},
+    {"name": "space", "key": "a b/c", "error": "InvalidObjectKey"},
+    {"name": "leading-space", "key": " a/b", "error": "InvalidObjectKey"},
+    {"name": "hidden-segment", "key": "a/.hidden", "error": "InvalidObjectKey"},
+    {"name": "leading-dash", "key": "a/-b", "error": "InvalidObjectKey"},
+    {"name": "colon", "key": "a/b:c", "error": "InvalidObjectKey"}
+  ],
+  "joins": [
+    {"name": "basic", "parts": ["a", "b", "c"], "expected": "a/b/c"},
+    {"name": "slashes-normalized", "parts": ["/a/", "/b/"], "expected": "a/b"},
+    {"name": "prefix-and-key", "parts": ["base", "tenants/t1/documents/d1.pdf"], "expected": "base/tenants/t1/documents/d1.pdf"},
+    {"name": "empty", "parts": [], "error": "InvalidObjectKey"},
+    {"name": "dotdot", "parts": ["a", "..", "b"], "error": "InvalidObjectKey"}
+  ],
+  "contentKeys": [
+    {"name": "lower-hex", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expected": "sha256/aa/aa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"name": "upper-hex-folds", "sha256": "ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789", "expected": "sha256/ab/cd/abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"},
+    {"name": "with-prefix", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "prefix": "study", "expected": "study/sha256/01/23/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+    {"name": "short", "sha256": "abc", "error": "InvalidObjectKey"},
+    {"name": "non-hex", "sha256": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", "error": "InvalidObjectKey"}
+  ],
+  "tenantKeys": [
+    {"name": "pdf", "tenant": "t1", "category": "documents", "objectId": "d1", "extension": "pdf", "expected": "tenants/t1/documents/d1.pdf"},
+    {"name": "dotted-extension", "tenant": "t1", "category": "documents", "objectId": "d1", "extension": ".PDF", "expected": "tenants/t1/documents/d1.pdf"},
+    {"name": "compound-extension", "tenant": "t1", "category": "exports", "objectId": "e1", "extension": "tar.gz", "expected": "tenants/t1/exports/e1.gz"},
+    {"name": "no-extension", "tenant": "t1", "category": "drawings", "objectId": "d1", "expected": "tenants/t1/drawings/d1"},
+    {"name": "prefix", "tenant": "t1", "category": "documents", "objectId": "d1", "extension": "pdf", "prefix": "health", "expected": "health/tenants/t1/documents/d1.pdf"},
+    {"name": "invalid-tenant", "tenant": "../x", "category": "documents", "objectId": "d1", "error": "InvalidObjectKey"},
+    {"name": "invalid-category", "tenant": "t1", "category": "bad category", "objectId": "d1", "error": "InvalidObjectKey"},
+    {"name": "invalid-object", "tenant": "t1", "category": "documents", "objectId": "../d1", "error": "InvalidObjectKey"},
+    {"name": "invalid-prefix", "tenant": "t1", "category": "documents", "objectId": "d1", "prefix": "bad prefix", "error": "InvalidObjectKey"}
+  ],
+  "extensions": [
+    {"name": "bare", "value": "pdf", "expected": ".pdf"},
+    {"name": "dotted-upper", "value": ".PDF", "expected": ".pdf"},
+    {"name": "compound", "value": "tar.gz", "expected": ".gz"},
+    {"name": "bare-name-is-token", "value": "file", "expected": ".file"},
+    {"name": "empty", "value": "", "expected": ""},
+    {"name": "traversal", "value": "../x", "expected": ""},
+    {"name": "slash", "value": "a/b", "expected": ""},
+    {"name": "space", "value": "a b", "expected": ""},
+    {"name": "too-long", "value": "abcdefghijklmnopq", "expected": ""},
+    {"name": "dot-only", "value": ".", "expected": ""}
+  ],
+  "filenameExtensions": [
+    {"name": "upper", "value": "PHOTO.JPG", "expected": ".jpg"},
+    {"name": "compound", "value": "a.tar.gz", "expected": ".gz"},
+    {"name": "no-suffix", "value": "file", "expected": ""},
+    {"name": "dotfile", "value": ".bashrc", "expected": ""},
+    {"name": "traversal", "value": "../../etc/passwd", "expected": ""},
+    {"name": "mixed", "value": "x.PDF", "expected": ".pdf"}
+  ],
+  "profiles": [
+    {"name": "empty", "value": "", "expected": null},
+    {"name": "none", "value": "none", "expected": null},
+    {"name": "local", "value": "local", "expected": null},
+    {"name": "on-prem", "value": "on-prem", "expected": null},
+    {"name": "self-hosted", "value": "self-hosted", "expected": null},
+    {"name": "aws", "value": "aws", "expected": "aws"},
+    {"name": "azure-case", "value": "Azure", "expected": "azure"},
+    {"name": "gcp", "value": "gcp", "expected": "gcp"},
+    {"name": "cloud", "value": "cloud", "expected": "cloud"},
+    {"name": "unknown", "value": "digitalocean", "error": "StorageConfigError"}
+  ],
+  "backendResolution": [
+    {"name": "desktop-default", "entrypoint": "desktop", "profile": null, "requested": null, "expected": "local"},
+    {"name": "desktop-explicit-local", "entrypoint": "desktop", "profile": null, "requested": "local", "expected": "local"},
+    {"name": "desktop-rejects-s3", "entrypoint": "desktop", "profile": null, "requested": "s3", "error": "StorageConfigError"},
+    {"name": "desktop-rejects-cloud-profile", "entrypoint": "desktop", "profile": "aws", "requested": null, "error": "StorageConfigError"},
+    {"name": "server-default-local", "entrypoint": "server", "profile": null, "requested": null, "expected": "local"},
+    {"name": "server-explicit-s3", "entrypoint": "server", "profile": null, "requested": "s3", "expected": "s3"},
+    {"name": "aws-defaults-s3", "entrypoint": "server", "profile": "aws", "requested": null, "expected": "s3"},
+    {"name": "aws-rejects-local", "entrypoint": "server", "profile": "aws", "requested": "local", "error": "StorageConfigError"},
+    {"name": "azure-defaults-azure-blob", "entrypoint": "server", "profile": "azure", "requested": null, "expected": "azure_blob"},
+    {"name": "azure-allows-s3-gateway", "entrypoint": "server", "profile": "azure", "requested": "s3", "expected": "s3"},
+    {"name": "gcp-defaults-s3", "entrypoint": "server", "profile": "gcp", "requested": null, "expected": "s3"},
+    {"name": "aws-rejects-azure-blob", "entrypoint": "server", "profile": "aws", "requested": "azure_blob", "error": "StorageConfigError"},
+    {"name": "gcp-rejects-azure-blob", "entrypoint": "server", "profile": "gcp", "requested": "azure_blob", "error": "StorageConfigError"},
+    {"name": "generic-cloud-defaults-s3", "entrypoint": "server", "profile": "cloud", "requested": null, "expected": "s3"},
+    {"name": "self-hosted-defaults-local", "entrypoint": "server", "profile": "self-hosted", "requested": null, "expected": "local"},
+    {"name": "required-rejects-local", "entrypoint": "server", "profile": null, "requested": "local", "required": true, "error": "StorageConfigError"},
+    {"name": "required-allows-s3", "entrypoint": "server", "profile": null, "requested": "s3", "required": true, "expected": "s3"},
+    {"name": "unknown-backend", "entrypoint": "server", "profile": null, "requested": "gcs", "error": "StorageConfigError"},
+    {"name": "unknown-entrypoint", "entrypoint": "container", "profile": null, "requested": null, "error": "StorageConfigError"}
+  ],
+  "presignTtl": [
+    {"name": "default", "ttl": null, "expected": 300},
+    {"name": "valid", "ttl": 300, "expected": 300},
+    {"name": "zero-clamps-up", "ttl": 0, "expected": 60},
+    {"name": "below-min", "ttl": 59, "expected": 60},
+    {"name": "above-max", "ttl": 3601, "expected": 3600},
+    {"name": "negative-clamps-up", "ttl": -10, "expected": 60},
+    {"name": "string", "ttl": "120", "expected": 120},
+    {"name": "garbage", "ttl": "five", "error": "StorageConfigError"}
+  ],
+  "errors": [
+    {"name": "s3-no-such-key", "backend": "s3", "code": "NoSuchKey", "expected": "ObjectNotFound"},
+    {"name": "s3-404", "backend": "s3", "code": 404, "expected": "ObjectNotFound"},
+    {"name": "s3-access-denied", "backend": "s3", "code": "AccessDenied", "expected": "StorageAuthError"},
+    {"name": "s3-bad-signature", "backend": "s3", "code": "SignatureDoesNotMatch", "expected": "StorageAuthError"},
+    {"name": "s3-slow-down", "backend": "s3", "code": "SlowDown", "expected": "StorageUnavailable"},
+    {"name": "s3-503", "backend": "s3", "code": 503, "expected": "StorageUnavailable"},
+    {"name": "s3-too-large", "backend": "s3", "code": "EntityTooLarge", "expected": "ObjectTooLarge"},
+    {"name": "s3-unknown", "backend": "s3", "code": "WeirdNewCode", "expected": "StorageUnavailable"},
+    {"name": "azure-not-found", "backend": "azure_blob", "code": "BlobNotFound", "expected": "ObjectNotFound"},
+    {"name": "azure-auth", "backend": "azure_blob", "code": "ClientAuthenticationError", "expected": "StorageAuthError"},
+    {"name": "azure-busy", "backend": "azure_blob", "code": "ServerBusy", "expected": "StorageUnavailable"},
+    {"name": "azure-too-large", "backend": "azure_blob", "code": "RequestBodyTooLarge", "expected": "ObjectTooLarge"},
+    {"name": "azure-unknown", "backend": "azure_blob", "code": "NewAzureCode", "expected": "StorageUnavailable"}
+  ],
+  "envNames": [
+    {"name": "health", "prefix": "HA", "env": "OBJECT_STORAGE_BACKEND", "expected": "HA_OBJECT_STORAGE_BACKEND"},
+    {"name": "career", "prefix": "career", "env": "S3_BUCKET", "expected": "CAREER_S3_BUCKET"},
+    {"name": "trailing-underscore", "prefix": "HA_", "env": "CLOUD_PROFILE", "expected": "HA_CLOUD_PROFILE"},
+    {"name": "empty-prefix", "prefix": "", "env": "S3_BUCKET", "error": "StorageConfigError"},
+    {"name": "bad-env", "prefix": "HA", "env": "s3-bucket", "error": "StorageConfigError"}
+  ],
+  "redaction": [
+    {"name": "s3-creds", "backend": "s3", "bucket": "b1", "accessKey": "AKIA", "secretKey": "secret", "expectedSecret": "***"},
+    {"name": "s3-absent", "backend": "s3", "bucket": "b1", "expectedSecret": ""},
+    {"name": "azure-connection-string", "backend": "azure_blob", "container": "appdata", "connectionString": "UseDevelopmentStorage=true", "expectedSecret": "***"}
+  ],
+  "configs": [
+    {
+      "name": "desktop-default",
+      "entrypoint": "desktop",
+      "env": {},
+      "expectedBackend": "local",
+      "expectedRequired": false
+    },
+    {
+      "name": "desktop-rejects-s3-env",
+      "entrypoint": "desktop",
+      "env": {"APP_OBJECT_STORAGE_BACKEND": "s3", "APP_S3_BUCKET": "b1"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-aws-valid",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "aws",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_REGION": "eu-central-1",
+        "APP_S3_ACCESS_KEY_ID": "AKIA",
+        "APP_S3_SECRET_ACCESS_KEY": "secret"
+      },
+      "expectedBackend": "s3",
+      "expectedRequired": true
+    },
+    {
+      "name": "server-aws-default-chain",
+      "entrypoint": "server",
+      "env": {"APP_CLOUD_PROFILE": "aws", "APP_S3_BUCKET": "my-bucket"},
+      "expectedBackend": "s3",
+      "expectedRequired": true
+    },
+    {
+      "name": "server-aws-no-bucket",
+      "entrypoint": "server",
+      "env": {"APP_CLOUD_PROFILE": "aws"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-aws-half-creds",
+      "entrypoint": "server",
+      "env": {"APP_CLOUD_PROFILE": "aws", "APP_S3_BUCKET": "my-bucket", "APP_S3_ACCESS_KEY_ID": "AKIA"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-aws-sse-none-rejected",
+      "entrypoint": "server",
+      "env": {"APP_CLOUD_PROFILE": "aws", "APP_S3_BUCKET": "my-bucket", "APP_S3_SSE": "none"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-azure-valid",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "azure",
+        "APP_AZURE_STORAGE_CONTAINER": "appdata",
+        "APP_AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true"
+      },
+      "expectedBackend": "azure_blob",
+      "expectedRequired": true
+    },
+    {
+      "name": "server-azure-no-container",
+      "entrypoint": "server",
+      "env": {"APP_CLOUD_PROFILE": "azure", "APP_AZURE_STORAGE_ACCOUNT_URL": "https://x.blob.core.windows.net"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-azure-managed-identity",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "azure",
+        "APP_AZURE_STORAGE_CONTAINER": "appdata",
+        "APP_AZURE_STORAGE_ACCOUNT_URL": "https://health.blob.core.windows.net",
+        "APP_AZURE_STORAGE_CREDENTIAL": "managed_identity"
+      },
+      "expectedBackend": "azure_blob",
+      "expectedRequired": true
+    },
+    {
+      "name": "server-azure-account-url-without-credential",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "azure",
+        "APP_AZURE_STORAGE_CONTAINER": "appdata",
+        "APP_AZURE_STORAGE_ACCOUNT_URL": "https://health.blob.core.windows.net"
+      },
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "cloud-http-s3-endpoint-rejected",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "aws",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_ENDPOINT_URL": "http://insecure.internal:9000"
+      },
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "cloud-verify-tls-false-rejected",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "aws",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_VERIFY_TLS": "false"
+      },
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "s3-max-attempts-out-of-range",
+      "entrypoint": "server",
+      "env": {
+        "APP_OBJECT_STORAGE_BACKEND": "s3",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_MAX_ATTEMPTS": "11"
+      },
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-azure-bad-container",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "azure",
+        "APP_AZURE_STORAGE_CONTAINER": "Bad_Container",
+        "APP_AZURE_STORAGE_CONNECTION_STRING": "UseDevelopmentStorage=true"
+      },
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-required-without-backend",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_REQUIRED": "true"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-s3-missing-bucket",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_BACKEND": "s3"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-s3-bad-bucket",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_BACKEND": "s3", "APP_S3_BUCKET": "Bad Name"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-custom-endpoint-defaults-sse-none",
+      "entrypoint": "server",
+      "env": {
+        "APP_OBJECT_STORAGE_BACKEND": "s3",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_ENDPOINT_URL": "https://minio.example.com"
+      },
+      "expectedBackend": "s3",
+      "expectedRequired": false,
+      "expectedSse": "none"
+    },
+    {
+      "name": "server-cloud-custom-endpoint-keeps-sse",
+      "entrypoint": "server",
+      "env": {
+        "APP_CLOUD_PROFILE": "aws",
+        "APP_S3_BUCKET": "my-bucket",
+        "APP_S3_ENDPOINT_URL": "https://s3.example.com"
+      },
+      "expectedBackend": "s3",
+      "expectedRequired": true,
+      "expectedSse": "AES256"
+    },
+    {
+      "name": "server-max-mb-zero",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_MAX_MB": "0"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-presign-out-of-range",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_PRESIGN_TTL": "10"},
+      "error": "StorageConfigError"
+    },
+    {
+      "name": "server-local-explicit",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_BACKEND": "local", "APP_OBJECT_STORAGE_LOCAL_ROOT": "/var/lib/app/uploads"},
+      "expectedBackend": "local",
+      "expectedRequired": false
+    },
+    {
+      "name": "server-local-without-root",
+      "entrypoint": "server",
+      "env": {"APP_OBJECT_STORAGE_BACKEND": "local"},
+      "withoutDefaultRoot": true,
+      "error": "StorageConfigError"
+    }
+  ]
+}

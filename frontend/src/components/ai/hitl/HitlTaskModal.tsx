@@ -34,6 +34,11 @@ export const HitlTaskModal: React.FC<Props> = ({ isOpen, onClose, task, sessionI
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
+      // Nested Radix dialogs (the picker's browse modal, the create dialog)
+      // mark their Escape as handled via preventDefault. This popup must only
+      // close for an Escape NO nested dialog consumed — the layers unwind
+      // innermost-first: create dialog → browse → this proposal popup.
+      if (e.defaultPrevented) return;
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);

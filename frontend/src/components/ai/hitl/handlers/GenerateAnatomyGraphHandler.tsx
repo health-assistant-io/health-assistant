@@ -64,7 +64,6 @@ function suggestedToDraft(suggested: unknown): GraphDraft {
     standard_system: n?.standard_system ?? null,
     standard_code: n?.standard_code ? String(n.standard_code) : null,
     description: n?.description ? String(n.description) : null,
-    is_custom: true,
   }));
   const edges: AnatomyImportEdge[] = rawEdges
     .map((e: any) => {
@@ -350,7 +349,6 @@ export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({
                   slug: '',
                   name: '',
                   class_concept_slug: 'organ',
-                  is_custom: true,
                 },
               ],
             }

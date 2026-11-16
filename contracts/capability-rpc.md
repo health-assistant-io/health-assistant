@@ -1,15 +1,16 @@
 # Capability RPC — the T2 seam (capability-rpc/1)
 
-**Status:** spec ratified with ADR-0040 (2026-10-15, clause 13); generalizes
-ADR-0030's shape into a host-neutral family contract. Message structural
+**Status:** spec ratified 2026-10-15 as the family extension-charter
+contract (clause 13); generalizes the earlier sandbox shape into a
+host-neutral family contract. Message structural
 gate: [`capability-rpc.schema.json`](./capability-rpc.schema.json).
 Vocabularies (methods, error codes, limits): the
 [extension charter](./extension-charter.json). Implementation tier: **T2
 imported code only** — one sandboxed subprocess per extension.
 
 Implementations may differ (Electron `utilityProcess` on desktop; a Python
-subprocess on career/study); outputs may not (ADR-0040 clause 22 — the
-fixture wall is the parity gate).
+subprocess on career/study); outputs may not (the fixture wall is the
+parity gate).
 
 ## 1. Transport & framing
 
@@ -31,7 +32,7 @@ fixture wall is the parity gate).
   message. A version mismatch at handshake ⇒ the host terminates the
   sandbox and self-disables the extension with `unsupported` — never
   half-runs.
-- **One process per extension** (ADR-0030 clause 1). Concurrent live
+- **One process per extension**. Concurrent live
   sandboxes are capped by the host profile. **Sandbox death is extension
   failure, never host failure**: crash or watchdog kill self-disables the
   extension with a surfaced reason.
@@ -40,8 +41,8 @@ fixture wall is the parity gate).
   `ext.invoke` runs → `ext.dispose` (graceful) or SIGKILL after the
   dispose deadline.
 - The extension never learns host secrets, env or filesystem layout: the
-  process spawns with a scrubbed minimal environment (ADR-0011 §6
-  discipline), cwd inside its sandbox dir.
+  process spawns with a scrubbed minimal environment, cwd inside its
+  sandbox dir.
 
 ## 3. Messages
 
@@ -79,15 +80,15 @@ params:  { url, method? ("GET"|"HEAD" default "GET"), headers? (object, ≤16),
 result:  { status, headers (≤32), body (string, ≤ maxBytes), finalUrl }
 ```
 
-- Served by the **host-side polite runtime** (`contracts/polite_http.py`,
-  Phase 1): SSRF guard (resolve-then-connect, reserved ranges, every
+- Served by the **host-side polite runtime** (`contracts/polite_http.py`):
+  SSRF guard (resolve-then-connect, reserved ranges, every
   address checked), full-jitter retry, `Retry-After`, robots.txt, size
   caps.
 - **Scoped to the manifest's declared `domains` — every hop**: redirects
-  are re-validated per hop (D23); a hop outside scope ⇒ `net-denied`
+  are re-validated per hop; a hop outside scope ⇒ `net-denied`
   (non-retryable config-class).
 - **Connectors never open sockets.** `net` exists at the seam only as
-  this call (D14). The sandbox itself has no network access at the OS
+  this call. The sandbox itself has no network access at the OS
   level — the host IS the perimeter.
 
 ### `cap.state.get` / `cap.state.set` — extension-owned state
@@ -148,7 +149,7 @@ The wall-clock watchdog measures each invoke.
 
 Graceful shutdown: flush state, final events, exit 0. Deadline is
 host-owned (seconds); then SIGKILL. Uninstall/tombstone also tears the
-sandbox down (ADR-0030 clause 5).
+sandbox down.
 
 ## 6. Events (extension → host)
 
@@ -159,15 +160,14 @@ sandbox down (ADR-0030 clause 5).
   chars) }`: bounded diagnostics; the host rate-limits per extension and
   never renders log content as UI prose.
 
-Events are observations only — never instructions (ADR-0011 §7
-discipline).
+Events are observations only — never instructions.
 
 ## 7. Frozen module surface, watchdogs, quotas
 
 - **Frozen module surface**: sandbox code imports the vendored SDK + the
   capability client (+ pure helpers) only — no DOM, no Node/OS builtins,
   no fetch, no dynamic import escape. Imports are size- and
-  complexity-budgeted at import time (ADR-0030 clause 2).
+  complexity-budgeted at import time.
 - **Watchdogs per call**: wall-clock (host-configurable, default 30 s per
   `ext.invoke`/capability call) and memory (per-process cap). A watchdog
   kill = crash = self-disable.
@@ -177,15 +177,15 @@ discipline).
   never a silent drop.
 - **One audit row per capability call**: method, args hash, outcome,
   duration, extension id + digest. An agent pathway that bypasses the
-  audit funnel is built wrong (ADR-0011 §8).
+  audit funnel is built wrong.
 
 ## 8. Error envelope (the charter enum)
 
 Every failure is `{ code, detail, retryable, retryAfterMs? }` — `code`
 from the charter's 15-code enum, `retryable` from the closed sub-enum,
 `retryAfterMs` at the envelope (the one retry-hint slot). `detail` is a
-**bounded object** (7E wire truth; D3 — no string form, and the old
-JSON-encoded-string detail is deleted): declared keys only —
+**bounded object** (no string form, and the old JSON-encoded-string
+detail is deleted): declared keys only —
 `message` (≤ 400, the host diagnostic for logs/typed machine surfaces),
 `path`, `field`, `id`, `packId`, `runId`, `slot`, `host`, `hop`, `method`,
 `op`, `stage`, `engine`, `expected`, `actual`, `limit`, `used` — each
@@ -196,20 +196,20 @@ then drops non-`message` keys. **Product UI copy is keyed by `code`**
 (host-localized TEXT) and may interpolate the data keys; `message` is
 never rendered raw as product copy. Mapping is identity: the seam, the
 result envelope's `partial_errors` and every product surface share one
-vocabulary (ADR-0040 clause 4). No raw exception strings cross an
+vocabulary. No raw exception strings cross an
 extension boundary anywhere.
 
 ## 9. Conformance
 
 Cross-host conformance fixtures live with the charter
-(`extension-contract.fixtures.json` rpc cases today; the Phase 5 Python
-runner adds the ADR-0030 escape-matrix ports — loop, memory bomb, path
+(`extension-contract.fixtures.json` rpc cases today; the Python
+runner adds the escape-matrix ports — loop, memory bomb, path
 wander, secret sniffing contained; crash = self-disable, host
 unaffected).
 
-## 10. Non-goals (fixed by ADR-0040)
+## 10. Non-goals (frozen for v1)
 
-No code-driven UI intents in v1 (declarative contributions first —
-ruling 10); no cross-extension communication; no shared sandbox hosts;
-no auto-updates (no signatures ⇒ no auto-apply at all, D22); no
-filesystem capability calls in v1 (append-only future major).
+No code-driven UI intents in v1 (declarative contributions first); no
+cross-extension communication; no shared sandbox hosts; no auto-updates
+(no signatures ⇒ no auto-apply at all); no filesystem capability calls in
+v1 (append-only future major).

@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { CatalogItem } from '../../../types/catalog';
 import {
   allergyCategoryFacet,
-  allergyCustomFacet,
+  allergyScopeFacet,
   vaccineCodingSystemFacet,
-  medicationCustomFacet,
+  medicationScopeFacet,
   conceptStatusFacet,
   conceptKindFacet,
   catalogAllergyFacets,
@@ -21,10 +21,10 @@ function item(fields: Record<string, unknown>): CatalogItem {
 }
 
 const allergyItems: CatalogItem[] = [
-  item({ category: 'FOOD', is_custom: false }),
-  item({ category: 'FOOD', is_custom: true }),
-  item({ category: 'MEDICATION', is_custom: false }),
-  item({ is_custom: true }),
+  item({ category: 'FOOD', scope: 'system' }),
+  item({ category: 'FOOD', scope: 'tenant' }),
+  item({ category: 'MEDICATION', scope: 'system' }),
+  item({ scope: 'user' }),
 ];
 
 describe('allergyCategoryFacet', () => {
@@ -41,10 +41,10 @@ describe('allergyCategoryFacet', () => {
   });
 });
 
-describe('allergyCustomFacet', () => {
-  it('keeps only custom items when toggle is on', () => {
-    expect(allergyCustomFacet.predicate!(allergyItems[1], toggle(true))).toBe(true);
-    expect(allergyCustomFacet.predicate!(allergyItems[0], toggle(true))).toBe(false);
+describe('allergyScopeFacet', () => {
+  it('keeps only non-system (custom) items when toggle is on', () => {
+    expect(allergyScopeFacet.predicate!(allergyItems[1], toggle(true))).toBe(true);
+    expect(allergyScopeFacet.predicate!(allergyItems[0], toggle(true))).toBe(false);
   });
 });
 
@@ -66,10 +66,10 @@ describe('vaccineCodingSystemFacet', () => {
   });
 });
 
-describe('medicationCustomFacet', () => {
-  it('keeps only custom items when toggle is on', () => {
-    expect(medicationCustomFacet.predicate!(item({ is_custom: true }), toggle(true))).toBe(true);
-    expect(medicationCustomFacet.predicate!(item({ is_custom: false }), toggle(true))).toBe(false);
+describe('medicationScopeFacet', () => {
+  it('keeps only non-system (custom) items when toggle is on', () => {
+    expect(medicationScopeFacet.predicate!(item({ scope: 'tenant' }), toggle(true))).toBe(true);
+    expect(medicationScopeFacet.predicate!(item({ scope: 'system' }), toggle(true))).toBe(false);
   });
 });
 
@@ -93,14 +93,14 @@ describe('conceptStatusFacet', () => {
 });
 
 describe('facet arrays', () => {
-  it('allergy has category + is_custom in order', () => {
-    expect(catalogAllergyFacets.map((f) => f.id)).toEqual(['category', 'is_custom']);
+  it('allergy has category + scope in order', () => {
+    expect(catalogAllergyFacets.map((f) => f.id)).toEqual(['category', 'scope']);
   });
   it('vaccine has coding_system', () => {
     expect(catalogVaccineFacets.map((f) => f.id)).toEqual(['coding_system']);
   });
-  it('medication has is_custom', () => {
-    expect(catalogMedicationFacets.map((f) => f.id)).toEqual(['is_custom']);
+  it('medication has scope', () => {
+    expect(catalogMedicationFacets.map((f) => f.id)).toEqual(['scope']);
   });
   it('concept has kind + status', () => {
     expect(catalogConceptFacets.map((f) => f.id)).toEqual(['kind', 'status']);

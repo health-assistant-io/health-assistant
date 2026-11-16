@@ -14,7 +14,7 @@
  *   - the scope filter (All / System / Tenant / Mine) — server-side, so a
  *     change re-runs the current search via `reloadKey`;
  *   - per-type client facets (biomarker category/telemetry, allergy
- *     category, vaccine coding_system, medication is_custom, concept
+ *     category, vaccine coding_system, medication ownership, concept
  *     status) via `filterOption`;
  *   - the List | Graph view toggle — the graph selection surface
  *     (`CatalogPickerGraph`) rides `renderBody`, toggling through the
@@ -26,7 +26,7 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitBranch, List, Search, X } from 'lucide-react';
+import { GitBranch, List, Plus, Search, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
@@ -42,6 +42,7 @@ import { ScopeBadge } from './ScopeBadge';
 import { FilterBar } from '../ui/filters/FilterBar';
 import { useFilterState } from '../ui/filters/useFilterState';
 import { getFacetsForType } from './catalogFacetRegistry';
+import { CreateCatalogItemModal } from './CreateCatalogItemModal';
 import {
   listCatalogItems,
   listCatalogTypes,
@@ -72,15 +73,26 @@ export interface UseCatalogPickerBrowseOpts {
   conceptKind?: string;
   /** Relation stamped on new picks in relation mode; undefined = no relation. */
   relationDefault?: string;
+  /** The field's selection mode — create is offered in `single` mode only. */
+  mode?: 'single' | 'multi';
+  /** Opt-in: render **New <type>** in the browse list header, opening
+   *  {@link CreateCatalogItemModal} (the one manual definition surface).
+   *  Gated to a single allowed type + single mode + list view. */
+  allowCreate?: boolean;
 }
 
 export function useCatalogPickerBrowse({
   allowedList,
   conceptKind,
   relationDefault,
+  mode,
+  allowCreate = false,
 }: UseCatalogPickerBrowseOpts): {
   browseModalProps: MultiSelectPickerBrowseProps;
   onBrowseOpenChange: (open: boolean) => void;
+  /** Render beside the picker — the create-definition dialog the New action
+   *  opens (empty node when create is not offered). */
+  createDialog: React.ReactNode;
 } {
   const { t, i18n } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
@@ -88,6 +100,7 @@ export function useCatalogPickerBrowse({
 
   const singleType =
     allowedList && allowedList.length === 1 ? allowedList[0] : null;
+  const canCreate = allowCreate && !!singleType && mode === 'single';
 
   const [category, setCategory] = useState<string>(singleType ?? ALL);
   const [scope, setScope] = useState('');
@@ -95,7 +108,12 @@ export function useCatalogPickerBrowse({
   const [types, setTypes] = useState<CatalogTypeMeta[]>([]);
   const [loadedItems, setLoadedItems] = useState<CatalogItem[]>([]);
   const [loadedTotal, setLoadedTotal] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
   const typesFetchSeq = useRef(0);
+  // The browse body ctx, captured from renderBody so the create dialog's
+  // onCreated can select the new row through the same toggle the rows use.
+  const bodyCtxRef = useRef<PickerBrowseBodyCtx | null>(null);
 
   // Per-type client-mode facets (server-mode facets like concept kind are
   // excluded — the picker filters in-memory and doesn't refetch on facet
@@ -252,6 +270,11 @@ export function useCatalogPickerBrowse({
 
   const renderBody = useCallback(
     (ctx: PickerBrowseBodyCtx): React.ReactNode => {
+      // Latest-ctx ref: the shared picker invokes renderBody during its own
+      // render, so there is no effect boundary to move this into. The write
+      // is idempotent (same ctx object within one render pass) — the guard
+      // keeps StrictMode's double render from touching anything.
+      if (bodyCtxRef.current !== ctx) bodyCtxRef.current = ctx;
       const pickedIds = ctx.value.map((entry) => {
         const ext = entry as CatalogPickerOption;
         return ext.id ?? String(entry.value).split(':')[1];
@@ -307,6 +330,12 @@ export function useCatalogPickerBrowse({
 
       const allHint = category === ALL && ctx.search.trim().length < 2;
       const hasListFilters = !!scope || !!ctx.search.trim() || pickerFilter.isActive;
+      const createLabel = t('catalogs.create_new_item', 'New {{type}}', {
+        type: t(
+          `catalogs.${singleType}.label`,
+          singleType ? singleType.charAt(0).toUpperCase() + singleType.slice(1) : '',
+        ),
+      });
       return (
         <div className="flex h-[70vh] min-h-0 flex-col gap-2">
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -352,6 +381,19 @@ export function useCatalogPickerBrowse({
               </button>
             )}
             <div className="relative min-w-48 flex-1">{ctx.searchInput}</div>
+            {canCreate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateName(ctx.search.trim());
+                  setCreateOpen(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {createLabel}
+              </button>
+            )}
             {viewToggle}
           </div>
           {allHint ? (
@@ -392,6 +434,7 @@ export function useCatalogPickerBrowse({
       scope,
       types,
       singleType,
+      canCreate,
       facets,
       pickerFilter,
       loadedItems,
@@ -430,5 +473,30 @@ export function useCatalogPickerBrowse({
     ],
   );
 
-  return { browseModalProps, onBrowseOpenChange };
+  /** The created definition becomes the pick (single mode selects + closes
+   *  the browse modal — the same toggle the rows use). No reload bump: the
+   *  next open refetches. */
+  const handleCreated = useCallback(
+    (row: CatalogItem) => {
+      if (!singleType) return;
+      bodyCtxRef.current?.toggle(itemToOption(row, singleType, relationDefault));
+    },
+    [singleType, relationDefault],
+  );
+
+  const createDialog = useMemo(
+    () =>
+      canCreate && singleType ? (
+        <CreateCatalogItemModal
+          isOpen={createOpen}
+          onClose={() => setCreateOpen(false)}
+          type={singleType}
+          initialName={createName}
+          onCreated={handleCreated}
+        />
+      ) : null,
+    [canCreate, singleType, createOpen, createName, handleCreated],
+  );
+
+  return { browseModalProps, onBrowseOpenChange, createDialog };
 }

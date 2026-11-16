@@ -42,6 +42,7 @@ class UnitResponse(BaseModel):
 
 
 class UnitCreate(BaseModel):
+    id: UUID | None = None
     symbol: str
     name: str
     quantity_type: str | None = "other"
@@ -52,18 +53,11 @@ class BiomarkerBase(BaseModel):
     coding_system: CodingSystem | None = CodingSystem.LOINC
     code: str | None = None
     name: str
-    # Backward-compat: ``category`` is the readable string (the linked
-    # ``biomarker_class`` concept's name). For writes prefer
-    # ``class_concept_id``; ``category`` is best-effort resolved to a concept
-    # in the biomarker endpoint / catalog import.
-    category: str | None = None
+    description: str | None = None
     class_concept_id: UUID | None = None
-    # The class concept *slug* — the canonical key used by the backup
-    # export/import path. ``category`` is the concept *name* and does not
-    # round-trip through ``biomarker_category_to_concept_slug`` (which only
-    # swaps ``_``→``-``), so without this slug the class link is silently
-    # dropped on restore. CatalogImportService resolves this ahead of the
-    # ``category`` string when both are present.
+    # The class concept *slug* — the canonical, round-tripping key for the
+    # class link (backup export/import, seed files, the ontology-catalog URL
+    # door). An explicit ``class_concept_id`` wins over it.
     class_concept_slug: str | None = None
     aliases: list[str] = []
     info: str | None = None
@@ -79,6 +73,8 @@ class BiomarkerBase(BaseModel):
     # with FHIR ``component[]`` (one ``valueCodeableConcept`` per
     # sub-context) instead of a single top-level value. Ignored for QUANTITY.
     supports_multi_state: bool | None = False
+
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def _validate_value_type_invariants(self):
@@ -137,6 +133,13 @@ class BiomarkerAllowedStateResponse(BaseModel):
 
 
 class BiomarkerCreate(BiomarkerBase):
+    # Server-owned identity (plan D8): the slug may be omitted on the API
+    # create path — the write service derives it from the name (same
+    # deterministic algorithm as vaccine, per-scope unique via auto-suffix).
+    # An explicit slug stays honored (seed/import payloads) and a duplicate
+    # one still collides → 409. ``BiomarkerBase``/``BiomarkerResponse.slug``
+    # stay required: every stored row (and every response) carries one.
+    slug: str | None = None
     preferred_unit_symbol: str | None = None
     preferred_unit_id: UUID | None = None
     # Stratified reference ranges (audit B9/F3). Carried through the catalog
@@ -149,12 +152,16 @@ class BiomarkerCreate(BiomarkerBase):
 
     @field_validator("slug")
     @classmethod
-    def _validate_slug(cls, v: str) -> str:
+    def _validate_slug(cls, v: str | None) -> str | None:
         # The slug is interpolated into raw SQL in the telemetry analytics
         # path, so it must be a strict identifier. Reject anything outside
         # [A-Za-z0-9_-] to prevent second-order SQL injection. Validated on
         # the create (input) path only — the response schema must be able to
         # serialize rows that pre-date this guard or arrived via the pipeline.
+        # An omitted slug is legal: the write service derives it from the
+        # name (server-owned identity).
+        if not v:
+            return v
         if not is_safe_slug(v):
             raise ValueError("slug must be 1-80 chars of [A-Za-z0-9_-] only")
         return v
@@ -184,18 +191,32 @@ class BiomarkerCreate(BiomarkerBase):
 
 
 class BiomarkerUpdate(BaseModel):
+    """Partial update (all fields optional; ``value_type`` is not changeable).
+
+    Class-concept precedence (uniform across every catalog type): a sent
+    ``class_concept_id`` wins over ``class_concept_slug`` — an explicit
+    ``null`` id clears the link and any slug sent alongside is ignored; a
+    bare slug re-resolves tenant-explicitly (unknown → 400).
+    """
+
+    coding_system: CodingSystem | None = None
+    code: str | None = None
     name: str | None = None
-    category: str | None = None
+    description: str | None = None
     class_concept_id: UUID | None = None
+    class_concept_slug: str | None = None
     aliases: list[str] | None = None
     info: str | None = None
     reference_range_min: float | None = None
     reference_range_max: float | None = None
     is_telemetry: bool | None = None
     preferred_unit_id: UUID | None = None
+    preferred_unit_symbol: str | None = None
     value_type: BiomarkerValueType | None = None
     supports_multi_state: bool | None = None
     allowed_states: list[AllowedStateSpec] | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def _validate_value_type_update_invariants(self):
@@ -227,9 +248,14 @@ class BiomarkerRemapRequest(BaseModel):
 
 class BiomarkerResponse(BiomarkerBase):
     id: UUID
+    seed_key: str | None = None
     preferred_unit_id: UUID | None
     preferred_unit_symbol: str | None = None
+    class_concept_name: str | None = None
     meta_data: dict | None = None
+    scope: str | None = None
+    tenant_id: UUID | None = None
+    created_by: UUID | None = None
     # Stratified reference ranges (audit B9/F3). Forward-ref resolved at the
     # bottom of the module via model_rebuild().
     reference_ranges: list["BiomarkerReferenceRangeResponse"] = []
@@ -237,7 +263,7 @@ class BiomarkerResponse(BiomarkerBase):
     # rows + per-biomarker is_normal / sort_order). Empty for QUANTITY.
     allowed_states: list[BiomarkerAllowedStateResponse] = []
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 # ---------------------------------------------------------------------------
@@ -296,9 +322,16 @@ class BiomarkerReferenceRangeResponse(BiomarkerReferenceRangeBase):
 
 
 class CatalogMetadata(BaseModel):
+    """The default-catalog envelope's descriptive metadata.
+
+    ``last_updated`` is optional: the canonical seed-pack export (ADR 0056)
+    carries no timestamps — a re-export of an unchanged DB is byte-stable —
+    and the ingest path must accept that form unchanged.
+    """
+
     version: str
     source: str
-    last_updated: str
+    last_updated: str | None = None
 
 
 class CatalogImportPayload(BaseModel):

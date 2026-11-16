@@ -1,0 +1,769 @@
+{
+  "schema": 1,
+  "contract": "seed-pack",
+  "description": "Executable pin for the seed pack contract (ADR 0056 Phase 0). cases[].files maps pack-relative paths to content; the validator hashes them itself. expect: valid | invalid; error: the PackError code an invalid case must produce.",
+  "cases": [
+    {
+      "name": "bundled-catalog-valid",
+      "expect": "valid",
+      "manifest": {
+        "id": "health-core-catalog",
+        "schema_version": "1.0",
+        "version": "2026.11.0",
+        "license": "CC-BY-SA-4.0",
+        "scope": "system",
+        "priority": 0,
+        "description": "Bundled curated catalog (medications/allergies seeds).",
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          },
+          {
+            "path": "items/default_catalog.json",
+            "sha256": "SHA256_DEFAULT_CATALOG"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {
+            "version": "1.0.0",
+            "source": "Health Assistant"
+          },
+          "items": [
+            {
+              "name": "Metformin",
+              "description": "Oral diabetes medicine.",
+              "indications": "Type 2 Diabetes mellitus",
+              "side_effects": [
+                "Nausea"
+              ]
+            }
+          ]
+        },
+        "items/default_catalog.json": {
+          "metadata": {
+            "version": "1.0.0",
+            "source": "Health Assistant"
+          },
+          "units": [
+            {
+              "symbol": "mg/dL",
+              "name": "Milligrams per deciliter",
+              "quantity_type": "MASS_CONCENTRATION"
+            }
+          ],
+          "biomarkers": [
+            {
+              "symbol": "GLU",
+              "name": "Glucose",
+              "biomarker_class": "metabolic",
+              "preferred_unit_symbol": "mg/dL"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tenant-overlay-valid",
+      "expect": "valid",
+      "manifest": {
+        "id": "clinic-formulary",
+        "schema_version": "1.0",
+        "version": "1.2.0",
+        "license": "Apache-2.0",
+        "scope": "tenant",
+        "priority": 200,
+        "replaces": [
+          "metformin-old"
+        ],
+        "min_app_version": "0.9.0",
+        "item_files": [
+          {
+            "path": "items/allergies.json",
+            "sha256": "SHA256_ALLERGIES"
+          }
+        ]
+      },
+      "files": {
+        "items/allergies.json": {
+          "metadata": {
+            "version": "1.0.0"
+          },
+          "items": [
+            {
+              "name": "Penicillin",
+              "category": "medication",
+              "description": "Beta-lactam antibiotic"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "curated-remote-valid",
+      "expect": "valid",
+      "manifest": {
+        "id": "vaccine-schedule-pack",
+        "schema_version": "1.0",
+        "version": "3.0.1",
+        "license": "CC0-1.0",
+        "scope": "system",
+        "priority": 100,
+        "item_files": [
+          {
+            "path": "items/concept_edges.json",
+            "sha256": "SHA256_EDGES"
+          }
+        ]
+      },
+      "files": {
+        "items/concept_edges.json": {
+          "metadata": {
+            "version": "1.0.0"
+          },
+          "items": [
+            {
+              "src_slug": "influenza",
+              "dst_slug": "influenza-vaccine",
+              "relation": "PREVENTS",
+              "status": "approved"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "tenant-pack-global-only-type",
+      "expect": "invalid",
+      "error": "GLOBAL_ONLY_ITEM_TYPE",
+      "manifest": {
+        "id": "overlay-concepts-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "tenant",
+        "priority": 200,
+        "item_files": [
+          {
+            "path": "items/concepts.json",
+            "sha256": "SHA256_CONCEPTS"
+          }
+        ]
+      },
+      "files": {
+        "items/concepts.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "app-only-item-type",
+      "expect": "invalid",
+      "error": "APP_ONLY_ITEM_TYPE",
+      "manifest": {
+        "id": "vocab-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/retention_policies.json",
+            "sha256": "SHA256_VOCAB"
+          }
+        ]
+      },
+      "files": {
+        "items/retention_policies.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "unknown-item-type",
+      "expect": "invalid",
+      "error": "ITEM_TYPE_UNKNOWN",
+      "manifest": {
+        "id": "glossary-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/glossary.json",
+            "sha256": "SHA256_GLOSSARY"
+          }
+        ]
+      },
+      "files": {
+        "items/glossary.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "duplicate-seed-key",
+      "expect": "invalid",
+      "error": "DUPLICATE_SEED_KEY",
+      "manifest": {
+        "id": "dupe-key-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_DUP_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": [
+            {
+              "seed_key": "medication:aspirin",
+              "name": "Aspirin"
+            },
+            {
+              "seed_key": "medication:aspirin",
+              "name": "Aspirin (duplicate)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "missing-required-field",
+      "expect": "invalid",
+      "error": "MANIFEST_FIELD_MISSING",
+      "manifest": {
+        "id": "incomplete-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "unknown-field",
+      "expect": "invalid",
+      "error": "MANIFEST_UNKNOWN_FIELD",
+      "manifest": {
+        "id": "timestamped-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "last_updated": "2026-11-09T00:00:00Z",
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "unsupported-schema-version",
+      "expect": "invalid",
+      "error": "SCHEMA_VERSION_UNSUPPORTED",
+      "manifest": {
+        "id": "future-pack",
+        "schema_version": "2.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "min-app-version-unmet",
+      "expect": "invalid",
+      "error": "MIN_APP_VERSION_UNMET",
+      "manifest": {
+        "id": "too-new-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "min_app_version": "99.0.0",
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "bad-version",
+      "expect": "invalid",
+      "error": "VERSION_INVALID",
+      "manifest": {
+        "id": "loose-version-pack",
+        "schema_version": "1.0",
+        "version": "v1",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "license-not-allowed",
+      "expect": "invalid",
+      "error": "LICENSE_NOT_ALLOWED",
+      "manifest": {
+        "id": "unknown-license-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "Proprietary-EULA",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "tenant-pack-priority-too-low",
+      "expect": "invalid",
+      "error": "PRIORITY_SCOPE_MISMATCH",
+      "manifest": {
+        "id": "overlay-low-priority",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "tenant",
+        "priority": 100,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "system-pack-priority-too-high",
+      "expect": "invalid",
+      "error": "PRIORITY_SCOPE_MISMATCH",
+      "manifest": {
+        "id": "system-high-priority",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 500,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "duplicate-item-path",
+      "expect": "invalid",
+      "error": "DUPLICATE_ITEM_PATH",
+      "manifest": {
+        "id": "dupe-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          },
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "path-traversal",
+      "expect": "invalid",
+      "error": "ITEM_PATH_TRAVERSAL",
+      "manifest": {
+        "id": "sneaky-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/../secrets.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/../secrets.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "nested-path-traversal",
+      "expect": "invalid",
+      "error": "ITEM_PATH_TRAVERSAL",
+      "manifest": {
+        "id": "nested-sneaky-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/../../secrets.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/../../secrets.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "absolute-item-path",
+      "expect": "invalid",
+      "error": "ITEM_PATH_ABSOLUTE",
+      "manifest": {
+        "id": "absolute-path-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "/etc/health/secrets.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "/etc/health/secrets.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "windows-drive-item-path",
+      "expect": "invalid",
+      "error": "ITEM_PATH_ABSOLUTE",
+      "manifest": {
+        "id": "drive-path-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "C:/users/public/secrets.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "C:/users/public/secrets.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "windows-backslash-item-path",
+      "expect": "invalid",
+      "error": "ITEM_PATH_ABSOLUTE",
+      "manifest": {
+        "id": "backslash-path-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items\\..\\..\\secrets.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items\\..\\..\\secrets.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "digest-mismatch",
+      "expect": "invalid",
+      "error": "ITEM_DIGEST_MISMATCH",
+      "manifest": {
+        "id": "stale-digest-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "item-file-missing",
+      "expect": "invalid",
+      "error": "ITEM_FILE_MISSING",
+      "manifest": {
+        "id": "missing-file-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/vaccines.json",
+            "sha256": "SHA256_VACCINES"
+          }
+        ]
+      },
+      "files": {}
+    },
+    {
+      "name": "bad-envelope",
+      "expect": "invalid",
+      "error": "ITEM_ENVELOPE_INVALID",
+      "manifest": {
+        "id": "bad-envelope-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "medications": []
+        }
+      }
+    },
+    {
+      "name": "undeclared-extra-file",
+      "expect": "invalid",
+      "error": "ITEM_FILE_UNDECLARED",
+      "manifest": {
+        "id": "extra-file-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        },
+        "items/extra.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "self-replacing-pack",
+      "expect": "invalid",
+      "error": "REPLACES_INVALID",
+      "manifest": {
+        "id": "self-replace-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "tenant",
+        "priority": 200,
+        "replaces": [
+          "Not A Seed Key"
+        ],
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS"
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "empty-item-files",
+      "expect": "invalid",
+      "error": "ITEM_FILES_INVALID",
+      "manifest": {
+        "id": "empty-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": []
+      },
+      "files": {}
+    },
+    {
+      "name": "item-file-unknown-field",
+      "expect": "invalid",
+      "error": "ITEM_FILE_UNKNOWN_FIELD",
+      "manifest": {
+        "id": "extra-key-pack",
+        "schema_version": "1.0",
+        "version": "1.0.0",
+        "license": "MIT",
+        "scope": "system",
+        "priority": 0,
+        "item_files": [
+          {
+            "path": "items/medications.json",
+            "sha256": "SHA256_MEDS",
+            "compress": true
+          }
+        ]
+      },
+      "files": {
+        "items/medications.json": {
+          "metadata": {},
+          "items": []
+        }
+      }
+    }
+  ]
+}

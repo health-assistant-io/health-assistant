@@ -988,30 +988,35 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 )
                 .order_by(DocumentModel.created_at.desc())
             )
-            items = [self._document_summary(d) for d in res.scalars().all()]
+            items = [await self._document_summary(d) for d in res.scalars().all()]
         return self._read_envelope(items)
 
-    @staticmethod
-    def _document_summary(d: Any) -> dict[str, Any]:
+    async def _document_summary(self, d: Any) -> dict[str, Any]:
         """Build the metadata dict for a document, enriched with
         ``content_type`` (MIME-guessed from the filename), ``file_size``
-        (bytes on disk, ``None`` if the file is missing), and
+        (the object's size, ``None`` if the object is missing), and
         ``examination_id``. Used by every document list/detail path so
         the wire shape is identical across ``GET /documents``,
         ``GET /documents/{id}``, and ``GET /examinations/{id}/documents``.
         """
         import mimetypes
-        import os
 
-        content_type = None
+        from app.storage.documents import DocumentStorage
+
+        content_type, _ = mimetypes.guess_type(d.filename or "")
+        content_type = content_type or "application/octet-stream"
         file_size = None
-        file_path = getattr(d, "file_path", None)
-        if file_path and os.path.exists(file_path):
-            content_type, _ = mimetypes.guess_type(d.filename or file_path)
-            try:
-                file_size = os.path.getsize(file_path)
-            except OSError:
-                file_size = None
+        storage = DocumentStorage()
+        info = await storage.astat_key(storage.object_key(d))
+        if info is not None:
+            file_size = info.size
+        else:
+            legacy = storage.legacy_path(d)
+            if legacy is not None and legacy.exists():
+                try:
+                    file_size = legacy.stat().st_size
+                except OSError:
+                    file_size = None
         return {
             "id": str(d.id),
             "filename": d.filename,
@@ -1089,7 +1094,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         stmt = stmt.order_by(DocumentModel.created_at.desc()).limit(limit)
         async with AsyncSessionLocal() as db:
             res = await db.execute(stmt)
-            items = [self._document_summary(d) for d in res.scalars().all()]
+            items = [await self._document_summary(d) for d in res.scalars().all()]
         return self._read_envelope(items)
 
     async def _read_document_detail(
@@ -1099,7 +1104,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
-            return self._document_summary(d)
+            return await self._document_summary(d)
 
     async def _read_document_text(
         self, integration: UserIntegration, doc_id: str, request: Any
@@ -1131,27 +1136,20 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         credential authenticates the call; the patient filter on
         ``_bound_document`` enforces isolation."""
         import mimetypes
-        import os
 
         from fastapi.responses import Response
 
         from app.core.database import AsyncSessionLocal
+        from app.storage.documents import DocumentStorage
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
-            file_path = getattr(d, "file_path", None)
             filename = d.filename
-        if not file_path or not os.path.exists(file_path):
-            raise BridgeError(404, "not_found", "Document file not found on disk.")
-        content_type, _ = mimetypes.guess_type(filename or file_path)
-
-        def _read() -> bytes:
-            with open(file_path, "rb") as f:
-                return f.read()
-
-        import asyncio
-
-        content = await asyncio.to_thread(_read)
+            content_type, _ = mimetypes.guess_type(filename or "")
+            storage = DocumentStorage()
+            content = await storage.aread(d)
+        if content is None:
+            raise BridgeError(404, "not_found", "Document file not found.")
         return Response(
             content=content,
             media_type=content_type or "application/octet-stream",
@@ -1168,18 +1166,16 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         a page (default 0; clamped to ``[0, len(images))``).
         """
         import mimetypes
-        from pathlib import Path
 
         from fastapi.responses import Response
 
         from app.core.database import AsyncSessionLocal
+        from app.storage.documents import DocumentStorage
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
-            file_path = Path(getattr(d, "file_path", ""))
             filename = d.filename
-        if not file_path.exists():
-            raise BridgeError(404, "not_found", "Document file not found on disk.")
+            storage = DocumentStorage()
         try:
             page = int(request.query_params.get("page", "0"))
         except (TypeError, ValueError):
@@ -1188,23 +1184,18 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         # Images: serve as-is.
         if (filename or "").lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
             content_type, _ = mimetypes.guess_type(filename)
+            data = await storage.aread(d)
+            if data is None:
+                raise BridgeError(404, "not_found", "Document file not found.")
+            return Response(content=data, media_type=content_type or "image/jpeg")
 
-            def _read() -> bytes:
-                with open(file_path, "rb") as f:
-                    return f.read()
-
-            import asyncio
-
-            return Response(
-                content=await asyncio.to_thread(_read),
-                media_type=content_type or "image/jpeg",
-            )
-
-        # PDF / DICOM: render to JPEG via the OCR conversion helper.
+        # PDF / DICOM: render to JPEG via the OCR conversion helper. The
+        # source is materialized for the conversion only.
         from app.ai.processors.ocr.utils import convert_to_images
 
         try:
-            images = await convert_to_images(file_path)
+            async with storage.amaterialize(d) as file_path:
+                images = await convert_to_images(file_path)
         except Exception:
             logger.exception("Bridge document preview conversion failed (doc_id=%s)", doc_id)
             raise ValueError("Failed to generate preview image.") from None
@@ -1569,9 +1560,20 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     # ------------------------------------------------------------------
 
     async def _ai_actor_and_patient(self, db, integration: UserIntegration) -> tuple[Any, str]:
+        """Resolve the AI actor and enforce ``ai:use`` on it.
+
+        The bridge proxy authenticates by HMAC signature and never runs the
+        route gate, so an integration principal without ``ai:use`` could
+        otherwise reach the chat/assistant paths (and their model budget).
+        The check lives here because every chat-family handler resolves the
+        actor through this one helper.
+        """
+        from app.core.authz.permissions import Permission
+        from app.services.auth.access import require_principal_permission
         from app.services.integration.integration_actor import resolve_integration_actor
 
         actor = await resolve_integration_actor(db, integration)
+        require_principal_permission(actor, Permission.AI_USE)
         return actor, str(self._bound_patient_id(integration))
 
     async def _ai_owned_session(
@@ -2045,6 +2047,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
 
         async with AsyncSessionLocal() as db:
             actor = await resolve_integration_actor(db, integration)
+            from app.core.authz.permissions import Permission
+            from app.services.auth.access import require_principal_permission
+
+            require_principal_permission(actor, Permission.AI_USE)
             service = AIAssistanceService(db)
             try:
                 target = await service.ai_provider_service.get_stt_target(
@@ -2342,44 +2348,17 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         bulk-deletes orphan observations + medications, then deletes the exam
         row. Patient-scoped via `_bound_examination`. Celery cumulative
         extraction is **not** re-triggered (the exam is going away)."""
-        from sqlalchemy import delete, select
-
         from app.core.database import AsyncSessionLocal
-        from app.models.document_model import DocumentModel
-        from app.models.fhir import Observation
-        from app.models.fhir.medication import Medication
-        from app.services.documents.document_service import delete_document
+        from app.services.clinical.examination_service import delete_examination
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             exam = await self._bound_examination(db, integration, exam_id)
-            # Cascade document deletion explicitly so files are unlinked; the
-            # DB-level CASCADE would handle the rows but leave orphan files.
-            doc_rows = (
-                await db.execute(
-                    select(DocumentModel.id).where(
-                        DocumentModel.examination_id == exam.id,
-                        DocumentModel.tenant_id == integration.tenant_id,
-                    )
-                )
-            ).all()
-            for (doc_id,) in doc_rows:
-                await delete_document(str(doc_id), db, trigger_cumulative=False)
-            # Defensive cleanup (the FK CASCADE handles most of this; explicit
-            # in case of partial cascades or rows that predate the FK).
-            await db.execute(
-                delete(Observation).where(
-                    Observation.examination_id == exam.id,
-                    Observation.tenant_id == integration.tenant_id,
-                )
-            )
-            await db.execute(
-                delete(Medication).where(
-                    Medication.examination_id == exam.id,
-                    Medication.tenant_id == integration.tenant_id,
-                )
-            )
-            await db.delete(exam)
-            await db.commit()
+            actor = await resolve_integration_actor(db, integration)
+            # The canonical seam owns document/file + FHIR cleanup and the
+            # scoped-credential guard, so the bridge cannot delete through a
+            # read-only principal.
+            await delete_examination(db, exam, actor)
         return {
             "id": exam_id,
             "deleted": True,
@@ -2394,12 +2373,15 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         cross-patient attempt fails *before* any side effects."""
         from app.core.database import AsyncSessionLocal
         from app.services.documents.document_service import delete_document
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             d = await self._bound_document(db, integration, doc_id)
+            actor = await resolve_integration_actor(db, integration)
             # delete_document commits internally; the bound-document check
-            # above already established patient scope.
-            await delete_document(str(d.id), db, trigger_cumulative=True)
+            # above already established patient scope, and the actor guard
+            # refuses a read-only principal.
+            await delete_document(str(d.id), db, actor, trigger_cumulative=True)
         return {"id": doc_id, "deleted": True, "message": "Document deleted."}
 
     async def _trigger_document_extraction(
@@ -2553,8 +2535,11 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 f"Upload exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MiB cap.",
             )
         include_in_extraction = bool(payload.get("include_in_extraction", False))
+        from app.services.integration.integration_actor import resolve_integration_actor
+
         async with AsyncSessionLocal() as db:
             exam = await self._bound_examination(db, integration, exam_id)
+            actor = await resolve_integration_actor(db, integration)
             doc = await ingest_document_bytes(
                 filename=filename,
                 content=content,
@@ -2567,6 +2552,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
                 include_in_extraction=include_in_extraction,
                 source_integration_id=integration.id,
                 external_id=client_id,
+                principal=actor,
             )
         return {
             "id": str(doc.id),
@@ -3282,6 +3268,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from app.schemas.medication import MedicationRecordUpdate
         from app.services.clinical.medication_service import update_patient_medication
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         try:
@@ -3290,7 +3277,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             raise BridgeError(400, "validation", "Invalid medication payload.") from e
         async with AsyncSessionLocal() as db:
             m = await self._bound_medication(db, integration, medication_id)
-            updated = await update_patient_medication(db, m.id, integration.tenant_id, data)
+            actor = await resolve_integration_actor(db, integration)
+            updated = await update_patient_medication(db, m.id, actor, data)
         if updated is None:
             raise BridgeError(404, "not_found", "Medication not found for this patient.")
         return self._medication_to_dict(updated)
@@ -3300,10 +3288,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.clinical.medication_service import delete_patient_medication
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             m = await self._bound_medication(db, integration, medication_id)
-            await delete_patient_medication(db, m.id, integration.tenant_id)
+            actor = await resolve_integration_actor(db, integration)
+            await delete_patient_medication(db, m.id, actor)
         return {"id": medication_id, "deleted": True, "message": "Medication deleted."}
 
     async def _create_allergy(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
@@ -3337,6 +3327,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from app.schemas.allergy import AllergyIntoleranceUpdate
         from app.services.clinical.allergy_service import update_patient_allergy
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         try:
@@ -3345,7 +3336,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             raise BridgeError(400, "validation", "Invalid allergy payload.") from e
         async with AsyncSessionLocal() as db:
             a = await self._bound_allergy(db, integration, allergy_id)
-            updated = await update_patient_allergy(db, a.id, integration.tenant_id, data)
+            actor = await resolve_integration_actor(db, integration)
+            updated = await update_patient_allergy(db, a.id, actor, data)
         if updated is None:
             raise BridgeError(404, "not_found", "Allergy not found for this patient.")
         return self._allergy_to_dict(updated)
@@ -3355,10 +3347,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.clinical.allergy_service import delete_patient_allergy
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             a = await self._bound_allergy(db, integration, allergy_id)
-            await delete_patient_allergy(db, a.id, integration.tenant_id)
+            actor = await resolve_integration_actor(db, integration)
+            await delete_patient_allergy(db, a.id, actor)
         return {"id": allergy_id, "deleted": True, "message": "Allergy deleted."}
 
     async def _create_vaccine(self, integration: UserIntegration, request: Any) -> dict[str, Any]:
@@ -3392,6 +3386,7 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         from app.core.database import AsyncSessionLocal
         from app.schemas.vaccine import PatientImmunizationUpdate
         from app.services.clinical.vaccine_service import update_patient_immunization
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         payload = await request.json()
         try:
@@ -3400,7 +3395,8 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
             raise BridgeError(400, "validation", "Invalid vaccine payload.") from e
         async with AsyncSessionLocal() as db:
             v = await self._bound_vaccine(db, integration, vaccine_id)
-            updated = await update_patient_immunization(db, v.id, integration.tenant_id, data)
+            actor = await resolve_integration_actor(db, integration)
+            updated = await update_patient_immunization(db, v.id, actor, data)
         if updated is None:
             raise BridgeError(404, "not_found", "Immunization not found for this patient.")
         return self._vaccine_to_dict(updated)
@@ -3410,10 +3406,12 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
     ) -> dict[str, Any]:
         from app.core.database import AsyncSessionLocal
         from app.services.clinical.vaccine_service import delete_patient_immunization
+        from app.services.integration.integration_actor import resolve_integration_actor
 
         async with AsyncSessionLocal() as db:
             v = await self._bound_vaccine(db, integration, vaccine_id)
-            await delete_patient_immunization(db, v.id, integration.tenant_id)
+            actor = await resolve_integration_actor(db, integration)
+            await delete_patient_immunization(db, v.id, actor)
         return {"id": vaccine_id, "deleted": True, "message": "Immunization deleted."}
 
     async def _create_clinical_event(

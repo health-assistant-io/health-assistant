@@ -28,20 +28,24 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.extensions import contract, isolation, lifecycle
+from app.extensions import capabilities, contract, isolation, lifecycle
 from app.extensions.errors import ExtensionError
 from app.models.extension_source_model import ExtensionSourceVersion
 
 
 @dataclass(frozen=True)
 class SpawnPlan:
-    """The resolved sandbox spawn: the wrapped argv, the detected grade and
-    the content dir the child is confined to."""
+    """The resolved sandbox spawn: the wrapped argv, the detected grade,
+    the content dir the child is confined to and the exact capability set
+    the host grants it (never an ambient capability, never a database
+    handle)."""
 
     argv: list[str]
     grade: str
     content_dir: Path
     derived_tier: str
+    capabilities: frozenset[str] = frozenset()
+    database_access: bool = False
 
 
 def declared_isolation(profile: dict[str, Any], platform: str) -> tuple[str, str | None]:
@@ -74,6 +78,7 @@ async def spawn_plan(
     content_dir: Path,
     child_args: Sequence[str] = (),
     host_profile: str = "health-assistant",
+    granted_capabilities: set[str] | None = None,
 ) -> SpawnPlan:
     """Resolve the sandboxed spawn for an approved T2 version.
 
@@ -88,6 +93,10 @@ async def spawn_plan(
             f"tier {derived_tier} does not spawn through the T2 sandbox "
             "(tier is provenance — contract.derive_tier decides)",
         )
+
+    grant = capabilities.grant_for_manifest(
+        version.envelope or {}, bundled=False, granted_capabilities=granted_capabilities
+    )
 
     from app.extensions.registry import _profile
 
@@ -118,4 +127,11 @@ async def spawn_plan(
         content_dir=content_dir,
         child_args=list(child_args),
     )
-    return SpawnPlan(argv=argv, grade=detected, content_dir=content_dir, derived_tier=derived_tier)
+    return SpawnPlan(
+        argv=argv,
+        grade=detected,
+        content_dir=content_dir,
+        derived_tier=derived_tier,
+        capabilities=grant.capabilities,
+        database_access=grant.database_access,
+    )

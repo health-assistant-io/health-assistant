@@ -19,15 +19,24 @@ import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { DatePicker } from '../../components/ui/DatePicker';
 import { FormModal } from '../../components/ui/FormModal';
 import { SetupChecklistCard } from '../../components/setup/SetupChecklistCard';
+import { PatientAccessPanel } from '../../components/patients/PatientAccessPanel';
+
+type PatientDetailTab = 'overview' | 'access';
+
+const PATIENT_DETAIL_TABS: { id: PatientDetailTab; labelKey: string; fallback: string }[] = [
+  { id: 'overview', labelKey: 'patients.tab_overview', fallback: 'Overview' },
+  { id: 'access', labelKey: 'access.tab_title', fallback: 'Access' },
+];
 
 function PatientDetail() {
   const { t } = useTranslation();
-  const { patientId } = useParams<{ patientId: string }>();
+  const { patientId, activeTab } = useParams<{ patientId: string; activeTab?: string }>();
   const navigate = useNavigate();
   const showConfirmation = useUIStore(state => state.showConfirmation);
   const { currentPatient, setCurrentPatient } = usePatientStore();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
+  const tab = activeTab === 'access' ? 'access' : 'overview';
 
   // Sync global patient when this patient is loaded
   useEffect(() => {
@@ -110,7 +119,27 @@ function PatientDetail() {
         showBackButton={true}
       />
 
-      <StickyToolbar
+      <div className="flex items-center gap-1 p-1 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-gray-100 dark:border-dark-border w-fit">
+        {PATIENT_DETAIL_TABS.map((tabItem) => (
+          <button
+            key={tabItem.id}
+            onClick={() => navigate(tabItem.id === 'overview' ? `/patients/${patientId}` : `/patients/${patientId}/${tabItem.id}`)}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+              tab === tabItem.id
+                ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-xs'
+                : 'text-gray-400 hover:text-gray-600 dark:hover:text-dark-text'
+            }`}
+          >
+            {t(tabItem.labelKey, tabItem.fallback)}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'access' ? (
+        <PatientAccessPanel patient={patient} />
+      ) : (
+        <>
+        <StickyToolbar
         actions={
           <>
             <button 
@@ -195,6 +224,8 @@ function PatientDetail() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <PatientFormWizard
         isOpen={isModalOpen}

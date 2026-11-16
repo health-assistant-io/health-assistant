@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../../api/axios';
 import { clearAuthData, validateSession, type SessionClaims } from '../../utils/auth';
+import { useAccessStore } from './accessSlice';
 
 export type UserRole = 'SYSTEM_ADMIN' | 'ADMIN' | 'MANAGER' | 'USER';
 
@@ -67,9 +68,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     // attempt is included). Claims ride along for the tenant-switch UI.
     const claims = await validateSession();
     if (!claims) {
+      useAccessStore.getState().clear();
       set({ claims: null, isAuthenticated: false, isDemoMode: false, isLoading: false });
       return;
     }
+    // The permission mirror hydrates with the session (ADR 0054) — after
+    // this resolves the route guards and nav can trust `can()`.
+    useAccessStore.getState().hydrate();
     set({
       claims,
       isAuthenticated: true,
@@ -86,9 +91,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       isLoading: false,
     });
     // Re-sync claim-derived state (demo flag, switched session) from the
-    // freshly-minted cookie session.
+    // freshly-minted cookie session — and hydrate the fresh permission
+    // set (a new session can carry a different role).
     validateSession().then((claims) => {
       if (claims) {
+        useAccessStore.getState().hydrate();
         set({ claims, isDemoMode: claims.auth_mode === 'demo' });
       }
     });
@@ -100,6 +107,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Local-only reset (§10): for boot checks that find the cookie session
     // dead — no server call, no redirect (calling `logout` here would
     // bounce to /login, remount, re-check and redirect forever).
+    useAccessStore.getState().clear();
     set({
       user: null,
       claims: null,
@@ -122,6 +130,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Use dynamic import to avoid circular dependency
     const { usePatientStore } = await import('./patientSlice');
     usePatientStore.getState().clearPatientContext();
+    // The permission mirror dies with the session (ADR 0054) — a stale
+    // set must never outlive the cookie it was derived from.
+    useAccessStore.getState().clear();
 
     set({
       user: null,

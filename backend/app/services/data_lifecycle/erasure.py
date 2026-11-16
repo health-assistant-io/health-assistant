@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import anyio
 from sqlalchemy import Text, cast, delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -66,6 +67,7 @@ from app.models.fhir.medication import Medication
 from app.models.fhir.patient import DiagnosticReport, Observation, Patient
 from app.models.fhir.provenance import ProvenanceModel
 from app.models.fhir.vaccine import PatientImmunization
+from app.models.integration_principal import IntegrationPrincipal
 from app.models.notification import (
     MobilePushTarget,
     Notification,
@@ -140,6 +142,7 @@ PATIENT_DELETE_ORDER: tuple[str, ...] = (
     "integration_sync_state",
     "integration_sync_logs",
     "integration_debug_logs",
+    "integration_principals",
     "user_integrations",
     "patient_layouts",
     "fhir_provenance",
@@ -432,30 +435,66 @@ class ErasureWalker:
         return ids
 
     async def _document_files(self, criteria) -> None:
-        result = await self.db.execute(select(DocumentModel.file_path).where(criteria))
-        paths = [row[0] for row in result.all() if row[0]]
-        existing = [path for path in paths if Path(path).exists()]
+        from app.storage.documents import DocumentStorage
+
+        result = await self.db.execute(select(DocumentModel).where(criteria))
+        documents = list(result.scalars().all())
+        storage = DocumentStorage()
+        existing = await anyio.to_thread.run_sync(
+            lambda: [doc for doc in documents if storage.exists(doc)]
+        )
         self.report.files["documents"] = len(existing)
-        if not self.dry_run:
-            for path in existing:
-                try:
-                    Path(path).unlink()
-                except OSError as exc:  # pragma: no cover - platform dependent
-                    logger.warning("could not unlink erased document %s: %s", path, exc)
+        if not self.dry_run and existing:
+            await anyio.to_thread.run_sync(
+                lambda: [storage.delete(doc) for doc in existing]
+            )
+
+    async def _import_archives(self, tenant_id: UUID) -> None:
+        """Delete the tenant's pending/failed import archives.
+
+        ``ImportJobModel`` does not carry the archive key, so the tenant-scoped
+        prefix is the only addressable root. A pending or failed import would
+        otherwise leave a PHI archive in the store after every row is erased.
+        """
+        from app.storage.artifacts import ArtifactStorage
+        from app.storage.object_storage import join_key
+
+        prefix = join_key("tenants", str(tenant_id), "imports")
+        storage = ArtifactStorage()
+        if self.dry_run:
+            removed = await anyio.to_thread.run_sync(
+                lambda: sum(1 for _ in storage.store.list(prefix))
+            )
+        else:
+            removed = await anyio.to_thread.run_sync(storage.purge_prefix, prefix)
+        self.report.files["import_archives"] = removed
+        if removed and "import_archives_scrubbed" not in self.report.cascade:
+            self.report.cascade.append("import_archives_scrubbed")
 
     async def _scrub_export_jobs(self, criteria) -> None:
+        from app.storage.artifacts import ArtifactStorage, looks_like_key
+
         result = await self.db.execute(select(ExportJobModel).where(criteria))
         jobs = list(result.scalars().all())
+        storage = ArtifactStorage()
         files = 0
         for job in jobs:
-            for path in (job.file_path, job.manifest_path):
-                if path and Path(path).exists():
+            for location in (job.file_path, job.manifest_path):
+                if not location:
+                    continue
+                path = Path(location)
+                if path.exists():
                     files += 1
                     if not self.dry_run:
                         try:
-                            Path(path).unlink()
+                            path.unlink()
                         except OSError as exc:  # pragma: no cover - platform dependent
-                            logger.warning("could not unlink erased export %s: %s", path, exc)
+                            logger.warning("could not unlink erased export %s: %s", location, exc)
+                elif looks_like_key(location):
+                    if await anyio.to_thread.run_sync(storage.exists, location):
+                        files += 1
+                    if not self.dry_run:
+                        await anyio.to_thread.run_sync(storage.delete, location)
             if not self.dry_run:
                 job.file_path = None
                 job.manifest_path = None
@@ -608,8 +647,10 @@ class ErasureWalker:
         await self._shred_integrations(UserIntegration.patient_id == pid)
         if integration_ids:
             integration_filter = UserIntegration.id.in_(integration_ids)
+            principal_filter = IntegrationPrincipal.integration_id.in_(integration_ids)
         else:
             integration_filter = UserIntegration.id.is_(None)
+            principal_filter = IntegrationPrincipal.integration_id.is_(None)
         await self._step(
             "integration_credentials",
             IntegrationCredential,
@@ -638,6 +679,9 @@ class ErasureWalker:
             if integration_ids
             else IntegrationDebugLog.integration_id.is_(None),
         )
+        # The principal FK is SET NULL while an ``integration``-kind row must
+        # keep its binding, so principals go before their integration.
+        await self._step("integration_principals", IntegrationPrincipal, principal_filter)
         await self._step(
             "user_integrations",
             UserIntegration,
@@ -778,7 +822,21 @@ class ErasureWalker:
             .all()
         )
         await self._shred_integrations(remaining_integrations)
+        # Owned principals plus any bound to a remaining integration. Rows bound
+        # to an integration of an owned patient were already walked with that
+        # patient (and its integration), so they are excluded here to keep the
+        # dry-run and real-run counts identical.
+        owned_patient_integrations = select(UserIntegration.id).where(
+            UserIntegration.patient_id.in_(owned)
+        )
+        principal_filter = (IntegrationPrincipal.owner_user_id == uid) & (
+            IntegrationPrincipal.integration_id.is_(None)
+            | IntegrationPrincipal.integration_id.notin_(owned_patient_integrations)
+        )
         if integration_ids:
+            principal_filter = principal_filter | IntegrationPrincipal.integration_id.in_(
+                integration_ids
+            )
             await self._step(
                 "integration_credentials",
                 IntegrationCredential,
@@ -799,12 +857,22 @@ class ErasureWalker:
                 IntegrationDebugLog,
                 IntegrationDebugLog.integration_id.in_(integration_ids),
             )
+        # Owned principals plus any bound to an integration that is about to
+        # disappear (the FK nulls and the kind check would reject that).
+        await self._step("integration_principals", IntegrationPrincipal, principal_filter)
         await self._step("user_integrations", UserIntegration, remaining_integrations)
         await self._step("users", UserModel, UserModel.id == uid)
 
     # -- tenant walk --------------------------------------------------------
 
     async def _tenant(self, tenant_id: UUID) -> None:
+        """Erase every tenant-owned row, children before parents.
+
+        ``integration_principals`` rides :func:`_tenant_order`'s FK-depth
+        order, so the principals are deleted before their ``user_integrations``
+        parent — the same ``SET NULL`` + integration-kind check reason as the
+        patient and user walks.
+        """
         tenant = (
             await self.db.execute(select(TenantModel).where(TenantModel.id == tenant_id))
         ).scalar_one_or_none()
@@ -819,6 +887,7 @@ class ErasureWalker:
         )
         await self._checkpoints(session_ids)
         await self._document_files(DocumentModel.tenant_id == tid)
+        await self._import_archives(tid)
         await self._scrub_export_jobs(ExportJobModel.tenant_id == tid)
         await self._shred_integrations(UserIntegration.tenant_id == tid)
 

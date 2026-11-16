@@ -26,7 +26,9 @@ from sqlalchemy import delete, select
 from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.fhir.patient import Observation, Patient
+from app.models.integration_principal import IntegrationPrincipal
 from app.models.telemetry_model import TelemetryDataModel
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
@@ -53,6 +55,9 @@ async def _purge_tenant_data(*tenant_ids: uuid.UUID) -> None:
     async with AsyncSessionLocal() as db:
         await db.execute(delete(TelemetryDataModel).where(TelemetryDataModel.tenant_id.in_(tids)))
         await db.execute(delete(Observation).where(Observation.tenant_id.in_(tids)))
+        await db.execute(
+            delete(IntegrationPrincipal).where(IntegrationPrincipal.tenant_id.in_(tids))
+        )
         await db.execute(delete(UserIntegration).where(UserIntegration.tenant_id.in_(tids)))
         await db.execute(delete(BiomarkerDefinition).where(BiomarkerDefinition.tenant_id.in_(tids)))
         await db.execute(delete(Patient).where(Patient.tenant_id.in_(tids)))
@@ -136,6 +141,7 @@ async def bridge_with_telemetry():
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=hr_def_id,
                 tenant_id=tenant_id,
                 slug="heart-rate",
@@ -151,6 +157,7 @@ async def bridge_with_telemetry():
         # seeded global catalog or a previous test's rows).
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=gluc_def_id,
                 tenant_id=tenant_id,
                 slug="glucose-fasting",
@@ -164,6 +171,7 @@ async def bridge_with_telemetry():
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=chol_def_id,
                 tenant_id=tenant_id,
                 slug="cholesterol-total",
@@ -546,6 +554,7 @@ async def _seed_patient_telemetry(n_patients: int) -> dict:
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=hr_def_id,
                 tenant_id=tenant_id,
                 slug=slug,
@@ -703,6 +712,7 @@ async def bridge_push_target():
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM),
                 id=hr_def_id,
                 tenant_id=tenant_id,
                 slug="heart-rate",

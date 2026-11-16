@@ -1,12 +1,14 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Plus, Save, Info, Calendar, ShieldAlert, Clock, X, AlertCircle } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { Search, Info, Calendar, Clock, Plus } from 'lucide-react';
 import { AIAssistButton } from '../ui/AIAssistButton';
 import { DatePicker } from '../ui/DatePicker';
 import { CatalogItemPicker } from '../catalog/CatalogItemPicker';
 import { searchCatalogs } from '../../services/catalogService';
 import type { CatalogSelection } from '../../types/catalog';
 import { LinksSection } from '../ai/hitl/LinksSection';
+import { RecordFormFooter } from '../records/RecordFormFooter';
 import {
   AllergyIntolerance,
   AllergyCategory,
@@ -20,20 +22,18 @@ import {
  * Headless, reusable allergy form. Mirrors `MedicationForm`:
  *  - `forwardRef` with an imperative `submit()` handle
  *  - `prefill` for HITL proposals
- *  - `showHeader` / `showActions` toggles so it can be embedded in a modal
- *    (default) or rendered bare inside a HITL popup
+ *  - the popup shell owns the header/footer; the form renders fields plus an
+ *    inline `RecordFormFooter` only for the HITL card (`showActions`)
  *  - `onSubmit` payload shape designed to be commit-agnostic — the caller
- *    decides which REST endpoint to hit and whether to create a catalog row
- *    first when `is_new_catalog_entry` is true.
+ *    decides which REST endpoint to hit. The allergen itself is always an
+ *    EXISTING catalog entry (definitions are created from the browse dialog).
  */
 
 export interface AllergyFormPrefill {
   name?: string;
   catalog_id?: string | null;
   matched?: boolean;
-  is_new?: boolean;
   category?: AllergyCategory;
-  typical_reactions?: string[];
   clinical_status?: AllergyClinicalStatus;
   criticality?: AllergyCriticality;
   verification_status?: string;
@@ -59,18 +59,9 @@ export interface AllergyFormPayload {
   last_occurrence?: string | null;
   note: string | null;
   reactions: Array<{ manifestation: string; severity: ReactionSeverity; date?: string | null }>;
-  /** True when the user picked the "define a new catalog entry" path. The
-   *  caller is expected to create the catalog row before committing the
-   *  intolerance so it can link `code.catalog_id` to it. */
-  is_new_catalog_entry: boolean;
-  /** Snapshot of catalog-definition fields captured inline when defining a
-   *  brand-new allergen. */
-  description?: string;
-  typical_reactions?: string[];
   /** User-edited graph links — attached to the allergy catalog entry.
    *  The caller's onSubmit persists them via createLinksFor('allergy',
-   *  catalog_id, links) AFTER the intolerance is committed (or after the
-   *  new catalog entry is created, if `is_new_catalog_entry` is true). */
+   *  catalog_id, links) AFTER the intolerance is committed. */
   links: CatalogSelection[];
 }
 
@@ -87,11 +78,23 @@ interface AllergyFormProps {
   onReject?: () => void;
   submitLabel?: string;
   rejectLabel?: string;
-  showHeader?: boolean;
+  /** Owned by the shell; set as the native `<form id>` so a footer button
+   *  outside the form (the popup) can submit it through the `form` attribute. */
+  formId?: string;
+  /** Inline footer for the HITL chat-card placement; the popup shell renders
+   *  its own `RecordFormFooter` instead. */
   showActions?: boolean;
+  /** Reports validity/loading to the shell so its footer can drive Save. */
+  onStateChange?: (state: { canSubmit: boolean; loading: boolean }) => void;
+  /**
+   * One-shot programmatic pick (HITL confirm-after-create): set the picker to
+   * this catalog entry. Applies when `catalog_id` CHANGES and the picker does
+   * not already hold it; never re-applies after the user clears the chip; a
+   * remount with the same value is a no-op (the ref seeds from the prop).
+   */
+  catalogSelection?: { catalog_id: string; text: string };
 }
 
-const ALLERGY_CATEGORIES: AllergyCategory[] = ['FOOD', 'MEDICATION', 'ENVIRONMENT', 'BIOLOGIC', 'OTHER'];
 const SEVERITIES: ReactionSeverity[] = ['MILD', 'MODERATE', 'SEVERE'];
 
 export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
@@ -105,18 +108,15 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
       onReject,
       submitLabel,
       rejectLabel,
-      showHeader = true,
+      formId,
       showActions = true,
+      onStateChange,
+      catalogSelection,
     },
     ref,
   ) {
     const { t } = useTranslation();
     const [selection, setSelection] = useState<CatalogSelection[]>([]);
-    const [newAllergenName, setNewAllergenName] = useState('');
-    const [newDescription, setNewDescription] = useState('');
-    const [newTypicalReactions, setNewTypicalReactions] = useState<string[]>([]);
-    const [newReactionInput, setNewReactionInput] = useState('');
-    const [isAddingNew, setIsAddingNew] = useState(false);
     const [loading, setLoading] = useState(false);
     const [links, setLinks] = useState<CatalogSelection[]>([]);
 
@@ -168,8 +168,6 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
           })),
         );
         setSelection([]);
-        setNewAllergenName('');
-        setIsAddingNew(false);
         setLinks([]);
       } else if (prefill) {
         setFormData(prev => ({
@@ -185,17 +183,8 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
         }));
         setReactions(prefill.reactions || []);
         setLinks(Array.isArray(prefill.links) ? prefill.links : []);
-        setNewTypicalReactions(prefill.typical_reactions || []);
         if (prefill.matched && prefill.catalog_id) {
           setSelection([{ type: 'allergy', id: prefill.catalog_id, label: prefill.name || '' }]);
-          setIsAddingNew(false);
-          setNewAllergenName('');
-        } else if (prefill.is_new) {
-          setSelection([]);
-          setNewAllergenName(prefill.name || '');
-          setIsAddingNew(true);
-        } else if (prefill.name) {
-          setNewAllergenName(prefill.name);
         }
       } else {
         setFormData({
@@ -210,23 +199,42 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
         });
         setReactions([]);
         setSelection([]);
-        setNewAllergenName('');
-        setNewTypicalReactions([]);
-        setIsAddingNew(false);
         setLinks([]);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allergy, prefill]);
 
+    // One-shot programmatic pick (HITL confirm-after-create). Sets only the
+    // picker — the proposed fields are left untouched — but runs the SAME
+    // category sync as a manual pick: the category is a property of the
+    // allergen (catalog row), not the patient's reaction. The ref seeds from
+    // the prop so a remount with the same value is a no-op, and the value
+    // never re-applies once the user has cleared the chip.
+    const appliedCatalogRef = useRef<string | null>(catalogSelection?.catalog_id ?? null);
+    useEffect(() => {
+      const id = catalogSelection?.catalog_id;
+      if (!id || appliedCatalogRef.current === id) return;
+      appliedCatalogRef.current = id;
+      if (selection.some((s) => s.id === id)) return;
+      setSelection([{ type: 'allergy', id, label: catalogSelection?.text ?? '' }]);
+      getCatalogAllergy(id)
+        .then((entry) => {
+          if (entry?.category) {
+            setFormData(prev => ({ ...prev, category: entry.category }));
+          }
+        })
+        .catch(() => {
+          /* leave category as-is on lookup failure */
+        });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalogSelection]);
+
     const handleSubmit = async (e?: React.FormEvent) => {
       if (e) e.preventDefault();
-      if (loading || (isAddingNew ? !newAllergenName.trim() : (!allergy && selection.length === 0))) return;
+      if (loading || (!allergy && selection.length === 0)) return;
       setLoading(true);
 
       try {
-        const resolvedName = isAddingNew
-          ? newAllergenName
-          : selection[0]?.label ?? newAllergenName;
         const payload: AllergyFormPayload = {
           clinical_status: formData.clinical_status,
           criticality: formData.criticality,
@@ -235,8 +243,8 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
           code: allergy
             ? (allergy.code as { text: string; catalog_id?: string })
             : {
-                text: resolvedName,
-                catalog_id: isAddingNew ? undefined : selection[0]?.id,
+                text: selection[0]?.label ?? '',
+                catalog_id: selection[0]?.id,
               },
           onset_date: formData.onset_date ? new Date(formData.onset_date).toISOString() : null,
           resolved_date:
@@ -248,9 +256,6 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
             : null,
           note: formData.note || null,
           reactions,
-          is_new_catalog_entry: isAddingNew,
-          description: isAddingNew ? newDescription : undefined,
-          typical_reactions: isAddingNew ? newTypicalReactions : undefined,
           links,
         };
 
@@ -264,6 +269,16 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
 
     useImperativeHandle(ref, () => ({ submit: () => handleSubmit() }));
 
+    const canSubmit = !loading && (selection.length > 0 || Boolean(allergy));
+
+    const reportedState = useRef('');
+    useEffect(() => {
+      const key = `${canSubmit}|${loading}`;
+      if (reportedState.current === key) return;
+      reportedState.current = key;
+      onStateChange?.({ canSubmit, loading });
+    }, [canSubmit, loading, onStateChange]);
+
     const addReaction = () => {
       if (!newReaction.manifestation.trim()) return;
       setReactions([...reactions, { ...newReaction }]);
@@ -272,35 +287,17 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
 
     const removeReaction = (idx: number) => setReactions(reactions.filter((_, i) => i !== idx));
 
-    const addTypicalReaction = () => {
-      const v = newReactionInput.trim();
-      if (!v || newTypicalReactions.includes(v)) return;
-      setNewTypicalReactions([...newTypicalReactions, v]);
-      setNewReactionInput('');
-    };
-
-    const removeTypicalReaction = (v: string) =>
-      setNewTypicalReactions(newTypicalReactions.filter(x => x !== v));
-
     return (
-      <div className="flex flex-col flex-1 min-h-0">
-        {showHeader && (
-          <div className="px-8 py-6 border-b border-gray-50 dark:border-dark-border flex items-center justify-between shrink-0 bg-white dark:bg-dark-surface">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-                <ShieldAlert className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-dark-text">
-                  {allergy ? t('allergies.modal.update_title') : t('allergies.modal.new_title')}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-dark-muted font-medium uppercase tracking-widest mt-0.5">
-                  {t('allergies.modal.clinical_records', 'Clinical record')}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {!allergy && (
+      <form id={formId} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          {/* Substance selection */}
+          {!allergy && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest px-1 flex items-center">
+                  <Search className="w-3 h-3 mr-2" />
+                  {t('allergies.modal.select_from_catalog', 'Select from catalog')}
+                </label>
                 <AIAssistButton
                   taskType="fill_medication_form"
                   context={{ patientId }}
@@ -312,7 +309,7 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                         (String(data.criticality || '').toUpperCase() as AllergyCriticality) ||
                         prev.criticality,
                     }));
-                    if (data.name && selection.length === 0 && !isAddingNew) {
+                    if (data.name && selection.length === 0) {
                       try {
                         const resp = await searchCatalogs(data.name, { types: 'allergy', limit: 1 });
                         if (resp.results.length > 0) {
@@ -328,209 +325,51 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
                             }
                           } catch { /* lookup optional */ }
                         } else {
-                          setIsAddingNew(true);
-                          setNewAllergenName(data.name);
+                          // Unmatched name: the picker stays empty — definitions
+                          // are created from the browse dialog (Browse → New).
+                          toast.info(
+                            t('medications.modal.not_in_catalog', '{{name}} is not in the catalog — define it via Browse → New.', { name: data.name }),
+                          );
                         }
                       } catch {
-                        setNewAllergenName(data.name);
+                        // A FAILED search is not an unmatched name — only an
+                        // empty result may claim "not in the catalog".
+                        toast.error(
+                          t('catalogs.search_failed', 'Could not search the catalog — try again.'),
+                        );
                       }
                     }
                   }}
                 />
-              )}
-              {onCancel && (
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors"
-                  aria-label={t('common.cancel')}
-                >
-                  <X className="w-5 h-5 text-gray-400" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+              </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-          {/* Substance selection */}
-          {!allergy && (
-            <div className="space-y-4">
-              <label className="text-xs font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest px-1 flex items-center">
-                <Search className="w-3 h-3 mr-2" />
-                {t('allergies.modal.select_from_catalog', 'Select from catalog')}
-              </label>
-
-              {!isAddingNew && (
-                <>
-                  <CatalogItemPicker
-                    mode="single"
-                    allowedTypes={['allergy']}
-                    value={selection}
-                    onChange={async (next: CatalogSelection[]) => {
-                      setSelection(next);
-                      // The category is a property of the allergen (catalog
-                      // row), NOT the patient's reaction. Auto-derive it from
-                      // the picked catalog entry so the user isn't asked to
-                      // re-declare what the catalog already knows.
-                      const pickedId = next[0]?.id;
-                      if (pickedId) {
-                        try {
-                          const entry = await getCatalogAllergy(pickedId);
-                          if (entry?.category) {
-                            setFormData(prev => ({ ...prev, category: entry.category }));
-                          }
-                        } catch {
-                          /* leave category as-is on lookup failure */
-                        }
+              <CatalogItemPicker
+                mode="single"
+                allowedTypes={['allergy']}
+                value={selection}
+                onChange={async (next: CatalogSelection[]) => {
+                  setSelection(next);
+                  // The category is a property of the allergen (catalog
+                  // row), NOT the patient's reaction. Auto-derive it from
+                  // the picked catalog entry so the user isn't asked to
+                  // re-declare what the catalog already knows.
+                  const pickedId = next[0]?.id;
+                  if (pickedId) {
+                    try {
+                      const entry = await getCatalogAllergy(pickedId);
+                      if (entry?.category) {
+                        setFormData(prev => ({ ...prev, category: entry.category }));
                       }
-                    }}
-                    placeholder={t('allergies.modal.search_placeholder')}
-                    displayMode="cards"
-                    block
-                  />
-                  {selection.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingNew(true)}
-                      className="w-full text-left px-6 py-5 bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center space-x-3 text-blue-600 rounded-2xl border border-dashed border-blue-200"
-                    >
-                      <div className="p-2 bg-blue-600 text-white rounded-xl">
-                        <Plus className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold">{t('allergies.modal.define_new', 'Define a new allergen')}</p>
-                        <p className="text-[10px] font-bold uppercase tracking-widest">
-                          {t('allergies.modal.add_custom')}
-                        </p>
-                      </div>
-                    </button>
-                  )}
-                </>
-              )}
-
-              {isAddingNew && (
-                <div className="p-6 bg-blue-50/30 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-900/30 space-y-4 animate-in zoom-in-95">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                      {t('allergies.modal.define_new', 'Define a new allergen')}
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <AIAssistButton
-                        taskType="define_medication"
-                        context={{}}
-                        placeholder={t('allergies.modal.define_new', 'Define a new allergen')}
-                        onSuggestedData={(data: any) => {
-                          if (data.description) setNewDescription(data.description);
-                          if (Array.isArray(data.typical_reactions))
-                            setNewTypicalReactions(prev => [...new Set([...prev, ...data.typical_reactions])]);
-                          if (data.name && !newAllergenName) setNewAllergenName(data.name);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddingNew(false);
-                          setNewAllergenName('');
-                        }}
-                        className="px-3 py-1.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest hover:underline"
-                      >
-                        {t('medications.modal.change', 'Change')}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">
-                        {t('allergies.modal.name_label', 'Name')}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder={t('allergies.modal.search_placeholder')}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                        value={newAllergenName}
-                        onChange={e => setNewAllergenName(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-                    {/* Category belongs here — it's a property of the NEW
-                        catalog entry the user is defining. Hidden on the
-                        existing-catalog path where the category travels with
-                        the picked allergen. */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1 flex items-center">
-                        <AlertCircle className="w-3 h-3 mr-1.5" />
-                        {t('allergies.modal.category_label', 'Category')}
-                      </label>
-                      <div className="flex flex-wrap gap-2">
-                        {ALLERGY_CATEGORIES.map(c => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, category: c })}
-                            className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase border transition-all ${
-                              formData.category === c
-                                ? 'bg-blue-600 border-blue-600 text-white'
-                                : 'bg-white dark:bg-dark-surface border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-50'
-                            }`}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">
-                        {t('allergies.modal.description_label', 'Description')}
-                      </label>
-                      <textarea
-                        rows={2}
-                        className="w-full px-4 py-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                        value={newDescription}
-                        onChange={e => setNewDescription(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1.5 ml-1">
-                        {t('allergies.modal.typical_reactions', 'Typical reactions')}
-                      </label>
-                      <div className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          className="flex-1 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
-                          placeholder={t('allergies.modal.add_reaction_placeholder', 'Add a typical reaction')}
-                          value={newReactionInput}
-                          onChange={e => setNewReactionInput(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              addTypicalReaction();
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {newTypicalReactions.map(se => (
-                          <span
-                            key={se}
-                            className="px-2 py-1 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] font-bold flex items-center space-x-1"
-                          >
-                            <span>{se}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeTypicalReaction(se)}
-                              className="text-gray-400 hover:text-red-500"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+                    } catch {
+                      /* leave category as-is on lookup failure */
+                    }
+                  }
+                }}
+                placeholder={t('allergies.modal.search_placeholder')}
+                displayMode="cards"
+                block
+                allowCreate
+              />
             </div>
           )}
 
@@ -728,55 +567,28 @@ export const AllergyForm = forwardRef<AllergyFormHandle, AllergyFormProps>(
 
           {/* AI-proposed graph links attached to the catalog entry. */}
           <LinksSection srcType="allergy" value={links} onChange={setLinks} hideWhenEmpty />
-        </form>
+        </div>
 
         {showActions && (
-          <div className="px-8 py-6 bg-gray-50 dark:bg-dark-bg/50 border-t border-gray-50 dark:border-dark-border flex items-center shrink-0">
-            {onReject && (
-              <button
-                type="button"
-                onClick={onReject}
-                disabled={loading}
-                className="px-5 py-2.5 text-sm font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {rejectLabel ?? t('ai_chat.hitl.reject', 'Reject')}
-              </button>
-            )}
-            <div className="ml-auto flex items-center space-x-4">
-              {onCancel && (
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  disabled={loading}
-                  className="px-6 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-700 dark:text-dark-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {t('common.cancel')}
-                </button>
-              )}
-              <button
-                onClick={handleSubmit}
-                disabled={
-                  loading ||
-                  (isAddingNew ? !newAllergenName.trim() : !allergy && selection.length === 0)
-                }
-                className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm shadow-lg shadow-blue-500/20 transition-all flex items-center space-x-2"
-              >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                <span>
-                  {submitLabel ??
-                    (allergy
-                      ? t('allergies.modal.update_record')
-                      : t('allergies.modal.save_allergy'))}
-                </span>
-              </button>
-            </div>
+          <div className="flex shrink-0 items-center border-t border-gray-50 bg-gray-50 px-8 py-6 dark:border-dark-border dark:bg-dark-bg/50">
+            <RecordFormFooter
+              formId={formId}
+              canSubmit={canSubmit}
+              loading={loading}
+              submitLabel={
+                submitLabel ??
+                (allergy
+                  ? t('allergies.modal.update_record')
+                  : t('allergies.modal.save_allergy'))
+              }
+              cancelLabel={t('common.cancel')}
+              onCancel={onCancel}
+              rejectLabel={rejectLabel}
+              onReject={onReject}
+            />
           </div>
         )}
-      </div>
+      </form>
     );
   },
 );

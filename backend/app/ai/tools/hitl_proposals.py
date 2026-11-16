@@ -512,7 +512,7 @@ def build(ctx: ToolContext) -> list[Any]:
     @tool
     async def propose_define_biomarker(
         name: str,
-        category: str | None = None,
+        class_concept_slug: str | None = None,
         unit_symbol: str | None = None,
         reference_range_min: float | None = None,
         reference_range_max: float | None = None,
@@ -546,7 +546,9 @@ def build(ctx: ToolContext) -> list[Any]:
 
         Args:
             name: Human-readable biomarker name (e.g. "White Blood Cell Count").
-            category: Optional grouping (e.g. "Hematology", "Lipids").
+            class_concept_slug: Optional biomarker-class concept slug the
+                definition belongs to (e.g. "hematology", "lipids"); it is
+                resolved to the class concept server-side.
             unit_symbol: Optional preferred unit symbol (e.g. "mg/dL", "x10^9/L").
                 Pass the symbol you expect values to arrive in.
             reference_range_min: Optional lower bound of the normal range.
@@ -591,7 +593,7 @@ def build(ctx: ToolContext) -> list[Any]:
             "proposed_payload": {
                 "name": name,
                 "slug": slug,
-                "category": category or "",
+                "class_concept_slug": class_concept_slug or "",
                 "coding_system": coding_system or "loinc",
                 "code": code or "",
                 "preferred_unit_symbol": unit_symbol or "",

@@ -18,7 +18,7 @@ patient-scoped routes additionally verify ownership for the `USER` role.
 
 > This reference documents every router module mounted under
 > `backend/app/api/v1/endpoints/`. Each section mirrors the FastAPI tag/grouping.
-> 371 HTTP/WS handlers across 45 router modules (incl. `oauth` client management). For
+> 459 HTTP/WS handlers across 59 router modules (incl. `oauth` client management). For
 > the always-current OpenAPI rendering, visit `http://localhost:8000/docs` while
 > the server is running.
 
@@ -118,9 +118,13 @@ the **`SYSTEM_ADMIN`** role, which bypasses the tenant filter (operator visibili
 
 For patient-scoped endpoints (anything that takes a `patient_id`), a `USER`-role
 caller must additionally be the patient's linked user
-(`Patient.user_id == current_user.user_id`); `ADMIN` and `MANAGER` see all
-patients in their tenant. The canonical check is `check_patient_access` in
-`app/services/auth/access.py`.
+(`Patient.user_id == current_user.user_id`) or hold an **active care-team
+grant** on that patient; `ADMIN` and `MANAGER` see all patients in their
+tenant (a `manager_scope=assigned` tenant narrows its MANAGERs to own +
+grants). The canonical check is `check_patient_access` in
+`app/services/auth/access.py` — grant permission ranks as `read` < `write`
+< `admin`, and a `read` grant never satisfies a write operation. See
+[TENANCY_AND_USER_MANAGEMENT.md §2b](TENANCY_AND_USER_MANAGEMENT.md).
 
 ### Rate limiting
 
@@ -138,20 +142,40 @@ can't mint fresh buckets.
 | `POST /auth/invite` | 10 / minute |
 | `POST /auth/mfa/verify` | 20 / minute |
 | `POST /auth/mfa/enroll` | 10 / minute |
+| `POST /auth/passkeys/options` | 20 / minute |
+| `POST /auth/passkeys/verify` | 20 / minute |
+| `POST /auth/step-up/passkeys/options` | 10 / minute |
+| `POST /auth/step-up/passkeys/verify` | 10 / minute |
 
 ### `auth` — login, register, invite, tokens
 
 | Method | Path | Body | Response | Notes |
 |---|---|---|---|---|
 | `POST` | `/auth/login` | `OAuth2PasswordRequestForm` (`username`, `password`) | `TokenResponse` | Issues access + refresh JWTs. |
-| `POST` | `/auth/setup` | `SetupRequest` (`email`, `password`, `tenant_name`, `setup_token?`) | `TokenResponse` | First-run bootstrap — creates the initial tenant + `SYSTEM_ADMIN`. Only callable while uninitialized (410 after). Protected by the one-time setup token for non-localhost/non-dev requests (see `app/core/setup_token.py`). |
+| `POST` | `/auth/setup` | `SetupRequest` (`email`, `password`, `tenant_name`, `setup_token?`) | `TokenResponse` | First-run bootstrap — creates the initial tenant + `SYSTEM_ADMIN`. Only callable while uninitialized (410 after). Protected by the one-time setup token on every non-dev instance, including localhost (see `app/core/setup_token.py`). |
 | `POST` | `/auth/register` | `UserRegister` | `UserResponse` | **Join** an existing tenant — requires `tenant_id` + a valid **single-use** `invite_token` JWT (consumed atomically on first use; TTL capped at 30 days). The invite is validated *before* the email-exists check so unauthenticated callers can't enumerate emails. Bootstrap lives at `/auth/setup`. |
 | `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`, capped at 30) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. Tokens are single-use; `SYSTEM_ADMIN` cannot be granted via invite. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
 | `GET` | `/auth/setup-status` | (none) | `{initialized: bool, …}` | Whether first-run setup has been claimed (drives the login-page redirect to the setup wizard). |
 | `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `nx_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (rotation also re-stamps the cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
 | `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the session cookies. CSRF-gated for cookie sessions (double submit). |
-| `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user. |
+| `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user, and bumps `token_version` — every credential of the account dies, including the caller's (sign in again). For "sign out the other devices but keep me in", use `POST /me/sessions/revoke-others`. |
+| `POST` | `/auth/step-up` | `StepUpRequest` (`action`, `password?`, `code?`) | `{action, methods, issued_at, expires_at, expires_in}` | **Step-up re-authentication** (program 12C1) for the five sensitive actions: `role_change`, `export`, `break_glass`, `grant_admin`, `mfa_change`. The factors are the account's own — the local password when one is set, TOTP/recovery when MFA is enrolled (both when both exist); an SSO-only account may use a fresh IdP-asserted second factor (`methods: ["federated"]`). Records a family-bound proof (`stepup:{fid}:{action}`, 10-minute window, one action, one sign-in family) — see the typed refusals below. Rate-limited (10/min per IP); audited (`auth.step_up`). |
+
+**Typed step-up refusals.** A gated action without a live proof answers
+`403 {"code": "step_up_required", "action": "<action>", "expires_in": 600}`
+(`methods` is included when a factor of the request body is missing); an
+account with no usable factor at all answers
+`403 {"code": "step_up_unavailable", "action": …, "reason": "no_factor" |
+"no_session_family" | "account_unavailable"}`. Wrong passwords/codes answer
+`401`. Gated surfaces: `PUT /users/{id}` only when the role actually
+changes, `POST /export` (every scope), `POST /admin/access-elevations` and
+its `/approve` (deny/revoke only narrow access and stay ungated),
+`POST /patients/{id}/access` (+ `PATCH` raising a grant to `admin`), and
+every factor change (`POST /me/mfa/enroll`, `POST /me/mfa/confirm`, the
+`/me/mfa/passkeys` add/delete routes — `mfa_change`). A registered passkey can
+prove the same actions at `POST /auth/step-up/passkeys/{options,verify}`
+(`methods: ["webauthn"]`). Ordinary reads never require a proof.
 
 #### TOTP MFA
 
@@ -176,9 +200,21 @@ count toward the account lockout** (same counter as wrong passwords — 5 strike
 the challenge passes.
 
 Admin-forced MFA (`mfa_enforced`, "promoted for institute use"): the member's
-next login challenge carries `enrollment_needed: true`; `POST /auth/mfa/enroll`
+next login challenge carries `enrollment_needed: true` only when the account
+has no factor (TOTP or passkey); `POST /auth/mfa/enroll`
 (with the challenge token) returns the one-time provisioning payload, and the
 verify call confirms the enrollment and signs in in one step.
+
+Tenant security policy: the same challenge flow fires when
+the **tenant policy** lists the caller's role in `mfa_required_roles` — and for
+`SYSTEM_ADMIN` logins always (that role can never waive MFA; the bootstrap
+session from `POST /auth/setup` is the only pre-enrollment session). The
+policy can also require MFA without any account flag, so the disable card on
+`/me/mfa` refuses while the policy lists the caller's role. See
+[tenants](#tenants--tenant-self-service) for the policy surface; session
+policy (idle/max-age windows, concurrent-session limit, IP allowlist) is
+enforced on verification, refresh and issuance with the typed denials
+`session_idle_expired` / `session_max_age_expired` / `ip_not_allowed`.
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
@@ -191,11 +227,13 @@ Self-service surface (settings → Security), mounted under `/me` to match the
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
 | `GET` | `/me/mfa` | any | — | `MFAStatusResponse` | `{enabled, enforced, pending}` — drives the settings card. |
-| `GET` | `/me/sessions` | any | — | list of session rows | Active sessions for the account (device, created, last-seen). |
-| `DELETE` | `/me/sessions/{session_id}` | any | — | `{message}` | Revoke one other session (self-service sign-out of a stale device). |
-| `POST` | `/me/mfa/enroll` | any | — | `MFAEnrollResponse` | One-time provisioning payload (secret + otpauth URI + recovery codes); pending until confirmed. 409 when already active. Audit-logged as `mfa.enroll`. |
-| `POST` | `/me/mfa/confirm` | any | `{code}` | `MFAStatusResponse` | Code check against the pending secret ⇒ active. 400 on a wrong code. Audit-logged as `mfa.confirm`. |
-| `DELETE` | `/me/mfa` | any | `{password}` | `MFAStatusResponse` | Password-confirmed removal. **403 while `mfa_enforced`** — an admin requirement is not self-cancellable. Audit-logged as `mfa.disable`. |
+| `PATCH` | `/me/password` | any | `{current_password, new_password}` | `204` | Password rotation. Wrong current passwords share the login lockout; success bumps `token_version` and revokes every token family, so the caller signs in again. Rate-limited (5/min per IP). |
+| `GET` | `/me/sessions` | any | — | list of session rows | Live sign-in families: `id`, `client_label`, `ip`, `user_agent`, `last_seen_at` (≥60 s throttled activity stamp), `created_at`, `expires_at`, `absolute_expires_at`, and `current` for the family serving this request. |
+| `DELETE` | `/me/sessions/{session_id}` | any | — | `{revoked: true}` | Revoke one device's family (its refresh chain dies at once; revoking the caller's own family also kills its bearer). Hidden 404 for a family the caller does not own. |
+| `POST` | `/me/sessions/revoke-others` | any | — | `{revoked: <count>}` | Sign out every device **except** this one — no `token_version` bump, so the caller keeps working (unlike `/auth/logout-all`). Audited (`session.revoke_others`). |
+| `POST` | `/me/mfa/enroll` | any + `mfa_change` step-up | — | `MFAEnrollResponse` | One-time provisioning payload (secret + otpauth URI + recovery codes); pending until confirmed. 409 when already active; 403 `step_up_required` (action `mfa_change`, `methods` naming the acceptable factors) without a proof — an enrolled TOTP secret is itself a step-up factor, so enrollment may not be self-authorized by a bare session. Audit-logged as `mfa.enroll`. |
+| `POST` | `/me/mfa/confirm` | any + `mfa_change` step-up | `{code}` | `MFAStatusResponse` | Code check against the pending secret ⇒ active. 403 `step_up_required` without the proof; 400 on a wrong code. Audit-logged as `mfa.confirm`. |
+| `DELETE` | `/me/mfa` | any | `{password}` | `MFAStatusResponse` | Password-confirmed TOTP removal. **403 while `mfa_enforced` or a tenant-policy-listed role applies and no other factor remains** (a registered passkey keeps MFA satisfied); the admin/policy requirement itself is never self-cancellable. Audit-logged as `mfa.disable`. |
 
 Admin force — `PATCH /admin/tenants/{tenant_id}/users/{user_id}/mfa` with
 `{"enforced": true|false}` (`ADMIN` inside their own tenant, `SYSTEM_ADMIN`
@@ -203,6 +241,68 @@ anywhere; `MANAGER`/`USER` get 403). Audit-logged as `user.mfa_enforce` with
 old/new values. Clearing the requirement never removes an enrolled secret.
 `GET /users` and the tenant user list expose `mfa_enabled` / `mfa_enforced`
 booleans for the admin UI.
+
+#### Passkeys / WebAuthn (program 12C2)
+
+Passkeys are WebAuthn Level 2 credentials (platform authenticators such as
+Touch ID/Windows Hello, or roaming security keys) stored in
+`webauthn_credentials` (public key + signature counter only — the private key
+never leaves the authenticator). They are a **second factor and a login
+method**: a user-verified assertion satisfies the tenant MFA policy exactly
+like TOTP, and password login then offers both methods. Every ceremony
+requires **user verification** and uses a **single-use, five-minute**
+challenge stored in the hot layer (consumed before signature verification, so
+replay fails even after a malformed attempt).
+
+**Relying-party configuration.** Set `HA_WEBAUTHN_RP_ID` (bare registrable
+domain) and `HA_WEBAUTHN_ORIGIN` (comma-separated exact page origins; https
+outside development/test). In development/test the defaults are the
+`FRONTEND_URL`/`APP_URL` origins with `localhost` as the RP id; on any other
+environment an unconfigured instance answers `503
+{"detail":{"code":"webauthn_not_configured"}}`. RP/origin mismatches,
+missing user verification, unknown credentials, replayed/expired challenges
+and signature-counter regressions are typed refusals below.
+
+Registration (authenticated; requires a recent `mfa_change` step-up proof —
+password/TOTP or an existing passkey):
+
+| Method | Path | Body | Response | Notes |
+|---|---|---|---|---|
+| `POST` | `/me/mfa/passkeys/options` | — | `{options, expires_in}` | `options` is the `PublicKeyCredentialCreationOptions` object: pass it as `navigator.credentials.create({publicKey: options})`. `excludeCredentials` lists already-registered credentials; UV required. 403 `step_up_required` (action `mfa_change`) without a proof. |
+| `POST` | `/me/mfa/passkeys/verify` | `{credential, name}` | `PasskeyResponse` | `credential` is the `PublicKeyCredential` JSON (`{id, rawId, type, response:{clientDataJSON, attestationObject, transports?}}`). Verifies the attestation against the configured RP/origins, requires UV, stores the credential. `409 webauthn_credential_exists` when already registered; `400 webauthn_invalid_response` / `webauthn_challenge_expired`. Audited `mfa.passkey_register`. |
+| `GET` | `/me/mfa/passkeys` | — | `{items: PasskeyResponse[]}` | `id`, `name`, `transports`, `aaguid`, `backup_eligible`, `backup_state`, `created_at`, `last_used_at`, `disabled`. No key material. |
+| `DELETE` | `/me/mfa/passkeys/{credential_id}` | — | `204` | Requires the `mfa_change` proof. Refused `403` when `mfa_enforced`/a policy-listed role applies and this is the **last** factor (enroll another factor first). Audited `mfa.passkey_delete`. |
+
+Passkey sign-in (public; the browser ceremony is `navigator.credentials.get`):
+
+| Method | Path | Body | Response | Notes |
+|---|---|---|---|---|
+| `POST` | `/auth/passkeys/options` | `{email?}` | `{options, expires_in}` | `email` names the account (`allowCredentials` is filled); omit it for a usernameless/discoverable ceremony. An unknown/inactive email gets the same shape with an empty `allowCredentials` (no enumeration). UV required. Rate-limited 20/min. |
+| `POST` | `/auth/passkeys/verify` | `{credential}` | `TokenResponse` (+ §10 cookies) | Verifies the assertion, advances the counter, enforces the tenant IP allowlist, and issues a normal session. The passkey satisfies MFA (no `mfa_required` challenge). The session carries `auth_mode="password"` (the contract's closed local-auth value) plus `amr:["hwk","user"]` (or `swk` for a synced credential) and `auth_time`. A non-zero counter that does not advance answers `403 webauthn_clone_detected`, disables the credential and audits `auth.passkey_clone_detected`. Legacy first-factor failures: `401 webauthn_invalid_response` / `webauthn_unknown_credential`, `400 webauthn_challenge_expired`, `423` while the account lockout is active, `403 ip_not_allowed`. Audited `auth.passkey_login` and `auth.login`. |
+
+Step-up with a passkey (authenticated; any closed action —
+`role_change | export | break_glass | grant_admin | mfa_change`):
+
+| Method | Path | Body | Response | Notes |
+|---|---|---|---|---|
+| `POST` | `/auth/step-up/passkeys/options` | `{action}` | `{action, options, expires_in}` | Bound to the caller's sign-in family **and** the named action. 403 `step_up_unavailable` (`no_session_family`) for a familyless token; 422 for an unknown action. |
+| `POST` | `/auth/step-up/passkeys/verify` | `{action, credential}` | `{action, methods:["webauthn"], issued_at, expires_at, expires_in}` | Verifies the assertion and writes the ordinary `stepup:{fid}:{action}` proof (10-minute window, one action, one family). The same gated endpoints (`PUT /users/{id}`, `POST /export`, elevations, admin grants) now accept it. Audited `auth.step_up`. |
+
+**MFA policy and recovery.** `GET /me/mfa` is factor-aware:
+`{enabled, enforced, pending, totp_enabled, passkey_enabled, passkey_count}` —
+`enabled` is TOTP **or** passkey. `POST /auth/login` answers
+`401 {"detail":"mfa_required","mfa_token","enrollment_needed","methods":["webauthn","totp"]}`
+(`methods` lists the factors available; either completes the sign-in). A
+passkey-only account under an MFA-requiring policy gets
+`enrollment_needed:false` and `methods:["webauthn"]`. Disabling TOTP or
+deleting a passkey is allowed while another factor remains; the **last**
+factor cannot be removed while `mfa_enforced` or a policy-listed role
+requires MFA. TOTP recovery codes remain the TOTP recovery path; if a
+passkey device is lost, sign in with another factor (TOTP/recovery, or a
+fresh SSO sign-in for SSO-only accounts) and register a replacement, or use
+the host recovery runbook in `SECURITY.md`. Every ceremony, refusal, clone
+alarm and delete is audited (`mfa.passkey_register`, `mfa.passkey_delete`,
+`auth.passkey_login`, `auth.passkey_clone_detected`, `auth.step_up`).
 
 #### Register examples
 
@@ -482,6 +582,97 @@ cross-tenant id remapping.
 
 ## Identity & access
 
+### `me/access` — the caller's authorization identity
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/me/access` | session (auth-only) | — | `{user, roles, permissions, tenant, patient_grants, pending_grants}` | The health-owned access surface: the signed-in caller's role list, effective permission set (from the code catalog), tenant and incoming care-team grants (`patient_grants` = accepted, `pending_grants` = awaiting acceptance; minimal fields with the patient display name). Read per request — a grant created or revoked mid-session is honored on the next fetch. The client derives `can(permission)` from it; the server keeps enforcing — the payload is a mirror, never the gate. |
+| `GET` | `/me/access/grants` | session (auth-only) | — | `{active: [grant], pending: [grant]}` | The caller's incoming grants for the self-service page (grant id, patient id + name, permission, source, status, timestamps). |
+| `POST` | `/me/access/grants/{grant_id}/accept` | session (auth-only) | — | `{id, status}` | The invited staff member accepts a pending share (pending → `active`). Re-validated at accept time: `403` for anyone but the grantee or after the grantee lost its staff role, `409` if no longer pending or the tenant switched `allow_patient_share` off. |
+| `POST` | `/me/access/grants/{grant_id}/decline` | session (auth-only) | `{reason?}` | `{id, status}` | Decline a pending share (pending → `declined`). Same 403/409 rules. |
+| `GET` | `/me/elevations` | session (auth-only) | — | `[elevation]` | The caller's own break-glass elevations, newest first (pending, live and settled) — the self-service view of the windows they requested. |
+
+```bash
+curl -H "Authorization: Bearer $ACCESS" /api/v1/me/access
+# {"user":{"id":"…","email":"…","full_name":"…","role":"ADMIN"},
+#  "roles":["ADMIN"],
+#  "permissions":["audit:read","catalog:create", …],
+#  "tenant":{"id":"…","name":"…"},
+#  "patient_grants":[{"id":"…","patient_id":"…","patient_name":"…",
+#                     "permission":"read","source":"care_team","status":"active", …}],
+#  "pending_grants":[]}
+```
+
+### `me/api-tokens` — scoped personal access tokens (Program Phase 12C2B)
+
+Opaque, owner-bound credentials for CLI/scripts/home-automation clients
+(`pat` token kind). The plaintext is returned **once**;
+the route gate authorizes with the token's permission subset (not the
+owner's role), re-intersected with the owner's live role on every request,
+and the patient scope is intersected with the owner's live reach. A token
+can never mint another token, a session, a refresh or a step-up proof.
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/me/api-tokens` | session (never a PAT) | — | `[ApiToken]` | The caller's tokens, newest first (revoked/expired included). Never the plaintext or its hash. |
+| `GET` | `/me/api-tokens/permissions` | session | — | `{permissions: [{permission, scope}], patient_scopes}` | The caller's assignable catalog (the picker's source of truth); server re-validates every write. |
+| `POST` | `/me/api-tokens` | session | `{name, permissions[], patient_scope?, patient_ids?, expires_at?}` | `{token, api_token}` (`201`) | Creates the token. `token` is the one-time plaintext (`ha_pat_<prefix>_<secret>`); `api_token` is the hash-free projection. `permissions` must be a non-empty subset of the caller's catalog. |
+| `GET` | `/me/api-tokens/{id}` | session | — | `ApiToken` | One owned token; another owner's id is a hidden `404`. |
+| `PATCH` | `/me/api-tokens/{id}` | session | `{name?, permissions?, patient_scope?, patient_ids?, expires_at?}` | `ApiToken` | Re-validates the subset and allowlist. A revoked token cannot be updated. |
+| `POST` | `/me/api-tokens/{id}/rotate` | session | — | `{token, api_token}` | Issues a replacement and revokes the predecessor in one transaction (`rotated_from` on the new row). |
+| `DELETE` | `/me/api-tokens/{id}` | session | — | `204` | Revokes; the bearer stops resolving at once (the row stays as the ledger). |
+
+`ApiToken` = `{id, tenant_id, owner_user_id, name, token_prefix,
+permissions, patient_scope, patient_ids, expires_at, last_used_at,
+revoked_at, rotated_from, created_by, created_at, updated_at}`.
+
+Usage is the ordinary bearer header — a PAT carries the owner's tenant and
+nothing else:
+
+```bash
+curl -H "Authorization: Bearer $PAT" /api/v1/patients
+```
+
+`patient_scope`: `all` = every patient the owner can reach at use time;
+`granted` = only the `patient_ids` the owner can still reach; `none` = no
+patient-scoped access (non-clinical scopes only). Presenting a PAT on a
+credential-management route (`/auth/*`, password, MFA/passkeys, sessions,
+token management, step-up) answers `403`; a step-up-gated action answers
+`403 step_up_required`.
+
+### `integration-principals` — scoped service identities (Program Phase 13)
+
+Integrations and extensions act as a scoped principal, never
+as their owner's role. A principal carries a permission subset (also bounded
+by the extension manifest's declared capabilities), a patient scope and a
+lifecycle. Tenant admins (`integration:manage` / `tenant:manage`) manage the
+whole tenant; an integration owner manages the principal bound to their
+integration. All routes are session-only — a scoped credential cannot manage
+principals.
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/integration-principals` | session | — | `[IntegrationPrincipal]` | Tenant admins see every principal in the tenant; other callers see their own. |
+| `GET` | `/integration-principals/permissions?integration_id=` | session | — | `{permissions: [{permission, scope}], patient_scopes}` | The assignable set for that integration (owner ∩ manifest) or the caller's own catalog. |
+| `POST` | `/integration-principals` | session | `{name, kind?, integration_id?, owner_user_id?, scopes[], patient_scope?, patient_ids?, expires_at?}` | `{secret, integration_principal}` (`201`) | `kind=integration` requires `integration_id` (only the owner or a tenant admin). The secret is `ha_int_<prefix>_<secret>`, shown once. |
+| `GET` | `/integration-principals/{id}` | session | — | `IntegrationPrincipal` | Another owner's id is a hidden `404`. |
+| `POST` | `/integration-principals/{id}/rotate` | session | — | `{secret, integration_principal}` | Issues a replacement and marks the predecessor `rotated` in one transaction. |
+| `DELETE` | `/integration-principals/{id}` | session | — | `204` | Revokes; the secret stops resolving at once (the row stays as the ledger). |
+
+`IntegrationPrincipal` = `{id, tenant_id, owner_user_id, name, kind,
+integration_id, scopes, patient_scope, patient_ids, status, secret_prefix,
+last_used_at, expires_at, revoked_at, rotated_from, created_by, created_at,
+updated_at}`. A principal is used exactly like a personal access token:
+
+```bash
+curl -H "Authorization: Bearer $PRINCIPAL_SECRET" /api/v1/patients
+```
+
+The route gate authorizes with the principal's own scopes (re-intersected
+with the owner's live role and the manifest on every use, capped at tenant);
+patient scope bounds every patient-scoped read/write. Revoked, rotated,
+expired, cross-tenant and scope-less credentials answer `401`.
+
 ### `users`
 
 | Method | Path | Auth | Body | Response | Notes |
@@ -491,6 +682,9 @@ cross-tenant id remapping.
 | `GET` | `/users` | `ADMIN` / `MANAGER` | — | `List[UserResponse]` | List users in the caller's tenant. |
 | `POST` | `/users` | `ADMIN` / `SYSTEM_ADMIN` | `UserCreate` | `UserResponse` (`201`) | Create user in a tenant. `tenant_id` defaults to caller's tenant. |
 | `PUT` | `/users/{user_id}` | self / admin / manager | (query: `email?`, `role?`, `settings?`) | `UserResponse` | Role change requires admin. |
+| `DELETE` | `/users/me` | any | `{password}` | `{message, erasure_id}` | Self-service erasure. Requires the account password and is refused for the last `SYSTEM_ADMIN`. |
+| `POST` | `/users/{user_id}/reset-password` | `ADMIN` / `SYSTEM_ADMIN` | `{new_password}` | `204` | Admin reset. Revokes every token family for the target. A tenant `ADMIN` cannot reset a `SYSTEM_ADMIN`. |
+| `POST` | `/users/{user_id}/force-logout` | `ADMIN` / `SYSTEM_ADMIN` | — | `{revoked: true}` | Bumps the target's `token_version` and revokes all sessions. |
 | `DELETE` | `/users/{user_id}` | `ADMIN` / `SYSTEM_ADMIN` | — | `{message}` | Tenant-isolated for non-system admins. |
 
 ### `tenants` — tenant self-service
@@ -505,6 +699,8 @@ cross-tenant id remapping.
 | `GET` | `/tenants` | any | — | `TenantResponse` | Returns the caller's own tenant. |
 | `GET` | `/tenants/{tenant_id}` | self / SYSTEM_ADMIN | — | `TenantResponse` | Non-`SYSTEM_ADMIN` can only read their own tenant. |
 | `PATCH` | `/tenants/{tenant_id}` | `ADMIN` / `SYSTEM_ADMIN` | `TenantUpdate` (name, description, settings) | `TenantResponse` | Self-service update only. Use `PATCH /admin/tenants/{id}` for the full surface. |
+| `GET` | `/tenants/{tenant_id}/security-policy` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` (settings:read @ tenant) | — | `TenantSecurityPolicyResponse` | The normalized tenant security policy: defaults for unset knobs, read per request. Cross-tenant → hidden `404`. |
+| `PATCH` | `/tenants/{tenant_id}/security-policy` | `ADMIN` / `SYSTEM_ADMIN` (settings:write @ tenant) | `TenantSecurityPolicyPatch` (all optional; `null` clears the nullable knobs) | `TenantSecurityPolicyResponse` | Partial patch of `mfa_required_roles` / `session_idle_minutes` / `session_max_hours` / `concurrent_session_limit` / `ip_allowlist` / `patient_sharing` / `manager_scope`. Validation errors are `422`. Every change is audited (`tenant.security_policy`, fail-closed) with a changed-keys diff. Enforcement points: login (MFA-required roles, IP allowlist), issuance (concurrent limit), verification + refresh (idle / max-age / IP), grants service (patient sharing, manager scope). |
 
 ### `settings` — three-tier settings (system / tenant / user)
 
@@ -530,8 +726,55 @@ Settings resolve `USER > TENANT > SYSTEM > default`. Reads are role-gated;
 | `POST` | `/admin/notifications/broadcast` | `ADMIN` / `SYSTEM_ADMIN` | query: `title` *, `body?`, `severity=info\|warning\|critical`, `scope=tenant\|system`, `tenant_id?` | `{status, notification_id}` | Emits `SYSTEM`/`SYSTEM_BROADCAST` to every user in scope (`TENANT` target for tenant, `SYSTEM` target = every `SYSTEM_ADMIN` for system). Audit-logged as `admin.broadcast`. |
 | `POST` | `/admin/catalogs/import/url` | `SYSTEM_ADMIN` | query: `url` * | `{message}` | Fetches a clinical-ontology catalog JSON and runs the import in the background. Audit-logged as `admin.catalog_import`. |
 | `POST` | `/admin/catalogs/import/file` | `SYSTEM_ADMIN` | multipart: `file` | `{message}` | Validates + imports an uploaded catalog JSON. Audit-logged as `admin.catalog_import`. |
-| `GET` | `/admin/audit` | `SYSTEM_ADMIN` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | Cross-tenant `audit_events` stream — every tenant plus system-level (NULL-tenant) rows when `tenant_id` is omitted. |
-| `GET` | `/admin/seeds/export.zip` | `SYSTEM_ADMIN` | — | `application/zip` (attachment) | Streams the running instance's global taxonomy / anatomy / catalog data as flat seed-format JSON (read-only; never touches server's `data/seeds/`). |
+| `GET` | `/admin/audit` | `ADMIN` (own tenant) / `SYSTEM_ADMIN` (system-wide) | query: `tenant_id?`, `user_id?` (actor), `resource_type?`, `resource_id?`, `action?`, `outcome=ok\|denied\|error`, `date_from?`, `date_to?` (exclusive), `all=true` (SYSTEM_ADMIN only), `limit=50`, `offset=0` | `AuditListResponse` | The audit-stream viewer. Tenant admins are scoped to their own tenant: a foreign `tenant_id` is a hidden `404` and `all=true` is `403` (both audited). SYSTEM_ADMIN sees every tenant plus the system-level (NULL-tenant) rows; `tenant_id=` narrows, `all=true` is the explicit form. Rows carry the chain metadata (`chain_key`/`seq`/`prev_hash`/`entry_hash`); newest-first. |
+| `GET` | `/admin/audit/export` | `ADMIN` (own tenant) / `SYSTEM_ADMIN` | query: `format=json\|csv` (default `json`), same filters as `GET /admin/audit` | `application/x-ndjson` (one JSON object per line) or `text/csv` (attachment) | Streaming audit export — same filters and scoping, newest-first (keyset on `(created_at, id)`, so same-timestamp rows are never skipped), up to 10000 rows. Every line/row carries the chain metadata and the redacted diff payloads. When the filter set matches more rows than the cap the stream is truncated and the response says so: `X-Audit-Export-Truncated: true` + `X-Audit-Export-Total: <matched>` headers (the viewer surfaces a warning). The export itself is audited (`audit.export`, fail-closed — the audit row carries `truncated`/`total_matched`), as is every denied attempt. |
+| `GET` | `/admin/audit/retention` | `SYSTEM_ADMIN` | — | `AuditRetentionResponse` | The retention view: the `retention_policies` rows governing audit data (3650-day anonymize of actor/diff payloads; the app never deletes audit rows) plus `legal_holds: null` — there is no hold registry yet. Deliberately no deletion endpoint. |
+| `POST` | `/admin/access-elevations` | `ADMIN` / `MANAGER` (tenant scope) / `SYSTEM_ADMIN` (system scope) | `{scope=tenant\|system, permissions: [..], duration_minutes: 1–240, reason *, metadata?}` | `ElevationResponse` | Open a break-glass request: a time-boxed widening of **held** permissions only (an elevation never grants a permission the role lacks — `403` otherwise), one live elevation per principal per scope (`409`), reason required. Starts `pending`; eligible approvers are notified. | **Step-up gated** (12C1): a `break_glass` proof from `POST /auth/step-up` is required (`403 step_up_required`). |
+| `GET` | `/admin/access-elevations` | `ADMIN` (own tenant) / `SYSTEM_ADMIN` (all) | query: `tenant_id?`, `scope=tenant\|system?`, `status=pending\|active\|expired\|revoked\|denied?` | `ElevationListResponse` | The elevation ledger, newest first. Tenant admins are scoped to their own tenant: a foreign `tenant_id` is a hidden `404` and `scope=system` is `403` (both audited). SYSTEM_ADMIN narrows with `tenant_id=`/`scope=`; omitted filters answer everything. |
+| `POST` | `/admin/access-elevations/{id}/approve` | second person: `ADMIN` (tenant rows) / `SYSTEM_ADMIN` (system rows) | — | `ElevationResponse` | Two-person approval: `pending → active`, the window opens now and expires after the requested duration. The requester themselves answers `403`; a role the scope does not accept answers `403`; a foreign tenant's row answers hidden `404`; a row that is no longer pending answers `409`. Every transition is audited (`elevation_request/approve/deny/revoke/expire`) and requests exercised under a window are audited as `elevation_use`. | Also step-up gated (`break_glass`) — approve is the decision that opens access; deny/revoke stay ungated. |
+| `POST` | `/admin/access-elevations/{id}/deny` | same authority as approve | `{reason?}` | `ElevationResponse` | Refuse the request (`pending → denied`); the requester is notified. |
+| `POST` | `/admin/access-elevations/{id}/revoke` | the requester, an eligible approver, or SYSTEM_ADMIN | — | `ElevationResponse` | Close a pending or active window early (`→ revoked`); revocation only ever removes reach. Auto-expiry runs on the beat every 15 minutes and the consultation predicate (`expires_at > now()`) is evaluated in SQL on every request — no token caching. Single-admin tenants have no approval path: recovery is the host rescue runbook in `SECURITY.md`. |
+| `GET` | `/admin/seeds/export.zip` | `SYSTEM_ADMIN` | — | `application/zip` (attachment `health-assistant-seed-pack.zip`) | Streams the running instance's global taxonomy / anatomy / catalog data as the **canonical seed pack** (`manifest.json` + `items/*.json`): every registered item file, deterministic (no timestamps, sorted, hashed) and contract-valid — re-registerable through the source lane with a zero-write round trip. Read-only; never touches the server's `data/seeds/`. |
+
+### `admin/seed-sources` — seed pack sources
+
+The data-only pack lane's admin surface. `SYSTEM_ADMIN` manages the system lane
+(system-scope sources, priorities 0–199); a tenant `ADMIN` manages their own
+tenant overlays (priorities 200–999). Cross-tenant ids answer a hidden `404` —
+never a `403`. Every mutation is audited (`seed.source.*`, `seed.version.*`);
+the apply itself is audited by the applier (`seed.apply`). Errors are typed
+detail objects: `{"code": "<TYPED_CODE>", "message": "…"}` — codes include
+`INVALID_KIND`, `INVALID_PRIORITY`, `FORBIDDEN_SCOPE`, `URI_INVALID`,
+`REF_INVALID`, `SUBPATH_INVALID`, `PACK_INVALID`, `PACK_NOT_FOUND`,
+`SCOPE_MISMATCH`, `PRIORITY_MISMATCH`, `DIGEST_DRIFT`, `SECRET_MISSING`,
+`VERSION_NOT_PENDING`, `VERSION_NOT_APPROVED`, `BUNDLED_IMMUTABLE`,
+`ARCHIVE_INVALID`, `ARCHIVE_PATH_TRAVERSAL`, `ARCHIVE_ENTRY_FORBIDDEN`,
+`ARCHIVE_TOO_LARGE`, `FETCH_TOO_LARGE`, `FETCH_TIMEOUT`, `NET_DENIED`,
+`UNREACHABLE`, `AUTH`, `PROVIDER`.
+
+| Method | Path | Auth | Body / Query | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/admin/seed-sources` | `ADMIN` (own tenant overlays) / `SYSTEM_ADMIN` (all) | — | `[{…source, versions[…]}]` | The actor's sources with version summaries (each version carries `is_current`, `pack_id`/`pack_version`/`pack_scope`/`pack_priority`/`pack_files` and `latest_run {run_id, mode, status, started_at, stats}` — the PARTIAL probe). |
+| `POST` | `/admin/seed-sources` | `ADMIN` / `SYSTEM_ADMIN` | `{kind: "file"\|"git"\|"registry", priority, scope?: "system"\|"tenant", uri?, ref_spec?, subpath?, auth_secret_ref?, tenant_id? (SYSTEM_ADMIN, tenant scope)}` | source view (`201`) | Registers a source. `bundled` is boot-only and cannot be created; git/registry URIs are https-only; priorities must sit in the scope's band (system 0–199, tenant 200–999). `auth_secret_ref` names a secret **slot** (keyring / `HA_SEED_SOURCE_SECRET_<SLOT>`), never a token. |
+| `POST` | `/admin/seed-sources/{source_id}/sync` | `ADMIN` / `SYSTEM_ADMIN` | — | `{status: "registered"\|"up_to_date", versions[…], note?}` | Fetch now (per-source advisory lock; startup never fetches). A new digest lands as a **pending** version with its pins (git commit sha / registry etag); the manifest's scope/priority are pinned to the source row at registration (`SCOPE_MISMATCH`/`PRIORITY_MISMATCH` otherwise). Failures record `last_error` and keep every pin. |
+| `POST` | `/admin/seed-sources/{source_id}/upload` | `ADMIN` / `SYSTEM_ADMIN` | multipart: `file` (a pack zip — `manifest.json` + `items/*.json` — or a single item-file JSON such as `medications.json`), optional fields `pack_id`, `version`, `license` | version view | File sources only. The body is read under the upload cap before parsing (`UPLOAD_TOO_LARGE`/413 otherwise); the digest lands as a pending version; re-uploading the same content returns the existing row. Traversal entries, unknown entry types and oversized archives are typed refusals. |
+| `GET` | `/admin/seed-sources/{source_id}/versions` | `ADMIN` / `SYSTEM_ADMIN` | — | `[{…version, is_current}]` | The source's versions (newest first, ≤50). |
+| `GET` | `/admin/seed-sources/{source_id}/runs` | `ADMIN` / `SYSTEM_ADMIN` | `?limit=25` (≤100) | `[{…run, digest}]` | The source's run history (newest first): mode, status, timing, stats, error and the version digest each run applied. |
+| `GET` | `/admin/seed-sources/{source_id}/runs/{run_id}` | `ADMIN` / `SYSTEM_ADMIN` | — | `{…run, digest, items[]}` | One run in full: status/stats/error, the recorded plan document and the per-item outcomes (action + content hash + conflict payload — the durable loser/override record). A run from another source is the hidden 404 (`RUN_NOT_FOUND` for unknown ids). |
+| `POST` | `/admin/seed-sources/versions/{version_id}/approve` | `ADMIN` / `SYSTEM_ADMIN` (`seed_source:approve`) | — | version view | `pending → approved` on the exact digest. The pointer advances only on a successful apply. The bundled lane refuses (`BUNDLED_IMMUTABLE`). |
+| `POST` | `/admin/seed-sources/versions/{version_id}/reject` | same | `{reason?}` | version view | `pending → rejected` with the reason recorded. |
+| `POST` | `/admin/seed-sources/versions/{version_id}/revoke` | same | — | `{version, restored_version_id}` | `approved → revoked`; the previous approved version **re-applies** (restoring the items the revoked version had retired) or the source is left pointer-less. |
+| `GET` | `/admin/seed-sources/versions/{version_id}/plan` | `ADMIN` / `SYSTEM_ADMIN` | — | plan document | The plan preview — one documented side effect: it persists a `plan`-mode run (the durable preview history) and writes nothing else. Pending versions plan too — the preview precedes approval. |
+| `POST` | `/admin/seed-sources/versions/{version_id}/apply` | `ADMIN` / `SYSTEM_ADMIN` (`seed_source:manage`) | `{"apply": false}` (default) | `{"mode": "plan", "plan": …}` or `{"mode": "apply", runs, statuses, stats}` | **Plan-only by default**; `{"apply": true}` executes the approval-checked apply under the advisory locks. Also the explicit re-apply door: re-running a version whose last apply was PARTIAL retries exactly the failed items (this is the bundled PARTIAL door). Unapproved digests are refused (`VERSION_NOT_APPROVED`). |
+| `POST` | `/admin/seed-sources/{source_id}/adopt` | `ADMIN` / `SYSTEM_ADMIN` | `{"seed_key"?}` | `{cleared, seed_key?}` | The explicit "update available" adoption: clears `user_modified` on the source's provenance rows (optionally one `seed_key`) and re-applies the current version — the pack content finally wins. A failed re-apply is audited exactly once with outcome `error` and surfaces as a typed `ADOPT_APPLY_FAILED` (the committed freeze-clears stand). |
+| `POST` | `/admin/seed-sources/{source_id}/disable` | `ADMIN` / `SYSTEM_ADMIN` | — | source view | A disabled source provides no keys (planners skip it). The bundled lane refuses. |
+| `POST` | `/admin/seed-sources/{source_id}/enable` | `ADMIN` / `SYSTEM_ADMIN` | — | source view | Re-enable. |
+| `POST` | `/admin/seed-sources/{source_id}/retire` | `ADMIN` / `SYSTEM_ADMIN` | — | `{retired, kept, source}` | Retires the source: its items flip to `retired` **only where no other active approved source provides them** (patient-referenced rows are kept); the source disables. Runs under the apply lane's advisory lock (a concurrent apply of this source waits). Rows are never deleted. |
+
+Remote sources sync on a 6-hour worker beat (`sync-seed-sources`, per-task
+time-limit override); the bundled pack applies at boot from local content and
+is never fetched. See `docs/SEEDING_AND_DEMOS.md` for the pack format,
+precedence, approval lifecycle and threat model.
 
 ### `admin/tenants` — tenant operator console
 
@@ -552,8 +795,77 @@ All routes `SYSTEM_ADMIN`-only. Audit-logged.
 | `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}` | `UpdateTenantUser` | `TenantUserResponse` | Update a tenant user (role / active toggle). |
 | `PATCH` | `/admin/tenants/{tenant_id}/users/{user_id}/mfa` | `SetTenantUserMFA` (`{enforced}`) | `TenantUserResponse` | Force/release TOTP MFA. `ADMIN` may act inside their own tenant, `SYSTEM_ADMIN` anywhere — the one route here not gated `SYSTEM_ADMIN`-only. Audit-logged as `user.mfa_enforce`. |
 | `POST` | `/admin/tenants/{tenant_id}/invite` | `CreateInvitePayload` | `InviteResponse` | Mint a tenant-scoped invite token (audit-logged as `tenant.invite`). |
-| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer . |
-| `GET` | `/admin/audit` | query: `tenant_id?`, `action?`, `outcome?`, `user_id?`, `limit=50`, `offset=0` | `AuditListResponse` | **Cross-tenant** audit stream (`SYSTEM_ADMIN`-only; omit `tenant_id` for every tenant + system-level rows). |
+| `GET` | `/admin/tenants/{tenant_id}/audit` | query: `action?`, `outcome?`, `limit=50`, `offset=0` | `AuditListResponse` | Tenant-scoped `audit_events` viewer (SYSTEM_ADMIN-only; tenant admins use `GET /admin/audit`, which is scoped to their own tenant). |
+| `GET` | `/admin/audit/verify` | query: `tenant_id?`, `all?` | `AuditChainVerifyResponse` / `AuditChainVerifyAllResponse` | **Audit-chain verification** (`SYSTEM_ADMIN`-only): walks one chain (default the system chain; `tenant_id=` for a tenant; `all=true` for every chain) — sequence contiguity, hash links, canonical recomputation and the head row. Answers `{chain: {chain_key, ok, entries, head_seq, first_bad_seq, reason}}`; a gap or mismatch is a tamper alarm (server-side `AUDIT_CHAIN_ALARM` critical log, no resync marker). The rows are read before the head and a head-only mismatch is re-read once before alarming, so a concurrent append committing during verification cannot false-alarm (only a mismatch persisting across the re-read is tampering). |
+
+### `admin/tenants` — tenant operator console
+
+All routes `SYSTEM_ADMIN`-only. Audit-logged.
+
+#### Per-tenant SSO config (Program Phase 12B) — `/admin/tenants/{tenant_id}/sso`
+
+`ADMIN` manages its **own** tenant (a foreign id answers a hidden `404`,
+audited); `SYSTEM_ADMIN` anywhere. Route doors: reads `settings:read`,
+writes `settings:write` (TENANT scope). **Secret-slot law:** the config
+carries a slot *name* only — a secret value is refused (`422`); the value
+lives in the OS keyring (`health-assistant/tenant-sso`) or the
+`HA_SSO_CLIENT_SECRET_<SLOT>` env fallback on the host. `SYSTEM_ADMIN` is
+refused for `default_role`/`group_role_map` values (SSO never grants it).
+
+| Method | Path | Body / Query | Response | Notes |
+|---|---|---|---|---|
+| `GET` | `/admin/tenants/{tenant_id}/sso` | — | `SSOConfigListResponse` | The tenant's bindings (secrets appear as slot references only). |
+| `POST` | `/admin/tenants/{tenant_id}/sso` | `SSOConfigCreate` | `SSOConfigResponse` (`201`) | Bind one OIDC provider (issuer unique per tenant; starts `enabled=false`). Audited (`sso_config_created`). |
+| `PATCH` | `/admin/tenants/{tenant_id}/sso/{config_id}` | `SSOConfigUpdate` | `SSOConfigResponse` | Partial update (`enabled` is the safe on/off switch). Audited with the changed field names (never secret values). |
+| `DELETE` | `/admin/tenants/{tenant_id}/sso/{config_id}` | — | `{message}` | Unbind the provider (existing links keep their rows; the flow is off). Audited. |
+| `POST` | `/admin/tenants/{tenant_id}/sso/{config_id}/test-connection` | — | `SSOTestConnectionResponse` | Discovery + secret-slot probe — one bit per check, redacted error text; never echoes the secret or the discovery dump. Audited. |
+
+#### SCIM tokens (Program Phase 12B) — `/admin/tenants/{tenant_id}/scim-tokens`
+
+Same tenant boundary; door `tenant:manage` (TENANT scope).
+
+| Method | Path | Body / Query | Response | Notes |
+|---|---|---|---|---|
+| `GET` | `/admin/tenants/{tenant_id}/scim-tokens` | — | `SCIMTokenListResponse` | Hash-free projections (name, scopes, activity, expiry). |
+| `POST` | `/api/v1/admin/tenants/{tenant_id}/scim-tokens` | `SCIMTokenCreate` (`{name, expires_at?}`) | `SCIMTokenCreatedResponse` (`201`) | The **one-time plaintext** `token` (`ha_scim_…`) rides this response only; only the sha256 is stored. Audited (`scim.token_created`). |
+| `DELETE` | `/admin/tenants/{tenant_id}/scim-tokens/{token_id}` | — | `{message}` | Revoke (`active=false`): the bearer stops resolving on the next request. Audited (`scim.token_revoked`). Double-revoke answers `409`. |
+
+### `auth/sso` — per-tenant OIDC sign-in (Program Phase 12B)
+
+`status`/`authorize`/`callback` are unauthenticated auth-bootstrap routes
+(rate-limited with the login budget); `/auth/sso/link` is a session route.
+Typed refusals carry a stable `code` (`sso_*`) — see `SECURITY.md` for the
+law (verified email required, link-only, no merge, JIT capped by domain +
+role map, IdP down never touches the local password path).
+
+| Method | Path | Body / Query | Response | Notes |
+|---|---|---|---|---|
+| `POST` | `/auth/sso/status` | `{email}` | `{sso_available}` | Login-page probe: does this email's domain resolve an enabled config of an active tenant? One bit — no tenant enumeration. |
+| `POST` | `/auth/sso/authorize` | `{email}` or `{tenant_slug}` | `{authorization_url, issuer}` | Starts the flow (code + PKCE S256 + state/nonce bound server-side, 10-minute single-use). Unknown/disabled domain → `404 sso_unavailable`; missing host secret → `503 sso_client_secret_missing`; provider unreachable → `503 sso_provider_unavailable`. |
+| `GET` | `/auth/sso/callback` | query: `code`, `state`; `browser=1` for the redirect flavor | `TokenResponse` (+ §10 cookies) or `302` to the SPA | Verifies the ID token (JWKS RS256, `iss`/`aud`/`exp`/`nonce`), resolves the link, JIT-provisions or refuses: `400 sso_state_invalid` (unknown/expired/replayed state), `401 sso_token_invalid` / `sso_nonce_mismatch`, `403 sso_email_unverified` / `sso_domain_not_allowed` / `sso_jit_disabled`, `409 sso_link_required` (body carries the one-time `link_token`) / `sso_email_conflict`. Session `auth_mode="oidc"`. **Tenant policy parity (12C1):** the IP allowlist is checked before provisioning (`403 ip_not_allowed`, audited); when the tenant policy, an enrolled TOTP secret or `mfa_enforced` requires MFA and the ID token does **not** assert a second factor (`amr` RFC 8176 values, or a multi-factor `acr`), the callback answers `401 {"detail": "mfa_required", "mfa_token", "enrollment_needed", "origin": "sso"}` instead of tokens — complete at `/auth/mfa/verify`, which mints the `auth_mode="oidc"` session. The `browser=1` redirect flavor answers that challenge as JSON too (a challenge cannot ride a redirect safely) — SPAs that support MFA-over-SSO should use the JSON flavor (fetch) for the callback. |
+| `POST` | `/auth/sso/link` | `{link_token}` (session) | `{linked, identity}` | The authenticated link flow: the signed-in local user confirms while the intent is fresh (10-minute, single-use, actor must own the intent's email + tenant). Audited (`auth.sso_link`). |
+
+### `scim/v2` — SCIM 2.0 directory surface (Program Phase 12B)
+
+Bearer-token principal (`token_scim` route class): a tenant-bounded
+`scim_tokens` credential — never a session, never a JWT. Bad/missing/
+revoked/expired bearer → SCIM Error-schema `401` (audited). Cross-tenant
+ids answer the hidden `404`. Deprovision (DELETE or `active=false`)
+deactivates the account and bumps `token_version` — every live session
+dies; records are never hard-deleted here.
+
+| Method | Path | Body / Query | Response | Notes |
+|---|---|---|---|---|
+| `GET` | `/scim/v2/Users` | `startIndex`, `count≤200`, `filter=userName eq "…"` | ListResponse envelope | RFC 7644 pagination (1-based `startIndex`) + the one supported filter. |
+| `POST` | `/scim/v2/Users` | SCIM User (`userName` required) | SCIM User (`201` + `Location`) | Directory provisioning; the role is capped to the tenant SSO config's `default_role` (else `USER`). Duplicate email → `409`. |
+| `GET` | `/scim/v2/Users/{id}` | — | SCIM User | Foreign tenant → hidden `404`. |
+| `PATCH` | `/scim/v2/Users/{id}` | PatchOp (`replace` on `active`/`userName`/`name.*`/`displayName`) | SCIM User | `active=false` deprovisions (audit `scim.user_deactivated`); unknown paths answer `400`. |
+| `DELETE` | `/scim/v2/Users/{id}` | — | `204` | Deprovision: deactivate + `token_version` bump (audit `scim.user_deprovisioned`); repeat deletes are idempotent. |
+| `GET` | `/scim/v2/Groups` | `startIndex`, `count`, `filter=displayName eq "…"` | ListResponse envelope | Each group carries its members. |
+| `POST` | `/scim/v2/Groups` | SCIM Group (`displayName` required, `members?`) | SCIM Group (`201`) | Display name unique per tenant; membership moves audited. |
+| `GET` | `/scim/v2/Groups/{id}` | — | SCIM Group | — |
+| `PATCH` | `/scim/v2/Groups/{id}` | PatchOp (`displayName` replace, members add/remove/replace) | SCIM Group | Membership moves re-roll affected members through the tenant's `group_role_map` (audited `scim.role_change`; never SYSTEM_ADMIN). |
+| `DELETE` | `/scim/v2/Groups/{id}` | — | `204` | Members cascade; audited (`scim.group_deleted`). |
 
 ### `admin/integrations` — global integration enablement
 
@@ -578,12 +890,30 @@ All routes `SYSTEM_ADMIN`-only.
 
 | Method | Path | Auth | Body | Response | Notes |
 |---|---|---|---|---|---|
-| `GET` | `/patients` | any | query: `tenant_id?`, `user_id?`, `limit=10`, `offset=0` | `List[patient]` | `USER` is auto-pinned to own `user_id`. `SYSTEM_ADMIN` can override `tenant_id`. |
+| `GET` | `/patients` | session · `patient:read` @ `own` | query: `tenant_id?`, `user_id?`, `limit=10`, `offset=0` | `List[patient]` | Grant-aware: staff roles see the tenant list; `USER` (and an assigned-scope `MANAGER`) see own patients + care-team grants. `SYSTEM_ADMIN` can override `tenant_id`. |
 | `POST` | `/patients` | any | patient dict (ORM shape) | `patient` | `USER` auto-pinned to own `user_id`. |
-| `GET` | `/patients/{patient_id}` | `check_patient_access` | — | `patient` | Tenant + ownership enforced. |
-| `PUT` | `/patients/{patient_id}` | `check_patient_access` | patient dict | `patient` | Update patient info. |
+| `GET` | `/patients/{patient_id}` | `check_patient_access` | — | `patient` | Tenant + ownership/grant enforced. |
+| `PUT` | `/patients/{patient_id}` | `check_patient_access` (write) | patient dict | `patient` | Update patient info. |
 | `DELETE` | `/patients/{patient_id}` | `check_patient_access` | — | `{message}` | Delete patient + all associated clinical data. Non-admin / non-`SYSTEM_ADMIN` must own the patient. |
-| `PUT` | `/patients/{patient_id}/layout` | `check_patient_access` | layout dict | `patient` | **Legacy single-slot** `Patient.dashboard_layout`. For multi-layout persistence use `/patients/{id}/layouts/*`. |
+| `PUT` | `/patients/{patient_id}/layout` | `check_patient_access` (write) | layout dict | `patient` | **Legacy single-slot** `Patient.dashboard_layout`. For multi-layout persistence use `/patients/{id}/layouts/*`. |
+
+### `patients/{patient_id}/access` — care-team grants
+
+Who can reach this patient's record. Door permission `patient:grant`; the
+row-level reach + level is re-checked in the handler (owner = full manage,
+staff per tenant scope, `read`-granted clinicians can view the ledger).
+
+| Method | Path | Auth | Body | Response | Notes |
+|---|---|---|---|---|---|
+| `GET` | `/patients/{patient_id}/access` | session · `patient:grant` @ `grant` | — | `{items: [grant]}` | The grant ledger (active, pending and settled rows), newest first, with `grantee_label` resolved. |
+| `POST` | `/patients/{patient_id}/access` | session · `patient:grant` @ `grant` | `{permission, grantee_user_id? , grantee_doctor_id?, source?, expires_at?, reason?}` | `grant` (`201`) | Staff grant (`admin`/`care_team`) → active immediately; the patient owner's share (`patient`) → `pending` until the grantee staff accepts; `guardian` is admin-only for ownerless patients. **Step-up gated** (12C1): an `grant_admin` proof is required (`403 step_up_required`), and `PATCH` on a grant raising it to `admin` needs a fresh one. Errors: `400` doctor without linked user / both-or-neither grantee, `403` source not allowed to this caller (or patient-share disabled), `404` unknown grantee/patient, `409` a live or pending grant already exists for the identity, `422` bad shape. |
+| `PATCH` | `/patients/{patient_id}/access/{grant_id}` | session · `patient:grant` @ `grant` | `{permission?, expires_at?, reason?}` | `grant` | Grantor-side update (permission / expiry / reason). Clear semantics: a JSON `null` clears `expires_at`/`reason`; an omitted field is left unchanged. No status move — `409` on settled rows. |
+| `DELETE` | `/patients/{patient_id}/access/{grant_id}` | session · `patient:grant` @ `grant` | — | `grant` | Revoke (→ `revoked`); the grantee loses access immediately and is notified. The patient owner may revoke the shares they initiated. |
+
+A grant response: `{id, patient_id, grantee_user_id, grantee_doctor_id,
+permission, source, status, granted_by, granted_at, accepted_at, expires_at,
+reason, grantee_label}`. Break-glass is never a grant — emergency elevation
+is a separate mechanism (`access_elevations`).
 
 ### `patients/{patient_id}/layouts` — dashboard layout persistence
 
@@ -641,7 +971,7 @@ integration sync.
 | `DELETE` | `/documents/{document_id}` | owner / admin / `SYSTEM_ADMIN` | — | `{message}` |  |
 | `POST` | `/documents/{document_id}/edit` | owner / admin / `SYSTEM_ADMIN` | `DocumentEdit` (crop / brightness / contrast) | `DocumentResponse` | Produces a new child document. |
 | `GET` | `/documents/{document_id}/presign` | `get_current_user` | — | `{url}` | Mints a short-lived presigned JWT bound to this doc — for use in `<img src>`/`<iframe>` which can't send `Authorization`. |
-| `GET` | `/documents/{document_id}/download` | presigned `?token=` | — | `FileResponse` | Forces `attachment` for active-content types; `nosniff` always set (audit A3). |
+| `GET` | `/documents/{document_id}/download` | presigned `?token=` | — | `FileResponse` | Token claims re-verified against the live document and user (tenant match + active `user_id` — S8); forces `attachment` for active-content types; `nosniff` always set (audit A3). |
 | `GET` | `/documents/{document_id}/preview?page=0` | presigned `?token=` OR `Authorization: Bearer` (tenant-checked; `SYSTEM_ADMIN` exempt) | — | image (JPEG/PNG) | DICOM frames / PDF pages converted on the fly. `X-Total-Pages` + `X-Current-Page` headers. |
 | `POST` | `/documents/{document_id}/extract` | owner / admin / `SYSTEM_ADMIN` | — | `{job_id, message}` | Trigger extraction. |
 | `GET` | `/documents/{document_id}/extract/status` | owner / admin / `SYSTEM_ADMIN` | — | `{status, progress, error_message}` |  |
@@ -700,7 +1030,7 @@ Patient-instance routes use `check_patient_access` / `check_medication_access`.
 | `GET` | `/medications/catalog/{catalog_id}` | any | — | `MedicationCatalogResponse` |
 | `POST` | `/medications/catalog` | scope-derived | `MedicationCatalogCreate` | `MedicationCatalogResponse` |
 | `PUT` | `/medications/catalog/{catalog_id}` | scope+ownership | `MedicationCatalogUpdate` | `MedicationCatalogResponse` |
-| `DELETE` | `/medications/catalog/{catalog_id}` | scope+ownership | — | `{message}` |
+| `DELETE` | `/medications/catalog/{catalog_id}` | scope+ownership | — | `{status, message}` |
 | `GET` | `/medications/catalog/{catalog_id}/usage` | any | — | usage report |
 | `POST` | `/medications/catalog/{catalog_id}/reprocess` | any | — | `MedicationCatalogResponse` (re-run AI enrichment) |
 | `GET` | `/medications/patient/{patient_id}` | `check_patient_access` | — | `List[MedicationRecordResponse]` |
@@ -720,7 +1050,7 @@ Same scope model as medications. Mirrors the medications parity surface
 | `GET` | `/allergies/catalog/{catalog_id}` | any | — | `AllergyCatalogResponse` |
 | `POST` | `/allergies/catalog` | scope-derived | `AllergyCatalogCreate` | `AllergyCatalogResponse` |
 | `PUT` | `/allergies/catalog/{catalog_id}` | scope+ownership | `AllergyCatalogUpdate` | `AllergyCatalogResponse` |
-| `DELETE` | `/allergies/catalog/{catalog_id}` | scope+ownership | — | `{message}` |
+| `DELETE` | `/allergies/catalog/{catalog_id}` | scope+ownership | — | `{status, message}` |
 | `GET` | `/allergies/catalog/{catalog_id}/usage` | any | — | `List[{allergy, patient}]` | Cross-patient intolerances pointing at this catalog allergen (drives the detail-page tab). |
 | `POST` | `/allergies/catalog/{catalog_id}/reprocess` | any | — | `AllergyCatalogResponse` | AI re-enrich the catalog entry's description / typical_reactions (best-effort — no-op when no NLP backend is wired). |
 | `GET` | `/allergies/active` | any | — | `List[AllergyIntoleranceResponse]` | For `USER` returns own patients; otherwise whole-tenant active allergies. Powers the dashboard `AllergyAlertsCard`. |
@@ -734,13 +1064,18 @@ Same scope model as medications. Mirrors the medications parity surface
 
 Same scope model. Mirrors the medications pattern: `VaccineCatalog` is the
 CVX-coded reference (the product); `PatientImmunization` is the dose-administered
-patient instance.
+patient instance. Vaccine → disease links are graph data — approved `PREVENTS`
+`concept_edges` rows seeded from `vaccines.json`'s readable `target_diseases`
+refs (migration `0012` dropped the JSONB column) — queryable via
+`GET /catalogs/{type}/{id}/relations`, not a row field (the write/read schemas
+carry no `target_diseases`; sending one is a 422).
 
 ```
-# Catalog CRUD
+# Catalog CRUD (POST/PUT bodies are the typed write schemas, extra="forbid";
+# the slug is derived server-side from the name — clients never send it)
 GET    /api/v1/vaccines/catalog?search=            → List[VaccineCatalogResponse]
 GET    /api/v1/vaccines/catalog/{catalog_id}       → VaccineCatalogResponse
-POST   /api/v1/vaccines/catalog                    → VaccineCatalogResponse  (scope derived from role)
+POST   /api/v1/vaccines/catalog                    → VaccineCatalogResponse  (201; scope derived from role)
 PUT    /api/v1/vaccines/catalog/{catalog_id}       → VaccineCatalogResponse  (scope + ownership gated)
 DELETE /api/v1/vaccines/catalog/{catalog_id}                                  (scope + ownership gated)
 
@@ -789,7 +1124,7 @@ Rules are evaluated on every observation ingestion (`fhir_service.create_observa
 
 | Method | Path | Auth | Body / Query | Response |
 |---|---|---|---|---|
-| `GET` | `/notification-rules` | any | `patient_id?`, `biomarker_id?`, `enabled?`, `limit=100` (max 200), `offset=0` | `NotificationRuleListResponse` |
+| `GET` | `/notification-rules` | any | `patient_id?`, `biomarker_id?`, `enabled?`, `limit=100` (max 200), `offset=0` | `NotificationRuleListResponse`. With `patient_id`, the caller must reach that patient. Without one, tenant-wide roles (SYSTEM_ADMIN/ADMIN, tenant-scope MANAGER) see the tenant's rules; a USER or assigned-scope MANAGER sees only rules attached to patients they can reach. |
 | `POST` | `/notification-rules` | any | `NotificationRuleCreate` | `NotificationRuleRead` |
 | `GET` | `/notification-rules/{rule_id}` | any | — | `NotificationRuleRead` |
 | `PUT` | `/notification-rules/{rule_id}` | any | `NotificationRuleUpdate` | `NotificationRuleRead` |
@@ -810,32 +1145,100 @@ not replace) the domain endpoints (`/biomarkers`, `/medications`, `/anatomy`,
 Access is **ownership-based via scope tiers** (Phase A), not pure RBAC: every
 item carries a `scope` of `system` | `tenant` | `user`. Any authenticated user may
 **create** — scope is derived from role (SYSTEM_ADMIN→system, ADMIN/MANAGER→tenant,
-USER→user). Update/delete: `system`→SYSTEM_ADMIN, `tenant`→ADMIN/MANAGER,
-`user`→creator OR ADMIN. `CatalogPermissionDenied` → 403. Every write appends a
-`CatalogAuditLog` row (Phase B).
+USER→user; concepts follow `ConceptService`'s curated-taxonomy RBAC). Update/delete:
+`system`→SYSTEM_ADMIN, `tenant`→ADMIN/MANAGER, `user`→creator OR ADMIN.
+`CatalogPermissionDenied` → 403, uniqueness conflicts → `409`
+(`{"code": "catalog_conflict", "field": ...}`), unknown/read-only body fields →
+`422`. Every write appends a `CatalogAuditLog` row (Phase B).
+
+**Reference ids are visibility-checked.** An explicit
+`class_concept_id`, concept `parent_id` or anatomy/biomarker class id must
+point at a row that exists and is visible to the caller — a system row
+(`tenant_id IS NULL`) or the actor's own tenant. Anything else — a bogus id or
+another tenant's private concept — is a typed **400**
+(`CatalogReferenceError`) whose message names no hidden row, on create and
+update and on both doors. Slug references (`class_concept_slug`, concept
+`parent`) are resolved tenant-scoped the same way: an explicit slug that does
+not resolve is a **400**, never a silently dropped link. There is no
+name-string fallback: the biomarker **`category`** field was retired in favour
+of `class_concept_slug` / `class_concept_id` (a payload that still sends
+`category` is a **422**, same as any unknown field). A reference that slips past
+the pre-checks and fails at the DB level is translated too: unique-index
+violations → `409` (`{"code": "catalog_conflict", "field": ...}` — e.g. a
+demote onto a colliding `code`, a promote onto a colliding `seed_key`),
+foreign-key violations → `400`. No catalog write answers a bad client value
+with a 500.
+
+**Ownership is `scope`.** Catalog rows expose `scope` (`system` / `tenant` /
+`user`) plus `tenant_id` and `created_by`; the former `is_custom` boolean is
+gone from every catalog response, write schema and filter (`scope != 'system'`
+is the custom predicate). Search indexing is descriptor-driven: each catalog
+declares its full-text surface and migration `0024_catalog_cleanup` builds the
+trigram/FTS indexes from it, so a searched column and its index cannot drift.
+
+**Reference display is visibility-projected.** The serializers resolve
+`class_concept_slug` / `class_concept_name` / `parent_slug` only when the
+referenced concept is visible to the caller (system row or the caller's own
+tenant, not soft-deleted); a legacy row whose stored link points at a hidden
+concept returns `null` for the slug/name while `class_concept_id` / `parent_id`
+keep their stored values. The stored FK is never rewritten. The domain read
+doors (`GET /medications/catalog[/{id}]`, `GET /allergies/catalog*`,
+`GET /vaccines/catalog*`, `GET /anatomy[/{id}]`) serialize through the same
+shared row serializer, so the projection covers them identically.
+
+**Reference precedence is uniform (id wins, explicit null clears).** On any
+catalog update, a sent `class_concept_id` beats a `class_concept_slug` sent
+alongside — an explicit `null` id clears the link and the slug is ignored
+("not sent" vs "explicit null" is read off `model_fields_set` for every type:
+biomarker, medication, allergy, vaccine, anatomy). On create, a non-null id
+wins and otherwise the slug resolves. Either reference that is unknown or
+invisible stays a `400`.
+
+**One write contract per catalog:** `POST`/`PUT`/`DELETE`
+`/catalogs/{type}` and the domain catalog routes dispatch to the same per-type
+service functions (`app/services/catalog/catalog_write_service.py`). Each type
+has one Pydantic create/update schema pair (`extra="forbid"`) — unknown or
+system-owned fields (`scope`, `tenant_id`, `created_by`, `seed_key`, `id`,
+timestamps) are rejected with 422, never silently dropped. `seed_key` is
+response-only. Slugs are **server-owned where the type says so**: the vaccine
+slug is always derived from the name (a client-sent slug → 422), and the
+biomarker slug may be omitted — the service derives it from the name
+(deterministic, unique per tenant scope via a `-2`/`-3`… suffix) while an
+explicit slug stays honored (a duplicate → 409). Writes return the full
+serialized row (the same keys the reads
+return, including `class_concept_slug`, `preferred_unit_symbol`,
+`allowed_states`, codes). Update schemas distinguish "not sent" from "explicit
+null" (Pydantic `model_fields_set`): biomarker `preferred_unit_id: null` /
+`class_concept_id: null` clear the reference — and the same id-wins,
+explicit-null-clears precedence now applies to the class reference of every
+type (a null id beats a slug sent alongside). Deletes answer
+`{"status": "success", "message": "<type> item deleted"}` on both doors
+(concepts delete/retire with 204).
 
 ### `catalogs` — unified meta-layer
 
 | Method | Path | Body / Query | Response | Notes |
 |---|---|---|---|---|
-| `GET` | `/catalogs` | — | `{types: [...]}` | Registered catalog types + UI metadata + `edge_endpoint_type` + `search_columns`. |
+| `GET` | `/catalogs` | — | `{types: [...]}` | Registered catalog types + UI metadata + `edge_endpoint_type` + `search_columns` + `write` (the type's `create_fields` / `update_fields` / `supports_promote`, mirrored from its write schemas — the single source of truth for client payload allowlists). |
 | `GET` | `/catalogs/relation-types` | — | `{items: [...]}` | Reference metadata for every `ConceptRelationType` (label/group/description/icon). |
 | `GET` | `/catalogs/search` | `q` * (min 2), `types?`, `kind?`, `limit?` | `{results: [...]}` | Unified cross-catalog hybrid search (trigram + `websearch_to_tsquery` FTS + `ILIKE` fallback, fused via **Reciprocal Rank Fusion** k=60). `types` is a comma-separated subset; `kind` narrows the concept catalog by `ConceptKind`. |
 | `GET` | `/catalogs/graph` | `types?`, `kind?`, `include_isolated?`, `limit?` | `{nodes, edges, truncated}` | Whole cross-catalog ontology graph (rootless). |
 | `GET` | `/catalogs/{type}` | `search?`, `scope?`, `kind?`, `class?` (alias `class_`), `include?=relations`, `limit?`, `offset?` | `{items:[...], total}` | List items of one type. `?include=relations` annotates each item with `relation_count` + `relation_breakdown`. |
 | `GET` | `/catalogs/{type}/{item_id}` | — | item dict |  |
-| `POST` | `/catalogs/{type}` | item dict | item dict (`201`) | Read-only types (`concept`) → `405`. |
-| `PUT` | `/catalogs/{type}/{item_id}` | item dict | item dict |  |
-| `DELETE` | `/catalogs/{type}/{item_id}` | — | `{status, message}` |  |
-| `POST` | `/catalogs/{type}/{item_id}/promote` | `{scope: "system"\|"tenant"\|"user"}` | item dict | Scope transition. user↔tenant needs `ADMIN`/`MANAGER`; any transition involving `system` needs `SYSTEM_ADMIN`. |
+| `POST` | `/catalogs/{type}` | typed create schema | item dict (`201`) | Validated against the type's schema (`extra="forbid"` → 422); dispatched to the same service as the domain route. |
+| `PUT` | `/catalogs/{type}/{item_id}` | typed update schema | item dict | Same contract. |
+| `DELETE` | `/catalogs/{type}/{item_id}` | — | `{status, message}` | Concepts retire-or-soft-delete via `ConceptService` (never a hard delete). |
+| `POST` | `/catalogs/{type}/{item_id}/promote` | `{scope: "system"\|"tenant"\|"user"}` | item dict | Scope transition. user↔tenant needs `ADMIN`/`MANAGER`; any transition involving `system` needs `SYSTEM_ADMIN`. Slug collision at the target tier → `409`. **`concept` → `405`** (no scope-transition semantics). |
 | `GET` | `/catalogs/{type}/{item_id}/history` | `limit?` | `{items: [...]}` | Audit trail (newest-first). Item must be visible to caller. |
 | `GET` | `/catalogs/{type}/{item_id}/relations` | `depth=1..3`, `relation?` (CSV), `include_proposed?` | `{start, nodes, edges}` | Cross-catalog polymorphic graph traversal. |
 
 `{type}` ∈ `biomarker | medication | allergy | anatomy | vaccine | concept`.
 
-> **Read-only concept catalog adapter:** `POST`/`PUT`/`DELETE` on
-> `/catalogs/concept` return **405** — the `ConceptCatalogAdapter` is read-only.
-> All concept writes go through the `/concepts` domain endpoints.
+> **Concept writes dispatch to `ConceptService`** — the generic layer no longer
+> 405s on `POST`/`PUT`/`DELETE /catalogs/concept`. The same kind-sync,
+> retire-on-edges, curated-taxonomy RBAC (USER read-only; globals
+> SYSTEM_ADMIN-only) and audit apply whichever door you enter; duplicate slugs
+> → `409`. Only `promote` stays `405` for concepts.
 
 ### `biomarkers` — definitions + units + stratified reference ranges
 
@@ -844,7 +1247,7 @@ USER→user). Update/delete: `system`→SYSTEM_ADMIN, `tenant`→ADMIN/MANAGER,
 | `GET` | `/biomarkers/` | any | — | `List[BiomarkerResponse]` | Global + tenant, tenant-scoped via `_tenant_scope`. |
 | `GET` | `/biomarkers/{biomarker_id}` | any | — | `BiomarkerResponse` |  |
 | `GET` | `/biomarkers/slug/{slug}` | any | — | biomarker dict |  |
-| `POST` | `/biomarkers/` | scope-derived | `BiomarkerCreate` | `BiomarkerResponse` | `slug` must match `^[A-Za-z0-9_-]{1,80}$` (audit A1). |
+| `POST` | `/biomarkers/` | scope-derived | `BiomarkerCreate` | `BiomarkerResponse` | `slug` is server-owned: omit it and the service derives it from the name (deterministic, unique per tenant scope via a `-2`/`-3`… suffix); an explicit slug is honored (must match `^[A-Za-z0-9_-]{1,80}$`, audit A1) and a duplicate → `409`. |
 | `PATCH` | `/biomarkers/{biomarker_id}` | scope+ownership | `BiomarkerUpdate` | `BiomarkerResponse` | If `is_telemetry` changes, triggers the `migrate_biomarker_data` Celery task. |
 | `DELETE` | `/biomarkers/{biomarker_id}` | scope+ownership | — | `{status, message}` | Global rows require `SYSTEM_ADMIN`. |
 | `POST` | `/biomarkers/bulk-delete` | `get_current_user` | `List[UUID]` | `{status, message}` | `SYSTEM_ADMIN`/`ADMIN`/`MANAGER` can delete any tenant row; `USER` only their own user-scope rows. Never deletes system rows. |
@@ -861,8 +1264,10 @@ USER→user). Update/delete: `system`→SYSTEM_ADMIN, `tenant`→ADMIN/MANAGER,
 
 > See [TAXONOMY.md](TAXONOMY.md) for the full taxonomy model.
 > `ConceptService` is the sole concept write authority (audit + restore + RBAC +
-> scope invariant). The `ConceptCatalogAdapter` under `/catalogs/concept` is
-> read-only (405 on writes).
+> scope invariant). Concept writes dispatch to it from both doors — the domain
+> `/concepts` routes and the generic `/catalogs/concept` routes (restore
+> `/concepts/{id}/restore` exists only on the domain surface, the only
+> restorable catalog).
 
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
@@ -975,7 +1380,11 @@ canonical units + provenance, and CAgg anomaly engine are documented in
 | `GET` | `/ai-config/summary` | any | `tenant_id?`, `user_id?`, `scope?` | `AIConfigSummary` |
 | `PUT` | `/ai-config/settings` | `check_scope_access` | `AIConfigUpdate` (query: `tenant_id?`, `user_id?`, `scope?=tenant`) | `204` |
 | `GET` | `/ai-config/default-for-task/{task_type}` | any | `tenant_id?`, `user_id?` | `{provider, model?}` |
-| `GET` | `/ai-config/usage` | ADMIN / SYSTEM_ADMIN | `window_days?=30`, `tenant_id?` | `AIUsageResponse` | `ai_call_logs` aggregates per task: calls, errors, tokens, `cost_micros`, avg latency. |
+| `GET` | `/ai-config/usage` | ADMIN / SYSTEM_ADMIN | `window_days?=30`, `tenant_id?` | `AIUsageResponse` | `ai_call_logs` aggregates per task: calls, errors, tokens, priced/unpriced calls, `cost_micros` (nullable when nothing is priced), avg latency. |
+| `GET` | `/ai/prices` | ADMIN / SYSTEM_ADMIN | `tenant_id?` | `PricesOut` | Tenant override rows + effective built-in/local/unknown rates. |
+| `PUT` | `/ai/prices` | ADMIN / SYSTEM_ADMIN | `PriceOverrideIn` | `PriceOverrideOut` | Upsert one tenant override; `provider_key` or `provider_ref` binds a preset/concrete provider. |
+| `DELETE` | `/ai/prices/{override_id}` | ADMIN / SYSTEM_ADMIN | — | `204` | Delete one tenant override. |
+| `GET` | `/ai/usage/costs` | ADMIN / SYSTEM_ADMIN | `window_days?=30`, `tenant_id?` | `CostsOut` | Per-provider/model call cost with priced/unpriced counts; costs stay null when unpriced. |
 
 ### `ai-assistance` — chatbot, Magic Fill, HITL, transcription
 
@@ -1080,7 +1489,11 @@ for the notification-action contract.
 
 ### `task-monitor`
 
-Tenant-scoped except `SYSTEM_ADMIN` (audit B1). Cross-tenant retries return 404.
+Tenant-scoped except `SYSTEM_ADMIN` (audit B1), and **patient-scoped**:
+restricted roles (USER; a MANAGER under
+`manager_scope=assigned`) see only rows whose patient they can reach — own
+records or through an active grant. Documents with no patient stay
+uploader-only for those roles. Cross-tenant/unreachable retries return 404.
 
 | Method | Path | Auth | Query | Response | Notes |
 |---|---|---|---|---|---|
@@ -1109,9 +1522,9 @@ See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec
 | Method | Path | Auth | Body / Query | Response | Notes |
 |---|---|---|---|---|---|
 | `POST` | `/export` | `get_current_user` (SMART-style scope authz) | `BackupRequest` `{scope: patient\|group\|system, export_type: fhir_only\|full_backup\|catalog_only, patient_ids?}` | `ExportJobResponse` | Enqueues the Celery `export_backup` task. `patient` scope — any role (`USER` limited to a single own patient); `group` — `MANAGER`+; `system` — `ADMIN`+. `SYSTEM_ADMIN` bypasses. |
-| `GET` | `/export/jobs` | any | `limit?=50` | `ExportJobListResponse` |  |
-| `GET` | `/export/jobs/{job_id}` | any | — | `ExportJobResponse` |  |
-| `GET` | `/export/jobs/{job_id}/download` | any | — | `application/octet-stream` | FHIR Bundle `.fhir.json`, full-backup `.zip`, or catalog `.catalog.json`. |
+| `GET` | `/export/jobs` | any | `limit?=50` | `ExportJobListResponse` | USER sees only their own patient-scoped jobs; MANAGER+ the tenant's. |
+| `GET` | `/export/jobs/{job_id}` | any | — | `ExportJobResponse` | Object-gated: USER → own patient-scoped job only (404 otherwise). |
+| `GET` | `/export/jobs/{job_id}/download` | any | — | `application/octet-stream` | FHIR Bundle `.fhir.json`, full-backup `.zip`, or catalog `.catalog.json`. Same object gate as job status. |
 
 ### `import`
 
@@ -1121,8 +1534,8 @@ See [EXPORT_IMPORT.md](EXPORT_IMPORT.md) for the full format/scopes/restore spec
 | `POST` | `/import/fhir` | `get_current_user` | multipart: `file` (`.json`), `patient_id?`, `validate?`, `auto_map_biomarkers?`, `use_ai_normalization?` | dict | Synchronous FHIR Bundle import (smaller bundles). |
 | `POST` | `/import/csv` | `get_current_user` | multipart: `file` (`.csv`), `patient_id?`, `delimiter?`, `has_header?` | dict | Synchronous CSV import (legacy). |
 | `POST` | `/import/ocr` | `get_current_user` | multipart: `file`, `patient_id?` | dict | OCR extraction. Provider/model/key resolve from the `ocr` AI task assignment (scoped resolution + BYOK key) — no model configuration crosses the request. |
-| `GET` | `/import/jobs` | any | `limit?=50` | `ImportJobListResponse` | List import jobs for the caller's tenant, newest first. |
-| `GET` | `/import/jobs/{job_id}` | any | — | `ImportJobResponse` | Status + `restore_result` (created/updated counts, `manifest_verified`, `fhir_validated`). |
+| `GET` | `/import/jobs` | any | `limit?=50` | `ImportJobListResponse` | USER sees only their own jobs; MANAGER+ the tenant's, newest first. |
+| `GET` | `/import/jobs/{job_id}` | any | — | `ImportJobResponse` | Object-gated: USER → own job only (404 otherwise). Status + `restore_result` (created/updated counts, `manifest_verified`, `fhir_validated`). |
 
 ### `doctors`
 
@@ -1209,7 +1622,7 @@ text for easier debugging.
 | 401 | Unauthorized (missing/invalid token) |
 | 403 | Forbidden (role/tenant/patient-access/scope denied — `AuthorizationError` / `CatalogPermissionDenied`) |
 | 404 | Not Found (also returned for cross-tenant calls — no leak) |
-| 405 | Method Not Allowed (read-only catalog adapter writes) |
+| 405 | Method Not Allowed (promote on catalogs without a scope transition — concept) |
 | 409 | Conflict (`ConflictError` — e.g. catalog promote permission denied; sync already running; a conflicting HITL decision on a terminal proposal) |
 | 410 | Gone (FHIR R4 facade: tombstone of a soft-deleted resource) |
 | 412 | Precondition Failed (FHIR R4 facade: `If-Match` version mismatch) |

@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import RoleChecker, get_current_user
+from app.models.enums import Role
 from app.schemas.organization import (
     Organization,
     OrganizationCreate,
@@ -54,7 +55,7 @@ async def get_organization_endpoint(
 @router.post("", response_model=Organization, status_code=status.HTTP_201_CREATED)
 async def create_organization_endpoint(
     obj_in: OrganizationCreate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     return await create_organization(
@@ -69,7 +70,7 @@ async def create_organization_endpoint(
 async def update_organization_endpoint(
     organization_id: UUID,
     obj_in: OrganizationUpdate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     updated = await update_organization(
@@ -86,7 +87,7 @@ async def update_organization_endpoint(
 @router.delete("/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_organization_endpoint(
     organization_id: UUID,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(RoleChecker([Role.ADMIN, Role.MANAGER])),  # noqa: B008 -- framework default idiom (FastAPI/Pydantic)
     db: AsyncSession = Depends(get_db),
 ):
     success = await delete_organization(organization_id, current_user.tenant_id, db)

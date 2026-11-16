@@ -1,21 +1,37 @@
 """Seed export service — the inverse of :class:`SeedService`.
 
 Serializes the running instance's taxonomy / anatomy / biomarker / catalog data
-back into the slug-keyed ``data/seeds/*.json`` format so a curator can build up
-the canonical set via the UI + AI, then snapshot it into the shipped seeds.
+back into the identity-keyed ``data/seeds/*.json`` format so a curator can
+build up the canonical set via the UI + AI, then snapshot it into the shipped
+seeds.
 
-Identity model: **slug is the join key** (stable identity), ``name`` is mutable
-display. ``coding_system`` + ``code`` are emitted as identity *evidence* in the
-item body where present (FHIR-aligned) but are NOT the join key — see
-``the design notes`` for the design discussion.
+Identity model (ADR 0055): every curated item exports its ``id`` and its
+immutable ``seed_key`` (``<type>:<kebab-key>``); ``coding_system``/``code``
+are attributes in the item body where present; the ``slug`` is display data
+and never a join key. Seeders upsert by id, then ``seed_key`` — never by
+name or slug — so an export re-ingests into the same rows with zero writes
+(the round-trip test pins this). Vaccine → disease links are graph data: they
+export as the readable ``target_diseases`` list of ``vaccines.json``, derived
+from the approved ``PREVENTS`` edges (the reverse of the vaccine seeder);
+``concept_edges.json`` excludes those edges to keep one owner per dataset.
 
 Source scope: pass ``tenant_id=None`` (default) to export the global taxonomy
 (``tenant_id IS NULL`` rows — what ships), or a specific ``tenant_id`` to treat
 that tenant as a template (emit its rows with scope stripped).
 
-Determinism: every file is sorted by its natural key (slug or name), uses a
-fixed field order, and a regenerated metadata block. Re-exporting an unchanged
-DB is a git no-op.
+Determinism: every file is sorted by its natural identity key (``seed_key``,
+falling back to slug/name for rows outside the curated identity), uses a fixed
+field order, and emits a metadata block with **no timestamps** — re-exporting
+an unchanged DB is a byte-level no-op (the CI ``--check`` gate pins this).
+
+Canonical pack: :meth:`SeedExportService.build_pack` wraps the exported files
+as one canonical seed pack (``manifest.json`` + ``items/*.json``, ADR 0056)
+covering **every** pack item file — including ``biomarker_states.json`` and
+``omb_race_ethnicity.json`` (the OMB picklist flows through the pack path, so
+it exports as a normalized pass-through). The whole-pack digest is stable and
+the pack validates through the same contract as the bundled one, so an export
+can be registered/uploaded back through the source lane and round-trips with
+zero writes.
 """
 
 from __future__ import annotations
@@ -30,11 +46,19 @@ from pathlib import Path
 from typing import Any, ClassVar
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.catalog_identity import seed_key_uuid
+from app.core.seed_pack import (
+    MANIFEST_NAME,
+    PACK_SCHEMA_VERSION,
+    SeedPackInvalid,
+    content_digest,
+    validate_pack,
+)
 from app.models.anatomy_model import AnatomyStructure
-from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.biomarker_model import BiomarkerDefinition, BiomarkerState, Unit
 from app.models.clinical_event import ClinicalEventType
 from app.models.concept_model import Concept, ConceptEdge
 from app.models.enums import (
@@ -53,11 +77,26 @@ logger = logging.getLogger(__name__)
 SEED_VERSION = "1.0.0"
 SEED_SOURCE = "exported-from-instance"
 
+EXPORT_PACK_ID = "exported-instance-seeds"
+EXPORT_PACK_LICENSE = "CC-BY-SA-4.0"
+EXPORT_PACK_DESCRIPTION = (
+    "Canonical export of the running instance's curated catalog "
+    "(concepts, diseases, medications, vaccines, allergies, clinical event "
+    "types, anatomy structures, biomarker states, default catalog, edges, "
+    "panels, OMB picklist). Deterministic: no timestamps, sorted, hashed."
+)
+
 
 class SeedExportService:
-    def __init__(self, db: AsyncSession, tenant_id: UUID | None = None):
+    def __init__(
+        self,
+        db: AsyncSession,
+        tenant_id: UUID | None = None,
+        seeds_dir: Path | None = None,
+    ):
         self.db = db
         self.tenant_id = tenant_id  # None = global (tenant_id IS NULL)
+        self.seeds_dir = seeds_dir  # None = the repo's bundled seeds (pack path)
 
     # ------------------------------------------------------------------
     # scope + envelope helpers
@@ -71,15 +110,35 @@ class SeedExportService:
         return model.tenant_id == self.tenant_id
 
     def _envelope(self, name: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+        """The seed-file envelope — metadata carries **no timestamp** so a
+        re-export of an unchanged DB is byte-identical (the ``--check`` drift
+        gate and the round-trip test both pin this)."""
         return {
             "metadata": {
                 "version": SEED_VERSION,
                 "source": SEED_SOURCE,
-                "last_updated": datetime.now(UTC).strftime("%Y-%m-%d"),
                 "count": len(items),
             },
             "items": items,
         }
+
+    @staticmethod
+    def _identity_head(row) -> dict[str, Any]:
+        """The identity head of an exported item: its ``id`` and, where the
+        row carries one, its immutable ``seed_key`` (ADR 0055) — the two keys
+        the seeders upsert by, never name or slug."""
+        head: dict[str, Any] = {"id": str(row.id)}
+        if getattr(row, "seed_key", None):
+            head["seed_key"] = row.seed_key
+        return head
+
+    @staticmethod
+    def _identity_sort_key(row) -> str:
+        """Sort by ``seed_key`` (the natural identity key), falling back to
+        slug then name for rows outside the curated identity."""
+        return (
+            getattr(row, "seed_key", None) or getattr(row, "slug", None) or getattr(row, "name", "")
+        )
 
     # ------------------------------------------------------------------
     # concepts
@@ -92,19 +151,18 @@ class SeedExportService:
         rows = (
             (
                 await self.db.execute(
-                    select(Concept)
-                    .where(
+                    select(Concept).where(
                         self._tenant_cond(Concept),
                         Concept.deleted_at.is_(None),
                         ~concepts_with_kind(ConceptKind.DISEASE),
                     )
-                    .order_by(Concept.slug)
                 )
             )
             .scalars()
             .unique()
             .all()
         )
+        rows.sort(key=self._identity_sort_key)
 
         parent_ids = {r.parent_id for r in rows if r.parent_id}
         parent_slug: dict[UUID, str] = {}
@@ -119,7 +177,9 @@ class SeedExportService:
         items: list[dict[str, Any]] = []
         for c in rows:
             kinds = [t.kind.value for t in (c.kind_tags or [])]
-            item: dict[str, Any] = {"slug": c.slug, "name": c.name}
+            item = self._identity_head(c)
+            item["slug"] = c.slug
+            item["name"] = c.name
             if kinds:
                 item["kinds"] = sorted(kinds)
             pslug = parent_slug.get(c.parent_id) if c.parent_id else None
@@ -153,24 +213,25 @@ class SeedExportService:
         rows = (
             (
                 await self.db.execute(
-                    select(Concept)
-                    .where(
+                    select(Concept).where(
                         self._tenant_cond(Concept),
                         Concept.deleted_at.is_(None),
                         concepts_with_kind(ConceptKind.DISEASE),
                     )
-                    .order_by(Concept.slug)
                 )
             )
             .scalars()
             .unique()
             .all()
         )
+        rows.sort(key=self._identity_sort_key)
 
         items: list[dict[str, Any]] = []
         for c in rows:
             kinds = [t.kind.value for t in (c.kind_tags or [])]
-            item: dict[str, Any] = {"slug": c.slug, "name": c.name}
+            item = self._identity_head(c)
+            item["slug"] = c.slug
+            item["name"] = c.name
             if kinds:
                 item["kinds"] = sorted(kinds)
             if c.coding_system:
@@ -193,12 +254,27 @@ class SeedExportService:
     # ------------------------------------------------------------------
 
     async def export_concept_edges(self) -> dict[str, Any]:
+        """Export the approved graph edges with readable endpoint refs.
+
+        Exactly the vaccine → disease ``PREVENTS`` edges (``src_type=
+        immunization, dst_type=concept``) are excluded here: they belong to
+        ``vaccines.json`` (the readable ``target_diseases`` list of
+        :meth:`export_vaccines`), keeping one owner per dataset — the vaccine
+        seeder re-materializes them as edges on import. Any other ``PREVENTS``
+        shape (e.g. an immunization endpoint pointing at a non-concept)
+        exports here so no edge vanishes from the files.
+        """
         rows = (
             (
                 await self.db.execute(
                     select(ConceptEdge).where(
                         self._tenant_cond(ConceptEdge),
                         ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                        ~and_(
+                            ConceptEdge.relation == ConceptRelationType.PREVENTS,
+                            ConceptEdge.src_type == EdgeEndpointType.IMMUNIZATION,
+                            ConceptEdge.dst_type == EdgeEndpointType.CONCEPT,
+                        ),
                     )
                 )
             )
@@ -234,6 +310,13 @@ class SeedExportService:
     async def _build_endpoint_slug_maps(
         self, edges: list[ConceptEdge]
     ) -> dict[EdgeEndpointType, dict[UUID, str]]:
+        """id → readable seed ref per endpoint type.
+
+        Concept/anatomy/biomarker/vaccine refs are slugs; a medication has no
+        slug, so its ref is the ``seed_key`` key part (the
+        ``medication:<kebab-key>`` identity the edge seeder resolves by) with
+        the name as the fallback for rows outside the curated identity.
+        """
         ids_by_type: dict[EdgeEndpointType, set] = {
             EdgeEndpointType.CONCEPT: set(),
             EdgeEndpointType.ANATOMY: set(),
@@ -286,8 +369,8 @@ class SeedExportService:
             )
             maps[EdgeEndpointType.BIOMARKER] = {r.id: r.slug for r in rows}
         if ids_by_type[EdgeEndpointType.MEDICATION]:
-            # MedicationCatalog has no slug — the seed loader resolves edges by
-            # case-insensitive ``name``, so emit ``name`` as the join key.
+            # MedicationCatalog has no slug — emit the seed-key key part as the
+            # join key (the edge seeder resolves it by identity, never by name).
             rows = (
                 (
                     await self.db.execute(
@@ -299,9 +382,12 @@ class SeedExportService:
                 .scalars()
                 .all()
             )
-            maps[EdgeEndpointType.MEDICATION] = {r.id: r.name for r in rows}
+            maps[EdgeEndpointType.MEDICATION] = {
+                r.id: (r.seed_key.split(":", 1)[1] if r.seed_key else r.name) for r in rows
+            }
         if ids_by_type[EdgeEndpointType.IMMUNIZATION]:
-            # VaccineCatalog has a slug — emit it as the join key.
+            # Emit the readable seed-key key part (the curated form is
+            # ``vaccine:<slug>``) — the edge seeder resolves it by identity.
             rows = (
                 (
                     await self.db.execute(
@@ -313,7 +399,9 @@ class SeedExportService:
                 .scalars()
                 .all()
             )
-            maps[EdgeEndpointType.IMMUNIZATION] = {r.id: r.slug for r in rows}
+            maps[EdgeEndpointType.IMMUNIZATION] = {
+                r.id: (r.seed_key.split(":", 1)[1] if r.seed_key else r.slug) for r in rows
+            }
         return maps
 
     @staticmethod
@@ -331,15 +419,14 @@ class SeedExportService:
         rows = (
             (
                 await self.db.execute(
-                    select(AnatomyStructure)
-                    .where(self._tenant_cond(AnatomyStructure))
-                    .order_by(AnatomyStructure.slug)
+                    select(AnatomyStructure).where(self._tenant_cond(AnatomyStructure))
                 )
             )
             .scalars()
             .unique()
             .all()
         )
+        rows.sort(key=self._identity_sort_key)
 
         if structure_cache is not None:
             structure_cache.update({r.id: r.slug for r in rows})
@@ -356,7 +443,14 @@ class SeedExportService:
 
         items: list[dict[str, Any]] = []
         for s in rows:
-            item: dict[str, Any] = {"slug": s.slug, "name": s.name}
+            item = self._identity_head(s)
+            item["slug"] = s.slug
+            item["name"] = s.name
+            if s.id == seed_key_uuid("anatomy", s.slug):
+                # The identity-seeded row: emit its mechanical seed key (the
+                # table has no column for it). A row outside the curated
+                # identity stays id-only.
+                item["seed_key"] = f"anatomy:{s.slug}"
             if s.class_concept_id:
                 cslug = concept_slug.get(s.class_concept_id)
                 if cslug:
@@ -425,14 +519,13 @@ class SeedExportService:
         bios = (
             (
                 await self.db.execute(
-                    select(BiomarkerDefinition)
-                    .where(self._tenant_cond(BiomarkerDefinition))
-                    .order_by(BiomarkerDefinition.slug)
+                    select(BiomarkerDefinition).where(self._tenant_cond(BiomarkerDefinition))
                 )
             )
             .scalars()
             .all()
         )
+        bios.sort(key=self._identity_sort_key)
 
         concept_ids = {b.class_concept_id for b in bios if b.class_concept_id}
         unit_ids = {b.preferred_unit_id for b in bios if b.preferred_unit_id}
@@ -453,6 +546,7 @@ class SeedExportService:
 
         units_out = [
             {
+                "id": str(u.id),
                 "symbol": u.symbol,
                 "name": u.name,
                 "quantity_type": u.quantity_type.value if u.quantity_type else "OTHER",
@@ -461,11 +555,10 @@ class SeedExportService:
         ]
         biomarkers_out: list[dict[str, Any]] = []
         for b in bios:
-            item: dict[str, Any] = {
-                "slug": b.slug,
-                "name": b.name,
-                "coding_system": b.coding_system.value if b.coding_system else "loinc",
-            }
+            item = self._identity_head(b)
+            item["slug"] = b.slug
+            item["name"] = b.name
+            item["coding_system"] = b.coding_system.value if b.coding_system else "loinc"
             if b.code:
                 item["code"] = b.code
             if b.class_concept_id:
@@ -507,7 +600,6 @@ class SeedExportService:
             "metadata": {
                 "version": SEED_VERSION,
                 "source": SEED_SOURCE,
-                "last_updated": datetime.now(UTC).strftime("%Y-%m-%d"),
                 "units_count": len(units_out),
                 "biomarkers_count": len(biomarkers_out),
             },
@@ -544,7 +636,13 @@ class SeedExportService:
             panel = self._endpoint_slug(e.dst_type, e.dst_id, slug_maps)
             if not bio or not panel:
                 continue
-            items.append({"panel_slug": panel, "biomarker_slug": bio})
+            items.append(
+                {
+                    "seed_key": f"panel-membership:{panel}/{bio}",
+                    "panel_slug": panel,
+                    "biomarker_slug": bio,
+                }
+            )
         items.sort(key=lambda x: (x["panel_slug"], x["biomarker_slug"]))
         return self._envelope("biomarker_panels", items)
 
@@ -580,7 +678,14 @@ class SeedExportService:
             concept_slug = {c.id: c.slug for c in crows}
         items: list[dict[str, Any]] = []
         for t in rows:
-            item: dict[str, Any] = {"slug": t.slug, "name": t.name}
+            item = self._identity_head(t)
+            item["slug"] = t.slug
+            item["name"] = t.name
+            if t.id == seed_key_uuid("clinical-event-type", t.slug):
+                # The identity-seeded row: emit its mechanical seed key (the
+                # table has no column for it). A row outside the curated
+                # identity stays id-only.
+                item["seed_key"] = f"clinical-event-type:{t.slug}"
             if t.category_concept_id:
                 cslug = concept_slug.get(t.category_concept_id)
                 if cslug:
@@ -594,8 +699,84 @@ class SeedExportService:
             if t.metadata_schema:
                 item["metadata_schema"] = t.metadata_schema
             items.append(item)
-        items.sort(key=lambda x: x["slug"])
+        items.sort(key=lambda x: x.get("seed_key") or x["slug"])
         return self._envelope("clinical_event_types", items)
+
+    # ------------------------------------------------------------------
+    # biomarker states (universal controlled vocabulary)
+    # ------------------------------------------------------------------
+
+    async def export_biomarker_states(self) -> dict[str, Any]:
+        """Export the categorical biomarker-state vocabulary
+        (``biomarker_states.json``) — the inverse of
+        :meth:`CatalogImportService.seed_biomarker_states`.
+
+        The table is universal (no ``tenant_id``). The identity-seeded rows
+        (id == ``uuid5("biomarker-state:<slug>")``) carry their mechanical
+        ``seed_key``; rows created outside the curated identity stay
+        slug-keyed with an explicit ``id`` head (the seeder's ``explicit_id``
+        path re-ingests them into the same rows).
+        """
+        rows = (await self.db.execute(select(BiomarkerState))).scalars().all()
+        rows.sort(key=lambda s: (s.slug or "", str(s.id)))
+        items: list[dict[str, Any]] = []
+        for s in rows:
+            item: dict[str, Any] = {}
+            if s.id == seed_key_uuid("biomarker-state", s.slug):
+                item["seed_key"] = f"biomarker-state:{s.slug}"
+            else:
+                item["id"] = str(s.id)
+            item["slug"] = s.slug
+            item["code"] = s.code
+            item["system"] = s.system
+            item["display"] = s.display
+            if s.description:
+                item["description"] = s.description
+            if s.category:
+                item["category"] = s.category
+            item["sort_order"] = s.sort_order
+            items.append(item)
+        return self._envelope("biomarker_states", items)
+
+    # ------------------------------------------------------------------
+    # OMB race/ethnicity/language picklist (pack-path pass-through)
+    # ------------------------------------------------------------------
+
+    async def export_omb_picklist(self) -> dict[str, Any]:
+        """Export the OMB picklist (``omb_race_ethnicity.json``).
+
+        The picklist has no table — it flows through the pack path
+        (``bundled_stage_data("omb_picklist")``) and is read from there at
+        request time. The export is therefore a **normalization pass-through**
+        of the pack-path data: the three collections sorted by ``seed_key``,
+        the descriptive metadata kept (version/source/schema note) and the
+        timestamp dropped, so the exported pack covers every registered item
+        file and re-ingests byte-stably.
+        """
+        from app.core.seed_pack import omb_picklist as bundled_omb_picklist
+        from app.core.seed_pack.bundled import bundled_seeds_dir as _bundled_seeds_dir
+
+        data = bundled_omb_picklist(self.seeds_dir)
+        out: dict[str, Any] = {"metadata": {"version": SEED_VERSION, "source": SEED_SOURCE}}
+        try:
+            raw = json.loads(
+                ((self.seeds_dir or _bundled_seeds_dir()) / "omb_race_ethnicity.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            note = (raw.get("metadata") or {}).get("schema_note")
+            if note:
+                out["metadata"]["schema_note"] = note
+        except (OSError, json.JSONDecodeError):
+            pass
+        for key in ("races", "ethnicities", "languages"):
+            rows = [
+                {"seed_key": r["seed_key"], "code": r["code"], "display": r["display"]}
+                for r in sorted(data.get(key, []), key=lambda r: r.get("seed_key", ""))
+                if isinstance(r, dict) and r.get("seed_key")
+            ]
+            out[key] = rows
+        return out
 
     # ------------------------------------------------------------------
     # medication + allergy catalogs
@@ -605,17 +786,20 @@ class SeedExportService:
         rows = (
             (
                 await self.db.execute(
-                    select(MedicationCatalog)
-                    .where(self._tenant_cond(MedicationCatalog))
-                    .order_by(MedicationCatalog.name)
+                    select(MedicationCatalog).where(self._tenant_cond(MedicationCatalog))
                 )
             )
             .scalars()
             .all()
         )
+        rows.sort(key=self._identity_sort_key)
         items: list[dict[str, Any]] = []
         for m in rows:
-            item: dict[str, Any] = {"name": m.name}
+            item = self._identity_head(m)
+            item["name"] = m.name
+            if m.coding_system or m.code:
+                item["coding_system"] = m.coding_system
+                item["code"] = m.code
             if m.description:
                 item["description"] = m.description
             if m.indications:
@@ -631,19 +815,18 @@ class SeedExportService:
 
     async def export_allergies(self) -> dict[str, Any]:
         rows = (
-            (
-                await self.db.execute(
-                    select(AllergyCatalog)
-                    .where(self._tenant_cond(AllergyCatalog))
-                    .order_by(AllergyCatalog.name)
-                )
-            )
+            (await self.db.execute(select(AllergyCatalog).where(self._tenant_cond(AllergyCatalog))))
             .scalars()
             .all()
         )
+        rows.sort(key=self._identity_sort_key)
         items: list[dict[str, Any]] = []
         for a in rows:
-            item: dict[str, Any] = {"name": a.name}
+            item = self._identity_head(a)
+            item["name"] = a.name
+            if a.coding_system or a.code:
+                item["coding_system"] = a.coding_system
+                item["code"] = a.code
             if a.category:
                 item["category"] = a.category.value
             if a.description:
@@ -654,16 +837,79 @@ class SeedExportService:
         return self._envelope("allergies", items)
 
     # ------------------------------------------------------------------
-    # orchestrator: export every file (the safety pipeline is Phase 3)
+    # vaccines (rows + the readable target_diseases derived from edges)
+    # ------------------------------------------------------------------
+
+    async def export_vaccines(self) -> dict[str, Any]:
+        """Export the CVX-coded vaccine catalog (``vaccines.json``).
+
+        Vaccine → disease links are graph data: the item carries the readable
+        ``target_diseases`` slug list **derived from the approved PREVENTS
+        edges** (the inverse of the vaccine seeder, which re-materializes the
+        list as edges on import). One owner per dataset: ``concept_edges.json``
+        excludes exactly these edges.
+        """
+        rows = (
+            (await self.db.execute(select(VaccineCatalog).where(self._tenant_cond(VaccineCatalog))))
+            .scalars()
+            .all()
+        )
+        rows.sort(key=self._identity_sort_key)
+
+        prevented: dict[UUID, list[str]] = {}
+        edge_rows = (
+            await self.db.execute(
+                select(ConceptEdge.src_id, Concept.slug)
+                .join(Concept, Concept.id == ConceptEdge.dst_id)
+                .where(
+                    self._tenant_cond(ConceptEdge),
+                    ConceptEdge.src_type == EdgeEndpointType.IMMUNIZATION,
+                    ConceptEdge.dst_type == EdgeEndpointType.CONCEPT,
+                    ConceptEdge.relation == ConceptRelationType.PREVENTS,
+                    ConceptEdge.status == EdgeApprovalStatus.APPROVED,
+                    Concept.deleted_at.is_(None),
+                )
+                .order_by(Concept.slug)
+            )
+        ).all()
+        for src_id, slug in edge_rows:
+            prevented.setdefault(src_id, []).append(slug)
+
+        items: list[dict[str, Any]] = []
+        for v in rows:
+            item = self._identity_head(v)
+            item["slug"] = v.slug
+            item["name"] = v.name
+            if v.coding_system or v.code:
+                item["coding_system"] = v.coding_system
+                item["code"] = v.code
+            if prevented.get(v.id):
+                item["target_diseases"] = prevented[v.id]
+            if v.description:
+                item["description"] = v.description
+            if v.dose_schedule:
+                item["dose_schedule"] = v.dose_schedule
+            if v.contraindications:
+                item["contraindications"] = v.contraindications
+            if v.side_effects:
+                item["side_effects"] = list(v.side_effects)
+            items.append(item)
+        return self._envelope("vaccines", items)
+
+    # ------------------------------------------------------------------
+    # orchestrator: export every seed file
     # ------------------------------------------------------------------
 
     EXPORTERS: ClassVar[dict[str, str]] = {
         "concepts.json": "export_concepts",
         "diseases.json": "export_diseases",
+        "vaccines.json": "export_vaccines",
         "concept_edges.json": "export_concept_edges",
         "anatomy_structures.json": "export_anatomy_structures",
+        "biomarker_states.json": "export_biomarker_states",
         "default_catalog.json": "export_default_catalog",
         "biomarker_panels.json": "export_biomarker_panels",
+        "omb_race_ethnicity.json": "export_omb_picklist",
         "clinical_event_types.json": "export_clinical_event_types",
         "medications.json": "export_medications",
         "allergies.json": "export_allergies",
@@ -672,26 +918,73 @@ class SeedExportService:
     async def export_all(self) -> dict[str, dict[str, Any]]:
         """Run every exporter, returning ``{filename: payload_dict}``.
 
-        Does not touch the filesystem — the CLI / endpoint (Phase 3) handles
-        the safety pipeline (staging dir → backup → atomic write). Keeping I/O
-        out of this method makes it unit-testable with a real DB and no disk.
+        Does not touch the filesystem — the CLI / endpoint handles the safety
+        pipeline (staging dir → backup → atomic write). Keeping I/O out of
+        this method makes it unit-testable with a real DB and no disk.
         """
         out: dict[str, dict[str, Any]] = {}
         for filename, method_name in self.EXPORTERS.items():
-            out[filename] = await getattr(self, method_name)()
+            payload = await getattr(self, method_name)()
+            if payload is not None:
+                out[filename] = payload
         return out
 
-    async def build_zip_bytes(self) -> bytes:
-        """Build a ZIP of every seed file (flat layout: ``concepts.json`` at the
-        archive root) suitable for download. The receiver unpacks it into
-        ``backend/data/seeds/`` — via ``scripts/unpack_seeds_zip.py`` (which
-        backs up existing files first) or manually. No filesystem access here;
-        fully unit-testable."""
+    # ------------------------------------------------------------------
+    # the canonical pack (ADR 0056) — one format for export/CI/round-trip
+    # ------------------------------------------------------------------
+
+    async def build_pack(self) -> tuple[dict, dict[str, bytes]]:
+        """Wrap the export as one canonical seed pack: ``manifest.json`` plus
+        ``items/*.json`` under the pack contract (sorted, hashed, validated,
+        no timestamps anywhere).
+
+        Returns ``(manifest, files)`` where ``files`` maps ``items/<file>``
+        paths to exact bytes. The pack is always **system-scoped**: the
+        canonical export is the global canonical taxonomy, and a
+        template-tenant export emits its rows with scope stripped (curator
+        input for the system lane) — a tenant-scoped pack could not carry
+        the global-only item files the export covers. Raises
+        :class:`SeedPackInvalid` when the produced pack fails the contract —
+        an export bug is a loud error, never a broken pack.
+        """
         payloads = await self.export_all()
+        files: dict[str, bytes] = {}
+        item_files: list[dict[str, str]] = []
+        for filename in sorted(payloads):
+            data = self._serialize(payloads[filename])
+            files[f"items/{filename}"] = data
+            item_files.append({"path": f"items/{filename}", "sha256": content_digest(data)})
+        manifest = {
+            "id": EXPORT_PACK_ID,
+            "schema_version": PACK_SCHEMA_VERSION,
+            "version": SEED_VERSION,
+            "license": EXPORT_PACK_LICENSE,
+            "scope": "system",
+            "priority": 0,
+            "description": EXPORT_PACK_DESCRIPTION,
+            "item_files": item_files,
+        }
+        errors = validate_pack(manifest, files)
+        if errors:
+            raise SeedPackInvalid(errors)
+        return manifest, files
+
+    async def build_zip_bytes(self) -> bytes:
+        """Build the canonical pack ZIP (``manifest.json`` + ``items/*.json``)
+        for download — fully deterministic: fixed entry order, fixed archive
+        timestamps, stored file order sorted by path. The receiver unpacks it
+        into ``backend/data/seeds/`` via ``scripts/unpack_seeds_zip.py``
+        (which verifies every sha256 pin against the manifest). No filesystem
+        access here; fully unit-testable."""
+        manifest, files = await self.build_pack()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for filename, payload in payloads.items():
-                zf.writestr(filename, self._serialize(payload))
+            entries = [(MANIFEST_NAME, self._serialize(manifest))]
+            entries += sorted(files.items())
+            for name, data in entries:
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.external_attr = 0o644 << 16
+                zf.writestr(info, data)
         return buf.getvalue()
 
     # ------------------------------------------------------------------
@@ -701,6 +994,15 @@ class SeedExportService:
     @staticmethod
     def _serialize(payload: dict[str, Any]) -> bytes:
         return json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+
+    @staticmethod
+    def _payload_count(payload: dict[str, Any]) -> int:
+        """The item count of an exported file: the sum of its list collections."""
+        total = 0
+        for value in payload.values():
+            if isinstance(value, list):
+                total += len(value)
+        return total
 
     async def write_all(self, out_dir: Path, backup: bool = True) -> dict[str, Any]:
         """Write every seed file into ``out_dir`` with the safety pipeline.
@@ -723,9 +1025,8 @@ class SeedExportService:
         for filename, payload in payloads.items():
             data = self._serialize(payload)
             (staging / filename).write_bytes(data)
-            items = payload.get("items", payload.get("biomarkers", []))
             report["files"][filename] = {
-                "count": len(items) if isinstance(items, list) else 0,
+                "count": self._payload_count(payload),
                 "bytes": len(data),
             }
 

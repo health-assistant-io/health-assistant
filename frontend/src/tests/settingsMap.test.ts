@@ -14,6 +14,12 @@ import mapJson from '../../../contracts/settings-map.json';
 // canonical copy first — never by editing the vendored file (which
 // scripts/verify-wiring.sh keeps byte-identical) or the nav arrays alone.
 const map = mapJson as {
+  domains?: {
+    id: string;
+    adopters?: Record<string, string>;
+    scope?: string;
+    secrets?: string;
+  }[];
   products: Record<
     string,
     {
@@ -65,6 +71,23 @@ describe('settings-map contract', () => {
         expect(domain.startsWith('tools.')).toBe(true);
       }
     }
+  });
+
+  it('app.storage is aligned for health and exposed in the system nav', () => {
+    const storage = map.domains?.find((entry) => entry.id === 'app.storage');
+    expect(storage).toBeDefined();
+    expect(storage!.adopters?.['health-assistant/core']).toBe('aligned');
+    expect(storage!.scope).toBe('instance (admin)');
+    expect(storage!.secrets).toBe('none');
+
+    expect(
+      systemSettingsNav.some((item) => item.to === '/admin/system/storage'),
+    ).toBe(true);
+    const adminSystem = declared.find((tab) => tab.id === 'admin-system');
+    const storageSection = adminSystem?.sections?.find(
+      (section) => section.id === 'storage',
+    );
+    expect(storageSection?.domains).toEqual(['app.storage']);
   });
 
   it('the tier navs expose the tools page next to AI configuration', () => {

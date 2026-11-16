@@ -122,6 +122,19 @@ describe('getFinalStatus', () => {
     expect(getFinalStatus(make(100, 50, 150) as any)).toBe('Normal');
   });
 
+  it('flags High for a max-only range when the value exceeds it ("< 10" convention)', () => {
+    expect(getFinalStatus(make(15, undefined, 10) as any)).toBe('High');
+  });
+
+  it('flags Low for a min-only range when the value is below it ("> 5" convention)', () => {
+    expect(getFinalStatus(make(3, 5, undefined) as any)).toBe('Low');
+  });
+
+  it('returns Normal for one-sided ranges when the value satisfies the bound', () => {
+    expect(getFinalStatus(make(7, undefined, 10) as any)).toBe('Normal');
+    expect(getFinalStatus(make(7, 5, undefined) as any)).toBe('Normal');
+  });
+
   it('falls back to interpretation when no range', () => {
     expect(getFinalStatus(make(100, undefined, undefined, 'High') as any)).toBe('High');
     expect(getFinalStatus(make(100, undefined, undefined, 'low') as any)).toBe('Low');

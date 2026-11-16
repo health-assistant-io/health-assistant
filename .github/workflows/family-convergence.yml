@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Gate self-test (plan 23 D4)
         run: bash scripts/check-family-convergence.selftest.sh
       - name: Extension structure probe (blocking, plan 32 Phase 9)
@@ -55,7 +55,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Gate self-test (planted red hosts)
         run: bash scripts/check-no-legacy.sh --self-test
       - name: Run the repo-specific no-legacy gate
@@ -93,8 +93,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - name: Install backend dependencies
         run: uv sync --frozen
       - name: Run the vendored contract fixtures + semantics

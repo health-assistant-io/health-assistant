@@ -26,6 +26,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import settings
 from app.main import app
+from app.models.enums import Role
 from tests._auth_helpers import create_user, sign_in
 
 # Every test here implements identity-auth §18.5 (cookie triple, CSRF,
@@ -65,7 +66,7 @@ async def _login_client(async_client: AsyncClient):
     """A real password login through the endpoint (cookie jar populated)."""
     from tests._auth_helpers import create_user as _cu
 
-    user = await _cu(password="super-secret-pass-1")
+    user = await _cu(role=Role.USER, password="super-secret-pass-1")
     resp = await async_client.post(
         "/api/v1/auth/login",
         data={"username": user.email, "password": "super-secret-pass-1"},
@@ -110,7 +111,7 @@ async def test_login_sets_contract_cookie_triple(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_secure_mode_uses_host_prefixed_access_cookie(async_client: AsyncClient):
     """HA_COOKIE_SECURE=true ⇒ __Host-nx_access + Secure on everything."""
-    user = await create_user(password="super-secret-pass-2")
+    user = await create_user(role=Role.USER, password="super-secret-pass-2")
     monkey = pytest.MonkeyPatch()
     monkey.setattr(settings, "HA_COOKIE_SECURE", True)
     try:

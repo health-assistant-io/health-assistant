@@ -98,11 +98,7 @@ def _slot_value(auth_kind: str | None, payload: dict[str, Any]) -> Any:
     its query), so the full address never lives outside the slot.
     """
     kind = slot_for(auth_kind)
-    carry_urls = {
-        key: str(payload[key])
-        for key in ("url", "calendar_url")
-        if payload.get(key)
-    }
+    carry_urls = {key: str(payload[key]) for key in ("url", "calendar_url") if payload.get(key)}
     if kind == "password":
         password = payload.get("password")
         if not password or not isinstance(password, str):
@@ -246,9 +242,7 @@ async def read_secret(db: AsyncSession, binding: Any) -> dict[str, Any]:
 async def revoke_secrets(db: AsyncSession, binding: Any) -> int:
     """Revoke the binding's slots (reads then fail closed)."""
     result = await db.execute(
-        select(CalendarBindingCredential).where(
-            CalendarBindingCredential.binding_id == binding.id
-        )
+        select(CalendarBindingCredential).where(CalendarBindingCredential.binding_id == binding.id)
     )
     rows = list(result.scalars().all())
     now = datetime.now(UTC)
@@ -261,9 +255,7 @@ async def revoke_secrets(db: AsyncSession, binding: Any) -> int:
 async def delete_secrets(db: AsyncSession, binding: Any) -> int:
     """Hard-delete every slot row (the unbind law: delete every secret)."""
     result = await db.execute(
-        select(CalendarBindingCredential).where(
-            CalendarBindingCredential.binding_id == binding.id
-        )
+        select(CalendarBindingCredential).where(CalendarBindingCredential.binding_id == binding.id)
     )
     rows = list(result.scalars().all())
     for row in rows:
@@ -286,9 +278,7 @@ async def require_secret(db: AsyncSession, binding: Any) -> dict[str, Any]:
 async def slots_summary(db: AsyncSession, binding: Any) -> list[dict[str, Any]]:
     """Read-model projection — never includes the sealed payload."""
     result = await db.execute(
-        select(CalendarBindingCredential).where(
-            CalendarBindingCredential.binding_id == binding.id
-        )
+        select(CalendarBindingCredential).where(CalendarBindingCredential.binding_id == binding.id)
     )
     return [
         {

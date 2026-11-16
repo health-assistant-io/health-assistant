@@ -16,6 +16,7 @@ import pytest
 
 from app.core.database import AsyncSessionLocal
 from app.models.biomarker_model import BiomarkerDefinition
+from app.models.enums import CatalogScope
 from app.models.fhir.allergy import AllergyCatalog
 from app.models.fhir.medication import MedicationCatalog
 from app.models.tenant_model import TenantModel
@@ -55,7 +56,7 @@ async def test_allergy_catalog_full_crud(async_client):
         json={"name": f"Pollen {suffix}", "category": "ENVIRONMENT"},
         headers=admin,
     )
-    assert create.status_code == 200, create.text
+    assert create.status_code == 201, create.text
     cat_id = create.json()["id"]
 
     # get-one
@@ -72,9 +73,11 @@ async def test_allergy_catalog_full_crud(async_client):
     assert put.status_code == 200, put.text
     assert put.json()["description"] == "seasonal allergen"
 
-    # delete
+    # delete (envelope contract: {"status", "message"})
     delete = await async_client.delete(f"/api/v1/allergies/catalog/{cat_id}", headers=admin)
     assert delete.status_code == 200, delete.text
+    assert set(delete.json()) == {"status", "message"}
+    assert delete.json()["status"] == "success"
 
     # now 404
     get_after = await async_client.get(f"/api/v1/allergies/catalog/{cat_id}", headers=admin)
@@ -98,7 +101,7 @@ async def test_allergy_catalog_user_creates_user_scope(async_client):
         json={"name": "x", "category": "FOOD"},
         headers=user,
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
 
 
 @pytest.mark.asyncio
@@ -129,11 +132,20 @@ async def test_medication_catalog_delete(async_client):
         json={"name": f"Drug {suffix}"},
         headers=admin,
     )
-    assert create.status_code == 200, create.text
+    assert create.status_code == 201, create.text
     med_id = create.json()["id"]
 
     delete = await async_client.delete(f"/api/v1/medications/catalog/{med_id}", headers=admin)
     assert delete.status_code == 200, delete.text
+    assert set(delete.json()) == {"status", "message"}
+    assert delete.json()["status"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_medication_catalog_delete_missing_404(async_client):
+    _, admin = await _tenant_and_headers("ADMIN")
+    delete = await async_client.delete(f"/api/v1/medications/catalog/{uuid.uuid4()}", headers=admin)
+    assert delete.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -146,7 +158,7 @@ async def test_medication_catalog_user_creates_user_scope(async_client):
         json={"name": "x"},
         headers=user,
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
 
 
 @pytest.mark.asyncio
@@ -177,7 +189,7 @@ async def test_biomarker_user_creates_user_scope(async_client):
         json={"slug": f"u-{uuid.uuid4().hex[:6]}", "name": "x"},
         headers=user,
     )
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 201, resp.text
 
 
 @pytest.mark.asyncio
@@ -196,11 +208,17 @@ async def test_biomarker_reads_are_tenant_scoped(async_client):
                     slug=f"bio-global-{suffix}", name=f"G {suffix}", tenant_id=None
                 ),
                 BiomarkerDefinition(
+                    scope=(
+                        CatalogScope.TENANT if caller_tenant is not None else CatalogScope.SYSTEM
+                    ),
                     slug=f"bio-mine-{suffix}",
                     name=f"M {suffix}",
                     tenant_id=caller_tenant,
                 ),
                 BiomarkerDefinition(
+                    scope=(
+                        CatalogScope.TENANT if other_tenant is not None else CatalogScope.SYSTEM
+                    ),
                     slug=f"bio-theirs-{suffix}",
                     name=f"T {suffix}",
                     tenant_id=other_tenant,
@@ -226,8 +244,10 @@ async def test_biomarker_admin_can_create_and_delete(async_client):
         json={"slug": f"admin-{suffix}", "name": f"Admin {suffix}"},
         headers=admin,
     )
-    assert create.status_code == 200, create.text
+    assert create.status_code == 201, create.text
     bio_id = create.json()["id"]
 
     delete = await async_client.delete(f"/api/v1/biomarkers/{bio_id}", headers=admin)
     assert delete.status_code == 200, delete.text
+    assert set(delete.json()) == {"status", "message"}
+    assert delete.json()["status"] == "success"

@@ -1,6 +1,6 @@
 /**
  * BiomarkerDetail "Technical Metadata" tab — the read-only identity/normalization
- * fields (category, coding system + code, preferred unit, aliases). Moved out of
+ * fields (class concept, coding system + code, preferred unit, aliases). Moved out of
  * the right sidebar so the detail page is purely exploratory; the catalog form
  * owns editing of these fields.
  */
@@ -29,7 +29,7 @@ export const BiomarkerTechnicalTab: React.FC<BiomarkerTechnicalTabProps> = ({
             {t('biomarkers.perspectives.technical') || 'Category'}
           </p>
           <p className="text-sm font-black text-gray-700 dark:text-dark-text">
-            {biomarker.category || 'Uncategorized'}
+            {biomarker.class_concept_name || 'Uncategorized'}
           </p>
         </div>
 

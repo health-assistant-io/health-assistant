@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Globe, Users, Activity, FileText, Database, Save, X,
-  ShieldCheck, Trash2, LogIn, Power, PowerOff, Copy, Loader2,
+  ShieldCheck, Trash2, LogIn, Power, PowerOff, Copy, Loader2, Fingerprint,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import {
@@ -18,9 +18,12 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
+import { TenantSecurityPolicyCard } from './TenantSecurityPolicy';
+import { SsoConfigCard } from '../../components/admin/SsoConfigCard';
+import { ScimTokensCard } from '../../components/admin/ScimTokensCard';
 import { useTranslation } from 'react-i18next';
 
-type Tab = 'overview' | 'users' | 'audit' | 'settings';
+type Tab = 'overview' | 'users' | 'audit' | 'identity' | 'settings';
 
 function TenantDetail() {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -169,6 +172,7 @@ function TenantDetail() {
     { id: 'overview', label: t('admin.tenants.tab_overview'), icon: Globe },
     { id: 'users', label: t('admin.tenants.tab_users'), icon: Users },
     { id: 'audit', label: t('admin.tenants.tab_audit'), icon: ShieldCheck },
+    { id: 'identity', label: t('admin.tenants.tab_identity', 'Enterprise identity'), icon: Fingerprint },
     { id: 'settings', label: t('admin.tenants.tab_settings'), icon: Database },
   ];
 
@@ -258,8 +262,16 @@ function TenantDetail() {
         <AuditPanel tenantId={detail.id} />
       )}
 
+      {activeTab === 'identity' && (
+        <div className="space-y-6">
+          <SsoConfigCard tenantId={detail.id} canWrite />
+          <ScimTokensCard tenantId={detail.id} canWrite />
+        </div>
+      )}
+
       {activeTab === 'settings' && (
-        <form onSubmit={handleSaveSettings} className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border space-y-5">
+        <>
+          <form onSubmit={handleSaveSettings} className="bg-white dark:bg-dark-surface p-6 rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border space-y-5">
           <div>
             <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
               {t('admin.tenants.field_name')}
@@ -345,7 +357,10 @@ function TenantDetail() {
               {t('admin.tenants.delete_permanently')}
             </button>
           </div>
-        </form>
+          </form>
+
+          <TenantSecurityPolicyCard tenantId={detail.id} canWrite />
+        </>
       )}
 
       {/* Hard-delete modal */}

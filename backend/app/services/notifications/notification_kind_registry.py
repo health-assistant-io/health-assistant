@@ -89,8 +89,19 @@ _LOCKED_CHANNELS = frozenset({NotificationChannel.EMAIL})
 
 # Safety-critical combinations: never mutable. The mute button is hidden but
 # the manage link is still offered (so the user can see what's happening).
-_IMMUTABLE_TYPES = frozenset({NotificationType.SYSTEM_ERROR})
+_IMMUTABLE_TYPES = frozenset({NotificationType.SYSTEM_ERROR, NotificationType.SECURITY_EVENT})
 _IMMUTABLE_CRITICAL_SOURCES = frozenset({NotificationSource.SYSTEM, NotificationSource.CLINICAL})
+
+
+def is_immutable_type(type_: NotificationType | None) -> bool:
+    """Whether ``type_`` is safety-critical (never muted, never digested).
+
+    One predicate for both consumers: the kind registry hides the mute
+    control, and ``notification_service.emit`` skips the source-level mute
+    so a user cannot silence security or failure alerts by turning off the
+    whole source.
+    """
+    return type_ is not None and type_ in _IMMUTABLE_TYPES
 
 
 @dataclass(frozen=True)

@@ -64,6 +64,7 @@ from app.services.audit.audit_service import (
     OUTCOME_OK,
     log_audit_action,
 )
+from app.services.auth import passkeys
 from app.services.tenancy.tenant_admin_service import TenantAdminService
 
 router = APIRouter(prefix="/admin/tenants", tags=["admin-tenants"])
@@ -76,6 +77,18 @@ _tenant_user_admin_only = RoleChecker([Role.ADMIN])
 
 def _svc(db: AsyncSession) -> TenantAdminService:
     return TenantAdminService(db)
+
+
+async def _tenant_user_response(user) -> TenantUserResponse:
+    """Serialise a tenant user with the factor-aware MFA flags."""
+    count = (await passkeys.count_active_by_user([user.id])).get(user.id, 0)
+    shaped = TenantUserResponse.model_validate(user)
+    return shaped.model_copy(
+        update={
+            "mfa_enabled": bool(getattr(user, "mfa_secret_enc", None)) or count > 0,
+            "passkey_count": count,
+        }
+    )
 
 
 # ----------------------------------------------------------------------
@@ -260,7 +273,7 @@ async def list_tenant_users(
     tid = _coerce_uuid(tenant_id)
     items, total = await _svc(db).list_tenant_users(tid, search=search, limit=limit, offset=offset)
     return TenantUserListResponse(
-        items=[TenantUserResponse.model_validate(u) for u in items],
+        items=[await _tenant_user_response(u) for u in items],
         total=total,
     )
 
@@ -279,7 +292,7 @@ async def update_tenant_user(
     tid = _coerce_uuid(tenant_id)
     uid = _coerce_uuid(user_id, field="user_id")
     user = await _svc(db).update_tenant_user(tid, uid, payload, actor_id=current_user.user_id)
-    return TenantUserResponse.model_validate(user)
+    return await _tenant_user_response(user)
 
 
 @router.patch(
@@ -311,13 +324,14 @@ async def set_tenant_user_mfa(
     uid = _coerce_uuid(user_id, field="user_id")
     if current_user.role != Role.SYSTEM_ADMIN.value and str(current_user.tenant_id) != str(tid):
         await log_audit_action(
+            required=True,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
             action="user.mfa_enforce",
             resource_type="user",
             resource_id=uid,
             outcome=OUTCOME_DENIED,
-            new_value={"reason": "cross_tenant", "enforced": payload.enforced},
+            new_value={"detail": "cross_tenant", "enforced": payload.enforced},
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -340,6 +354,7 @@ async def set_tenant_user_mfa(
         user = await mfa_service.set_enforced(uid, payload.enforced)
 
     await log_audit_action(
+        required=True,
         tenant_id=tid,
         user_id=current_user.user_id,
         action="user.mfa_enforce",
@@ -349,10 +364,11 @@ async def set_tenant_user_mfa(
         old_value={"mfa_enforced": prior_enforced},  # gate-allow: *, audit diff
         new_value={
             "mfa_enforced": payload.enforced,
-            "mfa_enabled": bool(getattr(user, "mfa_secret_enc", None)),
+            "mfa_enabled": bool(getattr(user, "mfa_secret_enc", None))
+            or await passkeys.has_active_passkey(uid),
         },
     )
-    return TenantUserResponse.model_validate(user)
+    return await _tenant_user_response(user)
 
 
 @router.post("/{tenant_id}/invite", response_model=InviteResponse)

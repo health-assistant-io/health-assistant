@@ -12,16 +12,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
+from app.core.authz.permissions import Permission
 from app.models.fhir.vaccine import PatientImmunization, VaccineCatalog
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.user import TokenData
 from app.schemas.vaccine import (
     PatientImmunizationCreate,
     PatientImmunizationUpdate,
-    VaccineCatalogCreate,
-    VaccineCatalogUpdate,
 )
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import check_patient_access, require_principal_permission
 from app.services.fhir.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
@@ -70,65 +69,6 @@ async def get_catalog_vaccine(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def create_catalog_vaccine(
-    db: AsyncSession, actor, data: VaccineCatalogCreate
-) -> VaccineCatalog:
-    entry = VaccineCatalog(**data.model_dump())
-    DEFAULT_CATALOG_POLICY.assign_create_scope(actor.role, entry, actor.tenant_id, actor.user_id)
-    assert_valid_fhir(entry)  # write-time FHIR gate (projects to Medication)
-    db.add(entry)
-    await db.commit()
-    await db.refresh(entry)
-    return entry
-
-
-async def update_catalog_vaccine(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-    data: VaccineCatalogUpdate,
-) -> VaccineCatalog | None:
-    entry = await get_catalog_vaccine(db, catalog_id, actor.tenant_id)
-    if entry is None:
-        return None
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        entry.scope,
-        item_created_by=entry.created_by,
-        actor_user_id=actor.user_id,
-    )
-    for key, value in data.model_dump(exclude_unset=True).items():
-        setattr(entry, key, value)
-    assert_valid_fhir(entry)
-    await db.commit()
-    await db.refresh(entry)
-    return entry
-
-
-async def delete_catalog_vaccine(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-) -> bool:
-    entry = await get_catalog_vaccine(db, catalog_id, actor.tenant_id)
-    if entry is None:
-        return False
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        entry.scope,
-        item_created_by=entry.created_by,
-        actor_user_id=actor.user_id,
-    )
-    await db.delete(entry)
-    await db.commit()
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Patient immunizations (instances)
-# ---------------------------------------------------------------------------
-
-
 async def get_patient_immunizations(
     db: AsyncSession, patient_id: UUID, tenant_id: UUID
 ) -> list[PatientImmunization]:
@@ -171,7 +111,8 @@ async def add_patient_immunization(
     """
     if data.patient_id is None:
         raise ValueError("PatientImmunizationCreate.patient_id is required.")
-    await check_patient_access(data.patient_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_patient_access(data.patient_id, current_user, db, required=GrantPermission.WRITE)
 
     effective_external_id = external_id or data.external_id
 
@@ -260,9 +201,12 @@ async def _find_integration_immunization(
 async def update_patient_immunization(
     db: AsyncSession,
     immunization_id: UUID,
-    tenant_id: UUID,
+    current_user: TokenData,
     data: PatientImmunizationUpdate,
 ) -> PatientImmunization | None:
+    """Update one immunization record (actor-gated, tenant-scoped)."""
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    tenant_id = current_user.tenant_id
     record = await get_immunization_for_access(db, immunization_id, tenant_id)
     if record is None:
         return None
@@ -278,8 +222,11 @@ async def update_patient_immunization(
 
 
 async def delete_patient_immunization(
-    db: AsyncSession, immunization_id: UUID, tenant_id: UUID
+    db: AsyncSession, immunization_id: UUID, current_user: TokenData
 ) -> bool:
+    """Hard-delete one immunization row (actor-gated, tenant-scoped)."""
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    tenant_id = current_user.tenant_id
     record = await get_immunization_for_access(db, immunization_id, tenant_id)
     if record is None:
         return False

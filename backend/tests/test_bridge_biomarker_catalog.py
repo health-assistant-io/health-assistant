@@ -16,6 +16,7 @@ from sqlalchemy import delete
 from app.core.database import AsyncSessionLocal
 from app.extensions.builtin.health_assistant_bridge.provider import HealthAssistantBridgeProvider
 from app.models.biomarker_model import BiomarkerDefinition, Unit
+from app.models.enums import CatalogScope
 from app.models.fhir.patient import Patient
 from app.models.tenant_model import TenantModel
 from app.models.user_integration import UserIntegration
@@ -116,6 +117,7 @@ async def bridge_with_catalog():
         db.add(Unit(id=unit_id, symbol=unit_symbol, name="Beats per minute"))
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_a is not None else CatalogScope.SYSTEM),
                 id=hr_def_id,
                 tenant_id=tenant_a,
                 slug="heart-rate",
@@ -130,6 +132,7 @@ async def bridge_with_catalog():
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_a is not None else CatalogScope.SYSTEM),
                 id=gluc_def_id,
                 tenant_id=tenant_a,
                 slug="glucose-fasting",
@@ -154,6 +157,7 @@ async def bridge_with_catalog():
         )
         db.add(
             BiomarkerDefinition(
+                scope=(CatalogScope.TENANT if tenant_b is not None else CatalogScope.SYSTEM),
                 id=b_def_id,
                 tenant_id=tenant_b,
                 slug="steps-tenant-b",

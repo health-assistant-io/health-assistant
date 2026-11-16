@@ -290,6 +290,27 @@ def _telemetry_key(row: dict[str, Any]) -> tuple:
     )
 
 
+async def _require_ingest_actor(db: AsyncSession, integration: Any, actor: Any | None) -> Any:
+    """Resolve the acting principal and require ``clinical:write`` for ingest.
+
+    Observations and telemetry are clinical writes. The funnel is reachable
+    from the sync engine, the webhook endpoint and the bridge's ``/sync`` —
+    none of them runs a route gate — so the permission is asserted here, at
+    the one seam every inbound connector shares. When the caller already
+    resolved an actor it is used as-is; otherwise the integration's scoped
+    principal is resolved (never its owner's role) and the same guard runs.
+    """
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
+
+    if actor is None:
+        from app.services.integration.integration_actor import resolve_integration_actor
+
+        actor = await resolve_integration_actor(db, integration)
+    require_principal_permission(actor, Permission.CLINICAL_WRITE)
+    return actor
+
+
 async def ingest_observations(
     db: AsyncSession,
     integration: Any,
@@ -297,6 +318,7 @@ async def ingest_observations(
     *,
     provider_name: str | None = None,
     instance_name: str | None = None,
+    actor: Any | None = None,
 ) -> IngestReport:
     """Ingest observation payloads (FHIR Observations) with mapping + dedup.
 
@@ -305,9 +327,14 @@ async def ingest_observations(
     "never dropped silently". The FHIR/telemetry split is the S3/S6 helper,
     so telemetry-class biomarkers land in the hypertable with canonical units
     and a registered device.
+
+    Every call is a clinical write: the acting principal (``actor``, else the
+    integration's scoped principal) must hold ``clinical:write`` — a
+    ``patient:read``-only credential is refused with ``AuthorizationError``.
     """
     if not items:
         return IngestReport()
+    await _require_ingest_actor(db, integration, actor)
     from app.services.fhir.fhir_helpers import (
         coerce_observation_patient_ids,
         validate_and_filter_observations,
@@ -400,10 +427,16 @@ async def ingest_telemetry(
     readings: list[TelemetryReading],
     *,
     provider_name: str | None = None,
+    actor: Any | None = None,
 ) -> IngestReport:
-    """Ingest raw telemetry readings through the registry/device/units seam."""
+    """Ingest raw telemetry readings through the registry/device/units seam.
+
+    Same write gate as :func:`ingest_observations`: the acting principal must
+    hold ``clinical:write`` (telemetry rows are patient clinical data).
+    """
     if not readings:
         return IngestReport()
+    await _require_ingest_actor(db, integration, actor)
 
     report = IngestReport(received=len(readings))
     source = provider_name or integration.provider
@@ -498,8 +531,12 @@ async def ingest_documents(
     """Ingest provider-fetched document bytes (OCR handled by the pipeline)."""
     if not documents:
         return IngestReport()
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
     from app.services.catalog.concept_service import resolve_concept_by_slug
     from app.services.documents.document_service import ingest_document_bytes
+
+    require_principal_permission(actor, Permission.DOCUMENT_WRITE)
 
     report = IngestReport(received=len(documents))
     examination_by_external_id = examination_by_external_id or {}
@@ -551,6 +588,7 @@ async def ingest_documents(
                 category_concept_id=resolved_category_id,
                 source_integration_id=integration.id,
                 external_id=external_id,
+                principal=actor,
             )
         except Exception as exc:
             report.rejected += 1
@@ -613,9 +651,12 @@ async def ingest_appointments(
     actor: Any,
 ) -> tuple[IngestReport, dict[str, UUID]]:
     """Ingest the clinical-event/calendar surface; returns exam external→id map."""
+    from app.core.authz.permissions import Permission
+    from app.services.auth.access import require_principal_permission
     from app.services.clinical.clinical_event_service import create_event
     from app.services.clinical.examination_service import create_examination
 
+    require_principal_permission(actor, Permission.CLINICAL_WRITE)
     report = IngestReport()
     exam_by_external_id: dict[str, UUID] = {}
 
@@ -702,9 +743,12 @@ async def ingest_labs(
     """
     if not reports:
         return IngestReport()
+    from app.core.authz.permissions import Permission
     from app.models.fhir import DiagnosticReport
+    from app.services.auth.access import require_principal_permission
     from app.services.fhir.fhir_service import create_diagnostic_report
 
+    require_principal_permission(actor, Permission.CLINICAL_WRITE)
     report = IngestReport(received=len(reports))
     for payload in reports:
         code = payload.get("code") if isinstance(payload, dict) else None

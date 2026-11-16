@@ -101,7 +101,7 @@ async def test_anatomy_create_with_class_slug(async_client, system_admin_headers
             "class_concept_slug": f"organ-{suffix}",
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     body = resp.json()
     assert body["class_concept_slug"] == f"organ-{suffix}"
     assert body["class_concept_name"] == "Organ"

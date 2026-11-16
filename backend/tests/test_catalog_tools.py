@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 
 from app.ai.tools.registry import ToolContext
+from tests.seed_utils import seed_with_commit
 
 
 @pytest_asyncio.fixture
@@ -30,11 +31,11 @@ async def catalogs_ctx():
         await session.commit()
 
     svc = SeedService()
-    await svc.seed_concepts()
-    await svc.seed_diseases()
-    await svc.seed_medications()
-    await svc.seed_vaccines()
-    await svc.seed_concept_edges()
+    await seed_with_commit(svc.seed_concepts)
+    await seed_with_commit(svc.seed_diseases)
+    await seed_with_commit(svc.seed_medications)
+    await seed_with_commit(svc.seed_vaccines)
+    await seed_with_commit(svc.seed_concept_edges)
 
     async with AsyncSessionLocal() as session:
         ctx = ToolContext(

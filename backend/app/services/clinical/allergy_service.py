@@ -15,15 +15,15 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz.permissions import Permission
 from app.models.fhir.allergy import AllergyCatalog, AllergyIntolerance
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.allergy import (
-    AllergyCatalogCreate,
-    AllergyCatalogUpdate,
     AllergyIntoleranceCreate,
     AllergyIntoleranceUpdate,
 )
 from app.schemas.user import TokenData
-from app.services.auth.access import check_patient_access
+from app.services.auth.access import check_patient_access, require_principal_permission
 from app.services.fhir.fhir_helpers import assert_valid_fhir
 
 logger = logging.getLogger(__name__)
@@ -55,102 +55,6 @@ async def get_catalog_allergy(
     )
     result = await db.execute(query)
     return result.scalar_one_or_none()
-
-
-async def create_catalog_allergy(
-    db: AsyncSession, actor, data: AllergyCatalogCreate
-) -> AllergyCatalog:
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    new_entry = AllergyCatalog(**data.model_dump())
-    DEFAULT_CATALOG_POLICY.assign_create_scope(
-        actor.role, new_entry, actor.tenant_id, actor.user_id
-    )
-    # Write-time FHIR gate (parity with medication_service). AllergyCatalog
-    # projects to FHIR Substance; invalid shapes never persist.
-    assert_valid_fhir(new_entry)
-    db.add(new_entry)
-    await db.commit()
-    await db.refresh(new_entry)
-    return new_entry
-
-
-async def update_catalog_allergy(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-    data: AllergyCatalogUpdate,
-) -> AllergyCatalog | None:
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    query = select(AllergyCatalog).where(
-        AllergyCatalog.id == catalog_id,
-        or_(
-            AllergyCatalog.tenant_id.is_(None),
-            AllergyCatalog.tenant_id == actor.tenant_id,
-        ),
-    )
-    result = await db.execute(query)
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        return None
-
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        entry.scope,
-        item_created_by=entry.created_by,
-        actor_user_id=actor.user_id,
-    )
-
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(entry, key, value)
-
-    assert_valid_fhir(entry)
-    await db.commit()
-    await db.refresh(entry)
-    return entry
-
-
-async def delete_catalog_allergy(
-    db: AsyncSession,
-    catalog_id: UUID,
-    actor,
-) -> bool:
-    """Delete an allergy catalog entry (scope + ownership enforced).
-
-    Returns ``False`` if the entry is missing or out of tenant scope.
-    Raises :class:`CatalogPermissionDenied` (→ HTTP 403) on insufficient role.
-    """
-    from app.catalogs.policy import DEFAULT_CATALOG_POLICY
-
-    query = select(AllergyCatalog).where(
-        AllergyCatalog.id == catalog_id,
-        or_(
-            AllergyCatalog.tenant_id.is_(None),
-            AllergyCatalog.tenant_id == actor.tenant_id,
-        ),
-    )
-    result = await db.execute(query)
-    entry = result.scalar_one_or_none()
-    if entry is None:
-        return False
-
-    DEFAULT_CATALOG_POLICY.check_modify(
-        actor.role,
-        entry.scope,
-        item_created_by=entry.created_by,
-        actor_user_id=actor.user_id,
-    )
-
-    await db.delete(entry)
-    await db.commit()
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Patient-instance intolerances
-# ---------------------------------------------------------------------------
 
 
 async def get_patient_allergies(
@@ -213,7 +117,8 @@ async def add_patient_allergy(
     """
     if data.patient_id is None:
         raise ValueError("AllergyIntoleranceCreate.patient_id is required.")
-    await check_patient_access(data.patient_id, current_user, db)
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    await check_patient_access(data.patient_id, current_user, db, required=GrantPermission.WRITE)
 
     effective_external_id = external_id or data.external_id
 
@@ -294,9 +199,12 @@ async def _find_integration_allergy(
 async def update_patient_allergy(
     db: AsyncSession,
     allergy_id: UUID,
-    tenant_id: UUID,
+    current_user: TokenData,
     data: AllergyIntoleranceUpdate,
 ) -> AllergyIntolerance | None:
+    """Update one intolerance record (actor-gated, tenant-scoped)."""
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    tenant_id = current_user.tenant_id
     result = await db.execute(
         select(AllergyIntolerance).where(
             AllergyIntolerance.id == allergy_id,
@@ -325,12 +233,17 @@ async def update_patient_allergy(
     return record
 
 
-async def delete_patient_allergy(db: AsyncSession, allergy_id: UUID, tenant_id: UUID) -> bool:
+async def delete_patient_allergy(
+    db: AsyncSession, allergy_id: UUID, current_user: TokenData
+) -> bool:
     """Hard-delete the row (parity with medication_service.delete_patient_medication).
 
     Note: the FHIR R4 facade soft-deletes via ``deleted_at`` (audit C5). This
     domain endpoint removes the row entirely, matching the medications path.
+    Takes the request actor so the scoped-credential write guard runs here.
     """
+    require_principal_permission(current_user, Permission.CLINICAL_WRITE)
+    tenant_id = current_user.tenant_id
     result = await db.execute(
         select(AllergyIntolerance).where(
             AllergyIntolerance.id == allergy_id,

@@ -11,6 +11,1453 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-11-16
+
+### Added (create menu)
+- **“New Vaccination” is back in the sidebar create menu** (the ⨁ button),
+  next to New Examination / Medication / Event / Allergy. It routes to
+  `/vaccinations?new=vaccination`, which opens the vaccination form for the
+  current patient (`requiresPatient`), and the label ships in English and
+  Greek.
+
+### Changed (backup / restore — throwaway target)
+- **Restoring no longer touches the live database.** `scripts/restore.sh` is
+  a throwaway-target procedure (plan 65, ADR-0063 §4): it requires an explicit
+  `--target <new-db>`, refuses the live database / `postgres` / `template*` /
+  the test database, asks for a typed confirmation (or `--yes`), and treats
+  `--drop-existing` as the disposable-target confirmation. The old
+  `pg_restore --clean --if-exists` into the live `neuronection_health`
+  database (and the uploads-volume wipe) is retired.
+- **The restore is Timescale-aware.** It creates the target database and both
+  roles (owner + app), creates `timescaledb` (+ `pgcrypto`, `pg_trgm`)
+  explicitly, wraps the single-threaded `pg_restore -Fc --no-owner` in
+  `timescaledb_pre_restore()` / `timescaledb_post_restore()`, runs `ANALYZE`,
+  re-asserts the CAGG refresh + retention + compression policies
+  (`--refresh-caggs` forces an immediate full rebuild of the buckets), and
+  re-grants the app role + default privileges + the `*_scoped` views.
+- **Every restore verifies before cutover:** row counts on named tables
+  (read-only comparison against the live DB), fail-closed app-role reads, one
+  known record under a tenant context, a `telemetry_hourly_scoped` trend
+  query, `pg_policies`, the Timescale job ladder, audit-chain integrity
+  (SQL contiguity + full hash walk through the backend image), the
+  erasure-ledger replay into the target, and a backend readiness probe
+  pointed at the target — never at the live DB.
+- **The restore drill runs in CI:** `scripts/test-restore-scratch.sh` builds a
+  pinned `timescale/timescaledb:latest-pg16` scratch pair (migrate to head,
+  seed tenant/patient/document/telemetry/audit chain, dump, restore into a
+  second empty container) and asserts row-count parity, RLS fail-closed +
+  tenant-context visibility, CAGG queries, policy parity, audit-chain hash
+  walk and that the live instance stayed untouched. Shell contracts (refuse
+  live DB, require target/confirmation, carry the pre/post hooks) live in
+  `backend/tests/test_restore_script.py`.
+- **Docs:** `docker/README.md` → Backup & restore now carries the
+  throwaway-target procedure with cutover/rollback steps, the RPO/RTO table
+  per deployment shape (ADR-0063), the CAGG rebuild note and the encryption
+  decision (`age`, key outside the backup target; `openssl enc` fallback;
+  provider KMS envelope on cloud).
+
+### Added (storage status)
+- **System admins get a read-only Storage status card under Admin → System
+  Settings → Storage.** `GET /api/v1/admin/system/storage` reports the
+  resolved backend, bucket/container, prefix, region/endpoint host, SSE, cap,
+  presign TTL and the cached live health row; **Test connection** forces a
+  fresh probe. Non-admins receive 403 and the nav entry is system-admin only.
+  There is no credential form, provider tile or backend switch — changing
+  backends stays a verified migration. The response redacts credentials,
+  connection strings, presigned URLs and the full endpoint URL. The family
+  `app.storage` settings-map domain is declared and vendored.
+
+### Changed (object storage — boot health and cloud profiles)
+- **`/health` reports a cached storage row and boots log one redacted line.**
+  The row carries the backend, `ok`/`degraded`/`unavailable` and `required`;
+  the probe is cached for 30 s and bounded to 5 s (a slow provider cannot
+  outlive the healthcheck), a transient provider failure or probe timeout
+  degrades open (200), and the endpoint returns 503 only when storage is
+  required or the failure is sustained. A missing bucket/container is still a
+  boot error. The cloud overlay now requires both the profile and the backend
+  on the API and the worker. A manual `Cloud storage smoke` workflow runs the
+  AWS and Azure provider tests on demand; normal PRs stay local-only.
+
+### Changed (object storage — 2026-11-14)
+- **Document, export, import and anatomy bytes can live in object storage.**
+  The backend now resolves one storage backend at boot (`local` by default,
+  `s3` for AWS or any S3-compatible endpoint, `azure_blob` for Azure), probes
+  it, and refuses a cloud profile that would fall back to a local volume.
+  `documents.object_key` stores a server-generated key; pre-contract rows keep
+  working through an object-first dual-read of `file_path` while the local
+  volume is mounted.
+- **Workers receive keys, not paths.** OCR, DICOM/PDF preview, image edits and
+  backup imports materialize the object into a private `0600` temp file
+  inside the worker and remove it on every exit path. Celery workers probe and
+  register the store on process start.
+- **No filesystem path in document responses.** `DocumentResponse.file_path`
+  is blank and downloads/previews stream through the authorized route or
+  redirect to a presigned URL. PHI presigns are clamped to 300 seconds and
+  audited at mint time.
+- **Exports and imports are tenant-scoped objects.** The export manifest is
+  its own object; import archives are deleted by the worker when the job
+  finishes; anatomy figures and the seed-pack cache use the same store.
+- **Local backup/restore refuses under an object backend** (the compose backup
+  sidecar keeps database dumps and skips the uploads archive). Backend and
+  worker images install the S3/Azure extras; the cloud compose overlay removes
+  the uploads volume from the stateless services.
+- **Hardening:** migration `0025` is DDL-only (existing rows stay on
+  `file_path` until the bytes are copied, and the worker falls back to that
+  local path); inline previews stream through the app while only attachments
+  presign; exports have a separate `HA_EXPORT_MAX_MB` ceiling (1–1024, default
+  1024) and are written through a temp file; local worker services mount the
+  uploads volume; tenant erasure removes pending import archives.
+
+### Changed (assistant-ui adoption — plan 60 phase 5, 2026-11-13)
+- **The catalog concept graph is the family `concept-graph` renderer.**
+  `components/ui/ConceptGraphView.tsx` is now a thin shim over
+  `@neuronection/assistant-ui/concept-graph` instead of a 944-line local
+  ReactFlow fork; it still exports `KIND_COLORS` / `RELATION_COLORS` and
+  injects them (plus the `EXAMINES`/`PERFORMS` animation set) as defaults, so
+  the ontology, relations and picker graphs, the relation filter and the
+  anatomy HITL preview are unchanged. Force/hierarchy layout, minimap,
+  search, PNG export, detail card, context menu and disabled/picked nodes are
+  preserved. The local `hierarchyLayout` helper (health's reversed relation
+  set is now the library default) is deleted.
+- **The MFA enrollment panel uses the shared copy button.** The local
+  icon+text button is replaced by `components/ui/CopyButton` (library) for the
+  setup key, the `otpauth://` URI and the recovery codes; the labels are
+  unchanged and the copied state only latches on a successful clipboard write.
+
+### Changed (assistant-ui adoption — plan 60 phase 4, 2026-11-13)
+- **The active-sessions card and the three shown-once secret dialogs now
+  come from the family library** (`@neuronection/assistant-ui` 0.86.0).
+  `pages/Settings/Security.tsx` renders `AccountSessionList` (one row per
+  device, preformatted `Signed in` / `Last seen` / `Expires` facts, the
+  current-device badge, and a per-row revoke action whose accessible name
+  carries the device) instead of its own `<ul>`/`<li>` markup; the
+  "Sign out others" action is the list's header action and the loading,
+  empty, error and card chrome stay app-side.
+- **API tokens, SCIM tokens and OAuth client secrets share one app-local
+  wrapper.** `components/settings/SecretOnceReveal.tsx` pairs the app
+  `Modal` with the library `SecretOnceBlock` (value, warning, copy with
+  transient `Copied` feedback), replacing three hand-rolled secret bodies.
+  Each dialog's form, `client_id` (OAuth) and app logic are unchanged; the
+  duplicate copy state and buttons are gone.
+
+### Changed (source grammar — plan 60 phase 3, 2026-11-12)
+- **Seed-source validation now uses the family source grammar.**
+  `services/seed/transport.py` no longer carries its own URL / git-ref /
+  subpath / commit-sha regexes or the archive entry cap: the vendored
+  `app/extensions/extension_sources.py` (the canonical
+  `extension-sources` grammar) is the one parser, and the transport maps
+  its typed codes 1:1 onto `SeedTransportError` with the same wording. The
+  SSRF guard (`polite_http`) and the archive extraction are unchanged.
+- **Three validation tightenings ride along:** a source subpath with a
+  trailing slash is now refused (`SUBPATH_INVALID`) instead of silently
+  trimmed, a hostile archive *directory* entry (`../`, an absolute
+  directory) is a typed `ARCHIVE_PATH_TRAVERSAL` instead of a silently
+  skipped entry, and a source URL must now be 12–512 characters (the
+  schema's bounds). Ordinary directory entries (`items/`) still skip
+  normally and a bare uppercase 40-hex ref is still a branch name.
+
+### Changed (auth-kit adoption — plan 60 phase 2, 2026-11-12)
+- **Secret-slot resolution and the PAT credential core now come from the
+  family auth kit.** `services/seed/secrets.py` and
+  `services/auth/sso_secrets.py` are thin adapters over
+  `nx_auth.secrets` (keyring → deployment env, `store_path=None`), keeping
+  health's policy: the `health-assistant/seed-sources` /
+  `health-assistant/tenant-sso` keyring services, the unprefixed
+  `HA_SEED_SOURCE_SECRET` / `HA_SSO_CLIENT_SECRET` env prefixes, SSO slot
+  validation, seed slot trimming (256) and the 4096-character value cap.
+  `services/auth/api_tokens.py` mints and verifies through
+  `nx_auth.opaque` (`ha_pat_<12 hex>_<secret>` unchanged, prefix column
+  and lookup preserved). There is one redaction helper (the kit's) and no
+  local `redact_secret` copy.
+- **Audit delta for malformed PAT bearers:** the kit's strict `parse`
+  rejects a bearer that cannot have been minted in the `ha_pat` shape, so
+  its `api_token.denied` row records `token_prefix: null` instead of an
+  arbitrary segment. Audit queries and dashboards must tolerate `null`.
+  Tokens minted before this change keep authenticating unchanged.
+
+### Removed (catalog cleanup — plan A Phase 4, ADR 0055 D8)
+- **`is_custom` is gone; ownership is `scope`.** Catalog rows (medication,
+  allergy, vaccine, anatomy) expose exactly one ownership representation —
+  `scope` (`system`/`tenant`/`user`) plus `tenant_id`/`created_by`. The
+  duplicate derived `is_custom` boolean is removed from every model,
+  serializer, write schema and filter, and `anatomy_structures.is_custom` is
+  dropped by migration `0024_catalog_cleanup`. The Catalogs UI's "Custom only"
+  toggle now filters on `scope`, and the detail badges read `scope`.
+- **The biomarker `category` field is retired.** The API, response schema,
+  catalog export/import and seed files speak `class_concept_id` /
+  `class_concept_slug` only — there is no name-string fallback and no compat
+  alias; a payload that still sends `category` is a 422. `BIOMARKER_CLASS`
+  concepts are resolved from the slug.
+- **Catalog search indexes are generated, not hand-written.** Each catalog
+  declares its full-text surface on its descriptor, and migration
+  `0024_catalog_cleanup` builds the trigram + FTS indexes from it (the retired
+  `concepts` name||slug trigram index is dropped; `clinical_event_types` gains
+  the indexes it was missing). The query layer derives its FTS expression from
+  the same surface, so an index and the query that uses it can no longer drift.
+- **The sidecar backup import restores medication, allergy and biomarker
+  catalog rows by identity** (exported `seed_key`, then id) instead of
+  matching on lower-cased names or a bare slug. A tenant restore writes only
+  the job tenant's rows: exported system rows and foreign-tenant rows are
+  skipped, a system row sharing the `seed_key` is never rewritten (the tenant
+  overlay is created instead), and a payload id already owned elsewhere is
+  not adopted. Biomarker-import item failures are surfaced in the job result
+  instead of being dropped. The anatomy JSON import is system-only, and the
+  AI pipeline's catalog create-dedupe is tenant-scoped and prefers the tenant
+  row.
+
+### Added (AI cost provenance)
+- **Every audited AI call is priced at write time, and honest when it is not.**
+  `ai_call_logs.cost_micros` is nullable and resolves tenant override → family
+  built-in catalog → loopback (`0`) → the pre-contract model `settings` rates →
+  `NULL` (unpriced, never a fabricated `0`); new `provider_key`, `usage_source`,
+  `estimate_method`, `price_source` and `price_version` columns record where the
+  number came from (migration `0023_ai_cost_provenance`). Editing a price never
+  reprices history. `GET /ai-config/usage` now reports priced/unpriced calls
+  next to `cost_micros`.
+- **Data & Cost.** A new admin surface (`/admin/tenant/data-cost`,
+  `/admin/system/data-cost`) shows the spend ledger per provider/model and the
+  effective price rows; tenant-scoped overrides are managed through
+  `GET|PUT /ai/prices` and `DELETE /ai/prices/{id}`, and
+  `GET /ai/usage/costs` returns per-provider/model call cost.
+
+### Security (scoped integration & extension principals — program Phase 13, ADR 0054 D8)
+- **Every write seam answers the credential, not just the route.** Beyond
+  the clinical-event/examination/document/catalog creates, the medication,
+  allergy and immunization services (create, update **and** delete), the
+  clinical-event subresources (occurrences, examination/observation links,
+  anatomy links, biomarker correlations), and the examination/document
+  delete seams now require the acting principal's matching write permission
+  — so a `patient:read`-only PAT or integration principal can no longer
+  write through the bridge proxy or an ingest funnel. Observations and
+  telemetry ingest assert `clinical:write` at the funnel, the bridge
+  `/ai/*` routes assert `ai:use`, and break-glass **deny/revoke** refuse a
+  scoped credential exactly like request/approve. The bridge manifest now
+  declares its `medication`/`allergy`/`immunization` data classes (it already
+  served those routes), and a service-layer refusal crossing the bridge
+  proxy answers `403 forbidden` instead of a generic `500 io`.
+- **A scoped SYSTEM_ADMIN credential stays tenant-scoped.** Role-name
+  branches that widened to the operator role now ask one helper
+  (`is_unscoped_system_admin`): the cross-tenant audit list/export stream,
+  system-wide broadcast, the system-scope elevation ledger, the import-job
+  object gate (owner-scoped for a credential, in the list and the status
+  read) and the patient-less document views/fetches all keep the
+  credential's own tenant and its uploader-only document reach.
+- **A tenant restore can no longer write the shared unit vocabulary.** The
+  catalog importer's tenant door resolves unit symbols read-only and
+  reports an unknown symbol as a failed item (the seed lane / system import
+  door own the global `units` table), and medication/allergy catalog
+  restore row failures are surfaced in the job's `restore_result` instead
+  of only a log warning.
+- **Erasing a connector also erases its scoped principal row.** The
+  principal FK nulls `integration_id` on connector delete while the
+  integration-kind check requires a binding, so `DELETE
+  /integrations/instance/{id}` now revokes (audited) and removes the bound
+  principal rows in the same transaction — erasing an integration no longer
+  fails once it has synced.
+- **Erasure also clears principals in the subject walks.** The
+  data-lifecycle walker now deletes `integration_principals` before
+  `user_integrations` for a patient, user and tenant subject, so a patient,
+  account or tenant with a synced connector no longer lands a `failed`
+  erasure request on the same FK/check conflict.
+- **Export answers the credential's patient reach, not its owner's role
+  name.** `POST /export` refuses `scope=system` for a PAT/integration
+  principal and bounds a `group` patient list to `scoped_patient_reach`
+  (grants excluded, matching the per-patient export check), and export job
+  status/download/list hide any archive that names a patient outside that
+  reach.
+- **A scoped SYSTEM_ADMIN reads only its own tenant.** `GET /tenants/{id}`,
+  `PATCH /tenants/{id}` and the tenant security-policy surface now ask
+  `is_unscoped_system_admin`, so a credential carrying its owner's
+  `SYSTEM_ADMIN` role name can no longer read (or change) another tenant;
+  the policy surface answers the same hidden 404 as any cross-tenant read.
+- **Integrations act as themselves, not as their owner.** A connector or
+  extension write now resolves an `integration_principals` row (migration
+  `0022_integration_principals`) — a tenant-bounded service identity with
+  its own permission subset, patient scope and lifecycle. The owner stays
+  the accountable human (writes and audit keep the owner's id) but is no
+  longer the authorization identity; the old owner-role impersonation path
+  is gone.
+- **Least privilege by construction.** A principal's scopes must be a
+  subset of its owner's live permissions **and** of the extension
+  manifest's declared capabilities at creation, rotation and every use.
+  The engine provisions connector principals from the manifest's declared
+  data classes and caps them at the integration's patient; a demotion, a
+  manifest change, a consent revocation or a revoked principal narrows or
+  stops the very next call.
+- **Patient scope** is `all` (owner's live reach), `granted` (explicit
+  allowlist intersected with that reach) or `none`; it is enforced by the
+  same grant-aware checks and list filters as personal access tokens, so a
+  care-team grant revoked mid-sync is honored immediately.
+- **Opaque credential, one-time secret.** Admin/owner-created principals
+  receive `ha_int_<prefix>_<secret>` once (prefix + sha256 at rest); revoked,
+  rotated, expired and cross-tenant credentials answer 401. A principal can
+  never mint a session, token, factor or step-up proof and never sets the
+  system actor.
+- **Extension tiers are host-enforced.** T2 code receives exactly the
+  declared capability set (consent-intersected, no database handle); T3 MCP
+  tool exposure authorizes the declared risk class against the principal's
+  scopes; T0 is data-only; undeclared capabilities/data classes are refused
+  even when the provider object implements the hook.
+- **A scoped credential is bounded everywhere, not just at the route.** The
+  patient list answers the credential's own reach even when its owner is a
+  SYSTEM_ADMIN (the `granted`/`none` scope no longer listed the tenant), the
+  canonical clinical/document/catalog write services refuse a credential
+  that lacks the matching write permission (ingest and bridge funnels call
+  those services directly), and a PAT/integration principal can neither
+  request nor approve a break-glass elevation.
+- **API:** `GET`/`POST /integration-principals`, `GET
+  /integration-principals/permissions`, `GET`/`DELETE
+  /integration-principals/{id}`, `POST /integration-principals/{id}/rotate`
+  (session-only; tenant admins manage the tenant, owners manage their own).
+
+### Security (enterprise identity hardening — program Phase 12 review fixes, ADR 0054 Phase 6)
+- **Passkey clone detection no longer reads attacker-controlled data.** The
+  signature counter is taken from the assertion only after WebAuthn
+  verification succeeds, so a forged assertion for a known credential id
+  can no longer disable someone's passkey (denial of service). A genuine
+  counter regression still disables the credential, is audited
+  (`auth.passkey_clone_detected`) and raises a critical security notice.
+- **TOTP self-enrollment is step-up gated** (`mfa_change`): a session alone
+  can no longer enroll a TOTP secret and then mint step-up proofs for
+  export, role changes, break-glass and admin grants. The login-time
+  forced-enrollment door (`POST /auth/mfa/enroll` with the challenge) is
+  unchanged; a fresh federated sign-in still counts as the proof for
+  SSO-only accounts.
+- **SSO group→role demotion takes effect immediately.** A re-mapped role
+  bumps `users.token_version` and clears the hot layer, matching the admin
+  and SCIM surfaces (previously an outstanding token kept its old role
+  until its next refresh).
+- **One enabled SSO configuration per email domain** (typed 409 on a
+  cross-tenant claim) and an enabled binding's `issuer` is immutable;
+  secret-slot references are validated as names, and the keyring lookup
+  runs off the event loop. The claim scan itself now runs system-side: row
+  level security had hidden other tenants' enabled bindings from a
+  tenant-admin caller, so a second tenant could claim another tenant's email
+  domain and take over its login-page routing. A transaction-scoped advisory
+  lock serializes the check, so two concurrent enables cannot both win.
+- **Factor-change security notices.** Adding a TOTP authenticator sends the
+  same in-app/push notice as registering a passkey, and a cloned
+  authenticator detected during a passkey step-up disables the credential
+  and raises the same critical notice as at login.
+- **Break-glass decision refusals are audited** (`elevation_*_denied`,
+  fail-closed), including hidden cross-tenant 404s and self-approval.
+- `api_tokens.patient_scope` is a Python-enum-typed column (vocabulary
+  parity with its CHECK), the table is registered in the lifecycle
+  inventory, over-long `User-Agent` values are truncated to
+  `auth_sessions.user_agent`, and step-up denials always name the
+  acceptable `methods` (empty + `reason` for a personal access token, which
+  has no sign-in family to bind a proof to).
+
+### Security (enterprise identity UI — program Phase 12C3, ADR 0054 Phase 6)
+- **SSO sign-in.** The login page discovers a tenant's OIDC provider from
+  the entered email domain (`POST /auth/sso/status`) and opens the flow in
+  a popup; the callback's cookie session, typed MFA challenge and the
+  link-only `sso_link_required` intent are all handled. A local sign-in
+  completes the pending link, so an existing account is never merged.
+- **Passkeys and factor-aware MFA.** A "Sign in with a passkey" button runs
+  the WebAuthn assertion ceremony; the MFA step offers exactly the factors
+  the challenge names (TOTP/recovery and/or passkey).
+- **Step-up prompt.** Any gated request (`role_change`, `export`,
+  `break_glass`, `grant_admin`, `mfa_change`) that answers
+  `403 step_up_required` opens one global verification modal (password /
+  TOTP / passkey) and retries the original request once — cancelling keeps
+  the original error and never loops.
+- **Settings → Security.** Passkey management (register with a name, list
+  with last-used/backup state, delete), device sessions with IP, user
+  agent and last-seen plus "sign out other devices", and scoped API tokens
+  (permission picker from `/me/api-tokens/permissions`, patient scope,
+  expiry, one-time secret copy, rotate and revoke). Recovery codes are
+  shown once at TOTP enrollment.
+- **Admin enterprise pages.** Per-tenant OIDC bindings (CRUD + connection
+  test, keyring slot names only) and SCIM tokens (one-time secret, list,
+  revoke), plus the break-glass elevation queue with two-person approval,
+  status/expiry and the caller's own elevation ledger. Routes are
+  permission-gated (`settings:read/write`, `tenant:manage`,
+  `break_glass:request/approve`) and the UI is localized in English and
+  Greek.
+
+### Security (scoped API tokens / personal access tokens — program Phase 12C2B, ADR 0054 Phase 6)
+- **Personal access tokens.** Members can mint scoped tokens for
+  CLI/scripts/home-automation clients (`api_tokens`, migration
+  `0021_api_tokens`; the family contract's first opaque `pat` token kind,
+  never a JWT). The value is shown once (`ha_pat_<prefix>_<secret>`); only
+  a sha256 and an indexed lookup prefix are stored.
+- **Least privilege by construction.** A token's permission set must be a
+  subset of its owner's catalog permissions at creation, update and
+  rotation, and the route gate authorizes with the **token's** set — not
+  the owner's role — re-intersected with the live role on every request.
+  Scope is capped at tenant (a PAT never becomes the system actor) and
+  break-glass elevations are never consulted.
+- **Patient scope.** `all` (owner's live reach), `granted` (explicit
+  patient ids, intersected with that reach) or `none`; enforced by every
+  patient-scoped check and list filter, so revoked grants narrow
+  outstanding tokens immediately.
+- **Lifecycle and guardrails.** Expiry, rotation (predecessor revoked in
+  the same transaction) and revocation; expired/revoked/malformed/
+  cross-tenant tokens answer 401; a PAT can never mint a session,
+  refresh, another token, a password change, a factor or a step-up proof
+  (credential-management surfaces answer 403). Every action and use is
+  audited (`api_token.*`), never with the plaintext.
+- **API:** `GET`/`POST /me/api-tokens`, `GET /me/api-tokens/permissions`,
+  `GET`/`PATCH`/`DELETE /me/api-tokens/{id}`, `POST
+  /me/api-tokens/{id}/rotate` (session-only). Enterprise UI follows in
+  phase 12C3.
+
+### Security (WebAuthn/passkeys — program Phase 12C2, ADR 0054 Phase 6)
+- **Passkey sign-in.** Members can register Touch ID/Windows Hello/security
+  keys as WebAuthn credentials (new `webauthn_credentials`, migration
+  `0020_webauthn`: public key + signature counter only, tenant-RLS, cascade
+  with the user). Registration and deletion are step-up gated
+  (`mfa_change`); `GET/DELETE /me/mfa/passkeys` manage the devices.
+- **Passkeys satisfy MFA.** `POST /auth/passkeys/{options,verify}` signs in
+  with user verification and issues a normal session (`amr: ["hwk","user"]`,
+  `auth_mode="password"` — the contract's closed local value). The login
+  challenge and tenant/SSO policy are factor-aware
+  (`methods: ["webauthn","totp"]`, `enrollment_needed` only when no factor
+  exists); `GET /me/mfa` reports `totp_enabled`/`passkey_enabled`/
+  `passkey_count`.
+- **Step-up by passkey.** `POST /auth/step-up/passkeys/{options,verify}`
+  mints the existing family/action-bound proof with
+  `methods: ["webauthn"]` for role changes, exports, break-glass, admin
+  grants and factor changes.
+- **Clone and replay protection.** Challenges are single-use and
+  five-minute-lived (consumed before verification); a non-zero signature
+  counter that fails to advance disables the credential, audits
+  `auth.passkey_clone_detected` and refuses the attempt. User verification
+  and RP-id/origin checks are mandatory; unconfigured production instances
+  answer `503 webauthn_not_configured` (`HA_WEBAUTHN_RP_ID`,
+  `HA_WEBAUTHN_ORIGIN`).
+- **Recovery.** TOTP recovery codes keep working; a lost passkey is
+  replaced after signing in with another factor (or a fresh SSO sign-in),
+  and the last remaining factor cannot be deleted under `mfa_enforced`/a
+  policy-listed role. Every ceremony, refusal and delete is audited.
+
+### Security (step-up, session devices, SSO MFA parity — program Phase 12C1, ADR 0054 Phase 6)
+- **SSO no longer bypasses the tenant security policy.** The OIDC callback
+  now enforces the same gates as the password login: the IP allowlist
+  (checked before provisioning — `403 ip_not_allowed`, audited, and no JIT
+  account is left behind) and the MFA requirement (an enrolled local TOTP
+  secret, `mfa_enforced`, or a policy-listed role). The IdP's `amr`/`acr`
+  is parsed and satisfies MFA only when it evidences a second factor
+  (RFC 8176 second-factor values, or a multi-factor `acr`/level ≥ 2);
+  otherwise the existing single-use `mfa_challenge` answers
+  `mfa_required` with `origin: "sso"` and the sign-in completes at
+  `/auth/mfa/verify` with an `auth_mode="oidc"` session. `amr`/`auth_time`
+  ride the session as product claims (dropped at refresh). A policy flip
+  applies to the next sign-in, never to a live session.
+- **Step-up for the four sensitive actions.** Role changes
+  (`PUT /users/{id}`, only when the role actually changes), data exports
+  (`POST /export`), break-glass requests/approvals
+  (`POST /admin/access-elevations` and `/approve`) and admin-level patient
+  grants (`POST /patients/{id}/access`, and PATCH raising a grant to
+  `admin`) answer `403 {"code": "step_up_required", "action": …}` until
+  `POST /auth/step-up` proves presence (local password when set,
+  TOTP/recovery when enrolled; a fresh IdP-asserted MFA for SSO-only
+  accounts). The proof is family-bound state (`stepup:{fid}:{action}`),
+  valid 10 minutes, for one action and one sign-in family; every proof and
+  refusal is audited (`auth.step_up`). Normal reads never pay it.
+- **The device list is real.** `auth_sessions` gains `ip`, `user_agent`
+  and `last_seen_at` (migration `0019_session_metadata`; RLS unchanged),
+  captured at sign-in and stamped on verification with a ≥60 s throttle;
+  `GET /me/sessions` returns them per device. New
+  `POST /me/sessions/revoke-others` signs out every other device without
+  bumping `token_version`, so the caller keeps working (audited
+  `session.revoke_others`).
+- **New-sign-in alerts.** A sign-in from an `(ip, user agent)` the account
+  has never used emits a `SECURITY_EVENT` notification
+  (`category: security`, in-app + push — never email; 24 h dedup per
+  device). The type is safety-critical: muting the `SYSTEM` source does
+  not silence it (channel preferences still apply). New
+  `SECURITY_EVENT`/`security` vocabulary via migration
+  `0019_session_metadata`.
+
+### Security (per-tenant SSO + SCIM 2.0 — program Phase 12B, ADR 0054 D2/Phase 6)
+- **Per-tenant OIDC SSO with link-only identity.** Each tenant binds its
+  own provider (new table `tenant_sso_configs`, migration
+  `0018_enterprise_identity`): discovery, authorization-code + PKCE (S256),
+  server-side state/nonce (single-use, 10-minute TTL) and RS256/JWKS
+  verification of the ID token. The client secret crosses no API —
+  configurations carry a **slot name** resolved on the host (OS keyring
+  `health-assistant/tenant-sso`, env fallback `HA_SSO_CLIENT_SECRET_<SLOT>`).
+  The identity law is ADR 0054 D2 taken whole: `email_verified` required,
+  links live in the new `user_identities` table (unique `(issuer, subject)`,
+  one identity = one tenant), **accounts are never merged** — the same
+  verified email on an existing local account answers the typed 409
+  `sso_link_required` and resolves through an **authenticated link flow**
+  (the local user confirms while signed in). JIT provisioning is capped by
+  `allowed_domains` + the `group_role_map`/`default_role` (USER/MANAGER/
+  ADMIN only — SSO is never a path to SYSTEM_ADMIN); group→role re-mapping
+  runs on every login and every change is audited (`sso_role_change`).
+  Internal sessions mint through the one issuance path
+  (`auth_mode="oidc"`); a disabled, misconfigured or unreachable IdP can
+  only fail the SSO flow — the local password path and the break-glass
+  runbook are untouched.
+- **SCIM 2.0 directory surface** (`/api/v1/scim/v2/Users|Groups`) with
+  tenant-bounded bearer tokens (new `scim_tokens`: sha256 at rest, the
+  plaintext returned once at creation, instant revocation, tenant deletion
+  kills every token) — Users/Groups CRUD with RFC 7644 pagination and
+  `userName`/`displayName` filters. **Deprovision** (SCIM delete or
+  `active=false`) deactivates the account and bumps `token_version`, so
+  every live session dies at the next request; records are never
+  hard-deleted by a directory client. Group membership moves re-roll the
+  members' roles through the tenant's `group_role_map` (audited,
+  `scim.role_change`; new `scim_groups`/`scim_group_members` tables).
+- **Admin surfaces**: SSO config CRUD + `test-connection` under
+  `/admin/tenants/{id}/sso` (`settings:read`/`settings:write`; tenant
+  boundary: ADMIN own tenant, SYSTEM_ADMIN anywhere; slot names only),
+  SCIM token create (one-time plaintext)/list/revoke under
+  `/admin/tenants/{id}/scim-tokens` (`tenant:manage`). Every mutation is
+  audited fail-closed. A new `token_scim` route class pins the bearer
+  mechanism in the route gate. All five new tables carry tenant RLS
+  (the membership join is parent-anchored), grants, downgrade coverage,
+  JSONB/lifecycle inventory rows and migration round-trip tests.
+  `SECURITY.md`, `docs/API.md`, `docs/TENANCY_AND_USER_MANAGEMENT.md` §3b
+  and `docs/capabilities.json` (`sso-and-scim`) updated in the same
+  change. (WebAuthn/API tokens/UI follow in Phase 12C.)
+
+### Security (break-glass elevations — program Phase 12A, ADR 0054 D1/D6)
+- **Break-glass is a first-class, two-person-approved elevation** (new
+  table `access_elevations`, migration `0017_access_elevations`). A
+  holder of `break_glass:request` (ADMIN/MANAGER; SYSTEM_ADMIN for
+  instance-level `system` scope) requests a time-boxed window: a reason, a
+  subset of the permissions they **already hold** (an elevation widens
+  effective scope, it never grants a permission the role lacks) and a
+  duration capped at 240 minutes. A **second person** must approve — a
+  tenant window a second ADMIN of the same tenant, a system window a
+  second SYSTEM_ADMIN — and `requested_by <> approved_by` is a database
+  CHECK: self-approval is impossible, including the single-admin case,
+  whose recovery is the documented host rescue runbook (`SECURITY.md`),
+  not a bypass. The gate consults active elevations per request (one
+  indexed, time-boxed query; nothing cached into tokens — expiry,
+  revocation and approvals are honored on the next request), a tenant
+  window never opens system-scoped surfaces, every transition
+  (`elevation_request/approve/deny/revoke/expire`) and every use under a
+  window (`elevation_use`) is audited fail-closed, affected parties are
+  notified, and a beat sweep expires due windows every 15 minutes.
+  Admin surface: `POST/GET /api/v1/admin/access-elevations` (+ approve /
+  deny / revoke), self-service `GET /api/v1/me/elevations`; ADMIN gains
+  `break_glass:approve` in the role matrix. `SECURITY.md` (break-glass +
+  the corrected rolling-deploy wording), `TENANCY_AND_USER_MANAGEMENT.md`
+  §2e, `docs/API.md` and `docs/capabilities.json`
+  (`break-glass-elevation`) updated in the same change.
+
+### Security (row-level security — program Phase 11, ADR 0054 D4)
+- **The database is now a second isolation wall.** Every tenant-scoped
+  table carries Postgres row-level security policies (migration
+  `0016_rls`) reading transaction-local settings (`app.tenant_id` /
+  `app.system`) that the engine plants from the verified principal at
+  every transaction begin — missing or foreign contexts answer zero rows,
+  fail-closed. Cross-tenant SELECT/INSERT/UPDATE/DELETE is refused by the
+  database even if application code were to drop its `tenant_id` filter;
+  rows can never be repointed across tenants; a tenant can never mint or
+  modify a system (`NULL`-tenant) row. The RLS test suite runs against the
+  least-privilege runtime role (`neuronection_health_app`), never the
+  migration owner, so owner bypass can never make a check vacuous.
+- **Revision (post-review fixes, still `0016_rls` — no new migration).**
+  The audit-flavor read policy now grants the system actor **full reach**
+  (`tenant_id = <ctx> OR <system>` on every row, not only NULL ones):
+  the pre-revision shape blinded the cross-tenant operator surfaces
+  whenever the database actually enforced RLS — the SYSTEM_ADMIN audit
+  viewer's `?all=true` stream and `?tenant_id=<foreign>` tab, the
+  hash-chain verifier's foreign-tenant walk (empty `ok`), the
+  cross-tenant erasure ledger and the AI-usage stats. Plain tenants keep
+  seeing only their own rows; NULL-tenant rows stay hidden from them.
+  Pinned by app-role tests (viewer reach, foreign-chain verification,
+  ledger/usage stats, switched-SYSTEM_ADMIN reach — whose planted GUC
+  stays the home tenant).
+- **Boot runs under explicit scopes.** Every database-touching lifespan
+  step (instance-fact init, bundled seed apply, integration registry,
+  demo seeding, the first-run setup-token zero-user count, stuck-exam
+  cleanup) now runs inside a `boot:<step>` system scope
+  (`app/core/boot.py`) — under RLS a closed context answered zero users
+  at the setup-token check (every boot re-announced first-run setup),
+  matched nothing at the stuck-exam cleanup, and could neither read nor
+  write the bundled pack's NULL-tenant rows; the seed applier's locked
+  apply now plants the ambient context through its own session class.
+  A new app-role boot test runs the whole sequence against a fresh
+  `*_demo` database as `neuronection_health_app`.
+- **Deploy note.** Rolling-deploy order is one-directional — new images
+  first, then migrate (or stop-then-migrate); an old process against an
+  already-migrated database fails closed. Documented in SECURITY.md
+  ("Deploy constraint"), docs/TENANCY_AND_USER_MANAGEMENT.md §2d and
+  docker/README.md; the compose `migrate` gate already enforces the order.
+- **Explicit context surfaces, no ambient system flag.** Session/api/
+  presign principals plant their context through the auth layer; the auth
+  bootstrap lookups (login/refresh/register/MFA/setup/OAuth client/
+  machine-webhook integration resolution) run in an explicit, restored
+  system scope; Celery tasks run inside a system scope planted at the task
+  boundary; the audit lane plants each event's own chain context (tenant
+  chain vs the system chain) — proven end-to-end as the runtime role by a
+  new app-role lane test; pooled connections cannot bleed contexts —
+  every transaction re-plants (and thereby resets) all settings. The
+  trends live-aggregate path now reads the GUC-filtered
+  `telemetry_live_scoped` view instead of the raw (RLS-less) hypertable —
+  the raw table stays granted for writes/erasure/retention only. See
+  `SECURITY.md` ("Row-level security") and
+  `docs/TENANCY_AND_USER_MANAGEMENT.md` §2d for the full GUC inventory
+  and the named exceptions (Timescale hypertable/caggs — the raw
+  aggregates are revoked from the runtime role and the GUC-filtered
+  `telemetry_*_scoped` views are the only aggregate surface).
+- No schema-shape change (policies and views only); no user-visible
+  capability entry — this phase hardens enforcement of existing surfaces.
+
+### Fixed (seed source lane review — program Phase 10, 2026-11-10)
+- **Pending versions are reviewable again (UI blocker).** The Sources table
+  now prefers the newest pending version for the version column and the
+  Review/Approve door — after the first apply, `current_version_id` alone
+  used to hide every freshly synced pending digest behind the approved
+  current one. Plan / apply and Revoke keep acting on the applied
+  (`is_current`) version while a pending one waits.
+- **Sources UI nits.** The seed-pack download button follows the
+  `SYSTEM_ADMIN` role (the export route requires `SEED_SOURCE_READ@SYSTEM`,
+  not `seed_source:manage`); the add-source wizard offers the secret slot
+  for registry sources too and defaults the priority into the scope's band
+  (tenant 200+, system 0–199) without clobbering a typed value.
+- **Registry credentials never follow a cross-host redirect** (the seed
+  source transport rebuilds `Authorization` per hop; same-host hops keep
+  it, a hop to a different host drops it — matching httpx's own
+  cross-origin rule). The git commit-sha `fetch` now also disables
+  redirects (`-c http.followRedirects=false`), matching the clone path.
+  An empty 200 registry body is a missing pack (`PACK_NOT_FOUND`), no
+  longer readable as a 304 "nothing new".
+- **Scheme-downgrade redirects are refused outright.** Every registry
+  redirect hop now re-runs the https-only grammar — a hop to `http://`
+  is a typed refusal before any request is sent — and the `Authorization`
+  header rides same-origin hops only (scheme + host + port, httpx's
+  cross-origin rule), so a plaintext same-host hop can no longer receive
+  the credential.
+- **The add-source wizard defaults a tenant admin into the tenant band.**
+  With the scope picker hidden (`canChooseScope={false}`), the wizard
+  derives the effective tenant scope: the priority defaults to 250 (the
+  200–999 tenant band) with a matching band hint, instead of the system
+  default 100 the backend rejected with `INVALID_PRIORITY`.
+- **Upload body cap.** The seed-source upload endpoint reads the request
+  body under `MAX_UPLOAD_SIZE` (typed `UPLOAD_TOO_LARGE`/413) before
+  parsing, instead of loading it whole.
+- **Adopt is audited exactly once, failure included.** A re-apply failure
+  after the freeze-clears commit now writes the `seed.source.adopt` audit
+  row with outcome `error` and surfaces as a typed `ADOPT_APPLY_FAILED`
+  (409) — previously the clears could persist un-audited behind a 500.
+- **`seed.apply` audit carries the source's tenant** for overlay applies
+  (was hardcoded NULL).
+- **Retire holds the apply lane's advisory lock** (global key for system
+  sources, per-source for tenant overlays), so a retirement can no longer
+  interleave with a live apply; the retire run anchors on the newest
+  version deterministically.
+- **Tenant `replaces` repoints tenant edges.** The applier's repoint is
+  lane-scoped: a system pack repoints system edges, a tenant overlay
+  repoints its own tenant's edges (and resolves the replacement row in its
+  own lane) — an overlay `replaces` never rewrites the system graph.
+- **Plan preview side effect documented.** The `GET …/plan` route says
+  exactly what it persists (the plan-mode run — the durable preview
+  history) instead of claiming to be fully read-only.
+
+### Added (Sources admin UI — program Phase 10B, 2026-11-10)
+- **Sources admin UI.** The seed source lane's surface lives at
+  `/admin/system/seed-sources` (SYSTEM_ADMIN) and `/admin/tenant/seed-sources`
+  (tenant ADMIN for their own overlays), permission-gated by
+  `seed_source:read` / `seed_source:manage` / `seed_source:approve`. It
+  renders the sources table (kind, uri/ref/subpath, pack id + version,
+  digest, declared file count, priority, scope, enabled state, last error /
+  last check), the add-source wizard (file upload or git URL + pinned ref +
+  subpath + secret slot, scope's priority band surfaced), the plan/diff
+  preview (per-stage entries with create/update/noop/skip/conflict/retire
+  badges, warnings, `update available` rows, item errors), approve /
+  reject (reason) / revoke, sync now, disable / retire, and the per-source
+  run history (status, stats, recorded plan, per-item outcomes). "Update
+  available" carries the explicit **Adopt updates** action; a PARTIAL apply
+  carries the **Re-apply** door (also the bundled lane's partial door).
+  i18n en + el throughout.
+
+### Added (seed source run history + canonical export — program Phase 10B, 2026-11-10)
+- **Per-source run history API.** `GET /admin/seed-sources/{id}/runs`
+  (newest first, ≤100: mode, status, timing, stats, version digest) and
+  `GET /admin/seed-sources/{id}/runs/{run_id}` (status/stats/error, the
+  recorded plan document, per-item outcomes from `seed_import_run_items`);
+  cross-tenant runs are the hidden 404, unknown ids `RUN_NOT_FOUND`.
+  Version summaries in the source list now carry the manifest-derived
+  `pack_files` count (`pack_id`/`pack_version`/`pack_scope`/`pack_priority`
+  join the list view too, matching the documented wire contract).
+- **Canonical seed-pack export (ADR 0056 Phase 6).** `SeedExportService` now
+  covers **every registered pack item file** — the previously missing
+  `biomarker_states.json` and `omb_race_ethnicity.json` (pack-path
+  pass-through) join the twelve — and `build_pack()` wraps the export as one
+  canonical pack (`manifest.json` + `items/*.json`, contract-validated,
+  system-scoped) with a stable whole-pack digest. The export is fully
+  deterministic: sorted, fixed field order, **no timestamps** in any
+  metadata block, and a byte-stable ZIP (fixed entry order + archive
+  timestamps). `GET /admin/seeds/export.zip` downloads that canonical pack
+  (`health-assistant-seed-pack.zip`), uploadable back to a `file` source for
+  a zero-write round trip.
+- **Drift gate.** `seed_pack.py pack --check [--against DIR]` rebuilds the
+  bundled pack in memory and compares byte-for-byte with a checked-in pack
+  directory (per-file findings, exit non-zero on drift);
+  `scripts/check-seed-pack.sh` composes the gates (contract-valid build,
+  two-build determinism, `--check` green, canonical-zip round trip, and
+  against-directory currency) and runs in CI after the backend suite.
+  `scripts/unpack_seeds_zip.py` verifies every `items/*` entry against its
+  manifest sha256 pin before writing anything, strips the `items/` prefix
+  into the flat seeds tree, and still accepts a whitelist-only flat zip.
+  Ingest-side, `metadata.last_updated` is now optional
+  (`CatalogMetadata`) so the timestamp-free canonical form re-ingests
+  unchanged.
+
+### Added (seed sources + approval lifecycle — program Phase 10A, 2026-11-10)
+- **Seed source transport (the repo's first git/URL fetcher).** `git`
+  (pinned ref — branch/tag or 40/64-hex commit — shallow clone, subpath,
+  redirects disabled, auth via a secret slot riding the environment) and
+  `registry` (HTTPS GET of a pack archive, per-hop re-guarded and
+  address-pinned, etag conditional GET, 304 = nothing new) fetches run
+  through the vendored `polite_http` SSRF guard (resolve-then-connect per
+  hop, https-only grammar, `file://`/userinfo/loopback/private/
+  numeric-literal targets refused, trusted-host allowlist + fail-open hatch
+  configurable), under size and wall-clock caps
+  (`HA_SEED_FETCH_MAX_BYTES` / `HA_SEED_FETCH_TIMEOUT_SECONDS`). A failed
+  fetch keeps every pin and records `seed_sources.last_error`; **startup
+  never fetches** — remote sources sync on a 6-hour worker beat plus the
+  admin "sync now" door. Secret slots resolve from the OS keyring
+  (`health-assistant/seed-sources`) or the `HA_SEED_SOURCE_SECRET_<SLOT>`
+  env fallback — a token never persists, never logs.
+- **Local uploads.** File sources accept a full pack zip (guarded entries:
+  `manifest.json` + `items/**.json` only; traversal, unknown entries and
+  oversized expansions are typed refusals) or a single item-file JSON
+  (wrapped into a manifest carrying the source's scope/priority); the
+  digest lands as a pending version, idempotently. Fetched/uploaded pack
+  content is cached content-addressed under
+  `HA_UPLOAD_DIR/seed-packs/<source>/<digest>.zip` so plan and apply never
+  need the network.
+- **Approval lifecycle + apply API.** `POST/GET /api/v1/admin/seed-sources`
+  and the version doors (`sync`, `upload`, `versions/{id}/approve|reject|
+  revoke|plan|apply`, per-source `adopt`, `disable`/`enable`, `retire`):
+  every version is digest-bound (`UNIQUE(source_id, digest)`), approval
+  flips the digest only (the pointer advances on a successful apply),
+  revocation re-applies the previous approved version and restores what the
+  revoked version had retired, apply defaults to the read-only plan
+  preview, and the apply door doubles as the explicit re-apply door for a
+  PARTIAL bundled apply. Retirement retires items only where no other
+  active source provides them (rows are never deleted); "update available"
+  adoption clears `user_modified` explicitly. `SYSTEM_ADMIN` runs the
+  system lane (priorities 0–199), a tenant `ADMIN` their own overlays
+  (200–999) with hidden 404s cross-tenant; every action is audited
+  (`seed.source.*` / `seed.version.*`). The manifest's scope/priority are
+  pinned to the source row at registration — the planner and applier trust
+  the source row alone, so approval and precedence can never drift.
+- **Tenant-scope seed packs.** The `TENANT_SCOPE_UNSUPPORTED` refusal is
+  gone: tenant overlay packs apply into the tenant's own rows (tenant
+  rows with tenant-qualified deterministic ids, per-tenant-scope
+  `seed_key` uniqueness), the overlay wins over the system lane for that
+  tenant, another tenant's claim never enters a tenant pack's precedence
+  decision, equal-priority different content within one tenant is a typed
+  conflict that blocks the apply, tenant vaccines' `PREVENTS` edges inherit
+  the overlay's tenancy (tenant-qualified edge ids, system disease
+  endpoints), and deferred-reference retries are scope-pinned. The
+  capability matrix (tenant packs carry only tenant-ownable types) is
+  unchanged.
+
+### Added (seed pack lane — program Phase 9B, 2026-11-10)
+- **Seed pack planner + applier (ADR 0056).** Every pack — bundled included —
+  is diffed against the database by `seed_key` before anything writes:
+  create/update/noop from a content hash, priority-ascending precedence
+  (bundled 0 < curated remote 100 < tenant overlay 200+), equal-priority
+  different content is a typed conflict that blocks the apply, higher
+  priority wins and the loser is recorded per run, `user_modified` rows are
+  never auto-updated ("update available"), homoglyph/near-duplicate names
+  warn, and dropped items are retired — never deleted — only when no other
+  approved source provides the key and no patient data references the row
+  (`replaces` renames repoint curated edges; patient FKs stay untouched).
+  The plan is stored as deterministic JSONB per run.
+- **Applied under locks, with history.** The applier holds advisory locks
+  (global for system, per-source for tenant), supersedes a crashed apply's
+  leftover ``running`` run while it holds the lock (the lock proves no live
+  applier — without one a fresh running run refuses as ``ALREADY_RUNNING``),
+  runs the app-only side stages for the bundled source only, commits one
+  transaction per pack stage (items of all
+  packs first, then edges), rolls a failed stage back completely without
+  advancing `seed_sources.current_version_id`, writes per-item run history +
+  provenance + a fail-closed `seed.apply` audit, defers unresolved
+  cross-pack references to `seed_deferred_refs` (retried on any new
+  approval — never silently skipped), and restores retired items when an
+  older approved version is re-applied (the revocation/rollback path).
+- **Bundled boot apply is digest-gated.** The bundled pack is a trusted,
+  auto-approved source: on boot its digest is re-checked and the apply runs
+  only when the digest changed (audited, per-stage transactions; a fresh DB
+  seeds fully before any admin exists). Dev loop unchanged: edit
+  `data/seeds/*.json`, restart. Production keeps the abort-on-failure boot
+  policy. A PARTIAL apply keeps the pointer — boot logs the item-error count
+  loudly instead of re-applying (a permanent item error must not restart-loop;
+  the sources admin adds the re-apply door in Phase 10).
+- **`user_modified` is wired to every human write.** Generic/domain catalog
+  writes, the anatomy structure PATCH (atlas markers), anatomy graph import,
+  HITL proposal creates and the biomarker units create
+  (`POST /biomarkers/units`) flip `seed_item_provenance.user_modified` via
+  one service hook; seed/applier writes leave it false. A flagged row is
+  frozen against pack auto-updates.
+
+### Changed (seed packs — program Phase 9A, 2026-11-10)
+- **Seeders are transaction-safe (ADR 0056).** Every seed stage now takes a
+  required session and parsed pack items, and never opens its own session or
+  commits — the caller owns the transaction (boot seeds one transaction in
+  `main.py`; the CLIs commit after their stage; the hard reseed commits
+  once). A rolled-back seed stage leaves nothing behind (pinned by tests).
+  `CatalogImportService.import_catalog` lost its internal commit and its
+  per-item error swallow: it flushes and returns typed per-item outcomes
+  (`CatalogImportResult` — every failure named, nothing silently
+  swallowed), and re-importing identical content is a true no-op.
+- **Seeds flow through the bundled pack.** `seed_all` parses
+  `data/seeds` as a validated seed pack (manifest + per-file sha256 pins —
+  no timestamps, deterministic digest) and dispatches each stage's parsed
+  items; the OMB race/ethnicity/language picklist is read through the pack
+  path by the setup wizard, never as a raw file at request time.
+- **Seed-pack lane schema (migration `0015_seed_packs`).** New tables for
+  the data-only multi-source lane: `seed_sources`
+  (bundled|file|git|integration|registry, priority/scope, secret-slot
+  credentials, approved-version pointer), immutable digest-pinned
+  `seed_source_versions` (`UNIQUE(source_id, digest)`),
+  `seed_import_runs` + `seed_import_run_items` (plan/apply history with
+  per-item outcomes and conflict payloads), `seed_item_provenance`
+  (per-row provenance, `user_modified`, active/retired/overridden states)
+  and `seed_deferred_refs` (retry queue). The fetch/plan/apply engine is
+  the next phase.
+- **Pack parser coverage matrix + bundled pack CLI.** `seed_pack.py pack`
+  builds the bundled pack from `data/seeds` (validated, byte-stable);
+  `validate`/`digest` gained whole-pack digests. The validator enforces the
+  item-type coverage matrix (unknown and app-only item types are typed
+  errors; global-only types are rejected in tenant packs), per-file/pack
+  size and JSON depth caps, field-level rules (hex colors, code format,
+  control characters), per-key-space `seed_key` duplicates and the
+  `min_app_version` gate — new typed errors joined the closed vocabulary
+  (`ERROR_CODES`, fixture-pinned).
+
+### Fixed (audit/policy review — Phase 8, 2026-11-10)
+- **Same-transaction audit writes (S1).** `log_audit_action` gained
+  `session=`: security-critical admin/policy writes (tenant security
+  policy change, tenant create/update/activate, tenant-user role/active
+  change, user create/update/password reset) now append their audit row on
+  the caller's transaction, so the action and its audit row commit or roll
+  back together — "refused rather than succeeding unrecorded" is exact.
+  Record reads keep the dedicated fail-closed audit lane.
+- **Export completeness + truncation notice (S2).** The audit export's
+  keyset pagination now carries `id` as tie-breaker (rows sharing one
+  `created_at` are all exported instead of being skipped at the page
+  boundary), and a filter set matching more than the 10 000-row cap marks
+  the stream via `X-Audit-Export-Truncated`/`X-Audit-Export-Total`
+  response headers (also recorded in the `audit.export` audit row); the
+  admin UI toasts a narrowing hint.
+- **Chain verifier no longer false-alarms on a concurrent append (S3).**
+  Rows are read before the head and a head-only mismatch is re-read once
+  before the `AUDIT_CHAIN_ALARM` — an append committing during
+  verification is a live writer, not tampering; only a mismatch persisting
+  across the re-read alarms (and it alarms exactly once).
+- **Audit diffs store persisted snapshots (S5).** Patient create/update
+  and the dashboard-layout write no longer audit the raw request dict —
+  unknown request keys cannot carry PHI past the redaction map.
+- **Session eviction semantics corrected (S6).** The concurrent-session
+  limit evicts the oldest-**created** family (ordering by
+  `auth_sessions.created_at`), not usage-based LRU — docs/ADR/UI copy
+  aligned and the behavior pinned by a test.
+- **Chain key normalization (N2).** `chain_key_for` coerces string tenant
+  ids to UUID, so a non-normalized tenant id cannot fork a parallel audit
+  chain.
+- **MFA denial reasons survive redaction (N1).** The fixed-vocabulary
+  `mfa.disable`/`mfa.confirm` denial causes moved from the `reason` key
+  (masked) to `cause`, matching the other denial rows.
+- **`audit_chain_heads` retention guard (N4).** The retention executor
+  only ever deletes chain-head rows of fully empty chains — enabling the
+  disabled policy row cannot strand a live chain.
+- **Stale SECURITY.md claim fixed (S4).** The audit-surface row now
+  describes the tenant-scoped viewer (tenant admins read their own tenant
+  at `GET /admin/audit`) instead of the pre-Phase-3 "tenant ADMINs have no
+  audit reader".
+- **Truncation headers readable cross-origin.**
+  `X-Audit-Export-Truncated`/`X-Audit-Export-Total` join the CORS
+  `expose_headers` of both policies (dev LAN regex, prod allowlist), so a
+  viewer SPA served from another origin can actually read the truncation
+  notice (pinned by a test).
+- **Chain-verifier retry truly re-reads the head.** The one re-read after
+  a head-only mismatch loads the head with `populate_existing` — plain
+  `Session.get` would answer from the session's identity map without SQL,
+  so a head cached stale by an earlier read could survive the retry and
+  turn a transient lag into a false alarm; docstring aligned.
+
+### Added (policy + audit admin UI, login policy errors — Phase 8C UI, 2026-11-10)
+- **Tenant security policy page** (`/admin/tenant/security`, admin settings
+  shell; also embedded on the SYSTEM_ADMIN tenant detail's settings tab).
+  Renders every knob — MFA-required roles with the constant always-on
+  `SYSTEM_ADMIN` chip, idle/lifetime/concurrent session windows, the CIDR
+  IP allowlist (validated add, confirmed remove), patient sharing and
+  manager scope — and saves a partial patch of exactly the changed keys
+  (an emptied nullable knob sends an explicit `null` = clear). Backend
+  `422` validation errors surface as per-field messages; the page is
+  read-only without `settings:write` (MANAGER) and links to the audit
+  stream filtered on `tenant.security_policy`.
+- **Admin audit viewer** (`/admin/audit`, gated `audit:read`). Filters for
+  actor, resource type/id, action, outcome and date range; expandable rows
+  with the redacted before/after diff and the chain position
+  (`seq` + copyable `entry_hash`); offset pagination with page size;
+  JSON (NDJSON) / CSV export downloads with the active filters. For
+  SYSTEM_ADMIN: a tenant picker plus the explicit system-wide toggle,
+  one-click chain verification with a per-chain status banner, and the
+  retention card (policies + the no-legal-holds note). ADMIN sees their
+  own tenant only — the picker/verify/retention surfaces stay hidden.
+- **Login/session policy error UX.** A session ended by the security
+  policy now explains itself on the login screen: `session_idle_expired`
+  and `session_max_age_expired` refresh denials are captured and surfaced
+  as a clear sign-out reason (no retry loop), and an `ip_not_allowed`
+  sign-in gets a network-specific message. The existing MFA
+  challenge/forced-enrollment flow covers the new policy-driven
+  `mfa_required` path unchanged.
+
+### Added (tenant security policy + admin audit surface — Phase 8B, 2026-11-10)
+- **Tenant security policy** (`GET`/`PATCH /tenants/{id}/security-policy`).
+  Every tenant can now set, in one validated surface: `mfa_required_roles`
+  (roles whose members must complete TOTP before a session is issued —
+  `SYSTEM_ADMIN` is always required and can never be waived),
+  `session_idle_minutes` / `session_max_hours` (the per-session window,
+  enforced on every request verification and on refresh),
+  `concurrent_session_limit` (at issuance the oldest-created live device
+  family is evicted — refresh chain revoked, bearer dropped, eviction
+  audited; ordering is by family creation, not usage),
+  `ip_allowlist` (optional CIDR allowlist for login and refresh — denials
+  answer `403 ip_not_allowed`), `patient_sharing` and `manager_scope` (the
+  grant-sharing knobs, surfaced with the rest of the policy). The policy is
+  normalized on read, validated on write (`422` on bad roles/CIDRs/bounds),
+  and read **per request** — a flip applies to live sessions immediately.
+  Staff can read the policy, only tenant admins (or SYSTEM_ADMIN) can
+  change it, cross-tenant access is a hidden 404, and every change is
+  audited (`tenant.security_policy`, fail-closed) with a changed-keys diff.
+  Policy-required MFA rides the existing forced-enrollment challenge flow;
+  MFA cannot be self-disabled while the policy lists the caller's role.
+- **Admin audit viewer + export + retention view.** `GET /admin/audit` is
+  now the audit surface for both roles: tenant admins (ADMIN) see their own
+  tenant's stream (a foreign `tenant_id` is a hidden 404, `?all=true` is
+  refused — both audited), SYSTEM_ADMIN keeps the system-wide stream plus
+  the system chain, narrowable by `tenant_id`. Filters: actor,
+  resource_type/id, action, outcome, date range; newest-first pagination.
+  Rows carry the tamper-evidence chain metadata
+  (`chain_key`/`seq`/`prev_hash`/`entry_hash`).
+  `GET /admin/audit/export?format=csv|json` streams the same filters
+  (up to 10000 rows) with chain metadata and the redacted diffs — and the
+  export itself is audited (`audit.export`, fail-closed).
+  `GET /admin/audit/retention` (SYSTEM_ADMIN) shows the `retention_policies`
+  rows governing audit data and documents that there is no legal-hold
+  registry yet; there is deliberately no deletion endpoint.
+
+### Added (audit tamper-evidence + failure policy — Phase 8A, 2026-11-10)
+- **Tamper-evident audit hash chain.** Every `audit_events` row now extends a
+  per-tenant SHA-256 chain (`chain_key`/`seq`/`prev_hash`/`entry_hash`,
+  migration `0014_audit_chain` with a full backfill of pre-chain rows;
+  system-level rows form their own `"system"` chain). Appends serialize on a
+  per-chain head row (`audit_chain_heads`), never on the audit table. A new
+  `GET /admin/audit/verify` (SYSTEM_ADMIN; `?tenant_id=`, `?all=true`)
+  walks each chain — sequence contiguity, hash links, canonical recomputation
+  and the head — and answers `{ok, first_bad_seq, reason}`; a gap or mismatch
+  is a tamper alarm (`AUDIT_CHAIN_ALARM` critical log, no resync marker).
+- **Fail-closed audit policy (S3).** `log_audit_action` gained
+  `required=True`: every write / admin / grant / auth-event callsite raises
+  `AuditWriteError` when the audit write cannot be recorded — an unrecorded
+  action is refused (500) instead of silently dropped. PHI reads
+  (`@audit_read`) fail closed the same way: a read whose audit write fails
+  answers 500, never the record. The only best-effort lane is the
+  post-rollback denial/error record inside `@audit_read` (its failures alarm
+  at CRITICAL). Audit writes moved to a dedicated small pool
+  (`AUDIT_DB_POOL_SIZE`, default 4).
+- **Write-time PHI redaction.** Both audit diff payloads pass a PHI map
+  before store (identity/name shapes, birth dates, contact/address fields,
+  mrn/ssn, free-text clinical fields, filenames); ids, statuses, timestamps
+  and HTTP codes pass through so audits stay operationally useful. Fixed
+  denial vocabularies moved from `reason` to `detail`/`cause` keys so
+  free-text `reason` is masked everywhere.
+- **Authz-gate denial auditing (S7).** The central route gate records one
+  `authz_denied` row per gate-level 403 (request-scoped dedupe; required,
+  fail-closed, with a system-chain fallback when the caller's tenant row is
+  gone). `@audit_read` keeps owning handler-level outcomes — no request is
+  double-recorded.
+- **Presign token hygiene (S8).** Download tokens now carry `tenant_id`, and
+  download/preview re-verify the token's tenant against the document's
+  tenant plus the `user_id` claim against the live, active user row —
+  deactivating or deleting a user kills their outstanding tokens within the
+  5-minute TTL. Tokens missing either claim are invalid.
+
+### Fixed (care-team grants revise — Phase 7, 2026-11-10)
+- **Grant audits are actually written.** The state machine's audit helper was
+  synchronous and never awaited the audit write, so grant transitions left no
+  `audit_events` row despite the docs. Every transition (create / accept /
+  decline / revoke / update / expiry) now awaits the audit; tests assert one
+  row per transition (actor, action, resource, outcome) with id-shaped
+  payloads — no free-text reason, no PHI.
+- **Task monitoring is grant-aware.** The task-monitor owner filter gave every
+  USER only their own rows and every MANAGER the tenant view. It now follows
+  patient reach (own + active grants; `manager_scope` honored): an
+  `assigned`-scope MANAGER sees no unreachable rows (retries answer 404), a
+  granted USER sees the granted rows, and documents with no patient stay
+  uploader-only for restricted roles.
+- **Expiry sweep wired.** `expire_due_grants` now audits each flip
+  (`grant_expire`, system actor) and notifies the grantee and the grantor,
+  and a Celery beat task (`expire_patient_access_grants`, every 15 minutes)
+  runs it — read paths already ignore expired grants by predicate.
+- **Accepting a share re-validates it.** A pending share is judged by the
+  rules at accept time: a grantee demoted off staff answers 403, a tenant
+  that switched `allow_patient_share` off answers 409.
+- **Duplicate races answer 409.** The partial unique index (one active grant
+  per identity per patient) now maps `IntegrityError` on grant create/accept
+  to a typed 409 with a clear detail instead of surfacing a raw error.
+- **PATCH access grants: explicit clear semantics.** A JSON `null` for
+  `expires_at`/`reason` clears the field; an omitted field is left unchanged.
+  The Access tab edit form now clears emptied fields on save (with a hint) —
+  previously a cleared field was silently ignored.
+- **`GET /notification-rules` follows patient reach.** Without a
+  `patient_id`, restricted roles (USER; an assigned-scope MANAGER) see only
+  rules attached to patients they can reach — other patients' rules and
+  tenant-wide rules stay hidden; tenant-wide roles keep the full list.
+- Smaller fixes: the unreachable USER branch in examination bulk-delete is
+  removed (the central `clinical:delete` gate already restricts it to staff);
+  `canPatient` UI hints ignore revoked/expired grants; the guardian grant
+  form shows "Grant" (guardian grants are immediate) instead of "Send
+  request"; the tenancy doc points at the real `PATCH /tenants/{id}` path.
+
+### Added (care-team access UI — ADR 0054 Phase 2, part B, 2026-11-10)
+- **Patient Access tab.** Every patient record gains an **Access** tab
+  (`/patients/{id}/access`) next to Overview: who has access (grantee,
+  permission, source, status, expiry, granted/accepted dates, reason),
+  the settled history (revoked / expired / declined), grant / edit-expiry
+  / revoke with confirmation, and an audit-log link for system admins.
+  Staff grant `care_team` access to a staff member or a linked doctor
+  entry; ADMINs can additionally grant `guardian` access to ownerless
+  records; the record's owner gets **"Share with my doctor"** (a pending
+  `patient` share the invitee must accept). Actions are role-aware and
+  mirror the server's `patient:grant` + own-patient rules; backend
+  403/404/409/422 details surface as toasts — never a 403 loop.
+- **Admin Access page** (`/admin/tenant/access`, permission-aware nav and
+  route guard): the tenant **record-sharing policy** — `manager_scope`
+  (whole tenant vs assigned-only) and `allow_patient_share` — read with
+  `settings:read` and written through `PATCH /tenants/{id}` by
+  ADMIN/SYSTEM_ADMIN (read-only badge for managers), plus a **grant
+  ledger inspector** (pick a patient, filter by status/grantee) and the
+  caller's own incoming share requests. The tenant-wide grants list
+  endpoint is a plan-D Phase-3 item; the inspector walks per-patient
+  ledgers until then.
+- **Patient self-service.** My Account gains an **Access requests** card:
+  incoming pending shares with Accept / Decline (`/me/access/grants`
+  accept/decline), the records currently shared with you, and a pending
+  count badge; a request, acceptance or revocation notifies the affected
+  party through the existing notification stream. Accepting re-hydrates
+  the `/me/access` mirror so per-patient UI hints follow immediately —
+  `canPatient` now ranks the caller's incoming grants (read < write <
+  admin) as a UI hint, with the server still enforcing everything.
+
+### Added (care-team access grants — ADR 0054 Phase 2, 2026-11-10)
+- **Care-team / patient access grants.** Staff can now grant another member
+  (a user account or a linked doctor entry) access to a specific patient's
+  record with a ranked permission — `read`, `write` or `admin` — an optional
+  expiry and a reason, from the patient's new **Access** surface:
+  `GET/POST /patients/{id}/access`, `PATCH/DELETE /patients/{id}/access/{grant_id}`.
+  Patient-initiated sharing ("share with my doctor") creates a **pending**
+  request the invited staff member accepts or declines via
+  `/me/access/grants` (+ `accept`/`decline`), gated by the tenant's
+  `allow_patient_share` setting; admins can grant `guardian` access to
+  patients without an owner account. Every transition (grant, accept,
+  decline, update, revoke, expiry) is audited and notifies the affected
+  party. Break-glass is deliberately not a grant source — emergency
+  elevation is a separate mechanism.
+- **Grants reach every query surface.** Patient lists, examinations,
+  global search, per-patient analytics, allergy alerts, documents (view,
+  presign, edit, delete — visibility now derives from patient access rather
+  than `owner_id` shortcuts), task monitoring and import patient-scoping
+  all honor own + active grants; a `read` grant never satisfies a write,
+  and export is never implied by a grant (ADR 0054 D5).
+- **`manager_scope` tenant setting.** `tenants.settings.manager_scope`
+  (`tenant`, the default, or `assigned`) narrows every MANAGER in the
+  tenant to their own records + care-team grants; read per request, so a
+  flip applies on the caller's next request without a re-login. Documented
+  in [TENANCY_AND_USER_MANAGEMENT.md §2b](docs/TENANCY_AND_USER_MANAGEMENT.md).
+
+### Fixed (authorization phase-6 revise, 2026-11-10 — ADR 0054)
+- **`MANAGER` can promote catalog items between user and tenant scope
+  again.** The central gate required `catalog:promote` at tenant scope, a
+  permission `MANAGER` did not hold — while `CatalogAccessPolicy`
+  (`check_promote`) and the catalog workspace's promote control both
+  advertised MANAGER user↔tenant transitions. `MANAGER` now holds
+  `catalog:promote` at the role default (tenant); `USER` is unchanged
+  (denied at the gate) and system transitions stay `SYSTEM_ADMIN`-only.
+- **`PUT /api/v1/users/{id}` is admin-only, explicitly.** The gate requires
+  `user:role_assign @ tenant` (ADMIN/SYSTEM_ADMIN), which made the
+  handler's `is_self` branch unreachable; the dead branch is removed and
+  the handler re-asserts the admin fact as defense-in-depth. Profile
+  self-service stays at `/settings/user`.
+- **The "access denied" toast now fires only for central-gate denials.**
+  The gate marks its 403s with an `X-Authz-Denied: 1` response header
+  (exposed to the SPA via CORS); row-level denials (e.g. an in-tenant
+  patient the caller does not own) keep the same status code without the
+  marker and surface to the calling code as before, instead of raising a
+  misleading "your role does not allow this action" toast.
+- **`GET /api/v1/import/jobs` and `GET /api/v1/import/jobs/{job_id}` no
+  longer leak other members' import metadata to `USER` accounts** — they
+  see only their own jobs, list and detail alike (the same answer as
+  export jobs); a foreign or nonexistent job answers the same 404 with no
+  existence disclosure. Staff roles keep the tenant-wide view; the USER
+  list filter now runs in the query, so own jobs are not crowded out by
+  staff rows before the limit.
+
+### Changed (permission-aware frontend, 2026-11-10 — ADR 0054 Phase 6/1b)
+- **The UI now mirrors `GET /me/access`.** After sign-in, session restore and
+  tenant (re)switching, the frontend hydrates the caller's permission set,
+  roles, tenant and grant lists (`can()` / `canAny()` / a Phase-7
+  `canPatient()` placeholder, `useAccess` / `useCan` hooks). Admin,
+  settings, audit and seed-source routes render behind a `RequirePermission`
+  guard that shows a clear "No access" page (`/no-access`, EN+EL) instead of
+  a guaranteed 403; the sidebar hides entries the caller holds no permission
+  for. Server enforcement is unchanged — the mirror only hides and disables.
+- **Visibility follows the role matrix.** `USER` accounts get the patient
+  list again (their own records — see the scope fix below); `MANAGER` loses
+  the user directory (`user:read`) and OAuth-client management
+  (`integration:manage`) from nav and routes, keeping tenant settings.
+  A 403 from the central gate surfaces as one throttled "access denied"
+  toast (no retries, no loops).
+- **`GET /api/v1/patients` requires `patient:read` at `own` scope** (was
+  `tenant`): the handler already filtered `USER` accounts to their own
+  patients, so the tenant-wide requirement denied them a list of their own
+  records. Staff roles (`ADMIN`, `MANAGER`, `SYSTEM_ADMIN`) still see the
+  tenant list; `GET /patients/{id}` keeps `grant` (the row-level ownership
+  answer, hidden-404 cross-tenant, is unchanged).
+
+### Changed (central authorization enforcement, 2026-11-10 — ADR 0054 Phase 6/1b)
+- **Every route is now authorization-enforced centrally.** The app-level
+  route gate resolves each request's policy from the central resolver
+  (`backend/app/core/authz/route_policy.py`) — permission + required access
+  scope for session routes, the class mechanism for public/auth/token/WebSocket
+  surfaces — and denies (403) anything it cannot resolve (fail closed).
+  Concretely for clients: a signed-in session that reaches for a surface its
+  role does not hold at the required scope now gets `403` where it previously
+  hit the endpoint (most surfaces are unchanged; the resource-level
+  ownership answers, including hidden 404s, stay exactly as before).
+  Two deliberate tightenings from the reviewed role matrix: the tenant-wide
+  patient list `GET /api/v1/patients` now requires `patient:read` at
+  **tenant** scope (`USER` accounts are denied — patient-scoped and
+  self-service surfaces are unchanged), and the user directory
+  (`GET /api/v1/users`) requires `user:read`, which is `ADMIN`-side
+  (`MANAGER` is denied at the gate; invites are unchanged). `RoleChecker` /
+  `require_admin` remain as defense-in-depth pins.
+- **New: `GET /api/v1/me/access`** — the health-owned authorization identity
+  surface (session auth-only): `{user, roles, permissions, tenant,
+  patient_grants, pending_grants}` for the frontend's `can(permission)`
+  model (grants are populated by the upcoming care-team phase). The family
+  `GET /auth/me` `PublicUser` shape is unchanged.
+
+### Fixed (seed identity hardening, 2026-11-09, internal)
+- **Panel membership edges can no longer bind a tenant biomarker.** The
+  `biomarker_panels` seeder resolved its endpoints by slug; a tenant
+  biomarker whose slug collided with a curated panel member (e.g.
+  "Hemoglobin") could be bound into a system `source=seed` `MEMBER_OF` edge.
+  Both endpoints now resolve by identity (derived `uuid5` of
+  `concept:<panel>` / `biomarker:<slug>`, then the `seed_key` column, system
+  rows only) — the same rule every other seeder follows.
+- **The hard reseed no longer risks silently nulling user links.** Its
+  preflight refused only the two RESTRICT shapes; the catalog FKs on
+  instance rows (`fhir_medications`, `fhir_allergy_intolerances`,
+  `patient_immunizations`), the clinical-event anatomy FKs and tenant
+  concept children of system parents are `SET NULL`/`CASCADE` — deleting a
+  referenced system row would silently break them. The preflight now
+  counts these too and refuses (typed `CuratedResetBlocked`) before
+  deleting anything. The FK inventory is discovered generically from the
+  database catalog (every `SET NULL`/`CASCADE` FK into a table the reset
+  truncates), which also closes the shapes a hand-rolled list would have
+  missed: tenant biomarkers and tenant reference ranges pinning curated
+  `units` rows, tenant notification rules on system biomarkers, and
+  observation unit/biomarker links are all refused now instead of silently
+  nulled or destroyed. Seed-recreated catalog child rows (concept kind
+  tags, biomarker reference ranges, allowed states) cascade away with
+  their truncated parent and do not block.
+- **A fresh install built from an export keeps unit ids.** Exported units
+  carry only `{id, symbol, …}` (no `seed_key`); the importer used to mint a
+  random id, so re-exports drifted. An explicit unit `id` is now honored at
+  creation (a foreign id is a typed conflict), keeping re-exports stable.
+- **Pending proposals no longer suppress curated seed edges.** The
+  concept-edges and panel-membership seeders treated any existing tuple
+  (including a pending/rejected proposal) as "unchanged"; only an `APPROVED`
+  tuple short-circuits now, so the curated approved edge is always
+  materialized alongside the proposal.
+
+### Removed (vaccine API, 2026-11-09)
+- **`target_diseases` is gone from the vaccine API and schema.** Vaccine →
+  disease links are graph data: the curated `vaccines.json` lists materialize
+  as approved `PREVENTS` `concept_edges` rows (migration
+  `0012_vaccine_target_edges` drops the JSONB column and upgrades existing
+  rows in place), queryable via `GET /catalogs/{type}/{id}/relations` and
+  editable through the graph-links API. Sending `target_diseases` to vaccine
+  create/update is now a `422`, and vaccine responses no longer carry the
+  key (the seed/import path resolves the readable refs by identity, never by
+  slug). The Catalogs UI field is removed with it — the links editor is the
+  surface for disease links.
+
+### Changed (seed identity, 2026-11-09, internal)
+- **Seeds upsert by immutable identity, not by name/slug.** Every curated
+  seed item in `backend/data/seeds/` now carries a mandatory, stable
+  `seed_key` (`medication:amoxicillin`, `concept:diabetes`, `unit:mg-per-dl`,
+  …); the seeded row id is derived from it deterministically
+  (`uuid5`), so renaming a seed item updates the row in place instead of
+  forking it, and reseeds are id-stable. Medication seeds carry real ATC
+  codes (allergy codes stay open until verified SNOMED substance codes are
+  curated — none are invented). No user-visible behavior change: the boot
+  seed pipeline produces the same vocabulary, now with stable ids.
+- **Hard reseed CLI for pre-identity installs:** `cd backend && uv run
+  python scripts/seed.py --reset-curated` replaces the curated **system**
+  catalog rows (deterministic ids), never tenant rows, and refuses (typed
+  error) while tenant rows still pin system rows through RESTRICT FKs.
+  Existing dev installs created before the identity model should run it once.
+
+### Fixed (catalog browse-create, 2026-11-09)
+- **The biomarker slug is truly server-owned.** A biomarker created without a
+  `slug` — a prefilled browse-dialog or HITL proposal name — no longer fails
+  with an opaque `422`: the write service derives the slug from the name with
+  the same deterministic algorithm as vaccine (non-Latin names fall back to a
+  `biomarker-<digest>`), makes it unique per tenant scope with an auto-suffix
+  (`-2`, `-3`, …), and returns it. Both doors (`POST /biomarkers/` and
+  `POST /catalogs/biomarker`) behave identically; an explicit slug stays
+  honored (seed/import contract) and a duplicate still collides → `409`. The
+  shared definition dialog never sends a `slug` on the wire (the form's live
+  derivation is display-only); backend 422 validation arrays now render as a
+  readable first message (`field: msg`) in the dialog and the workspace.
+- **A partial failure after the create can no longer duplicate the
+  definition.** If the reference-range sync or the link write fails after the
+  create succeeded, the dialog reports the created row and closes with a
+  distinct "saved, but ranges/links failed" toast instead of keeping a draft
+  whose retry would create a second row.
+- **A failed graph link is retried at confirm instead of being dropped.** The
+  dialog's `onCreated` now carries the subset of links it actually persisted
+  (`meta.persistedLinks`), and the HITL medication/allergy handlers seed their
+  delta-ref with only those — a link that failed in the dialog is re-persisted
+  once at confirm time.
+- Magic Fill's catalog search failure (network/backend error) no longer
+  toasts "not in the catalog" — only a genuinely empty result does; failures
+  get a generic error toast. The allergy form's programmatic pick (HITL
+  confirm-after-create) now runs the same category sync as a manual pick, and
+  a failed catalog-type metadata load in the definition dialog shows an
+  inline explanation instead of a dead Save button.
+- The shared definition dialog no longer renders an editable biomarker Slug
+  field it would silently discard (`serverOwnedSlug` disables it — the live
+  derivation stays display-only); the admin workspace keeps its explicit-slug
+  door. A derived biomarker slug base is capped at 77 chars so a `-2`
+  auto-suffix stays within the 80-char identifier bound, two tenants can
+  derive the same slug without cross-tenant `409`s (regression-tested), and
+  a throwing `onCreated` caller can no longer receive a second report for the
+  one created row.
+
+### Changed (catalog definitions, 2026-11-09)
+- **Catalog definitions are created from the catalog browse dialog — not from
+  the record forms.** Single-type pickers gained an opt-in **New \<type\>**
+  action in the browse list header (single-select + list view only) that opens
+  one shared definition dialog (`CreateCatalogItemModal`) built on the same
+  registry forms the admin workspace uses. It writes through the unified
+  generic create contract (no per-type branching, no client-sent
+  slug/`seed_key`), reconciles biomarker stratified reference ranges after
+  the create, persists graph links via the type's `edge_endpoint_type`, and
+  selects the new item in the picker. Medication definitions keep an AI
+  assist (`define_medication`); allergy and biomarker have none.
+- **The inline define-new panels are gone.** Prescription, allergy and
+  vaccination forms only pick existing catalog items; the record modals no
+  longer create catalog rows on submit (`is_new_catalog_entry` is deleted,
+  payloads take `code`/`vaccine_code` from the selection only, and Save
+  requires a selection). The examinations "create new definition" CTA and the
+  `CreateBiomarkerModal` are replaced by the same shared dialog (also used by
+  the unmapped-biomarker affordance). Magic Fill on an unmatched name now
+  toasts "not in the catalog — define it via Browse → New" instead of
+  opening an inline definition panel.
+- **AI-suggested new definitions open the same create dialog.** When an
+  unmatched proposal arrives (`is_new` / `matched: false`), the HITL
+  medication, allergy and add-biomarker forms show a persistent
+  "AI suggested a new \<type\> — Define it" chip that opens the shared
+  definition dialog prefilled with the proposal's definition fields and graph
+  links only (no patient-instance text). Creating the definition selects it
+  on the form (links are written once, by the dialog); cancelling keeps the
+  chip; Reject still records `dismissed`. The HITL proposal popup now yields
+  Escape to nested dialogs (create dialog → browse → proposal popup).
+- The AI-reprocess doors (`POST /medications/catalog/{id}/reprocess`,
+  `POST /allergies/catalog/{id}/reprocess`) now serialize their response
+  through the shared `serialize_catalog_row` projection like every other
+  domain door — a legacy class-concept link invisible to the caller projects
+  to null slug/name with the id kept.
+
+### Changed (catalog write contract, 2026-11-09)
+- **Every catalog (medications, allergies, vaccines, biomarkers, anatomy,
+  concepts) now has one write contract.** The generic `/catalogs/{type}`
+  endpoints and the domain routes (`/medications/catalog`, `/biomarkers/`,
+  `/concepts`, `/anatomy`, ...) validate against the same typed per-type
+  schemas and run the same service — both doors accept and return identical
+  full rows (codes, class-concept slug/name, scope, computed fields), and
+  domain catalog creates now answer `201` (previously `200`).
+- **Unknown or system-owned fields are rejected with `422` instead of being
+  silently dropped** — `scope`, `tenant_id`, `created_by`, `seed_key` and
+  typos can no longer be smuggled into a create/update. `seed_key` is
+  response-only; `coding_system`/`code` (RxNorm/ATC, SNOMED) are now writable
+  on medications and allergies; biomarker create/update accept `description`,
+  `class_concept_slug`, `preferred_unit_symbol` and persist `reference_ranges`
+  on create; an unknown unit symbol is a `400`, not a silently ignored field.
+- **Vaccine slugs are derived server-side from the name** (display-only, per
+  tenant-scope unique) — sending `slug` is now a `422`; two same-named
+  vaccines in one tenant answer `409` instead of leaking an IntegrityError.
+- **Uniqueness conflicts are typed `409`s** (`{"code": "catalog_conflict",
+  "field": ...}`) with a clear message: duplicate medication/allergy
+  `(coding_system, code)`, duplicate derived vaccine slug, duplicate concept
+  slug — rolled back cleanly, never a raw 500. The same failure produces the
+  same status from the generic and the domain door. The same translation now
+  also covers the paths a scope transition or a reference write can take into
+  a constraint: demoting into a colliding `code` answers `409 field=code`,
+  promoting into a colliding `seed_key` answers `409 field=seed_key`, and a
+  reference the pre-checks could not validate (FK violation) answers `400` —
+  no catalog write leaks a 500 for a bad client value.
+- **Concept writes work through `/catalogs/concept`** (previously hard-405):
+  create/update/delete dispatch to `ConceptService`, so kind-sync, the
+  retire-on-edges lifecycle, curated-taxonomy RBAC and audit are identical
+  from both doors; only scope `promote` stays `405` for concepts.
+- **Explicit reference ids are visibility-checked.** A client-supplied
+  `class_concept_id`, concept `parent_id` or anatomy/biomarker class id must
+  point at a system row or the actor's own tenant — anything else (bogus id
+  included) is a typed `400` that names no hidden row, on create and update
+  and on both doors. An explicit `class_concept_slug` / `parent` slug that
+  does not resolve (unknown **or** another tenant's) is likewise a `400`
+  instead of silently dropping the link; the one deliberate exception is the
+  biomarker `category` string, which stays best-effort (documented in
+  `docs/API.md`). Anatomy class references now follow the same explicit
+  id-wins-over-slug precedence as the other types.
+- **Biomarker update can clear a reference.** `preferred_unit_id: null` /
+  `class_concept_id: null` (and a nulled `preferred_unit_symbol`) are now
+  persisted as clears — the payload distinguishes "not sent" from "explicit
+  null" — and an unknown unit id is a `400` rather than an FK 500.
+- **Anatomy update slug duplicates are `409`** (field=`slug`), pre-checked on
+  both doors — the table has no unique index, so the create-path pre-check now
+  has an update-path twin.
+- All catalog writes are now audited on both doors, and all existence
+  lookups (class-concept/category resolution, slug/code collision checks) are
+  tenant-scoped — one tenant's rows can never satisfy or shadow another
+  tenant's write.
+- **Catalog delete responses share one envelope** — every domain door
+  (medication/allergy/vaccine/biomarker/anatomy) now returns
+  `{"status": "success", "message": "<type> item deleted"}`, matching the
+  generic `/catalogs/{type}` delete.
+- **Reference display is visibility-projected on reads.** The catalog
+  serializers resolve `class_concept_slug` / `class_concept_name` /
+  `parent_slug` only when the referenced concept is visible to the caller
+  (system row or the caller's tenant, not soft-deleted). Legacy rows whose
+  stored link predates the visibility checks project to `null` for viewers
+  that cannot see the referenced concept — the stored `class_concept_id` /
+  `parent_id` is never rewritten, and the concept's owning tenant still sees
+  the real slug/name. This now includes the domain read doors
+  (`GET /medications/catalog[/{id}]`, `GET /allergies/catalog*`,
+  `GET /vaccines/catalog*`, `GET /anatomy[/{id}]`), which previously echoed
+  the hidden link's slug/name through the ORM properties.
+- **Class-reference precedence is uniform: a sent id wins, an explicit null
+  clears.** On update, `class_concept_id: null` sent together with
+  `class_concept_slug` now clears the link on medication, allergy, vaccine
+  and anatomy too (previously the slug silently won there while the biomarker
+  cleared); a non-null id beats a slug sent alongside on every type
+  (fields-set semantics), and an unknown/cross-tenant slug stays a `400` on
+  create and update.
+- **The admin catalog workspace writes every catalog type through the one
+  generic contract** — including concepts and anatomy, which previously took a
+  separate `/concepts` + `/anatomy` dispatch. `GET /catalogs` now exposes each
+  type's `write` contract (create/update field allowlists + `supports_promote`),
+  the workspace filters every save to exactly those fields (unknown keys would
+  422), updates send only changed fields (fetched fresh when the row has
+  scrolled out of the loaded page — a full-field body would 422; object
+  values such as anatomy `display` compare key-order-insensitively, and an
+  explicit `null` over a stored value is sent so references clear), and
+  Restore (retired concepts) stays concept-only. Concept/anatomy create links
+  now persist after the primary create, matching the other catalogs.
+
+### New (examinations — create popup, 2026-11-08)
+- **New examination now opens a popup with the full single-visit form** —
+  date, documents (dropzone, camera on mobile, per-file AI-extraction toggle),
+  clinical notes, category, facility, attending doctors and patient notes — and
+  saves the examination plus its documents in one step. "New examination" in
+  the Create menu, the examinations list, and both patient summary cards opens
+  it. The examinations list exposes a separate **Smart & bulk upload** action
+  for AI extraction and bulk grouping on `/examinations/upload` (now opening in
+  Smart mode), and the getting-started guide is updated to match.
+
+### Changed (record popups — one shell, 2026-11-08)
+- **Add/edit popups for vaccinations, medications, allergies, clinical events,
+  biomarker definitions and biomarker readings now share one shell.** The
+  header (icon, title, description, one top-right close), the scrolling content
+  area and the footer (Cancel · [Reject] · Save) are defined once; forms render
+  fields only and report validity so the shell's Save reflects the draft. The
+  duplicated per-form close buttons are gone, the header and footer stay pinned
+  while the fields scroll, and the add-biomarker / log-reading hand-rolled
+  overlays now run on the same accessible dialog (Escape, focus trap, focus
+  restore).
+
+### Fixed (medications — status contract, 2026-11-08)
+- **Saving a medication no longer fails with 422 when the form sends
+  `status: "active"`.** The internal API uses the canonical uppercase enum
+  (`ACTIVE`, `ON_HOLD`, `ENTERED_IN_ERROR`); `medicationService` now
+  translates both directions at the API boundary, so every UI caller keeps the
+  FHIR-style spelling. The same normalization fixes active-medication
+  scheduling, calendar entries, status colors and the edit form's status
+  select. Added the missing `inactive` / `cancelled` / `entered-in-error`
+  options.
+
+### Fixed (dashboard — stale patient selection, 2026-11-08)
+- **A persisted patient that no longer exists no longer spams the dashboard
+  with 404s.** The dashboard validates the stored selection on load and clears
+  it (returning to "No Patient Selected") when the record is gone — the dev DB
+  reset / deletion / tenant-switch case.
+
+### Security (authorization — intra-tenant USER scope, 2026-11-08)
+- **A `USER` can no longer attach data to, or read exports of, another
+  member's patient.** Document upload, the FHIR/CSV/OCR importers, telemetry
+  ingest and patient ownership assignment now run the canonical
+  `check_patient_access`/same-tenant user checks; full-backup restore is
+  `ADMIN`-only. Export job status/download is object-gated (own patient-scoped
+  jobs only; ADMIN/MANAGER tenant-wide) and no longer exposes server file
+  paths. Biomarker retry/remap require tenant scope plus the catalog policy;
+  doctor edits/deletes are owner-scoped for `USER`; the task monitor and
+  `/ws/tasks` now scope a `USER` to their own task rows/events (MANAGER+ keep
+  the tenant-wide stream) and no longer carry raw worker exception text.
+- **The last `SYSTEM_ADMIN` cannot erase their own account**, and account
+  erasure now requires the account password — including through the generic
+  `/data-lifecycle/erasures` API (which otherwise bypassed the gate); the
+  admin `DELETE /users/{id}` route refuses self-erasure and points at the
+  password-confirmed self-service path.
+
+### Security (authentication & deployment, 2026-11-08)
+- **Password rotation exists** — `PATCH /me/password`, admin
+  `POST /users/{id}/reset-password` and `POST /users/{id}/force-logout`; the
+  Settings → Security "Change password" card is wired. A change revokes every
+  token family, so the user signs in again. Passwords over bcrypt's 72-byte
+  limit are rejected instead of silently truncated.
+- **Role and active-state changes on the SYSTEM_ADMIN tenant-user surface now
+  revoke tokens immediately** (the `PUT /users` surface already did), closing
+  a stale-ADMIN window of up to the 60-minute access TTL.
+- **A `MANAGER` can only invite `USER` accounts**, completing the role ladder;
+  the MFA challenge is genuinely single-use under concurrent verify, and a
+  logout with a foreign refresh token no longer revokes that user's family.
+- **The setup token is required on non-dev instances even from localhost**, so
+  a host-level reverse proxy can no longer re-open unauthenticated first-claim.
+  The shipped compose defaults `HA_TRUSTED_PROXY_COUNT=1` (one nginx hop) so
+  per-IP limits stay per-client, and `HA_COOKIE_SECURE` is passed through and
+  documented in the TLS instructions. TrustedHost now fails closed when
+  neither `APP_URL` nor `FRONTEND_URL` parses.
+- **Integrations OAuth callbacks are session-bound** (same principal-bound
+  state rule as the calendar lane); ZIP imports cap decompressed
+  size; OCR failures store a typed message instead of raw exception text.
+
+### Security (supply chain & CI, 2026-11-08)
+- Every GitHub Actions reference is pinned by commit SHA (tags kept in
+  comments), the release workflow scopes `contents: write` to the release job
+  and passes its dispatch input through `env` (no `run:` interpolation), and
+  the gitleaks tarball is checksum-verified. A value-scoped gitleaks allowlist
+  covers the two synthetic contract fixtures.
+- Dependencies: nltk 3.10.4 (HIGH advisory), langgraph 1.2.20 (MEDIUM),
+  i18next-http-backend 4.0.10 (LOW ×2), minimatch ≥11.0.1 (dev tooling).
+
+### Fixed (clinical ingest — one-sided reference ranges, 2026-11-08)
+- **A printed one-sided reference is stored on the correct side.** `< X` /
+  `≤ X` is persisted as max-only and `> X` / `≥ X` as min-only (the NLP
+  prompts now state the convention), and a write-time sanitizer uses the
+  extracted interpretation flag to correct an inverted bound from weaker
+  models. Backend status no longer flags a one-sided out-of-range value as
+  Normal (the 0.5 relative-score fast path is now two-sided only). Existing
+  rows are not rewritten; a data-repair pass is a separate follow-up.
+
 ## [v0.9.0] - 2026-11-06
 
 ### Fixed (AI — local providers work without DEBUG, 2026-11-07)

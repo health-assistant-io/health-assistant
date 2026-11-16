@@ -26,6 +26,11 @@ import re
 from typing import Any
 from uuid import UUID
 
+from app.extensions.capabilities import (
+    bundled_manifest,
+    grant_for_domain,
+    manifest_risk_class,
+)
 from app.extensions.errors import ExtensionError
 
 logger = logging.getLogger(__name__)
@@ -198,11 +203,44 @@ def _extract_text_result(result: Any, max_bytes: int) -> str:
     return text
 
 
+def authorize_tool_risk(domain: str | None, risk_class: str, principal: Any) -> str | None:
+    """Map a tool's risk class to the acting principal's scopes (T3).
+
+    ``CapabilityGrant.authorize_tool`` is the one risk-class → permission
+    mapping: it yields the permission family the manifest declares for that
+    class. The call is allowed when the acting principal holds any of those
+    permissions. A declaration that carries *no* family for the class (a
+    passthrough proxy with no data classes) sits outside the database-
+    permission model by design — its tools are bounded by the chat route
+    (``ai:use`` + patient access), the per-tool allowlist and the result caps,
+    and the host never hands the process a database handle.
+
+    Returns ``None`` when allowed, otherwise the refusal reason.
+    """
+    from app.core.authz.roles import principal_permissions
+
+    grant = grant_for_domain(domain)
+    try:
+        required = grant.authorize_tool(risk_class)
+    except ExtensionError:
+        return None
+    if principal is None:
+        return None
+    if principal_permissions(principal) & required:
+        return None
+    return (
+        f"the acting principal holds none of the {risk_class!r} permissions the "
+        f"{domain!r} declaration requires"
+    )
+
+
 def adapt_tool(
     integration,
     mcp_tool,
     instance_slug: str,
     connection_manager,
+    *,
+    principal: Any = None,
 ) -> Any:
     """Wrap a single MCP ``Tool`` as a LangChain ``StructuredTool``.
 
@@ -270,15 +308,37 @@ def filter_and_adapt_tools(
     integration,
     mcp_tools: list[Any],
     connection_manager,
+    *,
+    principal: Any = None,
 ) -> list[Any]:
-    """Adapt a list of MCP tools, dropping any that fail validation/filtering."""
+    """Adapt a list of MCP tools, dropping any that fail validation/filtering.
+
+    The provider's declared tool risk class is authorized against ``principal``
+    (the integration's scoped principal when the caller resolved one) before a
+    tool is exposed — see :func:`authorize_tool_risk`.
+    """
     instance_slug = sanitize_instance_slug(
         getattr(integration, "instance_name", None) or "", integration.id
     )
+    raw_domain = getattr(integration, "provider", None)
+    domain = raw_domain if isinstance(raw_domain, str) else None
+    risk_class = manifest_risk_class(bundled_manifest(domain) if domain else None)
+    refusal = authorize_tool_risk(domain, risk_class, principal)
+    if refusal is not None:
+        logger.warning(
+            "MCP %s: dropping %d tool(s) for instance %s — %s",
+            risk_class,
+            len(mcp_tools),
+            integration.id,
+            refusal,
+        )
+        return []
     adapted: list[Any] = []
     for t in mcp_tools:
         try:
-            tool = adapt_tool(integration, t, instance_slug, connection_manager)
+            tool = adapt_tool(
+                integration, t, instance_slug, connection_manager, principal=principal
+            )
         except Exception as e:
             logger.warning(
                 f"Skipping MCP tool {getattr(t, 'name', '?')} on integration {integration.id}: {e}"

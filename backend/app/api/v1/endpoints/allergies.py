@@ -8,13 +8,12 @@ parity surface (single-instance GET, catalog usage, AI reprocess).
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import false
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.enums import Role
-from app.models.fhir.patient import Patient
+from app.models.patient_access_grant import GrantPermission
 from app.schemas.allergy import (
     AllergyCatalogCreate,
     AllergyCatalogResponse,
@@ -26,19 +25,14 @@ from app.schemas.allergy import (
 from app.schemas.user import TokenData
 from app.services.audit.audit_service import audit_read, log_audit_action
 from app.services.auth.access import (
+    accessible_patient_ids,
     check_allergy_access,
     check_patient_access,
 )
+from app.services.catalog import catalog_write_service
 from app.services.clinical import allergy_service
 
 router = APIRouter(prefix="/allergies", tags=["allergies"])
-
-
-def _enforce_catalog_create(current_user: TokenData) -> None:
-    """Catalog creates are role-derived-scope (parity with medications). Any
-    authenticated role may create; the scope varies by role.
-    """
-    DEFAULT_CATALOG_POLICY.create_scope(current_user.role)
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +47,10 @@ async def list_catalog(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Search the global + tenant allergy catalog (hybrid search)."""
-    return await allergy_service.get_allergy_catalog(db, current_user.tenant_id, search)
+    rows = await allergy_service.get_allergy_catalog(db, current_user.tenant_id, search)
+    return [
+        catalog_write_service.serialize_catalog_row(row, current_user.tenant_id) for row in rows
+    ]
 
 
 @router.get("/catalog/{catalog_id}", response_model=AllergyCatalogResponse)
@@ -65,18 +62,20 @@ async def get_catalog_entry(
     entry = await allergy_service.get_catalog_allergy(db, catalog_id, current_user.tenant_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
-    return entry
+    return catalog_write_service.serialize_catalog_row(entry, current_user.tenant_id)
 
 
-@router.post("/catalog", response_model=AllergyCatalogResponse)
+@router.post("/catalog", response_model=AllergyCatalogResponse, status_code=201)
 async def create_catalog_entry(
     data: AllergyCatalogCreate,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Create an allergy catalog entry (scope derived from role)."""
-    _enforce_catalog_create(current_user)
-    return await allergy_service.create_catalog_allergy(db, current_user, data)
+    """Create an allergy catalog entry (scope derived from role).
+
+    Thin entry point onto the unified write contract — the same service the
+    generic ``POST /catalogs/allergy`` route calls."""
+    return await catalog_write_service.create_allergy(db, current_user, data)
 
 
 @router.put("/catalog/{catalog_id}", response_model=AllergyCatalogResponse)
@@ -86,8 +85,9 @@ async def update_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Update an allergy catalog entry (scope + ownership enforced in service)."""
-    entry = await allergy_service.update_catalog_allergy(db, catalog_id, current_user, data)
+    """Update an allergy catalog entry (scope + ownership enforced in the
+    unified write service)."""
+    entry = await catalog_write_service.update_allergy(db, current_user, catalog_id, data)
     if entry is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
     return entry
@@ -99,10 +99,10 @@ async def delete_catalog_entry(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    success = await allergy_service.delete_catalog_allergy(db, catalog_id, current_user)
+    success = await catalog_write_service.delete_allergy(db, current_user, catalog_id)
     if not success:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
-    return {"message": "Allergy catalog entry deleted"}
+    return {"status": "success", "message": "allergy item deleted"}
 
 
 @router.get("/catalog/{catalog_id}/usage")
@@ -125,7 +125,7 @@ async def reprocess_allergy(
     result = await allergy_service.reprocess_allergy(db, catalog_id, current_user.tenant_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Allergy catalog entry not found")
-    return result
+    return catalog_write_service.serialize_catalog_row(result, current_user.tenant_id)
 
 
 # ---------------------------------------------------------------------------
@@ -139,22 +139,19 @@ async def get_all_active_allergies(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Active intolerances in the tenant (or just the user's own patients
-    for the ``USER`` role). Powers the dashboard ``AllergyAlertsCard``."""
-    if current_user.role == Role.USER.value:
+    """Active intolerances in the tenant (or just the reachable patients'
+    for restricted roles). Powers the dashboard ``AllergyAlertsCard``."""
+    reachable = await accessible_patient_ids(current_user, db)
+    if reachable is not None:
         from sqlalchemy import select
 
         from app.models.fhir.allergy import AllergyClinicalStatus, AllergyIntolerance
 
-        query = (
-            select(AllergyIntolerance)
-            .join(Patient)
-            .where(
-                Patient.user_id == current_user.user_id,
-                AllergyIntolerance.tenant_id == current_user.tenant_id,
-                AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
-                AllergyIntolerance.deleted_at.is_(None),
-            )
+        query = select(AllergyIntolerance).where(
+            AllergyIntolerance.tenant_id == current_user.tenant_id,
+            AllergyIntolerance.clinical_status == AllergyClinicalStatus.ACTIVE,
+            AllergyIntolerance.deleted_at.is_(None),
+            AllergyIntolerance.patient_id.in_(reachable) if reachable else false(),
         )
         result = await db.execute(query)
         return result.scalars().all()
@@ -191,6 +188,7 @@ async def add_patient_allergy(
     record = await allergy_service.add_patient_allergy(db, current_user, data)
     # §17: clinical writes are audited (plan 16 H2).
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="create_allergy",
@@ -219,13 +217,12 @@ async def update_allergy(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_allergy_access(allergy_id, current_user, db)
-    item = await allergy_service.update_patient_allergy(
-        db, allergy_id, current_user.tenant_id, data
-    )
+    await check_allergy_access(allergy_id, current_user, db, required=GrantPermission.WRITE)
+    item = await allergy_service.update_patient_allergy(db, allergy_id, current_user, data)
     if item is None:
         raise HTTPException(status_code=404, detail="Allergy record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="update_allergy",
@@ -242,11 +239,12 @@ async def delete_allergy(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    await check_allergy_access(allergy_id, current_user, db)
-    success = await allergy_service.delete_patient_allergy(db, allergy_id, current_user.tenant_id)
+    await check_allergy_access(allergy_id, current_user, db, required=GrantPermission.WRITE)
+    success = await allergy_service.delete_patient_allergy(db, allergy_id, current_user)
     if not success:
         raise HTTPException(status_code=404, detail="Allergy record not found")
     await log_audit_action(
+        required=True,
         tenant_id=current_user.tenant_id,
         user_id=current_user.user_id,
         action="delete_allergy",

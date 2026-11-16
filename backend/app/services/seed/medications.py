@@ -1,94 +1,91 @@
-"""Medication catalog seeding."""
+"""Medication catalog seeding (identity upsert — ADR 0055).
 
-import json
+Every curated item carries an immutable qualified ``seed_key``
+(``medication:<kebab-key>``); the row id is the deterministic
+``uuid5`` derived from it. Upsert is by id, then ``seed_key``
+(``tenant_id IS NULL``) — never by name. ``coding_system``/``code`` are
+attributes: they update only when the seed provides them and are never
+fabricated.
+
+Transaction ownership (ADR 0056): the seeder takes a required session and
+parsed pack items, flushes, and never commits — the caller owns the
+transaction.
+"""
+
 import logging
-from datetime import UTC, datetime
+from collections.abc import Sequence
 from typing import Any
-from uuid import uuid4
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal
+from app.core.seed_pack.bundled import bundled_stage_items
 from app.models.fhir.medication import MedicationCatalog
+from app.services.seed.identity import item_label, require_seed_key, upsert_by_identity
 
 logger = logging.getLogger(__name__)
 
+_JSON_FIELDS = ("side_effects",)
+_OPTIONAL_FIELDS = ("description", "indications", "contraindications", "dosage_info")
+
+
+def medication_values(item: dict[str, Any]) -> dict[str, Any]:
+    """The mutable fields of a medication seed item (codes only when provided)."""
+    values: dict[str, Any] = {"name": item["name"]}
+    for field in _OPTIONAL_FIELDS:
+        if item.get(field) is not None:
+            values[field] = item[field]
+    if item.get("side_effects") is not None:
+        values["side_effects"] = item["side_effects"]
+    if "coding_system" in item or "code" in item:
+        values["coding_system"] = item.get("coding_system")
+        values["code"] = item.get("code")
+    return values
+
 
 class MedicationSeedMixin:
-    async def seed_medications(self, session: AsyncSession = None) -> dict[str, int]:
-        """
-        Sync medications from JSON to Database.
-        Returns a summary of changes.
-        """
-        file_path = self.seeds_dir / "medications.json"
-        if not file_path.exists():
-            logger.warning(f"Medication seed file not found: {file_path}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+    async def seed_medications(
+        self,
+        session: AsyncSession,
+        items: Sequence[dict[str, Any]] | None = None,
+    ) -> dict[str, int]:
+        """Upsert the bundled (or given) medication pack items by identity.
 
-        try:
-            with open(file_path) as f:
-                medications_data = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load medication seeds: {e}")
-            return {"added": 0, "updated": 0, "skipped": 0, "errors": 1}
-
-        # If session is provided (manual run), use it.
-        # Otherwise create a new one (lifespan run).
-        if session:
-            return await self._process_medications(session, medications_data)
-        else:
-            async with AsyncSessionLocal() as new_session:
-                result = await self._process_medications(new_session, medications_data)
-                await new_session.commit()
-                return result
+        ``items`` defaults to the bundled pack's parsed medications; the
+        caller owns the session and the transaction (flush only, no commit).
+        Returns the standard stats shape ``{added, updated, unchanged,
+        skipped, errors}``.
+        """
+        if items is None:
+            items = bundled_stage_items("medications", self.seeds_dir)
+        return await self._process_medications(session, list(items))
 
     async def _process_medications(
-        self, session: AsyncSession, data: list[dict[str, Any]]
+        self, session: AsyncSession, data: Sequence[dict[str, Any]]
     ) -> dict[str, int]:
-        stats = {"added": 0, "updated": 0, "skipped": 0, "errors": 0}
+        stats = {"added": 0, "updated": 0, "unchanged": 0, "skipped": 0, "errors": 0}
 
         data = data if isinstance(data, list) else data.get("items", [])
         if not await self._table_exists(session, "medication_catalog"):
             logger.error("Table 'medication_catalog' does not exist. Skipping seeding.")
-            return {"added": 0, "updated": 0, "skipped": len(data), "errors": 0}
+            return {"added": 0, "updated": 0, "unchanged": 0, "skipped": len(data), "errors": 0}
 
         for item in data:
             try:
-                # Check if medication exists by name (case-insensitive search)
-                stmt = select(MedicationCatalog).where(
-                    func.lower(MedicationCatalog.name) == func.lower(item["name"])
+                qualified = require_seed_key(item, "medication")
+                _, action = await upsert_by_identity(
+                    session,
+                    MedicationCatalog,
+                    qualified,
+                    medication_values(item),
+                    tenant_id=self.tenant_id,
+                    explicit_id=item.get("id"),
+                    json_fields=_JSON_FIELDS,
                 )
-                result = await session.execute(stmt)
-                db_med = result.scalar_one_or_none()
-
-                if db_med:
-                    # Update existing if needed (Optional: only update if fields changed)
-                    db_med.description = item.get("description", db_med.description)
-                    db_med.indications = item.get("indications", db_med.indications)
-                    db_med.side_effects = item.get("side_effects", db_med.side_effects)
-                    db_med.contraindications = item.get(
-                        "contraindications", db_med.contraindications
-                    )
-                    db_med.dosage_info = item.get("dosage_info", db_med.dosage_info)
-                    stats["updated"] += 1
-                else:
-                    # Create new
-                    new_med = MedicationCatalog(
-                        id=uuid4(),
-                        name=item["name"],
-                        description=item.get("description"),
-                        indications=item.get("indications"),
-                        side_effects=item.get("side_effects"),
-                        contraindications=item.get("contraindications"),
-                        dosage_info=item.get("dosage_info"),
-                        tenant_id=None,  # System-wide
-                        created_at=datetime.now(UTC),
-                    )
-                    session.add(new_med)
-                    stats["added"] += 1
+                stats[action] += 1
             except Exception as e:
-                logger.error(f"Error seeding medication {item.get('name')}: {e}")
+                self.note_item_error("medications", item, e)
+                logger.error(f"Error seeding medication {item_label(item)}: {e}")
                 stats["errors"] += 1
 
+        await session.flush()
         return stats

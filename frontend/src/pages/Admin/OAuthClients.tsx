@@ -15,8 +15,8 @@ import {
 import { PageHeader } from '../../components/ui/PageHeader';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { FormModal } from '../../components/ui/FormModal';
-import { Modal } from '../../components/ui/Modal';
 import { CopyButton } from '../../components/ui/CopyButton';
+import { SecretOnceReveal } from '../../components/settings/SecretOnceReveal';
 import { oauthService } from '../../services/oauthService';
 import type { OAuthClient } from '../../types/oauth';
 import { useUIStore } from '../../store/slices/uiSlice';
@@ -358,43 +358,37 @@ const OAuthClients: React.FC = () => {
       </FormModal>
 
       {/* One-time secret reveal */}
-      <Modal open={revealed !== null} onOpenChange={(o) => !o && setRevealed(null)} title={revealed?.title ?? 'Client secret'}>
-        {revealed && (
-          <div className="space-y-4">
-            <div className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>Copy this secret now. For security, it cannot be retrieved again.</span>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 dark:text-dark-muted mb-1">client_id</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-gray-100 dark:bg-dark-bg text-sm font-mono break-all">
-                  {revealed.clientId}
-                </code>
-                <CopyButton value={revealed.clientId} label="Copy client id" />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 dark:text-dark-muted mb-1">client_secret</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-2 rounded-lg bg-gray-100 dark:bg-dark-bg text-sm font-mono break-all">
-                  {revealed.secret}
-                </code>
-                <CopyButton value={revealed.secret} label="Copy client secret" />
-              </div>
-            </div>
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setRevealed(null)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700"
-              >
-                <Copy className="w-4 h-4" />
-                I&apos;ve saved it
-              </button>
-            </div>
+      <SecretOnceReveal
+        open={revealed !== null}
+        onClose={() => setRevealed(null)}
+        title={revealed?.title ?? 'Client secret'}
+        warning="Copy this secret now. For security, it cannot be retrieved again."
+        secret={revealed?.secret ?? ''}
+        testId="oauth-client-secret"
+        copyLabel="Copy"
+        copiedLabel="Copied"
+        footer={
+          <div className="flex justify-end">
+            <button
+              onClick={() => setRevealed(null)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700"
+            >
+              <Copy className="w-4 h-4" />
+              I&apos;ve saved it
+            </button>
           </div>
-        )}
-      </Modal>
+        }
+      >
+        <div>
+          <p className="text-xs text-gray-500 dark:text-dark-muted mb-1">client_id</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-3 py-2 rounded-lg bg-gray-100 dark:bg-dark-bg text-sm font-mono break-all">
+              {revealed?.clientId}
+            </code>
+            <CopyButton value={revealed?.clientId ?? ''} label="Copy client id" />
+          </div>
+        </div>
+      </SecretOnceReveal>
     </div>
   );
 };

@@ -10,17 +10,21 @@ import { deriveCountedOptions } from './helpers';
  * See `local planning notes/modular-filter-system-2026-07-14.md` §2 Phase 2.
  */
 
-/** Filter by biomarker `category` (e.g. Lipids, Glucose, Hormones). */
-export const biomarkerCategoryFacet: FacetDefinition<Biomarker> = {
-  id: 'category',
+/** Filter by the biomarker's class concept (the taxonomy category's name). */
+export const biomarkerClassConceptFacet: FacetDefinition<Biomarker> = {
+  id: 'class_concept_name',
   label: 'Category',
   kind: 'multi',
   mode: 'client',
   icon: 'FolderTree',
-  getOptions: (items) => deriveCountedOptions(items, (b) => b.category),
+  getOptions: (items) => deriveCountedOptions(items, (b) => b.class_concept_name ?? undefined),
   predicate: (item, value) => {
     if (value.kind !== 'multi' || value.values.length === 0) return true;
-    return item.category !== undefined && value.values.includes(item.category);
+    return (
+      item.class_concept_name !== undefined &&
+      item.class_concept_name !== null &&
+      value.values.includes(item.class_concept_name)
+    );
   },
 };
 
@@ -67,7 +71,7 @@ export const biomarkerUnitFacet: FacetDefinition<Biomarker> = {
 
 /** All catalog biomarker facets, in toolbar display order. */
 export const catalogBiomarkerFacets: FacetDefinition<Biomarker>[] = [
-  biomarkerCategoryFacet,
+  biomarkerClassConceptFacet,
   biomarkerTelemetryFacet,
   biomarkerCodingSystemFacet,
   biomarkerUnitFacet,

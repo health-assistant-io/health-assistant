@@ -42,7 +42,6 @@ def anatomy_node_payload() -> dict[str, Any]:
         "standard_system": "snomed",
         "standard_code": "87878005",
         "description": "Lower left chamber",
-        "is_custom": True,
     }
 
 
@@ -55,21 +54,19 @@ async def sample_anatomy_nodes(
         "name": "Test Heart",
         "slug": "test-heart",
         "class_concept_id": None,
-        "is_custom": True,
     }
     node2 = {
         "name": "Test Cardiovascular",
         "slug": "test-cardio",
         "class_concept_id": None,
-        "is_custom": True,
     }
 
     res1 = await async_client.post("/api/v1/anatomy", json=node1, headers=system_admin_headers)
-    assert res1.status_code == 200
+    assert res1.status_code == 201
     id1 = res1.json()["id"]
 
     res2 = await async_client.post("/api/v1/anatomy", json=node2, headers=system_admin_headers)
-    assert res2.status_code == 200
+    assert res2.status_code == 201
     id2 = res2.json()["id"]
 
     return [id1, id2]
@@ -85,7 +82,7 @@ async def test_create_and_get_anatomy_structure(
     res = await async_client.post(
         "/api/v1/anatomy", json=anatomy_node_payload, headers=system_admin_headers
     )
-    assert res.status_code == 200
+    assert res.status_code == 201
     data = res.json()
     assert data["slug"] == anatomy_node_payload["slug"]
     assert "id" in data
@@ -160,7 +157,6 @@ async def test_anatomy_graph_multi_hop_depth(
             "name": "Graph A",
             "slug": "graph-a",
             "class_concept_id": None,
-            "is_custom": True,
         },
         headers=system_admin_headers,
     )
@@ -170,7 +166,6 @@ async def test_anatomy_graph_multi_hop_depth(
             "name": "Graph B",
             "slug": "graph-b",
             "class_concept_id": None,
-            "is_custom": True,
         },
         headers=system_admin_headers,
     )
@@ -180,7 +175,6 @@ async def test_anatomy_graph_multi_hop_depth(
             "name": "Graph C",
             "slug": "graph-c",
             "class_concept_id": None,
-            "is_custom": True,
         },
         headers=system_admin_headers,
     )
@@ -239,13 +233,11 @@ async def test_anatomy_import_upsert_logic(
                 "slug": "test-import-lung",
                 "name": "Test Lung",
                 "class_concept_slug": "organ",
-                "is_custom": True,
             },
             {
                 "slug": "test-import-resp",
                 "name": "Test Resp System",
                 "class_concept_slug": "system",
-                "is_custom": True,
             },
         ],
         "edges": [

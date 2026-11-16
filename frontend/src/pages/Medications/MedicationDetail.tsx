@@ -53,6 +53,7 @@ import { useTabScroll } from '../../hooks/useTabScroll';
 import { startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
+import { isActiveMedication } from '../../utils/medicationStatus';
 import { sanitizeHtml } from '../../utils/sanitize';
 
 function MedicationDetail() {
@@ -257,7 +258,7 @@ function MedicationDetail() {
         subtitle={
           <div className="flex items-center space-x-2">
             <p className="text-sm text-gray-500 dark:text-dark-muted font-medium">{t('medications.medication_id')}: {medication.id}</p>
-            {medication.is_custom && (
+            {medication.scope && medication.scope !== 'system' && (
               <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-900/20 rounded-sm text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30">
                 {t('medications.custom_resource')}
               </span>
@@ -563,7 +564,7 @@ function MedicationDetail() {
                                </td>
                                <td className="px-6 py-5 whitespace-nowrap">
                                   <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-tighter border ${
-                                    record.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-100'
+                                    isActiveMedication(record.status) ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-500 border-gray-100'
                                   }`}>
                                     {record.status}
                                   </span>

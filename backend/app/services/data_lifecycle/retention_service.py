@@ -18,6 +18,15 @@ retention shape). Two deliberate adapters exist:
 * ``audit_events`` anonymizes its diff columns instead of deleting
   the proof-of-existence row.
 
+**Legal hold** is deliberately not implemented yet: no table names a hold,
+so there is nothing to join against. The hook point is
+:func:`run_retention` (or the caller that builds each table's DELETE /
+UPDATE) — a hold registry row would add its subject filter as a ``WHERE
+NOT IN (held)`` predicate on the ``audit_events`` anonymize step and any
+record-class prune. Until then, an investigation's window is protected by
+taking a backup before running the retention job (documented in the ops
+runbook), and erasure never deletes audit rows regardless.
+
 Orphan cleanup (rows whose owning tenant/patient/user is gone) is a separate
 named job: :func:`app.services.data_lifecycle.retention_service.purge_orphaned_lifecycle_rows`.
 """
@@ -176,6 +185,18 @@ async def apply_policy(
     if policy.table == "proposals" and "status" in model_table.columns:
         statement = statement.where(
             model_table.columns["status"].in_([s.value for s in ProposalStatus.terminal()])
+        )
+    if policy.table == "audit_chain_heads":
+        # N4 guard — a head row is the chain's append lock + sequence
+        # anchor: deleting it under a live chain would strand the chain
+        # (the next append would restart at seq=1 and violate the
+        # ``(chain_key, seq)`` uniqueness). Only heads of *fully empty*
+        # chains are prunable — the stale head a sanctioned tenant-delete
+        # cascade can leave behind. Enabling the policy row can therefore
+        # never break an audit chain.
+        audit_events = Base.metadata.tables["audit_events"]
+        statement = statement.where(
+            model_table.columns["chain_key"].not_in(select(audit_events.c.chain_key))
         )
     result = await db.execute(statement)
     out["rows"] = result.rowcount or 0

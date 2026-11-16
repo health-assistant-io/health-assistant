@@ -69,6 +69,7 @@ class NotificationType(enum.StrEnum):
     SYSTEM_BROADCAST = "SYSTEM_BROADCAST"
     SYSTEM_ERROR = "SYSTEM_ERROR"
     CLINICAL_EVENT = "CLINICAL_EVENT"
+    SECURITY_EVENT = "SECURITY_EVENT"
     CUSTOM = "CUSTOM"
 
 
@@ -93,6 +94,7 @@ class NotificationCategory(enum.StrEnum):
     SYSTEM = "system"
     INTEGRATION = "integration"
     CLINICAL_EVENT = "clinical_event"
+    SECURITY = "security"
 
 
 class NotificationSeverity(enum.StrEnum):
@@ -316,6 +318,46 @@ class AICallStatus(enum.StrEnum):
     ERROR = "error"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+
+
+class AIUsageSource(enum.StrEnum):
+    """Where an audited call's token counts came from (``ai_call_logs.usage_source``)."""
+
+    PROVIDER = "provider"
+    ESTIMATED = "estimated"
+    PARTIAL = "partial"
+    UNKNOWN = "unknown"
+
+
+class AIPriceSource(enum.StrEnum):
+    """Which price a call was costed at (``ai_call_logs.price_source``).
+
+    ``local`` = loopback/no-billing endpoint, ``user`` = tenant override,
+    ``builtin`` = family catalog, ``unknown`` = no price was known at call
+    time (the cost stays NULL), and the remaining member records rows costed
+    from the pre-contract ``settings`` rates.
+    """
+
+    USER = "user"
+    BUILTIN = "builtin"
+    LOCAL = "local"
+    LEGACY = "legacy"  # gate-allow: legacy
+    UNKNOWN = "unknown"
+
+
+class AIPriceMatch(enum.StrEnum):
+    """How an override's ``model`` string is matched (``ai_price_overrides.match``)."""
+
+    EXACT = "exact"
+    PREFIX = "prefix"
+
+
+class AIPriceMetering(enum.StrEnum):
+    """Which side of a call an override meters (``ai_price_overrides.metering``)."""
+
+    TOKENS = "tokens"
+    INPUT_ONLY = "input_only"
+    OUTPUT_ONLY = "output_only"
 
 
 class AIModelCapability(enum.StrEnum):
@@ -896,3 +938,121 @@ class ExtensionConsentDecision(enum.StrEnum):
 
     GRANTED = "granted"
     DENIED = "denied"
+
+
+class SeedSourceKind(enum.StrEnum):
+    """Where a seed pack comes from (``seed_sources.kind``).
+
+    Closed behavioral vocabulary (constitution rule 7a): varchar + mirrored
+    CHECK. ``bundled`` is the trusted pack shipped with the app (auto-approved
+    by definition, ADR 0056); ``file`` an admin upload, ``git`` a pinned repo
+    ref, ``integration`` a host-discovered pack inside an installed
+    extension's content root, ``registry`` a future index entry.
+    """
+
+    BUNDLED = "bundled"
+    FILE = "file"
+    GIT = "git"
+    INTEGRATION = "integration"
+    REGISTRY = "registry"
+
+
+class SeedSourceScope(enum.StrEnum):
+    """Whether a source writes canonical or tenant-overlay rows
+    (``seed_sources.scope``).
+
+    ``system`` packs write ``tenant_id IS NULL`` rows (priority band 0-199);
+    ``tenant`` packs write tenant overlays (priority band 200-999) and are
+    capability-gated to tenant-ownable item types by the pack validator.
+    """
+
+    SYSTEM = "system"
+    TENANT = "tenant"
+
+
+class SeedVersionStatus(enum.StrEnum):
+    """The immutable pack-version state machine
+    (``seed_source_versions.status``).
+
+    Same lifecycle as the extension lane (ADR 0056 D4): ``pending`` (digest
+    pinned, not reviewed) → ``approved``/``rejected``; ``revoked`` pulls an
+    approved digest back and the previous approved version is re-applied.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    REVOKED = "revoked"
+
+
+class SeedRunMode(enum.StrEnum):
+    """What an import run did (``seed_import_runs.mode``).
+
+    ``plan`` diffs a version against the database without writing; ``apply``
+    executes an approved plan under the advisory lock.
+    """
+
+    PLAN = "plan"
+    APPLY = "apply"
+
+
+class SeedRunStatus(enum.StrEnum):
+    """How an import run ended (``seed_import_runs.status``).
+
+    ``running`` (in flight; the run-status guard) → ``ok`` (every item
+    applied), ``partial`` (some items failed), ``failed`` (the pack stage
+    aborted), ``conflicted`` (equal-priority different content refused).
+    """
+
+    RUNNING = "running"
+    OK = "ok"
+    FAILED = "failed"
+    PARTIAL = "partial"
+    CONFLICTED = "conflicted"
+
+
+class SeedItemAction(enum.StrEnum):
+    """What an import run did to one item (``seed_import_run_items.action``).
+
+    The durable per-item history: ``create``/``update``/``noop`` mirror the
+    seeder stats; ``retire`` records a pack dropping an item; ``conflict``
+    and ``override`` record the losing side of an equal-priority clash and a
+    higher-priority takeover — poisoning visibility (ADR 0056 D4).
+    """
+
+    CREATE = "create"
+    UPDATE = "update"
+    NOOP = "noop"
+    RETIRE = "retire"
+    CONFLICT = "conflict"
+    OVERRIDE = "override"
+    SKIP = "skip"
+
+
+class SeedItemState(enum.StrEnum):
+    """A provenance-tracked item's lifecycle (``seed_item_provenance.state``).
+
+    ``active`` (the last applied version provides it) → ``retired`` (dropped
+    by its source and nothing else provides it — the row survives,
+    retire-not-delete) or ``overridden`` (another source took the seed key
+    over at higher precedence; the loser keeps its provenance row).
+    """
+
+    ACTIVE = "active"
+    RETIRED = "retired"
+    OVERRIDDEN = "overridden"
+
+
+class SeedDeferredStatus(enum.StrEnum):
+    """A deferred cross-pack reference's queue state
+    (``seed_deferred_refs.status``).
+
+    Deferred references are first-class (ADR 0056 D5/D10): ``pending`` rows
+    are retried on every new approved version; ``landed`` records the apply
+    that resolved them; ``abandoned`` records a manual give-up (typed, never
+    a silent skip).
+    """
+
+    PENDING = "pending"
+    LANDED = "landed"
+    ABANDONED = "abandoned"

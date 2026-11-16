@@ -37,7 +37,7 @@ class MedicalProcessingService:
         import re
 
         from app.models.concept_model import Concept, ConceptKindTag
-        from app.models.enums import ConceptKind, ConceptStatus
+        from app.models.enums import CatalogScope, ConceptKind, ConceptStatus
         from app.services.catalog.concept_service import concepts_with_kind
 
         # Normalize input to slug format (kebab-case)
@@ -71,6 +71,7 @@ class MedicalProcessingService:
                 tenant_id=tenant_id,
                 color="#6b7280",  # Default gray
                 status=ConceptStatus.ACTIVE,
+                scope=CatalogScope.TENANT if tenant_id is not None else CatalogScope.SYSTEM,
             )
             category_entity.kind_tags.append(ConceptKindTag(kind=ConceptKind.EXAMINATION_CATEGORY))
             self.db.add(category_entity)

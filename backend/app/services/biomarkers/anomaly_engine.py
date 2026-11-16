@@ -1,6 +1,6 @@
 """One anomaly engine: rolling statistics over the CAgg ladder.
 
-Detection is SQL-side over ``telemetry_hourly`` — never a Python scan of raw
+Detection is SQL-side over ``telemetry_hourly_scoped`` — never a Python scan of raw
 rows. For every ``(tenant, patient, device, slug)`` series the latest complete
 bucket is compared with the trailing baseline (up to 24 preceding buckets); a
 |z-score| above the threshold is a ``spike`` or ``drop`` event. Events persist
@@ -38,7 +38,7 @@ _DETECTION_SQL = """
     WITH series AS (
         SELECT tenant_id, patient_id, device_id, slug, bucket,
                avg_val, sample_count
-        FROM telemetry_hourly
+        FROM telemetry_hourly_scoped
         WHERE tenant_id = CAST(:tenant_id AS uuid)
           AND bucket >= CAST(:since AS timestamptz)
           {patient_scope}
@@ -130,7 +130,7 @@ async def detect_telemetry_anomalies(
     patient_uuid = UUID(str(patient_id)) if patient_id else None
     since = datetime.now(UTC) - timedelta(days=lookback_days)
 
-    exists = await db.execute(text("SELECT to_regclass('public.telemetry_hourly')"))
+    exists = await db.execute(text("SELECT to_regclass('public.telemetry_hourly_scoped')"))
     if exists.scalar() is None:
         return []
 
@@ -230,7 +230,7 @@ async def _resolve_recovered(
             SET resolved_at = now()
             FROM (
                 SELECT tenant_id, patient_id, device_id, slug, MAX(bucket) AS latest_bucket
-                FROM telemetry_hourly
+                FROM telemetry_hourly_scoped
                 WHERE tenant_id = CAST(:tenant_id AS uuid)
                   AND bucket >= CAST(:since AS timestamptz)
                   {scope}

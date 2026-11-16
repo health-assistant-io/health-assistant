@@ -119,7 +119,7 @@ export const AnatomyDetail: React.FC<Props> = ({
                   {structure.standard_system}: {structure.standard_code}
                 </span>
               )}
-              {structure.is_custom && (
+              {structure.scope && structure.scope !== 'system' && (
                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
                   {t('anatomy.custom_badge')}
                 </span>

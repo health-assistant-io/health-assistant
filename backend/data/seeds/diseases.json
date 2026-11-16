@@ -7,6 +7,7 @@
   },
   "items": [
     {
+      "seed_key": "concept:type-2-diabetes",
       "slug": "type-2-diabetes",
       "name": "Type 2 Diabetes Mellitus",
       "coding_system": "icd10",
@@ -18,6 +19,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:type-1-diabetes",
       "slug": "type-1-diabetes",
       "name": "Type 1 Diabetes Mellitus",
       "coding_system": "icd10",
@@ -29,6 +31,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hypertension",
       "slug": "hypertension",
       "name": "Essential Hypertension",
       "coding_system": "icd10",
@@ -40,6 +43,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hypercholesterolemia",
       "slug": "hypercholesterolemia",
       "name": "Hypercholesterolemia, Unspecified",
       "coding_system": "icd10",
@@ -51,6 +55,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:coronary-artery-disease",
       "slug": "coronary-artery-disease",
       "name": "Atherosclerotic Heart Disease",
       "coding_system": "icd10",
@@ -62,6 +67,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:heart-failure",
       "slug": "heart-failure",
       "name": "Heart Failure, Unspecified",
       "coding_system": "icd10",
@@ -73,6 +79,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:atrial-fibrillation",
       "slug": "atrial-fibrillation",
       "name": "Atrial Fibrillation",
       "coding_system": "icd10",
@@ -84,6 +91,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:stroke",
       "slug": "stroke",
       "name": "Cerebral Infarction, Unspecified",
       "coding_system": "icd10",
@@ -95,6 +103,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:deep-vein-thrombosis",
       "slug": "deep-vein-thrombosis",
       "name": "Phlebitis and Thrombophlebitis of Deep Vessels of Lower Extremities",
       "coding_system": "icd10",
@@ -106,6 +115,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:pulmonary-embolism",
       "slug": "pulmonary-embolism",
       "name": "Pulmonary Embolism without Acute Cor Pulmonale",
       "coding_system": "icd10",
@@ -117,6 +127,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:asthma",
       "slug": "asthma",
       "name": "Asthma, Unspecified",
       "coding_system": "icd10",
@@ -128,6 +139,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:chronic-obstructive-pulmonary-disease",
       "slug": "chronic-obstructive-pulmonary-disease",
       "name": "Chronic Obstructive Pulmonary Disease, Unspecified",
       "coding_system": "icd10",
@@ -139,6 +151,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:pneumonia",
       "slug": "pneumonia",
       "name": "Pneumonia, Unspecified Organism",
       "coding_system": "icd10",
@@ -150,6 +163,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:pneumococcal-pneumonia",
       "slug": "pneumococcal-pneumonia",
       "name": "Pneumonia due to Streptococcus pneumoniae",
       "coding_system": "icd10",
@@ -161,6 +175,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:influenza",
       "slug": "influenza",
       "name": "Influenza due to unidentified influenza virus",
       "coding_system": "icd10",
@@ -172,6 +187,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:covid-19",
       "slug": "covid-19",
       "name": "COVID-19",
       "coding_system": "icd10",
@@ -183,6 +199,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hypothyroidism",
       "slug": "hypothyroidism",
       "name": "Hypothyroidism, Unspecified",
       "coding_system": "icd10",
@@ -194,6 +211,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hyperthyroidism",
       "slug": "hyperthyroidism",
       "name": "Thyrotoxicosis, Unspecified",
       "coding_system": "icd10",
@@ -205,6 +223,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:chronic-kidney-disease",
       "slug": "chronic-kidney-disease",
       "name": "Chronic Kidney Disease, Unspecified",
       "coding_system": "icd10",
@@ -216,6 +235,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:acute-kidney-injury",
       "slug": "acute-kidney-injury",
       "name": "Acute Kidney Failure, Unspecified",
       "coding_system": "icd10",
@@ -227,6 +247,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:gastroesophageal-reflux-disease",
       "slug": "gastroesophageal-reflux-disease",
       "name": "Gastro-Esophageal Reflux Disease without Esophagitis",
       "coding_system": "icd10",
@@ -238,6 +259,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:peptic-ulcer",
       "slug": "peptic-ulcer",
       "name": "Peptic Ulcer, Site Unspecified",
       "coding_system": "icd10",
@@ -249,6 +271,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:inflammatory-bowel-disease",
       "slug": "inflammatory-bowel-disease",
       "name": "Crohn's Disease, Unspecified",
       "coding_system": "icd10",
@@ -260,6 +283,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:irritable-bowel-syndrome",
       "slug": "irritable-bowel-syndrome",
       "name": "Irritable Bowel Syndrome without Diarrhea",
       "coding_system": "icd10",
@@ -271,6 +295,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hepatitis-b",
       "slug": "hepatitis-b",
       "name": "Unspecified Viral Hepatitis B",
       "coding_system": "icd10",
@@ -282,6 +307,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hepatitis-c",
       "slug": "hepatitis-c",
       "name": "Unspecified Viral Hepatitis C",
       "coding_system": "icd10",
@@ -293,6 +319,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:cirrhosis",
       "slug": "cirrhosis",
       "name": "Unspecified Cirrhosis of Liver",
       "coding_system": "icd10",
@@ -304,6 +331,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:pancreatitis",
       "slug": "pancreatitis",
       "name": "Acute Pancreatitis, Unspecified",
       "coding_system": "icd10",
@@ -315,6 +343,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:iron-deficiency-anemia",
       "slug": "iron-deficiency-anemia",
       "name": "Iron Deficiency Anemia, Unspecified",
       "coding_system": "icd10",
@@ -326,6 +355,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:epilepsy",
       "slug": "epilepsy",
       "name": "Epilepsy, Unspecified",
       "coding_system": "icd10",
@@ -337,6 +367,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:migraine",
       "slug": "migraine",
       "name": "Migraine, Unspecified, Intractable, without Status Migrainosus",
       "coding_system": "icd10",
@@ -348,6 +379,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:alzheimer-disease",
       "slug": "alzheimer-disease",
       "name": "Alzheimer's Disease, Unspecified",
       "coding_system": "icd10",
@@ -359,6 +391,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:parkinson-disease",
       "slug": "parkinson-disease",
       "name": "Parkinson's Disease",
       "coding_system": "icd10",
@@ -370,6 +403,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:depression",
       "slug": "depression",
       "name": "Major Depressive Disorder, Recurrent",
       "coding_system": "icd10",
@@ -381,6 +415,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:anxiety-disorder",
       "slug": "anxiety-disorder",
       "name": "Anxiety State, Unspecified",
       "coding_system": "icd10",
@@ -392,6 +427,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:bipolar-disorder",
       "slug": "bipolar-disorder",
       "name": "Bipolar Disorder, Unspecified",
       "coding_system": "icd10",
@@ -403,6 +439,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:osteoporosis",
       "slug": "osteoporosis",
       "name": "Osteoporosis without Current Pathological Fracture",
       "coding_system": "icd10",
@@ -414,6 +451,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:osteoarthritis",
       "slug": "osteoarthritis",
       "name": "Osteoarthritis, Unspecified",
       "coding_system": "icd10",
@@ -425,6 +463,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:rheumatoid-arthritis",
       "slug": "rheumatoid-arthritis",
       "name": "Rheumatoid Arthritis, Unspecified",
       "coding_system": "icd10",
@@ -436,6 +475,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:gout",
       "slug": "gout",
       "name": "Gout, Unspecified",
       "coding_system": "icd10",
@@ -447,6 +487,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:psoriasis",
       "slug": "psoriasis",
       "name": "Psoriasis, Unspecified",
       "coding_system": "icd10",
@@ -458,6 +499,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:atopic-dermatitis",
       "slug": "atopic-dermatitis",
       "name": "Atopic Neurodermatitis, Unspecified",
       "coding_system": "icd10",
@@ -469,6 +511,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:chronic-low-back-pain",
       "slug": "chronic-low-back-pain",
       "name": "Low Back Pain, Unspecified",
       "coding_system": "icd10",
@@ -480,6 +523,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:obesity",
       "slug": "obesity",
       "name": "Morbid Obesity due to Excess Calories",
       "coding_system": "icd10",
@@ -491,6 +535,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:metabolic-syndrome",
       "slug": "metabolic-syndrome",
       "name": "Metabolic Syndrome",
       "coding_system": "icd10",
@@ -502,6 +547,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:breast-cancer",
       "slug": "breast-cancer",
       "name": "Malignant Neoplasm of Breast, Female, Unspecified",
       "coding_system": "icd10",
@@ -513,6 +559,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:colorectal-cancer",
       "slug": "colorectal-cancer",
       "name": "Malignant Neoplasm of Colon, Unspecified",
       "coding_system": "icd10",
@@ -524,6 +571,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:lung-cancer",
       "slug": "lung-cancer",
       "name": "Malignant Neoplasm of Bronchus and Lung, Unspecified",
       "coding_system": "icd10",
@@ -535,6 +583,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:prostate-cancer",
       "slug": "prostate-cancer",
       "name": "Malignant Neoplasm of Prostate",
       "coding_system": "icd10",
@@ -546,6 +595,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:cervical-cancer",
       "slug": "cervical-cancer",
       "name": "Malignant Neoplasm of Cervix Uteri, Unspecified",
       "coding_system": "icd10",
@@ -557,6 +607,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:hpv-infection",
       "slug": "hpv-infection",
       "name": "Human Papillomavirus Infection",
       "coding_system": "icd10",
@@ -568,6 +619,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:measles",
       "slug": "measles",
       "name": "Measles, Unspecified",
       "coding_system": "icd10",
@@ -579,6 +631,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:mumps",
       "slug": "mumps",
       "name": "Mumps, Unspecified",
       "coding_system": "icd10",
@@ -590,6 +643,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:rubella",
       "slug": "rubella",
       "name": "Rubella, Unspecified",
       "coding_system": "icd10",
@@ -601,6 +655,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:tetanus",
       "slug": "tetanus",
       "name": "Tetanus, Unspecified",
       "coding_system": "icd10",
@@ -612,6 +667,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:diphtheria",
       "slug": "diphtheria",
       "name": "Diphtheria, Unspecified",
       "coding_system": "icd10",
@@ -623,6 +679,7 @@
       "kinds": ["disease"]
     },
     {
+      "seed_key": "concept:pertussis",
       "slug": "pertussis",
       "name": "Whooping Cough due to Bordetella pertussis without Pneumonia",
       "coding_system": "icd10",

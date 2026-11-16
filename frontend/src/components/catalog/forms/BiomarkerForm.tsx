@@ -7,8 +7,13 @@
  *
  * Single source of truth for biomarker-catalog creation/editing. Used by:
  *  - The Catalog workspace (`/catalogs?type=biomarker` → New/Edit)
- *  - The HITL `propose_define_biomarker` handler (AI-proposed definitions)
- *  - The `CreateBiomarkerModal` (manual create from the examinations page)
+ *  - The shared `CreateCatalogItemModal` (browse-dialog "New" action, the
+ *    unmapped-biomarker affordance, HITL proposals)
+ *
+ * Slug ownership: by default the field is editable (the workspace's
+ * explicit-slug door); `serverOwnedSlug` — passed only by the shared create
+ * dialog — renders it disabled with the live name derivation as display-only
+ * (the dialog strips the slug from the wire; ADR 0055 D8).
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +33,7 @@ import { CodingSystemSelect } from '../../ui/CodingSystemSelect';
 export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
   values,
   onChange,
+  serverOwnedSlug = false,
 }) => {
   const { t } = useTranslation();
   const [units, setUnits] = useState<Unit[]>([]);
@@ -101,11 +107,24 @@ export const BiomarkerForm: React.FC<CatalogItemFormProps> = ({
             onChange={(e) => handleNameChange(e.target.value)}
           />
         </Field>
-        <Field label="Slug" hint={t('catalogs.field_slug_hint', 'Auto-generated from name — edit to override')}>
+        <Field
+          label="Slug"
+          hint={
+            serverOwnedSlug
+              ? t('catalogs.field_slug_server_hint', 'Derived from the name on save')
+              : t('catalogs.field_slug_hint', 'Auto-generated from name — edit to override')
+          }
+        >
+          {/* serverOwnedSlug (the shared create dialog): the backend derives
+              the slug from the name and the dialog strips it from the wire —
+              the live derivation below is display-only, so the field is
+              disabled instead of advertising an override that would be
+              silently dropped. */}
           <TextInput
             value={String(values.slug ?? '')}
             onChange={(e) => handleSlugChange(e.target.value)}
             placeholder="auto-generated-from-name"
+            disabled={serverOwnedSlug}
           />
         </Field>
       </div>

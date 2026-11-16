@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import CheckConstraint, Column, Date, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -22,9 +22,21 @@ from app.services.fhir.fhir_helpers import (
 
 
 class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
+    """The canonical drug definition (ADR 0055 identity model).
+
+    ``seed_key`` is the immutable natural key (qualified form
+    ``medication:<kebab-key>``) — unique per tenant scope via the
+    ``ix_medication_catalog_seed_key_tenant`` expression index; ``coding_system``
+    + ``code`` (RxNorm/ATC) are attributes, never identity. ``slug`` is
+    deliberately absent. Scope CHECKs pin the tenancy invariants.
+    """
+
     __tablename__ = "medication_catalog"
 
     name = Column(String(255), nullable=False)
+    seed_key = Column(String(120), nullable=True)
+    coding_system = Column(String(50), nullable=True)
+    code = Column(String(100), nullable=True)
     description = Column(Text, nullable=True)
     indications = Column(Text, nullable=True)  # "What it cures"
     side_effects = Column(JSONB, nullable=True)  # List of strings
@@ -54,6 +66,15 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
         index=True,
     )
 
+    __table_args__ = (
+        CheckConstraint("scope <> 'system' OR tenant_id IS NULL", name="scope_system_no_tenant"),
+        CheckConstraint(
+            "(scope <> 'tenant' AND scope <> 'user') OR tenant_id IS NOT NULL",
+            name="scope_scoped_has_tenant",
+        ),
+        CheckConstraint("scope <> 'user' OR created_by IS NOT NULL", name="scope_user_has_creator"),
+    )
+
     # Explicit foreign_keys= so SQLAlchemy resolves the single concept FK
     # unambiguously (mirrors biomarker/anatomy/examination).
     class_concept = relationship(
@@ -63,25 +84,33 @@ class MedicationCatalog(Base, UUIDMixin, TimestampMixin, AuditMixin):
     )
 
     @property
-    def is_custom(self):
-        return self.tenant_id is not None
+    def class_concept_slug(self) -> str | None:
+        return self.class_concept.slug if self.class_concept else None
+
+    @property
+    def class_concept_name(self) -> str | None:
+        return self.class_concept.name if self.class_concept else None
 
     def to_dict(self):
         return {
             "id": str(self.id),
             "name": self.name,
+            "seed_key": self.seed_key,
+            "coding_system": self.coding_system,
+            "code": self.code,
             "description": self.description,
             "indications": self.indications,
             "side_effects": self.side_effects or [],
             "contraindications": self.contraindications,
             "dosage_info": self.dosage_info,
             "class_concept_id": str(self.class_concept_id) if self.class_concept_id else None,
-            "class_concept_slug": self.class_concept.slug if self.class_concept else None,
-            "class_concept_name": self.class_concept.name if self.class_concept else None,
+            "class_concept_slug": self.class_concept_slug,
+            "class_concept_name": self.class_concept_name,
             "scope": self.scope.value if self.scope else "system",
             "tenant_id": str(self.tenant_id) if self.tenant_id else None,
             "created_by": str(self.created_by) if self.created_by else None,
-            "is_custom": self.is_custom,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
     def to_fhir_dict(self) -> dict:
@@ -152,6 +181,16 @@ class Medication(
     # The medication information
     # {"text": "Aspirin", "catalog_id": "..."}
     code = Column(JSONB, nullable=False)
+
+    # The canonical catalog row this instance was authored from (ADR 0055 D6:
+    # FK + snapshot). Nullable — the JSONB ``code`` snapshot keeps the record
+    # standing alone; ``ON DELETE SET NULL`` leaves history intact.
+    medication_catalog_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("medication_catalog.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Timeline
     start_date = Column(Date, nullable=True)

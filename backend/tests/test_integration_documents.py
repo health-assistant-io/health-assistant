@@ -66,7 +66,7 @@ async def tenant_user_patient_integration():
                 tenant_id=tenant_id,
                 user_id=user_id,
                 patient_id=patient_id,
-                provider="test_docs",
+                provider="dev_dummy",
                 status="ACTIVE",
                 user_config={},
             )
@@ -218,7 +218,7 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
     ]
 
     class _Provider:
-        domain = "test_docs"
+        domain = "dev_dummy"
 
         async def pull_documents(self, integration):
             return list(over_cap_specs)
@@ -238,25 +238,11 @@ async def test_document_caps_are_enforced(tenant_user_patient_integration):
             )
         ).scalar_one()
 
-        # Mock the OCR dispatch so the test doesn't need a broker, and let
-        # the declared-data-class gate see `document` for this ad-hoc domain.
-        from app.extensions.registry import (
-            integration_registry as integration_registry_singleton,
-        )
-
-        with (
-            patch("app.workers.ai_tasks.ocr_document.apply_async"),
-            patch.object(
-                integration_registry_singleton,
-                "declared_data_classes",
-                lambda domain: frozenset({"document"}) if domain == "test_docs" else frozenset(),
-            ),
-            patch.object(
-                integration_registry_singleton,
-                "has_capability",
-                lambda domain, cap: False,
-            ),
-        ):
+        # Mock the OCR dispatch so the test doesn't need a broker. The
+        # provider domain is a bundled manifest (dev-dummy declares
+        # ``document``), so the declared-data-class gate and the scoped
+        # principal provision for real.
+        with patch("app.workers.ai_tasks.ocr_document.apply_async"):
             result = await svc.run_sync(db, integration, _Provider(), source="test")
 
     assert result.documents_pulled == 25

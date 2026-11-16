@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     ForeignKey,
     Index,
@@ -63,7 +64,9 @@ class Concept(
     ``tenant_id`` is NULL for global/seeded canonical rows and set for
     tenant-private overrides. The unique partial index on
     ``(COALESCE(tenant_id, sentinel), slug)`` prevents duplicate global slugs
-    without blocking tenant overrides.
+    without blocking tenant overrides. ``seed_key`` is the immutable natural
+    key (``concept:<kebab-key>``) for curated rows (ADR 0055) — slug stays
+    display-only and is never a join key.
 
     A concept is **multi-kind**: it carries zero or more ``ConceptKindTag``
     rows (one per domain it belongs to — e.g. "Blood Laboratory" is tagged as
@@ -76,6 +79,7 @@ class Concept(
 
     slug = Column(String(255), nullable=False, index=True)
     name = Column(String(255), nullable=False)
+    seed_key = Column(String(120), nullable=True)
     primary_kind = Column(
         SQLEnum(ConceptKind, values_callable=_enum_values),
         nullable=True,
@@ -134,6 +138,12 @@ class Concept(
     __table_args__ = (
         Index("ix_concepts_primary_kind_status", "primary_kind", "status"),
         Index("ix_concepts_parent", "parent_id"),
+        CheckConstraint("scope <> 'system' OR tenant_id IS NULL", name="scope_system_no_tenant"),
+        CheckConstraint(
+            "(scope <> 'tenant' AND scope <> 'user') OR tenant_id IS NOT NULL",
+            name="scope_scoped_has_tenant",
+        ),
+        CheckConstraint("scope <> 'user' OR created_by IS NOT NULL", name="scope_user_has_creator"),
     )
 
     @property
@@ -154,6 +164,7 @@ class Concept(
             "id": str(self.id),
             "slug": self.slug,
             "name": self.name,
+            "seed_key": self.seed_key,
             "kinds": self.kinds,
             "primary_kind": self.primary_kind.value if self.primary_kind else None,
             "parent_id": str(self.parent_id) if self.parent_id else None,

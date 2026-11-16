@@ -15,6 +15,7 @@ beat schedule were updated accordingly.
 import contextlib
 import datetime
 import os
+from contextlib import contextmanager
 from datetime import UTC
 from pathlib import Path
 from uuid import UUID
@@ -26,6 +27,9 @@ from app.ai.pipeline.service import MedicalProcessingService
 from app.ai.providers.service import AIProviderService
 from app.models.document_model import DocumentModel
 from app.models.examination_model import ExaminationModel
+from app.storage.bootstrap import current_store
+from app.storage.object_storage import ObjectNotFound
+from app.storage.object_storage import materialize as materialize_object
 from app.workers.celery_app import celery_app
 from app.workers.task_logger import TaskLogger, TaskProgressTracker
 from app.workers.tasks import async_task, get_async_session
@@ -33,27 +37,61 @@ from app.workers.tasks import async_task, get_async_session
 logger = get_task_logger(__name__)
 
 
+def _is_legacy_path(value: str) -> bool:
+    """True for a pre-contract absolute path in an already-queued message.
+
+    New dispatches always send an object key. A rolling upgrade can still
+    deliver one of the older payloads, so the worker reads that path directly
+    instead of materializing it (it has no key to look up).
+    """
+    return bool(value) and os.path.isabs(value)
+
+
+@contextmanager
+def _document_source(object_key: str):
+    """Yield a private path for a key, or the legacy path as-is.
+
+    Real keys are materialized into a ``0600`` temp file that is removed on
+    every exit path; the OCR/DICOM libraries never see a durable host path.
+    """
+    if _is_legacy_path(object_key):
+        path = Path(object_key)
+        if not os.path.exists(object_key):
+            raise FileNotFoundError("document file is not available")
+        yield path
+        return
+    try:
+        with materialize_object(current_store(), object_key) as path:
+            yield path
+    except ObjectNotFound as exc:
+        raise FileNotFoundError("document object is not available") from exc
+
+
 @celery_app.task(bind=True, max_retries=3)
 @async_task
 async def ocr_document(
     self,
     document_id: str,
-    file_path: str,
+    object_key: str,
     tenant_id: str,
     user_id: str | None = None,
 ):
-    logger.info(f"Starting OCR for document {document_id} at {file_path}")
+    """OCR one document by **object key** (never a durable host path).
+
+    The worker materializes the key into a private temp file inside this
+    process and removes it in the enclosing context, including on failure.
+    """
+    logger.info("Starting OCR for document %s", document_id)
     doc_uuid = UUID(document_id)
     tenant_uuid = UUID(tenant_id)
     user_uuid = UUID(user_id) if user_id else None
 
     db, _engine = get_async_session()
     task_logger = TaskLogger("ocr_document", document_id, tenant_uuid, db=db)
-    progress_tracker = TaskProgressTracker(db=db, document_id=doc_uuid)
 
     try:
         async with db:
-            await task_logger.log_start(filename=os.path.basename(file_path))
+            await task_logger.log_start(filename=os.path.basename(object_key))
 
             # Initialize status
             await db.execute(
@@ -70,23 +108,20 @@ async def ocr_document(
                 "config_loaded", 20, processor=ocr_processor.__class__.__name__
             )
 
-            # 2. Verify File
-            if not os.path.exists(file_path):
-                error_msg = f"File {file_path} not found"
-                await progress_tracker.update_document_status("failed", 0, error_msg)
-                raise FileNotFoundError(error_msg)
-
-            # 3. Extraction
+            # 2. Materialize + extract. The suffix only chooses the processor;
+            # the filesystem path never escapes this block.
             await task_logger.log_progress("ocr_start", 50)
-            file_path_obj = Path(file_path)
+            suffix = Path(object_key).suffix.lower()
 
-            if file_path_obj.suffix.lower() in [".pdf", ".dcm"]:
-                from app.ai.processors.ocr.utils import convert_to_images
+            with _document_source(object_key) as file_path_obj:
+                if suffix in [".pdf", ".dcm"]:
+                    from app.ai.processors.ocr.utils import convert_to_images
 
-                images = await convert_to_images(file_path_obj)
-                raw_text = await ocr_processor.extract_text_from_images(images)
-            else:
-                raw_text = await ocr_processor.extract_text(file_path_obj)
+                    images = await convert_to_images(file_path_obj)
+                    raw_text = await ocr_processor.extract_text_from_images(images)
+                else:
+                    raw_text = await ocr_processor.extract_text(file_path_obj)
+
 
             # 4. Success Persistence
             await db.execute(
@@ -109,7 +144,11 @@ async def ocr_document(
             await db.execute(
                 update(DocumentModel)
                 .where(DocumentModel.id == doc_uuid)
-                .values(status="failed", progress=0, error_message=str(e))
+                .values(
+                    status="failed",
+                    progress=0,
+                    error_message="OCR processing failed; see server logs with the task id.",
+                )
             )
             await db.commit()
         raise
@@ -348,7 +387,7 @@ async def cleanup_stuck_extractions():
 
 # Helper for direct calls from API
 def process_document_sync(
-    document_id: str, file_path: str, tenant_id: str, user_id: str | None = None
+    document_id: str, object_key: str, tenant_id: str, user_id: str | None = None
 ):
     """In-process OCR fallback for when Celery/Redis is unavailable (audit C10).
 
@@ -359,19 +398,22 @@ def process_document_sync(
     Celery task object directly runs its body **synchronously** in the current
     process (Celery's ``Task.__call__``), so despite the ``async def`` body the
     caller blocks until extraction completes — the name is intentional.
+
+    The payload is the object key (same as the Celery path), never a durable
+    host path.
     """
-    return ocr_document(document_id, file_path, tenant_id, user_id)
+    return ocr_document(document_id, object_key, tenant_id, user_id)
 
 
 @celery_app.task(bind=True, max_retries=3)
 def process_document(
     self,
     document_id: str,
-    file_path: str,
+    object_key: str,
     tenant_id: str,
     user_id: str | None = None,
 ):
-    return ocr_document.delay(document_id, file_path, tenant_id, user_id)
+    return ocr_document.delay(document_id, object_key, tenant_id, user_id)
 
 
 @celery_app.task

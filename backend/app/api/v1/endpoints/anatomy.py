@@ -2,11 +2,10 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalogs.policy import DEFAULT_CATALOG_POLICY
 from app.core.database import get_db
 from app.core.security import RoleChecker, get_current_user
 from app.models.concept_model import Concept
@@ -27,6 +26,7 @@ from app.schemas.anatomy import (
 from app.schemas.anatomy_import import AnatomyImportPayload
 from app.services.anatomy import anatomy_service
 from app.services.anatomy.anatomy_import_service import AnatomyImportService
+from app.services.catalog import catalog_write_service
 
 router = APIRouter()
 
@@ -82,35 +82,28 @@ async def list_anatomy_structures(
         limit=limit,
         offset=offset,
     )
-    return {"items": items, "total": total}
+    return {
+        "items": [
+            catalog_write_service.serialize_catalog_row(item, current_user.tenant_id)
+            for item in items
+        ],
+        "total": total,
+    }
 
 
-@router.post("", response_model=AnatomyStructureResponse)
+@router.post("", response_model=AnatomyStructureResponse, status_code=201)
 async def create_anatomy_structure(
     structure_in: AnatomyStructureCreate,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
-    """Create a new anatomical structure.
+    """Create a new anatomical structure via the unified write contract.
 
     Scope is derived from the caller's role via the shared catalog policy
     (SYSTEM_ADMIN→system, ADMIN/MANAGER→tenant, USER→user) — identical to
-    biomarker/medication/allergy/vaccine.
-    """
-    # Check if slug exists in the caller's visible scope (tenant + global).
-    existing = await anatomy_service.get_anatomy_structure_by_id_or_slug(
-        db, structure_in.slug, current_user.tenant_id
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail="Structure with this slug already exists.")
-
-    return await anatomy_service.create_anatomy_structure(
-        db,
-        structure_in,
-        role=current_user.role,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.user_id,
-    )
+    biomarker/medication/allergy/vaccine. Duplicate slug → 409; the class
+    slug resolves tenant-explicitly (system + caller's tenant)."""
+    return await catalog_write_service.create_anatomy(db, current_user, structure_in)
 
 
 # --- Anatomy figures (DB-driven body atlas, raster images) ---
@@ -148,16 +141,19 @@ async def get_anatomy_figure_image(
     slug: str,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
-) -> FileResponse:
-    """Serve the figure's cropped image file (WebP/PNG)."""
+) -> Response:
+    """Serve the figure's cropped image (WebP/PNG) through the object store."""
     figure = await anatomy_service.get_anatomy_figure(db, slug)
     if not figure:
         raise HTTPException(status_code=404, detail="Figure not found")
-    abspath = anatomy_service.figure_image_abspath(figure)
-    if not abspath or not abspath.exists():
+    data = await anatomy_service.aread_figure_image(figure)
+    if data is None:
         raise HTTPException(status_code=404, detail="Figure image file not found")
-    media = "image/webp" if abspath.suffix == ".webp" else "image/png"
-    return FileResponse(str(abspath), media_type=media)
+    return Response(
+        content=data,
+        media_type=anatomy_service.figure_media_type(figure),
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/figures/{slug}/source-image")
@@ -165,20 +161,19 @@ async def get_anatomy_figure_source_image(
     slug: str,
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     """Serve the figure's original uncropped source image (for re-cropping)."""
     figure = await anatomy_service.get_anatomy_figure(db, slug)
     if not figure:
         raise HTTPException(status_code=404, detail="Figure not found")
-    abspath = anatomy_service.figure_source_abspath(figure)
-    if not abspath or not abspath.exists():
+    data = await anatomy_service.aread_figure_image(figure, source=True)
+    if data is None:
         raise HTTPException(status_code=404, detail="No source image stored for this figure")
-    media = (
-        "image/webp"
-        if abspath.suffix == ".webp"
-        else ("image/png" if abspath.suffix == ".png" else "image/jpeg")
+    return Response(
+        content=data,
+        media_type=anatomy_service.figure_media_type(figure, source=True),
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
-    return FileResponse(str(abspath), media_type=media)
 
 
 @router.post("/figures", response_model=AnatomyFigureResponse, dependencies=[_admin_only])
@@ -294,22 +289,13 @@ async def update_anatomy_structure(
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
     """Update an existing anatomy structure. Only fields provided in the body
-    are changed. RBAC is enforced by the shared catalog policy
+    are changed. RBAC is enforced by the unified write service
     (``check_modify``): SYSTEM_ADMIN for system rows, ADMIN/MANAGER for tenant
     rows, creator-or-ADMIN for user-scope rows."""
-    structure = await anatomy_service.get_anatomy_structure_by_id_or_slug(
-        db, identifier, current_user.tenant_id
-    )
-    if not structure:
+    result = await catalog_write_service.update_anatomy(db, current_user, identifier, structure_in)
+    if result is None:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
-
-    DEFAULT_CATALOG_POLICY.check_modify(
-        current_user.role,
-        structure.scope,
-        item_created_by=structure.created_by,
-        actor_user_id=current_user.user_id,
-    )
-    return await anatomy_service.update_anatomy_structure(db, structure, structure_in)
+    return result
 
 
 @router.delete("/{identifier}")
@@ -318,22 +304,12 @@ async def delete_anatomy_structure(
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ) -> Any:
-    """Delete an anatomy structure. RBAC is enforced by the shared catalog
-    policy (``check_modify``) — same matrix as update."""
-    structure = await anatomy_service.get_anatomy_structure_by_id_or_slug(
-        db, identifier, current_user.tenant_id
-    )
-    if not structure:
+    """Delete an anatomy structure. RBAC is enforced by the unified write
+    service (``check_modify``) — same matrix as update."""
+    deleted = await catalog_write_service.delete_anatomy(db, current_user, identifier)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
-
-    DEFAULT_CATALOG_POLICY.check_modify(
-        current_user.role,
-        structure.scope,
-        item_created_by=structure.created_by,
-        actor_user_id=current_user.user_id,
-    )
-    await anatomy_service.delete_anatomy_structure(db, structure)
-    return {"detail": "Anatomy structure deleted"}
+    return {"status": "success", "message": "anatomy item deleted"}
 
 
 @router.get("/{identifier}", response_model=AnatomyGraphNode)
@@ -350,7 +326,7 @@ async def get_anatomy_structure(
     )
     if not structure:
         raise HTTPException(status_code=404, detail="Anatomy structure not found")
-    return structure
+    return catalog_write_service.serialize_catalog_row(structure, current_user.tenant_id)
 
 
 @router.post("/relations", response_model=AnatomyRelationResponse)

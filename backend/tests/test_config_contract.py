@@ -71,6 +71,17 @@ UNREAD_BY_DESIGN = (
     "HA_FOO_BAR",
 )
 
+# (b) env names whose *suffix is data*: the suite writes a concrete slot /
+# instance name, the reader owns a prefix and composes it at call time.
+# (tenant SSO client secrets resolve through the keyring slot name, with the
+# host env fallback ``HA_SSO_CLIENT_SECRET_<SLOT>``; seed source slots use
+# ``HA_SEED_SOURCE_SECRET_<SLOT>``. Both readers hold the unprefixed prefix
+# and the auth kit inserts the separator — plan 60 D2)
+READ_BY_PREFIX = {
+    "HA_SSO_CLIENT_SECRET": ("app/services/auth/sso_secrets.py",),
+    "HA_SEED_SOURCE_SECRET": ("app/services/seed/secrets.py",),
+}
+
 # (b) names written through patch.dict("os.environ", {...}) blocks (the
 # dict keys sit on their own lines, so the write scan below can't see them)
 PATCH_DICT_ENV_NAMES = (
@@ -172,12 +183,18 @@ def test_suite_env_writes_are_read_by_the_app():
     for name in sorted(set(writes) | set(PATCH_DICT_ENV_NAMES)):
         if name in UNREAD_BY_DESIGN:
             continue
-        readers = READ_ELSEWHERE.get(name, ("app/core/config.py",))
+        prefix = next((p for p in READ_BY_PREFIX if name.startswith(p)), None)
+        needle = prefix or name
+        readers = (
+            READ_BY_PREFIX[prefix]
+            if prefix is not None
+            else READ_ELSEWHERE.get(name, ("app/core/config.py",))
+        )
         for reader in readers:
             src = (BACKEND_DIR / reader).read_text()
-            assert name in src, (
+            assert needle in src, (
                 f"the suite writes env {name!r} ({writes.get(name, ['<patch.dict>'])}) "
-                f"but {reader} never mentions it — the reader was renamed and the "
+                f"but {reader} never mentions {needle!r} — the reader was renamed and the "
                 "test now sets a dead env var (plan 20 F1's mirror image)."
             )
 
@@ -186,6 +203,7 @@ def test_unread_by_design_names_are_declared():
     """The inert-name table must stay a small, deliberate list."""
     assert all(name.isupper() for name in UNREAD_BY_DESIGN)
     assert set(UNREAD_BY_DESIGN).isdisjoint(READ_ELSEWHERE)
+    assert set(UNREAD_BY_DESIGN).isdisjoint(READ_BY_PREFIX)
 
 
 # ---------------------------------------------------------------------------

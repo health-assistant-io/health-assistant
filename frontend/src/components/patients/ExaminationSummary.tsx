@@ -5,6 +5,7 @@ import { FileText, Plus, ChevronRight, Calendar, Stethoscope, AlertTriangle, Ref
 import { format, parseISO, isValid, differenceInDays } from 'date-fns';
 import { getExaminations } from '../../services/examinationService';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
+import { ExaminationModal } from '../examinations/ExaminationModal';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_BLUE } from '../ui/SummaryCardHeader';
 
 interface Props {
@@ -22,6 +23,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
   const [examinations, setExaminations] = useState<any[]>(initialExaminations ?? []);
   const [loading, setLoading] = useState(!initialExaminations);
   const [error, setError] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const fetchExams = async () => {
     if (!patientId) return;
@@ -47,8 +49,26 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
     fetchExams();
   }, [patientId, initialExaminations]);
 
-  // Open the upload page if arrived via ?new=examination
-  useCreateIntent(() => navigate('/examinations/upload'), 'examination');
+  // Open the create popup if arrived via ?new=examination
+  useCreateIntent(() => setIsCreateOpen(true), 'examination');
+
+  const handleCreated = (examinationId: string) => {
+    setIsCreateOpen(false);
+    navigate(`/examinations/${examinationId}`);
+  };
+
+  const createModal = patientId ? (
+    <ExaminationModal
+      isOpen={isCreateOpen}
+      onClose={() => setIsCreateOpen(false)}
+      patientId={patientId}
+      onSuccess={handleCreated}
+      onAdvanced={() => {
+        setIsCreateOpen(false);
+        navigate('/examinations/upload');
+      }}
+    />
+  ) : null;
 
   const sorted = useMemo(() => {
     return [...examinations].sort(
@@ -95,7 +115,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
             content: t('patients.examination_history_info'),
             ariaLabel: t('common.info'),
           }}
-          onAdd={() => navigate('/examinations/upload')}
+          onAdd={() => setIsCreateOpen(true)}
           addLabel={t('patients.add_visit')}
           titleTo="/examinations"
         />
@@ -110,6 +130,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
             <span>{t('common.retry')}</span>
           </button>
         </div>
+        {createModal}
       </div>
     );
   }
@@ -133,7 +154,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
           ariaLabel: t('common.info'),
         }}
         tags={tags}
-        onAdd={() => navigate('/examinations/upload')}
+        onAdd={() => setIsCreateOpen(true)}
         addLabel={t('patients.add_visit')}
         titleTo="/examinations"
       />
@@ -146,7 +167,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
               {t('patients.no_exams_recorded')}
             </p>
             <button
-              onClick={() => navigate('/examinations/upload')}
+              onClick={() => setIsCreateOpen(true)}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all text-xs font-bold"
             >
               <Plus className="w-3 h-3" />
@@ -161,6 +182,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
           </div>
         )}
       </div>
+      {createModal}
     </div>
   );
 };

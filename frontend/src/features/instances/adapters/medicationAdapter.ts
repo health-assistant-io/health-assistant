@@ -10,6 +10,7 @@ import { getPatientMedications, getMedication, type MedicationRecord } from '../
 import { searchInstances } from '../../../services/instanceSearchService';
 import { normalizeResult } from './_shared';
 import { getMedicationFacets } from '../facets/medicationFacets';
+import { isActiveMedication, normalizeMedicationStatus } from '../../../utils/medicationStatus';
 
 const SEARCH_FIELDS = (m: MedicationRecord) => [m.code?.text, m.reason, m.dosage];
 
@@ -48,7 +49,11 @@ export const medicationAdapter: InstanceAdapter<MedicationRecord> = {
       description: m.reason || m.note || undefined,
       date: m.start_date,
       status: m.status,
-      statusColor: m.status === 'active' ? '#16a34a' : m.status === 'stopped' ? '#dc2626' : null,
+      statusColor: isActiveMedication(m.status)
+        ? '#16a34a'
+        : normalizeMedicationStatus(m.status) === 'stopped'
+          ? '#dc2626'
+          : null,
       icon: 'Pill',
       raw: m,
     };

@@ -15,7 +15,7 @@ tested sources of these SDKs ship here, tracked in core.
 
 The bridge **extension** itself (provider, config flow, manifest, docs)
 lives in the extension subsystem home: `backend/app/extensions/builtin/
-health_assistant_bridge/` (ADR-0040 D24). Nothing in the backend imports
+health_assistant_bridge/`. Nothing in the backend imports
 these SDKs — they are consumer-facing packages with their own packaging
 (`pyproject.toml`, `package.json`, Gradle).
 

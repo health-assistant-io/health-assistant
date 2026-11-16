@@ -62,13 +62,29 @@ async def get_mfa_user(user_id: str | UUID) -> UserModel | None:
         return result.scalar_one_or_none()
 
 
-def mfa_status(user: UserModel) -> dict:
-    """The self-service status shape (``GET /me/mfa``)."""
+def mfa_status(user: UserModel, *, passkey_count: int = 0) -> dict:
+    """The self-service status shape (``GET /me/mfa``).
+
+    Factor-aware: ``enabled`` is true when **either** a confirmed TOTP
+    secret or at least one active passkey exists. The per-factor flags let
+    the settings card offer "add another factor" without guessing.
+    """
+    totp_enabled = bool(getattr(user, "mfa_secret_enc", None))
     return {
-        "enabled": bool(getattr(user, "mfa_secret_enc", None)),
+        "enabled": totp_enabled or passkey_count > 0,
         "enforced": bool(getattr(user, "mfa_enforced", False)),
         "pending": bool(getattr(user, "mfa_pending", None)),
+        "totp_enabled": totp_enabled,
+        "passkey_enabled": passkey_count > 0,
+        "passkey_count": passkey_count,
     }
+
+
+async def status_for(user: UserModel) -> dict:
+    """``mfa_status`` with the account's active-passkey count."""
+    from app.services.auth import passkeys
+
+    return mfa_status(user, passkey_count=len(await passkeys.active_credentials(user.id)))
 
 
 def _provisioning(secret: str, user: UserModel) -> dict:

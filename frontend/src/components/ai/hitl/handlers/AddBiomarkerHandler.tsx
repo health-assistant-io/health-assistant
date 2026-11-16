@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Activity, Tag, Calendar } from 'lucide-react';
 import { TaskInfo } from '../../../../types/ai';
 import { HitlHandlerProps } from '../registry';
+import { SuggestedDefinitionChip } from '../SuggestedDefinitionChip';
 import {
   AddBiomarkerForm,
   AddBiomarkerFormPrefill,
@@ -10,6 +11,7 @@ import {
 } from '../../../examinations/AddBiomarkerForm';
 import { createObservation } from '../../../../services/observationService';
 import { resolveHitlTask } from '../../../../services/aiAssistanceService';
+import type { CatalogItem } from '../../../../types/catalog';
 
 /**
  * Maps the AI-proposed payload (produced by the backend
@@ -78,6 +80,27 @@ export const AddBiomarkerHandler: React.FC<HitlHandlerProps> = ({ task, sessionI
     ? String(task.context.examination_date).split('T')[0]
     : undefined;
   const examLabel = [examCategory, examDate].filter(Boolean).join(' · ') || null;
+
+  // The prefill is computed ONCE per mount: the chip dialog's open/close cycle
+  // (and any parent re-render) must never re-hydrate the form — the proposed
+  // value/note (and any edits) survive.
+  const [prefill] = useState(() => proposalToPrefill(task.proposed_payload));
+
+  // The biomarker proposal carries no `is_new` flag — `matched: false` is the
+  // same contract. The chip opens the shared create dialog with just the
+  // proposed name as the draft (units/categories are the definition's data).
+  const proposed = task.proposed_payload as Record<string, any> | undefined;
+  const isNew = proposed?.matched === false;
+  const [catalogSelection, setCatalogSelection] = useState<
+    { catalog_id: string; text: string } | undefined
+  >(undefined);
+
+  const handleCreated = (row: CatalogItem) => {
+    setCatalogSelection({
+      catalog_id: String(row.id ?? ''),
+      text: String(row.name ?? proposed?.biomarker_name ?? ''),
+    });
+  };
 
   const handleConfirm = async (observation: AddBiomarkerFormPayload) => {
     setError(null);
@@ -156,11 +179,18 @@ export const AddBiomarkerHandler: React.FC<HitlHandlerProps> = ({ task, sessionI
           </span>
         </div>
       )}
+      {isNew && proposed && (
+        <SuggestedDefinitionChip
+          type="biomarker"
+          name={proposed.biomarker_name}
+          onCreated={handleCreated}
+        />
+      )}
       <AddBiomarkerForm
         patientId={patientId}
         examinationId={examinationId}
-        prefill={proposalToPrefill(task.proposed_payload)}
-        showHeader={false}
+        prefill={prefill}
+        catalogSelection={catalogSelection}
         showActions
         submitLabel={t('ai_chat.hitl.add_biomarker.confirm', 'Confirm & Add')}
         onSubmit={handleConfirm}

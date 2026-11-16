@@ -132,11 +132,13 @@ The response shape carries `kinds: List[str]` and `primary_kind: str | null`
 (preferred) or a legacy single `kind: "..."` for backward compatibility.
 
 > **Sole write authority:** `ConceptService` is the only concept write path —
-> it enforces audit logging, the retire/restore lifecycle, and RBAC. The
-> `ConceptCatalogAdapter` (`/catalogs/concept`) is **read-only**: `POST`/
-> `PUT`/`DELETE` return `405` (use the `/concepts` endpoints above instead).
-> `GET /catalogs/graph` returns the whole cross-catalog ontology graph
-> (rootless) with `types`, `kind`, `include_isolated`, and `limit` filters.
+> it enforces audit logging, the retire/restore lifecycle, and RBAC. Both
+> doors reach it: the `/concepts` endpoints above **and** the generic
+> `/catalogs/concept` writes (the one write contract — same service, same
+> validation, same audit; duplicate slug → `409`). Only scope `promote` has no
+> concept semantics (`405`). `GET /catalogs/graph` returns the whole
+> cross-catalog ontology graph (rootless) with `types`, `kind`,
+> `include_isolated`, and `limit` filters.
 
 ## Catalogs workspace UI (`/catalogs`, SYSTEM_ADMIN for writes)
 
