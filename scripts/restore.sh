@@ -654,11 +654,16 @@ except Exception:
     done
     docker stop -t 2 "$PROBE_NAME" >/dev/null 2>&1 || true
     if [[ -n "$health_json" ]]; then
+      # /ready shape (plan 64 §1.4, app/api/readiness.py): the verdict is the
+      # top-level "status"; per-tier facts live under "checks" —
+      #   checks.db.ok      bool: reachable AND at this release's alembic head
+      #   checks.storage.status  "ok"/"degraded"/"unavailable" (soft signal;
+      #                      never gates readiness unless storage is required)
       probe_status="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('status','?'))" "$health_json" 2>/dev/null || echo '?')"
-      probe_db="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('database','?'))" "$health_json" 2>/dev/null || echo '?')"
-      probe_storage="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('storage',{}).get('status','?'))" "$health_json" 2>/dev/null || echo '?')"
+      probe_db_ok="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('checks',{}).get('db',{}).get('ok','?'))" "$health_json" 2>/dev/null || echo '?')"
+      probe_storage="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('checks',{}).get('storage',{}).get('status','?'))" "$health_json" 2>/dev/null || echo '?')"
       verify_assert "readiness reports ready" "ready" "$probe_status"
-      verify_assert "backend boots against the target (database)" "connected" "$probe_db"
+      verify_assert "backend boots against the target (checks.db.ok)" "True" "$probe_db_ok"
       echo "    storage probe: $probe_storage (informational; provider probe is authoritative on cloud)"
     else
       echo "    FAIL: backend probe did not answer on :${PROBE_PORT}"
