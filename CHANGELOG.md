@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (docker)
 - **Floating base images pinned in both compose flavors** (standalone + prod): `timescale/timescaledb:latest-pg16` → `2.32.0-pg16` (postgres + backup sidecar), `redis:7-alpine` → `7.4.12-alpine`, `nginx:alpine` → `1.30.6-alpine`. PG major stays 16 (data dirs are major-incompatible). App images (`REGISTRY`/`REPOSITORY`/`IMAGE_TAG`) unchanged.
+- **Immutable image overrides `HA_BACKEND_IMAGE` / `HA_FRONTEND_IMAGE`** on every backend/frontend service in both flavors — they take precedence over `REGISTRY`/`REPOSITORY`/`IMAGE_TAG`, so a release stack can be pinned by digest (documented in `.env.example` and `docker/README.md`).
+- **Postgres first-boot healthcheck hardened** in both flavors: `retries: 5 → 10` and `start_period: 60s` — slow first-boot init (extensions, role bootstrap) no longer flaps the container unhealthy.
 - **`lib-docker.sh` `check_cwd` accepts the deploy-bundle layout** (`docker/` + `manifest.json`, no source tree) so `backup.sh` / `restore.sh` run from an extracted `health-compose-v*` bundle exactly as from a source checkout.
 
 ## [v0.10.0] - 2026-11-16
