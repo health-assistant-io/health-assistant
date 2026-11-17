@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-18
+
+### Fixed (release automation)
+- **Corrected the source-free deploy bundle.** The v0.10.0 `health-compose-v0.10.0.tar.gz`
+  omitted the postgres bootstrap contracts — `docker/init-db.sql` (extensions) and
+  `docker/init-roles.sh` (the ADR-0064 owner/app role split). The bundle builder now ships
+  both, so a fresh stack from the release bundle initializes identically to a source
+  checkout. No application behavior change: app images are untouched.
+
 ### Added (release automation)
 - **Source-free deploy bundles on every release.** `scripts/build-deploy-bundle.sh` builds `health-compose-v<version>.tar.gz` — the deployment surface only: both compose flavors, the nginx configs (plain + TLS), the postgres init scripts, `docker/README.md`, the host backup/restore helpers (`backup.sh` / `restore.sh` / `lib-docker.sh`) and `.env.example` — no source tree, no secrets (allowlist + source-free guard). The tarball is deterministic (sorted names, epoch mtimes, root owner, `gzip -n`) so identical content always hashes identically. On tag builds the release workflow now attaches it together with `manifest.json` (product/version/commit, both image digests as `images.backend` / `images.frontend`, bundle SHA256, per-file SHA256SUMS) and a release-level `SHA256SUMS`. (`release.yml`, `docker-publish.yml`.)
 - **Image digests exposed by the publish pipeline.** The separate backend/frontend Docker publish jobs surface their pushed digests as job outputs, collected into a small `image-digests` artifact that the release workflow downloads and embeds into the manifest — the release assets now name exactly what the registry received. App images unchanged.
