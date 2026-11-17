@@ -31,7 +31,7 @@ docs/INSTALL.md.
 | `docker-compose.dev-db.yml` | Dev infrastructure only (Postgres + Redis) for host-based `scripts/run-dev.sh`. Creates `neuronection_health` + `neuronection_health_test` + the family roles. |
 | `docker-compose.dev.yml` | Full stack built from source (hot reload, debug logging) — local testing and small staging. |
 | `docker-compose.standalone.yml` | Canonical single-host self-host stack: postgres + redis + app services + **bundled nginx**, TLS-ready, `backup` sidecar behind `--profile backup`. |
-| `docker-compose.prod.yml` | Production services; proxy handled externally; app ports bound to `127.0.0.1`; honors `REGISTRY`/`REPOSITORY`/`IMAGE_TAG` (and `STACK_NAME` to run a second stack side-by-side). |
+| `docker-compose.prod.yml` | Production services; proxy handled externally; app ports bound to `127.0.0.1`; honors `REGISTRY`/`REPOSITORY`/`IMAGE_TAG`, or the immutable `HA_BACKEND_IMAGE`/`HA_FRONTEND_IMAGE` overrides (and `STACK_NAME` to run a second stack side-by-side). |
 | `Dockerfile` / `Dockerfile.worker` / `Dockerfile.frontend` | Backend (API + migrate + flower), worker, and SPA images. |
 | `init-db.sql` | First-boot extensions bootstrap (timescaledb, pgcrypto, pg_trgm). |
 | `init-roles.sh` | First-boot role bootstrap: `neuronection_health_app` runtime role + grants (+ optional `POSTGRES_TEST_DB`). |
