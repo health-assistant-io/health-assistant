@@ -11,8 +11,8 @@ Every push to `main` on GitHub runs the workflows in `.github/workflows/`:
 | Workflow | What it does |
 |---|---|
 | **Test suite** (`test.yml`, reusable) | Backend pytest (Python 3.12, Postgres + Redis service containers) + frontend vitest, lint & build. |
-| **Docker Build and Publish** (`docker-publish.yml`) | Builds backend + frontend images and publishes them to `ghcr.io` on `main` and semver tags. |
-| **Create GitHub Release** (`release.yml`) | On `vX.Y.Z` tags: creates a GitHub Release with notes extracted from the matching `CHANGELOG.md` section. |
+| **Docker Build and Publish** (`docker-publish.yml`) | Builds backend + frontend images and publishes them to `ghcr.io` on `main` and semver tags. The two publish jobs expose their pushed digests as the `image-digests` artifact. |
+| **Create GitHub Release** (`release.yml`) | On `vX.Y.Z` tags: creates a GitHub Release with notes extracted from the matching `CHANGELOG.md` section, gated on the tag's own image publish pipeline (`CI gate (same SHA)` — a 60-minute robust wait inside a 75-minute job ceiling, so slow-but-green backend/contract runs can never fail a release spuriously), then attaches the source-free deploy bundle (`health-compose-v<version>.tar.gz` from `scripts/build-deploy-bundle.sh`), `manifest.json` (product/version/commit + both image digests + bundle SHA + SHA256SUMS) and `SHA256SUMS`. |
 | **Security Scan** (`security-scan.yml`) | Dependency vulnerability scanning on `main` and PRs. |
 | **BYOK setup contract** / **AI architecture alignment** / **Cross-repo conventions** | Contract gates (`byok-contract.yml`, `ai-alignment.yml`, `family-convergence.yml`): the one-click AI provider setup contract, AI architecture rules, and shared conventions. `family-convergence.yml` also runs the repo-specific no-legacy gate (`scripts/check-no-legacy.sh` + its self-test): zero-importer components, one pnpm lockfile, documented counts, retired shapes, deleted surfaces, one service-worker registration and a real 404, and the retired `supports_*` probe vocabulary. |
 

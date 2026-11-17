@@ -20,9 +20,18 @@ die() {
 }
 
 check_cwd() {
-    if [ ! -d "backend" ] || [ ! -d "frontend" ]; then
-        die "Please run this script from the Health Assistant root directory"
+    # Source checkout: the classic repo layout…
+    if [ -d "backend" ] && [ -d "frontend" ]; then
+        return 0
     fi
+    # …or the source-free deploy bundle (health-compose-v*.tar.gz from the
+    # release assets): docker/ + scripts/ + manifest.json, no source tree.
+    # backup.sh / restore.sh only drive the RUNNING stack (docker compose +
+    # the published images), so they are layout-agnostic beyond this check.
+    if [ -d "docker" ] && [ -f "manifest.json" ]; then
+        return 0
+    fi
+    die "Please run this script from the Health Assistant root directory (a source checkout or an extracted health-compose bundle)"
 }
 
 check_docker() {

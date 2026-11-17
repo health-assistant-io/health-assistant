@@ -147,15 +147,19 @@ services:
   # PostgreSQL 16 with TimescaleDB
   #
   # deployment.md datastore rule: web mode runs PostgreSQL 16 — health keeps
-  # its TimescaleDB-optional image (latest-pg16 tag; timescaledb + pgcrypto +
+  # its TimescaleDB-optional image (pinned 2.32.0-pg16; timescaledb + pgcrypto +
   # pg_trgm are all available there, and the migrations that use TimescaleDB
   # features degrade gracefully when the extension is absent). Data
   # directories are NOT compatible across major versions: existing pg14
   # volumes must move via backup → fresh volume → restore (docker/README.md
   # → "Upgrading from pg14").
   # ───────────────────────────────────────────────────────────────────────
+  # Base images are PINNED to exact versions (moved monthly, deliberate
+  # bump): floating tags re-resolve on every `up` and an upstream rebuild can
+  # crash-loop a healthy stack overnight. PG major stays 16 — data dirs are
+  # incompatible across majors (docker/README.md → "Upgrading from pg14").
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.32.0-pg16
     container_name: ${STACK_NAME:-health-assistant}-postgres
     restart: unless-stopped
     environment:
@@ -180,7 +184,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U neuronection_health_owner -d ${POSTGRES_DB:-neuronection_health}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 60s
     logging: *default-logging
     networks:
       - health-assistant-network
@@ -189,7 +194,7 @@ services:
   # Redis (broker + cache + OAuth state store)
   # ───────────────────────────────────────────────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.12-alpine
     container_name: ${STACK_NAME:-health-assistant}-redis
     restart: unless-stopped
     # Audit 2026-08 CFG-M1: Redis requires a password (refresh/session jti
@@ -225,7 +230,7 @@ services:
   # Re-run manually: docker compose -f docker/docker-compose.prod.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
   migrate:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-migrate
     restart: "no"
     environment:
@@ -263,7 +268,7 @@ services:
   # BACKEND_BIND_ALL=true and override BACKEND_PORT to expose directly.
   # ───────────────────────────────────────────────────────────────────────
   backend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-backend
     restart: unless-stopped
     init: true
@@ -304,7 +309,7 @@ services:
   # release memory leaked by ML/OCR libraries.
   # ───────────────────────────────────────────────────────────────────────
   worker:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-worker
     restart: unless-stopped
     init: true
@@ -353,7 +358,7 @@ services:
   # Only ONE beat instance must run — beat is not idempotent. Do NOT scale.
   # ───────────────────────────────────────────────────────────────────────
   beat:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-beat
     restart: unless-stopped
     init: true
@@ -387,7 +392,7 @@ services:
   # FLOWER_BIND_ALL=true to expose directly (not recommended).
   # ───────────────────────────────────────────────────────────────────────
   flower:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-flower
     restart: unless-stopped
     init: true
@@ -417,7 +422,7 @@ services:
   # Frontend (Vite preview — production build)
   # ───────────────────────────────────────────────────────────────────────
   frontend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}
+    image: ${HA_FRONTEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}}
     container_name: ${STACK_NAME:-health-assistant}-frontend
     restart: unless-stopped
     init: true
@@ -446,7 +451,7 @@ services:
   #   --profile backup
   # ───────────────────────────────────────────────────────────────────────
   backup:
-    image: timescale/timescaledb:latest-pg16 # pg_dump from the same image as the server
+    image: timescale/timescaledb:2.32.0-pg16 # pg_dump from the same image as the server
     profiles: ["backup"]
     restart: unless-stopped
     depends_on:

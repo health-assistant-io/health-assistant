@@ -10,6 +10,20 @@ For full installation instructions see [docs/INSTALL.md](../docs/INSTALL.md)
 and [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md); for host-based
 development use `../scripts/run-dev.sh` with the dev-db stack below.
 
+### Source-free deploy bundle (release assets)
+
+Every tagged release publishes `health-compose-v<version>.tar.gz` — a
+source-free deployment bundle built from exactly this directory's deployment
+surface: both compose flavors, the nginx configs, the postgres init scripts,
+this README, `../scripts/{backup,restore,lib-docker}.sh` and
+`.env.example`. Operators who only pull the published images extract it and
+run `docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d`
+from the extracted root — no source checkout needed; `manifest.json` (release
+asset) pins the exact backend/frontend image digests the release shipped, and
+`SHA256SUMS` verifies the downloads. The `install.sh` / `bootstrap.sh`
+first-deploy paths are source-checkout-only and stay documented in
+docs/INSTALL.md.
+
 ## File map
 
 | File | Purpose |
@@ -17,7 +31,7 @@ development use `../scripts/run-dev.sh` with the dev-db stack below.
 | `docker-compose.dev-db.yml` | Dev infrastructure only (Postgres + Redis) for host-based `scripts/run-dev.sh`. Creates `neuronection_health` + `neuronection_health_test` + the family roles. |
 | `docker-compose.dev.yml` | Full stack built from source (hot reload, debug logging) — local testing and small staging. |
 | `docker-compose.standalone.yml` | Canonical single-host self-host stack: postgres + redis + app services + **bundled nginx**, TLS-ready, `backup` sidecar behind `--profile backup`. |
-| `docker-compose.prod.yml` | Production services; proxy handled externally; app ports bound to `127.0.0.1`; honors `REGISTRY`/`REPOSITORY`/`IMAGE_TAG` (and `STACK_NAME` to run a second stack side-by-side). |
+| `docker-compose.prod.yml` | Production services; proxy handled externally; app ports bound to `127.0.0.1`; honors `REGISTRY`/`REPOSITORY`/`IMAGE_TAG`, or the immutable `HA_BACKEND_IMAGE`/`HA_FRONTEND_IMAGE` overrides (and `STACK_NAME` to run a second stack side-by-side). |
 | `Dockerfile` / `Dockerfile.worker` / `Dockerfile.frontend` | Backend (API + migrate + flower), worker, and SPA images. |
 | `init-db.sql` | First-boot extensions bootstrap (timescaledb, pgcrypto, pg_trgm). |
 | `init-roles.sh` | First-boot role bootstrap: `neuronection_health_app` runtime role + grants (+ optional `POSTGRES_TEST_DB`). |
@@ -91,7 +105,8 @@ docker volume rm docker_uploads
 ## Databases & roles
 
 Web mode runs **PostgreSQL 16** — health keeps its TimescaleDB-optional
-image (`timescale/timescaledb:latest-pg16`; the migrations degrade
+image (`timescale/timescaledb:2.32.0-pg16` — pinned in both compose
+flavors; the migrations degrade
 gracefully when TimescaleDB features are unavailable). Naming follows
 deployment.md:
 
@@ -190,11 +205,11 @@ $C -U neuronection_health_owner -c 'DROP ROLE ha_db_migrator;'
 ### Upgrading from pg14
 
 PostgreSQL data directories are **not** compatible across major versions —
-pointing the existing volume at `latest-pg16` refuses to start. The
+pointing the existing volume at a pg16 image refuses to start. The
 supported path is dump → fresh volume → restore (the exact steps above);
 `pg_dump` from a v14 client and `pg_restore` into v16 is a supported
 upgrade route. The extension set (timescaledb, pgcrypto, pg_trgm) is
-available on the `latest-pg16` tag, so nothing else changes.
+available on the pinned pg16 tag, so nothing else changes.
 
 A v0.8.0 database also predates the v0.9.0 migration squash, so restoring it
 as-is is not enough: `alembic upgrade head` refuses it by design. Recreate the

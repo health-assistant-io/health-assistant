@@ -36,6 +36,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The release workflow's manifest (images.backend) needs the exact digest
+    # this job pushed — surfaced via the image-digests artifact below.
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.publish.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -61,6 +66,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Backend Docker image
+        id: publish
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -77,6 +83,11 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # The release workflow's manifest (images.frontend) needs the exact
+    # digest this job pushed — surfaced via the image-digests artifact below.
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.publish.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -102,6 +113,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Frontend Docker image
+        id: publish
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -109,3 +121,63 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  # The two publish jobs run separately, so their digests must be collected
+  # somewhere the release workflow can read: one tiny artifact per run.
+  # release.yml downloads it (after its CI gate sees this run succeed) and
+  # embeds images.backend / images.frontend into the release manifest.
+  image-digests:
+    name: Expose image digests (release manifest input)
+    needs: [build-and-push-backend, build-and-push-frontend]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Collect both image digests
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          VERSION: ${{ needs.build-and-push-backend.outputs.version }}
+          BACKEND_DIGEST: ${{ needs.build-and-push-backend.outputs.digest }}
+          FRONTEND_DIGEST: ${{ needs.build-and-push-frontend.outputs.digest }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          digest_re = re.compile(r"^sha256:[0-9a-f]{64}$")
+          registry = os.environ["REGISTRY"].lower()
+          image_name = os.environ["IMAGE_NAME"].lower()
+          payload = {"version": os.environ["VERSION"], "images": {}}
+          for kind, digest in (
+              ("backend", os.environ["BACKEND_DIGEST"]),
+              ("frontend", os.environ["FRONTEND_DIGEST"]),
+          ):
+              if not digest_re.fullmatch(digest or ""):
+                  sys.exit(
+                      f"::error::{kind} digest has an unexpected shape "
+                      f"({digest!r}) — refusing to publish a manifest input"
+                  )
+              name = f"{registry}/{image_name}/health-assistant-{kind}"
+              payload["images"][kind] = {
+                  "digest": digest,
+                  "ref": f"{name}:{os.environ['VERSION']}",
+              }
+          with open("image-digests.json", "w") as fh:
+              json.dump(payload, fh, indent=2, sort_keys=True)
+              fh.write("\n")
+          PY
+          cat image-digests.json
+
+      - name: Upload image digests artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: image-digests
+          path: image-digests.json
+          retention-days: 7
+          if-no-files-found: error
