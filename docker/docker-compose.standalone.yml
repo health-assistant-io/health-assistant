@@ -168,7 +168,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U neuronection_health_owner -d ${POSTGRES_DB:-neuronection_health}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 60s
     logging: *default-logging
     networks:
       - health-assistant-network
@@ -209,7 +210,7 @@ services:
   # Re-run manually: docker compose -f docker/docker-compose.standalone.yml run --rm migrate
   # ───────────────────────────────────────────────────────────────────────
   migrate:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-migrate
     restart: "no"
     environment:
@@ -245,7 +246,7 @@ services:
   # Isolated inside the Docker network; traffic is routed via Nginx.
   # ───────────────────────────────────────────────────────────────────────
   backend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-backend
     restart: unless-stopped
     init: true
@@ -284,7 +285,7 @@ services:
   # release memory leaked by ML/OCR libraries.
   # ───────────────────────────────────────────────────────────────────────
   worker:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-worker
     restart: unless-stopped
     init: true
@@ -331,7 +332,7 @@ services:
   # Only ONE beat instance must run — beat is not idempotent. Do NOT scale.
   # ───────────────────────────────────────────────────────────────────────
   beat:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-beat
     restart: unless-stopped
     init: true
@@ -362,7 +363,7 @@ services:
   # breaks nginx startup; /flower/ simply 502s while disabled.
   # ───────────────────────────────────────────────────────────────────────
   flower:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}
+    image: ${HA_BACKEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-backend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-flower
     restart: unless-stopped
     init: true
@@ -392,7 +393,7 @@ services:
   # Isolated inside the Docker network; traffic is routed via Nginx at /.
   # ───────────────────────────────────────────────────────────────────────
   frontend:
-    image: ${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}
+    image: ${HA_FRONTEND_IMAGE:-${REGISTRY:-ghcr.io}/${REPOSITORY:-health-assistant-io/health-assistant}/health-assistant-frontend:${IMAGE_TAG:-latest}}
     container_name: health-assistant-frontend
     restart: unless-stopped
     init: true
