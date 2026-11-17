@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (release automation)
+- **Source-free deploy bundles on every release.** `scripts/build-deploy-bundle.sh` builds `health-compose-v<version>.tar.gz` — the deployment surface only: both compose flavors, the nginx configs (plain + TLS), the postgres init scripts, `docker/README.md`, the host backup/restore helpers (`backup.sh` / `restore.sh` / `lib-docker.sh`) and `.env.example` — no source tree, no secrets (allowlist + source-free guard). The tarball is deterministic (sorted names, epoch mtimes, root owner, `gzip -n`) so identical content always hashes identically. On tag builds the release workflow now attaches it together with `manifest.json` (product/version/commit, both image digests as `images.backend` / `images.frontend`, bundle SHA256, per-file SHA256SUMS) and a release-level `SHA256SUMS`. (`release.yml`, `docker-publish.yml`.)
+- **Image digests exposed by the publish pipeline.** The separate backend/frontend Docker publish jobs surface their pushed digests as job outputs, collected into a small `image-digests` artifact that the release workflow downloads and embeds into the manifest — the release assets now name exactly what the registry received. App images unchanged.
+- **Release CI gate with a non-spurious timeout.** `release.yml` gained the family-pattern `CI gate (same SHA)` job: it waits for the tag's own `Docker Build and Publish` run to conclude green before building artifacts — 60 minutes of robust polling (handles not-yet-visible runs; fails only on real red conclusions) inside a 75-minute job ceiling, so long backend/SQLite/conformance runs can no longer make a release fail spuriously.
+
+### Changed (docker)
+- **Floating base images pinned in both compose flavors** (standalone + prod): `timescale/timescaledb:latest-pg16` → `2.32.0-pg16` (postgres + backup sidecar), `redis:7-alpine` → `7.4.12-alpine`, `nginx:alpine` → `1.30.6-alpine`. PG major stays 16 (data dirs are major-incompatible). App images (`REGISTRY`/`REPOSITORY`/`IMAGE_TAG`) unchanged.
+- **`lib-docker.sh` `check_cwd` accepts the deploy-bundle layout** (`docker/` + `manifest.json`, no source tree) so `backup.sh` / `restore.sh` run from an extracted `health-compose-v*` bundle exactly as from a source checkout.
+
 ## [v0.10.0] - 2026-11-16
 
 ### Added (create menu)

@@ -135,15 +135,19 @@ services:
   # PostgreSQL 16 with TimescaleDB
   #
   # deployment.md datastore rule: web mode runs PostgreSQL 16 — health keeps
-  # its TimescaleDB-optional image (latest-pg16 tag; timescaledb + pgcrypto +
+  # its TimescaleDB-optional image (pinned 2.32.0-pg16; timescaledb + pgcrypto +
   # pg_trgm are all available there, and the migrations that use TimescaleDB
   # features degrade gracefully when the extension is absent). Data
   # directories are NOT compatible across major versions: existing pg14
   # volumes must move via backup → fresh volume → restore (docker/README.md
   # → "Upgrading from pg14").
   # ───────────────────────────────────────────────────────────────────────
+  # Base images are PINNED to exact versions (moved monthly, deliberate
+  # bump): floating tags re-resolve on every `up` and an upstream rebuild can
+  # crash-loop a healthy stack overnight. PG major stays 16 — data dirs are
+  # incompatible across majors (docker/README.md → "Upgrading from pg14").
   postgres:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.32.0-pg16
     container_name: health-assistant-postgres
     restart: unless-stopped
     environment:
@@ -177,7 +181,7 @@ services:
   # Redis (broker + cache + OAuth state store)
   # ───────────────────────────────────────────────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.12-alpine
     container_name: health-assistant-redis
     restart: unless-stopped
     environment:
@@ -412,7 +416,8 @@ services:
   # Routes traffic to the internal containers. Exposes only port 80/443.
   # ───────────────────────────────────────────────────────────────────────
   nginx:
-    image: nginx:alpine
+    # Pinned minor (stable series) — same reason as postgres/redis above.
+    image: nginx:1.30.6-alpine
     container_name: health-assistant-nginx
     restart: unless-stopped
     ports:
@@ -449,7 +454,7 @@ services:
   #   --profile backup
   # ───────────────────────────────────────────────────────────────────────
   backup:
-    image: timescale/timescaledb:latest-pg16 # pg_dump from the same image as the server
+    image: timescale/timescaledb:2.32.0-pg16 # pg_dump from the same image as the server
     profiles: ["backup"]
     restart: unless-stopped
     depends_on:

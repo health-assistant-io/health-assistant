@@ -14,7 +14,7 @@ on:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    # Release creation is the only write surface; the workflow itself
+    # Release creation is the only write surface at this stage; the workflow
     # defaults to contents: read (job-level least privilege).
     permissions:
       contents: write
@@ -88,3 +88,154 @@ jobs:
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
           draft: false
           generate_release_notes: false
+
+  # Family-pattern release gate (career-assistant release.yml): the release
+  # assets are only built after the tag's OWN image publish pipeline has
+  # finished green — the manifest embeds the exact digests that pipeline
+  # pushed, so a release must never race it.
+  #
+  # Timeout posture (the 2026-11 release-reliability fix): the wait deadline
+  # is 60 minutes inside a 75-minute job ceiling. The v0.10.0 tag build ran
+  # ~16 minutes; the backend/contract/conformance suites it re-runs can
+  # stretch well past that on a cold cache or a busy queue. A slow-but-green
+  # pipeline can therefore never fail a release spuriously: only a real red
+  # conclusion (or the explicit deadline) stops the gate.
+  ci-gate:
+    name: CI gate (same SHA)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run_id: ${{ steps.gate.outputs.run_id }}
+      tag: ${{ steps.tag.outputs.name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag name
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the image publish pipeline on this exact commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          # Dispatched runs may target an older tag: always gate on the commit
+          # the TAG points at, never on the workflow's checkout SHA (which for
+          # workflow_dispatch is the default branch head).
+          SHA="$(git rev-parse "${TAG}^{commit}")"
+          echo "CI gate: tag=$TAG commit=$SHA"
+
+          DEADLINE=$(( $(date +%s) + 60 * 60 ))   # 60 min of waiting
+          ATTEMPT=0
+          while :; do
+            ATTEMPT=$((ATTEMPT + 1))
+            RUN="$(gh api "repos/${GH_REPO}/actions/workflows/docker-publish.yml/runs?head_sha=${SHA}&per_page=1")"
+            RUN_ID="$(jq -r '.workflow_runs[0].id // ""' <<<"$RUN")"
+            STATUS="$(jq -r '.workflow_runs[0].status // ""' <<<"$RUN")"
+            CONCLUSION="$(jq -r '.workflow_runs[0].conclusion // ""' <<<"$RUN")"
+            NOW="$(date +%s)"
+
+            if [ "$CONCLUSION" = "success" ]; then
+              echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+              echo "CI gate passed: Docker Build and Publish succeeded for $SHA (run ${RUN_ID})"
+              exit 0
+            fi
+
+            case "$CONCLUSION" in
+              failure|cancelled|timed_out|startup_failure|action_required)
+                echo "::error::Docker Build and Publish concluded '${CONCLUSION}' for $SHA — refusing to attach release artifacts whose manifest would name images that never published."
+                exit 1
+                ;;
+              skipped)
+                echo "::error::Docker Build and Publish was skipped for $SHA — no images exist for this tag; the release manifest cannot be built."
+                exit 1
+                ;;
+            esac
+
+            if [ "$NOW" -ge "$DEADLINE" ]; then
+              echo "::error::No completed Docker Build and Publish run for $SHA within 60 minutes (last status: '${STATUS:-not visible}'). The tag build may still be queued — re-run this workflow once it finishes green instead of shipping a manifest without digests."
+              exit 1
+            fi
+
+            echo "waiting for Docker Build and Publish on $SHA (attempt ${ATTEMPT}, status: ${STATUS:-not visible yet}, $(( (DEADLINE - NOW) / 60 )) min of budget left)"
+            sleep 60
+          done
+
+  # Attach the deployment artifacts to the release created above:
+  #   health-compose-v<version>.tar.gz — source-free compose bundle
+  #   manifest.json                    — product/version/commit + BOTH image
+  #                                      digests + bundle SHA + SHA256SUMS
+  #   SHA256SUMS                       — release-level checksums
+  attach-release-artifacts:
+    name: Attach compose bundle to the release
+    needs: [create-release, ci-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read   # download the image-digests artifact from the publish run
+      contents: write # upload assets to the release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the image digests from the publish run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ needs.ci-gate.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/digests"
+          # Cross-workflow artifact download (gh resolves run → artifacts).
+          if ! gh run download "$RUN_ID" -n image-digests -D "$RUNNER_TEMP/digests"; then
+            echo "::error::The publish run ${RUN_ID} has no 'image-digests' artifact — it predates the digest-exposing docker-publish workflow. Re-run Docker Build and Publish for this tag, then re-run this workflow."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/digests/image-digests.json"
+
+      - name: Build the source-free compose bundle
+        env:
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          DIGESTS="$RUNNER_TEMP/digests/image-digests.json"
+          SHA="$(git rev-parse "${TAG}^{commit}")"
+          scripts/build-deploy-bundle.sh \
+            --version "${TAG#v}" \
+            --commit "$SHA" \
+            --backend-image "$(jq -r '.images.backend.ref + "@" + .images.backend.digest' "$DIGESTS")" \
+            --frontend-image "$(jq -r '.images.frontend.ref + "@" + .images.frontend.digest' "$DIGESTS")" \
+            --output-dir "$RUNNER_TEMP/release"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # --clobber: re-running the workflow replaces stale assets instead of
+          # failing on an existing filename.
+          gh release upload "$TAG" \
+            "$RUNNER_TEMP/release/health-compose-"*.tar.gz \
+            "$RUNNER_TEMP/release/manifest.json" \
+            "$RUNNER_TEMP/release/SHA256SUMS" \
+            --clobber
+          echo "Attached compose bundle, manifest and SHA256SUMS to release $TAG"
