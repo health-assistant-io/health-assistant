@@ -27,7 +27,7 @@ demo target, loudly and non-zero (exit 2), **before any demo data is
 written**:
 
 * target guard: the database must be PostgreSQL and literally named
-  ``*_demo`` (deployment.md: ``neuronection_health_demo``). Anything else —
+  ``*_demo`` (e.g. ``neuronection_health_demo``). Anything else —
   including a dev/production database — is refused before it is touched.
 * instance guard: ``instance_settings.demo_mode`` must be ``true``.
   ``--init-demo`` may initialize it — but only on an EMPTY demo database
@@ -37,7 +37,7 @@ written**:
 
 Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
 
-    # The demo stack's database (docker-compose.demo.yml runs this):
+    # A demo instance's database (own compose/deployment runs this):
     HA_DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/neuronection_health_demo \\
         python scripts/seed_demo.py
 
@@ -45,8 +45,8 @@ Usage (interpreter with the app's dependencies, e.g. ``venv/bin/python``):
     python scripts/seed_demo.py --database-url <url ending in _demo> --init-demo
 
 There is deliberately no ``--reset`` here: demo resets are volume-level —
-the demo tree's ``reset-demo.sh`` wipes the DB volume and the stack
-re-seeds on boot. The seeder itself is idempotent, so re-running never
+wipe the DB volume of the demo deployment and the stack re-seeds on
+boot. The seeder itself is idempotent, so re-running never
 duplicates rows.
 
 Exit codes: 0 seeded (or already seeded), 2 refused by a §13 guard rail,
@@ -164,7 +164,7 @@ def ensure_demo_target(url: str) -> str:
     if not name.endswith("_demo"):
         raise Refusal(
             f"target database {name!r} is not a demo database — expected a "
-            "name ending '_demo' (deployment.md: neuronection_health_demo); "
+            "name ending '_demo' (e.g. neuronection_health_demo); "
             "refusing to seed (identity-auth §13)."
         )
     return url
@@ -1128,8 +1128,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Target database URL (else HA_DATABASE_URL / POSTGRES_* env). "
-            "Must be PostgreSQL named *_demo (deployment.md: "
-            "neuronection_health_demo)."
+            "Must be PostgreSQL named *_demo "
+            "(e.g. neuronection_health_demo)."
         ),
     )
     parser.add_argument(
@@ -1142,9 +1142,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.epilog = (
-        "No --reset flag by design: demo resets are volume-level — the "
-        "demo tree's reset-demo.sh wipes the DB volume and the stack "
-        "re-seeds on boot. This seeder is idempotent."
+        "No --reset flag by design: demo resets are volume-level — wipe "
+        "the demo deployment's DB volume and the stack re-seeds on boot. "
+        "This seeder is idempotent."
     )
     return parser.parse_args(argv)
 

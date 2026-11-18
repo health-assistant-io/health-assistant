@@ -13,8 +13,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 // (AuthenticatedPdf / PdfViewer) — an iframe load IS a navigation request,
 // and answering it with the cached index.html (whose cached headers carry
 // the gateway's CSP frame-ancestors 'none') broke the preview with a
-// cspBlocked neterror + an SW "unexpected error" (first seen on the
-// 2026-10 live demo).
+// cspBlocked neterror + an SW "unexpected error".
 if (import.meta.env.PROD) {
   registerRoute(
     new NavigationRoute(createHandlerBoundToURL('/index.html'), {

@@ -665,10 +665,10 @@ See `backend/data/seeds/README.md` for the per-file field-schema cheatsheet.
 Demo mode turns a Health Assistant instance into a
 self-contained public demo: visitors are signed in automatically (no login
 form), the data is synthetic, and a pinned banner makes the demo state
-visible on every page. It is orthogonal to `HA_APP_ENV` — the live demo stack
-runs `HA_APP_ENV=production` + `HA_DEMO_MODE=true` (plus the explicit
-`DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production gate
-requires).
+visible on every page. It is orthogonal to `HA_APP_ENV` — a hardened demo
+deployment runs `HA_APP_ENV=production` + `HA_DEMO_MODE=true` (plus the
+explicit `DEMO_MODE_ACCEPT_UNAUTHENTICATED=true` opt-in that production
+gate requires).
 
 `demo_mode` is an **instance fact**: `HA_DEMO_MODE`
 is consumed **only when initializing an empty database** and then lives in
@@ -715,13 +715,12 @@ patients, and clinical data. The seeder itself carries §13 guard rails and
 
 So the demo dataset only ever lands on `neuronection_health_demo`-style targets.
 A `--reset` flag is deliberately absent: demo resets are volume-level —
-the demo tree's `reset-demo.sh` wipes the DB volume and the stack re-seeds
-on boot.
+wipe the demo deployment's DB volume and the stack re-seeds on boot.
 
 > **Local screenshot captures** must therefore point the stack at a
 > `*_demo`-named database with `HA_DEMO_MODE=true` set on first boot (a
-> scratch `health_capture_demo` works), or reuse the demo compose. Seeding
-> a plain dev database (`health_assistant`) is refused by design.
+> scratch `health_capture_demo` works). Seeding a plain dev database
+> (`health_assistant`) is refused by design.
 
 ### Credential-free login
 
@@ -752,8 +751,9 @@ the JWT. An "Exit demo" link on the right opens the main product site.
 
 ### Session persistence across resets
 
-The demo stack's daily reset wipes the DB volume + re-seeds. To keep
-existing sessions working across a reset, the demo tenant and user use
+If a demo deployment resets its database (volume wipe + re-seed on
+boot, e.g. on a schedule), deterministic identities keep existing
+sessions working across the reset: the demo tenant and user use
 **deterministic UUIDs** (`DEMO_TENANT_ID` / `DEMO_USER_ID` in
 `seed_demo.py`) — the same IDs are recreated every time, so outstanding
 JWTs keep referencing valid entities.
