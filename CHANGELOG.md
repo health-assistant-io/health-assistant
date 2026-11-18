@@ -11,6 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-18
+
+### Fixed (deployment scripts)
+- **Corrected the compose-mode `/ready` parser in `restore.sh`.** The bundle
+  shipped in v0.10.1 still carried the old parser that read the retired
+  top-level `database`/`storage.status` fields of the readiness payload; the
+  compose-mode wait loop now parses the current shape — `checks.db.ok`
+  (bool assertion) and `checks.storage.status` (informational) — so a
+  restore drill no longer times out against a healthy stack. Same fix as
+  PR #185 on `main`; v0.10.1 predates it, so this release puts the corrected
+  operator script into the release assets.
+- **Scratch-drill app password.** `scripts/test-restore-scratch.sh` passes
+  `POSTGRES_APP_PASSWORD` to the scratch Timescale container (init-roles.sh
+  refuses without it) and the distinct app secret via `HA_APP_DB_PASSWORD`
+  to `restore.sh`, mirroring the ADR-0064 credential split.
+
+No application behavior change: backend/frontend images are identical in
+code; only the release assets' operator scripts and version metadata move.
+
 ## [0.10.1] - 2026-11-18
 
 ### Fixed (release automation)
