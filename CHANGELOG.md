@@ -3621,11 +3621,10 @@ code; only the release assets' operator scripts and version metadata move.
   volume/network prefixes:** every compose file now declares its Compose
   project — `health-assistant` (dev, standalone), `health-assistant-dev`
   (dev-db), `${STACK_NAME:-health-assistant}` (prod),
-  `health-assistant-fhir-test` (local FHIR test server), and
-  `${STACK_NAME:-ha-demo}` in the demo repo. Previously the project
-  defaulted to the compose file's directory, so volume prefixes depended on
-  wherever the command happened to run — the stray `docker_*` class
-  (`docker_postgres_data-dev1`, `docker_uploads`). `STACK_NAME` now
+  `health-assistant-fhir-test` (local FHIR test server). Previously the
+  project defaulted to the compose file's directory, so volume prefixes
+  depended on wherever the command happened to run — the stray `docker_*`
+  class (`docker_postgres_data-dev1`, `docker_uploads`). `STACK_NAME` now
   isolates a whole second prod/test stack (containers **and** named
   volumes/network), not just container names. Migration is automatic
   wherever data matters: `install.sh`/`update-docker.sh` stop the legacy
@@ -3667,7 +3666,7 @@ code; only the release assets' operator scripts and version metadata move.
   the integrations HMAC bridge with its one-patient blast radius —
   multi-tenant isolation with hidden-404, per-purpose key families,
   the audit_events coverage map, admin blast radius, deployment
-  exposure incl. the demo stack); an 11-item known-gaps section records
+  exposure); an 11-item known-gaps section records
   what the code does not do (init-only instance modes, per-endpoint
   auth without a route-scan guard, list-reads unaudited, no self-serve
   password change/reset, bridge doc drift on 'UUID-only' mode).
@@ -3728,18 +3727,19 @@ code; only the release assets' operator scripts and version metadata move.
 - **Demo seeder refusal matrix:** `scripts/seed_demo.py`
   now refuses — loudly, exit code 2, before writing anything — any target
   that is not a provable demo: a PostgreSQL database not named `*_demo`
-  (deployment.md: `neuro_health_demo`), an instance whose
+  (e.g. `neuro_health_demo`), an instance whose
   `instance_settings.demo_mode` is not `true` (unreadable/unmigrated
   facts refuse too, fail-closed §4.1), and `--init-demo` on a non-empty
   database (the flag may only initialize a fresh, migrated, empty
   `*_demo` DB). New CLI: `--database-url`, `--init-demo`; `--reset` is
-  deliberately absent (demo resets stay volume-level via the demo tree's
-  `reset-demo.sh`). The boot-time auto-seed in `main.py` runs through the
+  deliberately absent (demo resets stay volume-level: wipe the demo
+  deployment's DB volume and the stack re-seeds on boot). The boot-time
+  auto-seed in `main.py` runs through the
   same guards (production aborts on refusal, dev warns). Deterministic
   UUIDs and the seeding payload are unchanged. **Workflow note:** local
   UI-capture stacks must now point at a `*_demo`-named database with
   `HA_DEMO_MODE=true` set on first boot (e.g. a scratch
-  `health_capture_demo`), or reuse the demo compose — seeding a plain
+  `health_capture_demo`), seeding a plain
   dev database is refused by design (docs/SEEDING_AND_DEMOS.md §8).
 - **Cookie sessions for browsers + CSRF + WS Origin gate (the
   shared cookie-session model):** browsers now authenticate with the cookie
@@ -4180,9 +4180,9 @@ code; only the release assets' operator scripts and version metadata move.
 
 - **Docs: document `DEMO_MODE` in SEEDING_AND_DEMOS.md §8.** Covers enabling the flag, auto-seeding on boot, credential-free `/auth/demo-login`, the demo banner with "Exit demo" link, and deterministic UUIDs for session persistence across daily resets. SEO description in `docs-tree.json` updated to mention `DEMO_MODE`.
 
-- **Fix: demo session breaks after daily reset — deterministic UUIDs + auto-logout.** The daily demo reset (`reset-demo.sh`) wiped the DB volume + re-seeded with new random UUIDs, so outstanding JWTs referenced non-existent tenant/user IDs — `/auth/validate` still passed (stateless) but every data query returned empty. Two-layer fix: (1) `seed_demo.py` now uses fixed UUIDs for the demo tenant (`11111111-…`) + user (`22222222-…`), so a reset recreates the same entities the tokens point at; (2) `App.tsx` detects a stale session (`getCurrentUser()` 404) when the JWT carries `demo: true` and auto-logs out — the login page then auto-calls `demo-login`, so the visitor never has to click anything.
+- **Fix: demo session breaks after reset — deterministic UUIDs + auto-logout.** A demo reset (volume wipe + re-seed) recreated the seeded rows with new random UUIDs, so outstanding JWTs referenced non-existent tenant/user IDs — `/auth/validate` still passed (stateless) but every data query returned empty. Two-layer fix: (1) `seed_demo.py` now uses fixed UUIDs for the demo tenant (`11111111-…`) + user (`22222222-…`), so a reset recreates the same entities the tokens point at; (2) `App.tsx` detects a stale session (`getCurrentUser()` 404) when the JWT carries `demo: true` and auto-logs out — the login page then auto-calls `demo-login`, so the visitor never has to click anything.
 
-- **Feature: demo mode (`DEMO_MODE=true`) — credential-free auto-login + persistent banner.** A new orthogonal env flag (`DEMO_MODE`) spins up a fully self-contained demo instance: on backend boot, the lifespan auto-runs `scripts/seed_demo.py` (idempotent — the existing one-shot `demo-seed` compose service is now redundant but harmless), creating the demo tenant + `demo@healthassistant.local` admin + synthetic clinical data. A new `POST /auth/demo-login` endpoint mints access + refresh tokens **with no credentials** (stamped with a `demo: true` JWT claim that survives `/auth/refresh`); it 404s when `DEMO_MODE` is off so the route is inert on normal instances. `GET /auth/setup-status` now reports `demo_mode`, which the frontend `Login` page uses to auto-call `/auth/demo-login` and skip the login form entirely (the `/login` route is never shown). A new pinned `DemoBanner` component (modelled on `TenantSwitchBanner`) sits above the header on every authenticated page announcing "Demo mode — data is synthetic…" with an "Exit demo" link to the main product site. The demo creds are config-first-class (`DEMO_USER_EMAIL`/`DEMO_USER_PASSWORD`) but alias the legacy `HA_DEMO_EMAIL`/`HA_DEMO_PASSWORD` env names (via pydantic `AliasChoices`) so the existing demo docker-compose and the UI screenshot-capture tooling keep working unchanged. A boot validator logs a loud red-boxed warning whenever `DEMO_MODE` is on so it's never left enabled accidentally on a real instance. 5 new backend tests cover the demo-login contract (404 when off, 503 when unseeded, happy-path JWT claim, setup-status flag on/off).
+- **Feature: demo mode (`DEMO_MODE=true`) — credential-free auto-login + persistent banner.** A new orthogonal env flag (`DEMO_MODE`) spins up a fully self-contained demo instance: on backend boot, the lifespan auto-runs `scripts/seed_demo.py` (idempotent — the existing one-shot `demo-seed` compose service is now redundant but harmless), creating the demo tenant + `demo@healthassistant.local` admin + synthetic clinical data. A new `POST /auth/demo-login` endpoint mints access + refresh tokens **with no credentials** (stamped with a `demo: true` JWT claim that survives `/auth/refresh`); it 404s when `DEMO_MODE` is off so the route is inert on normal instances. `GET /auth/setup-status` now reports `demo_mode`, which the frontend `Login` page uses to auto-call `/auth/demo-login` and skip the login form entirely (the `/login` route is never shown). A new pinned `DemoBanner` component (modelled on `TenantSwitchBanner`) sits above the header on every authenticated page announcing "Demo mode — data is synthetic…" with an "Exit demo" link to the main product site. The demo creds are config-first-class (`DEMO_USER_EMAIL`/`DEMO_USER_PASSWORD`) but alias the legacy `HA_DEMO_EMAIL`/`HA_DEMO_PASSWORD` env names (via pydantic `AliasChoices`) so the existing demo deployment and the UI screenshot-capture tooling keep working unchanged. A boot validator logs a loud red-boxed warning whenever `DEMO_MODE` is on so it's never left enabled accidentally on a real instance. 5 new backend tests cover the demo-login contract (404 when off, 503 when unseeded, happy-path JWT claim, setup-status flag on/off).
 
 - **Docs: sync skills + docs to the telemetry long-format rewrite.** Updates 4 skill files (the AI's source of truth — `clinical-data` §4.1-4.6 + debugging/recap, `project-overview` §3.4, `backend` model table + `migrate_biomarker_data` row + `sync_active_integrations` row + deleted-scripts note, `integrations` §8.4) and 3 user-facing docs (`MOBILE_SYNC_APP.md` upload payload → long-format `{timestamp, slug, value, unit?, patient_id?}`, `INTEGRATIONS_FRAMEWORK.md` telemetry-split helper, `PROJECT_STRUCTURE.md` scripts count/list) so they no longer describe the dropped `heart_rate`/`steps`/`calories` dedicated columns + JSONB `data` catch-all, the deleted `_METRIC_COLUMNS` alias map, the deleted `scripts/migrate_heart_rate.py`, or the removed `device_id → UserIntegration → user_id → Patient` attribution chain (now `patient_id` is read directly off each telemetry row). Without this, the next AI session touching telemetry would get stale guidance.
 

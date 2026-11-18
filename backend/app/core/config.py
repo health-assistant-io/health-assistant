@@ -118,10 +118,10 @@ class Settings(BaseSettings):
     # Intended for public/screenshot demos behind a firewall; NEVER enable on
     # an instance that holds real data — it bypasses authentication entirely.
     # Orthogonal to HA_APP_ENV so it composes with the production boot-guards
-    # (the demo docker compose runs HA_APP_ENV=production + HA_DEMO_MODE=true).
+    # (a hardened demo deployment runs HA_APP_ENV=production + HA_DEMO_MODE=true).
     HA_DEMO_MODE: bool = False
-    # The demo credentials (single source of truth; the demo compose,
-    # capture tooling and deploy workflow all read these names).
+    # The demo credentials (single source of truth; the capture tooling and
+    # deployment tooling read these names).
     HA_DEMO_EMAIL: str = "demo@healthassistant.local"
     HA_DEMO_PASSWORD: str = "Demo1234!"
 
