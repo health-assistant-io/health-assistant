@@ -45,6 +45,10 @@ TARGET_DB="ha_restore_scratch"    # the throwaway target on tgt
 OWNER="neuronection_health_owner"
 APP="neuronection_health_app"
 PW="ha-restore-scratch-pw"
+# Distinct app-role secret (ADR-0064): docker/init-roles.sh refuses to bootstrap
+# when POSTGRES_APP_PASSWORD is missing or equals POSTGRES_PASSWORD, so the
+# scratch drill must mirror the real two-credential bootstrap.
+APP_PW="ha-restore-scratch-app-pw"
 SRC_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 TGT_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 WORK="$(mktemp -d)"
@@ -75,7 +79,7 @@ docker network create "$NET" >/dev/null
 say "Starting source instance '$SRC' (127.0.0.1:$SRC_PORT) with the shipped init scripts"
 docker run -d --name "$SRC" --network "$NET" \
   -e POSTGRES_USER="$OWNER" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB="$DB" \
-  -e POSTGRES_APP_USER="$APP" \
+  -e POSTGRES_APP_USER="$APP" -e POSTGRES_APP_PASSWORD="$APP_PW" \
   -p "127.0.0.1:${SRC_PORT}:5432" \
   -v "$ROOT/docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro" \
   -v "$ROOT/docker/init-roles.sh:/docker-entrypoint-initdb.d/02-init-roles.sh:ro" \
@@ -204,7 +208,9 @@ PY
 
 sql_src() { docker exec "$SRC" env PGPASSWORD="$PW" psql -U "$OWNER" -d "$DB" -tAc "$1"; }
 sql_tgt() { docker exec "$TGT" env PGPASSWORD="$PW" psql -U "$OWNER" -d "$TARGET_DB" -tAc "$1"; }
-sql_tgt_app() { docker exec "$TGT" env PGPASSWORD="$PW" psql -U "$APP" -d "$TARGET_DB" -tAc "$1"; }
+# The app role connects with the distinct app secret (restore.sh creates the
+# target role from HA_APP_DB_PASSWORD below — same split as init-roles.sh).
+sql_tgt_app() { docker exec "$TGT" env PGPASSWORD="$APP_PW" psql -U "$APP" -d "$TARGET_DB" -tAc "$1"; }
 
 COUNT_SQL="SELECT 'tenants', count(*) FROM tenants
 UNION ALL SELECT 'users', count(*) FROM users
@@ -257,7 +263,10 @@ pg_wait "$TGT"
 
 say "Running scripts/restore.sh (throwaway target $TARGET_DB, Timescale hooks, --refresh-caggs)"
 T_RESTORE="$(date +%s)"
-POSTGRES_DB="$DB" POSTGRES_PASSWORD="$PW" TIMESCALE_IMAGE="$IMAGE" \
+# HA_APP_DB_PASSWORD gives the target's app role the distinct app secret
+# (ADR-0064): restore.sh creates the role itself on the empty target, and the
+# drill's app-role probes below must authenticate the way production does.
+POSTGRES_DB="$DB" POSTGRES_PASSWORD="$PW" HA_APP_DB_PASSWORD="$APP_PW" TIMESCALE_IMAGE="$IMAGE" \
   bash "$ROOT/scripts/restore.sh" "$ARCHIVE" \
   --target "$TARGET_DB" --pg-container "$TGT" --pg-network "$NET" \
   --refresh-caggs --yes \
