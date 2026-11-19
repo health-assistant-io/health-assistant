@@ -14,9 +14,10 @@
 #     silently ignored — APP_ENV=production in particular would boot
 #     development defaults with ephemeral keys.
 #
-# install.sh and update-docker.sh run this before pulling images or touching
+# install.sh and update.sh run this before pulling images or touching
 # volumes; the same refusal is enforced inside alembic/env.py for every other
-# path (compose migrate, backup restore, bare CLI).
+# path (compose migrate, backup restore, bare CLI). Runs in both layouts —
+# a source checkout AND the extracted source-free bundle.
 #
 # Usage:
 #   ./scripts/upgrade-check.sh              # .env + running DB (if reachable)
@@ -143,7 +144,11 @@ AI_CHECKPOINT_RETENTION_DAYS|(retired, no replacement)
 EOF
 }
 
-# Revision ids present in this checkout's chain.
+# Revision ids present in this checkout's chain. EMPTY in the source-free
+# bundle (no backend/ tree ships there) — the bundle caller must treat an
+# empty list as "chain membership unverifiable here", never as "every
+# revision is unknown": the migrate service inside the release image owns
+# the real enforcement at start time.
 known_revisions() {
     grep -hE '^revision: str = ' backend/alembic/versions/*.py 2>/dev/null \
         | sed -E 's/^revision: str = "([^"]+)".*/\1/'
@@ -164,7 +169,7 @@ check_database() {
 
     for candidate in "$(env_value POSTGRES_USER "")" neuronection_health_owner neuro_health_owner admin; do
         [ -n "$candidate" ] || continue
-        if $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+        if run_compose exec -T postgres \
                 psql -U "$candidate" -d postgres -tAc "select 1" >/dev/null 2>&1; then
             role="$candidate"
             break
@@ -177,7 +182,7 @@ check_database() {
 
     for candidate in "$(env_value POSTGRES_DB neuronection_health)" neuronection_health neuro_health health_assistant; do
         [ -n "$candidate" ] || continue
-        exists="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+        exists="$(run_compose exec -T postgres \
             psql -U "$role" -d postgres -tAc "select 1 from pg_database where datname='${candidate}'" 2>/dev/null | tr -d '[:space:]')"
         [ "$exists" = "1" ] && { DATABASE_NAME="$candidate"; break; }
     done
@@ -186,10 +191,14 @@ check_database() {
         return
     fi
 
-    version="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+    version="$(run_compose exec -T postgres \
         psql -U "$role" -d "$DATABASE_NAME" -tAc "select version_num from alembic_version" 2>/dev/null | tr -d '[:space:]')"
     if [ -z "$version" ]; then
         fine "database '${DATABASE_NAME}' is empty (no recorded migration)"
+    elif ! [ -d backend/alembic/versions ]; then
+        # Source-free bundle: the chain lives inside the release image, not
+        # on this host — the migrate preflight enforces it at start time.
+        fine "database '${DATABASE_NAME}' records migration '${version}' (chain membership is enforced by the release image's migrate step)"
     elif grep -qx "$version" <<< "$(known_revisions)"; then
         fine "database '${DATABASE_NAME}' is at supported migration '${version}'"
     else
@@ -197,14 +206,14 @@ check_database() {
         blocker "database '${DATABASE_NAME}' records migration '${version}', which is not part of this release. v0.9.0 replaced the published v0.8.0 chain with 0001_baseline, so there is no in-place upgrade. Back up first, then follow docs/INSTALL.md -> Updates -> 'Upgrading from v0.8.0' (dump, fresh PostgreSQL 16 volume, restore)."
     fi
 
-    server_version="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+    server_version="$(run_compose exec -T postgres \
         psql -U "$role" -d "$DATABASE_NAME" -tAc "show server_version_num" 2>/dev/null | tr -d '[:space:]')"
     if [ -n "$server_version" ] && [ "$server_version" -lt 160000 ] 2>/dev/null; then
         blocker "the running PostgreSQL is major version ${server_version:0:2}, but v0.9.0 runs PostgreSQL 16. Data directories are not compatible across majors: back up, recreate the volume, restore (docker/README.md -> 'Upgrading from pg14')."
     fi
 
     if [ "$RESET_EMPTY" = "1" ] && [ -n "$OLD_REVISION" ]; then
-        users="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+        users="$(run_compose exec -T postgres \
             psql -U "$role" -d "$DATABASE_NAME" -tAc "select count(*) from users" 2>/dev/null | tr -d '[:space:]')"
         if [ "$users" = "0" ]; then
             echo

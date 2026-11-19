@@ -55,6 +55,40 @@ plain-HTTP internet exposure, disabled `HA_COOKIE_SECURE`, and so on).
   default).
 - Dependencies: Dependabot + pip-audit; lockfiles committed.
 
+## Self-host installer trust chain
+
+The one-line install path
+(`https://neuronection.com/install/health.sh` — a redirect to the **GitHub
+release asset**, never a mutable script served from the website) is designed
+to be safe on a production host:
+
+- **The bootstrap never runs as root**, never uses `sudo` and never
+  installs system packages; when a tool is missing it prints the official
+  install page and exits. The bundle installer (`scripts/install.sh`)
+  refuses root the same way (`--allow-root` exists for CI/disposable
+  containers only).
+- **No telemetry, no extra hosts**: the only outbound calls are the
+  GitHub release asset host and the container registry. There is no
+  version phone-home at install time.
+- **Verify before extract**: the bundle's SHA-256 is checked against the
+  release's `SHA256SUMS` (and the operator's `HEALTH_EXPECTED_SHA256`,
+  when set) **before** anything is extracted; `manifest.json` is verified
+  too, and the manifest's image refs are the exact digests the release
+  published — never `:latest`, never a branch. A checksum mismatch aborts
+  with nothing written.
+- **The release asset is the trust anchor**: a website compromise cannot
+  change what runs — the redirect can only point at the immutable release
+  asset; the exact-tag form (`…/install/health/vX.Y.Z.sh`) pins it fully.
+- **Secrets**: `.env` is generated with `umask 077` and permissions
+  `0600`, existing values are never overwritten, and secret values are
+  never printed by the installer. The first-run **setup token** is printed
+  exactly once (suppress with `--no-token`) and stored only in the 0600
+  `.env` (`SETUP_TOKEN_MODE=env`) — it is never written to an application
+  log.
+- **Idempotent and non-destructive**: re-running hands off to the
+  existing install's own installer; `.env` and data volumes are never
+  touched except by the explicit, confirmed `--reset`.
+
 ## Authorization model (permission catalog, scopes, route gate)
 
 Authorization is one model, defined in code under `backend/app/core/authz/`

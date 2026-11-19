@@ -9,12 +9,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/**'
+      - 'scripts/**'  # install.sh, update.sh, bootstrap.sh (generated), build-deploy-bundle.sh
+      - 'installer.json'  # the product config the installer and bootstrap read
       - 'docker/docker-compose.standalone.yml'
       - '.github/workflows/install-scripts.yml'
   pull_request:
     paths:
       - 'scripts/**'
+      - 'installer.json'
       - 'docker/docker-compose.standalone.yml'
       - '.github/workflows/install-scripts.yml'
   workflow_dispatch:
@@ -22,6 +24,7 @@ on:
 jobs:
   selftest:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -32,3 +35,12 @@ jobs:
         run: bash scripts/upgrade-check.selftest.sh
       - name: Shell syntax
         run: for f in scripts/*.sh; do bash -n "$f"; done
+      # G2 (plan 69 §6): shellcheck the installer surface — install.sh,
+      # update.sh, the GENERATED bootstrap.sh (never hand-edit it here: fix
+      # dev's contract template and regenerate) and the bundle builder.
+      # -e SC1091: install.sh/update.sh source lib-docker.sh through
+      # $SCRIPT_DIR at runtime (the extracted-bundle layout), which
+      # shellcheck cannot follow statically; the selftest above exercises
+      # that file end-to-end.
+      - name: Shellcheck the installer surface (G2)
+        run: shellcheck -e SC1091 scripts/install.sh scripts/update.sh scripts/bootstrap.sh scripts/build-deploy-bundle.sh

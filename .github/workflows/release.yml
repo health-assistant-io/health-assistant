@@ -18,6 +18,10 @@ jobs:
     # defaults to contents: read (job-level least privilege).
     permissions:
       contents: write
+    outputs:
+      # attach-release-artifacts needs the classification when publishing:
+      # a prerelease must never take the releases/latest alias.
+      is_prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -79,14 +83,25 @@ jobs:
           echo "$NOTES" > /tmp/release_notes.md
           echo "Extracted notes for version $VERSION ($(wc -l < /tmp/release_notes.md) lines)"
 
-      - name: Create GitHub Release
+      # DRAFT-FIRST PUBLISHING (the `latest`-alias race, audit §4a.3): a
+      # release published before its bundle/bootstrap assets are uploaded
+      # becomes releases/latest while its assets are still missing, so the
+      # one-liner 404s for the whole upload window. The release is therefore
+      # created as a DRAFT (drafts never take the alias; make_latest:false
+      # is belt-and-braces), attach-release-artifacts uploads and verifies
+      # every asset against the invisible draft, and that job's final step
+      # is the ONLY moment the release is published. Any failure on the way
+      # leaves the release a draft and releases/latest still pointing at
+      # the previous release — never a half-empty public one.
+      - name: Create the release as a draft (assets attach before publish)
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name }}
           body_path: /tmp/release_notes.md
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
-          draft: false
+          draft: true
+          make_latest: false
           generate_release_notes: false
 
   # Family-pattern release gate (career-assistant release.yml): the release
@@ -178,17 +193,34 @@ jobs:
 
   # Attach the deployment artifacts to the release created above:
   #   health-compose-v<version>.tar.gz — source-free compose bundle
-  #   manifest.json                    — product/version/commit + BOTH image
-  #                                      digests + bundle SHA + SHA256SUMS
-  #   SHA256SUMS                       — release-level checksums
+  #   manifest.json                    — schemaVersion 2: product/version/tag/
+  #                                      commit + BOTH image digest refs +
+  #                                      bundle SHA + per-file SHA256SUMS
+  #   SHA256SUMS                       — release-level checksums (bundle +
+  #                                      manifest + the two bootstrap assets)
+  #   health-bootstrap-v<version>.sh  — the generated one-line bootstrap,
+  #                                      exact-tag form
+  #   health-bootstrap.sh              — version-free alias for
+  #                                      releases/latest/download (what
+  #                                      neuronection.com/install/health.sh
+  #                                      and health-assistant.io/install.sh
+  #                                      redirect to)
+  #
+  # The release is a DRAFT while all of the above is uploaded and verified;
+  # the last two steps of this job then (1) publish it — the only moment it
+  # becomes releases/latest, with every asset already attached — and
+  # (2) dispatch the release smoke on the published tag. A failure anywhere
+  # earlier leaves the release a draft: no 404 window on the one-liner.
   attach-release-artifacts:
     name: Attach compose bundle to the release
     needs: [create-release, ci-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      actions: read   # download the image-digests artifact from the publish run
-      contents: write # upload assets to the release
+      # write covers read: dispatching the post-publish smoke AND
+      # downloading the image-digests artifact from the publish run.
+      actions: write
+      contents: write # upload assets to the draft release, then publish it
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -224,6 +256,32 @@ jobs:
             --frontend-image "$(jq -r '.images.frontend.ref + "@" + .images.frontend.digest' "$DIGESTS")" \
             --output-dir "$RUNNER_TEMP/release"
 
+      # scripts/bootstrap.sh is GENERATED from the family installer
+      # contract's template (never hand-written here). The exact-tag asset
+      # and the version-free alias are the same bytes: the alias is what
+      # neuronection.com/install/health.sh and the health-assistant.io
+      # compatibility redirect point at (releases/latest/download/), the
+      # versioned form is the reproducible one the docs show.
+      - name: Stage bootstrap assets and refresh SHA256SUMS
+        env:
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -f scripts/bootstrap.sh ]; then
+            cp scripts/bootstrap.sh "$RUNNER_TEMP/release/health-bootstrap-${TAG}.sh"
+            cp scripts/bootstrap.sh "$RUNNER_TEMP/release/health-bootstrap.sh"
+            (
+              cd "$RUNNER_TEMP/release"
+              sha256sum health-compose-*.tar.gz manifest.json \
+                        "health-bootstrap-${TAG}.sh" health-bootstrap.sh > SHA256SUMS
+              sha256sum -c SHA256SUMS
+            )
+            echo "Staged health-bootstrap-${TAG}.sh + the health-bootstrap.sh alias"
+          else
+            echo "::error::scripts/bootstrap.sh is missing — a contract release must attach the generated bootstrap."
+            exit 1
+          fi
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -237,5 +295,51 @@ jobs:
             "$RUNNER_TEMP/release/health-compose-"*.tar.gz \
             "$RUNNER_TEMP/release/manifest.json" \
             "$RUNNER_TEMP/release/SHA256SUMS" \
+            "$RUNNER_TEMP/release/health-bootstrap-${TAG}.sh" \
+            "$RUNNER_TEMP/release/health-bootstrap.sh" \
             --clobber
-          echo "Attached compose bundle, manifest and SHA256SUMS to release $TAG"
+          echo "Attached compose bundle, manifest, SHA256SUMS and the bootstrap assets to release $TAG"
+
+      - name: Publish the release (all assets attached and verified)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+          IS_PRERELEASE: ${{ needs.create-release.outputs.is_prerelease }}
+        run: |
+          set -euo pipefail
+          # This is the ONLY moment the release becomes public. It is a draft
+          # right now, so releases/latest still points at the previous
+          # release and the one-liner never 404'd while these assets were
+          # uploading. Everything above (digest download, bundle build,
+          # staged SHA256SUMS verification, asset upload) has run green to
+          # get here; a failure anywhere earlier simply left the release a
+          # draft.
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            # Prereleases never take the releases/latest alias.
+            gh release edit "$TAG" --draft=false
+          else
+            gh release edit "$TAG" --draft=false --latest
+          fi
+          echo "Published release $TAG — releases/latest now resolves to it with all assets attached."
+
+      - name: Trigger the release smoke on the published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Releases published by a workflow's GITHUB_TOKEN do not deliver
+          # `release` events to other workflows (GitHub's anti-recursion
+          # rule), so the `release: published` trigger in release-smoke.yml
+          # never fires for a pipeline publish. Dispatch it explicitly, by
+          # tag, now that the release is live with its assets.
+          # Non-fatal by design: the release is already published and
+          # latest — a missing smoke workflow on this ref must not fail the
+          # release; run the smoke manually (workflow_dispatch, tag) instead.
+          if gh workflow run release-smoke.yml --ref "$TAG" -f tag="$TAG"; then
+            echo "Dispatched release-smoke.yml for $TAG (the post-publish G4 gate)."
+          else
+            echo "::warning::could not dispatch release-smoke.yml for $TAG — it may not exist on this ref yet. Run it manually (workflow_dispatch, tag=$TAG)."
+          fi

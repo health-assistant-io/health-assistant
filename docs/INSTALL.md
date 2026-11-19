@@ -1,45 +1,94 @@
 # Self-Hosted Installation Guide
 
-Health Assistant is a self-hosted, open-source health records platform. You own the data and the infrastructure. This guide covers installing it on your own machine or server with Docker; a single command takes you from a fresh clone to a running, configured instance. For running from source with hot-reload, see the [Development Guide](./DEVELOPMENT.md).
+Health Assistant is a self-hosted, open-source health records platform. You own the data and the infrastructure. This guide covers installing it on your own machine or server with Docker; a single command takes a fresh host to a running, configured instance — no clone, nothing built on your host. For running from source with hot-reload, see the [Development Guide](./DEVELOPMENT.md).
 
 ## Quick Start — Docker (recommended)
 
-Docker is the fastest way to get up and running. Everything (UI, API, task monitor) is served behind a single built-in Nginx proxy on port 80. You'll need: **Docker** with **Docker Compose** (Linux, WSL2, or macOS), **Git**, and **Python 3** (used only once to generate your secure keys). The stack needs about 2–3 GB of free RAM.
+Docker is the fastest way to get up and running. Everything (UI, API, task monitor) is served behind a single built-in Nginx proxy on port 80. You'll need: **Docker** with **Docker Compose v2** (Linux or WSL2) and **Python 3** + **openssl** (used once, by the installer, to generate your keys). The stack wants about 8 GB of RAM.
 
-### One-line install (no clone needed)
+### One-line install (recommended — no clone, no build)
 
-If you'd rather not clone anything, the remote bootstrap fetches the latest
-published release, shows you its SHA-256, extracts it to `~/health-assistant`,
-and hands off to the same installer:
-
-```bash
-curl -fsSL https://health-assistant.io/install.sh | bash
-```
-
-The script is small and readable on purpose — read it before running it
-(it is also in the repo at `scripts/bootstrap.sh`). It never runs anything as
-root and never installs system packages; if Docker is missing it prints
-install instructions instead. Pin a release or relocate the install with
-environment variables or flags (`HEALTH_REF`, `HEALTH_INSTALL_DIR`,
-`HEALTH_EXPECTED_SHA256`, `--dry-run`, `--dir`, `--ref` — see `--help`).
-Everything after the flags is forwarded to `scripts/install.sh`:
+The canonical entry point installs the **source-free release bundle**: the
+compose files, nginx configs, the installer and the backup/restore scripts,
+with the application images pinned to the exact digests the release
+published. There is no source tree on your host and nothing is built.
 
 ```bash
-curl -fsSL https://health-assistant.io/install.sh | bash -s -- --dir /srv/ha
+curl -fsSL https://neuronection.com/install/health.sh | bash
 ```
 
-The clone-based flow below does exactly the same thing and stays the source
-of truth — the one-liner is a convenience wrapper around it.
+The URL is a redirect to the bootstrap asset attached to the latest stable
+GitHub release (`https://health-assistant.io/install.sh` redirects to the
+same asset). Prefer to read what runs:
 
-Re-running that command is safe: when the install directory already holds an
-install, the bootstrap skips the download and hands off to that install's own
-`scripts/install.sh` — which keeps `.env`, refreshes the images, restarts the
-stack, and waits for the health check. Images are **pinned to the release the
-tarball came from** (`v0.9.0` → `IMAGE_TAG=0.9.0`), because `:latest` is built
-from `main`; a release tree running main images fails at the database
-migration step.
+```bash
+curl -fsSL https://neuronection.com/install/health.sh -o install.sh
+less install.sh        # it is small on purpose
+bash install.sh
+```
 
-### Clone-based install
+The bootstrap resolves the latest stable release (the versioned form
+`…/install/health/vX.Y.Z.sh` and `--ref vX.Y.Z` pin an exact one), downloads
+the runtime bundle with `manifest.json` and `SHA256SUMS`, **verifies the
+bundle's SHA-256 before extracting anything**, extracts to
+`~/health-assistant` and hands off to the bundle's own `scripts/install.sh`
+with your terminal attached. It never builds images, never generates
+secrets, never starts Compose, never runs as root, installs no packages and
+never falls back to `main` — a release is the only installable unit.
+
+Bootstrap flags: `--dir DIR` (default `~/health-assistant`), `--ref vX.Y.Z`,
+`--dry-run` (resolve, download, verify, print the hand-off — write nothing),
+`--version`, `--offline BUNDLE` (install from a local bundle + `SHA256SUMS`
+beside it), `--image KEY=REF` (advanced pin override), `--allow-root`
+(CI/disposable containers only) and `--` to forward the rest to
+`scripts/install.sh`. Environment overrides: `HEALTH_INSTALL_DIR`,
+`HEALTH_REF`, `HEALTH_BUNDLE`, `HEALTH_EXPECTED_SHA256`, `HEALTH_IMAGE`.
+Unknown flags fail with `--help`.
+
+```bash
+# examples
+curl -fsSL https://neuronection.com/install/health.sh | bash -s -- --dir /srv/ha
+curl -fsSL https://neuronection.com/install/health.sh | bash -s -- --dry-run
+curl -fsSL https://neuronection.com/install/health.sh | bash -s -- -- --http-port 8090
+bash install.sh --offline health-compose-v0.10.3.tar.gz --dir /srv/ha
+```
+
+The bundle's installer then:
+
+- refuses to run as root and checks Docker + Compose v2,
+- generates your `.env` (permissions **0600**, written under `umask 077`):
+  all keys and passwords, the VAPID Web Push pair, production-oriented
+  defaults — it asks **one question** (the public app URL; non-interactive
+  runs take the `http://localhost` default),
+- pins the images to the release's **exact digests** from `manifest.json`
+  (never `:latest`), verifies the rendered Compose model agrees before
+  pulling,
+- checks every host port the stack would publish **before** pulling or
+  starting anything, naming the `.env` variable to change (`--auto-ports`
+  picks free ports for you),
+- pulls, starts the stack and waits until **both** `/health` and `/ready`
+  answer,
+- prints the app URL, the health/readiness endpoints and the first-run setup
+  URL.
+
+**Setup token:** the installer generates it, stores it in `.env`
+(`SETUP_TOKEN_MODE=env` — the 0600 file is the one permitted storage) and
+prints the one-click setup URL **once**, at the end. `--no-token`
+suppresses the print (the token stays in `.env`, see
+`SETUP_BOOTSTRAP_TOKEN`). The token is never written to an application log.
+
+Exit codes (the family installer contract): `0` ok · `1`
+usage/prerequisite · `2` download/verification/pull · `3` compose
+start or health-wait · `4` port conflict.
+
+Re-running any of this is safe: when the install directory already holds an
+install, the bootstrap skips the download and hands off to **that install's
+own** `scripts/install.sh` — which keeps `.env`, refreshes the images,
+recreates the stack and waits for the checks again.
+
+### Clone-based install (source checkout)
+
+Working from a clone runs the same installer against the repo layout:
 
 1. **Install Docker and Docker Compose**, then **clone the repository:**
 
@@ -54,17 +103,16 @@ migration step.
    ./scripts/install.sh
    ```
 
-   The installer:
-   - checks that Docker is installed and running,
-   - checks every host port the stack publishes and names the `.env` variable
-     to change when one is taken (``--auto-ports`` picks free ports for you),
-   - generates your `.env` file — it asks **one question** (the public app URL — press Enter on this machine to accept `http://localhost`), generates all secure keys and passwords automatically, and skips advanced options you don't need,
-   - starts the standalone stack and waits until the backend reports healthy,
-   - prints the URLs to open.
+   The flow is the one above (env generation, port pre-flight, pin, pull,
+   up, health wait). Pin the release you cloned with `--image-tag X.Y.Z`
+   when the release's `manifest.json` is not beside the checkout — a
+   source-free bundle has nothing to build, so without a pin the installer
+   refuses.
 
-   That's it. `install.sh` is safe to re-run after an update — it never overwrites an existing `.env`.
-
-   > **Prefer explicit steps?** The manual equivalent is `python3 scripts/setup_env.py` (Quick Start is the default), then `docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d`. Or edit `.env` by hand from the template — see [Advanced & Reference](#advanced--reference).
+   > **Prefer explicit steps?** The interactive wizard `python3
+   > scripts/setup_env.py` (Quick Start is the default) still generates a
+   > complete `.env` in a source checkout; then start with `docker compose
+   > --env-file .env -f docker/docker-compose.standalone.yml up -d`.
 
 3. **Create your admin account (first-run setup wizard):**
 
@@ -73,21 +121,22 @@ migration step.
    > **There are no default login credentials.** The email and password you enter in the wizard are the ones you sign in with from then on.
 
    - **Any production install needs the setup token**, including `http://localhost` — a host-level reverse proxy makes remote requests look local, so the peer address is not trusted as a bypass.
-   - **Domain or LAN** installs get a **one-click setup URL** (`http://your-host/setup?token=…`) printed by the installer — the token is filled in for you; just click.
-   - If you used the manual commands instead, retrieve the token from the backend logs: `docker compose --env-file .env -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"`.
+   - The installer prints a **one-click setup URL** (`http://your-host/setup?token=…`) **once** at the end of a successful install (suppressed with `--no-token`; the token also lives in `.env` as `SETUP_BOOTSTRAP_TOKEN`). Lost it? Re-run the installer with `--no-token` suppressed off, or read `SETUP_BOOTSTRAP_TOKEN` in your `.env` — it is your file.
 
 4. **Verify it's working:**
 
    ```bash
    curl http://localhost/health
    # Expected: {"status":"healthy",...}
+   curl http://localhost/ready
+   # Expected: {"status":"ready",...}
    ```
 
    Open the app URL in your browser and you'll see the login screen.
 
 ### What the installer configures (and what it doesn't)
 
-Quick Start writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `HA_TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
+The installer writes production-oriented settings (`HA_APP_ENV=production`, `DEBUG=false`, `HA_TRUSTED_PROXY_COUNT=1`) aligned with the standalone stack. A few things are intentionally left for later:
 
 - **AI features** — OCR, document extraction, and the chat assistant need an **AI provider key**, configured in-app (System Admin → AI) or via the `OPENAI_*` env vars. The app runs fine without one; you just don't get the AI features.
 - **Demo mode, the Flower task monitor, and anatomy expansion packs** exist but aren't needed for a first install — see [Advanced & Reference](#advanced--reference).
@@ -121,32 +170,31 @@ docker compose --env-file .env -f docker/docker-compose.prod.yml up -d
 
 ### Container images & custom registries
 
-The compose files pull **pre-built images** — there is no `build:` step. By default they come from the GitHub Container Registry:
+The compose files pull **pre-built images** — there is no `build:` step. The release installer pins them **by digest** from the release manifest; by default they come from the GitHub Container Registry:
 
 ```
-ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest
-ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest
+ghcr.io/health-assistant-io/health-assistant/health-assistant-backend
+ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend
 ```
 
-Three `.env` variables redirect the images without editing the compose file:
+Four `.env` variables redirect the images without editing the compose file:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REGISTRY` | `ghcr.io` | Your own registry or mirror |
+| `HA_BACKEND_IMAGE` / `HA_FRONTEND_IMAGE` | *(unset)* | **Immutable image overrides** — what the installer writes: a full `name:tag@sha256:…` digest ref (or `name:tag`). Take precedence over the three below. |
+| `REGISTRY` | `ghcr.io` | Your own registry or mirror (the tag-only path) |
 | `REPOSITORY` | `health-assistant-io/health-assistant` | Your namespace or fork |
-| `IMAGE_TAG` | `latest` | Pin a specific release for reproducible deploys |
+| `IMAGE_TAG` | *(unset — refused)* | A published release tag; also the readable record of which release a digest pin belongs to |
 
-**Pin a release** — recommended for production, so an upstream `latest` push can't change your running version. Add to `.env`:
-
-```bash
-IMAGE_TAG=0.9.0   # example — use a tag published to your registry (see CHANGELOG.md)
-```
+**A release install never runs `:latest`** (it floats with `main` and breaks
+the migrate contract); the installer verifies the rendered Compose model
+agrees with the pins before starting anything.
 
 **Run from source** — no registry, offline, or a modified build. Build and tag the images locally first; `docker compose up` then reuses them:
 
 ```bash
-docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:latest -f docker/Dockerfile .
-docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:latest -f docker/Dockerfile.frontend .
+docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-backend:0.10.3 -f docker/Dockerfile .
+docker build -t ghcr.io/health-assistant-io/health-assistant/health-assistant-frontend:0.10.3 -f docker/Dockerfile.frontend .
 docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 ```
 
@@ -157,13 +205,13 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
 > [SECURITY.md](../SECURITY.md); this checklist is the operator-side
 > minimum.
 
-- [ ] **Set the per-purpose key family** *(handled by `setup_env.py` if used)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
+- [ ] **Set the per-purpose key family** *(generated by `scripts/install.sh`/`setup_env.py`)* — three independent per-purpose secrets (the single all-purpose `SECRET_KEY` is retired):
   - `HA_SESSION_KEY` (signs session JWTs + api/invite/download kinds): `python3 -c "from secrets import token_urlsafe; print(token_urlsafe(48))"`
   - `HA_REFRESH_KEY` (signs refresh JWTs only): same command, a **different** value — boot refuses shared/partial/weak pins
   - `HA_DATA_KEY` (Fernet at-rest key; never signs): `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` — pre-H4 deployments rename their `INTEGRATION_SECRET_KEY` value here (same value, every sealed ring keeps decrypting); put a retired key in `HA_DATA_KEY_PREVIOUS` when rotating. The at-rest cipher implementation is the shared [`neuronection-auth-kit`](https://github.com/neuronection/auth-kit) module (`nx_auth.atrest`), pinned by git SHA in the workspace `pyproject.toml`/`uv.lock`.
-- [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). Easiest path: `python3 scripts/setup_env.py` generates both keys and prompts for the email automatically. Manual alternative: `npx web-push generate-vapid-keys`, then set `VAPID_ADMIN_EMAIL` to a real address you monitor. *(Optional in development — Web Push is silently skipped when keys are missing.)*
-- [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value *(handled by `setup_env.py` if used)*
-- [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** *(handled by `setup_env.py` if used)*
+- [ ] **Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_ADMIN_EMAIL`** (required for Web Push; the app refuses to boot in production without the keys). `scripts/install.sh` and `setup_env.py` both generate the pair automatically (openssl/`cryptography` — no Node needed) and derive a contact email from your app URL. Manual alternative: `npx web-push generate-vapid-keys`, then set `VAPID_ADMIN_EMAIL` to a real address you monitor. *(Optional in development — Web Push is silently skipped when keys are missing.)*
+- [ ] **Set `POSTGRES_PASSWORD`** to a strong, unique value *(generated by the installer/`setup_env.py`)*
+- [ ] **Set `FLOWER_USER` and `FLOWER_PASSWORD`** *(the password is generated by the installer/`setup_env.py`)*
 - [ ] **Run the api_key backfill** if upgrading from a pre-0.3.0 release: `cd backend && PYTHONPATH=. python scripts/encrypt_existing_api_keys.py`
 - [ ] **Two-factor authentication (TOTP MFA)** — no extra setup: it uses the `HA_DATA_KEY` above to encrypt the per-user authenticator secrets at rest (losing/rotating that key without `HA_DATA_KEY_PREVIOUS` would break existing enrollments). Users self-enroll from **Settings → Security** (any authenticator app; recovery codes are shown once). To *require* MFA for institute members: Admin → Users → row action **Require MFA** (or `PATCH /api/v1/admin/tenants/{tenant_id}/users/{user_id}/mfa` with `{"enforced": true}`) — the member then enrolls at their next sign-in. Wrong codes count toward the normal 5-strike account lockout.
 - [ ] Set `DEBUG=false`
@@ -198,22 +246,37 @@ In both cases set **`HA_COOKIE_SECURE=true`** so the `nx_access` / `nx_refresh` 
 
 ### Docker (recommended)
 
-Keep a Docker install up to date with one command:
+An update moves the image pins to a new release — deliberately, with the
+previous pins kept for rollback. Download the new release bundle (the
+one-liner's exact-tag form or the release page), extract it **over your
+install directory** (the bundle carries no `.env`, so your secrets survive),
+then run the bundle's updater:
 
 ```bash
-./scripts/update-docker.sh
+bash scripts/update.sh
 ```
 
-It pulls the latest code (best-effort — a dirty tree won't break your running install), refreshes the container images, restarts the stack, and waits for the backend to become healthy again.
+It reads the new pins from the release `manifest.json` beside the bundle
+(or `--image backend=<ref> --image frontend=<ref>` / `--image-tag X.Y.Z`),
+**records the previous pins as comments in `.env`** before moving them,
+pulls, recreates the stack and waits for `/health` and `/ready` again. It
+never runs `git`, never removes volumes and never touches your secrets.
+`./scripts/update-docker.sh` still works — it forwards to
+`scripts/update.sh`.
 
-Prefer the explicit four-step sequence? The manual equivalent is:
+Take a backup first (`bash scripts/backup.sh`) and read the changelog for
+one-time post-upgrade actions.
+
+**Rollback:** the previous pins are printed by the updater and kept in
+`.env`:
 
 ```bash
-git pull
-python3 scripts/setup_env.py   # only needed when .env.example gained new required vars
-docker compose --env-file .env -f docker/docker-compose.standalone.yml pull
-docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d
+bash scripts/update.sh --image backend=<previous pin> --image frontend=<previous pin>
 ```
+
+Restore data from the pre-upgrade backup with `scripts/restore.sh` when the
+release changed the schema. The installer/updater never migrates data
+itself — migrations run in the one-shot `migrate` service at stack start.
 
 The application runs its seed pipeline on every boot, so catalog/taxonomy/anatomy entries reconcile automatically — no manual re-seed step after an update. If a release ships a new Alembic migration it applies on container start; check [CHANGELOG.md](../CHANGELOG.md) for any one-time post-upgrade actions (e.g. the `encrypt_existing_api_keys.py` backfill called out in the security checklist). v0.9.0 is the exception: its migration chain was squash-replaced, so a pre-0.9 database is refused — see [Upgrading from v0.8.0](#upgrading-from-v080).
 
@@ -269,8 +332,8 @@ Environment names renamed in v0.9.0 (a stale name is ignored; the
 The PostgreSQL data directory is also not compatible (v0.8.0 ran pg14,
 v0.9.0 runs pg16) — see [`docker/README.md` → "Upgrading from pg14"](../docker/README.md#upgrading-from-pg14).
 
-Re-running the one-line installer repairs the image pin and the `.env`
-contract; it does **not** migrate a pre-0.9 database.
+The bundle updater moves the image pins forward; it does **not** migrate a
+pre-0.9 database — the migration chain refusal above still applies.
 
 ### From source (development)
 
@@ -386,8 +449,8 @@ The first-run wizard's token protects a fresh instance from being claimed by a s
 
 | Mode | Behaviour | Recommended deploy |
 |---|---|---|
-| `log` (default) | Backend prints a one-time token to container logs; wizard requires it for non-localhost / non-dev. | Manual Docker installs behind an internet-exposed reverse proxy. |
-| `env` | Seed the token from `SETUP_BOOTSTRAP_TOKEN`; the launcher composes the wizard URL with `?token=<value>`. One-click, no log-grep. | Store bundlers (Umbrel/Runtipi/CasaOS/Cosmos) + Ansible/Terraform provisioning. Quick Start chooses this automatically for domain/LAN URLs. |
+| `env` *(what the installer writes)* | Seeds the token from `SETUP_BOOTSTRAP_TOKEN`; the launcher composes the wizard URL with `?token=<value>`. One-click; the token lives in the 0600 `.env` — the one permitted storage — and is printed once by the installer. | Bundle installs (the default the installer writes) + store bundlers (Umbrel/Runtipi/CasaOS/Cosmos) + Ansible/Terraform provisioning. |
+| `log` | Backend mints a one-time random token and writes it to the container log at first boot; the wizard requires it for non-localhost / non-dev requests. | Manual `.env`-by-hand installs behind an internet-exposed reverse proxy that deliberately chose not to pre-seed a token. |
 | `time` | Tokenless for `SETUP_TOKEN_GRACE_MINUTES` (default 30) after first boot, then required (lazy-falls-back to `log` if no env token was set). | LAN/firewalled installs where the operator is the only one who can reach the app in the first half hour. |
 | `disabled` | Never require. Logs a security warning on every fresh boot. | Only behind a firewall / VPN / `127.0.0.1` bind — opt-in only. |
 

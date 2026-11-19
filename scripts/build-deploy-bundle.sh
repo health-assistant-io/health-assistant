@@ -7,19 +7,33 @@
 #
 #   health-compose-v<version>/
 #     docker/    both compose flavors (standalone + prod), the nginx configs
-#                (plain + TLS variant), the postgres init scripts and the
-#                operator runbook (docker/README.md)
-#     scripts/   host backup/restore helpers (backup.sh, restore.sh and the
-#                lib-docker.sh they source)
-#     .env.example
+#                (plain + TLS variant), the postgres init scripts, the env
+#                template (docker/.env.example — the contract's bundle
+#                location for it) and the operator runbook (docker/README.md)
+#     scripts/   the bundle-owned installer surface (install.sh, update.sh,
+#                upgrade-check.sh), the host backup/restore helpers and the
+#                lib-docker.sh they all source
+#     installer.json
+#                the product's installer-contract config (byte-identical to
+#                the family contract copy) — read by install.sh/update.sh,
+#                carried for the website
+#
+# scripts/setup_env.py deliberately does NOT ship: the contract requires the
+# bundle to be source-free (no *.py members — the family checker enforces
+# it), and scripts/install.sh generates .env itself (bash + python3 stdlib,
+# including the VAPID pair via openssl). The interactive wizard stays a
+# source-checkout tool.
 #
 # Next to the tarball the script writes the release metadata:
 #
-#   manifest.json — product/version/commit, BOTH image digests
-#                   (images.backend / images.frontend, the exact artifacts
-#                   the publish pipeline pushed), the bundle SHA256 and the
-#                   per-file SHA256SUMS of the bundle members
-#   SHA256SUMS    — release-level checksums (tarball + manifest.json)
+#   manifest.json — schemaVersion 2: product/version/tag/commit,
+#                   contractVersion, images.backend / images.frontend (the
+#                   exact pullable digest refs the publish pipeline pushed),
+#                   the bundle SHA256/bytes and the per-file SHA256SUMS of
+#                   the bundle members
+#   SHA256SUMS    — release-level checksums (tarball + manifest; the release
+#                   workflow appends the bootstrap assets when
+#                   scripts/bootstrap.sh is present)
 #
 # The tarball is built deterministically (sorted names, fixed mtimes, root
 # owner, gzip -n) so the same content always yields the same bundle SHA.
@@ -45,7 +59,8 @@ die()   { echo -e "${RED}error:${NC} $*" >&2; exit 1; }
 info()  { echo -e "${GREEN}==>${NC} $*"; }
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-readonly PRODUCT="health-assistant"
+readonly PRODUCT="health"
+readonly CONTRACT_VERSION="1"
 
 # The complete, allowlisted bundle surface. Everything an operator (or the
 # release workflow) can extract is on this list — the source-free guard
@@ -58,12 +73,26 @@ readonly BUNDLE_MEMBERS=(
   docker/nginx-TLS.conf
   docker/init-db.sql
   docker/init-roles.sh
+  docker/.env.example
   docker/README.md
+  scripts/install.sh
+  scripts/update.sh
+  scripts/upgrade-check.sh
   scripts/backup.sh
   scripts/restore.sh
   scripts/lib-docker.sh
-  .env.example
+  installer.json
 )
+
+# The staged path → the repo path (identity except the env example: the
+# contract's bundle layout puts the template under docker/, health's repo
+# keeps it at the root because the stack reads the GENERATED .env there).
+bundle_source() {
+  case "$1" in
+    docker/.env.example) printf '%s' ".env.example" ;;
+    *)                   printf '%s' "$1" ;;
+  esac
+}
 
 VERSION=""
 COMMIT=""
@@ -73,7 +102,7 @@ IMAGE_TAG=""
 OUTPUT_DIR="$REPO_ROOT/dist"
 
 usage() {
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,49p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -119,7 +148,7 @@ BUNDLE_ROOT="$STAGE/$BUNDLE_DIRNAME"
 mkdir -p "$BUNDLE_ROOT"
 
 for member in "${BUNDLE_MEMBERS[@]}"; do
-  src="$REPO_ROOT/$member"
+  src="$REPO_ROOT/$(bundle_source "$member")"
   [ -f "$src" ] || die "allowlisted bundle member missing from the repo: $member"
   mkdir -p "$BUNDLE_ROOT/$(dirname "$member")"
   cp -p "$src" "$BUNDLE_ROOT/$member"
@@ -155,34 +184,40 @@ assert_source_free() (
   done < <(find . -type f)
 
   # 3. The env template stays a template: no credential-shaped values.
-  if grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY|-----BEGIN)' .env.example; then
-    die ".env.example looks like it carries real credential material"
+  if grep -nE '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY|-----BEGIN)' docker/.env.example; then
+    die "docker/.env.example looks like it carries real credential material"
   fi
 )
 assert_source_free
 info "staged ${#BUNDLE_MEMBERS[@]} files (source-free check passed)"
 
 # ─── Deterministic tarball ───────────────────────────────────────────────────
-mkdir -p "$OUTPUT_DIR"
-TARBALL="$OUTPUT_DIR/$BUNDLE_DIRNAME.tar.gz"
+# Members are archived at the BUNDLE ROOT (./docker/…, ./scripts/…, .
+# /installer.json — no wrapping directory): the generated bootstrap extracts
+# straight into the install dir and expects scripts/install.sh there, and the
+# family checker reads the members unprefixed.
 # GNU tar: sorted names, epoch mtimes, root ownership; gzip -n drops the
 # filename/timestamp so identical content always hashes identically.
+mkdir -p "$OUTPUT_DIR"
+TARBALL="$OUTPUT_DIR/$BUNDLE_DIRNAME.tar.gz"
 tar --sort=name --owner=0 --group=0 --numeric-owner \
     --mtime='1970-01-01 00:00:00Z' --format=gnu \
-    -cf - -C "$STAGE" "$BUNDLE_DIRNAME" \
+    -cf - -C "$BUNDLE_ROOT" . \
   | gzip -n -9 > "$TARBALL"
 
 BUNDLE_SHA="$(sha256sum "$TARBALL" | awk '{print $1}')"
 BUNDLE_BYTES="$(stat -c %s "$TARBALL")"
 info "bundle: $TARBALL ($BUNDLE_BYTES bytes, sha256 ${BUNDLE_SHA:0:12}…)"
 
-# ─── manifest.json ───────────────────────────────────────────────────────────
+# ─── manifest.json (schemaVersion 2) ──────────────────────────────────────────
 # JSON is written by python3 (never string-interpolated) so the values above
 # cannot break the structure.
 MANIFEST="$OUTPUT_DIR/manifest.json"
-# Pullable ref, pinned by digest. The name part may already carry the version
-# tag (the release workflow passes name:version@digest) — keep it; otherwise
-# append IMAGE_TAG.
+# Pullable refs, pinned by digest: the exact artifacts the publish pipeline
+# pushed. The manifest's images block is what the generated bootstrap reads
+# (it forwards each pair as --image <key>=<ref> to the bundle installer) and
+# what scripts/install.sh falls back to — so it carries EXACTLY this
+# product's two image slots (installer.json imageKeys), nothing else.
 build_ref() {
   local base="${1%@*}" digest="${1#*@}"
   case "$base" in
@@ -193,16 +228,14 @@ build_ref() {
 BACKEND_REF="$(build_ref "$BACKEND_IMAGE")"
 FRONTEND_REF="$(build_ref "$FRONTEND_IMAGE")"
 
-export BUNDLE_ROOT VERSION COMMIT PRODUCT IMAGE_TAG \
+export BUNDLE_ROOT VERSION COMMIT PRODUCT CONTRACT_VERSION IMAGE_TAG \
   BACKEND_IMAGE FRONTEND_IMAGE BACKEND_REF FRONTEND_REF \
   BUNDLE_FILE="${BUNDLE_DIRNAME}.tar.gz" \
   BUNDLE_SHA BUNDLE_BYTES MANIFEST
 python3 - <<'PY'
-import datetime
 import hashlib
 import json
 import os
-import sys
 
 root = os.environ["BUNDLE_ROOT"]
 
@@ -219,21 +252,18 @@ for dirpath, _dirnames, filenames in os.walk(root):
         members[rel] = digest.hexdigest()
 
 manifest = {
+    "schemaVersion": 2,
     "product": os.environ["PRODUCT"],
     "version": os.environ["VERSION"],
     "tag": f"v{os.environ['VERSION']}",
     "commit": os.environ["COMMIT"],
-    "generated_at": datetime.datetime.now(datetime.timezone.utc)
-        .strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "contractVersion": os.environ["CONTRACT_VERSION"],
     "images": {
-        "tag": os.environ["IMAGE_TAG"],
-        # The two digests the publish pipeline actually pushed — the release
-        # manifest is the contract between the bundle and the registry.
-        "backend": os.environ["BACKEND_IMAGE"].split("@", 1)[1],
-        "frontend": os.environ["FRONTEND_IMAGE"].split("@", 1)[1],
-        # Pullable refs, pinned by digest (tag@digest).
-        "backend_ref": os.environ["BACKEND_REF"],
-        "frontend_ref": os.environ["FRONTEND_REF"],
+        # The two pullable digest refs the publish pipeline pushed — the
+        # release manifest is the contract between the bundle and the
+        # registry (schema: images.<imageKeys slot> = name:tag@sha256:…).
+        "backend": os.environ["BACKEND_REF"],
+        "frontend": os.environ["FRONTEND_REF"],
     },
     "bundle": {
         "file": os.environ["BUNDLE_FILE"],
@@ -248,21 +278,23 @@ with open(os.environ["MANIFEST"], "w") as fh:
     fh.write("\n")
 PY
 
-# The manifest must not lie: the embedded digest fields match what was passed.
+# The manifest must not lie: the embedded image refs match what was passed.
 while IFS='=' read -r key want; do
   got="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['images'][sys.argv[2]])" "$MANIFEST" "$key")"
   [ "$got" = "$want" ] || die "manifest self-check failed: images.$key=$got != $want"
 done <<EOF
-backend=${BACKEND_IMAGE#*@}
-frontend=${FRONTEND_IMAGE#*@}
+backend=${BACKEND_REF}
+frontend=${FRONTEND_REF}
 EOF
 
 # ─── SHA256SUMS (release level: tarball + manifest) ──────────────────────────
 SUMS="$OUTPUT_DIR/SHA256SUMS"
 (cd "$OUTPUT_DIR" && sha256sum "${BUNDLE_DIRNAME}.tar.gz" manifest.json > SHA256SUMS)
 
-# Keep SHA256SUMS out of itself (regenerate would loop) — it lists exactly
-# the two release assets the workflow uploads alongside it.
+# Keep SHA256SUMS out of itself (regenerate would loop) — the builder lists
+# exactly the two assets it produces; the release workflow APPENDS the
+# bootstrap assets (health-bootstrap-vX.Y.Z.sh + health-bootstrap.sh) after
+# staging them, then verifies the whole file with `sha256sum -c`.
 [ "$(wc -l < "$SUMS")" = "2" ] || die "SHA256SUMS should list exactly two assets"
 
 info "manifest: $MANIFEST"

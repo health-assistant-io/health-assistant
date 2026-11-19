@@ -1,0 +1,23 @@
+{
+  "product": "health",
+  "title": "Health Assistant",
+  "repo": "health-assistant-io/health-assistant",
+  "repoDir": "health-assistant/core",
+  "targetPath": "scripts/bootstrap.sh",
+  "phase": "P4",
+  "bundlePrefix": "health-compose",
+  "bootstrapAsset": "health-bootstrap",
+  "envPrefix": "HEALTH",
+  "imageEnv": "IMAGE_TAG",
+  "imageKeys": ["backend", "frontend"],
+  "defaultDirName": "health-assistant",
+  "defaultPort": 80,
+  "healthPath": "/health",
+  "readyPath": "/ready",
+  "setupMode": "setup token",
+  "minRamGb": 8,
+  "docsUrl": "https://health-assistant.io/docs",
+  "installUrl": "https://neuronection.com/install/health.sh",
+  "contractVersion": "1",
+  "installFlags": ["no-pull", "no-wait", "auto-ports", "no-ports", "http-port", "env-only", "reset", "yes", "image-tag", "no-token"]
+}
