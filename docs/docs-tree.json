@@ -104,6 +104,12 @@
         "file": "AI_SYSTEM.md",
         "title": "AI System & Configuration",
         "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, per-tenant model configuration, and call-time cost provenance with tenant price overrides."
+      },
+      {
+        "id": "extraction-pipeline",
+        "file": "EXTRACTION_PIPELINE.md",
+        "title": "Document Extraction Pipeline",
+        "description": "The document extraction pipeline of Health Assistant, a self-hosted health records platform. Every extraction trigger, the OCR and two-pass NLP stages, reference-range and unit rules, catalog auto-creation for unknown biomarkers, state versus numeric results, and the behaviour and recovery for each failure case."
       }
     ]
   },

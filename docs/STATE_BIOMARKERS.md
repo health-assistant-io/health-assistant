@@ -4,6 +4,30 @@ Not every biomarker is a number. Some results are categorical states: *Positive 
 
 This doc covers when to use state biomarkers, how to declare them, how values flow through the system, and the FHIR R4 search semantics.
 
+## Code map
+
+Every claim that names a behaviour should be traceable to the symbol implementing
+it. Anchors are symbols, not line numbers: symbols survive refactors, lines do
+not. The table is checked by `backend/tests/test_docs_anchors.py`.
+
+The DB-level invariants have no symbol to point at — they are CHECK constraints
+named `ck_biomarker_definitions_state_not_telemetry` and
+`ck_biomarker_definitions_state_no_unit` in the migrations, and they are the
+enforcement of last resort behind the schema/endpoint layers listed below.
+
+| Stage | Entry symbol | Module |
+|---|---|---|
+| Hard value-shape contract | `validate_observation_value` | `backend/app/services/biomarkers/observation_value_validator.py` |
+| Contract violation error | `InvalidObservationValue` | `backend/app/services/biomarkers/observation_value_validator.py` |
+| Status badge (normal set) | `_get_observation_status` | `backend/app/services/analytics/status.py` |
+| Single-state timeline | `get_biomarker_state_history` | `backend/app/services/analytics/state_history.py` |
+| Multi-state panel timelines | `get_multi_state_history` | `backend/app/services/analytics/state_history.py` |
+| Telemetry migration backstop | `migrate_biomarker_data` | `backend/app/workers/tasks.py` |
+| SDK categorical setter | `set_value_codeable_concept` | `backend/app/extensions/sdk/observation_builder.py` |
+| FHIR search params (`value-concept`, `component-code`) | `_build_resource_filter` | `backend/app/facade/crud.py` |
+| Extraction schema (sibling state fields) | `KnownBiomarkerExtract` | `backend/app/ai/schemas/nlp.py` |
+| Pass-1 state convention | `LangChainStructuredExtractor.parse_document_pass_1` | `backend/app/ai/processors/nlp/langchain_structured.py` |
+
 ## When to use STATE vs QUANTITY
 
 Every `BiomarkerDefinition` carries a `value_type` discriminator:

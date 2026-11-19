@@ -18,22 +18,35 @@ structured-log inspection, and the retry workflow.
 
 ## Background: the task lifecycle
 
-A document/examination moves through these statuses:
+Documents and examinations carry **separate** status vocabularies — a document
+moves through `uploaded → processing → completed|failed`, while the examination
+moves through the extraction phases. The full state machine, with the phase
+vocabulary and progress values, is in
+[EXTRACTION_PIPELINE.md §8](EXTRACTION_PIPELINE.md#8-status-progress-and-observability).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> uploaded
-    uploaded --> processing
-    processing --> aggregating
-    aggregating --> analyzing_text
-    analyzing_text --> completed
-    completed --> [*]
-    processing --> failed: on error
-    aggregating --> failed: on error
-    analyzing_text --> failed: on error
-    failed --> uploaded: retry (UI or API)
-    failed --> [*]
+    state "Document" as Doc {
+        [*] --> uploaded
+        uploaded --> processing: OCR queued
+        processing --> completed: text stored
+        processing --> failed: OCR error
+        failed --> processing: retry (UI or API)
+        completed --> processing: re-extraction
+    }
+    state "Examination" as Exam {
+        [*] --> processing
+        processing --> clinical_analysis: OCR finished
+        clinical_analysis --> defining_ontology: unknowns found
+        defining_ontology --> persisting_results
+        persisting_results --> completed
+        clinical_analysis --> failed: LLM error
+        persisting_results --> failed: write error
+    }
 ```
+
+Legacy rows may still carry `aggregating` / `analyzing_text`; the stall cleanup
+covers them, but the current pipeline does not set either status.
 
 Two time thresholds matter:
 
