@@ -69,7 +69,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-docker.sh"
 
-TIMESCALE_IMAGE="${TIMESCALE_IMAGE:-timescale/timescaledb:latest-pg16}" # pinned like docker-compose.standalone.yml
+TIMESCALE_IMAGE="${TIMESCALE_IMAGE:-timescale/timescaledb:2.32.0-pg16}" # pinned like docker-compose.standalone.yml
 ARCHIVE=""
 TARGET=""
 DROP_EXISTING=0

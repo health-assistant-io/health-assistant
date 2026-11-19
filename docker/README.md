@@ -15,14 +15,19 @@ development use `../scripts/run-dev.sh` with the dev-db stack below.
 Every tagged release publishes `health-compose-v<version>.tar.gz` — a
 source-free deployment bundle built from exactly this directory's deployment
 surface: both compose flavors, the nginx configs, the postgres init scripts,
-this README, `../scripts/{backup,restore,lib-docker}.sh` and
-`.env.example`. Operators who only pull the published images extract it and
-run `docker compose --env-file .env -f docker/docker-compose.standalone.yml up -d`
-from the extracted root — no source checkout needed; `manifest.json` (release
-asset) pins the exact backend/frontend image digests the release shipped, and
-`SHA256SUMS` verifies the downloads. The `install.sh` / `bootstrap.sh`
-first-deploy paths are source-checkout-only and stay documented in
-docs/INSTALL.md.
+the env template (`docker/.env.example`), this README, and the bundle-owned
+installer surface under `scripts/` (`install.sh`, `update.sh`,
+`upgrade-check.sh`, `backup.sh`/`restore.sh` and the `lib-docker.sh` they
+source) plus `installer.json` (the product's installer-contract config).
+Extract it anywhere and run `bash scripts/install.sh` from the extracted
+root — no source checkout, no build. The release also attaches
+`manifest.json` (the two image **digest refs** the release published — what
+the installer pins, never `:latest`), `SHA256SUMS`, and the one-line
+bootstrap (`health-bootstrap-v<version>.sh` + the version-free
+`health-bootstrap.sh` alias) served from
+`https://neuronection.com/install/health.sh`. Verify everything you
+download against `SHA256SUMS`; `scripts/bootstrap.sh` (repo) is the
+readable copy of the bootstrap the release attaches.
 
 ## File map
 
@@ -41,9 +46,11 @@ docs/INSTALL.md.
 | `recreate-dev-db.sh` | Nuke + recreate the dev-db Postgres volume. |
 
 Ops scripts (repo `scripts/`): `run-docker.sh` (dev stack),
-`install.sh` / `update-docker.sh` (standalone first deploy / refresh),
-`lib-docker.sh` (shared helpers), `reset-dev-db.sh` (dev volume reset),
-`backup.sh` / `restore.sh` (instance backup + restore — see the
+`install.sh` / `update.sh` (standalone first deploy / release update —
+bundle-owned; `update-docker.sh` is a compatibility alias forwarding to
+`update.sh`), `upgrade-check.sh` (update pre-flight), `lib-docker.sh`
+(shared helpers), `reset-dev-db.sh` (dev volume reset), `backup.sh` /
+`restore.sh` (instance backup + restore — see the
 [restore drill](#backup--restore-drill) below).
 
 ## Compose project name & volumes
@@ -72,7 +79,7 @@ under the new prefix, using the stack's own Postgres image; the legacy copy
 is removed only after a successful copy (a failed copy aborts loudly and
 rolls the empty target back, so data is never silently stranded).
 
-- **Standalone** (`install.sh` / `update-docker.sh`): automatic on the next
+- **Standalone** (`install.sh` / `update.sh`): automatic on the next
   run — stops the legacy stack once (only when legacy volumes exist), copies
   `docker_postgres_data` / `docker_redis_data` / `docker_uploads`, continues.
 - **Prod / test CI**: automatic in `.gitea/workflows/deploy.yml` on the next
@@ -90,14 +97,14 @@ for v in postgres_data-dev1 redis_data-dev1; do
   docker volume create --label com.docker.compose.project=health-assistant-dev \
     --label com.docker.compose.volume="$v" "health-assistant-dev_$v"
   docker run --rm --entrypoint sh -v "docker_$v":/from:ro -v "health-assistant-dev_$v":/to \
-    timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/'
+    timescale/timescaledb:2.32.0-pg16 -c 'cp -a /from/. /to/'
   docker volume rm "docker_$v"
 done
 # all-in-one dev stack uploads (docker_uploads → health-assistant_uploads)
 docker volume create --label com.docker.compose.project=health-assistant \
   --label com.docker.compose.volume=uploads health-assistant_uploads
 docker run --rm --entrypoint sh -v docker_uploads:/from:ro -v health-assistant_uploads:/to \
-  timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/'
+  timescale/timescaledb:2.32.0-pg16 -c 'cp -a /from/. /to/'
 docker volume rm docker_uploads
 ```
 
@@ -175,7 +182,7 @@ databases `neuronection_health` (+ `neuronection_health_test` /
 `neuronection_health_app`. **Existing installations migrate automatically**
 (guarded, one-time, no-op when the names already match):
 
-- `scripts/install.sh` / `scripts/update-docker.sh` run
+- `scripts/install.sh` / `scripts/update.sh` run
   `migrate_legacy_db_names()` before the stack boots: start postgres,
   rename a `neuro_health` (or older `health_assistant`) database and the
   `neuro_health_*` roles.
@@ -286,10 +293,13 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile
   builds `X.Y.Z` and tags `latest` only from the default branch (`main`), so a
   release checkout running `:latest` gets main's images against its own
   env/compose contract — the migrate step then fails with a renamed-env
-  warning and `no password supplied`. `scripts/install.sh --image-tag X.Y.Z`
-  persists the pin in `.env`; the one-line bootstrap derives it from the
-  release it extracted; `scripts/update-docker.sh` moves a semver pin forward
-  with the tree. `latest` / `main` pins are left alone (deliberate).
+  warning and `no password supplied`. The release installer pins the **exact
+  digest refs** from the release `manifest.json` into `.env`
+  (`HA_BACKEND_IMAGE` / `HA_FRONTEND_IMAGE`; `IMAGE_TAG` records the release
+  tag), refuses a mutable `latest`/`main` pin, and asserts the rendered
+  compose model agrees before pulling. `scripts/update.sh` moves the pins
+  to a new release's manifest, keeping the previous pins in `.env` comments
+  for rollback (`update-docker.sh` is a compatibility alias).
 - **Published host ports are pre-flighted**: `install.sh` renders the compose
   model and aborts, naming the `.env` variable, when a port is held by
   something that is not this stack (`--auto-ports` picks free ones instead).
@@ -300,8 +310,10 @@ docker compose --env-file .env -f docker/docker-compose.standalone.yml --profile
 - Required secrets are `:?`-guarded (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
   `HA_SESSION_KEY`, `HA_REFRESH_KEY`, `FLOWER_PASSWORD`) so `up` fails loud
   and early.
-- Refresh an existing install: `scripts/update-docker.sh`
-  (`--no-pull`, `--no-wait`, `-h`); first deploy helper: `scripts/install.sh`.
+- Update an existing install: `scripts/update.sh` (pins from the new
+  release's `manifest.json`; `--image backend=<ref> --image frontend=<ref>`,
+  `--image-tag X.Y.Z`, `--no-pull`, `--no-wait`, `-h`; the previous pins are
+  kept for rollback). First deploy helper: `scripts/install.sh`.
 - Second stack on the same host (prod flavor): set `STACK_NAME` — it
   isolates the whole compose project (container names, named volumes, the
   bridge network), not just container names.

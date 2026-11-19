@@ -1,11 +1,14 @@
 name: Release install smoke
 
-# Guards the release-skew class (2026-11-03): the published one-liner extracts
-# the release tarball but the compose file defaults to `:latest`, which is
-# built from main. A release tree running main images dies at `alembic upgrade
-# head` (renamed env vars → "no password supplied"). This job proves, on the
-# published artifact, that the bootstrap pins the tag, that the installer
-# persists it, and that the rendered stack never falls back to `:latest`.
+# Guards the one-line install on the PUBLISHED release (G4): the bootstrap
+# resolves the tag, verifies the bundle's SHA-256 against SHA256SUMS,
+# extracts the source-free bundle, the installer pins the release images
+# (never `:latest`), writes .env at 0600, boots the real stack from the
+# pinned images and waits for /health + /ready — and a re-run is a no-op
+# that keeps .env byte-identical. `--dry-run` proves no writes happen.
+#
+# The release `published` event fires before the attach job uploads the
+# bundle assets, so the first step waits (bounded) for them to appear.
 
 on:
   release:
@@ -13,57 +16,133 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to smoke-test (e.g. v0.9.0)
+        description: Release tag to smoke-test (e.g. v0.10.3)
         required: true
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
     env:
       TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      GHCR_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
-      - name: Bootstrap pins the release image tag
+      - name: Wait for the release assets (attach job may still be uploading)
         run: |
-          set -eu
-          version="${TAG#v}"
-          out="$(bash scripts/bootstrap.sh --ref "$TAG" --dir "$RUNNER_TEMP/ha-smoke" --dry-run)"
-          printf '%s\n' "$out"
-          grep -q -- "--image-tag ${version}" <<< "$out"
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' \
+                 | grep -qx "health-bootstrap-${TAG}.sh" \
+               && gh release view "$TAG" --json assets --jq '.assets[].name' \
+                 | grep -Eq '^health-compose-v[0-9].*\.tar\.gz$'; then
+              echo "assets present (attempt ${attempt})"
+              exit 0
+            fi
+            echo "waiting for the bundle + bootstrap assets (attempt ${attempt}/30)"
+            sleep 20
+          done
+          echo "::error::release $TAG has no bootstrap/bundle assets after 10 minutes — did attach-release-artifacts run?"
+          exit 1
 
-      - name: Installer persists the pin and no :latest leaks into the stack
+      - name: Bootstrap resolves the tag and verifies the release checksums
         run: |
-          set -eu
-          version="${TAG#v}"
-          cd "$RUNNER_TEMP/ha-smoke"
-          python3 scripts/setup_env.py --mode=1 </dev/null >/dev/null
-          bash scripts/install.sh --env-only --image-tag "$version" >/dev/null
-          grep -qE "^IMAGE_TAG=${version}$" .env
+          set -euo pipefail
+          DIR="$RUNNER_TEMP/ha-smoke"
+          rm -rf "$DIR"; mkdir -p "$DIR"
+          # The exact-tag asset knows its release from its own filename —
+          # no API call — and prints the contract version for it.
+          cp scripts/bootstrap.sh "$RUNNER_TEMP/health-bootstrap-${TAG}.sh"
+          out="$(bash "$RUNNER_TEMP/health-bootstrap-${TAG}.sh" --version)"
+          printf '%s\n' "$out"
+          grep -q "bootstrap contract: " <<<"$out"
+          grep -q "resolved release: ${TAG} (pinned by this file's name)" <<<"$out"
+
+          # --dry-run: resolve, download, verify, print the hand-off — and
+          # write NOTHING outside its temp dir.
+          out="$(bash "$RUNNER_TEMP/health-bootstrap-${TAG}.sh" --dry-run --dir "$DIR")"
+          printf '%s\n' "$out"
+          grep -q "Dry run OK" <<<"$out"
+          grep -q -- "--image backend=" <<<"$out"
+          grep -q -- "--image frontend=" <<<"$out"
+          [ ! -e "$DIR" ] || { echo "::error::--dry-run created the target dir"; exit 1; }
+          echo "dry run wrote nothing into $DIR"
+
+      - name: Install from the bundle (pins, .env 0600, real stack, /health + /ready)
+        run: |
+          set -euo pipefail
+          if [ -n "${GHCR_TOKEN:-}" ]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin >/dev/null
+          fi
+          DIR="$RUNNER_TEMP/ha-smoke"
+          mkdir -p "$DIR"
+          # The real one-line flow: the exact-tag bootstrap installs the
+          # extracted bundle and hands off to its own scripts/install.sh.
+          # CI stdin is not a tty, so the APP_URL prompt takes its default.
+          out="$(bash "$RUNNER_TEMP/health-bootstrap-${TAG}.sh" --dir "$DIR" -- --http-port 8080 --no-token)"
+          printf '%s\n' "$out"
+          grep -q "Handing off to the bundle's own installer" <<<"$out"
+
+          cd "$DIR"
+          # .env: generated at 0600, env setup-token mode, token stored (D12:
+          # the one permitted storage), and NEVER printed by a --no-token run.
+          [ "$(stat -c %a .env)" = "600" ] || { echo "::error::.env is not 0600"; exit 1; }
+          grep -q '^SETUP_TOKEN_MODE=env$' .env
+          grep -q '^SETUP_BOOTSTRAP_TOKEN=.\+$' .env
+          grep -qE '^HA_BACKEND_IMAGE=.*@sha256:[0-9a-f]{64}$' .env
+          grep -qE '^HA_FRONTEND_IMAGE=.*@sha256:[0-9a-f]{64}$' .env
+          grep -q "token=" <<<"$out" \
+            && { echo "::error::--no-token still printed a setup token"; exit 1; } \
+            || echo "no setup token in the install output (--no-token)"
+          grep -q "Ready:    http://127.0.0.1:8080/ready" <<<"$out"
+          curl -fsS http://127.0.0.1:8080/health | grep -q '"status"'
+          curl -fsS http://127.0.0.1:8080/ready  | grep -q '"ready"'
+
+          # The rendered stack must never fall back to a mutable ref.
           docker compose --env-file .env -f docker/docker-compose.standalone.yml config \
             | grep -E '^[[:space:]]+image:' | sort -u | tee "$RUNNER_TEMP/images.txt"
-          grep -qE ":${version}$" "$RUNNER_TEMP/images.txt"
-          if grep -qE ':latest$' "$RUNNER_TEMP/images.txt"; then
-            echo "::error::rendered stack still uses :latest — a release tree must pin its images"
+          grep -qE '@sha256:[0-9a-f]{64}$' "$RUNNER_TEMP/images.txt"
+          if grep -qE ':latest(:|@|$)' "$RUNNER_TEMP/images.txt"; then
+            echo "::error::rendered stack still uses :latest — a release install must pin its images"
+            exit 1
+          fi
+          if grep -qE ':main(:|@|$)' "$RUNNER_TEMP/images.txt"; then
+            echo "::error::rendered stack uses :main — never a branch ref"
             exit 1
           fi
 
+      - name: Re-run is a no-op that keeps .env
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/ha-smoke"
+          BEFORE="$(sha256sum .env | awk '{print $1}')"
+          out="$(bash scripts/install.sh --http-port 8080 --no-token)"
+          printf '%s\n' "$out"
+          AFTER="$(sha256sum .env | awk '{print $1}')"
+          [ "$BEFORE" = "$AFTER" ] || { echo "::error::re-run rewrote .env"; exit 1; }
+          echo "re-run kept .env byte-identical and refreshed the stack"
+
+      - name: Tear the smoke stack down
+        if: always()
+        run: |
+          cd "$RUNNER_TEMP/ha-smoke" 2>/dev/null || exit 0
+          docker compose --env-file .env -f docker/docker-compose.standalone.yml down -v >/dev/null 2>&1 || true
+
       - name: Published images exist for this tag
         run: |
-          set -eu
+          set -euo pipefail
           version="${TAG#v}"
           if [ -n "${GHCR_TOKEN:-}" ]; then
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin >/dev/null
           fi
-          # The release is created as soon as the tag is pushed, while the
-          # images are built by the test-gated docker-publish workflow afterwards.
-          # Wait (bounded) instead of going red on a registry that is still
-          # catching up.
           for image in backend frontend; do
             ref="ghcr.io/health-assistant-io/health-assistant/health-assistant-${image}:${version}"
             attempt=1
@@ -81,5 +160,3 @@ jobs:
               sleep 60
             done
           done
-        env:
-          GHCR_TOKEN: ${{ github.token }}

@@ -1,9 +1,16 @@
 #!/bin/bash
 
-# Health Assistant — shared helpers for the Docker install/update scripts.
+# Health Assistant — shared helpers for the Docker ops scripts.
 #
-# Sourced by scripts/install.sh and scripts/update-docker.sh; not meant to be
-# run directly.
+# Sourced by scripts/install.sh, scripts/update.sh,
+# scripts/upgrade-check.sh, scripts/backup.sh and scripts/restore.sh;
+# not meant to be run directly.
+#
+# Runs in BOTH supported layouts: a source checkout (backend/ + frontend/)
+# and the extracted source-free release bundle (docker/ + scripts/ +
+# installer.json). Nothing here may read the source tree for anything the
+# installer needs — the release version and image pins come from
+# manifest.json / installer.json beside the bundle scripts.
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -12,23 +19,39 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 COMPOSE_FILE="docker/docker-compose.standalone.yml"
-COMPOSE_ENV_ARGS="--env-file .env -f ${COMPOSE_FILE}"
+COMPOSE_ENV_ARGS=(--env-file .env -f "$COMPOSE_FILE")
+
+# The stack's env file: root .env (health's family-declared location —
+# career/study use docker/.env; installer.json is the source of truth).
+ENV_FILE=".env"
+
+# Directory of this library (the bundle's scripts/ dir) — used to reach
+# sibling scripts (upgrade-check.sh) without relying on the caller's cwd.
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 die() {
     echo -e "${RED}Error: $1${NC}" >&2
     exit 1
 }
 
+# run_compose ARGS... — docker compose with the standalone stack args.
+# Kept as a function so every caller shares one invocation shape.
+run_compose() {
+    # DOCKER_COMPOSE_CMD intentionally word-splits: "docker compose" or "docker-compose".
+    # shellcheck disable=SC2086
+    $DOCKER_COMPOSE_CMD "${COMPOSE_ENV_ARGS[@]}" "$@"
+}
+
+# ── layout check ─────────────────────────────────────────────────────────────
+# Source checkout: the classic repo layout… or the source-free release bundle
+# (health-compose-v*.tar.gz): docker/ + scripts/ + installer.json. The bundle
+# marker is installer.json (the contract product config); manifest.json is
+# accepted too because the bootstrap copies it beside the extracted bundle.
 check_cwd() {
-    # Source checkout: the classic repo layout…
     if [ -d "backend" ] && [ -d "frontend" ]; then
         return 0
     fi
-    # …or the source-free deploy bundle (health-compose-v*.tar.gz from the
-    # release assets): docker/ + scripts/ + manifest.json, no source tree.
-    # backup.sh / restore.sh only drive the RUNNING stack (docker compose +
-    # the published images), so they are layout-agnostic beyond this check.
-    if [ -d "docker" ] && [ -f "manifest.json" ]; then
+    if [ -d "docker" ] && { [ -f "installer.json" ] || [ -f "manifest.json" ]; }; then
         return 0
     fi
     die "Please run this script from the Health Assistant root directory (a source checkout or an extracted health-compose bundle)"
@@ -51,6 +74,104 @@ check_docker() {
     fi
 }
 
+require_env() {
+    if [ ! -f "$ENV_FILE" ]; then
+        die "'${ENV_FILE}' file not found in project root. Run './scripts/install.sh' to generate one."
+    fi
+}
+
+# ── $ENV_FILE helpers (shared installer/updater helpers) ─────────────────────
+# Written to survive `set -euo pipefail` in the sourcing script.
+
+# Read one KEY from $ENV_FILE (last occurrence wins, compose's own rule).
+# Usage: env_value KEY [default]
+env_value() {
+    local VALUE
+    VALUE="$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+    printf '%s' "${VALUE:-$2}"
+}
+
+# Persist KEY=VALUE in $ENV_FILE without disturbing anything else. Replaces
+# every uncommented occurrence (a duplicate cannot shadow the new value),
+# appends when absent, writes through a temp file so a failure cannot
+# truncate $ENV_FILE (and `cat >` keeps the existing 0600 permissions).
+# The caller is responsible for never clobbering a KEY the operator set by
+# hand — the installer only writes pins/ports and freshly generated secrets.
+# Usage: set_env_value KEY VALUE
+set_env_value() {
+    local KEY="$1" VALUE="$2" TMP
+    [ -f "$ENV_FILE" ] || die "set_env_value: $ENV_FILE not found in $(pwd)"
+    TMP="$(mktemp)"
+    awk -v k="$KEY" -v v="$VALUE" '
+        index($0, k "=") == 1 { print k "=" v; next }
+        { print }
+    ' "$ENV_FILE" > "$TMP" || { rm -f "$TMP"; die "Could not update ${KEY} in ${ENV_FILE}"; }
+    if ! grep -qE "^${KEY}=" "$TMP"; then
+        printf '%s=%s\n' "$KEY" "$VALUE" >> "$TMP"
+    fi
+    cat "$TMP" > "$ENV_FILE"
+    rm -f "$TMP"
+}
+
+# ── JSON helpers (manifest.json / installer.json in the bundle) ──────────────
+# One scalar field from a JSON file, dotted-path form ("images.backend").
+# Strings and numbers; booleans and null read as empty. python3 when
+# available, sed fallback for flat fields, empty when the file or key is
+# missing — callers carry their own defaults.
+# Usage: json_field FILE KEY[.KEY…]
+json_field() {
+    local FILE="$1" KEYPATH="$2" OUT=""
+    [ -f "$FILE" ] || { printf ''; return 0; }
+    if command -v python3 &>/dev/null; then
+        OUT="$(python3 -c '
+import json, sys
+try:
+    node = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for part in sys.argv[2].split("."):
+    node = node.get(part) if isinstance(node, dict) else None
+    if node is None:
+        sys.exit(0)
+if isinstance(node, (str, int, float)) and not isinstance(node, bool):
+    print(node)
+' "$FILE" "$KEYPATH" 2>/dev/null || true)"
+    fi
+    if [ -z "$OUT" ]; then
+        OUT="$(sed -n "s/.*\"${KEYPATH##*.}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$FILE" 2>/dev/null | head -n1)"
+    fi
+    if [ -z "$OUT" ]; then
+        # numeric scalar fallback (defaultPort, minRamGb…)
+        OUT="$(sed -n "s/.*\"${KEYPATH##*.}\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$FILE" 2>/dev/null | head -n1)"
+    fi
+    printf '%s' "$OUT"
+}
+
+# A flat JSON array of strings as space-separated words (installer.json's
+# imageKeys — the closed vocabulary of manifest image slots). Empty when the
+# file or key is missing; callers warn and fall back.
+# Usage: json_keys FILE KEY
+json_keys() {
+    local FILE="$1" KEY="$2" OUT=""
+    [ -f "$FILE" ] || { printf ''; return 0; }
+    if command -v python3 &>/dev/null; then
+        OUT="$(python3 -c '
+import json, sys
+try:
+    node = json.load(open(sys.argv[1])).get(sys.argv[2])
+except Exception:
+    sys.exit(0)
+if isinstance(node, list):
+    print(" ".join(str(v) for v in node))
+' "$FILE" "$KEY" 2>/dev/null || true)"
+    fi
+    if [ -z "$OUT" ]; then
+        OUT="$(sed -n "s/.*\"$KEY\"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p" "$FILE" 2>/dev/null \
+            | tr -d '"' | tr ',' ' ')"
+    fi
+    printf '%s' "$OUT"
+}
+
 # ── Published-port pre-flight ───────────────────────────────────────────────
 # A bind conflict (6379 and friends) otherwise surfaces mid-startup as a raw
 # daemon error, after the pull, with no hint about which knob to turn. The
@@ -59,10 +180,10 @@ check_docker() {
 # after .env exists (compose interpolates it).
 
 # Ports the stack would publish, as "<service>\t<port>" lines. Empty when the
-# model cannot be rendered (compose v1, broken interpolation).
+# model cannot be rendered (compose v1, broken interpolation) — callers
+# treat empty as "skip".
 rendered_ports() {
-    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS config --format json 2>/dev/null \
-        | python3 -c '
+    run_compose config --format json 2>/dev/null | python3 -c '
 import json, sys
 try:
     model = json.load(sys.stdin)
@@ -73,9 +194,12 @@ for name, svc in (model.get("services") or {}).items():
         published = spec.get("published")
         if not published:
             continue
-        for port in str(published).split("-"):
-            print("%s\t%s" % (name, port))
-' 2>/dev/null
+        # compose may render "<ip>:<port>" (bind address) or "<port>";
+        # a range "a-b" publishes every port in it.
+        for port in str(published).split(":")[-1].split("-"):
+            if port:
+                print("%s\t%s" % (name, port))
+' 2>/dev/null || true
 }
 
 # True when something accepts IPv4 connections on this host port. Loopback is
@@ -101,7 +225,7 @@ port_owner_is_project() {
     local PROJECTS
     PROJECTS="$(docker ps --filter "publish=$1" \
         --format '{{.Label "com.docker.compose.project"}}' 2>/dev/null \
-        | sed '/^$/d' | sort -u)"
+        | sed '/^$/d' | sort -u || true)"
     [ -n "$PROJECTS" ] && [ "$PROJECTS" = "$2" ]
 }
 
@@ -112,6 +236,7 @@ port_owner_is_project() {
 # changed in the compose file itself.
 port_env_var() {
     local PORT="$1" VAR VALUE DEFAULT
+    # shellcheck disable=SC2013  # word-split list of compose env names is intended
     for VAR in $(grep -oE '\$\{[A-Z][A-Z0-9_]*(:-[0-9]+)?\}' "$COMPOSE_FILE" 2>/dev/null \
         | sed -E 's/^\$\{([A-Z][A-Z0-9_]*).*/\1/' | sort -u); do
         VALUE="$(env_value "$VAR" "")"
@@ -143,6 +268,8 @@ next_free_port() {
 # Fail fast, before anything is pulled or started, when a published host port
 # is already taken by something that is not this stack. --auto advances to a
 # free port and writes it into .env instead of stopping.
+# Exit code 4 = port conflict (the installer contract's code for exactly
+# this failure, so operators can script around it).
 # Usage: check_published_ports [--auto]
 check_published_ports() {
     local AUTO=0
@@ -158,7 +285,7 @@ check_published_ports() {
         [ -n "$PORT" ] || continue
         port_in_use "$PORT" || continue
         port_owner_is_project "$PORT" "$PROJECT" && continue
-        VAR="$(port_env_var "$PORT")"
+        VAR="$(port_env_var "$PORT" || true)"
         if [ "$AUTO" = "1" ] && [ -n "$VAR" ]; then
             FREE="$(next_free_port "$PORT")" || FREE=""
             if [ -n "$FREE" ]; then
@@ -178,88 +305,24 @@ check_published_ports() {
         echo "Port conflict — the stack cannot start:"
         printf '%s' "$CONFLICTS"
         echo -e "${NC}"
-        echo "  Find the holder:  ss -ltnp | grep ':<port>'   (or: lsof -i :<port>)"
+        echo "  Find the holder:  ss -ltnp | grep ':<port>'   (or: lsof -i :<port>')"
         echo "  Then re-run this script — it reuses your .env."
         echo "  Or let the installer pick free ports: --auto-ports"
-        die "Aborted before pulling or starting anything."
+        echo -e "${RED}Aborted before pulling or starting anything.${NC}"
+        exit 4
     fi
     echo -e "${GREEN}Port pre-flight: no conflicts.${NC}"
 }
 
-require_env() {
-    if [ ! -f ".env" ]; then
-        die "'.env' file not found in project root. Run './scripts/install.sh' to generate one."
-    fi
-}
-
-# Read one KEY from .env (last uncommented occurrence, compose's own rule).
-# Usage: env_value KEY [default]
-env_value() {
-    local VALUE
-    VALUE="$(grep -E "^$1=" .env 2>/dev/null | tail -n1 | cut -d= -f2-)"
-    printf '%s' "${VALUE:-$2}"
-}
-
-# Persist KEY=VALUE in .env without disturbing anything else. Replaces every
-# uncommented occurrence (so a duplicate can't shadow the new value), appends
-# when absent, writes through a temp file so a failure can't truncate .env.
-# Usage: set_env_value KEY VALUE
-set_env_value() {
-    local KEY="$1" VALUE="$2" TMP
-    [ -f ".env" ] || die "set_env_value: .env not found in $(pwd)"
-    TMP="$(mktemp)"
-    awk -v k="$KEY" -v v="$VALUE" '
-        index($0, k "=") == 1 { print k "=" v; next }
-        { print }
-    ' .env > "$TMP" || { rm -f "$TMP"; die "Could not update ${KEY} in .env"; }
-    if ! grep -qE "^${KEY}=" "$TMP"; then
-        printf '%s=%s\n' "$KEY" "$VALUE" >> "$TMP"
-    fi
-    cat "$TMP" > .env
-    rm -f "$TMP"
-}
-
-# The version this source tree declares (VERSION in
-# backend/app/core/config.py — the single source of truth per
-# version_manager.toml). Empty when the file is absent.
-tree_version() {
-    local CFG="backend/app/core/config.py"
-    [ -f "$CFG" ] || return 0
-    sed -n 's/^[[:space:]]*VERSION:[[:space:]]*str[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$CFG" | head -n1
-}
-
-# Guard against the release-skew bug (2026-11-03): a release tarball paired
-# with images built from `main` renames/ignores env vars and dies at
-# `alembic upgrade head` ("no password supplied"). The published-image tag
-# convention (docker-publish.yml) is X.Y.Z for a release and `latest`/branch
-# names otherwise, so a semver IMAGE_TAG must equal the tree's VERSION.
-check_image_tag_matches_tree() {
-    local TAG TREE_VER
-    TAG="$(env_value IMAGE_TAG "")"
-    case "$TAG" in
-        ""|latest|main|master) return 0 ;;
-    esac
-    [[ "$TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]] || return 0
-    TREE_VER="$(tree_version)"
-    [ -z "$TREE_VER" ] && return 0
-    [ "${TAG#v}" = "$TREE_VER" ] && return 0
-    die "IMAGE_TAG=${TAG} does not match this source tree (VERSION=${TREE_VER}).
-    The checkout and the published images would describe different contracts —
-    the mismatch that makes the migrate step fail on boot.
-    Fix: --image-tag ${TREE_VER} (use images of this tree), or
-         --image-tag latest   (use the images built from main), or
-         install the matching release instead (the one-line bootstrap takes
-         --ref v${TREE_VER} and pins the tag for you)."
-}
+# ── compose project / volumes ────────────────────────────────────────────────
 
 # Resolve the compose project name so we can reason about named volumes.
-# Fallback: the compose file lives in docker/, so the default project is
-# "docker" (matches reset-dev-db.sh).
+# Fallback: the pinned top-level name in the compose file.
 resolve_compose_project() {
     local PROJECT
-    PROJECT="$($DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS config --format json 2>/dev/null \
+    PROJECT="$(run_compose config --format json 2>/dev/null \
         | python3 -c 'import sys,json; print(json.load(sys.stdin).get("name",""))' 2>/dev/null || true)"
-    [ -z "$PROJECT" ] && PROJECT="docker"
+    [ -z "$PROJECT" ] && PROJECT="health-assistant"
     printf '%s' "$PROJECT"
 }
 
@@ -268,12 +331,14 @@ resolve_compose_project() {
 # real data can sit in docker_postgres_data / docker_uploads. Docker has no
 # `volume rename`, so adoption stops the legacy project when it still holds
 # the volume and COPIES the data into a correctly-labeled new volume (the
-# stack's own Postgres image runs the copy — no extra image dependency).
-# The target is only ever left behind by a successful copy (rollback on
-# failure), so a retry can never mistake an empty volume for migrated data.
-# No-op once adopted.
+# stack's own Postgres image runs the copy — no extra image dependency; the
+# tag is PINNED to the same image the compose files use, never a floating
+# `latest-*` tag). The target is only ever left behind by a successful copy
+# (rollback on failure), so a retry can never mistake an empty volume for
+# migrated data. No-op once adopted.
 adopt_legacy_volumes() {
     local PROJECT VOL SRC DST
+    local PINNED_TS="timescale/timescaledb:2.32.0-pg16"
     PROJECT="$(resolve_compose_project)"
     [ "$PROJECT" = "docker" ] && return 0
     for VOL in postgres_data redis_data uploads; do
@@ -283,7 +348,7 @@ adopt_legacy_volumes() {
         docker volume inspect "$DST" >/dev/null 2>&1 && continue
         # Stop the legacy project first (volumes are preserved by `down`) so
         # the copy is consistent and nothing holds the source volume.
-        $DOCKER_COMPOSE_CMD -p docker $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+        run_compose -p docker down >/dev/null 2>&1 || true
         if [ -n "$(docker ps -q --filter "volume=$SRC")" ]; then
             die "Legacy volume ${SRC} is still in use — stop that stack manually and re-run."
         fi
@@ -292,13 +357,13 @@ adopt_legacy_volumes() {
             --label "com.docker.compose.volume=${VOL}" \
             "$DST" >/dev/null
         if docker run --rm --entrypoint sh -v "${SRC}":/from:ro -v "${DST}":/to \
-                timescale/timescaledb:latest-pg16 -c 'cp -a /from/. /to/' >/dev/null 2>&1; then
+                "$PINNED_TS" -c 'cp -a /from/. /to/' >/dev/null 2>&1; then
             echo -e "${GREEN}Adopted legacy volume ${SRC} → ${DST}${NC}"
             docker volume rm "$SRC" >/dev/null 2>&1 \
                 || echo -e "${YELLOW}Copied ${SRC} → ${DST} but could not remove the legacy volume (still attached?) — remove it manually.${NC}"
         else
             docker volume rm "$DST" >/dev/null 2>&1 || true
-            die "Failed to copy ${SRC} → ${DST} (target removed; legacy data untouched). Pull timescale/timescaledb:latest-pg16 or migrate manually — see docker/README.md → \"Compose project name & volumes\"."
+            die "Failed to copy ${SRC} → ${DST} (target removed; legacy data untouched). Pull ${PINNED_TS} or migrate manually — see docker/README.md → \"Compose project name & volumes\"."
         fi
     done
 }
@@ -315,11 +380,11 @@ adopt_legacy_volumes() {
 migrate_legacy_db_names() {
     local NEW_DB="neuronection_health" ROLE OLD_DB OLD_EXISTS NEW_EXISTS CONNECTED=""
     local PSQL
-    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS up -d postgres >/dev/null \
+    run_compose up -d postgres >/dev/null \
         || die "Could not start postgres to check legacy database names."
     for _ in $(seq 1 30); do
         for ROLE in neuronection_health_owner neuro_health_owner admin; do
-            if $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+            if run_compose exec -T postgres \
                     psql -U "$ROLE" -d postgres -tAc "select 1" >/dev/null 2>&1; then
                 CONNECTED="$ROLE"
                 break 2
@@ -328,7 +393,7 @@ migrate_legacy_db_names() {
         sleep 2
     done
     [ -z "$CONNECTED" ] && die "Cannot connect to postgres to check legacy database names — see docker/README.md → \"Compose project name & volumes\"."
-    PSQL="$DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
+    PSQL="run_compose exec -T postgres psql -U $CONNECTED -d postgres -v ON_ERROR_STOP=1"
 
     for OLD_DB in neuro_health health_assistant; do
         [ "$OLD_DB" = "$NEW_DB" ] && continue
@@ -351,10 +416,10 @@ migrate_legacy_db_names() {
             && die "Both neuro_health_owner and neuronection_health_owner exist — resolve manually before re-running."
         $PSQL -c "DROP ROLE IF EXISTS ha_db_migrator;" >/dev/null
         $PSQL -c "CREATE ROLE ha_db_migrator LOGIN SUPERUSER;" >/dev/null
-        $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+        run_compose exec -T postgres \
             psql -U ha_db_migrator -d postgres -v ON_ERROR_STOP=1 \
             -c "ALTER ROLE neuro_health_owner RENAME TO neuronection_health_owner;" >/dev/null
-        $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS exec -T postgres \
+        run_compose exec -T postgres \
             psql -U neuronection_health_owner -d postgres -v ON_ERROR_STOP=1 \
             -c "DROP ROLE ha_db_migrator;" >/dev/null
         echo -e "${GREEN}Renamed role neuro_health_owner → neuronection_health_owner${NC}"
@@ -366,32 +431,13 @@ migrate_legacy_db_names() {
 # v0.8.0 .env before images are pulled or volumes are recreated. The hard
 # gate also lives in alembic/env.py; this is the actionable early stop.
 run_upgrade_preflight() {
-    bash "$SCRIPT_DIR/upgrade-check.sh" \
+    bash "$LIB_DIR/upgrade-check.sh" \
         || die "Upgrade pre-flight failed — resolve the item(s) above before continuing."
-}
-
-# Warn (do not fail) when a release tree without a git checkout is about to run
-# `:latest` — the image tag the compose file defaults to. The one-line
-# bootstrap pins the tag; a manually extracted tarball does not, and this is
-# exactly the skew that breaks the migrate step.
-warn_unpinned_release_tree() {
-    local TAG TREE_VER
-    TAG="$(env_value IMAGE_TAG "")"
-    case "$TAG" in
-        ""|latest) ;;
-        *) return 0 ;;
-    esac
-    [ -d ".git" ] && return 0
-    TREE_VER="$(tree_version)"
-    [ -n "$TREE_VER" ] || return 0
-    [[ "$TREE_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || return 0
-    echo -e "${YELLOW}Warning: this tree is v${TREE_VER} but IMAGE_TAG is ${TAG:-unset} (:latest = images built from main).${NC}"
-    echo "  If this is a release install, pin it:  ./scripts/install.sh --image-tag ${TREE_VER}"
 }
 
 # Leftover-volume guard — call after freshly (re)generating .env.
 #
-# On a fresh clone, a leftover Postgres volume from a *previous* install on
+# On a fresh host, a leftover Postgres volume from a *previous* install on
 # this Docker host silently survives `docker compose up -d`. The postgres
 # container only applies POSTGRES_PASSWORD when the data dir is empty — once a
 # volume is initialized it keeps the OLD password, so the freshly generated
@@ -413,13 +459,13 @@ check_leftover_db_volume() {
         echo -e "${YELLOW}It was initialized by a previous install with a DIFFERENT password than the"
         echo -e "${YELLOW}.env just generated. Starting now would fail with \"password authentication"
         echo -e "${YELLOW}failed for user neuronection_health_owner\" in the migrate step.${NC}"
-        read -r -p "$(echo -e 'Reset this volume for a clean fresh install? (destructive) [y/N]: ')" RESET
+        read -r -p "$(echo -e 'Reset this volume for a clean fresh install? (destructive) [y/N]: ')" RESET || RESET=""
         if [[ "$RESET" =~ ^[Yy] ]]; then
             if ! docker volume rm "$PG_VOL" >/dev/null 2>&1; then
                 # Volume in use by a running stack from the previous install —
                 # bring it down (volumes are preserved by `down`, then removed).
                 echo -e "${YELLOW}Volume in use — stopping the previous stack first...${NC}"
-                $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+                run_compose down >/dev/null 2>&1 || true
                 docker volume rm "$PG_VOL" >/dev/null 2>&1 \
                     || die "Could not remove ${PG_VOL}. Stop the old stack manually and re-run."
             fi
@@ -468,14 +514,16 @@ reset_stack_data() {
     echo -e "  .env:      kept (never overwritten)"
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     if [ "$ASSUME_YES" != "1" ]; then
-        read -r -p "Type 'yes' to confirm and reset: " REPLY
+        if ! read -r -p "Type 'yes' to confirm and reset: " REPLY; then
+            die "--reset needs --yes when not run interactively."
+        fi
         [ "$REPLY" = "yes" ] || die "Aborted — nothing was changed."
     fi
 
     # Stop the stack first (volumes in use can't be removed). `down` without -v
     # preserves named volumes; we remove them explicitly below.
     echo -e "${YELLOW}Stopping the stack...${NC}"
-    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS down >/dev/null 2>&1 || true
+    run_compose down >/dev/null 2>&1 || true
 
     for VOL in "$PG_VOL" "$REDIS_VOL" $([ "$INCLUDE_UPLOADS" = "1" ] && echo "$UPLOADS_VOL"); do
         if docker volume inspect "$VOL" >/dev/null 2>&1; then
@@ -489,13 +537,15 @@ reset_stack_data() {
     echo -e "${GREEN}Data reset complete — the stack will start from empty storage.${NC}"
 }
 
+# ── stack state reporting ────────────────────────────────────────────────────
+
 # One line per stack service: "<service>|<state>|<status>". `ps -a` so a
 # one-shot (migrate) that already exited is visible; falls back to the plain
 # table on compose v1.
 compose_service_states() {
-    $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS ps -a \
+    run_compose ps -a \
         --format '{{.Service}}|{{.State}}|{{.Status}}' 2>/dev/null \
-        || $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS ps -a 2>/dev/null
+        || run_compose ps -a 2>/dev/null
 }
 
 # "name (exit N)" for every container of this project that exited non-zero —
@@ -534,20 +584,23 @@ report_stack_failure() {
     fi
 }
 
+# ── health / readiness waits ─────────────────────────────────────────────────
+
 # Wait for the backend healthcheck (container name is hardcoded by the
 # standalone compose file, so this works regardless of the compose project
-# name). Fails fast when a service has already died, and on timeout reports
-# the whole stack — never just "check the backend logs".
-# HEALTH_WAIT_INTERVAL overrides the poll interval (tests).
+# name). The container healthcheck probes /health internally. Fails fast when
+# a service has already died, and on timeout reports the whole stack — never
+# just "check the backend logs". HEALTH_WAIT_INTERVAL overrides the poll
+# interval; HEALTH_WAIT_TIMEOUT the window (tests).
 wait_for_backend_healthy() {
-    local timeout="${1:-180}"
+    local timeout="${1:-${HEALTH_WAIT_TIMEOUT:-180}}"
     local interval="${HEALTH_WAIT_INTERVAL:-5}"
     local elapsed=0 status failed
     echo -e "${YELLOW}Waiting for the backend to become healthy (up to ${timeout}s)...${NC}"
     while [ "$elapsed" -lt "$timeout" ]; do
         status=$(docker inspect -f '{{.State.Health.Status}}' health-assistant-backend 2>/dev/null || echo "not_found")
         if [ "$status" = "healthy" ]; then
-            echo -e "${GREEN}Backend is healthy.${NC}"
+            echo -e "${GREEN}Backend is healthy (/health).${NC}"
             return 0
         fi
         failed="$(failed_services)"
@@ -566,7 +619,31 @@ wait_for_backend_healthy() {
     report_stack_failure
     echo -e "${YELLOW}Next steps:${NC}"
     echo "  bind conflict → set the named <VAR> in .env, then re-run"
-    echo "  migrate failed → $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS logs migrate"
-    echo "  backend slow   → $DOCKER_COMPOSE_CMD $COMPOSE_ENV_ARGS logs backend --tail=100"
+    echo "  migrate failed → run_compose logs migrate"
+    echo "  backend slow   → run_compose logs backend --tail=100"
+    return 1
+}
+
+# Wait for /ready (installer.json readyPath) through the published port —
+# the readiness probe proves the migrate one-shot finished and the DB is at
+# this release's head, so ingress may send traffic. 200-ready only; a 503
+# after the wait window fails like the health wait (exit 3 at the caller).
+# READY_WAIT_INTERVAL / READY_WAIT_ATTEMPTS override for tests.
+# Usage: wait_for_ready URL
+wait_for_ready() {
+    local url="$1"
+    local interval="${READY_WAIT_INTERVAL:-5}"
+    local attempts="${READY_WAIT_ATTEMPTS:-24}"
+    [ -n "$url" ] || return 0
+    echo -e "${YELLOW}Waiting for readiness at ${url} (up to $((attempts * interval))s)...${NC}"
+    for _ in $(seq 1 "$attempts"); do
+        if curl -fsS "$url" 2>/dev/null | grep -q '"ready"'; then
+            echo -e "${GREEN}App is ready: ${url}${NC}"
+            return 0
+        fi
+        sleep "$interval"
+    done
+    echo -e "${RED}App did not report ready at ${url} within $((attempts * interval))s${NC}" >&2
+    echo -e "${YELLOW}The database may still be migrating — check: run_compose logs migrate${NC}" >&2
     return 1
 }

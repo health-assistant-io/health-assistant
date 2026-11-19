@@ -178,9 +178,18 @@ jobs:
 
   # Attach the deployment artifacts to the release created above:
   #   health-compose-v<version>.tar.gz — source-free compose bundle
-  #   manifest.json                    — product/version/commit + BOTH image
-  #                                      digests + bundle SHA + SHA256SUMS
-  #   SHA256SUMS                       — release-level checksums
+  #   manifest.json                    — schemaVersion 2: product/version/tag/
+  #                                      commit + BOTH image digest refs +
+  #                                      bundle SHA + per-file SHA256SUMS
+  #   SHA256SUMS                       — release-level checksums (bundle +
+  #                                      manifest + the two bootstrap assets)
+  #   health-bootstrap-v<version>.sh  — the generated one-line bootstrap,
+  #                                      exact-tag form
+  #   health-bootstrap.sh              — version-free alias for
+  #                                      releases/latest/download (what
+  #                                      neuronection.com/install/health.sh
+  #                                      and health-assistant.io/install.sh
+  #                                      redirect to)
   attach-release-artifacts:
     name: Attach compose bundle to the release
     needs: [create-release, ci-gate]
@@ -224,6 +233,32 @@ jobs:
             --frontend-image "$(jq -r '.images.frontend.ref + "@" + .images.frontend.digest' "$DIGESTS")" \
             --output-dir "$RUNNER_TEMP/release"
 
+      # scripts/bootstrap.sh is GENERATED from the family installer
+      # contract's template (never hand-written here). The exact-tag asset
+      # and the version-free alias are the same bytes: the alias is what
+      # neuronection.com/install/health.sh and the health-assistant.io
+      # compatibility redirect point at (releases/latest/download/), the
+      # versioned form is the reproducible one the docs show.
+      - name: Stage bootstrap assets and refresh SHA256SUMS
+        env:
+          TAG: ${{ needs.ci-gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -f scripts/bootstrap.sh ]; then
+            cp scripts/bootstrap.sh "$RUNNER_TEMP/release/health-bootstrap-${TAG}.sh"
+            cp scripts/bootstrap.sh "$RUNNER_TEMP/release/health-bootstrap.sh"
+            (
+              cd "$RUNNER_TEMP/release"
+              sha256sum health-compose-*.tar.gz manifest.json \
+                        "health-bootstrap-${TAG}.sh" health-bootstrap.sh > SHA256SUMS
+              sha256sum -c SHA256SUMS
+            )
+            echo "Staged health-bootstrap-${TAG}.sh + the health-bootstrap.sh alias"
+          else
+            echo "::error::scripts/bootstrap.sh is missing — a contract release must attach the generated bootstrap."
+            exit 1
+          fi
+
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -237,5 +272,7 @@ jobs:
             "$RUNNER_TEMP/release/health-compose-"*.tar.gz \
             "$RUNNER_TEMP/release/manifest.json" \
             "$RUNNER_TEMP/release/SHA256SUMS" \
+            "$RUNNER_TEMP/release/health-bootstrap-${TAG}.sh" \
+            "$RUNNER_TEMP/release/health-bootstrap.sh" \
             --clobber
-          echo "Attached compose bundle, manifest and SHA256SUMS to release $TAG"
+          echo "Attached compose bundle, manifest, SHA256SUMS and the bootstrap assets to release $TAG"

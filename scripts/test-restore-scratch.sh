@@ -18,7 +18,7 @@
 #
 # Usage: scripts/test-restore-scratch.sh [--keep] [timescale-image]
 #   --keep            keep the containers/network for debugging
-#   <image>           image to pin (default: timescale/timescaledb:latest-pg16,
+#   <image>           image to pin (default: timescale/timescaledb:2.32.0-pg16,
 #                     the tag the compose files pin)
 #
 # Requires: docker, uv (backend venv for alembic + the app-code seed/verify).
@@ -27,7 +27,7 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="timescale/timescaledb:latest-pg16"
+IMAGE="timescale/timescaledb:2.32.0-pg16"
 KEEP=0
 for arg in "$@"; do
   case "$arg" in

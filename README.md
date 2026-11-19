@@ -158,7 +158,7 @@ cd health-assistant
 ./scripts/install.sh    # asks the app URL, generates secure keys, starts the standalone stack
 ```
 
-The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, checks that the host ports are free, starts the stack, and prints your URLs plus a one-click first-run setup link. It is safe to re-run: it keeps `.env`, refreshes the images, and restarts only what changed. Prefer no clone at all? `curl -fsSL https://health-assistant.io/install.sh | bash` (see the [Installation Guide](docs/INSTALL.md)).
+The installer asks one question (the public app URL — press Enter on this machine for `http://localhost`), generates all secure keys and passwords, checks that the host ports are free, starts the stack, and prints your URLs plus a one-click first-run setup link. It is safe to re-run: it keeps `.env`, refreshes the images, and restarts only what changed. Prefer no clone at all? `curl -fsSL https://neuronection.com/install/health.sh | bash` — the canonical one-line entry point (the old `health-assistant.io/install.sh` URL redirects to the same release asset; see the [Installation Guide](docs/INSTALL.md)).
 
 Create your initial admin by opening **http://localhost** — a fresh install auto-redirects to a setup wizard where you pick the email, password, and organization name. There are no default credentials; you choose them.
 
