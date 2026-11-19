@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (CI — action pinning)
+- **Every GitHub Actions reference in the repository is now pinned by commit
+  SHA.** `cloud-smoke.yml` was the last workflow still using mutable tags
+  (`actions/checkout@v4`, `astral-sh/setup-uv@v5`); both are now pinned with
+  the tag kept in a trailing comment, and `actions/setup-node` moved from the
+  v4 to the v7 SHA in the security-scan, task-registry and BYOK-contract
+  workflows. The `docker` Dependabot ecosystem now holds the Python base
+  image on the 3.12 line (a newer Python is a deliberate runtime upgrade, not
+  a version bump).
+
 ## [0.10.2] - 2026-11-18
 
 ### Fixed (deployment scripts)
