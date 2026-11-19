@@ -7,8 +7,19 @@ name: Release install smoke
 # pinned images and waits for /health + /ready — and a re-run is a no-op
 # that keeps .env byte-identical. `--dry-run` proves no writes happen.
 #
-# The release `published` event fires before the attach job uploads the
-# bundle assets, so the first step waits (bounded) for them to appear.
+# Ordering: release.yml creates the release as a DRAFT, uploads + verifies
+# the assets against the draft, and only then publishes it — so when this
+# workflow starts, the release and its assets became public together and
+# releases/latest never 404s mid-release (audit §4a.3). The bounded asset
+# wait in the first step stays as a guard for dispatch runs and for any
+# publish path that does not follow that order.
+#
+# Triggers: a release published by the pipeline's GITHUB_TOKEN does not
+# deliver `release` events to other workflows (GitHub's anti-recursion
+# rule), so release.yml dispatches this workflow explicitly, by tag, as its
+# final step. The `release: published` trigger below covers releases
+# published outside the pipeline (a human or a PAT); workflow_dispatch
+# covers the pipeline's dispatch and manual runs.
 
 on:
   release:
@@ -18,6 +29,12 @@ on:
       tag:
         description: Release tag to smoke-test (e.g. v0.10.3)
         required: true
+
+# One smoke per tag: the pipeline dispatch and a human `release: published`
+# for the same tag must not run two overlapping stacks.
+concurrency:
+  group: release-smoke-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: false
 
 jobs:
   smoke:
@@ -36,7 +53,7 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
-      - name: Wait for the release assets (attach job may still be uploading)
+      - name: Wait for the release assets (published with them, but guard anyway)
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
