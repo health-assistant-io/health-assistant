@@ -6,6 +6,33 @@ Catalogs can be imported via the **System Administration -> Clinical Ontology** 
 
 > Biomarker definitions, medication, allergy, vaccine, anatomy and concept catalogs are unified under a declarative `CatalogRegistry` (`app/catalogs/`) with one CRUD/scope-tier-access/search/FHIR/edge contract, reachable via the `/catalogs/{type}` meta-layer, unified search (`GET /catalogs/search`), and the cross-domain knowledge graph (`GET /catalogs/{type}/{id}/relations`). See [ARCHITECTURE.md § Catalog Registry](ARCHITECTURE.md#catalog-registry--cross-domain-knowledge-graph-appcatalogs) and [API.md § Catalogs & Search](API.md). The import flow below remains the primary path for bulk-loading LOINC biomarker definitions.
 
+## Code map
+
+Every claim on this page that names a behaviour should be traceable to the
+symbol implementing it. Anchors are symbols, not line numbers: a function name
+survives a refactor, a line number does not. The table is checked by
+`backend/tests/test_docs_anchors.py` — a rename that leaves this page stale fails
+the suite.
+
+| Stage | Entry symbol | Module |
+|---|---|---|
+| One read contract per catalog | `CatalogRegistry` | `backend/app/catalogs/registry.py` |
+| Scope derived from the caller's role | `CatalogAccessPolicy.create_scope` | `backend/app/catalogs/policy.py` |
+| One write path — biomarker create | `create_biomarker` | `backend/app/services/catalog/catalog_write_service.py` |
+| Server-side slug derivation | `_derive_slug` | `backend/app/services/catalog/catalog_write_service.py` |
+| Typed `409` from a constraint violation | `_translate_integrity` | `backend/app/services/catalog/catalog_write_service.py` |
+| Write audit snapshot | `_audit_snapshot` | `backend/app/services/catalog/catalog_write_service.py` |
+| `class_concept_slug` resolution | `_resolve_class_concept` | `backend/app/services/catalog/catalog_write_service.py` |
+| JSON catalog import | `import_catalog` | `backend/app/services/catalog/catalog_import_service.py` |
+| Imported `allowed_states` upsert | `_upsert_allowed_states` | `backend/app/services/catalog/catalog_import_service.py` |
+| Imported reference-range upsert | `_upsert_reference_ranges` | `backend/app/services/catalog/catalog_import_service.py` |
+| Agent/HITL catalog proposals | `apply_proposal` | `backend/app/services/catalog/catalog_proposal_service.py` |
+| Code → name → slug mapping waterfall | `map_observations_to_biomarkers` | `backend/app/services/fhir/fhir_service.py` |
+| Retroactive remap | `remap_observations` | `backend/app/api/v1/endpoints/biomarkers.py` |
+| FHIR search filters | `_build_resource_filter` | `backend/app/facade/crud.py` |
+| AI medication definition draft | `define_medication` | `backend/app/ai/assistance/definitions.py` |
+| Browse-dialog create surface | `CatalogItemPicker` | `frontend/src/components/catalog/CatalogItemPicker.tsx` |
+
 ## One write contract per catalog (writes)
 
 Every catalog type has exactly **one** write path: typed Pydantic create/update
