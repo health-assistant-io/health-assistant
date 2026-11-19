@@ -61,7 +61,6 @@ accidental `docker_*` prefix (e.g. `docker_postgres_data-dev1`).
 | `docker-compose.standalone.yml` | `health-assistant` | `health-assistant_*` |
 | `docker-compose.prod.yml` | `${STACK_NAME:-health-assistant}` | `<stack name>_*` |
 | `fhir-test-server/docker-compose.yml` | `health-assistant-fhir-test` | `health-assistant-fhir-test_*` |
-| `../demo/docker-compose.demo.yml` | `${STACK_NAME:-ha-demo}` | `ha-demo_*` |
 
 `STACK_NAME` therefore isolates a whole second prod/test stack — containers,
 named volumes and the network — not just container names.
@@ -112,7 +111,7 @@ deployment.md:
 
 | Item | Value |
 |---|---|
-| Database | `neuronection_health` (test: `neuronection_health_test`, demo: `neuronection_health_demo` in `../demo/`) |
+| Database | `neuronection_health` (test: `neuronection_health_test`; a demo-mode instance uses its own `*_demo` database — never a production one) |
 | Roles | `neuronection_health_owner` (owns schema, runs migrations/DDL) + `neuronection_health_app` (runtime: CONNECT + DML only — never DDL) |
 | Env vars | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (**owner** secret), `HA_DB_PASSWORD` (**app** secret — distinct per the credential policy), `HA_DATABASE_URL` (URL wins when set). The `POSTGRES_*` parts are the infra container names shared with the compose files; the assembled/pinned URL carries the `HA_` prefix. |
 
@@ -486,9 +485,9 @@ Exposure rules (already wired, keep them when editing):
   the standalone nginx routes `/flower/` to it. Flower shows task payloads
   and arguments — treat it as staff-only surface; on internet-facing
   deployments consider dropping the `/flower/` location entirely.
-- The demo stack (`../demo/`) runs `neuronection_health_demo` on an internal,
-  zero-egress network — never restore demo data into a production
-  instance and vice versa.
+- A demo-mode instance (`HA_DEMO_MODE=true`) must run its own `*_demo`
+  database, ideally on an isolated, zero-egress network — never restore
+  demo data into a production instance and vice versa.
 
 ## Docker CLI cheat sheet
 
