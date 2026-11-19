@@ -122,9 +122,10 @@ updates:
     open-pull-requests-limit: 5
     ignore:
       # python 3.13+ is a deliberate runtime upgrade, not a version bump: the
-      # suite only runs 3.12 today, asyncpg/tokenizers publish no cp313+ wheels
-      # yet, and no PR workflow builds the image (docker-publish only builds on
-      # push/tag), so a bump would land unvalidated. 3.12-line updates still flow.
+      # suite only runs 3.12 today, no PR workflow builds the image
+      # (docker-publish only builds on push/tag), and asyncpg ships no cp315
+      # wheel, so a 3.15 bump would land unvalidated. 3.12-line updates still
+      # flow.
       - dependency-name: "python"
         versions: [">=3.13"]
     commit-message:
