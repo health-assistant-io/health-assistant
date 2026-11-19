@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20
+
+### Added (self-host installer)
+- **One-line installer and source-free compose bundle (plan 69 P4).**
+  `scripts/install.sh` and the generated `scripts/bootstrap.sh` install a
+  released Health Assistant stack on a fresh Docker host, with
+  `installer.json` as the product contract, `manifest.json`/`SHA256SUMS`
+  verification, the setup-token first-boot flow, and an idempotent
+  `scripts/update.sh`. Install flags include `--no-pull`, `--no-wait`,
+  `--auto-ports`, `--no-ports`, `--http-port`, `--env-only`, `--reset`,
+  `--yes`, `--image-tag` and `--no-token`. Release CI publishes
+  `health-compose-v0.11.0.tar.gz`, `health-bootstrap.sh` and
+  `health-bootstrap-v0.11.0.sh`; `install-scripts.yml` and
+  `release-smoke.yml` exercise the installer and the published assets.
+
+### Changed (docs and tooling)
+- **Public/private deployment references separated.** The demo-tree and
+  private deployment references were removed from the public docs, and the
+  extraction-pipeline anchors and OCR fixture were documented and tested.
+  Dependency and workflow action bumps are included.
+
 ## [0.10.2] - 2026-11-18
 
 ### Fixed (deployment scripts)
