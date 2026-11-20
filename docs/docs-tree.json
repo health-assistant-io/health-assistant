@@ -1,290 +1,296 @@
 [
-  {
-    "category": "Getting Started",
-    "icon": "Play",
-    "items": [
-      {
-        "id": "getting-started",
-        "file": "../README.md",
-        "title": "Introduction",
-        "description": "Health Assistant — a self-hosted, open-source, privacy-first health records platform. Centralize labs, visits, medications, and wearable data with an AI assistant that proposes but never writes."
-      },
-      {
-        "id": "visual-tour",
-        "file": "SCREENSHOTS.md",
-        "title": "Visual Tour",
-        "description": "Screenshots of Health Assistant, the self-hosted health records platform — dashboard, biomarker trends, AI chat, examinations, and patient views."
-      },
-      {
-        "id": "install",
-        "file": "INSTALL.md",
-        "title": "Self-Hosted Installation",
-        "description": "Install Health Assistant, a self-hosted, open-source health records platform. Docker quick start, production deployment, environment setup with auto-generated keys, and a security checklist."
-      },
-      {
-        "id": "getting-started-guide",
-        "file": "GETTING_STARTED_GUIDE.md",
-        "title": "Getting Started Guide",
-        "description": "End-user guide to Health Assistant, a self-hosted, open-source health records platform. Sign in, add a person, upload a lab report, read biomarker trends, configure the AI assistant, connect a wearable, and start a health journey."
-      },
-      {
-        "id": "setup-wizard",
-        "file": "SETUP_WIZARD.md",
-        "title": "Guided Onboarding (Setup Wizard)",
-        "description": "How Health Assistant's guided onboarding works — role checklists, per-patient wizards, the persistent popup drawer, guided AI config sub-steps, and how to reopen/reconfigure later. Backend-derived completion; no onboarding-state table."
-      },
-      {
-        "id": "architecture",
-        "file": "ARCHITECTURE.md",
-        "title": "Architecture Overview",
-        "description": "Architecture of Health Assistant, a self-hosted, open-source health records platform: FastAPI backend, PostgreSQL + TimescaleDB data model, HL7 FHIR R4 storage, biomarker engine, AI/OCR pipeline, and React frontend."
-      }
-    ]
-  },
-  {
-    "category": "Core Systems",
-    "icon": "Server",
-    "items": [
-      {
-        "id": "tenancy-and-user-management",
-        "file": "TENANCY_AND_USER_MANAGEMENT.md",
-        "title": "Users, Tenants & Roles",
-        "description": "Multi-tenant user management in Health Assistant, a self-hosted, open-source health records platform. Tenant isolation, organizational hierarchies, role-based access control, and identity-to-clinical-record linking."
-      },
-      {
-        "id": "ontology-catalog",
-        "file": "ONTOLOGY_CATALOG.md",
-        "title": "Ontology & Catalog",
-        "description": "The JSON-based clinical ontology catalog format used by Health Assistant, a self-hosted health records platform. Bulk-import LOINC biomarkers, medical definitions, and unit conversions."
-      },
-      {
-        "id": "taxonomy",
-        "file": "TAXONOMY.md",
-        "title": "Taxonomy & Knowledge Graph",
-        "description": "The unified medical taxonomy and knowledge graph in Health Assistant, a self-hosted health records platform. Multi-kind concepts, polymorphic edges, and cross-domain graph traversal."
-      },
-      {
-        "id": "clinical-events",
-        "file": "CLINICAL_EVENTS.md",
-        "title": "Clinical Events & Journeys",
-        "description": "Longitudinal clinical events in Health Assistant, a self-hosted, open-source health records platform. Seed JSON schema, schedule_kind rendering, metadata_schema field types, categories, and localization for journeys like pregnancies, chronic pain, and surgical recovery."
-      },
-      {
-        "id": "notification-system",
-        "file": "NOTIFICATION_SYSTEM.md",
-        "title": "Notification System",
-        "description": "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, digest collapsing, and real-time WebSocket delivery."
-      },
-      {
-        "id": "telemetry-and-aggregation",
-        "file": "TELEMETRY_AND_AGGREGATION.md",
-        "title": "Telemetry & TimescaleDB",
-        "description": "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
-      },
-      {
-        "id": "state-biomarkers",
-        "file": "STATE_BIOMARKERS.md",
-        "title": "State Biomarkers",
-        "description": "Qualitative and categorical biomarker values in Health Assistant, a self-hosted health records platform. The state catalog (HL7 v3-ObservationInterpretation + SNOMED + DataAbsentReason), allowed_states declarations, multi-state panels, and FHIR R4 value-concept search."
-      },
-      {
-        "id": "export-import",
-        "file": "EXPORT_IMPORT.md",
-        "title": "Export & Import (Backup)",
-        "description": "Backup and restore for Health Assistant, a self-hosted health records platform. FHIR R4B Bundle + BagIt-style ZIP exports, SHA256 integrity checks, and cross-tenant id remapping."
-      }
-    ]
-  },
-  {
-    "category": "AI & Intelligence",
-    "icon": "Bot",
-    "items": [
-      {
-        "id": "ai-system",
-        "file": "AI_SYSTEM.md",
-        "title": "AI System & Configuration",
-        "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, per-tenant model configuration, and call-time cost provenance with tenant price overrides."
-      },
-      {
-        "id": "extraction-pipeline",
-        "file": "EXTRACTION_PIPELINE.md",
-        "title": "Document Extraction Pipeline",
-        "description": "The document extraction pipeline of Health Assistant, a self-hosted health records platform. Every extraction trigger, the OCR and two-pass NLP stages, reference-range and unit rules, catalog auto-creation for unknown biomarkers, state versus numeric results, and the behaviour and recovery for each failure case."
-      }
-    ]
-  },
-  {
-    "category": "Integrations & API",
-    "icon": "Plug",
-    "items": [
-      {
-        "id": "api-layers",
-        "file": "API_LAYERS.md",
-        "title": "API Access Layers",
-        "description": "The three API surfaces of Health Assistant, a self-hosted, open-source health records platform: the internal domain REST API for the web and mobile app, the public FHIR R4 facade with OAuth2 and SMART-on-FHIR scopes for external systems, and the Integrations Framework for per-provider sync."
-      },
-      {
-        "id": "api",
-        "file": "API.md",
-        "title": "REST API Reference",
-        "description": "REST API reference for Health Assistant, the self-hosted, open-source health records platform. Authentication, patients, observations, biomarkers, medications, clinical events, and FHIR endpoints."
-      },
-      {
-        "id": "fhir-r4-facade",
-        "file": "FHIR_R4_FACADE.md",
-        "title": "FHIR R4 Facade",
-        "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 20 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
-      },
-      {
-        "id": "integrations-framework",
-        "file": "INTEGRATIONS_FRAMEWORK.md",
-        "title": "Integrations Framework",
-        "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, document pull, rate-limit backoff, and notification digests."
-      },
-      {
-        "id": "connect-integrations",
-        "file": "user/connect-integrations.md",
-        "title": "Connecting an integration",
-        "description": "The integrations catalog, instances, the config flow, OAuth authorize, and sync — how connections work in the app."
-      },
-      {
-        "id": "cloud-calendars",
-        "file": "CALENDARS.md",
-        "title": "Cloud calendars",
-        "description": "Publish examinations and clinical events to your own calendar. Redacted by default; inbound is attributable-only; credentials never leave the sealed store."
-      },
-      {
-        "id": "integration-security",
-        "file": "user/integration-security.md",
-        "title": "What you grant when you connect",
-        "description": "What an integration can and cannot do: declared capabilities, patient binding, encrypted secrets, the signed machine routes, and the audit trail."
-      },
-      {
-        "id": "integration-troubleshooting",
-        "file": "user/integration-troubleshooting.md",
-        "title": "Integration troubleshooting",
-        "description": "Connection, status, bridge pairing, signature and data-routing problems decoded — symptom, cause, fix."
-      },
-      {
-        "id": "mobile-sync",
-        "file": "MOBILE_SYNC.md",
-        "title": "Mobile Sync (Android)",
-        "description": "How the self-hosted, open-source Health Assistant Android app reads Health Connect data (heart rate, steps, weight, SpO2, sleep) and pushes it through the Bridge integration to your server — offline-first, privacy-first, no third-party cloud."
-      },
-      {
-        "id": "cloud-calendars-dev",
-        "file": "dev/cloud-calendars.md",
-        "title": "Cloud calendars — implementation",
-        "description": "Health host map: vendored engines, mapping law, security invariants, test map and gotchas."
-      }
-    ]
-  },
-  {
-    "category": "Extension SDK",
-    "icon": "Puzzle",
-    "items": [
-      {
-        "id": "sdk-overview",
-        "file": "dev/sdk/overview.md",
-        "title": "Integration SDK: overview",
-        "description": "What the integration SDK is, the five bundled extensions, and when to write an extension instead of a core feature — the entry of the ten-chapter SDK doc set."
-      },
-      {
-        "id": "sdk-quickstart",
-        "file": "dev/sdk/quickstart.md",
-        "title": "Integration SDK: quickstart",
-        "description": "A scratch database, a dev server, the dev-dummy reference extension synced, and the observation lands — with a real transcript."
-      },
-      {
-        "id": "sdk-core-concepts",
-        "file": "dev/sdk/core-concepts.md",
-        "title": "Integration SDK: core concepts",
-        "description": "Extension, kind, capability, data class, instance, provider, config flow, sync — the load-bearing nouns and how they connect."
-      },
-      {
-        "id": "sdk-installation",
-        "file": "dev/sdk/installation-and-modes.md",
-        "title": "Integration SDK: install lifecycle internals",
-        "description": "Bundled-only steady state, the registry, admin gating, server/desktop modes and the on-disk layout."
-      },
-      {
-        "id": "sdk-authoring",
-        "file": "dev/sdk/authoring-and-configuration.md",
-        "title": "Integration SDK: authoring & configuration",
-        "description": "The manifest reference, config flows + x-secret, every capability hook, OAuth/SMART, webhook signatures, the two-way API, and building FHIR observations."
-      },
-      {
-        "id": "sdk-examples",
-        "file": "dev/sdk/examples-and-use-cases.md",
-        "title": "Integration SDK: examples & use cases",
-        "description": "Five complete recipes: the dev-dummy walkthrough, an HMAC webhook receiver, a SMART-on-FHIR sync, an MCP client connection, the bridge as mobile/headless transport."
-      },
-      {
-        "id": "sdk-security",
-        "file": "dev/sdk/security-and-gotchas.md",
-        "title": "Integration SDK: security & gotchas",
-        "description": "The trust posture, the secrets law, politeness and SSRF, the inbound chokepoint rules, and the gotchas authors actually hit."
-      },
-      {
-        "id": "sdk-reference",
-        "file": "dev/sdk/reference.md",
-        "title": "Integration SDK: reference",
-        "description": "The 15 extension error codes, the bridge error vocabulary, every endpoint, the admin API, status vocabularies, and the settings knobs."
-      },
-      {
-        "id": "sdk-versioning",
-        "file": "dev/sdk/versioning-and-migration.md",
-        "title": "Integration SDK: versioning & migration",
-        "description": "extension/v1 policy, append-only vocabularies, the no-shims doctrine, and what happens to an installed instance on a release."
-      },
-      {
-        "id": "sdk-troubleshooting",
-        "file": "dev/sdk/troubleshooting-and-faq.md",
-        "title": "Integration SDK: developer diagnostics & FAQ",
-        "description": "Every wall-tested failure mode decoded — pull hooks, the HMAC gate, the bridge SDKs, the /map loop — plus the real FAQ."
-      }
-    ]
-  },
-  {
-    "category": "Development & Operations",
-    "icon": "Wrench",
-    "items": [
-      {
-        "id": "development",
-        "file": "DEVELOPMENT.md",
-        "title": "Development Guide",
-        "description": "Set up a local development environment for Health Assistant, the self-hosted, open-source health records platform. Covers the FastAPI backend, React frontend, Celery worker, testing, migrations, and code style."
-      },
-      {
-        "id": "ci-cd-setup",
-        "file": "CI_CD_SETUP.md",
-        "title": "CI/CD Deployment",
-        "description": "CI/CD pipeline setup for Health Assistant, a self-hosted, open-source health records platform. Gitea Actions workflow, required secrets, and homelab deployment caveats."
-      },
-      {
-        "id": "seeding-and-demos",
-        "file": "SEEDING_AND_DEMOS.md",
-        "title": "Seeding & Demo Data",
-        "description": "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, deterministic dates for screenshots, and DEMO_MODE for credential-free public demos."
-      },
-      {
-        "id": "task-debugging-guide",
-        "file": "TASK_DEBUGGING_GUIDE.md",
-        "title": "Task Debugging Guide",
-        "description": "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
-      },
-      {
-        "id": "object-storage-dev",
-        "file": "dev/storage.md",
-        "title": "Object storage — implementation",
-        "description": "Health host map for document, export, import and anatomy object storage: keys, bootstrap, worker materialization, PHI presign limits, backup boundary and tests."
-      },
-      {
-        "id": "deployment-dev",
-        "file": "dev/deployment.md",
-        "title": "Deployment — T1/on-prem conformance",
-        "description": "The T1 deployment contract for health: quick start, the owner/app DB credential split, one-shot migrate + provisioning, /health + /ready severity model, derived cookie Secure, the opt-in Flower profile, and encrypted off-host backups with the backup_runs ledger."
-      }
-    ]
-  }
+ {
+  "category": "Getting Started",
+  "icon": "Play",
+  "items": [
+   {
+    "id": "getting-started",
+    "file": "../README.md",
+    "title": "Introduction",
+    "description": "Health Assistant — a self-hosted, open-source, privacy-first health records platform. Centralize labs, visits, medications, and wearable data with an AI assistant that proposes but never writes."
+   },
+   {
+    "id": "visual-tour",
+    "file": "SCREENSHOTS.md",
+    "title": "Visual Tour",
+    "description": "Screenshots of Health Assistant, the self-hosted health records platform — dashboard, biomarker trends, AI chat, examinations, and patient views."
+   },
+   {
+    "id": "install",
+    "file": "INSTALL.md",
+    "title": "Self-Hosted Installation",
+    "description": "Install Health Assistant, a self-hosted, open-source health records platform. Docker quick start, production deployment, environment setup with auto-generated keys, and a security checklist."
+   },
+   {
+    "id": "backup-and-migration",
+    "file": "BACKUP_AND_MIGRATION.md",
+    "title": "Backup, Restore & Migration",
+    "description": "Self-host backup and restore (encrypted archive: database + uploads), off-host destinations, the data-key rule for moving an instance to another VM, and the restore drill."
+   },
+   {
+    "id": "getting-started-guide",
+    "file": "GETTING_STARTED_GUIDE.md",
+    "title": "Getting Started Guide",
+    "description": "End-user guide to Health Assistant, a self-hosted, open-source health records platform. Sign in, add a person, upload a lab report, read biomarker trends, configure the AI assistant, connect a wearable, and start a health journey."
+   },
+   {
+    "id": "setup-wizard",
+    "file": "SETUP_WIZARD.md",
+    "title": "Guided Onboarding (Setup Wizard)",
+    "description": "How Health Assistant's guided onboarding works — role checklists, per-patient wizards, the persistent popup drawer, guided AI config sub-steps, and how to reopen/reconfigure later. Backend-derived completion; no onboarding-state table."
+   },
+   {
+    "id": "architecture",
+    "file": "ARCHITECTURE.md",
+    "title": "Architecture Overview",
+    "description": "Architecture of Health Assistant, a self-hosted, open-source health records platform: FastAPI backend, PostgreSQL + TimescaleDB data model, HL7 FHIR R4 storage, biomarker engine, AI/OCR pipeline, and React frontend."
+   }
+  ]
+ },
+ {
+  "category": "Core Systems",
+  "icon": "Server",
+  "items": [
+   {
+    "id": "tenancy-and-user-management",
+    "file": "TENANCY_AND_USER_MANAGEMENT.md",
+    "title": "Users, Tenants & Roles",
+    "description": "Multi-tenant user management in Health Assistant, a self-hosted, open-source health records platform. Tenant isolation, organizational hierarchies, role-based access control, and identity-to-clinical-record linking."
+   },
+   {
+    "id": "ontology-catalog",
+    "file": "ONTOLOGY_CATALOG.md",
+    "title": "Ontology & Catalog",
+    "description": "The JSON-based clinical ontology catalog format used by Health Assistant, a self-hosted health records platform. Bulk-import LOINC biomarkers, medical definitions, and unit conversions."
+   },
+   {
+    "id": "taxonomy",
+    "file": "TAXONOMY.md",
+    "title": "Taxonomy & Knowledge Graph",
+    "description": "The unified medical taxonomy and knowledge graph in Health Assistant, a self-hosted health records platform. Multi-kind concepts, polymorphic edges, and cross-domain graph traversal."
+   },
+   {
+    "id": "clinical-events",
+    "file": "CLINICAL_EVENTS.md",
+    "title": "Clinical Events & Journeys",
+    "description": "Longitudinal clinical events in Health Assistant, a self-hosted, open-source health records platform. Seed JSON schema, schedule_kind rendering, metadata_schema field types, categories, and localization for journeys like pregnancies, chronic pain, and surgical recovery."
+   },
+   {
+    "id": "notification-system",
+    "file": "NOTIFICATION_SYSTEM.md",
+    "title": "Notification System",
+    "description": "The unified notification system of Health Assistant, a self-hosted health records platform. Multi-source fan-out, biomarker alert rules, Web Push (VAPID), scheduled reminders, digest collapsing, and real-time WebSocket delivery."
+   },
+   {
+    "id": "telemetry-and-aggregation",
+    "file": "TELEMETRY_AND_AGGREGATION.md",
+    "title": "Telemetry & TimescaleDB",
+    "description": "High-frequency health data handling in Health Assistant, a self-hosted health records platform. The TimescaleDB telemetry split, dynamic biomarker routing, and OHLC dashboard aggregation."
+   },
+   {
+    "id": "state-biomarkers",
+    "file": "STATE_BIOMARKERS.md",
+    "title": "State Biomarkers",
+    "description": "Qualitative and categorical biomarker values in Health Assistant, a self-hosted health records platform. The state catalog (HL7 v3-ObservationInterpretation + SNOMED + DataAbsentReason), allowed_states declarations, multi-state panels, and FHIR R4 value-concept search."
+   },
+   {
+    "id": "export-import",
+    "file": "EXPORT_IMPORT.md",
+    "title": "Export & Import (Backup)",
+    "description": "Backup and restore for Health Assistant, a self-hosted health records platform. FHIR R4B Bundle + BagIt-style ZIP exports, SHA256 integrity checks, and cross-tenant id remapping."
+   }
+  ]
+ },
+ {
+  "category": "AI & Intelligence",
+  "icon": "Bot",
+  "items": [
+   {
+    "id": "ai-system",
+    "file": "AI_SYSTEM.md",
+    "title": "AI System & Configuration",
+    "description": "The AI architecture of Health Assistant, a self-hosted health records platform. Provider-agnostic factory, OCR/NLP pipeline, agentic chatbot with human-in-the-loop proposals, per-tenant model configuration, and call-time cost provenance with tenant price overrides."
+   },
+   {
+    "id": "extraction-pipeline",
+    "file": "EXTRACTION_PIPELINE.md",
+    "title": "Document Extraction Pipeline",
+    "description": "The document extraction pipeline of Health Assistant, a self-hosted health records platform. Every extraction trigger, the OCR and two-pass NLP stages, reference-range and unit rules, catalog auto-creation for unknown biomarkers, state versus numeric results, and the behaviour and recovery for each failure case."
+   }
+  ]
+ },
+ {
+  "category": "Integrations & API",
+  "icon": "Plug",
+  "items": [
+   {
+    "id": "api-layers",
+    "file": "API_LAYERS.md",
+    "title": "API Access Layers",
+    "description": "The three API surfaces of Health Assistant, a self-hosted, open-source health records platform: the internal domain REST API for the web and mobile app, the public FHIR R4 facade with OAuth2 and SMART-on-FHIR scopes for external systems, and the Integrations Framework for per-provider sync."
+   },
+   {
+    "id": "api",
+    "file": "API.md",
+    "title": "REST API Reference",
+    "description": "REST API reference for Health Assistant, the self-hosted, open-source health records platform. Authentication, patients, observations, biomarkers, medications, clinical events, and FHIR endpoints."
+   },
+   {
+    "id": "fhir-r4-facade",
+    "file": "FHIR_R4_FACADE.md",
+    "title": "FHIR R4 Facade",
+    "description": "The FHIR R4 REST API facade of Health Assistant, a self-hosted health records platform. 20 conformance resources, CapabilityStatement, search Bundles, Provenance-on-write, and OperationOutcome errors."
+   },
+   {
+    "id": "integrations-framework",
+    "file": "INTEGRATIONS_FRAMEWORK.md",
+    "title": "Integrations Framework",
+    "description": "The pluggable Integrations Framework of Health Assistant, a self-hosted health records platform. Connect wearables, labs, webhooks, and FHIR servers; opt-in hooks for clinical events, examinations, catalog proposals, HITL review, document pull, rate-limit backoff, and notification digests."
+   },
+   {
+    "id": "connect-integrations",
+    "file": "user/connect-integrations.md",
+    "title": "Connecting an integration",
+    "description": "The integrations catalog, instances, the config flow, OAuth authorize, and sync — how connections work in the app."
+   },
+   {
+    "id": "cloud-calendars",
+    "file": "CALENDARS.md",
+    "title": "Cloud calendars",
+    "description": "Publish examinations and clinical events to your own calendar. Redacted by default; inbound is attributable-only; credentials never leave the sealed store."
+   },
+   {
+    "id": "integration-security",
+    "file": "user/integration-security.md",
+    "title": "What you grant when you connect",
+    "description": "What an integration can and cannot do: declared capabilities, patient binding, encrypted secrets, the signed machine routes, and the audit trail."
+   },
+   {
+    "id": "integration-troubleshooting",
+    "file": "user/integration-troubleshooting.md",
+    "title": "Integration troubleshooting",
+    "description": "Connection, status, bridge pairing, signature and data-routing problems decoded — symptom, cause, fix."
+   },
+   {
+    "id": "mobile-sync",
+    "file": "MOBILE_SYNC.md",
+    "title": "Mobile Sync (Android)",
+    "description": "How the self-hosted, open-source Health Assistant Android app reads Health Connect data (heart rate, steps, weight, SpO2, sleep) and pushes it through the Bridge integration to your server — offline-first, privacy-first, no third-party cloud."
+   },
+   {
+    "id": "cloud-calendars-dev",
+    "file": "dev/cloud-calendars.md",
+    "title": "Cloud calendars — implementation",
+    "description": "Health host map: vendored engines, mapping law, security invariants, test map and gotchas."
+   }
+  ]
+ },
+ {
+  "category": "Extension SDK",
+  "icon": "Puzzle",
+  "items": [
+   {
+    "id": "sdk-overview",
+    "file": "dev/sdk/overview.md",
+    "title": "Integration SDK: overview",
+    "description": "What the integration SDK is, the five bundled extensions, and when to write an extension instead of a core feature — the entry of the ten-chapter SDK doc set."
+   },
+   {
+    "id": "sdk-quickstart",
+    "file": "dev/sdk/quickstart.md",
+    "title": "Integration SDK: quickstart",
+    "description": "A scratch database, a dev server, the dev-dummy reference extension synced, and the observation lands — with a real transcript."
+   },
+   {
+    "id": "sdk-core-concepts",
+    "file": "dev/sdk/core-concepts.md",
+    "title": "Integration SDK: core concepts",
+    "description": "Extension, kind, capability, data class, instance, provider, config flow, sync — the load-bearing nouns and how they connect."
+   },
+   {
+    "id": "sdk-installation",
+    "file": "dev/sdk/installation-and-modes.md",
+    "title": "Integration SDK: install lifecycle internals",
+    "description": "Bundled-only steady state, the registry, admin gating, server/desktop modes and the on-disk layout."
+   },
+   {
+    "id": "sdk-authoring",
+    "file": "dev/sdk/authoring-and-configuration.md",
+    "title": "Integration SDK: authoring & configuration",
+    "description": "The manifest reference, config flows + x-secret, every capability hook, OAuth/SMART, webhook signatures, the two-way API, and building FHIR observations."
+   },
+   {
+    "id": "sdk-examples",
+    "file": "dev/sdk/examples-and-use-cases.md",
+    "title": "Integration SDK: examples & use cases",
+    "description": "Five complete recipes: the dev-dummy walkthrough, an HMAC webhook receiver, a SMART-on-FHIR sync, an MCP client connection, the bridge as mobile/headless transport."
+   },
+   {
+    "id": "sdk-security",
+    "file": "dev/sdk/security-and-gotchas.md",
+    "title": "Integration SDK: security & gotchas",
+    "description": "The trust posture, the secrets law, politeness and SSRF, the inbound chokepoint rules, and the gotchas authors actually hit."
+   },
+   {
+    "id": "sdk-reference",
+    "file": "dev/sdk/reference.md",
+    "title": "Integration SDK: reference",
+    "description": "The 15 extension error codes, the bridge error vocabulary, every endpoint, the admin API, status vocabularies, and the settings knobs."
+   },
+   {
+    "id": "sdk-versioning",
+    "file": "dev/sdk/versioning-and-migration.md",
+    "title": "Integration SDK: versioning & migration",
+    "description": "extension/v1 policy, append-only vocabularies, the no-shims doctrine, and what happens to an installed instance on a release."
+   },
+   {
+    "id": "sdk-troubleshooting",
+    "file": "dev/sdk/troubleshooting-and-faq.md",
+    "title": "Integration SDK: developer diagnostics & FAQ",
+    "description": "Every wall-tested failure mode decoded — pull hooks, the HMAC gate, the bridge SDKs, the /map loop — plus the real FAQ."
+   }
+  ]
+ },
+ {
+  "category": "Development & Operations",
+  "icon": "Wrench",
+  "items": [
+   {
+    "id": "development",
+    "file": "DEVELOPMENT.md",
+    "title": "Development Guide",
+    "description": "Set up a local development environment for Health Assistant, the self-hosted, open-source health records platform. Covers the FastAPI backend, React frontend, Celery worker, testing, migrations, and code style."
+   },
+   {
+    "id": "ci-cd-setup",
+    "file": "CI_CD_SETUP.md",
+    "title": "CI/CD Deployment",
+    "description": "CI/CD pipeline setup for Health Assistant, a self-hosted, open-source health records platform. Gitea Actions workflow, required secrets, and homelab deployment caveats."
+   },
+   {
+    "id": "seeding-and-demos",
+    "file": "SEEDING_AND_DEMOS.md",
+    "title": "Seeding & Demo Data",
+    "description": "How to create seed and demo data for Health Assistant, a self-hosted health records platform. Idempotent seeding patterns, FHIR Bundle imports, deterministic dates for screenshots, and DEMO_MODE for credential-free public demos."
+   },
+   {
+    "id": "task-debugging-guide",
+    "file": "TASK_DEBUGGING_GUIDE.md",
+    "title": "Task Debugging Guide",
+    "description": "Debugging guide for stuck documents and OCR extraction tasks in Health Assistant, a self-hosted health records platform. Diagnose failed pipeline stages and recover data."
+   },
+   {
+    "id": "object-storage-dev",
+    "file": "dev/storage.md",
+    "title": "Object storage — implementation",
+    "description": "Health host map for document, export, import and anatomy object storage: keys, bootstrap, worker materialization, PHI presign limits, backup boundary and tests."
+   },
+   {
+    "id": "deployment-dev",
+    "file": "dev/deployment.md",
+    "title": "Deployment — T1/on-prem conformance",
+    "description": "The T1 deployment contract for health: quick start, the owner/app DB credential split, one-shot migrate + provisioning, /health + /ready severity model, derived cookie Secure, the opt-in Flower profile, and encrypted off-host backups with the backup_runs ledger."
+   }
+  ]
+ }
 ]
