@@ -12,7 +12,7 @@
 #   backup/update/rollback hints.
 #
 # Usage (from the extracted bundle root, or a source checkout root):
-#   bash scripts/install.sh                            # install + start
+#   bash scripts/install.sh                            # install + start (port 8090 — the family default; 8091=study, 8092=career)
 #   bash scripts/install.sh --http-port 8090            # publish the app on 8090
 #   bash scripts/install.sh --image backend=ghcr.io/…@sha256:… \
 #                           --image frontend=ghcr.io/…@sha256:…
@@ -25,6 +25,10 @@
 #   bash scripts/install.sh --no-wait                  # skip the health/readiness wait
 #   bash scripts/install.sh --auto-ports               # move busy ports to free ones
 #   bash scripts/install.sh --no-ports                 # skip the port pre-flight
+#   bash scripts/install.sh --app-url http://box.lan:8090   # the URL users open (APP_URL): CORS,
+#                                                         #   OAuth redirects, the setup link — and the
+#                                                         #   Host header the app accepts
+#   bash scripts/install.sh --bind 127.0.0.1            # publish on loopback only (behind your own proxy)
 #   bash scripts/install.sh --no-token                 # never print the setup token
 #   bash scripts/install.sh --reset --yes              # wipe stack volumes, reinstall
 #   bash scripts/install.sh --reset --yes --reset-all  # also wipe user uploads
@@ -65,7 +69,7 @@ source "$SCRIPT_DIR/lib-docker.sh"
 
 # ── flags ───────────────────────────────────────────────────────────────────
 ENV_ONLY=0 NO_PULL=0 NO_WAIT=0 AUTO_PORTS=0 NO_PORTS=0 RESET=0 RESET_YES=0 RESET_ALL=0
-NO_TOKEN=0 IMAGE_TAG_ARG="" HTTP_PORT_ARG="" ALLOW_ROOT="${ALLOW_ROOT:-}"
+NO_TOKEN=0 IMAGE_TAG_ARG="" HTTP_PORT_ARG="" APP_URL_FLAG="" BIND_ARG="" ALLOW_ROOT="${ALLOW_ROOT:-}"
 IMAGE_ARGS=()   # --image values (KEY=REF), resolved after the config load
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -86,6 +90,12 @@ while [ "$#" -gt 0 ]; do
         --image-tag)
             [ "$#" -ge 2 ] || die "--image-tag needs a value"
             IMAGE_TAG_ARG="$2"; shift ;;
+        --app-url)
+            [ "$#" -ge 2 ] || die "--app-url needs a value"
+            APP_URL_FLAG="$2"; shift ;;
+        --bind)
+            [ "$#" -ge 2 ] || die "--bind needs an IP address"
+            BIND_ARG="$2"; shift ;;
         --http-port)
             [ "$#" -ge 2 ] || die "--http-port needs a value"
             case "$2" in ''|*[!0-9]*) die "--http-port needs a numeric PORT (got: $2)" ;; esac
@@ -145,7 +155,7 @@ if [ -z "$IMAGE_KEYS" ]; then
     IMAGE_KEYS="backend frontend"
 fi
 DEFAULT_PORT="$(json_field installer.json defaultPort)"
-case "$DEFAULT_PORT" in ''|*[!0-9]*) DEFAULT_PORT=80 ;; esac
+case "$DEFAULT_PORT" in ''|*[!0-9]*) DEFAULT_PORT=8090 ;; esac
 MIN_RAM_GB="$(json_field installer.json minRamGb)"
 case "$MIN_RAM_GB" in ''|*[!0-9]*) MIN_RAM_GB=8 ;; esac
 # The setup hint derives from setupMode (the schema's closed vocabulary).
@@ -312,6 +322,21 @@ fi
 # ── host port ────────────────────────────────────────────────────────────────
 HTTP_PORT="${HTTP_PORT_ARG:-${HEALTH_HTTP_PORT:-$(env_value HTTP_PORT '')}}"
 [ -n "$HTTP_PORT" ] || HTTP_PORT="$DEFAULT_PORT"
+# ── bind address (optional; default 0.0.0.0, loopback behind your proxy) ───
+HTTP_BIND="${BIND_ARG:-${HEALTH_HTTP_BIND:-$(env_value HTTP_BIND '')}}"
+[ -n "$HTTP_BIND" ] || HTTP_BIND="0.0.0.0"
+[ "$HTTP_BIND" = "localhost" ] && HTTP_BIND="127.0.0.1"   # compose needs an IP literal
+case "$HTTP_BIND" in
+    *[!0-9.]*) die "--bind must be an IP address like 127.0.0.1 (got: $HTTP_BIND)" ;;
+esac
+IFS='.' read -r B1 B2 B3 B4 <<BIND_EOF
+$HTTP_BIND
+BIND_EOF
+for B in "$B1" "$B2" "$B3" "$B4"; do
+    case "$B" in ''|*[!0-9]*) die "--bind must be an IPv4 address like 127.0.0.1 (got: $HTTP_BIND)" ;; esac
+    [ "$B" -le 255 ] || die "--bind octet out of range in ${HTTP_BIND}"
+done
+
 case "$HTTP_PORT" in ''|*[!0-9]*) die "HTTP_PORT must be numeric (got: $HTTP_PORT)" ;; esac
 HEALTH_URL="http://127.0.0.1:${HTTP_PORT}${HEALTH_PATH}"
 READY_URL="http://127.0.0.1:${HTTP_PORT}${READY_PATH}"
@@ -367,19 +392,33 @@ else
         || die "no .env.example — this is not a complete bundle (or checkout)."
     echo -e "${GREEN}No ${ENV_FILE} found — creating one from the example and generating fresh secrets.${NC}"
     # One question, like the old Quick Start: the public app URL (drives CORS,
-    # OAuth redirects, the setup URL). Non-interactive (pipe, CI, tests) takes
-    # the localhost default and the summary names the knob to change later.
-    APP_URL_DEFAULT="http://localhost"
-    APP_URL="$APP_URL_DEFAULT"
-    if [ -t 0 ]; then
-        read -r -p "Public App URL [${APP_URL_DEFAULT}]: " APP_URL || APP_URL=""
-        APP_URL="$(printf '%s' "$APP_URL" | sed 's/[[:space:]]*$//')"
-        [ -n "$APP_URL" ] || APP_URL="$APP_URL_DEFAULT"
+    # OAuth redirects, the setup URL and Host validation). The default is the
+    # machine's hostname at the chosen port — for TTY *and* piped installs
+    # (curl | bash never sees a TTY, and a silent localhost default 400s from
+    # other machines). --app-url (or APP_URL in the env) skips the question.
+    APP_URL_DEFAULT="http://$(hostname 2>/dev/null || echo localhost):${HTTP_PORT}"
+    if [ -n "$APP_URL_FLAG" ]; then
+        APP_URL="$APP_URL_FLAG"
         case "$APP_URL" in
             *://*) ;;
             *) APP_URL="http://${APP_URL}" ;;
         esac
         APP_URL="${APP_URL%/}"
+    else
+        APP_URL="$APP_URL_DEFAULT"
+        if [ -t 0 ]; then
+            read -r -p "Public App URL [${APP_URL_DEFAULT}]: " APP_URL || APP_URL=""
+            APP_URL="$(printf '%s' "$APP_URL" | sed 's/[[:space:]]*$//')"
+            [ -n "$APP_URL" ] || APP_URL="$APP_URL_DEFAULT"
+            case "$APP_URL" in
+                *://*) ;;
+                *) APP_URL="http://${APP_URL}" ;;
+            esac
+            APP_URL="${APP_URL%/}"
+        else
+            echo -e "${YELLOW}No --app-url given — assuming ${APP_URL_DEFAULT} (this machine's hostname).${NC}"
+            echo -e "${YELLOW}If you open the app by another name/IP, rerun with: --app-url http://<that-host>:${HTTP_PORT}${NC}"
+        fi
     fi
     ( umask 077; cp "$ENV_TEMPLATE" "$ENV_FILE" )
     chmod 600 "$ENV_FILE"
@@ -463,9 +502,25 @@ write_pins() {
 }
 write_pins
 
+# Update-path guard: an install made before the 8090 default must not
+# silently move ports on a re-run. No persisted HTTP_PORT + no explicit
+# input → keep the historical 80, loudly.
+if [ "$ENV_WAS_FRESH" -eq 0 ] && [ -z "$HTTP_PORT_ARG" ] && [ -z "${HEALTH_HTTP_PORT:-}" ] \
+   && [ -z "$(env_value HTTP_PORT '')" ] && [ "$HTTP_PORT" != "80" ]; then
+    echo -e "${YELLOW}This install predates persisted ports: keeping HTTP_PORT=80 (the old default) — set --http-port 8090 to move it.${NC}"
+    HTTP_PORT=80
+fi
 if [ "$HTTP_PORT" != "$(env_value HTTP_PORT '')" ]; then
     set_env_value HTTP_PORT "$HTTP_PORT"
     echo -e "${GREEN}Set HTTP_PORT=${HTTP_PORT} (saved in ${ENV_FILE}).${NC}"
+fi
+# Persist the bind only when explicitly chosen: a re-run with no input
+# must stay a byte-for-byte no-op on the env file.
+if [ -n "$BIND_ARG" ] || [ -n "${HEALTH_HTTP_BIND:-}" ]; then
+    if [ "$HTTP_BIND" != "$(env_value HTTP_BIND '')" ]; then
+        set_env_value HTTP_BIND "$HTTP_BIND"
+        echo -e "${GREEN}Set HTTP_BIND=${HTTP_BIND} (saved in ${ENV_FILE}).${NC}"
+    fi
 fi
 # The port may have moved in the pre-flight below; keep the URLs honest.
 HTTP_PORT="$(env_value HTTP_PORT "$HTTP_PORT")"
@@ -614,7 +669,13 @@ echo "  Install:  ${INSTALL_DIR}"
 [ -n "$MANIFEST_VERSION" ] && echo "  Version:  ${MANIFEST_VERSION}"
 [ -n "$BACKEND_PIN" ]  && echo "  Backend:  $(short_pin "$BACKEND_PIN")"
 [ -n "$FRONTEND_PIN" ] && echo "  Frontend: $(short_pin "$FRONTEND_PIN")"
-echo "  URL:      http://${HOST_HINT}:${HTTP_PORT}   (or http://<your-host>:${HTTP_PORT})"
+APP_URL_SUMMARY="$(env_value APP_URL '')"
+if [ -n "$APP_URL_SUMMARY" ]; then
+    echo "  URL:      ${APP_URL_SUMMARY}   (APP_URL — the address Host validation and cookies accept)"
+else
+    echo "  URL:      http://${HOST_HINT}:${HTTP_PORT}   (or http://<your-host>:${HTTP_PORT})"
+fi
+echo "  Bind:     ${HTTP_BIND}:${HTTP_PORT} → container :80"
 echo "  Health:   ${HEALTH_URL}"
 [ -n "$READY_PATH" ] && echo "  Ready:    ${READY_URL}"
 echo "  Docs:     ${DOCS_URL}"

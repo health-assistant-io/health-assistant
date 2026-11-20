@@ -3,7 +3,7 @@
 Connection hygiene:
 
 1. **Auth (§10, plan 16 H3):** the browser's access JWT is read from the
-   HttpOnly ``nx_access`` cookie; the ``Sec-WebSocket-Protocol``
+   HttpOnly ``ha_access`` cookie; the ``Sec-WebSocket-Protocol``
    subprotocol form (``new WebSocket(url, ["bearer", token])``) stays for
    non-browser clients (§9 — the Android app may use it; both channels
    are fine). A query-string ``?token=...`` remains forbidden (proxy
@@ -105,7 +105,7 @@ def _origin_allowed(websocket: WebSocket) -> bool:
 
 
 async def _extract_token(websocket: WebSocket) -> str | None:
-    """§10: the HttpOnly ``nx_access`` cookie is the browser auth channel;
+    """§10: the HttpOnly ``ha_access`` cookie is the browser auth channel;
     the ``Sec-WebSocket-Protocol`` subprotocol is the non-browser one.
 
     Cookie first (read from the raw ``Cookie`` header); the subprotocol
@@ -220,7 +220,7 @@ async def websocket_tasks_endpoint(
 
     USERs receive only their own task events (``user:<id>:tasks``);
     MANAGER/ADMIN/SYSTEM_ADMIN receive the tenant-wide stream. Auth (§10):
-    the ``nx_access`` cookie (browsers) or the
+    the ``ha_access`` cookie (browsers) or the
     Sec-WebSocket-Protocol subprotocol ``["bearer", token]`` (§9 clients);
     the ``?token=`` query fallback stays removed (audit 2026-08 AUTH-L4).
     The handshake ``Origin`` is verified against the configured

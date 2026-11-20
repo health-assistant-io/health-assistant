@@ -1,7 +1,7 @@
 /**
  * Session validation against the backend (§10 cookie mode, plan 16 H3).
  *
- * The browser credential is the HttpOnly `nx_access` cookie — there is no
+ * The browser credential is the HttpOnly `ha_access` cookie — there is no
  * token to inspect locally. This asks the server (cookie rides along via
  * credentials: 'include') and, on a 401, tries one cookie-based refresh
  * before giving up. Body tokens from /auth/* are ignored on purpose.

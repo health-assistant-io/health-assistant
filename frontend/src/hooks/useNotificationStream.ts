@@ -7,7 +7,7 @@ import type { NotificationEvent } from '../services/notificationService';
  * Real-time notification stream.
  *
  * Opens a WebSocket to ``/ws/notifications`` (per-user channel).
- * Authentication is the §10 cookie session: the HttpOnly ``nx_access``
+ * Authentication is the §10 cookie session: the HttpOnly ``ha_access``
  * cookie rides the handshake (no token in JS — localStorage is forbidden
  * for browser clients), and the backend verifies the handshake ``Origin``
  * against its allow-list. Incoming ``notification`` messages are pushed
@@ -52,7 +52,7 @@ export function useNotificationStream() {
       if (stoppedRef.current) return;
       let socket: WebSocket;
       try {
-        // §10 cookie session: no subprotocol token — the nx_access cookie
+        // §10 cookie session: no subprotocol token — the ha_access cookie
         // authenticates the handshake and the browser sends Origin (which
         // the backend verifies against its allow-list).
         socket = new WebSocket(buildUrl());

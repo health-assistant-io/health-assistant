@@ -294,7 +294,7 @@ def decode_refresh_token(token: str) -> dict | None:
 def get_token(request: Request, authorization: str = Header(None)):
     """Extract the session credential: **cookie first**, then Bearer (§9/§10).
 
-    Browsers ride the HttpOnly ``nx_access`` cookie (the double-submit
+    Browsers ride the HttpOnly ``ha_access`` cookie (the double-submit
     CSRF middleware gates non-safe cookie requests); §9 user clients —
     the Android app, CLI/scripts — keep ``Authorization: Bearer``. When
     both are present the cookie wins.

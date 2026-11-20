@@ -8,7 +8,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // §10 cookie sessions — the browser rides nx_access
+  withCredentials: true, // §10 cookie sessions — the browser rides ha_access
   headers: {
     'Content-Type': 'application/json',
   },
@@ -16,8 +16,8 @@ const api = axios.create({
 
 // ---------------------------------------------------------------------------
 // §10 cookie sessions (plan 16 H3): tokens NO LONGER live in localStorage —
-// the HttpOnly `nx_access` / `nx_refresh` cookies are the browser credential
-// and the JS-readable `nx_csrf` cookie fuels the double-submit echo. The
+// the HttpOnly `ha_access` / `ha_refresh` cookies are the browser credential
+// and the JS-readable `ha_csrf` cookie fuels the double-submit echo. The
 // JSON bodies from /auth/* still carry tokens for §9 user clients (Android,
 // scripts); this client deliberately ignores them.
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ export function sessionEndReasonOf(error: unknown): SessionEndReason | null {
 
 /** Read the JS-readable CSRF cookie (double-submit — identity-auth §10). */
 export function csrfToken(): string | null {
-  const prefix = 'nx_csrf=';
+  const prefix = 'ha_csrf=';
   const match = document.cookie.split('; ').find((part) => part.startsWith(prefix));
   return match ? decodeURIComponent(match.slice(prefix.length)) : null;
 }
@@ -107,7 +107,7 @@ api.interceptors.request.use(
     // §10: cookie session — no Authorization header from storage. The
     // browser attaches the HttpOnly cookies (withCredentials above).
 
-    // Double-submit CSRF (§10): echo the readable nx_csrf cookie on every
+    // Double-submit CSRF (§10): echo the readable ha_csrf cookie on every
     // non-safe request. Always (re)set from the live cookie so a replayed
     // request after a refresh echoes the *rotated* value, not a stale one.
     if (isUnsafeMethod(config.method)) {
@@ -201,7 +201,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       // §10: rotate the refresh cookie once (single-flight). No body — the
-      // HttpOnly nx_refresh cookie (Path=/api/v1/auth) IS the credential.
+      // HttpOnly ha_refresh cookie (Path=/api/v1/auth) IS the credential.
       try {
         const refreshed = await refreshSession();
         if (!refreshed) {

@@ -14,4 +14,4 @@ dev = [
 # kit work: `uv pip install -e ../auth-kit` after `uv sync` (a sync
 # reverts to the pinned copy). When the kit publishes to PyPI: drop this
 # entry and pin `==X.Y.Z` + hashes instead.
-neuronection-auth-kit = { git = "https://github.com/neuronection/auth-kit", rev = "77546a18c977c4a91f961e8a063e8f3d96cfa209" }
+neuronection-auth-kit = { git = "https://github.com/neuronection/auth-kit", rev = "8907efb4f5af386a820015728b54c7f631c13b33" }

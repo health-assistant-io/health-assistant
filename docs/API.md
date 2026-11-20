@@ -56,9 +56,9 @@ never stored in `localStorage`/`sessionStorage`** for browser clients.
 
 | Cookie | Value | Flags |
 |---|---|---|
-| `nx_access` (`__Host-nx_access` when `HA_COOKIE_SECURE=true`) | session access JWT | `HttpOnly; SameSite=Lax; Secure` (with the flag); `Path=/` |
-| `nx_refresh` | refresh JWT | `HttpOnly; SameSite=Lax; Secure`; `Path=/api/v1/auth` |
-| `nx_csrf` | random CSRF secret | **JS-readable** (not HttpOnly); `SameSite=Lax`; `Path=/` |
+| `ha_access` (`__Host-ha_access` when `HA_COOKIE_SECURE=true`) | session access JWT | `HttpOnly; SameSite=Lax; Secure` (with the flag); `Path=/` |
+| `ha_refresh` | refresh JWT | `HttpOnly; SameSite=Lax; Secure`; `Path=/api/v1/auth` |
+| `ha_csrf` | random CSRF secret | **JS-readable** (not HttpOnly); `SameSite=Lax`; `Path=/` |
 
 `POST /auth/login`, `/auth/setup`, `/auth/demo-login`, `/auth/refresh`
 (plus the tenant-switch endpoints) set the triple; `POST /auth/logout` and
@@ -67,7 +67,7 @@ the JSON body** — personal API clients (the Android app, CLI scripts) consume
 them; the browser client ignores the body and rides the cookies.
 
 **CSRF (double submit):** any non-GET `/api/*` request that carries the
-session cookies must echo the `nx_csrf` cookie value in an `X-CSRF-Token`
+session cookies must echo the `ha_csrf` cookie value in an `X-CSRF-Token`
 header — mismatch or absence is a `403`. Requests with an `Authorization`
 header (Bearer user clients) are exempt, as are the auth bootstrap
 endpoints (`login` / `refresh` / `register` / `setup` / `demo-login`) and
@@ -90,9 +90,9 @@ refresh tokens are typed (`token_kind=refresh`), jti-tracked, rotated on every
 use (rotation also re-stamps the cookies), and are **never** accepted as bearer
 credentials. Refresh tokens re-validate the user row
 from the DB (existence + `is_active` + current role/tenant) on every use.
-Browsers present the refresh token via the `nx_refresh` cookie (body optional);
+Browsers present the refresh token via the `ha_refresh` cookie (body optional);
 `get_session_user_ws` is the WebSocket variant and reads the token from the
-`nx_access` cookie **or** the `["bearer", <jwt>]` `Sec-WebSocket-Protocol`
+`ha_access` cookie **or** the `["bearer", <jwt>]` `Sec-WebSocket-Protocol`
 subprotocol (the `?token=` query-string fallback was removed — query strings
 land in proxy logs). WS handshakes additionally verify the browser `Origin`
 against the configured allow-list (`HA_WS_ALLOWED_ORIGINS`, default
@@ -157,7 +157,7 @@ can't mint fresh buckets.
 | `POST` | `/auth/invite` | (none; query: `tenant_id?`, `email?`, `role=user\|manager\|admin`, `expires_days=7`, capped at 30) | `{invite_token, tenant_id, role, expires_in_days}` | `ADMIN` / `MANAGER` / `SYSTEM_ADMIN` only. Non-`SYSTEM_ADMIN` can only mint for own tenant. Tokens are single-use; `SYSTEM_ADMIN` cannot be granted via invite. |
 | `GET` | `/auth/validate` | (none) | `{valid: true, user_id}` | Lightweight check that the JWT is still valid. |
 | `GET` | `/auth/setup-status` | (none) | `{initialized: bool, …}` | Whether first-run setup has been claimed (drives the login-page redirect to the setup wizard). |
-| `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `nx_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (rotation also re-stamps the cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
+| `POST` | `/auth/refresh` | `{refresh_token}` (optional for browsers — the `ha_refresh` cookie is used when the body omits it) | `TokenResponse` | **Rotates** the refresh token (rotation also re-stamps the cookie triple) and re-validates the user row from the DB: deleted/deactivated users are refused, and the new claims (email/tenant/role) are rebuilt from the database — a role change takes effect at the next refresh. Switched SYSTEM_ADMIN sessions preserve + re-validate their target tenant. |
 | `POST` | `/auth/logout` | `{refresh_token}` (optional for browsers — cookie fallback) | `{revoked: true}` | Revokes the presented refresh token's `jti` **and** the caller's live access-token `jti` — the credential itself stops working immediately. Clears the session cookies. CSRF-gated for cookie sessions (double submit). |
 | `POST` | `/auth/logout-all` | (none) | `{revoked: <count>}` | Revokes every refresh **and** session access token for the calling user, and bumps `token_version` — every credential of the account dies, including the caller's (sign in again). For "sign out the other devices but keep me in", use `POST /me/sessions/revoke-others`. |
 | `POST` | `/auth/step-up` | `StepUpRequest` (`action`, `password?`, `code?`) | `{action, methods, issued_at, expires_at, expires_in}` | **Step-up re-authentication** (program 12C1) for the five sensitive actions: `role_change`, `export`, `break_glass`, `grant_admin`, `mfa_change`. The factors are the account's own — the local password when one is set, TOTP/recovery when MFA is enrolled (both when both exist); an SSO-only account may use a fresh IdP-asserted second factor (`methods: ["federated"]`). Records a family-bound proof (`stepup:{fid}:{action}`, 10-minute window, one action, one sign-in family) — see the typed refusals below. Rate-limited (10/min per IP); audited (`auth.step_up`). |
