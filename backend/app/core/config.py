@@ -532,8 +532,8 @@ class Settings(BaseSettings):
     # construction — the flag additionally disables the register route).
     HA_REGISTRATION_ENABLED: bool = True
     # §10 cookie sessions (plan 16 H3): browsers authenticate with the
-    # HttpOnly ``nx_access`` / ``nx_refresh`` cookies plus the JS-readable
-    # ``nx_csrf`` double-submit cookie; user clients keep Bearer (§9 —
+    # HttpOnly ``ha_access`` / ``ha_refresh`` cookies plus the JS-readable
+    # ``ha_csrf`` double-submit cookie; user clients keep Bearer (§9 —
     # the Android/integrations HMAC bridge is unchanged). ``HA_COOKIE_SECURE``
     # also switches the access cookie to the ``__Host-`` prefix (TLS
     # deployments — the prefix demands Secure + Path=/).

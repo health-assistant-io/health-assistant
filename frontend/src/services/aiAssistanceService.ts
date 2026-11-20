@@ -5,7 +5,7 @@ import { TaskInfo } from '../types/ai';
 /**
  * §10 (plan 16 H3): raw-fetch auth init — the HttpOnly cookie session rides
  * `credentials: 'include'`, and non-safe requests echo the readable
- * `nx_csrf` cookie (double submit). No Authorization header from storage.
+ * `ha_csrf` cookie (double submit). No Authorization header from storage.
  */
 function sessionFetchHeaders(): Record<string, string> {
   const csrf = csrfToken();

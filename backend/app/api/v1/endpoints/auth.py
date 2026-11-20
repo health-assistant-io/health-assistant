@@ -1148,7 +1148,7 @@ async def refresh_token(
     activity.
 
     Presentation (§10): browsers send no body — the rotating refresh JWT
-    is read from the HttpOnly ``nx_refresh`` cookie (Path=/api/v1/auth,
+    is read from the HttpOnly ``ha_refresh`` cookie (Path=/api/v1/auth,
     so it only rides this endpoint); §9 user clients keep the JSON body.
     On success the cookie triple is re-stamped, so rotation rotates the
     cookies too.
@@ -1397,7 +1397,7 @@ async def logout(
     is deleted from the session store, so the credential itself stops
     working immediately — not just at the next refresh (audit 2026-08 H3).
 
-    §10: browsers present the refresh token via the ``nx_refresh`` cookie
+    §10: browsers present the refresh token via the ``ha_refresh`` cookie
     (body optional) and get the whole cookie triple cleared on the
     response; the CSRF middleware gates this route (double-submit) since
     it is a cookie-authenticated session action.

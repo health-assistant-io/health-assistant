@@ -13,9 +13,9 @@ const backgroundApi = axios.create({
 });
 
 // §10 (plan 16 H3): cookie session — no Authorization header from storage.
-// Non-safe requests echo the readable nx_csrf cookie (double-submit).
+// Non-safe requests echo the readable ha_csrf cookie (double-submit).
 function csrfToken(): string | null {
-  const prefix = 'nx_csrf=';
+  const prefix = 'ha_csrf=';
   const match = document.cookie.split('; ').find((part) => part.startsWith(prefix));
   return match ? decodeURIComponent(match.slice(prefix.length)) : null;
 }
@@ -40,7 +40,7 @@ backgroundApi.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        // §10: cookie-based refresh — the HttpOnly nx_refresh cookie is
+        // §10: cookie-based refresh — the HttpOnly ha_refresh cookie is
         // the credential (no body, no storage).
         const response = await axios.post(
           `${backgroundApi.defaults.baseURL}/auth/refresh`,

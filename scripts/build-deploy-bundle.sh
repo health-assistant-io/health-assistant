@@ -80,6 +80,7 @@ readonly BUNDLE_MEMBERS=(
   scripts/upgrade-check.sh
   scripts/backup.sh
   scripts/restore.sh
+  scripts/uninstall.sh
   scripts/lib-docker.sh
   installer.json
 )

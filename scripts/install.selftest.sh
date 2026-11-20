@@ -384,7 +384,7 @@ required = ["product", "title", "repo", "repoDir", "targetPath", "phase",
             "bundlePrefix", "bootstrapAsset", "envPrefix", "imageEnv",
             "imageKeys", "defaultDirName", "defaultPort", "healthPath",
             "readyPath", "setupMode", "minRamGb", "docsUrl", "installUrl",
-            "contractVersion", "installFlags"]
+            "contractVersion", "installFlags", "cookiePrefix"]
 cfg = json.load(open(sys.argv[1]))
 missing = [k for k in required if k not in cfg]
 extra = [k for k in cfg if k not in required]
@@ -397,14 +397,15 @@ assert cfg["imageEnv"] == "IMAGE_TAG"
 assert cfg["imageKeys"] == ["backend", "frontend"], cfg["imageKeys"]
 assert cfg["readyPath"] == "/ready", cfg["readyPath"]
 assert cfg["setupMode"] == "setup token", cfg["setupMode"]
-assert cfg["defaultPort"] == 80, cfg["defaultPort"]
+assert cfg["defaultPort"] == 8090, cfg["defaultPort"]  # family default (8090/8091/8092)
 assert cfg["healthPath"] == "/health"
 assert cfg["installUrl"] == "https://neuronection.com/install/health.sh", cfg["installUrl"]
 assert cfg["contractVersion"] == "1"
 flags = set(cfg["installFlags"])
-need = {"no-pull", "no-wait", "auto-ports", "no-ports", "http-port",
+need = {"no-pull", "no-wait", "auto-ports", "no-ports", "http-port", "app-url", "bind",
         "env-only", "reset", "yes", "image-tag", "no-token"}
 assert need <= flags, "installFlags missing: %s" % (need - flags)
+assert cfg["cookiePrefix"] == "ha_", cfg["cookiePrefix"]
 print("installer.json schema shape OK")
 PY
 }
@@ -725,7 +726,7 @@ for f in docker-compose.prod.yml docker-compose.standalone.yml nginx.conf nginx-
     cp "$CORE/docker/$f" "$BB/docker/$f"
 done
 cp "$CORE/.env.example" "$BB/.env.example"
-for f in install.sh update.sh upgrade-check.sh backup.sh restore.sh lib-docker.sh build-deploy-bundle.sh; do
+for f in install.sh update.sh upgrade-check.sh backup.sh restore.sh uninstall.sh lib-docker.sh build-deploy-bundle.sh; do
     cp "$CORE/scripts/$f" "$BB/scripts/$f"
 done
 cp "$CORE/installer.json" "$BB/installer.json"

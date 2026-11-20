@@ -8,20 +8,20 @@ attention). Token semantics per §10:
 ===============  =====================  =====================================
 cookie           value                  flags
 ===============  =====================  =====================================
-``nx_access``    access JWT (session)   HttpOnly; SameSite=Lax; Secure;
-``__Host-nx_...`` (when TLS)           Path=``/``; Max-Age=access TTL
-``nx_refresh``   refresh JWT            HttpOnly; SameSite=Lax; Secure;
+``ha_access``    access JWT (session)   HttpOnly; SameSite=Lax; Secure;
+``__Host-ha_...`` (when TLS)           Path=``/``; Max-Age=access TTL
+``ha_refresh``   refresh JWT            HttpOnly; SameSite=Lax; Secure;
                                         Path=``/api/v1/auth``; Max-Age=
                                         refresh TTL (cannot take the
                                         ``__Host-`` prefix — its Path is
                                         narrower than ``/``)
-``nx_csrf``      random (JS-readable)   NOT HttpOnly; SameSite=Lax;
+``ha_csrf``      random (JS-readable)   NOT HttpOnly; SameSite=Lax;
                                         Secure; Path=``/``; Max-Age=
                                         access TTL
 ===============  =====================  =====================================
 
 CSRF rule (double submit): a non-safe ``/api/*`` request that carries any
-session/CSRF cookie must echo the ``nx_csrf`` cookie value in the
+session/CSRF cookie must echo the ``ha_csrf`` cookie value in the
 ``X-CSRF-Token`` header — mismatch (or absence) is a 403. Requests with
 an ``Authorization`` header are exempt (§9 Bearer clients are not cookie
 sessions, and a cross-site attacker cannot set that header without a
@@ -45,11 +45,25 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 COOKIE_PATH_ROOT = "/"
 COOKIE_PATH_AUTH = "/api/v1/auth"
 
-ACCESS_COOKIE = "nx_access"
-ACCESS_COOKIE_HOST_PREFIXED = "__Host-nx_access"
-REFRESH_COOKIE = "nx_refresh"
-CSRF_COOKIE = "nx_csrf"
+# Per-app prefix (family co-location): cookies are scoped by hostname —
+# ports are ignored — so family apps on one host need distinct names.
+# Pre-prefix `nx_*` names linger in upgraded browsers for up to the
+# refresh absolute TTL; the CSRF middleware expires them on sight.
+ACCESS_COOKIE = "ha_access"
+ACCESS_COOKIE_HOST_PREFIXED = "__Host-ha_access"
+REFRESH_COOKIE = "ha_refresh"
+CSRF_COOKIE = "ha_csrf"
 CSRF_HEADER = "x-csrf-token"
+LEGACY_ACCESS_COOKIE = "nx_access"
+LEGACY_ACCESS_COOKIE_HOST_PREFIXED = "__Host-nx_access"
+LEGACY_REFRESH_COOKIE = "nx_refresh"
+LEGACY_CSRF_COOKIE = "nx_csrf"
+LEGACY_COOKIE_NAMES = (
+    LEGACY_ACCESS_COOKIE,
+    LEGACY_REFRESH_COOKIE,
+    LEGACY_CSRF_COOKIE,
+    LEGACY_ACCESS_COOKIE_HOST_PREFIXED,
+)
 
 # Non-safe requests to these path prefixes skip the double-submit check
 # (bootstrap endpoints + health/docs). Logout is deliberately NOT here:
@@ -80,7 +94,7 @@ class CookieNames:
 
 
 def cookie_names() -> CookieNames:
-    """``__Host-nx_access`` under TLS (§10); ``nx_refresh`` cannot use the
+    """``__Host-ha_access`` under TLS (§10); ``ha_refresh`` cannot use the
     prefix (its Path is narrower than ``/``), matching the table above."""
     access = ACCESS_COOKIE_HOST_PREFIXED if settings.HA_COOKIE_SECURE else ACCESS_COOKIE
     return CookieNames(access=access, refresh=REFRESH_COOKIE, csrf=CSRF_COOKIE)
@@ -199,11 +213,63 @@ def parse_cookies(header: str | None) -> dict[str, str]:
     return cookies
 
 
+class LegacyCookieClearingMiddleware:
+    """Expire pre-prefix ``nx_*`` cookies once, on sight.
+
+    Upgraded browsers still hold the family-shared names for up to the
+    refresh absolute TTL; left alone they shadow nothing here (the app
+    reads only ``ha_*``) but ride every request and can trip CSRF logic
+    elsewhere. Any request carrying a legacy name gets matching expired
+    ``Set-Cookie`` headers — ``nx_refresh`` at both its historical Paths,
+    both access variants — so the jar cleans up on the first response
+    after the upgrade. Read-only otherwise.
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {
+            key.decode("latin-1").lower(): value.decode("latin-1")
+            for key, value in scope.get("headers", [])
+        }
+        present = [
+            name for name in LEGACY_COOKIE_NAMES if name in parse_cookies(headers.get("cookie"))
+        ]
+        if not present:
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_clearing(message: Any) -> None:
+            if message["type"] == "http.response.start":
+                extra: list[tuple[bytes, bytes]] = []
+                for name in present:
+                    paths = (
+                        (COOKIE_PATH_ROOT, COOKIE_PATH_AUTH)
+                        if name == LEGACY_REFRESH_COOKIE
+                        else (COOKIE_PATH_ROOT,)
+                    )
+                    for path in paths:
+                        extra.append(
+                            (
+                                b"set-cookie",
+                                f"{name}=; Max-Age=0; Path={path}; SameSite=Lax".encode("ascii"),
+                            )
+                        )
+                message["headers"] = [*message.get("headers", []), *extra]
+            await send(message)
+
+        await self.app(scope, receive, send_with_clearing)
+
+
 class CsrfMiddleware:
     """Double-submit CSRF (identity-auth §10) — pure ASGI, no config.
 
     Rule (kept intentional, mirroring the auth-kit): a non-safe request
-    that **carries any auth/csrf cookie** must echo the ``nx_csrf``
+    that **carries any auth/csrf cookie** must echo the ``ha_csrf``
     cookie value in ``X-CSRF-Token``. Cookie-less requests (login /
     register before a session exists, HMAC bridge callbacks, bearer
     clients) pass — they are not cookie-authenticated, so CSRF does not

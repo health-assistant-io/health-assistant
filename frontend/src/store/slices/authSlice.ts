@@ -53,7 +53,7 @@ interface AuthState {
 }
 
 // §10: NO token storage. The browser credential is the HttpOnly cookie
-// triple set by the backend (nx_access / nx_refresh / nx_csrf); this store
+// triple set by the backend (ha_access / ha_refresh / ha_csrf); this store
 // only tracks server-verified booleans + claims. localStorage/sessionStorage
 // tokens are forbidden for browser clients (identity-auth §10).
 export const useAuthStore = create<AuthState>((set) => ({

@@ -42,6 +42,12 @@
 # or plain cron:  15 3 * * * cd /opt/health-assistant && scripts/backup.sh
 set -euo pipefail
 
+print_help() {
+    sed -n '3,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
+    exit 0
+}
+case "${1:-}" in -h|--help) print_help ;; esac
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${1:-$ROOT/backups}"
 mkdir -p "$OUT_DIR"
