@@ -247,7 +247,11 @@ class LegacyCookieClearingMiddleware:
             if message["type"] == "http.response.start":
                 extra: list[tuple[bytes, bytes]] = []
                 for name in present:
-                    paths = (COOKIE_PATH_ROOT, COOKIE_PATH_AUTH) if name == LEGACY_REFRESH_COOKIE else (COOKIE_PATH_ROOT,)
+                    paths = (
+                        (COOKIE_PATH_ROOT, COOKIE_PATH_AUTH)
+                        if name == LEGACY_REFRESH_COOKIE
+                        else (COOKIE_PATH_ROOT,)
+                    )
                     for path in paths:
                         extra.append(
                             (
