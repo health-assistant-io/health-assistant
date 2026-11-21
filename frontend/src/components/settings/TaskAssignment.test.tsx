@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TaskAssignment } from './TaskAssignment';
 import { aiConfigApi } from '../../api/aiConfig';
@@ -157,6 +157,10 @@ const STRINGS: Record<string, string> = {
   'settings.ai.scope_system': 'system',
   'settings.ai.dismiss': 'Dismiss',
   'settings.ai.suggested_default': 'Suggested: {{model}}',
+  'settings.ai.advanced_title': 'Advanced — per-task overrides',
+  'settings.ai.advanced_hint':
+    'Only change these when a task must use a different model than its default.',
+  'settings.ai.advanced_count': '{{count}} active',
 };
 
 vi.mock('react-i18next', () => ({
@@ -196,6 +200,11 @@ describe('TaskAssignment', () => {
     // ADR-0037: the default row is single-picker — no fallback pickers
     // anywhere on the defaults rows.
     expect(screen.queryByRole('combobox', { name: 'Fallback — Default model' })).not.toBeInTheDocument();
+    // ADR-0070: per-task overrides start collapsed behind Advanced.
+    const advanced = screen.getByTestId('task-overrides-advanced') as HTMLDetailsElement;
+    expect(advanced.open).toBe(false);
+    fireEvent.click(screen.getByText('Advanced — per-task overrides'));
+    expect(advanced.open).toBe(true);
   });
 
   it('groups the modality slots (defaults) ahead of the derived tasks (§15 IA)', () => {

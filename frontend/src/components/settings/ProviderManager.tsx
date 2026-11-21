@@ -27,6 +27,8 @@ interface ProviderManagerProps {
   scope?: 'global' | 'tenant' | 'user';
   userId?: string;
   tenantId?: string;
+  /** Finish the setup wizard by switching the AI tab in the same scope. */
+  onNavigate?: (tab: 'models' | 'tasks') => void;
 }
 
 type TestState = {
@@ -39,6 +41,7 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
   scope = 'user',
   userId,
   tenantId,
+  onNavigate,
 }) => {
   const { t } = useTranslation();
   const showConfirmation = useUIStore((state) => state.showConfirmation);
@@ -255,6 +258,22 @@ export const ProviderManager: React.FC<ProviderManagerProps> = ({
         scope={scope}
         onClose={() => setSetupOpen(false)}
         onManual={() => setDialog({ provider: null })}
+        onContinueToTasks={
+          onNavigate
+            ? () => {
+                setSetupOpen(false);
+                onNavigate('tasks');
+              }
+            : undefined
+        }
+        onOpenModels={
+          onNavigate
+            ? () => {
+                setSetupOpen(false);
+                onNavigate('models');
+              }
+            : undefined
+        }
       />
 
       {rerunProvider ? (
