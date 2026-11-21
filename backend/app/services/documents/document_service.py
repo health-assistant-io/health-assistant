@@ -22,7 +22,7 @@ from app.storage.bootstrap import (
 )
 from app.storage.documents import (
     DocumentStorage,
-    astorage_key_or_legacy,
+    astorage_key_or_fallback,
     document_key,
     document_object_key,
 )
@@ -584,7 +584,7 @@ async def trigger_extraction(document_id: str, db: AsyncSession) -> str:
         cast(Any, ocr_document).apply_async(
             args=[
                 str(document.id),
-                await astorage_key_or_legacy(document),
+                await astorage_key_or_fallback(document),
                 str(document.tenant_id),
                 str(document.owner_id),
             ]
@@ -736,7 +736,7 @@ async def edit_document_service(
         )
         logger.info(f"Prepared crop tuple: {crop}")
 
-    # Perform edit. The source is materialized from the store (or the legacy
+    # Perform edit. The source is materialized from the store (or the fallback
     # local file) and the result is written back through the store — the
     # temporary paths never outlive this call.
     storage = DocumentStorage()
@@ -852,7 +852,7 @@ async def delete_document(
             parent.include_in_extraction = True
 
     # Remove the bytes through the storage seam (object first, then the
-    # legacy local file). A provider failure must not wedge the DB delete;
+    # fallback local file). A provider failure must not wedge the DB delete;
     # it is logged and the lifecycle rule / migration sweep is the net.
     try:
         await DocumentStorage().adelete(document)

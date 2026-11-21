@@ -339,8 +339,8 @@ async def test_near_duplicate_names_warn(db):
 async def test_replaces_ambiguous_pairing_warns(db):
     """A ``replaces`` body whose qualified key exists but with TWO same-key-
     space candidates in the pack is ambiguous: loud warning, no repoint."""
-    old_key = "medication:replaced-old"
-    row = MedicationCatalog(seed_key=old_key, name="Replaced Old", tenant_id=None)
+    previous_key = "medication:replaced-old"
+    row = MedicationCatalog(seed_key=previous_key, name="Replaced Old", tenant_id=None)
     db.add(row)
     await db.commit()
     pack = make_pack(

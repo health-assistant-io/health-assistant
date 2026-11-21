@@ -155,7 +155,7 @@ async def test_rotation_reseals_under_a_new_kid(binding, data_key, monkeypatch):
     from app.core.config import get_settings
 
     settings = get_settings()
-    old_key, new_key = data_key, Fernet.generate_key().decode()
+    previous_key, new_key = data_key, Fernet.generate_key().decode()
     async with AsyncSessionLocal() as db:
         live = (
             await db.execute(select(CalendarBinding).where(CalendarBinding.id == binding.id))
@@ -165,7 +165,7 @@ async def test_rotation_reseals_under_a_new_kid(binding, data_key, monkeypatch):
         old_kid, old_blob = first.kid, first.sealed_blob
 
         monkeypatch.setattr(settings, "HA_DATA_KEY", new_key)
-        monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", old_key)
+        monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", previous_key)
         second = await creds.set_secret(db, live, {"password": "two"})
         await db.commit()
         assert second.kid != old_kid, "rotation must seal under the new primary key"

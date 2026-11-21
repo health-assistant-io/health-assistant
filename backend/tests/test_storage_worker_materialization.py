@@ -25,7 +25,7 @@ def local_store(tmp_path, monkeypatch):
         ).validate()
     )
     monkeypatch.setattr(ai_tasks, "current_store", lambda settings=None: store)
-    # storage_key_or_legacy resolves the store through its own module
+    # storage_key_or_fallback resolves the store through its own module
     # binding as well as the worker's; patch both so the isolation holds.
     monkeypatch.setattr("app.storage.documents.current_store", lambda settings=None: store)
     yield store
@@ -104,7 +104,7 @@ def test_keyed_row_with_missing_object_falls_back_to_local_file(tmp_path, local_
     from types import SimpleNamespace
     from uuid import uuid4
 
-    from app.storage.documents import storage_key_or_legacy
+    from app.storage.documents import storage_key_or_fallback
 
     legacy = tmp_path / "pre-contract.pdf"
     legacy.write_bytes(b"legacy OCR bytes")
@@ -115,7 +115,7 @@ def test_keyed_row_with_missing_object_falls_back_to_local_file(tmp_path, local_
         file_path=str(legacy),
         object_key="tenants/t/documents/never-copied.pdf",
     )
-    payload = storage_key_or_legacy(row)
+    payload = storage_key_or_fallback(row)
     assert payload == str(legacy)
 
     with _document_source(payload) as path:
@@ -123,7 +123,7 @@ def test_keyed_row_with_missing_object_falls_back_to_local_file(tmp_path, local_
 
 
 @pytest.mark.asyncio
-async def test_retry_dispatch_uses_the_legacy_path_when_the_key_is_missing(
+async def test_retry_dispatch_uses_the_fallback_path_when_the_key_is_missing(
     tmp_path, local_store, monkeypatch
 ) -> None:
     """The OCR dispatch seam (retry/trigger) receives the readable payload."""
@@ -166,7 +166,7 @@ def test_object_backend_never_falls_back_to_a_host_path(tmp_path, monkeypatch) -
     from uuid import uuid4
 
     from app.storage.bootstrap import ENTRYPOINT_SERVER, StorageConfig, build_store
-    from app.storage.documents import storage_key_or_legacy
+    from app.storage.documents import storage_key_or_fallback
 
     store = build_store(
         StorageConfig(
@@ -187,7 +187,7 @@ def test_object_backend_never_falls_back_to_a_host_path(tmp_path, monkeypatch) -
         file_path=str(legacy),
         object_key="tenants/t/documents/key.pdf",
     )
-    assert storage_key_or_legacy(row) == row.object_key
+    assert storage_key_or_fallback(row) == row.object_key
 
 
 def test_cloud_without_object_key_never_returns_a_host_path(tmp_path, monkeypatch) -> None:
@@ -196,7 +196,7 @@ def test_cloud_without_object_key_never_returns_a_host_path(tmp_path, monkeypatc
     from uuid import uuid4
 
     from app.storage.bootstrap import ENTRYPOINT_SERVER, StorageConfig
-    from app.storage.documents import storage_key_or_legacy
+    from app.storage.documents import storage_key_or_fallback
 
     store = build_store(
         StorageConfig(
@@ -217,7 +217,7 @@ def test_cloud_without_object_key_never_returns_a_host_path(tmp_path, monkeypatc
         file_path=str(legacy),
         object_key=None,
     )
-    payload = storage_key_or_legacy(row)
+    payload = storage_key_or_fallback(row)
     assert payload != str(legacy)
     assert not payload.startswith("/")
     assert payload == f"tenants/{row.tenant_id}/documents/{row.id}.pdf"

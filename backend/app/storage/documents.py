@@ -4,7 +4,7 @@
 deployed backend: ``local`` on a self-host volume, ``s3``/``azure_blob``
 under a cloud profile. The database stores an opaque server-generated key
 (``documents.object_key``) — never a path. Rows written before the contract
-carry no key; the facade dual-reads the legacy ``file_path`` while the local
+carry no key; the facade dual-reads the pre-contract ``file_path`` while the local
 volume is mounted so an upgrade keeps every existing document.
 
 Synchronous methods are the primitives; the ``a*`` variants are the async
@@ -73,7 +73,7 @@ def document_key(
 @contextmanager
 def _private_copy(path: Path, suffix: str = ".bin") -> Iterator[Path]:
     """Yield a private ``0600`` temp copy of a durable local file."""
-    descriptor, name = tempfile.mkstemp(prefix="ha-legacy-", suffix=suffix)
+    descriptor, name = tempfile.mkstemp(prefix="ha-fallback-", suffix=suffix)
     target = Path(name)
     try:
         os.chmod(target, 0o600)
@@ -134,7 +134,7 @@ class DocumentStorage:
         return self.key_for(record)
 
     @staticmethod
-    def legacy_path(record: DocumentRecord) -> Path | None:
+    def fallback_path(record: DocumentRecord) -> Path | None:
         raw = getattr(record, "file_path", None)
         return Path(str(raw)) if isinstance(raw, str) and raw else None
 
@@ -151,35 +151,35 @@ class DocumentStorage:
         return target
 
     def read(self, record: DocumentRecord) -> bytes | None:
-        """Object key first, then the legacy local file (dual-read)."""
+        """Object key first, then the pre-contract local file (dual-read)."""
         key = self.object_key(record)
         data = self.store.get(key)
         if data is not None:
             return data
         if not self.is_local:
             return None
-        legacy = self.legacy_path(record)
-        if legacy and legacy.exists():
-            with open(legacy, "rb") as handle:
+        fallback = self.fallback_path(record)
+        if fallback and fallback.exists():
+            with open(fallback, "rb") as handle:
                 return handle.read()
         return None
 
     def stream(self, record: DocumentRecord, chunk_size: int = CHUNK_SIZE) -> Iterator[bytes]:
-        """Chunked bytes from the object, else the legacy local file."""
+        """Chunked bytes from the object, else the pre-contract local file."""
         key = self.object_key(record)
         if self.store.stat(key) is not None:
             return self.store.stream(key, chunk_size=chunk_size)
         if self.is_local:
-            legacy = self.legacy_path(record)
-            if legacy and legacy.exists():
-                return self._file_chunks(legacy, chunk_size)
+            fallback = self.fallback_path(record)
+            if fallback and fallback.exists():
+                return self._file_chunks(fallback, chunk_size)
         raise ObjectNotFound(key)
 
     def exists(self, record: DocumentRecord) -> bool:
         if self.store.stat(self.object_key(record)) is not None:
             return True
-        legacy = self.legacy_path(record)
-        return self.is_local and legacy is not None and legacy.exists()
+        fallback = self.fallback_path(record)
+        return self.is_local and fallback is not None and fallback.exists()
 
     @contextmanager
     def materialize(self, record: DocumentRecord) -> Iterator[Path]:
@@ -190,22 +190,22 @@ class DocumentStorage:
                 yield path
             return
         if self.is_local:
-            legacy = self.legacy_path(record)
-            if legacy and legacy.exists():
-                with _private_copy(legacy, Path(record.filename).suffix or ".bin") as path:
+            fallback = self.fallback_path(record)
+            if fallback and fallback.exists():
+                with _private_copy(fallback, Path(record.filename).suffix or ".bin") as path:
                     yield path
                 return
         raise ObjectNotFound(key)
 
     def delete(self, record: DocumentRecord, *, object_shared: bool = False) -> None:
-        """Remove the object (unless shared) and the legacy local file."""
+        """Remove the object (unless shared) and the pre-contract local file."""
         if not object_shared:
             self.store.delete(self.object_key(record))
         if not self.is_local or object_shared:
             return
-        legacy = self.legacy_path(record)
-        if legacy is not None and legacy.exists():
-            legacy.unlink(missing_ok=True)
+        fallback = self.fallback_path(record)
+        if fallback is not None and fallback.exists():
+            fallback.unlink(missing_ok=True)
 
     # --------------------------------------------------------- key primitives
 
@@ -370,28 +370,28 @@ def document_object_key(record: DocumentRecord) -> str:
     return DocumentStorage.key_for(record)
 
 
-def storage_key_or_legacy(record: Any) -> str:
-    """The payload a processor should receive: an object key or a legacy path.
+def storage_key_or_fallback(record: Any) -> str:
+    """The payload a processor should receive: an object key or a pre-contract path.
 
     New rows carry an ``object_key`` and no ``file_path``. A pre-contract row
     carries only ``file_path``. The migration no longer backfills keys, but a
     row may still have both (a manual backfill, or a partially migrated
     deployment): if the keyed object is absent on the **local** backend, the
-    legacy file is the only readable copy — pass that path so a rolling
+    pre-contract file is the only readable copy — pass that path so a rolling
     upgrade does not fail every old document. A cloud backend never falls back
     to a host path.
     """
     stored = getattr(record, "object_key", None)
     storage = DocumentStorage()
     if isinstance(stored, str) and stored:
-        legacy = DocumentStorage.legacy_path(record)
+        fallback = DocumentStorage.fallback_path(record)
         if (
             storage.is_local
-            and legacy is not None
-            and legacy.exists()
+            and fallback is not None
+            and fallback.exists()
             and storage.stat_key(stored) is None
         ):
-            return str(legacy)
+            return str(fallback)
         return stored
     raw = getattr(record, "file_path", None)
     if isinstance(raw, str) and raw and storage.is_local:
@@ -404,6 +404,6 @@ def storage_key_or_legacy(record: Any) -> str:
     return DocumentStorage.key_for(record)
 
 
-async def astorage_key_or_legacy(record: Any) -> str:
-    """Async bridge for a dispatch site (legacy existence checks off-loop)."""
-    return await anyio.to_thread.run_sync(storage_key_or_legacy, record)
+async def astorage_key_or_fallback(record: Any) -> str:
+    """Async bridge for a dispatch site (pre-contract existence checks off-loop)."""
+    return await anyio.to_thread.run_sync(storage_key_or_fallback, record)

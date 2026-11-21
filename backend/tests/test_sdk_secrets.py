@@ -83,23 +83,23 @@ def test_decrypt_legacy_value_without_kid(cipher_key):
 def test_rotation_decrypts_old_ciphertext():
     """After rotating the primary key, values encrypted with the OLD key
     still decrypt (via HA_DATA_KEY_PREVIOUS)."""
-    old_key = Fernet.generate_key().decode()
+    previous_key = Fernet.generate_key().decode()
     new_key = Fernet.generate_key().decode()
-    old_cipher = SecretCipher(old_key)
+    old_cipher = SecretCipher(previous_key)
     wrapped = old_cipher.encrypt_value("secret-from-old-key")
 
     # New cipher knows the new primary but accepts the old key for decrypt.
-    rotated = SecretCipher(new_key, previous=[old_key])
+    rotated = SecretCipher(new_key, previous=[previous_key])
     assert rotated.decrypt_value(wrapped) == "secret-from-old-key"
 
 
 def test_rotation_encrypts_with_new_key():
     """Newly-encrypted values are stamped with the NEW primary's tag, so a
     migration can find rows that still carry the old tag."""
-    old_key = Fernet.generate_key().decode()
+    previous_key = Fernet.generate_key().decode()
     new_key = Fernet.generate_key().decode()
-    old_cipher = SecretCipher(old_key)
-    rotated = SecretCipher(new_key, previous=[old_key])
+    old_cipher = SecretCipher(previous_key)
+    rotated = SecretCipher(new_key, previous=[previous_key])
 
     old_wrapped = old_cipher.encrypt_value("x")
     new_wrapped = rotated.encrypt_value("x")

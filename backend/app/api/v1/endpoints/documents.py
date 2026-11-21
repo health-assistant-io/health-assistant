@@ -866,7 +866,7 @@ async def get_document_preview_endpoint(
 
     storage = DocumentStorage()
 
-    # If it's already an image, serve it from the store (legacy local rows
+    # If it's already an image, serve it from the store (fallback local rows
     # dual-read through the same facade).
     if document.filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
         import mimetypes

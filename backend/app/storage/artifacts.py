@@ -3,7 +3,7 @@
 Every durable artefact health writes now lands behind the family contract:
 documents, import archives, export archives + manifests, anatomy figures and
 the seed-pack cache. Keys are server-generated and tenant-prefixed; the
-database keeps the key (or, for pre-contract rows, the legacy path that the
+database keeps the key (or, for pre-contract rows, the filesystem path that the
 dual-read branch below still accepts while the local volume is mounted).
 
 The manifest of an export is its **own object** (``…/<job>.manifest.json``),
@@ -85,7 +85,7 @@ def guess_content_type(filename: str | None, default: str = "application/octet-s
 
 
 def looks_like_key(value: str | None) -> bool:
-    """True for a contract key, false for an absolute/legacy filesystem path."""
+    """True for a contract key, false for an absolute/pre-contract filesystem path."""
     if not value:
         return False
     return not (value.startswith("/") or value.startswith(".") or os.path.isabs(value))
@@ -103,7 +103,7 @@ def _file_chunks(path: Path, chunk_size: int = CHUNK_SIZE) -> Iterator[bytes]:
 @contextmanager
 def private_copy(path: Path, suffix: str = ".bin") -> Iterator[Path]:
     """Yield a private ``0600`` temp copy of a durable local file."""
-    descriptor, name = tempfile.mkstemp(prefix="ha-legacy-", suffix=suffix)
+    descriptor, name = tempfile.mkstemp(prefix="ha-fallback-", suffix=suffix)
     target = Path(name)
     try:
         os.chmod(target, 0o600)
@@ -117,9 +117,9 @@ def private_copy(path: Path, suffix: str = ".bin") -> Iterator[Path]:
 class ArtifactStorage:
     """Byte access for exports, imports, anatomy figures and seed packs.
 
-    ``read_key``/``stream_key`` are object-first. The legacy branches accept
+    ``read_key``/``stream_key`` are object-first. The pre-contract branches accept
     the old local location **only while the resolved backend is ``local``**:
-    a cloud profile never reads a mounted legacy volume, matching the family
+    a cloud profile never reads a mounted pre-contract volume, matching the family
     migration law (the dual-read branch is a self-host rollback affordance).
     """
 
@@ -239,41 +239,41 @@ class ArtifactStorage:
 
     # --------------------------------------------------------- dual-read glue
 
-    def read_with_legacy(self, key: str | None, legacy: Path | None) -> bytes | None:
+    def read_with_fallback(self, key: str | None, fallback: Path | None) -> bytes | None:
         if key:
             data = self.store.get(key)
             if data is not None:
                 return data
-        if self.is_local and legacy is not None and legacy.exists():
-            return legacy.read_bytes()
+        if self.is_local and fallback is not None and fallback.exists():
+            return fallback.read_bytes()
         return None
 
-    def stream_with_legacy(
-        self, key: str | None, legacy: Path | None, chunk_size: int = CHUNK_SIZE
+    def stream_with_fallback(
+        self, key: str | None, fallback: Path | None, chunk_size: int = CHUNK_SIZE
     ) -> Iterator[bytes]:
         if key and self.store.stat(key) is not None:
             return self.store.stream(key, chunk_size=chunk_size)
-        if self.is_local and legacy is not None and legacy.exists():
-            return _file_chunks(legacy, chunk_size)
-        raise ObjectNotFound(key or str(legacy))
+        if self.is_local and fallback is not None and fallback.exists():
+            return _file_chunks(fallback, chunk_size)
+        raise ObjectNotFound(key or str(fallback))
 
     @contextmanager
-    def materialize_with_legacy(
-        self, key: str | None, legacy: Path | None, *, suffix: str | None = None
+    def materialize_with_fallback(
+        self, key: str | None, fallback: Path | None, *, suffix: str | None = None
     ) -> Iterator[Path]:
         if key and self.store.stat(key) is not None:
             with self.materialize(key, suffix=suffix) as path:
                 yield path
             return
-        if self.is_local and legacy is not None and legacy.exists():
-            with private_copy(legacy, suffix or legacy.suffix or ".bin") as path:
+        if self.is_local and fallback is not None and fallback.exists():
+            with private_copy(fallback, suffix or fallback.suffix or ".bin") as path:
                 yield path
             return
-        raise ObjectNotFound(key or str(legacy))
+        raise ObjectNotFound(key or str(fallback))
 
-    def delete_with_legacy(self, key: str | None, legacy: Path | None) -> bool:
+    def delete_with_fallback(self, key: str | None, fallback: Path | None) -> bool:
         removed = self.store.delete(key) if key else False
-        if self.is_local and legacy is not None and legacy.exists():
-            legacy.unlink(missing_ok=True)
+        if self.is_local and fallback is not None and fallback.exists():
+            fallback.unlink(missing_ok=True)
             removed = True
         return removed

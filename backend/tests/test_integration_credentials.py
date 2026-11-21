@@ -129,11 +129,11 @@ async def test_rotation_reseals_under_a_new_kid(integration, monkeypatch):
     settings = get_settings()
     original_key = settings.HA_DATA_KEY
     original_previous = settings.HA_DATA_KEY_PREVIOUS
-    old_key = Fernet.generate_key().decode()
+    previous_key = Fernet.generate_key().decode()
     new_key = Fernet.generate_key().decode()
 
     try:
-        monkeypatch.setattr(settings, "HA_DATA_KEY", old_key)
+        monkeypatch.setattr(settings, "HA_DATA_KEY", previous_key)
         monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", "")
         async with AsyncSessionLocal() as db:
             first = await seal_credential(db, integration, IntegrationCredentialKind.OAUTH2, SECRET)
@@ -143,7 +143,7 @@ async def test_rotation_reseals_under_a_new_kid(integration, monkeypatch):
             assert first.rotated_at is None
 
         monkeypatch.setattr(settings, "HA_DATA_KEY", new_key)
-        monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", old_key)
+        monkeypatch.setattr(settings, "HA_DATA_KEY_PREVIOUS", previous_key)
         async with AsyncSessionLocal() as db:
             rotated = await seal_credential(
                 db,
