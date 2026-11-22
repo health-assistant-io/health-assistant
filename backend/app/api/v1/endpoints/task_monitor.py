@@ -210,12 +210,12 @@ async def retry_document_ocr(
     await db.commit()
 
     # Trigger Celery OCR task
-    from app.storage.documents import astorage_key_or_legacy
+    from app.storage.documents import astorage_key_or_fallback
     from app.workers.ai_tasks import ocr_document
 
     ocr_document.delay(
         str(document_id),
-        await astorage_key_or_legacy(doc),
+        await astorage_key_or_fallback(doc),
         str(doc.tenant_id),
         str(doc.owner_id),
     )

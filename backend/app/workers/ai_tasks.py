@@ -37,7 +37,7 @@ from app.workers.tasks import async_task, get_async_session
 logger = get_task_logger(__name__)
 
 
-def _is_legacy_path(value: str) -> bool:
+def _is_fallback_path(value: str) -> bool:
     """True for a pre-contract absolute path in an already-queued message.
 
     New dispatches always send an object key. A rolling upgrade can still
@@ -49,12 +49,12 @@ def _is_legacy_path(value: str) -> bool:
 
 @contextmanager
 def _document_source(object_key: str):
-    """Yield a private path for a key, or the legacy path as-is.
+    """Yield a private path for a key, or the fallback path as-is.
 
     Real keys are materialized into a ``0600`` temp file that is removed on
     every exit path; the OCR/DICOM libraries never see a durable host path.
     """
-    if _is_legacy_path(object_key):
+    if _is_fallback_path(object_key):
         path = Path(object_key)
         if not os.path.exists(object_key):
             raise FileNotFoundError("document file is not available")

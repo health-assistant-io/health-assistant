@@ -966,14 +966,14 @@ async def import_backup(
     config_dict = json.loads(config_json)
     config = FHIRImportConfig(**config_dict) if config_dict else None
 
-    legacy_path = Path(object_key) if object_key.startswith("/") else None
+    fallback_path = Path(object_key) if object_key.startswith("/") else None
     storage = ArtifactStorage()
-    key = object_key if legacy_path is None else None
+    key = object_key if fallback_path is None else None
 
     db, _engine = get_async_session()
     try:
         async with db:
-            with storage.materialize_with_legacy(key, legacy_path) as archive_path:
+            with storage.materialize_with_fallback(key, fallback_path) as archive_path:
                 svc = ImportService(db)
                 result = await svc.run_import(job_id, str(archive_path), owner_id, config=config)
         return {
@@ -989,10 +989,10 @@ async def import_backup(
         await db.close()
         try:
             # The import is a one-shot artefact: remove the object on both
-            # success and failure. Legacy path messages keep deleting the
+            # success and failure. Pre-contract path messages keep deleting the
             # local file as before.
-            if legacy_path is not None:
-                legacy_path.unlink(missing_ok=True)
+            if fallback_path is not None:
+                fallback_path.unlink(missing_ok=True)
             else:
                 storage.delete(object_key)
         except Exception:

@@ -219,7 +219,7 @@ class LegacyCookieClearingMiddleware:
     Upgraded browsers still hold the family-shared names for up to the
     refresh absolute TTL; left alone they shadow nothing here (the app
     reads only ``ha_*``) but ride every request and can trip CSRF logic
-    elsewhere. Any request carrying a legacy name gets matching expired
+    elsewhere. Any request carrying a previous-family name gets matching expired
     ``Set-Cookie`` headers — ``nx_refresh`` at both its historical Paths,
     both access variants — so the jar cleans up on the first response
     after the upgrade. Read-only otherwise.

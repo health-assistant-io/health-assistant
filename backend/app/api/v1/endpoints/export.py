@@ -291,11 +291,11 @@ async def download_export(
     # stores its archive under the tenant's object prefix.
     from fastapi.responses import FileResponse as _FileResponse
 
-    legacy = Path(job.file_path)
-    if legacy.is_absolute() and legacy.exists():
+    fallback = Path(job.file_path)
+    if fallback.is_absolute() and fallback.exists():
         return _FileResponse(
             job.file_path,
-            filename=legacy.name,
+            filename=fallback.name,
             media_type="application/octet-stream",
         )
 

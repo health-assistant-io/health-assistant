@@ -29,7 +29,7 @@ def dsn_parts(*, migrations: bool = False) -> dict[str, str]:
 
     ``migrations=True`` (owner-side DDL entrypoints) prefers
     ``HA_MIGRATIONS_DATABASE_URL`` and falls back to ``HA_DATABASE_URL``
-    (legacy single-DSN dev setups). Runtime callers read the app DSN.
+    (previous single-DSN dev setups). Runtime callers read the app DSN.
     Per-component fallback goes to the ``POSTGRES_*`` settings (dev/test
     assemble path).
     """
@@ -68,7 +68,7 @@ def migrations_url() -> str:
 
     - ``HA_MIGRATIONS_DATABASE_URL`` wins (the compose migrate service sets
       it; serving containers never see it);
-    - fallback to ``HA_DATABASE_URL`` only in the legacy single-DSN shape;
+    - fallback to ``HA_DATABASE_URL`` only in the previous single-DSN shape;
     - ``HA_DB_SPLIT=1`` without a migrations URL is the ADR's "broken"
       state: refuse, never silently run DDL against the app DSN.
     """

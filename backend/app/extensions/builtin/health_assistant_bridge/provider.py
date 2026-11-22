@@ -1011,10 +1011,10 @@ class HealthAssistantBridgeProvider(BaseHealthProvider):
         if info is not None:
             file_size = info.size
         else:
-            legacy = storage.legacy_path(d)
-            if legacy is not None and legacy.exists():
+            fallback = storage.fallback_path(d)
+            if fallback is not None and fallback.exists():
                 try:
-                    file_size = legacy.stat().st_size
+                    file_size = fallback.stat().st_size
                 except OSError:
                     file_size = None
         return {

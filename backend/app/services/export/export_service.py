@@ -862,7 +862,7 @@ class ExportService:
                     )
 
                 # Document bytes come through the storage facade (object first,
-                # legacy local path for pre-contract rows), never from a path in
+                # fallback local path for pre-contract rows), never from a path in
                 # the export job's process.
                 from app.storage.documents import DocumentStorage
 

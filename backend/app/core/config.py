@@ -218,7 +218,7 @@ class Settings(BaseSettings):
     # The OWNER DSN (ADR-0064): injected only into the one-shot `migrate`
     # service (alembic, provisioning, checkpoint setup prefer it over
     # HA_DATABASE_URL). Serving containers must never receive it. When unset,
-    # DDL entrypoints fall back to HA_DATABASE_URL (legacy single-DSN dev
+    # DDL entrypoints fall back to HA_DATABASE_URL (previous single-DSN dev
     # setups); `HA_DB_SPLIT=1` without it refuses to run (the ADR's "broken"
     # state — fail closed, no silent fallback).
     HA_MIGRATIONS_DATABASE_URL: str | None = None
