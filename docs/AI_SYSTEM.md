@@ -95,6 +95,19 @@ Writes are **fail-soft** (a failed audit insert is logged and dropped — it nev
 
 **Health delta worth knowing:** the embeddings (`run_embed`) and speech-to-text (`transcribe_audio`) paths are direct HTTP clients outside the LangChain gateway; the `embed`/`stt` routes are already in the vocabulary, and their emission lands when those seams grow the tenant/trace context plumbing (tracked as a follow-up, not a silent omission).
 
+### Setup workflow and advanced overrides
+
+The BYOK wizard is ordered: connect a provider → choose defaults (curated
+models + capability slots `default`, `ocr`, `transcription`, `embed`,
+`decision` default) → assign models only when no default was produced →
+task assignments. The wizard binds no per-kind decision row; the single
+`decision` default is its only decision assignment. The finish action opens
+the same scope's Tasks tab; when no model is available it offers **Open
+models** and still allows finishing later. `TaskAssignment` keeps the
+default rows visible and collapses specialist tasks plus the Decision kinds
+group under **Advanced — per-task overrides** for every scope (SYSTEM,
+TENANT, USER).
+
 ### UI Management
 Administrators can manage AI settings via the UI at `/settings/ai-config`, and AI spend/prices at Data & Cost (`/admin/tenant/data-cost` / `/admin/system/data-cost`):
 1. **Add a Provider:** Specify the API Base URL and API Key.

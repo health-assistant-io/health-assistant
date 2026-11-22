@@ -144,9 +144,11 @@ function CountrySelect({ country, onChange }: { country: string; onChange: (c: s
 function SuccessDefaults({
   providerId,
   result,
+  onOpenModels,
 }: {
   providerId: string;
   result: ProviderSetupResult;
+  onOpenModels?: () => void;
 }) {
   const { t } = useTranslation();
   const setProviderDefault = useAIConfigStore((state) => state.setProviderDefault);
@@ -263,17 +265,39 @@ function SuccessDefaults({
 
   if (providerModels.length === 0) {
     return (
-      <p className="text-xs text-gray-500 dark:text-dark-muted">
-        {t('settings.ai.setup.no_defaults')}
-      </p>
+      <div
+        className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-900/20"
+        data-testid="setup-assign-models"
+      >
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-dark-text">
+          {t('settings.ai.setup.assign_models_title')}
+        </h3>
+        <p className="text-xs text-gray-600 dark:text-dark-muted">
+          {t('settings.ai.setup.assign_models_hint')}
+        </p>
+        {onOpenModels ? (
+          <Button size="sm" variant="ghost" onClick={onOpenModels}>
+            {t('settings.ai.setup.open_models')}
+          </Button>
+        ) : null}
+      </div>
     );
   }
+
+  const hasDefault =
+    rows.some((row) => Boolean(slotValue(row.assigned))) ||
+    decisionRows.some((row) => Boolean(slotValue(row.assigned)));
 
   return (
     <div className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-dark-border">
       <h3 className="text-sm font-semibold text-gray-900 dark:text-dark-text">
         {t('settings.ai.setup.default_models')}
       </h3>
+      {!hasDefault ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          {t('settings.ai.setup.assign_models_hint')}
+        </p>
+      ) : null}
       {rows.map((row) => (
         <ModelPicker
           key={row.task}
@@ -297,6 +321,9 @@ function SuccessDefaults({
           ))
         : null}
       {error ? <p className="text-xs text-red-600 dark:text-red-400">{error}</p> : null}
+      <p className="text-xs text-gray-500 dark:text-dark-muted">
+        {t('settings.ai.setup.advanced_handoff')}
+      </p>
     </div>
   );
 }
@@ -306,7 +333,11 @@ export const ProviderSetupModal: React.FC<{
   onClose: () => void;
   onManual: () => void;
   scope?: 'global' | 'tenant' | 'user';
-}> = ({ open, onClose, onManual, scope = 'user' }) => {
+  /** Finish: close and open this scope's task assignments. */
+  onContinueToTasks?: () => void;
+  /** Finish: open this scope's models surface. */
+  onOpenModels?: () => void;
+}> = ({ open, onClose, onManual, scope = 'user', onContinueToTasks, onOpenModels }) => {
   const { t } = useTranslation();
   const setupProvider = useAIConfigStore((state) => state.setupProvider);
   const createProvider = useAIConfigStore((state) => state.createProvider);
@@ -332,6 +363,7 @@ export const ProviderSetupModal: React.FC<{
   const [resultName, setResultName] = useState('');
   // Review step (parity with the re-run dialog): connect binds nothing —
   // what registers and what fills the empty defaults is chosen here.
+  const [bindEmbeddings, setBindEmbeddings] = useState(true);
   const [reviewOptions, setReviewOptions] = useState<SetupReviewOptions>({
     curatedIds: [],
     bindChat: true,
@@ -412,6 +444,7 @@ export const ProviderSetupModal: React.FC<{
           bind_chat: false,
           bind_vision: false,
           bind_stt: false,
+          bind_embeddings: false,
           bind_decision: false,
         },
       });
@@ -455,6 +488,7 @@ export const ProviderSetupModal: React.FC<{
           bind_chat: reviewOptions.bindChat,
           bind_vision: reviewOptions.bindVision,
           bind_stt: reviewOptions.bindStt,
+          bind_embeddings: bindEmbeddings,
           bind_decision: reviewOptions.bindDecision && decisionDeclared,
         },
       });
@@ -570,6 +604,18 @@ export const ProviderSetupModal: React.FC<{
                   },
                 ]
               : []),
+            ...(preset.embeddings_model
+              ? [
+                  {
+                    id: 'embeddings',
+                    label: t('settings.ai.setup.slot_embeddings'),
+                    sub: fillsLabel(preset.embeddings_model, 'embed'),
+                    candidate: preset.embeddings_model,
+                    bind: bindEmbeddings,
+                    set: setBindEmbeddings,
+                  },
+                ]
+              : []),
           ]
         : []),
       ...(decisionDeclared
@@ -625,6 +671,7 @@ export const ProviderSetupModal: React.FC<{
             steps={[
               { id: 'connect', label: t('settings.ai.setup.step.connect') },
               { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+            { id: 'tasks', label: t('settings.ai.setup.step.tasks') },
             ]}
             current={1}
             label={t('settings.ai.setup.step.progress')}
@@ -688,10 +735,26 @@ export const ProviderSetupModal: React.FC<{
             <Button size="sm" variant="ghost" onClick={onClose}>
               {t('settings.ai.close')}
             </Button>
+            <Button
+              size="sm"
+              disabled={!onContinueToTasks}
+              onClick={onContinueToTasks}
+            >
+              {t('settings.ai.setup.continue_to_tasks')}
+            </Button>
           </div>
         }
       >
         <div className="space-y-3">
+          <SetupSteps
+            steps={[
+              { id: 'connect', label: t('settings.ai.setup.step.connect') },
+              { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+              { id: 'tasks', label: t('settings.ai.setup.step.tasks') },
+            ]}
+            current={2}
+            label={t('settings.ai.setup.step.progress')}
+          />
           <p className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-dark-text">
             <Check className="h-4 w-4 text-green-600" aria-hidden />
             {t('settings.ai.setup.done', { name: resultName })}
@@ -704,7 +767,11 @@ export const ProviderSetupModal: React.FC<{
               {t('settings.ai.setup.curated_missed')}
             </p>
           ) : null}
-          <SuccessDefaults providerId={result.provider.id} result={result} />
+          <SuccessDefaults
+            providerId={result.provider.id}
+            result={result}
+            onOpenModels={onOpenModels}
+          />
         </div>
       </Modal>
     );
@@ -750,6 +817,7 @@ export const ProviderSetupModal: React.FC<{
           steps={[
             { id: 'connect', label: t('settings.ai.setup.step.connect') },
             { id: 'defaults', label: t('settings.ai.setup.step.defaults') },
+            { id: 'tasks', label: t('settings.ai.setup.step.tasks') },
           ]}
           current={0}
           label={t('settings.ai.setup.step.progress')}

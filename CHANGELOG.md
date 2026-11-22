@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **AI setup now ends on task assignments.** The BYOK wizard asks for the
+  provider, then the defaults, then — only if no default could be set — for
+  models, and its primary action opens the same scope's Tasks tab. Per-task
+  overrides (specialist tasks and decision kinds) are a collapsed
+  **Advanced** disclosure for SYSTEM, TENANT and USER scope; the setup binds
+  the single decision default only.
+
 ## [0.11.2] - 2026-11-20
 
 ### Changed
