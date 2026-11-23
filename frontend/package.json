@@ -74,7 +74,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "jsdom": "^30.0.1",
+    "jsdom": "^31.0.1",
     "playwright": "^1.65.1",
     "postcss": "^8.5.33",
     "tailwind-merge": "^3.7.1",
