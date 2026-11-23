@@ -419,12 +419,12 @@ FIGURES_DIR = "anatomy_figures"
 
 
 def _figure_artifact(value: str | None) -> tuple[str | None, Path | None]:
-    """Split a stored figure location into ``(key, legacy_path)``.
+    """Split a stored figure location into ``(key, fallback_path)``.
 
     New rows hold a tenant-prefixed object key; pre-contract rows hold the
     old ``anatomy_figures/...`` relative path, which the dual-read branch
     resolves under the local upload root while that volume is mounted. The
-    legacy prefix is matched explicitly: a relative segment like
+    pre-contract prefix is matched explicitly: a relative segment like
     ``anatomy_figures/man-front.webp`` would otherwise look like an object
     key and be looked up in the wrong place.
     """
@@ -496,13 +496,13 @@ def figure_source_key(figure: AnatomyFigure) -> tuple[str | None, Path | None]:
 
 
 def read_figure_image(figure: AnatomyFigure, *, source: bool = False) -> bytes | None:
-    """Read the figure bytes through the store (legacy local path fallback)."""
+    """Read the figure bytes through the store (pre-contract local path)."""
     from app.storage.artifacts import ArtifactStorage
 
-    key, legacy = figure_source_key(figure) if source else figure_image_key(figure)
-    if key is None and legacy is None:
+    key, fallback = figure_source_key(figure) if source else figure_image_key(figure)
+    if key is None and fallback is None:
         return None
-    return ArtifactStorage().read_with_legacy(key, legacy)
+    return ArtifactStorage().read_with_fallback(key, fallback)
 
 
 async def aread_figure_image(figure: AnatomyFigure, *, source: bool = False) -> bytes | None:
@@ -621,10 +621,10 @@ async def update_anatomy_figure(
     from app.storage.artifacts import ArtifactStorage
 
     if image_data:
-        old_key, old_legacy = figure_image_key(figure)
-        if old_key or old_legacy:
+        previous_key, previous_fallback = figure_image_key(figure)
+        if previous_key or previous_fallback:
             await anyio.to_thread.run_sync(
-                ArtifactStorage().delete_with_legacy, old_key, old_legacy
+                ArtifactStorage().delete_with_fallback, previous_key, previous_fallback
             )
         rel_path, w, h = await anyio.to_thread.run_sync(
             partial(save_figure_image, figure.slug, image_data, ext)
@@ -633,20 +633,20 @@ async def update_anatomy_figure(
         figure.width = w
         figure.height = h
     if source_data:
-        stale_key, stale_legacy = figure_source_key(figure)
-        if stale_key or stale_legacy:
+        stale_key, stale_fallback = figure_source_key(figure)
+        if stale_key or stale_fallback:
             await anyio.to_thread.run_sync(
-                ArtifactStorage().delete_with_legacy, stale_key, stale_legacy
+                ArtifactStorage().delete_with_fallback, stale_key, stale_fallback
             )
         source_path, _, _ = await anyio.to_thread.run_sync(
             partial(save_figure_image, figure.slug, source_data, source_ext, kind="source")
         )
         figure.source_image_path = source_path
     elif clear_source:
-        stale_key, stale_legacy = figure_source_key(figure)
-        if stale_key or stale_legacy:
+        stale_key, stale_fallback = figure_source_key(figure)
+        if stale_key or stale_fallback:
             await anyio.to_thread.run_sync(
-                ArtifactStorage().delete_with_legacy, stale_key, stale_legacy
+                ArtifactStorage().delete_with_fallback, stale_key, stale_fallback
             )
         figure.source_image_path = None
     await db.commit()
@@ -660,8 +660,8 @@ async def delete_anatomy_figure(db: AsyncSession, figure: AnatomyFigure) -> None
     from app.storage.artifacts import ArtifactStorage
 
     storage = ArtifactStorage()
-    for key, legacy in (figure_image_key(figure), figure_source_key(figure)):
-        if key or legacy:
-            await anyio.to_thread.run_sync(storage.delete_with_legacy, key, legacy)
+    for key, fallback in (figure_image_key(figure), figure_source_key(figure)):
+        if key or fallback:
+            await anyio.to_thread.run_sync(storage.delete_with_fallback, key, fallback)
     await db.delete(figure)
     await db.commit()

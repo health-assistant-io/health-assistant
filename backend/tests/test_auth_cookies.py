@@ -8,7 +8,7 @@ Covers identity-auth §10 as landed for health:
 - cookie-authenticated requests end-to-end (``get_token`` cookie-first);
 - refresh rotation rotates the cookies (cookie-presented refresh);
 - logout / logout-all clear the triple;
-- the WS handshake: ``nx_access`` cookie accepted, disallowed ``Origin``
+- the WS handshake: ``ha_access`` cookie accepted, disallowed ``Origin``
   rejected with 1008, configured ``HA_WS_ALLOWED_ORIGINS`` honored, the
   §9 subprotocol channel keeps working;
 - a §9 user-client Bearer flow end-to-end (no cookies involved).
@@ -82,12 +82,12 @@ async def _login_client(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_sets_contract_cookie_triple(async_client: AsyncClient):
-    """login stamps nx_access / nx_refresh / nx_csrf with the §10 flags."""
+    """login stamps ha_access / ha_refresh / ha_csrf with the §10 flags."""
     _, resp = await _login_client(async_client)
 
     jars = _set_cookies_by_name(resp)
 
-    access = jars["nx_access"][0]
+    access = jars["ha_access"][0]
     assert _flag(access, "HttpOnly"), access
     assert _flag(access, "SameSite=Lax"), access
     assert _attr(access, "Path") == "/", access
@@ -96,21 +96,21 @@ async def test_login_sets_contract_cookie_triple(async_client: AsyncClient):
     assert not _flag(access, "Secure"), access
     assert "__Host-" not in jars, jars.keys()
 
-    refresh = jars["nx_refresh"][0]
+    refresh = jars["ha_refresh"][0]
     assert _flag(refresh, "HttpOnly"), refresh
     assert _flag(refresh, "SameSite=Lax"), refresh
     # The refresh cookie is pinned to the auth prefix (§10).
     assert _attr(refresh, "Path") == "/api/v1/auth", refresh
 
-    csrf = jars["nx_csrf"][0]
-    assert not _flag(csrf, "HttpOnly"), "nx_csrf must stay JS-readable"
+    csrf = jars["ha_csrf"][0]
+    assert not _flag(csrf, "HttpOnly"), "ha_csrf must stay JS-readable"
     assert _flag(csrf, "SameSite=Lax"), csrf
     assert _attr(csrf, "Path") == "/", csrf
 
 
 @pytest.mark.asyncio
 async def test_secure_mode_uses_host_prefixed_access_cookie(async_client: AsyncClient):
-    """HA_COOKIE_SECURE=true ⇒ __Host-nx_access + Secure on everything."""
+    """HA_COOKIE_SECURE=true ⇒ __Host-ha_access + Secure on everything."""
     user = await create_user(role=Role.USER, password="super-secret-pass-2")
     monkey = pytest.MonkeyPatch()
     monkey.setattr(settings, "HA_COOKIE_SECURE", True)
@@ -124,17 +124,17 @@ async def test_secure_mode_uses_host_prefixed_access_cookie(async_client: AsyncC
 
     assert resp.status_code == 200, resp.text
     jars = _set_cookies_by_name(resp)
-    assert "__Host-nx_access" in jars, jars.keys()
-    assert "nx_access" not in jars
-    assert _flag(jars["__Host-nx_access"][0], "Secure")
-    assert _flag(jars["nx_refresh"][0], "Secure")
-    assert _flag(jars["nx_csrf"][0], "Secure")
+    assert "__Host-ha_access" in jars, jars.keys()
+    assert "ha_access" not in jars
+    assert _flag(jars["__Host-ha_access"][0], "Secure")
+    assert _flag(jars["ha_refresh"][0], "Secure")
+    assert _flag(jars["ha_csrf"][0], "Secure")
 
 
 @pytest.mark.asyncio
 async def test_samesite_attribute_is_case_insensitive_parsed():
     """Gotcha #6: the SameSite check must tolerate any attribute casing."""
-    header = "nx_access=abc; httponly; samesite=LAX; path=/"
+    header = "ha_access=abc; httponly; samesite=LAX; path=/"
     assert _flag(header, "SameSite=Lax")
     assert _flag(header, "HTTPONLY")
 
@@ -150,7 +150,7 @@ async def test_cookie_non_get_without_csrf_header_is_403(async_client: AsyncClie
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
     )
     assert resp.status_code == 403, resp.text
     assert "CSRF" in resp.json()["detail"]
@@ -162,7 +162,7 @@ async def test_cookie_non_get_with_wrong_csrf_header_is_403(async_client: AsyncC
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
         headers={"X-CSRF-Token": "not-the-cookie-value"},
     )
     assert resp.status_code == 403
@@ -174,7 +174,7 @@ async def test_cookie_non_get_with_matching_csrf_header_passes(async_client: Asy
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
         headers={"X-CSRF-Token": "cookie-value"},
         json={"refresh_token": issued.refresh_token},
     )
@@ -214,7 +214,7 @@ async def test_get_requests_are_never_csrf_gated(async_client: AsyncClient):
     issued = await sign_in(user)
     resp = await async_client.get(
         "/api/v1/auth/validate",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
     )
     assert resp.status_code == 200
     assert resp.json()["valid"] is True
@@ -244,7 +244,7 @@ async def test_get_token_prefers_cookie_over_bearer(async_client: AsyncClient):
     issued = await sign_in(user)
     resp = await async_client.get(
         "/api/v1/auth/validate",
-        cookies={"nx_access": "not-a-valid-jwt"},
+        cookies={"ha_access": "not-a-valid-jwt"},
         headers={"Authorization": f"Bearer {issued.access_token}"},
     )
     assert resp.status_code == 401
@@ -317,22 +317,22 @@ async def test_logout_revokes_via_auth_sessions_when_redis_is_down(
 
 @pytest.mark.asyncio
 async def test_refresh_via_cookie_rotates_cookies(async_client: AsyncClient):
-    """Browsers present no body — the nx_refresh cookie drives rotation and
+    """Browsers present no body — the ha_refresh cookie drives rotation and
     the response re-stamps the whole §10 triple."""
     user = await create_user()
     issued = await sign_in(user)
 
     resp = await async_client.post(
         "/api/v1/auth/refresh",
-        cookies={"nx_refresh": issued.refresh_token},
+        cookies={"ha_refresh": issued.refresh_token},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
     jars = _set_cookies_by_name(resp)
-    new_access = jars["nx_access"][0]
-    new_refresh = jars["nx_refresh"][0]
-    new_csrf = jars["nx_csrf"][0]
+    new_access = jars["ha_access"][0]
+    new_refresh = jars["ha_refresh"][0]
+    new_csrf = jars["ha_csrf"][0]
     assert issued.access_token not in new_access
     assert issued.refresh_token not in new_refresh
     assert body["refresh_token"] != issued.refresh_token
@@ -342,7 +342,7 @@ async def test_refresh_via_cookie_rotates_cookies(async_client: AsyncClient):
     # The rotated pair actually authenticates (cookie-first get_token).
     ok = await async_client.get(
         "/api/v1/auth/validate",
-        cookies={"nx_access": body["access_token"]},
+        cookies={"ha_access": body["access_token"]},
     )
     assert ok.status_code == 200
 
@@ -372,14 +372,14 @@ async def test_logout_clears_cookies(async_client: AsyncClient):
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
         headers={"X-CSRF-Token": "cookie-value"},
         json={"refresh_token": issued.refresh_token},
     )
     assert resp.status_code == 200
 
     jars = _set_cookies_by_name(resp)
-    for name in ("nx_access", "nx_refresh", "nx_csrf"):
+    for name in ("ha_access", "ha_refresh", "ha_csrf"):
         assert name in jars, f"logout must clear {name}: {jars.keys()}"
         header = jars[name][0]
         assert int(_attr(header, "Max-Age") or 1) == 0, header
@@ -391,27 +391,27 @@ async def test_logout_all_clears_cookies(async_client: AsyncClient):
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout-all",
-        cookies={"nx_access": issued.access_token, "nx_csrf": "cookie-value"},
+        cookies={"ha_access": issued.access_token, "ha_csrf": "cookie-value"},
         headers={"X-CSRF-Token": "cookie-value"},
     )
     assert resp.status_code == 200
 
     jars = _set_cookies_by_name(resp)
-    for name in ("nx_access", "nx_refresh", "nx_csrf"):
+    for name in ("ha_access", "ha_refresh", "ha_csrf"):
         assert name in jars and int(_attr(jars[name][0], "Max-Age") or 1) == 0
 
 
 @pytest.mark.asyncio
 async def test_logout_via_refresh_cookie_only(async_client: AsyncClient):
-    """Body-less logout: the nx_refresh cookie supplies the refresh token."""
+    """Body-less logout: the ha_refresh cookie supplies the refresh token."""
     user = await create_user()
     issued = await sign_in(user)
     resp = await async_client.post(
         "/api/v1/auth/logout",
         cookies={
-            "nx_access": issued.access_token,
-            "nx_refresh": issued.refresh_token,
-            "nx_csrf": "cookie-value",
+            "ha_access": issued.access_token,
+            "ha_refresh": issued.refresh_token,
+            "ha_csrf": "cookie-value",
         },
         headers={"X-CSRF-Token": "cookie-value"},
     )
@@ -419,7 +419,7 @@ async def test_logout_via_refresh_cookie_only(async_client: AsyncClient):
     # The access jti is revoked → the cookie session is dead.
     dead = await async_client.get(
         "/api/v1/auth/validate",
-        cookies={"nx_access": issued.access_token},
+        cookies={"ha_access": issued.access_token},
     )
     assert dead.status_code == 401
 
@@ -440,7 +440,7 @@ async def test_ws_cookie_handshake_accepted():
     client = _ws_client()
     with client.websocket_connect(
         "/api/v1/ws/notifications",
-        headers={"cookie": f"nx_access={issued.access_token}"},
+        headers={"cookie": f"ha_access={issued.access_token}"},
     ) as ws:
         # Handshake accepted (a rejection closes with 1008 before accept,
         # which raises WebSocketDisconnect on enter).
@@ -457,7 +457,7 @@ async def test_ws_origin_gate_rejects_unknown_origin():
         client.websocket_connect(
             "/api/v1/ws/notifications",
             headers={
-                "cookie": f"nx_access={issued.access_token}",
+                "cookie": f"ha_access={issued.access_token}",
                 "origin": "https://evil.example",
             },
         ),
@@ -474,7 +474,7 @@ async def test_ws_origin_gate_allows_same_origin():
     with client.websocket_connect(
         "/api/v1/ws/notifications",
         headers={
-            "cookie": f"nx_access={issued.access_token}",
+            "cookie": f"ha_access={issued.access_token}",
             "origin": "http://testserver",
         },
     ) as ws:
@@ -492,7 +492,7 @@ async def test_ws_origin_gate_honors_configured_allowlist():
         with client.websocket_connect(
             "/api/v1/ws/notifications",
             headers={
-                "cookie": f"nx_access={issued.access_token}",
+                "cookie": f"ha_access={issued.access_token}",
                 "origin": "https://spa.example",
             },
         ) as ws:
@@ -502,7 +502,7 @@ async def test_ws_origin_gate_honors_configured_allowlist():
             client.websocket_connect(
                 "/api/v1/ws/notifications",
                 headers={
-                    "cookie": f"nx_access={issued.access_token}",
+                    "cookie": f"ha_access={issued.access_token}",
                     "origin": "https://other.example",
                 },
             ),
@@ -535,6 +535,6 @@ async def test_ws_origin_gate_missing_origin_passes():
     client = _ws_client()
     with client.websocket_connect(
         "/api/v1/ws/notifications",
-        headers={"cookie": f"nx_access={issued.access_token}"},
+        headers={"cookie": f"ha_access={issued.access_token}"},
     ) as ws:
         assert ws is not None

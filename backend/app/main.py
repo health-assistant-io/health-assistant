@@ -21,7 +21,7 @@ from app.catalogs.policy import (
 from app.core import boot
 from app.core.authz.enforce import enforce_route_policy
 from app.core.config import DEV_LAN_ORIGIN_REGEX, settings
-from app.core.cookies import CsrfMiddleware
+from app.core.cookies import CsrfMiddleware, LegacyCookieClearingMiddleware
 from app.core.csp import DOCUMENT_CSP
 from app.core.errors import DomainError
 from app.core.logging_setup import setup_logging
@@ -417,12 +417,14 @@ class SSEPassthroughGZipMiddleware(GZipMiddleware):
 app.add_middleware(SSEPassthroughGZipMiddleware, minimum_size=1000)
 
 # §10 double-submit CSRF (plan 16 H3): non-safe /api/* requests that carry
-# session/CSRF cookies must echo nx_csrf in X-CSRF-Token (403 otherwise).
+# session/CSRF cookies must echo ha_csrf in X-CSRF-Token (403 otherwise).
 # Mounted innermost (first-added) so its 403s flow back out through the
 # security-headers + CORS layers and stay readable by the browser.
 # Bearer-authenticated requests (§9 user clients) and the auth bootstrap
 # endpoints are exempt — see app/core/cookies.py.
 app.add_middleware(CsrfMiddleware)
+# Retire pre-prefix nx_* cookies on sight (family co-location rename).
+app.add_middleware(LegacyCookieClearingMiddleware)
 
 
 # Security: baseline response headers (audit A7) — the kit's middleware

@@ -144,7 +144,7 @@ def _apply_lane_lock_keys(source: SeedSource) -> list[int]:
 
 
 def _cache_path(source_id: uuid.UUID, digest: str) -> Any:
-    """The legacy local location (dual-read only; new packs are objects)."""
+    """The fallback local location (dual-read only; new packs are objects)."""
     from pathlib import Path
 
     return Path(get_settings().HA_UPLOAD_DIR) / "seed-packs" / str(source_id) / f"{digest}.zip"
@@ -187,7 +187,7 @@ def read_pack_cache(source_id: uuid.UUID, digest: str) -> bytes | None:
         return None
     from app.storage.artifacts import ArtifactStorage, seed_pack_key
 
-    return ArtifactStorage().read_with_legacy(
+    return ArtifactStorage().read_with_fallback(
         seed_pack_key(source_id, digest), _cache_path(source_id, digest)
     )
 

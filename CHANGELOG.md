@@ -11,6 +11,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-23
+
+### Fixed
+
+- **Installer readiness on hostname installs.** The bundle installer now
+  sends the `APP_URL` hostname on its `/ready` probe, so production Host
+  validation no longer rejects the loopback check with `400 Invalid host
+  header` and aborts an otherwise healthy install. The release smoke's
+  dry-run assertion and its post-install probes were corrected in the same
+  change.
+
+## [0.12.0] - 2026-11-22
+
+### Changed
+
+- **AI setup now ends on task assignments.** The BYOK wizard asks for the
+  provider, then the defaults, then — only if no default could be set — for
+  models, and its primary action opens the same scope's Tasks tab. Per-task
+  overrides (specialist tasks and decision kinds) are a collapsed
+  **Advanced** disclosure for SYSTEM, TENANT and USER scope; the setup binds
+  the single decision default only.
+
+## [0.11.2] - 2026-11-20
+
+### Changed
+
+- **Per-app cookie names:** session cookies are now `ha_access` /
+  `ha_refresh` / `ha_csrf` (previously the shared family `nx_*` names).
+  Cookies are scoped by hostname — ports are ignored — so co-located
+  Neuronection apps on one host no longer shadow each other's sessions
+  or CSRF jars. **You are logged out once on upgrade**; stale `nx_*`
+  cookies are cleared automatically on your first request.
+
+### Changed (installer)
+
+- **Default port is now 8090** (was 80) — the per-product family default
+  (health 8090 / study 8091 / career 8092), so several Neuronection apps
+  coexist on one host with no flags. Existing installs keep their
+  persisted port; an install whose `.env` predates persisted ports stays
+  on 80 with a loud note instead of silently moving.
+- **`--app-url URL`** sets `APP_URL` non-interactively and suppresses
+  the prompt. The default is now `http://<hostname>:<port>` for **both**
+  interactive and piped installs (a piped `curl | bash` previously
+  silently kept `http://localhost`, which remote browsers could not
+  open); the summary prints the configured `APP_URL` as the app URL.
+- **`--bind ADDR`** (default `0.0.0.0`) publishes on a chosen interface
+  — `127.0.0.1` when you front the app with your own reverse proxy.
+- **`scripts/uninstall.sh`**: clean removal that keeps data by default
+  (`--purge` deletes only this project's volumes; `--remove-dir`
+  explicit; label-based teardown works without a readable `.env`).
+- `backup.sh` gained `-h|--help`.
+
+## [Unreleased]
+
+## [0.11.1] - 2026-11-20
+
+### Fixed (installer)
+- **One-line installs survive GitHub's release asset redirect.** GitHub now
+  serves `/releases/download/...` assets from
+  `release-assets.githubusercontent.com`; the bootstrap host allowlist only
+  accepted `github.com` and `objects.githubusercontent.com`, so a fresh
+  install aborted before extracting anything. The allowlist now includes the
+  new host, and the release bootstrap is rebuilt from this commit.
+
+## [0.11.0] - 2026-11-20
+
+### Added (self-host installer)
+- **One-line installer and source-free compose bundle (plan 69 P4).**
+  `scripts/install.sh` and the generated `scripts/bootstrap.sh` install a
+  released Health Assistant stack on a fresh Docker host, with
+  `installer.json` as the product contract, `manifest.json`/`SHA256SUMS`
+  verification, the setup-token first-boot flow, and an idempotent
+  `scripts/update.sh`. Install flags include `--no-pull`, `--no-wait`,
+  `--auto-ports`, `--no-ports`, `--http-port`, `--env-only`, `--reset`,
+  `--yes`, `--image-tag` and `--no-token`. Release CI publishes
+  `health-compose-v0.11.0.tar.gz`, `health-bootstrap.sh` and
+  `health-bootstrap-v0.11.0.sh`; `install-scripts.yml` and
+  `release-smoke.yml` exercise the installer and the published assets.
+
+### Changed (docs and tooling)
+- **Public/private deployment references separated.** The demo-tree and
+  private deployment references were removed from the public docs, and the
+  extraction-pipeline anchors and OCR fixture were documented and tested.
+  Dependency and workflow action bumps are included.
+
 ## [0.10.2] - 2026-11-18
 
 ### Fixed (deployment scripts)

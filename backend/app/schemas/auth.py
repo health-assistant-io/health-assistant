@@ -33,7 +33,7 @@ class TokenRefresh(BaseModel):
     """Refresh request schema.
 
     ``refresh_token`` is optional for **browser** clients (§10): the
-    rotating refresh JWT lives in the HttpOnly ``nx_refresh`` cookie
+    rotating refresh JWT lives in the HttpOnly ``ha_refresh`` cookie
     (Path=/api/v1/auth), so ``POST /auth/refresh`` and ``POST
     /auth/logout`` read the cookie when the body omits the token. §9 user
     clients keep sending it in the body — both paths share the same
@@ -41,7 +41,7 @@ class TokenRefresh(BaseModel):
     """
 
     refresh_token: str | None = Field(
-        None, description="Refresh JWT — omitted by browsers (nx_refresh cookie)."
+        None, description="Refresh JWT — omitted by browsers (ha_refresh cookie)."
     )
 
 

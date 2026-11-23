@@ -403,13 +403,13 @@ else
   RELEASE_DESC="$REF"
   BUNDLE_DESC="$base_url/$BUNDLE_NAME"
   fetch "$base_url/$BUNDLE_NAME" "$TMP_DIR/$BUNDLE_NAME" \
-      "github.com,objects.githubusercontent.com" "the runtime bundle" 180 \
+      "github.com,objects.githubusercontent.com,release-assets.githubusercontent.com" "the runtime bundle" 180 \
     || die 2 "fetch failed: $BUNDLE_DESC — check the ref '$REF' and your network."
   fetch "$base_url/manifest.json" "$TMP_DIR/manifest.json" \
-      "github.com,objects.githubusercontent.com" "the release manifest" 60 \
+      "github.com,objects.githubusercontent.com,release-assets.githubusercontent.com" "the release manifest" 60 \
     || die 2 "fetch failed: $base_url/manifest.json — check the ref '$REF' and your network."
   fetch "$base_url/SHA256SUMS" "$TMP_DIR/SHA256SUMS" \
-      "github.com,objects.githubusercontent.com" "SHA256SUMS" 60 \
+      "github.com,objects.githubusercontent.com,release-assets.githubusercontent.com" "SHA256SUMS" 60 \
     || die 2 "fetch failed: $base_url/SHA256SUMS — check the ref '$REF' and your network."
   BUNDLE_FILE="$TMP_DIR/$BUNDLE_NAME"
   MANIFEST_FILE="$TMP_DIR/manifest.json"

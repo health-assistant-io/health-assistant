@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "contract": "settings-map",
-  "updated": "2026-11-15",
+  "updated": "2026-11-21",
   "purpose": "One family taxonomy for settings surfaces: what a setting IS decides where it LIVES. Canonical per ADR-0033 / ADR-0031 (sync-and-gate): this file is the master; product repos vendor it byte-identical under contracts/ and scripts/verify-wiring.sh flags drift. A setting may not ship (or move) in any product without a domain entry (or adopter line) here.",
   "groups": {
     "ai": {
       "title": "AI — model access & assignment",
-      "membership": "If the setting names a provider endpoint, a model-API key, a model row, or a capability-to-model assignment slot, it is ai.*. Nothing else may live under the AI tab — not web search, not discovery, not integrations, not behavior knobs."
+      "membership": "If the setting names a provider endpoint, a model-API key, a model row, or a capability-to-model assignment slot, it is ai.*. Nothing else may live under the AI tabs — not web search, not discovery, not integrations, not behavior knobs."
     },
     "tools": {
       "title": "Tools — non-model capabilities",
@@ -32,7 +32,7 @@
         "section": "providers"
       },
       "secrets": "product secret store (OS keyring / Fernet atrest) — never a plaintext column",
-      "scope": "user (web) / profile (desktop)",
+      "scope": "user + system (multi-user web) / profile (local-first desktop)",
       "adopters": {
         "desktop-assistant": "aligned",
         "study-assistant": "aligned",
@@ -50,7 +50,7 @@
         "section": "models"
       },
       "secrets": "none",
-      "scope": "user / profile",
+      "scope": "user + system (multi-user web) / profile (local-first desktop)",
       "adopters": {
         "desktop-assistant": "aligned",
         "study-assistant": "aligned",
@@ -68,7 +68,7 @@
         "section": "tasks"
       },
       "secrets": "none",
-      "scope": "user > system fallback (web) / profile (desktop)",
+      "scope": "user > system fallback (multi-user web) / profile (local-first desktop)",
       "adopters": {
         "desktop-assistant": "aligned",
         "study-assistant": "aligned",
@@ -392,7 +392,7 @@
     }
   ],
   "invariants": [
-    "INV-1: An 'aligned' surface hosts only domains whose group matches its tab's group. The AI tab hosts exactly ai.* domains.",
+    "INV-1: An 'aligned' surface hosts only domains whose group matches its tab's group. AI tabs (personal and instance) host exactly ai.* domains.",
     "INV-2: Web search provider config (tools.web-search) never appears under AI providers, models, or tasks.",
     "INV-3: Behavior (tools.decisions, tools.agent) never carries setup; setup (key, model, assignment) never carries behavior.",
     "INV-4: Secrets for ai.* and tools.* domains go to the product secret store (OS keyring on desktop, Fernet atrest / keyring seal on web) — never plaintext config or preference JSON.",
@@ -669,6 +669,7 @@
         {
           "id": "ai",
           "group": "ai",
+          "scope": "user",
           "sections": [
             {
               "id": "providers",
@@ -689,7 +690,34 @@
               ]
             }
           ],
-          "note": "hosts exactly ai.* since plan 27 Phase 3 — the former admin 'web' tab moved to tools; legacy ?tab=web redirects"
+          "note": "personal AI configuration (user scope) since ADR-0069 / plan 215; hosts exactly ai.* since plan 27 Phase 3 — the former admin 'web' tab moved to tools; legacy ?tab=web redirects"
+        },
+        {
+          "id": "ai-admin",
+          "group": "ai",
+          "admin": true,
+          "scope": "system",
+          "sections": [
+            {
+              "id": "providers",
+              "domains": [
+                "ai.providers"
+              ]
+            },
+            {
+              "id": "models",
+              "domains": [
+                "ai.models"
+              ]
+            },
+            {
+              "id": "tasks",
+              "domains": [
+                "ai.tasks"
+              ]
+            }
+          ],
+          "note": "instance AI configuration (system scope, admins) since ADR-0069 / plan 215 — the personal surface is 'ai'"
         },
         {
           "id": "tools",

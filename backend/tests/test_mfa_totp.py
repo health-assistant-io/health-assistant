@@ -236,9 +236,9 @@ async def test_mfa_verify_issues_session_and_cookies(
     assert body["access_token"] and body["refresh_token"]
     # §10 cookie triple (H3) — the browser rides these.
     cookie_header = ok.headers.get("set-cookie", "")
-    assert "nx_access=" in cookie_header
-    assert "nx_refresh=" in cookie_header
-    assert "nx_csrf=" in cookie_header
+    assert "ha_access=" in cookie_header
+    assert "ha_refresh=" in cookie_header
+    assert "ha_csrf=" in cookie_header
 
 
 @pytest.mark.asyncio

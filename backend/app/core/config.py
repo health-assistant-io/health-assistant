@@ -99,7 +99,7 @@ TOOLING_ENV_NAMES: frozenset[str] = frozenset(
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
-    VERSION: str = "0.10.2"
+    VERSION: str = "0.12.1"
     HA_APP_ENV: str = "development"
     DEBUG: bool = False
 
@@ -218,7 +218,7 @@ class Settings(BaseSettings):
     # The OWNER DSN (ADR-0064): injected only into the one-shot `migrate`
     # service (alembic, provisioning, checkpoint setup prefer it over
     # HA_DATABASE_URL). Serving containers must never receive it. When unset,
-    # DDL entrypoints fall back to HA_DATABASE_URL (legacy single-DSN dev
+    # DDL entrypoints fall back to HA_DATABASE_URL (previous single-DSN dev
     # setups); `HA_DB_SPLIT=1` without it refuses to run (the ADR's "broken"
     # state — fail closed, no silent fallback).
     HA_MIGRATIONS_DATABASE_URL: str | None = None
@@ -532,8 +532,8 @@ class Settings(BaseSettings):
     # construction — the flag additionally disables the register route).
     HA_REGISTRATION_ENABLED: bool = True
     # §10 cookie sessions (plan 16 H3): browsers authenticate with the
-    # HttpOnly ``nx_access`` / ``nx_refresh`` cookies plus the JS-readable
-    # ``nx_csrf`` double-submit cookie; user clients keep Bearer (§9 —
+    # HttpOnly ``ha_access`` / ``ha_refresh`` cookies plus the JS-readable
+    # ``ha_csrf`` double-submit cookie; user clients keep Bearer (§9 —
     # the Android/integrations HMAC bridge is unchanged). ``HA_COOKIE_SECURE``
     # also switches the access cookie to the ``__Host-`` prefix (TLS
     # deployments — the prefix demands Secure + Path=/).

@@ -111,6 +111,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
             scope={scope} 
             userId={targetUserId} 
             tenantId={targetTenantId} 
+            onNavigate={(tab) => setActiveTab(tab)}
           />
         )}
 

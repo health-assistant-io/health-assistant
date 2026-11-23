@@ -131,7 +131,7 @@ async def test_ws_handshake_rejects_demo_token_off_demo():
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect(
                 "/api/v1/ws/notifications",
-                headers={"cookie": f"nx_access={issued.access_token}"},
+                headers={"cookie": f"ha_access={issued.access_token}"},
             ):
                 pass  # pragma: no cover — the handshake must not complete
 
@@ -147,7 +147,7 @@ async def test_ws_handshake_accepts_demo_token_on_demo_instance():
     with patch.object(instance_state, "get_state", new=_state_with(True)):
         with client.websocket_connect(
             "/api/v1/ws/notifications",
-            headers={"cookie": f"nx_access={issued.access_token}"},
+            headers={"cookie": f"ha_access={issued.access_token}"},
         ) as ws:
             assert ws is not None
 

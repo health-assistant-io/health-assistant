@@ -74,7 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           DIR="$RUNNER_TEMP/ha-smoke"
-          rm -rf "$DIR"; mkdir -p "$DIR"
+          # The dry run must start from an absent target: the assertion below
+          # proves it created nothing. (The install step creates it later.)
+          rm -rf "$DIR"
           # The exact-tag asset knows its release from its own filename —
           # no API call — and prints the contract version for it.
           cp scripts/bootstrap.sh "$RUNNER_TEMP/health-bootstrap-${TAG}.sh"
@@ -120,8 +122,13 @@ jobs:
             && { echo "::error::--no-token still printed a setup token"; exit 1; } \
             || echo "no setup token in the install output (--no-token)"
           grep -q "Ready:    http://127.0.0.1:8080/ready" <<<"$out"
-          curl -fsS http://127.0.0.1:8080/health | grep -q '"status"'
-          curl -fsS http://127.0.0.1:8080/ready  | grep -q '"ready"'
+          # The probe goes through the published port on 127.0.0.1, so carry
+          # APP_URL's hostname — production rejects a bare 127.0.0.1 Host.
+          APP_URL_VALUE="$(grep -E '^APP_URL=' .env | head -1 | cut -d= -f2-)"
+          READY_HOST="${APP_URL_VALUE#*://}"; READY_HOST="${READY_HOST%%:*}"
+          [ -n "$READY_HOST" ] || { echo "::error::APP_URL missing from .env"; exit 1; }
+          curl -fsS -H "Host: ${READY_HOST}" http://127.0.0.1:8080/health | grep -q '"status"'
+          curl -fsS -H "Host: ${READY_HOST}" http://127.0.0.1:8080/ready  | grep -q '"ready"'
 
           # The rendered stack must never fall back to a mutable ref.
           docker compose --env-file .env -f docker/docker-compose.standalone.yml config \

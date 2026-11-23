@@ -169,7 +169,6 @@ const STRINGS: Record<string, string> = {
   'settings.ai.setup.done': '{{name}} is connected.',
   'settings.ai.setup.models_persisted': '{{count}} curated models were added.',
   'settings.ai.setup.curated_missed': 'None of the curated models were found.',
-  'settings.ai.setup.no_defaults': 'No models were persisted.',
   'settings.ai.setup.default_models': 'Default models',
   'settings.ai.setup.slot_chat': 'Text / chat',
   'settings.ai.setup.slot_vision': 'Vision',
@@ -316,7 +315,7 @@ describe('ProviderSetupModal', () => {
         api_key: 'sk-test',
         name: 'OpenAI',
         scope: 'USER',
-        options: { bind_chat: false, bind_vision: false, bind_stt: false, bind_decision: false },
+        options: { bind_chat: false, bind_vision: false, bind_stt: false, bind_embeddings: false, bind_decision: false },
       }),
     );
 

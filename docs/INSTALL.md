@@ -240,7 +240,7 @@ Health data must never cross the network in cleartext. The standalone nginx flav
 
 2. **Bring-your-own-proxy:** terminate TLS at your existing proxy (Traefik, Caddy, Nginx Proxy Manager, Cloudflare Tunnel) and keep the stack's nginx HTTP-only on an internal network. Set `APP_URL`/`FRONTEND_URL` to the public HTTPS origins (they drive CORS, the OAuth issuer, and TrustedHost validation).
 
-In both cases set **`HA_COOKIE_SECURE=true`** so the `nx_access` / `nx_refresh` / `nx_csrf` cookies are `Secure` (and take the `__Host-` prefix binding). Leave it `false` only for plain-HTTP local/VPN installs — browsers would otherwise refuse to store the cookies.
+In both cases set **`HA_COOKIE_SECURE=true`** so the `ha_access` / `ha_refresh` / `ha_csrf` cookies are `Secure` (and take the `__Host-` prefix binding). Leave it `false` only for plain-HTTP local/VPN installs — browsers would otherwise refuse to store the cookies.
 
 ## Updates
 

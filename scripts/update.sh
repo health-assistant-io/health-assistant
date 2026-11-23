@@ -96,6 +96,10 @@ MANIFEST_VERSION="$(json_field manifest.json version)"
 HTTP_PORT="$(env_value HTTP_PORT 80)"
 HEALTH_URL="http://127.0.0.1:${HTTP_PORT}${HEALTH_PATH}"
 READY_URL="http://127.0.0.1:${HTTP_PORT}${READY_PATH}"
+# The readiness probe carries APP_URL's hostname: production's
+# TrustedHostMiddleware rejects a bare 127.0.0.1 Host header with 400.
+READY_HOST="$(printf '%s' "$(env_value APP_URL '')" | sed -E 's#^[a-z]+://([^:/]+).*#\1#')"
+[ -n "$READY_HOST" ] || READY_HOST="127.0.0.1"
 
 # ── the new pins (--image KEY=REF > --image-tag > the new bundle's
 #    manifest.json > keep the current pins) ──────────────────────────────────
@@ -319,7 +323,7 @@ fi
 
 if [ "$NO_WAIT" -eq 0 ]; then
     wait_for_backend_healthy || exit 3
-    wait_for_ready "$READY_URL" || exit 3
+    wait_for_ready "$READY_URL" "$READY_HOST" || exit 3
 fi
 
 echo

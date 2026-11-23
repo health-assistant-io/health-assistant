@@ -177,6 +177,7 @@ cat > "$WORK/bin-curl/curl" <<'SHIM'
 if [ "${CURL_MODE:-ok}" = "fail" ]; then
     exit 1
 fi
+[ -n "${CURL_CALLS:-}" ] && printf '%s\n' "$*" >> "$CURL_CALLS"
 out=""; url=""; prev=""
 for arg in "$@"; do
     [ "$prev" = "-o" ] && out="$arg"
@@ -305,9 +306,11 @@ ENV
 
 run_docker_script() { # sandbox script args...
     local DIR="$1" SCRIPT="$2"; shift 2
+    : > "$DIR/curl_calls" 2>/dev/null || true
     CASE_OUT="$(cd "$DIR" && env \
         PATH="${TEST_PATH:+$TEST_PATH:}$PATH" \
         DOCKER_FIXTURES="$DIR/fixtures" DOCKER_CALLS="$DIR/calls" \
+        CURL_CALLS="$DIR/curl_calls" \
         DOCKER_VOLUME_EXISTS="${DOCKER_VOLUME_EXISTS:-}" \
         HEALTH_WAIT_INTERVAL=1 HEALTH_WAIT_TIMEOUT=6 \
         READY_WAIT_INTERVAL=1 READY_WAIT_ATTEMPTS=2 \
@@ -316,6 +319,7 @@ run_docker_script() { # sandbox script args...
         bash "$CORE/scripts/$SCRIPT" "$@" </dev/null 2>&1)"
     RUN_STATUS=$?
     RUN_CALLS="$(cat "$DIR/calls" 2>/dev/null || true)"
+    RUN_CURLS="$(cat "$DIR/curl_calls" 2>/dev/null || true)"
     : > "$DIR/calls" 2>/dev/null || true
     [ "$VERBOSE" -eq 1 ] && printf '%s\n' "$CASE_OUT"
     return 0
@@ -384,7 +388,7 @@ required = ["product", "title", "repo", "repoDir", "targetPath", "phase",
             "bundlePrefix", "bootstrapAsset", "envPrefix", "imageEnv",
             "imageKeys", "defaultDirName", "defaultPort", "healthPath",
             "readyPath", "setupMode", "minRamGb", "docsUrl", "installUrl",
-            "contractVersion", "installFlags"]
+            "contractVersion", "installFlags", "cookiePrefix"]
 cfg = json.load(open(sys.argv[1]))
 missing = [k for k in required if k not in cfg]
 extra = [k for k in cfg if k not in required]
@@ -397,14 +401,15 @@ assert cfg["imageEnv"] == "IMAGE_TAG"
 assert cfg["imageKeys"] == ["backend", "frontend"], cfg["imageKeys"]
 assert cfg["readyPath"] == "/ready", cfg["readyPath"]
 assert cfg["setupMode"] == "setup token", cfg["setupMode"]
-assert cfg["defaultPort"] == 80, cfg["defaultPort"]
+assert cfg["defaultPort"] == 8090, cfg["defaultPort"]  # family default (8090/8091/8092)
 assert cfg["healthPath"] == "/health"
 assert cfg["installUrl"] == "https://neuronection.com/install/health.sh", cfg["installUrl"]
 assert cfg["contractVersion"] == "1"
 flags = set(cfg["installFlags"])
-need = {"no-pull", "no-wait", "auto-ports", "no-ports", "http-port",
+need = {"no-pull", "no-wait", "auto-ports", "no-ports", "http-port", "app-url", "bind",
         "env-only", "reset", "yes", "image-tag", "no-token"}
 assert need <= flags, "installFlags missing: %s" % (need - flags)
+assert cfg["cookiePrefix"] == "ha_", cfg["cookiePrefix"]
 print("installer.json schema shape OK")
 PY
 }
@@ -544,6 +549,7 @@ assert_eq "first full install exits 0" "$RUN_STATUS" "0"
 assert_contains "summary names the app" "$CASE_OUT" "Health Assistant is running!"
 assert_contains "health wait passes" "$CASE_OUT" "Backend is healthy (/health)"
 assert_contains "ready wait passes" "$CASE_OUT" "App is ready"
+assert_contains "readiness probe carries APP_URL's host" "$RUN_CURLS" "Host: $(hostname 2>/dev/null || echo localhost)"
 assert_contains "summary names the health URL" "$CASE_OUT" "http://127.0.0.1:${FREE_PORT}/health"
 assert_contains "summary names the ready URL" "$CASE_OUT" "http://127.0.0.1:${FREE_PORT}/ready"
 assert_contains "summary names the backend pin" "$CASE_OUT" "$BACKEND_PIN"
@@ -725,7 +731,7 @@ for f in docker-compose.prod.yml docker-compose.standalone.yml nginx.conf nginx-
     cp "$CORE/docker/$f" "$BB/docker/$f"
 done
 cp "$CORE/.env.example" "$BB/.env.example"
-for f in install.sh update.sh upgrade-check.sh backup.sh restore.sh lib-docker.sh build-deploy-bundle.sh; do
+for f in install.sh update.sh upgrade-check.sh backup.sh restore.sh uninstall.sh lib-docker.sh build-deploy-bundle.sh; do
     cp "$CORE/scripts/$f" "$BB/scripts/$f"
 done
 cp "$CORE/installer.json" "$BB/installer.json"
