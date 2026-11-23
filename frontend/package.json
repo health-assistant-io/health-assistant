@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@neuronection/assistant-ui": "^0.88.0",
-    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tiptap/react": "^3.35.0",
     "@tiptap/starter-kit": "^3.35.0",
