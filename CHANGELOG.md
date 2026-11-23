@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-22
+
 ### Changed
 
 - **AI setup now ends on task assignments.** The BYOK wizard asks for the

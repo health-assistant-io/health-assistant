@@ -25,7 +25,7 @@
 #   bash scripts/install.sh --no-wait                  # skip the health/readiness wait
 #   bash scripts/install.sh --auto-ports               # move busy ports to free ones
 #   bash scripts/install.sh --no-ports                 # skip the port pre-flight
-#   bash scripts/install.sh --app-url http://box.lan:8090   # the URL users open (APP_URL): CORS,
+#   bash scripts/install.sh --app-url http://box.example.com:8090   # the URL users open (APP_URL): CORS,
 #                                                         #   OAuth redirects, the setup link — and the
 #                                                         #   Host header the app accepts
 #   bash scripts/install.sh --bind 127.0.0.1            # publish on loopback only (behind your own proxy)
