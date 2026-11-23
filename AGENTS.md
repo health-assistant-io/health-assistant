@@ -61,6 +61,28 @@ cd frontend && npm run build && npm run lint   # build = tsc && vite build
   Neuronection assistants) — extend the library rather than forking it; its
   repo documents the contribution flow.
 
+## Git & GitHub
+
+`main` is protected by the repository ruleset `ruleset_v1` (created 2026-11-07):
+
+- changes land through a pull request; direct pushes are rejected (`GH013`);
+- six required checks, with “require branches to be up to date before
+  merging”:
+  - `Run Test Suite / Run Backend Pytest Suite`
+  - `Run Test Suite / Run Frontend Lint & Build Test`
+  - `Run Test Suite / Run Frontend Vitest Suite`
+  - `pip-audit (backend)`
+  - `pnpm audit (frontend)`
+  - `gitleaks (repo history)`
+- no bypass actors; zero required approvals; merge, squash and rebase are
+  allowed;
+- auto-merge is disabled.
+
+Work on a feature branch, push it to `github` (the public repository), open a
+PR against `main`, wait for the six checks, then merge. Never push to `main`,
+add a bypass actor, or disable the ruleset to land a change. The `origin`
+remote is the private mirror; do not use it for release or PR work.
+
 ## Mobile (Android)
 The Kotlin bridge SDK satellite commits in this repo
 (`integrations/health-assistant-bridge/`); build it with Gradle after setting
