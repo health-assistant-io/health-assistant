@@ -99,7 +99,7 @@ TOOLING_ENV_NAMES: frozenset[str] = frozenset(
 class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Health Assistant"
-    VERSION: str = "0.12.1"
+    VERSION: str = "0.12.2"
     HA_APP_ENV: str = "development"
     DEBUG: bool = False
 
