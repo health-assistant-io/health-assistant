@@ -177,6 +177,7 @@ cat > "$WORK/bin-curl/curl" <<'SHIM'
 if [ "${CURL_MODE:-ok}" = "fail" ]; then
     exit 1
 fi
+[ -n "${CURL_CALLS:-}" ] && printf '%s\n' "$*" >> "$CURL_CALLS"
 out=""; url=""; prev=""
 for arg in "$@"; do
     [ "$prev" = "-o" ] && out="$arg"
@@ -305,9 +306,11 @@ ENV
 
 run_docker_script() { # sandbox script args...
     local DIR="$1" SCRIPT="$2"; shift 2
+    : > "$DIR/curl_calls" 2>/dev/null || true
     CASE_OUT="$(cd "$DIR" && env \
         PATH="${TEST_PATH:+$TEST_PATH:}$PATH" \
         DOCKER_FIXTURES="$DIR/fixtures" DOCKER_CALLS="$DIR/calls" \
+        CURL_CALLS="$DIR/curl_calls" \
         DOCKER_VOLUME_EXISTS="${DOCKER_VOLUME_EXISTS:-}" \
         HEALTH_WAIT_INTERVAL=1 HEALTH_WAIT_TIMEOUT=6 \
         READY_WAIT_INTERVAL=1 READY_WAIT_ATTEMPTS=2 \
@@ -316,6 +319,7 @@ run_docker_script() { # sandbox script args...
         bash "$CORE/scripts/$SCRIPT" "$@" </dev/null 2>&1)"
     RUN_STATUS=$?
     RUN_CALLS="$(cat "$DIR/calls" 2>/dev/null || true)"
+    RUN_CURLS="$(cat "$DIR/curl_calls" 2>/dev/null || true)"
     : > "$DIR/calls" 2>/dev/null || true
     [ "$VERBOSE" -eq 1 ] && printf '%s\n' "$CASE_OUT"
     return 0
@@ -545,6 +549,7 @@ assert_eq "first full install exits 0" "$RUN_STATUS" "0"
 assert_contains "summary names the app" "$CASE_OUT" "Health Assistant is running!"
 assert_contains "health wait passes" "$CASE_OUT" "Backend is healthy (/health)"
 assert_contains "ready wait passes" "$CASE_OUT" "App is ready"
+assert_contains "readiness probe carries APP_URL's host" "$RUN_CURLS" "Host: $(hostname 2>/dev/null || echo localhost)"
 assert_contains "summary names the health URL" "$CASE_OUT" "http://127.0.0.1:${FREE_PORT}/health"
 assert_contains "summary names the ready URL" "$CASE_OUT" "http://127.0.0.1:${FREE_PORT}/ready"
 assert_contains "summary names the backend pin" "$CASE_OUT" "$BACKEND_PIN"

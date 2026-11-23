@@ -647,9 +647,15 @@ if ! run_compose up -d; then
 fi
 
 # ── health + readiness wait ──────────────────────────────────────────────────
+# The readiness probe goes through the published port on 127.0.0.1, so it
+# must carry APP_URL's hostname: production's TrustedHostMiddleware rejects a
+# bare 127.0.0.1 Host header with 400.
 if [ "$NO_WAIT" -eq 0 ]; then
+    APP_URL_VALUE="$(env_value APP_URL '')"
+    READY_HOST="$(printf '%s' "$APP_URL_VALUE" | sed -E 's#^[a-z]+://([^:/]+).*#\1#')"
+    [ -n "$READY_HOST" ] || READY_HOST="127.0.0.1"
     wait_for_backend_healthy || exit 3
-    wait_for_ready "$READY_URL" || exit 3
+    wait_for_ready "$READY_URL" "$READY_HOST" || exit 3
 fi
 
 # ── summary (URLs, setup once, backup, update, rollback) ────────────────────
