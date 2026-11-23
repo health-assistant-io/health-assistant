@@ -66,6 +66,15 @@ import { ActiveTaskBadge } from '../ui/ActiveTaskBadge';
 import { ChatAttachmentPicker, ChatAttachmentPreviewRail } from '../ai/ChatAttachmentPicker';
 import { ChatMessageImages } from '../ai/ChatMessageImages';
 
+const AssistantAvatar: React.FC = () => (
+  <span
+    aria-hidden
+    className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--as-primary),var(--as-ai))] text-[var(--as-ai-fg)] shadow-[var(--as-shadow-1)]"
+  >
+    <Sparkles className="size-3.5" />
+  </span>
+);
+
 interface Props {
   isFullScreen?: boolean;
   onClose?: () => void;
@@ -389,7 +398,7 @@ const AIChatInterfaceInner: React.FC<Props> = ({
     );
   };
 
-  const renderMessage = (view: ChatMessageView) => {
+  const renderMessage = (view: ChatMessageView, _index: number, groupPos?: 'single' | 'start' | 'mid' | 'end') => {
     const row = view.meta?.row as ChatRow;
     const parentRow =
       row.role === 'assistant' && row.parentId
@@ -399,6 +408,13 @@ const AIChatInterfaceInner: React.FC<Props> = ({
       <ChatMessage
         key={view.id}
         role={view.role}
+        design="flat"
+        avatar={
+          view.role === 'assistant' &&
+          (groupPos === undefined || groupPos === 'single' || groupPos === 'start')
+            ? <AssistantAvatar />
+            : undefined
+        }
         compact={!isFullScreen}
         content={
           <MarkdownSurface
@@ -465,6 +481,8 @@ const AIChatInterfaceInner: React.FC<Props> = ({
     stream.live !== null ? (
       <ChatMessage
         role="assistant"
+        design="flat"
+        avatar={<AssistantAvatar />}
         compact={!isFullScreen}
         status={
           stream.status === 'interrupted'
@@ -515,6 +533,8 @@ const AIChatInterfaceInner: React.FC<Props> = ({
     <div className="flex h-full w-full items-start justify-start">
       <ChatMessage
         role="assistant"
+        design="flat"
+        avatar={<AssistantAvatar />}
         compact={!isFullScreen}
         content={<MarkdownSurface value={t('ai_chat.welcome_message')} />}
       />
@@ -745,6 +765,8 @@ const AIChatInterfaceInner: React.FC<Props> = ({
                 <ChatTranscript
                   className="flex-1"
                   items={chat.viewMessages}
+                  design="flat"
+                  groupConsecutive
                   renderItem={renderMessage}
                   live={liveTail}
                   emptyState={emptyState}

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Chat adopted the family Airy surfaces.** Assistant replies render as flat
+  prose beside a small identity orb, and the transcript groups consecutive
+  turns so a conversation reads as one thread instead of a stack of bubbles.
+  The welcome message and live turn use the same design.
+
 ## [0.12.1] - 2026-11-23
 
 ### Fixed
