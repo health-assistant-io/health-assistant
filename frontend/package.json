@@ -43,7 +43,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-grid-layout": "^2.3.0",
-    "react-i18next": "^17.0.14",
+    "react-i18next": "^17.1.13",
     "react-image-crop": "^11.1.2",
     "react-markdown": "^10.1.0",
     "react-quill-new": "~3.8.3",
