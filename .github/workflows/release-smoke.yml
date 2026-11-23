@@ -74,7 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           DIR="$RUNNER_TEMP/ha-smoke"
-          rm -rf "$DIR"; mkdir -p "$DIR"
+          # The dry run must start from an absent target: the assertion below
+          # proves it created nothing. (The install step creates it later.)
+          rm -rf "$DIR"
           # The exact-tag asset knows its release from its own filename —
           # no API call — and prints the contract version for it.
           cp scripts/bootstrap.sh "$RUNNER_TEMP/health-bootstrap-${TAG}.sh"
