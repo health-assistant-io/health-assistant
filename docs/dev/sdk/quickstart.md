@@ -142,13 +142,14 @@ curl -s -X POST "http://127.0.0.1:8000/api/v1/integrations/dev_dummy/config-flow
        "enable_catalog_proposals":true,"enable_hitl_proposals":true,"enable_documents":true}'
 ```
 
-Real response:
+Response shape (the two secrets are generated per instance and shown once;
+the values below are placeholders):
 
 ```json
 {
   "message": "Integration configured successfully.",
-  "webhook_secret": "QDyV18MCwI1vMl4iMWVICpLYvgPLwG5gTRZtAEQ9S8E",
-  "api_secret": "LwOMmp6q1-cZHjtCXNVv1j1a1GllRjgM5mvoRwaHwYw",
+  "webhook_secret": "<generated-webhook-secret>",
+  "api_secret": "<generated-api-secret>",
   "secret_notice": "Store these secrets now — they are shown only once and are required to sign webhook/API requests (HMAC-SHA256)."
 }
 ```
