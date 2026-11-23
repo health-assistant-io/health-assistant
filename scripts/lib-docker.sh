@@ -629,15 +629,22 @@ wait_for_backend_healthy() {
 # this release's head, so ingress may send traffic. 200-ready only; a 503
 # after the wait window fails like the health wait (exit 3 at the caller).
 # READY_WAIT_INTERVAL / READY_WAIT_ATTEMPTS override for tests.
-# Usage: wait_for_ready URL
+# Usage: wait_for_ready URL [HOST]
+# HOST is the APP_URL hostname; the probe goes through the published port on
+# 127.0.0.1, so production's TrustedHostMiddleware needs the app's own host
+# (it rejects a bare 127.0.0.1 Host header with 400). Ports are ignored by the
+# matcher; pass the hostname only.
 wait_for_ready() {
     local url="$1"
+    local host="${2:-}"
     local interval="${READY_WAIT_INTERVAL:-5}"
     local attempts="${READY_WAIT_ATTEMPTS:-24}"
+    local -a curl_args=(-fsS)
     [ -n "$url" ] || return 0
+    [ -n "$host" ] && curl_args+=(-H "Host: ${host}")
     echo -e "${YELLOW}Waiting for readiness at ${url} (up to $((attempts * interval))s)...${NC}"
     for _ in $(seq 1 "$attempts"); do
-        if curl -fsS "$url" 2>/dev/null | grep -q '"ready"'; then
+        if curl "${curl_args[@]}" "$url" 2>/dev/null | grep -q '"ready"'; then
             echo -e "${GREEN}App is ready: ${url}${NC}"
             return 0
         fi

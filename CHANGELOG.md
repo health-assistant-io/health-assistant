@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-23
+
+### Fixed
+
+- **Installer readiness on hostname installs.** The bundle installer now
+  sends the `APP_URL` hostname on its `/ready` probe, so production Host
+  validation no longer rejects the loopback check with `400 Invalid host
+  header` and aborts an otherwise healthy install. The release smoke's
+  dry-run assertion and its post-install probes were corrected in the same
+  change.
+
 ## [0.12.0] - 2026-11-22
 
 ### Changed
