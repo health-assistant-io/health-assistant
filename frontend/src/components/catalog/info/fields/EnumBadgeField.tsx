@@ -8,7 +8,7 @@
  * without a tone fall back to `defaultTone`.
  */
 import React from 'react';
-import { CHIP_VARIANT_CLASSES } from '../../../ui/ChipList';
+import { ChipList } from '../../../ui/ChipList';
 import type { ChipVariant } from '../../../ui/ChipList';
 
 interface EnumBadgeFieldProps {
@@ -38,13 +38,7 @@ export const EnumBadgeField: React.FC<EnumBadgeFieldProps> = ({
     options[raw.toUpperCase()] ??
     raw;
   const tone = tones?.[raw] ?? defaultTone;
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${CHIP_VARIANT_CLASSES[tone]}`}
-    >
-      {label}
-    </span>
-  );
+  return <ChipList items={[label]} variant={tone} />;
 };
 
 export default EnumBadgeField;

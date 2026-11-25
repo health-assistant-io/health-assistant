@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { Grid, ChevronDown, CheckCircle2, X, SlidersHorizontal } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Grid, ChevronDown, Check, X, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { DynamicIcon } from '../DynamicIcon';
-import { Popover, PopoverTrigger, PopoverContent } from '@neuronection/assistant-ui';
+import { Popover, PopoverTrigger, PopoverContent, SearchInput } from '@neuronection/assistant-ui';
 import type { FacetDefinition, FacetOption, FilterValue } from './types';
 import { isDefaultValue, defaultFilterValue } from './useFilterState';
+import { formatNumber } from '../../../lib/dateFormats';
 
 export interface FacetChipProps<T> {
   facet: FacetDefinition<T>;
@@ -25,20 +26,16 @@ function renderFacetIcon(icon: FacetOption['icon'], className: string) {
   return <DynamicIcon icon={icon as string | { type: 'lucide' | 'custom_svg'; value: string }} className={className} />;
 }
 
-function optionLabel<T>(facet: FacetDefinition<T>, value: FilterValue, options: FacetOption[]): string | null {
-  if (facet.kind === 'multi' && value.kind === 'multi') {
-    if (value.values.length === 0) return null;
-    if (value.values.length === 1) {
-      return options.find((o) => o.value === value.values[0])?.label ?? value.values[0];
-    }
-    return `${value.values.length} selected`;
-  }
-  if (facet.kind === 'single' && value.kind === 'single') {
-    if (!value.value) return null;
-    return options.find((o) => o.value === value.value)?.label ?? value.value;
-  }
-  return null;
-}
+const TRIGGER = [
+  'flex items-center justify-between gap-2 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors',
+  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]',
+].join(' ');
+
+const TRIGGER_INACTIVE =
+  'border-[var(--as-border)] bg-[var(--as-surface)] text-[var(--as-fg)] hover:border-[color-mix(in_srgb,var(--as-primary)_40%,var(--as-border))]';
+
+const TRIGGER_ACTIVE =
+  'border-[var(--as-primary)] bg-[color-mix(in_srgb,var(--as-primary)_12%,transparent)] text-[var(--as-primary)]';
 
 export const FacetChip = <T,>({
   facet,
@@ -50,6 +47,7 @@ export const FacetChip = <T,>({
 }: FacetChipProps<T>) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const label = facet.i18nKey ? t(facet.i18nKey, { defaultValue: facet.label }) : facet.label;
   // Resolve undefined (facet not yet in state — happens briefly when the
@@ -57,102 +55,132 @@ export const FacetChip = <T,>({
   const resolvedValue: FilterValue = value ?? defaultFilterValue(facet);
   const active = !isDefaultValue(facet, resolvedValue);
 
+  const filteredOptions = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return options;
+    return options.filter((option) => option.label.toLowerCase().includes(needle));
+  }, [options, query]);
+
+  const selected =
+    resolvedValue.kind === 'multi'
+      ? resolvedValue.values
+      : resolvedValue.kind === 'single'
+        ? resolvedValue.value
+          ? [resolvedValue.value]
+          : []
+        : [];
+
+  const triggerText = (() => {
+    if (resolvedValue.kind === 'multi') {
+      if (selected.length === 0) return null;
+      if (selected.length === 1) {
+        return options.find((o) => o.value === selected[0])?.label ?? selected[0];
+      }
+      return t('filters.selected_count', { count: selected.length });
+    }
+    if (resolvedValue.kind === 'single') {
+      if (!selected.length) return null;
+      return options.find((o) => o.value === selected[0])?.label ?? selected[0];
+    }
+    return null;
+  })();
+
   // --- Toggle-kind: a self-contained switch chip (no popover) -------------
   if (facet.kind === 'toggle') {
     if (resolvedValue.kind !== 'toggle') return null;
     return (
       <button
         type="button"
+        aria-pressed={resolvedValue.on}
         onClick={() => onValueChange({ kind: 'toggle', on: !resolvedValue.on })}
-        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-bold transition-all whitespace-nowrap ${
-          active
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/10'
-            : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-600 dark:text-dark-muted hover:border-blue-200'
-        }`}
+        className={`${TRIGGER} ${active ? TRIGGER_ACTIVE : TRIGGER_INACTIVE}`}
       >
         {facet.icon ? (
-          renderFacetIcon(facet.icon, 'w-4 h-4')
+          renderFacetIcon(facet.icon, 'size-4')
         ) : (
-          <SlidersHorizontal className="w-4 h-4" />
+          <SlidersHorizontal className="size-4" aria-hidden />
         )}
         <span>{label}</span>
       </button>
     );
   }
 
-  // --- Single / multi: trigger button + popover --------------------------
-  const selected = resolvedValue.kind === 'multi' ? resolvedValue.values : resolvedValue.kind === 'single' ? (resolvedValue.value ? [resolvedValue.value] : []) : [];
-  const triggerText = optionLabel(facet, resolvedValue, options);
-
   return (
-    <div className="flex items-center gap-2 min-w-0">
-      <div className="relative">
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <div className="flex min-w-0 items-center gap-2">
+      <Popover
+        open={isOpen}
+        onOpenChange={(next) => {
+          setIsOpen(next);
+          if (!next) setQuery('');
+        }}
+      >
         <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm font-bold transition-all whitespace-nowrap ${
-            active
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/10'
-              : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-700 dark:text-dark-text hover:border-blue-200'
-          }`}
-        >
-          <span className="flex items-center gap-2">
-            {facet.icon ? (
-              renderFacetIcon(facet.icon, `w-4 h-4 ${active ? 'text-blue-500' : 'text-gray-400'}`)
-            ) : (
-              <Grid className={`w-4 h-4 ${active ? 'text-blue-500' : 'text-gray-400'}`} />
-            )}
-            <span>{triggerText ?? label}</span>
-          </span>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
+          <button type="button" className={`${TRIGGER} ${active ? TRIGGER_ACTIVE : TRIGGER_INACTIVE}`}>
+            <span className="flex items-center gap-2">
+              {facet.icon ? (
+                renderFacetIcon(facet.icon, 'size-4')
+              ) : (
+                <Grid className="size-4 opacity-70" aria-hidden />
+              )}
+              <span>{triggerText ?? label}</span>
+            </span>
+            <ChevronDown
+              className={`size-4 opacity-60 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
         </PopoverTrigger>
 
         <PopoverContent
           align="start"
           sideOffset={8}
-          className="w-64 max-h-[300px] overflow-y-auto p-0"
+          className="w-64 overflow-hidden rounded-[var(--as-radius-lg)] border border-[var(--as-border)] bg-[var(--as-surface-raised)] p-0 shadow-[var(--as-shadow-pop)]"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <div>
-            {options.length === 0 ? (
-              <div className="px-4 py-3 text-sm text-gray-400 dark:text-dark-muted">No options</div>
+          {options.length > 8 && (
+            <div className="border-b border-[var(--as-border)] p-2">
+              <SearchInput
+                value={query}
+                onChange={setQuery}
+                placeholder={t('filters.search_options_placeholder')}
+                ariaLabel={t('filters.search_options')}
+                autoFocus
+              />
+            </div>
+          )}
+
+          <div className="max-h-[280px] overflow-y-auto p-1">
+            {filteredOptions.length === 0 ? (
+              <div className="px-3 py-3 text-sm text-[var(--as-muted-fg)]">
+                {options.length === 0 ? t('common.no_options') : t('filters.no_matches')}
+              </div>
             ) : (
-              options.map((opt) => {
+              filteredOptions.map((opt) => {
                 const isSelected = selected.includes(opt.value);
                 return (
                   <button
                     key={opt.value}
                     type="button"
+                    role={facet.kind === 'single' ? 'menuitemradio' : 'menuitemcheckbox'}
+                    aria-checked={isSelected}
                     onClick={() => onToggleOption(opt.value)}
-                    className={`w-full flex items-center justify-between px-4 py-3 text-sm font-bold transition-colors ${
+                    className={`flex w-full items-center justify-between gap-3 rounded-[var(--as-radius-sm)] px-3 py-2 text-left text-sm transition-colors ${
                       isSelected
-                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600'
-                        : 'text-gray-600 dark:text-dark-muted hover:bg-gray-50 dark:hover:bg-dark-bg'
+                        ? 'bg-[color-mix(in_srgb,var(--as-primary)_10%,transparent)] font-medium text-[var(--as-primary)]'
+                        : 'text-[var(--as-fg)] hover:bg-[var(--as-secondary)]'
                     }`}
                   >
-                    <span className="flex items-center gap-3">
-                      {opt.icon ? (
-                        renderFacetIcon(opt.icon, 'w-4 h-4')
-                      ) : (
-                        <span className="w-4 h-4 inline-block" />
-                      )}
-                      <span>{opt.label}</span>
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      {opt.icon ? renderFacetIcon(opt.icon, 'size-4 shrink-0') : null}
+                      <span className="truncate">{opt.label}</span>
                     </span>
-                    <span className="flex items-center gap-2">
+                    <span className="flex shrink-0 items-center gap-2">
                       {opt.count !== undefined && (
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full ${
-                            isSelected
-                              ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
-                              : 'bg-gray-100 dark:bg-dark-bg text-gray-400'
-                          }`}
-                        >
-                          {opt.count}
+                        <span className="rounded-full bg-[var(--as-secondary)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--as-muted-fg)]">
+                          {formatNumber(opt.count)}
                         </span>
                       )}
-                      {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-500" />}
+                      {isSelected && <Check className="size-4 text-[var(--as-primary)]" aria-hidden />}
                     </span>
                   </button>
                 );
@@ -160,29 +188,28 @@ export const FacetChip = <T,>({
             )}
           </div>
         </PopoverContent>
-        </Popover>
-      </div>
+      </Popover>
 
       {/* Active value pills */}
       {showActivePills && selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 overflow-hidden max-w-[400px]">
+        <div className="flex max-w-[400px] flex-wrap items-center gap-1.5 overflow-hidden">
           {selected.map((sel) => {
             const opt = options.find((o) => o.value === sel);
             if (!opt) return null;
             return (
               <span
                 key={sel}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800 rounded-lg whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[color-mix(in_srgb,var(--as-primary)_12%,transparent)] py-1 pl-2.5 pr-1 text-[11px] font-medium text-[var(--as-primary)]"
               >
-                {opt.icon && renderFacetIcon(opt.icon, 'w-3 h-3')}
+                {opt.icon && renderFacetIcon(opt.icon, 'size-3')}
                 <span>{opt.label}</span>
                 <button
                   type="button"
                   onClick={() => onToggleOption(sel)}
-                  className="hover:bg-blue-100 dark:hover:bg-blue-800 rounded-full p-1 transition-colors"
-                  aria-label={`Remove ${opt.label}`}
+                  className="rounded-full p-1 transition-colors hover:bg-[color-mix(in_srgb,var(--as-primary)_18%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]"
+                  aria-label={t('common.remove_named', { name: opt.label })}
                 >
-                  <X className="w-3 h-3" />
+                  <X className="size-3" aria-hidden />
                 </button>
               </span>
             );

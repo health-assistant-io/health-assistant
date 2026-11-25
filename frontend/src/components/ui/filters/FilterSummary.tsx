@@ -48,7 +48,7 @@ export const FilterSummary: React.FC<FilterSummaryProps> = ({
   if (parts.length === 0) return null;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 text-xs font-bold text-gray-400 dark:text-dark-muted ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 text-xs font-medium text-[var(--as-muted-fg)] ${className}`}>
       <Filter className="w-3.5 h-3.5" />
       {parts.join(' · ')}
     </span>

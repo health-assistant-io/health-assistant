@@ -69,7 +69,7 @@ export const FilterBar = <T,>({
           <button
             type="button"
             onClick={() => setShowMore((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-sm font-bold text-gray-600 dark:text-dark-muted hover:border-blue-200 transition-all whitespace-nowrap"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--as-border)] bg-[var(--as-surface)] px-3.5 py-1.5 text-sm font-medium text-[var(--as-muted-fg)] transition-colors hover:border-[color-mix(in_srgb,var(--as-primary)_40%,var(--as-border))] hover:text-[var(--as-fg)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]"
           >
             <MoreHorizontal className="w-4 h-4" />
             <span>{showMore ? t('filters.fewer', { defaultValue: 'Fewer' }) : t('filters.more', { defaultValue: 'More' })}</span>
@@ -81,7 +81,7 @@ export const FilterBar = <T,>({
         <button
           type="button"
           onClick={filter.clearAll}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold text-gray-500 dark:text-dark-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all whitespace-nowrap"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium text-[var(--as-muted-fg)] transition-colors hover:bg-[color-mix(in_srgb,var(--as-danger)_12%,transparent)] hover:text-[var(--as-danger)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]"
         >
           <X className="w-4 h-4" />
           <span>{t('filters.clear_all', { defaultValue: 'Clear all' })}</span>
@@ -89,7 +89,7 @@ export const FilterBar = <T,>({
       )}
 
       {resultCount !== undefined && totalCount !== undefined && (
-        <span className="ml-auto text-xs font-bold text-gray-400 dark:text-dark-muted whitespace-nowrap">
+        <span className="ml-auto whitespace-nowrap text-xs font-medium tabular-nums text-[var(--as-muted-fg)]">
           {t('filters.result_count', {
             defaultValue: '{{shown}} of {{total}}',
             shown: resultCount,

@@ -46,6 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `languageOnly` (so a browser `el-GR` no longer falls back to English date
   formatting) and keeps `<html lang>` in sync on every switch. Date formatting
   goes through one `dateLocaleFor()` helper.
+- **Filter controls now match the family design system.** The filter bar and
+  facet popovers were styled with raw palette classes (`gray-*`, `blue-*`,
+  `dark:bg-dark-*`), which made them read as older than the library surfaces
+  beside them. They now render on the `--as-*` semantic tokens (surface,
+  border, primary, muted foreground, radius, focus ring, popover shadow) with
+  pill-shaped triggers and an active tint, token-tinted active-filter pills,
+  and `menuitemcheckbox`/`menuitemradio` roles with `aria-checked`. Facets with
+  more than eight options gained a search box (the library `SearchInput`), and
+  the pill's “Remove <name>” accessible name plus the “N selected” trigger
+  label are now translation keys instead of hardcoded strings.
 
 ### Fixed
 
