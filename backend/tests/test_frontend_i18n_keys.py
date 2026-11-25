@@ -108,7 +108,9 @@ def test_setup_step_titles_resolve(catalogues: dict[str, set[str]], locale: str)
 
 
 @pytest.mark.parametrize("locale", SHIPPED)
-def test_setup_step_descriptions_match_the_steps(catalogues: dict[str, set[str]], locale: str) -> None:
+def test_setup_step_descriptions_match_the_steps(
+    catalogues: dict[str, set[str]], locale: str
+) -> None:
     prefix = "setup.step_desc."
     descriptions = {
         key.removeprefix(prefix)
@@ -129,7 +131,8 @@ def test_setup_step_descriptions_match_the_steps(catalogues: dict[str, set[str]]
 def test_event_seed_copy_resolves(catalogues: dict[str, set[str]], locale: str) -> None:
     """Seeded event types/categories are translated by slug (docs/CLINICAL_EVENTS.md)."""
     keys = catalogues[locale]
-    type_items = json.loads((SEEDS / "clinical_event_types.json").read_text(encoding="utf-8"))["items"]
+    types_path = SEEDS / "clinical_event_types.json"
+    type_items = json.loads(types_path.read_text(encoding="utf-8"))["items"]
     concepts = json.loads((SEEDS / "concepts.json").read_text(encoding="utf-8"))["items"]
     category_items = [item for item in concepts if "event_category" in (item.get("kinds") or [])]
 
