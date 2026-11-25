@@ -6,6 +6,7 @@ import { MedicationRecord, MedicationTiming } from '../../services/medicationSer
 import { MedicationAIActions } from '../ui/MedicationAIActions';
 import { useNavigate } from 'react-router-dom';
 
+import { uiLocale } from '../../lib/dateFormats';
 export interface MedicationCardProps {
   medication: MedicationRecord;
   showActions?: boolean;
@@ -177,7 +178,7 @@ const MedicationCard: React.FC<MedicationCardProps> = ({
               
               {(medication.start_date || medication.created_at) && (
                 <p className="text-[7px] sm:text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                  {t('medications.prescribed')}: {new Date(medication.start_date || medication.created_at).toLocaleDateString()}
+                  {t('medications.prescribed')}: {new Date(medication.start_date || medication.created_at).toLocaleDateString(uiLocale())}
                 </p>
               )}
               
@@ -229,7 +230,7 @@ const MedicationCard: React.FC<MedicationCardProps> = ({
       {medication.end_date && (
         <div className="mt-4 flex items-center justify-between text-[9px] font-black text-gray-400 uppercase tracking-widest">
           <div className="flex items-center space-x-4">
-            <span>{t('medications.ended')}: {new Date(medication.end_date).toLocaleDateString()}</span>
+            <span>{t('medications.ended')}: {new Date(medication.end_date).toLocaleDateString(uiLocale())}</span>
           </div>
         </div>
       )}

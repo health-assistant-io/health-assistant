@@ -1,0 +1,21 @@
+{
+  "Documentation": "Dokumentation",
+  "documentation": "Dokumentation",
+  "assistant": "Assistent",
+  "open source": "Open Source",
+  "self-hosted": "selbst gehostet",
+  "local-first": "local-first",
+  "live": "live",
+  "download": "Download",
+  "overview": "Übersicht",
+  "release": "Release",
+  "endpoint": "API-Endpunkt",
+  "endpoints": "API-Endpunkte",
+  "system tray": "Infobereich",
+  "tool calling": "Tool-Aufrufe",
+  "keyring": "Schlüsselbund",
+  "desktop app": "Desktop-App",
+  "web app": "Web-App",
+  "settings": "Einstellungen",
+  "live demo": "Live-Demo"
+}

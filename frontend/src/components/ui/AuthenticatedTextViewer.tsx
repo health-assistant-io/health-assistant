@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TextViewer } from './TextViewer';
 import { getDocumentDownloadUrl } from '../../services/documentService';
+import { useTranslation } from 'react-i18next';
 
 interface AuthenticatedTextViewerProps {
   documentId: string;
@@ -9,6 +10,7 @@ interface AuthenticatedTextViewerProps {
 }
 
 export const AuthenticatedTextViewer: React.FC<AuthenticatedTextViewerProps> = ({ documentId, filename, onClose }) => {
+  const { t } = useTranslation();
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -48,7 +50,7 @@ export const AuthenticatedTextViewer: React.FC<AuthenticatedTextViewerProps> = (
       <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/95 backdrop-blur-xs">
         <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
-          <p className="text-white/50 text-sm animate-pulse">Decrypting content...</p>
+          <p className="text-white/50 text-sm animate-pulse">{t('documents.decrypting')}</p>
         </div>
       </div>
     );
@@ -59,7 +61,7 @@ export const AuthenticatedTextViewer: React.FC<AuthenticatedTextViewerProps> = (
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95">
         <div className="text-center text-white">
-          <p className="mb-4">Failed to load file content.</p>
+          <p className="mb-4">{t('documents.load_failed')}</p>
           <button onClick={onClose} className="px-4 py-2 bg-gray-800 rounded-lg">Close</button>
         </div>
       </div>

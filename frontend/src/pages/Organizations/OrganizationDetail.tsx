@@ -14,6 +14,7 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
+import { uiLocale } from '../../lib/dateFormats';
 function OrganizationDetail() {
   const { t } = useTranslation();
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -246,7 +247,7 @@ function OrganizationDetail() {
                   <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-dark-border">
                     <FileText className="w-8 h-8 text-gray-300" />
                   </div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">No visits recorded</h3>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('organizations.no_visits')}</h3>
                   <p className="text-gray-500 mt-1 max-w-xs mx-auto">No clinical examinations have been recorded at this facility yet.</p>
                 </div>
               ) : (
@@ -267,7 +268,7 @@ function OrganizationDetail() {
                             <div className="flex items-center space-x-3">
                               <Calendar className="w-4 h-4 text-gray-400" />
                               <span className="text-sm font-bold text-gray-900 dark:text-dark-text">
-                                {new Date(exam.examination_date).toLocaleDateString()}
+                                {new Date(exam.examination_date).toLocaleDateString(uiLocale())}
                               </span>
                             </div>
                           </td>
@@ -317,7 +318,7 @@ function OrganizationDetail() {
             <div className="p-8">
               {!organization.departments || organization.departments.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-sm text-gray-500 italic">No departments or units have been defined for this facility.</p>
+                  <p className="text-sm text-gray-500 italic">{t('organizations.no_departments')}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

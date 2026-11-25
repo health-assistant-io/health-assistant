@@ -15,8 +15,6 @@ import {
   Settings,
   Inbox as InboxIcon,
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import {
@@ -41,7 +39,7 @@ const VALID_TABS: Tab[] = ['inbox', 'all', 'rules', 'triggers', 'admin', 'settin
 
 export default function NotificationManagement() {
   const { t, i18n } = useTranslation();
-  const dateLocale = i18n.language === 'el' ? el : enUS;
+  const dateLocale = dateLocaleFor(i18n.language);
   const navigate = useNavigate();
   const { tab: tabParam } = useParams<{ tab?: string }>();
 
@@ -213,19 +211,19 @@ export default function NotificationManagement() {
     try {
       const { nativeNotificationService } = await import('../../services/nativeNotificationService');
       if (window.Notification && window.Notification.permission === 'denied') {
-        alert(
-          'Browser notification permission is DENIED. Click the lock icon and set Notifications to "Allow" or "Ask", then try again.'
-        );
+        alert(t('notifications.permission_denied'));
         return;
       }
       const sub = await nativeNotificationService.subscribeToPush();
       if (sub) setPushStatus('Subscribed');
       else
-        alert(
-          'Could not enable push. The browser prompt may have been dismissed, the server VAPID keys may be missing, or you are in a Private/Incognito window.'
-        );
+        alert(t('notifications.push_enable_failed'));
     } catch (error: any) {
-      alert(`Failed to initialize push: ${error.message || 'Unknown error'}`);
+      alert(
+        t('notifications.push_init_failed', {
+          error: error.message || t('notifications.unknown_error'),
+        })
+      );
     }
   };
 
@@ -233,7 +231,7 @@ export default function NotificationManagement() {
     try {
       await notificationService.testTrigger(id);
     } catch {
-      alert('Failed to test trigger');
+      alert(t('notifications.toast_test_failed'));
     }
   };
   const handleDeleteTrigger = async (id: string) => {
@@ -242,7 +240,7 @@ export default function NotificationManagement() {
       await notificationService.deleteTrigger(id);
       setTriggers((prev) => prev.filter((t) => t.id !== id));
     } catch {
-      alert('Failed to delete trigger');
+      alert(t('notifications.toast_delete_failed'));
     }
   };
 
@@ -271,7 +269,7 @@ export default function NotificationManagement() {
             </p>
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
               <span className={`w-1 h-1 rounded-full mr-1 ${connected ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-              {connected ? 'Live' : 'Reconnecting'}
+              {connected ? t('common.live') : t('common.reconnecting')}
             </span>
             <span
               className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
@@ -281,7 +279,7 @@ export default function NotificationManagement() {
               }`}
             >
               <Smartphone className="w-3 h-3 mr-1" />
-              Push: {pushStatus}
+              {t('notifications.push_label')} {pushStatus}
             </span>
           </div>
         }
@@ -309,7 +307,9 @@ export default function NotificationManagement() {
               }`}
             >
               <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
-              {pushStatus === 'Subscribed' ? 'Push Active' : 'Enable Push'}
+              {pushStatus === 'Subscribed'
+                  ? t('notifications.push_active')
+                  : t('notifications.enable_push')}
             </button>
             <button
               onClick={() => {
@@ -355,27 +355,27 @@ export default function NotificationManagement() {
               onChange={(e) => setSourceFilter(e.target.value)}
               className="text-xs border border-gray-200 dark:border-dark-border rounded-lg px-2 py-1.5 bg-white dark:bg-dark-surface text-gray-700 dark:text-dark-text"
             >
-              <option value="">All sources</option>
-              <option value="SYSTEM">System</option>
-              <option value="SCHEDULED">Scheduled</option>
-              <option value="RULE">Biomarker rule</option>
-              <option value="AGENT">AI agent</option>
-              <option value="INTEGRATION">Integration</option>
-              <option value="CLINICAL">Clinical</option>
+              <option value="">{t('notifications.filters_all_sources')}</option>
+              <option value="SYSTEM">{t('notifications.source_system')}</option>
+              <option value="SCHEDULED">{t('notifications.source_scheduled')}</option>
+              <option value="RULE">{t('notifications.source_rule')}</option>
+              <option value="AGENT">{t('notifications.source_agent')}</option>
+              <option value="INTEGRATION">{t('notifications.source_integration')}</option>
+              <option value="CLINICAL">{t('notifications.source_clinical')}</option>
             </select>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as NotificationCategory | '')}
               className="text-xs border border-gray-200 dark:border-dark-border rounded-lg px-2 py-1.5 bg-white dark:bg-dark-surface text-gray-700 dark:text-dark-text"
             >
-              <option value="">All categories</option>
-              <option value="reminder">Reminders</option>
-              <option value="alert">Alerts</option>
-              <option value="hitl">AI tasks</option>
-              <option value="agent">Agent</option>
-              <option value="integration">Integrations</option>
-              <option value="system">System</option>
-              <option value="clinical_event">Clinical events</option>
+              <option value="">{t('notifications.filters_all_categories')}</option>
+              <option value="reminder">{t('notifications.category_reminder')}</option>
+              <option value="alert">{t('notifications.category_alert')}</option>
+              <option value="hitl">{t('notifications.category_hitl')}</option>
+              <option value="agent">{t('notifications.category_agent')}</option>
+              <option value="integration">{t('notifications.category_integration')}</option>
+              <option value="system">{t('notifications.category_system')}</option>
+              <option value="clinical_event">{t('notifications.category_clinical_event')}</option>
             </select>
             {activeTab === 'all' && (
               <select
@@ -383,10 +383,10 @@ export default function NotificationManagement() {
                 onChange={(e) => setStatusFilter(e.target.value as RecipientStatus | '')}
                 className="text-xs border border-gray-200 dark:border-dark-border rounded-lg px-2 py-1.5 bg-white dark:bg-dark-surface text-gray-700 dark:text-dark-text"
               >
-                <option value="">Any status</option>
-                <option value="unread">Unread</option>
-                <option value="read">Read</option>
-                <option value="dismissed">Dismissed</option>
+                <option value="">{t('notifications.filters_any_status')}</option>
+                <option value="unread">{t('notifications.status_unread')}</option>
+                <option value="read">{t('notifications.status_read')}</option>
+                <option value="dismissed">{t('notifications.status_dismissed')}</option>
               </select>
             )}
             {items.length > 0 && (
@@ -434,7 +434,6 @@ export default function NotificationManagement() {
           loading={loading}
           onTest={handleTestTrigger}
           onDelete={handleDeleteTrigger}
-          dateLocale={dateLocale}
         />
       ) : activeTab === 'rules' ? (
         <NotificationRules />
@@ -513,11 +512,12 @@ function InboxList({
   onMarkRead: (recipientId: string) => Promise<void>;
   onDismiss: (recipientId: string) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   if (loading && items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border">
         <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-4" />
-        <p className="text-gray-500">Loading…</p>
+        <p className="text-gray-500">{t('notifications.loading')}</p>
       </div>
     );
   }
@@ -525,7 +525,7 @@ function InboxList({
     return (
       <div className="py-20 text-center bg-white dark:bg-dark-surface rounded-2xl border-2 border-dashed border-gray-100 dark:border-dark-border">
         <InboxIcon className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-        <p className="text-gray-400">Nothing here yet.</p>
+        <p className="text-gray-400">{t('notifications.empty')}</p>
       </div>
     );
   }
@@ -555,19 +555,18 @@ function TriggersTab({
   loading,
   onTest,
   onDelete,
-  dateLocale,
 }: {
   triggers: NotificationTrigger[];
   loading: boolean;
   onTest: (id: string) => void;
   onDelete: (id: string) => void;
-  dateLocale: Locale;
 }) {
+  const { t } = useTranslation();
   if (loading && triggers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border">
         <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-4" />
-        <p className="text-gray-500">Loading…</p>
+        <p className="text-gray-500">{t('notifications.loading')}</p>
       </div>
     );
   }
@@ -575,7 +574,7 @@ function TriggersTab({
     return (
       <div className="py-20 text-center bg-white dark:bg-dark-surface rounded-2xl border-2 border-dashed border-gray-100 dark:border-dark-border">
         <Clock className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-        <p className="text-gray-400">No active scheduled reminders.</p>
+        <p className="text-gray-400">{t('notifications.triggers_empty')}</p>
       </div>
     );
   }
@@ -599,7 +598,7 @@ function TriggersTab({
             <div className="flex items-center space-x-1">
               <button
                 onClick={() => onTest(trig.id)}
-                title="Test now"
+                title={t('notifications.test_now')}
                 className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
               >
                 <Play className="w-4 h-4" />
@@ -616,19 +615,19 @@ function TriggersTab({
           <p className="text-xs text-gray-500 dark:text-dark-muted mb-4 line-clamp-2">{trig.body}</p>
           <div className="space-y-2 pt-4 border-t border-gray-50 dark:border-dark-border">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-gray-400 uppercase font-bold tracking-wider">Next run</span>
+              <span className="text-gray-400 uppercase font-bold tracking-wider">{t('notifications.next_run')}</span>
               <span className="text-blue-600 dark:text-blue-400 font-bold">
                 {trig.next_trigger
-                  ? format(new Date(trig.next_trigger), 'MMM d, HH:mm', { locale: dateLocale })
-                  : 'Disabled'}
+                  ? formatDate(new Date(trig.next_trigger), DATE_SHORT_TIME)
+                  : t('common.disabled')}
               </span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-gray-400 uppercase font-bold tracking-wider">Status</span>
+              <span className="text-gray-400 uppercase font-bold tracking-wider">{t('common.status')}</span>
               <div className="flex items-center">
                 <span className={`flex h-2 w-2 rounded-full mr-1.5 ${trig.enabled ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
                 <span className={trig.enabled ? 'text-green-600 dark:text-green-400 font-bold' : 'text-gray-400'}>
-                  {trig.enabled ? 'Active' : 'Disabled'}
+                  {trig.enabled ? t('common.active') : t('common.disabled')}
                 </span>
               </div>
             </div>
@@ -641,3 +640,6 @@ function TriggersTab({
 
 // type-only re-export kept for the isolated Locale usage above
 import type { Locale } from 'date-fns';
+import { dateLocaleFor } from '../../lib/dateLocale';
+
+import { DATE_SHORT_TIME, formatDate } from '../../lib/dateFormats';

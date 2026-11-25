@@ -1,0 +1,35 @@
+# translations.toml — repo-specific facts for check_translations.py.
+# Edit this file, never the family script (kept byte-identical to
+# dev/templates/scripts/translations/check_translations.py by verify-wiring).
+# Secrets (API key, model) stay in .env / environment — never here.
+
+[project]
+name = "Health Assistant"
+
+[source]
+locale = "en"
+
+[dictionaries]
+dir = "frontend/src/locales"
+format = "json"
+locales = ["el"]
+# Keep in sync with the app's locale registry:
+#   frontend/src/lib/uiLanguages.ts (UI_LANGUAGES = pickLanguages(['en', 'el']))
+#   frontend/src/i18n.ts (resources: en, el)
+
+[prompts]
+dir = "scripts/translations/prompts"
+
+[llm]
+temperature = 0.3
+timeout = 60
+max_tokens = 4096
+batch_size = 20
+concurrency = 3
+retries = 3
+
+[gate]
+fail_on_extra = true
+
+[locales.el]
+name = "Greek"

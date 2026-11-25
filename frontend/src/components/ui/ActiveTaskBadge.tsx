@@ -158,7 +158,7 @@ export const ActiveTaskBadge: React.FC<Props> = ({
             </div>
           </div>
         ) : (
-           <p className="text-xs text-gray-500 italic">No specific provider configured for this task.</p>
+           <p className="text-xs text-gray-500 italic">{t('ai_labels.no_provider_for_task')}</p>
         )}
       </div>
     );

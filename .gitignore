@@ -110,6 +110,7 @@ htmlcov/
 *.tmp
 *.temp
 *.bak
+*.bak.*
 *.backup
 *.orig
 *.patch

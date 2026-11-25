@@ -18,6 +18,7 @@ import {
 } from '../../utils/biomarkerUtils';
 import type { BiomarkerObservation } from '../../types/biomarker';
 
+import { uiLocale } from '../../lib/dateFormats';
 export interface BiomarkerResultCardProps {
   b: BiomarkerObservation;
 }
@@ -36,7 +37,7 @@ export const BiomarkerResultCard: React.FC<BiomarkerResultCardProps> = ({ b }) =
           <Activity className="w-4 h-4 text-blue-500 shrink-0" />
         )}
         <span className="font-bold text-sm text-gray-900 dark:text-dark-text truncate">
-          {b.displayName || t('instances.unmapped_biomarker', 'Unmapped biomarker')}
+          {b.displayName || t('biomarkers.unmapped_label')}
         </span>
       </div>
 
@@ -69,7 +70,7 @@ export const BiomarkerResultCard: React.FC<BiomarkerResultCardProps> = ({ b }) =
       )}
       {b.source?.date && (
         <p className="text-[11px] text-gray-400 mt-1">
-          {new Date(b.source.date).toLocaleDateString()}
+          {new Date(b.source.date).toLocaleDateString(uiLocale())}
         </p>
       )}
     </>

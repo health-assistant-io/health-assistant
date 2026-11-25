@@ -1,0 +1,15 @@
+{
+  "Documentation": "Documentation",
+  "assistant": "assistant",
+  "open source": "open source",
+  "self-hosted": "auto-hébergé",
+  "local-first": "local-first",
+  "download": "téléchargement",
+  "overview": "vue d'ensemble",
+  "settings": "paramètres",
+  "endpoint": "point de terminaison d'API",
+  "system tray": "zone de notification",
+  "desktop app": "application de bureau",
+  "web app": "application web",
+  "live demo": "démo en direct"
+}

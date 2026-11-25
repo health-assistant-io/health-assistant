@@ -9,6 +9,7 @@ import { AssociatedEvents } from '../events/AssociatedEvents';
 import { TaskProgressIndicator } from '../ui/TaskProgressIndicator';
 import { CardStyles } from '../../utils/cardStyles';
 
+import { uiLocale } from '../../lib/dateFormats';
 interface Doctor {
   id: string;
   name: string;
@@ -109,7 +110,7 @@ export const ExaminationCard: React.FC<Props> = ({
         <div className={CardStyles.header}>
           <div className="flex items-center space-x-2">
             <span className={CardStyles.date(isSelected)}>
-              {examination.examination_date ? new Date(examination.examination_date).toLocaleDateString() : t('common.unknown_date')}
+              {examination.examination_date ? new Date(examination.examination_date).toLocaleDateString(uiLocale()) : t('common.unknown_date')}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -187,7 +188,7 @@ export const ExaminationCard: React.FC<Props> = ({
         <div className={CardStyles.header}>
           <div className="flex items-center space-x-2">
             <span className={CardStyles.date(isSelected)}>
-              {examination.examination_date ? new Date(examination.examination_date).toLocaleDateString() : t('common.unknown_date')}
+              {examination.examination_date ? new Date(examination.examination_date).toLocaleDateString(uiLocale()) : t('common.unknown_date')}
             </span>
           </div>
           <div className="flex items-center space-x-2">

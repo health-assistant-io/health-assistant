@@ -230,6 +230,7 @@ const RepeatableRow: React.FC<RowProps> = ({
   onRemove,
   children,
 }) => {
+  const { t } = useTranslation();
   // Briefly flash a highlight ring when a slot is freshly added.
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -283,7 +284,7 @@ const RepeatableRow: React.FC<RowProps> = ({
                 type="button"
                 onClick={onDown}
                 disabled={index === total - 1}
-                aria-label="Move down"
+                aria-label={t('common.move_down')}
                 className="p-1 text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-30 disabled:hover:text-gray-300"
               >
                 <ChevronDown className="w-3.5 h-3.5" />

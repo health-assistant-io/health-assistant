@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { Locale } from 'date-fns';
 import type { NotificationInboxItem, RecipientStatus } from '../../services/notificationService';
 import { CategoryIcon, SourceBadge, SeverityDot, SEVERITY_STRIPE } from './notificationUi';
+import { useTranslation } from 'react-i18next';
 
 const STATUS_LABEL: Record<RecipientStatus, string> = {
   unread: 'Unread',
@@ -31,6 +32,7 @@ export function NotificationItem({
   onMarkRead,
   onDismiss,
 }: Props) {
+  const { t } = useTranslation();
   const n = item.notification;
   const isUnread = item.status === 'unread';
   const isDismissed = item.status === 'dismissed';
@@ -102,7 +104,7 @@ export function NotificationItem({
                   e.stopPropagation();
                   onMarkRead(item.recipient_id);
                 }}
-                title="Mark read"
+                title={t('common.mark_read')}
                 className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
               >
                 <Check className="w-4 h-4" />

@@ -49,7 +49,7 @@ export const ModernSelect: React.FC<ModernSelectProps> = ({ value, options, onCh
         <div className="absolute top-full right-0 mt-1.5 z-150 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border border-gray-200 dark:border-dark-border rounded-xl shadow-2xl overflow-hidden max-h-60 min-w-[180px] overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="py-1.5">
             {options.length === 0 ? (
-              <div className="px-4 py-3 text-[10px] text-gray-400 italic">No options available</div>
+              <div className="px-4 py-3 text-[10px] text-gray-400 italic">{t('common.no_options')}</div>
             ) : (
               options.map((opt) => {
                 const label = typeof opt === 'object' ? opt.name : opt;

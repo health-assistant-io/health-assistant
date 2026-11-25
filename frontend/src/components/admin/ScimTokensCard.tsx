@@ -14,10 +14,11 @@ import {
   type ScimTokenCreated,
 } from '../../services/ssoService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 function formatDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '—' : formatTimestamp(date);
 }
 
 interface ScimTokensCardProps {

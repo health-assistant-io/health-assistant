@@ -5,6 +5,7 @@ import { TaskLogViewer } from '../components/ui/TaskLogViewer';
 import { FlowStatusCard, type FlowStep } from '@neuronection/assistant-ui';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StickyToolbar } from '../components/ui/StickyToolbar';
+import { useTranslation } from 'react-i18next';
 
 interface ProcessingDocument {
   id: string;
@@ -41,17 +42,20 @@ interface TaskStats {
 // The OCR/extraction pipeline stages (mirrors the backend extraction_status
 // vocabulary) — rendered as FlowStatusCard steps per active examination.
 const EXAM_STAGES: Array<{ id: string; label: string }> = [
-  { id: 'aggregating', label: 'Aggregating' },
-  { id: 'analyzing_text', label: 'Analyzing text' },
-  { id: 'defining_ontology', label: 'Defining ontology' },
-  { id: 'persisting_results', label: 'Persisting results' },
+  { id: 'aggregating', label: 'task_monitor.stage_aggregating' },
+  { id: 'analyzing_text', label: 'task_monitor.stage_analyzing_text' },
+  { id: 'defining_ontology', label: 'task_monitor.stage_defining_ontology' },
+  { id: 'persisting_results', label: 'task_monitor.stage_persisting' },
 ];
 
-function examFlowSteps(exam: ProcessingExamination): FlowStep[] {
+function examFlowSteps(
+  exam: ProcessingExamination,
+  t: (key: string) => string
+): FlowStep[] {
   const currentIdx = Math.min(Math.floor(exam.progress / 25), EXAM_STAGES.length - 1);
   return EXAM_STAGES.map((stage, i) => ({
     id: stage.id,
-    label: stage.label,
+    label: t(stage.label),
     status: exam.status === 'failed'
       ? (i === currentIdx ? 'failed' : i < currentIdx ? 'done' : 'pending')
       : exam.status === 'completed' || i < currentIdx
@@ -61,6 +65,7 @@ function examFlowSteps(exam: ProcessingExamination): FlowStep[] {
 }
 
 function TaskManager() {
+  const { t } = useTranslation();
   const [processingDocs, setProcessingDocs] = useState<ProcessingDocument[]>([]);
   const [processingExams, setProcessingExams] = useState<ProcessingExamination[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
@@ -103,7 +108,7 @@ function TaskManager() {
       await fetchTaskData();
     } catch (error) {
       console.error('Failed to retry document', error);
-      alert('Failed to retry document');
+      alert(t('task_monitor.toast_retry_document_failed'));
     }
   };
 
@@ -113,7 +118,7 @@ function TaskManager() {
       await fetchTaskData();
     } catch (error) {
       console.error('Failed to retry examination', error);
-      alert('Failed to retry examination');
+      alert(t('task_monitor.toast_retry_examination_failed'));
     }
   };
 
@@ -140,8 +145,8 @@ function TaskManager() {
   return (
     <div className="max-w-7xl mx-auto pb-10">
       <PageHeader
-        title="Task Monitor"
-        subtitle="Debug and monitor background processing tasks"
+        title={t('task_monitor.title')}
+        subtitle={t('task_monitor.subtitle')}
         icon={<Cpu className="size-5" />}
         breadcrumbs={[]}
         showBackButton={true}
@@ -154,7 +159,7 @@ function TaskManager() {
             className="flex items-center space-x-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200/50 dark:shadow-none font-bold active:scale-95"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{t('common.refresh')}</span>
           </button>
         }
       />
@@ -165,16 +170,16 @@ function TaskManager() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <FileText className="w-5 h-5 text-blue-600" />
-              <h3 className="text-sm font-bold uppercase">Documents</h3>
+              <h3 className="text-sm font-bold uppercase">{t('task_monitor.documents')}</h3>
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Processing:</span>
+              <span className="text-xs text-gray-500">{t('task_monitor.processing')}</span>
               <span className="text-sm font-bold">{stats?.documents.by_status['processing'] || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Stalled:</span>
+              <span className="text-xs text-gray-500">{t('task_monitor.stalled')}</span>
               <span className="text-sm font-bold text-red-600">{stats?.documents.stalled || 0}</span>
             </div>
           </div>
@@ -184,16 +189,16 @@ function TaskManager() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <Activity className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-sm font-bold uppercase">Examinations</h3>
+              <h3 className="text-sm font-bold uppercase">{t('common.examinations')}</h3>
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Processing:</span>
+              <span className="text-xs text-gray-500">{t('task_monitor.processing')}</span>
               <span className="text-sm font-bold">{stats?.examinations.by_status['processing'] || 0}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Stalled:</span>
+              <span className="text-xs text-gray-500">{t('task_monitor.stalled')}</span>
               <span className="text-sm font-bold text-red-600">{stats?.examinations.stalled || 0}</span>
             </div>
           </div>
@@ -203,12 +208,12 @@ function TaskManager() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <Clock className="w-5 h-5 text-amber-600" />
-              <h3 className="text-sm font-bold uppercase">System Health</h3>
+              <h3 className="text-sm font-bold uppercase">{t('task_monitor.system_health')}</h3>
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-xs text-gray-500">Total Stalled:</span>
+              <span className="text-xs text-gray-500">{t('task_monitor.total_stalled')}</span>
               <span className="text-sm font-bold text-red-600">
                 {(stats?.documents.stalled || 0) + (stats?.examinations.stalled || 0)}
               </span>
@@ -229,17 +234,17 @@ function TaskManager() {
             onChange={(e) => setFilterStatus(e.target.value)}
             className="px-3 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm"
           >
-            <option value="all">All Status</option>
-            <option value="processing">Processing</option>
-            <option value="uploaded">Uploaded</option>
-            <option value="failed">Failed</option>
+            <option value="all">{t('task_monitor.filter_all_status')}</option>
+            <option value="processing">{t('task_monitor.status_processing')}</option>
+            <option value="uploaded">{t('task_monitor.status_uploaded')}</option>
+            <option value="failed">{t('task_monitor.status_failed')}</option>
           </select>
         </div>
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input 
             type="text"
-            placeholder="Search..."
+            placeholder={t('task_monitor.search_placeholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-sm"
@@ -261,14 +266,14 @@ function TaskManager() {
             <div className="flex items-start space-x-3">
               <AlertCircle className="w-5 h-5 text-amber-600" />
               <div className="text-xs text-amber-800 dark:text-amber-200">
-                <p className="font-bold mb-2">Documents stuck without error messages:</p>
+                <p className="font-bold mb-2">{t('task_monitor.stalled_title')}</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>OCR API call hanging (check API provider status)</li>
-                  <li>File path inaccessible or permissions issue</li>
-                  <li>Celery worker crashed during processing</li>
-                  <li>Network timeout or connection error</li>
+                  <li>{t('task_monitor.stalled_reason_api')}</li>
+                  <li>{t('task_monitor.stalled_reason_path')}</li>
+                  <li>{t('task_monitor.stalled_reason_worker')}</li>
+                  <li>{t('task_monitor.stalled_reason_network')}</li>
                 </ul>
-                <p className="mt-2 font-bold">Action: Click "Retry OCR" to restart processing. If it fails again, check Celery logs.</p>
+                <p className="mt-2 font-bold">{t('task_monitor.stalled_action')}</p>
               </div>
             </div>
           </div>
@@ -277,12 +282,12 @@ function TaskManager() {
           <table className="min-w-full">
             <thead className="bg-gray-50 dark:bg-dark-bg">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Filename</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Progress</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Age</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Error</th>
-                <th className="px-6 py-3 text-right text-xs font-bold uppercase">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_filename')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('common.status')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_progress')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_age')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_error')}</th>
+                <th className="px-6 py-3 text-right text-xs font-bold uppercase">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
@@ -309,7 +314,7 @@ function TaskManager() {
                   <td className="px-6 py-4 text-xs">
                     <div className="flex items-center space-x-1">
                       {doc.age_minutes > 60 && (
-                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-sm text-[9px] font-bold uppercase">Stalled</span>
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-sm text-[9px] font-bold uppercase">{t('task_monitor.badge_stalled')}</span>
                       )}
                       {doc.age_minutes > 10 && doc.age_minutes <= 60 && (
                         <Clock className="w-3 h-3 text-amber-600" />
@@ -331,16 +336,16 @@ function TaskManager() {
                       <button 
                         onClick={() => openLogs(doc.examination_id || doc.id)}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-sm text-blue-600 transition-colors"
-                        title="View technical logs"
+                        title={t('common.view_technical_logs')}
                       >
                         <Terminal className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => retryDocument(doc.id)}
                         className="px-3 py-1 bg-blue-600 text-white rounded-sm text-xs hover:bg-blue-700 transition-colors"
-                        title="Retry OCR processing"
+                        title={t('task_monitor.retry_ocr_title')}
                       >
-                        Retry OCR
+                        {t('task_monitor.retry_ocr')}
                       </button>
                     </div>
                   </td>
@@ -349,7 +354,7 @@ function TaskManager() {
               {filteredDocs.length === 0 && (
                 <tr>
 <td className="px-6 py-8 text-center text-gray-400" colSpan={6}>
-                  No processing documents found
+                  {t('task_monitor.no_documents')}
                 </td>
                 </tr>
               )}
@@ -365,7 +370,7 @@ function TaskManager() {
         </div>
         {filteredExams.length > 0 && (
           <div className="p-4 border-b border-gray-100 dark:border-dark-border">
-            <h2 className="text-lg font-bold mb-4">Active pipelines</h2>
+            <h2 className="text-lg font-bold mb-4">{t('task_monitor.active_pipelines')}</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {filteredExams.slice(0, 6).map(exam => {
                 const failed = exam.status === 'failed';
@@ -373,7 +378,7 @@ function TaskManager() {
                   <FlowStatusCard
                     key={exam.id}
                     title={exam.category || 'General'}
-                    steps={examFlowSteps(exam)}
+                    steps={examFlowSteps(exam, t)}
                     status={failed ? 'failed' : 'running'}
                     error={failed ? { code: 'extraction_failed', message: exam.error_message || '', retryable: false } : undefined}
                   />
@@ -394,12 +399,12 @@ function TaskManager() {
           <table className="min-w-full">
             <thead className="bg-gray-50 dark:bg-dark-bg">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Progress</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Age</th>
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase">Error</th>
-                <th className="px-6 py-3 text-right text-xs font-bold uppercase">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('common.category')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('common.status')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_progress')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_age')}</th>
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase">{t('task_monitor.col_error')}</th>
+                <th className="px-6 py-3 text-right text-xs font-bold uppercase">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
@@ -426,7 +431,7 @@ function TaskManager() {
                   <td className="px-6 py-4 text-xs">
                     <div className="flex items-center space-x-1">
                       {exam.age_minutes > 10 && <Clock className="w-3 h-3 text-amber-600" />}
-                      <span>{Math.round(exam.age_minutes)} min</span>
+                      <span>{Math.round(exam.age_minutes)} {t('task_monitor.minutes_short')}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs max-w-48">
@@ -434,10 +439,18 @@ function TaskManager() {
                       <span className="text-red-600 truncate" title={exam.error_message}>{exam.error_message}</span>
                     ) : (
                       <span className="text-indigo-600">
-                        {exam.status === 'aggregating' ? 'Aggregating Text' : 
-                         exam.status === 'analyzing_text' ? 'AI Analysis (Pass 1)' :
-                         exam.status === 'defining_ontology' ? 'AI Ontology (Pass 2)' :
-                         exam.status === 'persisting_results' ? 'Saving to DB' : 'Processing'}
+                        {exam.status === 'aggregating'
+                          ? t('task_monitor.stage_aggregating_text')
+                          : 
+                         exam.status === 'analyzing_text'
+                            ? t('task_monitor.stage_ai_analysis')
+                            :
+                         exam.status === 'defining_ontology'
+                              ? t('task_monitor.stage_ai_ontology')
+                              :
+                         exam.status === 'persisting_results'
+                              ? t('task_monitor.stage_saving_to_db')
+                              : t('task_monitor.status_processing')}
                       </span>
                     )}
                   </td>
@@ -446,7 +459,7 @@ function TaskManager() {
                       <button 
                         onClick={() => openLogs(exam.id)}
                         className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-sm text-indigo-600 transition-colors"
-                        title="View technical logs"
+                        title={t('common.view_technical_logs')}
                       >
                         <Terminal className="w-4 h-4" />
                       </button>
@@ -455,7 +468,7 @@ function TaskManager() {
                           onClick={() => retryExamination(exam.id)}
                           className="px-3 py-1 bg-indigo-600 text-white rounded-sm text-xs hover:bg-indigo-700"
                         >
-                          Retry
+                          {t('task_monitor.retry')}
                         </button>
                       )}
                     </div>
@@ -465,7 +478,7 @@ function TaskManager() {
               {filteredExams.length === 0 && (
                 <tr>
 <td className="px-6 py-8 text-center text-gray-400" colSpan={5}>
-                  No processing examinations found
+                  {t('task_monitor.no_examinations')}
                 </td>
                 </tr>
               )}

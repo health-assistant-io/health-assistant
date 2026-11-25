@@ -29,6 +29,7 @@ import type { FacetDefinition } from '../../components/ui/filters';
 import { getEventFacets } from '../../features/instances/facets';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
 
+import { uiLocale } from '../../lib/dateFormats';
 export const ClinicalEventList = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -240,7 +241,7 @@ export const ClinicalEventList = () => {
                    <div key={i} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark-bg/20 rounded-2xl border border-gray-100 dark:border-dark-border">
                       <div className="flex items-center space-x-3">
                          <div className={`w-2 h-2 rounded-full ${occ.intensity > 7 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : (occ.intensity > 4 ? 'bg-yellow-500' : 'bg-green-500')}`} />
-                         <span className="text-xs font-bold text-gray-700 dark:text-dark-text">{new Date(occ.date).toLocaleDateString()}</span>
+                         <span className="text-xs font-bold text-gray-700 dark:text-dark-text">{new Date(occ.date).toLocaleDateString(uiLocale())}</span>
                          {occ.location && <span className="px-2 py-0.5 bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-lg text-[10px] text-gray-500 font-bold uppercase">{occ.location}</span>}
                       </div>
                       <span className="text-[10px] font-black text-gray-400">Lv. {occ.intensity}</span>

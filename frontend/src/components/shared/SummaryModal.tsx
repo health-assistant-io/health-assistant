@@ -1,8 +1,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, ExternalLink, Calendar, Clock, Info, ChevronRight, AlertTriangle, ShieldCheck, Tag, User, MapPin, Hash, Activity } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { parseISO, isValid } from 'date-fns';
 import { Portal } from '../ui/Portal';
+import { formatDate, DATE_LONG } from '../../lib/dateFormats';
 
 export interface SummaryModalAction {
   label: string;
@@ -118,8 +119,8 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
   };
 
   const formattedDate = date ? (
-    typeof date === 'string' ? (isValid(parseISO(date)) ? format(parseISO(date), 'MMMM d, yyyy') : date) : 
-    (isValid(date) ? format(date, 'MMMM d, yyyy') : null)
+    typeof date === 'string' ? (isValid(parseISO(date)) ? formatDate(parseISO(date), DATE_LONG) : date) : 
+    (isValid(date) ? formatDate(date, DATE_LONG) : null)
   ) : null;
 
   return (
@@ -144,7 +145,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
                 onClose();
               }}
               className="absolute top-6 right-6 p-2 bg-black/10 hover:bg-black/30 text-white rounded-full transition-all z-dropdown hover:rotate-90 active:scale-90 shadow-lg border border-white/10"
-              aria-label="Close modal"
+              aria-label={t('common.close_modal')}
             >
               <X className="w-5 h-5" />
             </button>

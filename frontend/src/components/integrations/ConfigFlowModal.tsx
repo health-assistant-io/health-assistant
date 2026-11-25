@@ -301,9 +301,7 @@ const ConfigFlowModal: React.FC<Props> = ({ domain, integrationId, onClose, onSu
             })}
           </div>
           {(formData[key] || []).length === 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-              Select at least one record type.
-            </p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">{t('integrations.config_select_record_type')}</p>
           )}
           {prop.description && <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{prop.description}</p>}
         </div>

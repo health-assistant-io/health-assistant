@@ -18,6 +18,7 @@ import {
   type ElevationStatus,
 } from '../../services/elevationService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 const STATUS_FILTERS: Array<'all' | ElevationStatus> = [
   'all',
   'pending',
@@ -31,7 +32,7 @@ const STATUS_FILTERS: Array<'all' | ElevationStatus> = [
 function formatDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '—' : formatTimestamp(date);
 }
 
 function statusTone(status: ElevationStatus): string {

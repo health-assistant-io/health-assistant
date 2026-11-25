@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 import { useTenantSwitchStore } from '../../store/slices/tenantSwitchSlice';
 import { usePatientStore } from '../../store/slices/patientSlice';
+import { useTranslation } from 'react-i18next';
 
 /**
  * A fixed banner that appears at the top of the screen when a SYSTEM_ADMIN
@@ -13,6 +14,7 @@ import { usePatientStore } from '../../store/slices/patientSlice';
  * scoped tenant has a different patient set.
  */
 function TenantSwitchBanner() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { switched, scopedTenant, exitTenant } = useTenantSwitchStore();
   const clearPatientContext = usePatientStore((s) => s.clearPatientContext);
@@ -38,8 +40,7 @@ function TenantSwitchBanner() {
       <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 min-w-0">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="text-sm font-semibold truncate">
-            Viewing tenant <strong>{scopedTenant?.name ?? 'unknown'}</strong>
+          <span className="text-sm font-semibold truncate">{t('common.viewing_tenant')}<strong>{scopedTenant?.name ?? 'unknown'}</strong>
             <span className="hidden sm:inline opacity-80"> — exit to return to system admin view.</span>
           </span>
         </div>

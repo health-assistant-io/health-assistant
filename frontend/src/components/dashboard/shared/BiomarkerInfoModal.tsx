@@ -56,7 +56,7 @@ export const BiomarkerInfoModal: React.FC<BiomarkerInfoModalProps> = ({ info, na
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{info}</ReactMarkdown>
             )
           ) : (
-            <p className="text-gray-500 italic">No information available.</p>
+            <p className="text-gray-500 italic">{t('biomarkers.no_information')}</p>
           )}
         </div>
       </div>

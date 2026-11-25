@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Smartphone, Copy, Check, KeyRound, Loader2, AlertTriangle } from 'lucide-react';
 import api from '../../api/axios';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Shown on a Health Assistant Bridge integration's detail page so a user can
@@ -29,6 +30,7 @@ export function BridgeConnectCard({
   hasApiSecret: boolean;
   connectUrl?: string;
 }) {
+  const { t } = useTranslation();
   const [serverClientBaseUrl, setServerClientBaseUrl] = useState('');
   const [rotating, setRotating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,8 +86,7 @@ export function BridgeConnectCard({
   return (
     <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
       <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-text mb-2">
-        <Smartphone className="w-5 h-5 mr-2 text-blue-500" /> Connect your mobile app
-      </h3>
+        <Smartphone className="w-5 h-5 mr-2 text-blue-500" />{t('integrations.bridge_connect_title')}</h3>
       <p className="text-sm text-gray-600 dark:text-dark-muted mb-6">
         Scan this with the Health Assistant Android app, or copy the connection code into it.
       </p>
@@ -113,16 +114,14 @@ export function BridgeConnectCard({
               <QRCodeSVG value={code} size={148} level="M" />
             </div>
             <div className="flex-1 w-full min-w-0">
-              <label className="block text-xs font-semibold text-gray-500 dark:text-dark-muted mb-1 uppercase tracking-wide">
-                Connection code (includes the pairing secret)
-              </label>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-dark-muted mb-1 uppercase tracking-wide">{t('integrations.bridge_connection_code')}</label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 min-w-0 text-xs bg-gray-100 dark:bg-dark-bg rounded-lg px-3 py-2 break-all">
                   {code}
                 </code>
                 <button
                   onClick={copy}
-                  title="Copy connection code"
+                  title={t('integrations.bridge_copy_code')}
                   className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 dark:bg-dark-bg dark:text-dark-text dark:border-dark-border dark:hover:bg-dark-surface transition-colors"
                 >
                   {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}

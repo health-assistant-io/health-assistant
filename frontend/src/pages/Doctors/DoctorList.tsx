@@ -459,9 +459,7 @@ function DoctorList() {
           </div>
 
           {formData.telecom.length === 0 && (
-            <p className="text-sm text-gray-500 italic px-4 py-3 bg-gray-50 dark:bg-dark-bg/30 rounded-xl text-center border border-dashed border-gray-200 dark:border-dark-border">
-              No additional contact methods added.
-            </p>
+            <p className="text-sm text-gray-500 italic px-4 py-3 bg-gray-50 dark:bg-dark-bg/30 rounded-xl text-center border border-dashed border-gray-200 dark:border-dark-border">{t('doctors.no_contact_methods')}</p>
           )}
 
           <div className="space-y-3">

@@ -127,11 +127,11 @@ export const ReferenceRangesEditor: React.FC<{
                 </select>
               </div>
               <div>
-                <Label>Age min (yrs)</Label>
+                <Label>{t('biomarker_catalog.age_min')}</Label>
                 <NumberInput value={r.age_min} onChange={(v) => update(i, { age_min: v })} />
               </div>
               <div>
-                <Label>Age max (yrs)</Label>
+                <Label>{t('biomarker_catalog.age_max')}</Label>
                 <NumberInput value={r.age_max} onChange={(v) => update(i, { age_max: v })} />
               </div>
               <div>

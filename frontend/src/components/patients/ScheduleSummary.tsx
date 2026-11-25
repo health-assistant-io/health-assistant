@@ -11,11 +11,12 @@ import {
   RefreshCw,
   Infinity as InfinityIcon,
 } from 'lucide-react';
-import { format, isValid, isToday, isTomorrow, startOfDay, addMonths, differenceInDays } from 'date-fns';
+import { isValid, isToday, isTomorrow, startOfDay, addMonths, differenceInDays } from 'date-fns';
 import { useCalendarData } from '../../hooks/useCalendarData';
 import { CalendarEvent } from '../../types/calendar';
 import { getActiveConditions } from '../../utils/calendarUtils';
 import SummaryCardHeader, { TAG_EMERALD } from '../ui/SummaryCardHeader';
+import { formatDate, DATE_SHORT } from '../../lib/dateFormats';
 
 interface Props {
   patientId: string;
@@ -261,7 +262,7 @@ const OngoingRow: React.FC<{ item: CalendarEvent; t: any; onClick: () => void }>
           <span className="truncate">{item.title}</span>
         </p>
         <p className="text-[10px] text-gray-400 dark:text-dark-muted truncate mt-0.5">
-          {t('patients.since')} {format(item.date, 'MMM d')}{item.subtitle ? ` · ${item.subtitle}` : ''}
+          {t('patients.since')} {formatDate(item.date, DATE_SHORT)}{item.subtitle ? ` · ${item.subtitle}` : ''}
         </p>
       </div>
 
@@ -331,7 +332,7 @@ function formatRelativeDate(date: Date, t: any): string {
   if (!date || !isValid(date)) return '—';
   if (isToday(date)) return t('patients.today');
   if (isTomorrow(date)) return t('patients.tomorrow');
-  return format(date, 'MMM d');
+  return formatDate(date, DATE_SHORT);
 }
 
 export default React.memo(ScheduleSummary);

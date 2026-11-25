@@ -13,6 +13,7 @@ import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
+import { uiLocale } from '../../lib/dateFormats';
 function DoctorDetail() {
   const { t } = useTranslation();
   const { doctorId } = useParams<{ doctorId: string }>();
@@ -268,8 +269,8 @@ function DoctorDetail() {
                 <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100 dark:border-dark-border">
                   <FileText className="w-8 h-8 text-gray-300" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">No examinations recorded</h3>
-                <p className="text-gray-500 mt-1 max-w-xs mx-auto">This doctor hasn't been linked to any clinical visits yet.</p>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('doctors.no_examinations')}</h3>
+                <p className="text-gray-500 mt-1 max-w-xs mx-auto">{t('doctors.no_examinations_desc')}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -289,7 +290,7 @@ function DoctorDetail() {
                           <div className="flex items-center space-x-3">
                             <Calendar className="w-4 h-4 text-gray-400" />
                             <span className="text-sm font-bold text-gray-900 dark:text-dark-text">
-                              {new Date(exam.examination_date).toLocaleDateString()}
+                              {new Date(exam.examination_date).toLocaleDateString(uiLocale())}
                             </span>
                           </div>
                         </td>

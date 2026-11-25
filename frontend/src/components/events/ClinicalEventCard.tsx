@@ -6,6 +6,7 @@ import { ClinicalEvent } from '../../services/clinicalEventService';
 import { getEventIcon, getEventStatusBadge } from '../../utils/clinicalEventUtils';
 import { CardStyles } from '../../utils/cardStyles';
 
+import { uiLocale } from '../../lib/dateFormats';
 interface Props {
   event: ClinicalEvent;
   variant?: 'default' | 'compact' | 'badge';
@@ -160,7 +161,7 @@ export const ClinicalEventCard: React.FC<Props> = ({
         <div className="mt-4 flex items-center justify-between">
            <div className="flex items-center space-x-3 text-[10px] font-black text-gray-400 uppercase tracking-widest">
               <Calendar className="w-3 h-3" />
-              <span>{event.onset_date ? new Date(event.onset_date).toLocaleDateString() : t('common.unknown_start')}</span>
+              <span>{event.onset_date ? new Date(event.onset_date).toLocaleDateString(uiLocale()) : t('common.unknown_start')}</span>
            </div>
            
            <div className="flex items-center space-x-2">

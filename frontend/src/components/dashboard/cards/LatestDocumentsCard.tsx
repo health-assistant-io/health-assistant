@@ -11,6 +11,7 @@ import {
 import { AuthenticatedThumbnail } from '../../ui/AuthenticatedThumbnail';
 import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
+import { uiLocale } from '../../../lib/dateFormats';
 export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -81,7 +82,7 @@ export const LatestDocumentsCard = React.forwardRef((props: any, ref: any) => {
                     <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tight">{doc.entities?.document_category || 'Document'}</p>
                   </div>
                   <div className="ml-3 text-right">
-                    <p className="text-[10px] text-gray-400 font-bold">{new Date(doc.created_at).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-gray-400 font-bold">{new Date(doc.created_at).toLocaleDateString(uiLocale())}</p>
                   </div>
                 </div>
               ))}

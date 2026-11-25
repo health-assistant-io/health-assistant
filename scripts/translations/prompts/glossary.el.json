@@ -1,0 +1,18 @@
+{
+  "Documentation": "Τεκμηρίωση",
+  "documentation": "τεκμηρίωση",
+  "assistant": "βοηθός",
+  "open source": "ανοιχτού κώδικα",
+  "self-hosted": "self-hosted",
+  "local-first": "local-first",
+  "live": "ζωντανό",
+  "download": "λήψη",
+  "overview": "επισκόπηση",
+  "endpoint": "endpoint",
+  "endpoints": "endpoints",
+  "system tray": "γραμμή εργασιών",
+  "tool calling": "tool calling",
+  "keyring": "keyring",
+  "desktop app": "desktop εφαρμογή",
+  "web app": "web εφαρμογή"
+}

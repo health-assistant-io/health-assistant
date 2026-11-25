@@ -10,6 +10,7 @@ import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { BiomarkerInfoModal } from '../shared/BiomarkerInfoModal';
 import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
+import { uiLocale } from '../../../lib/dateFormats';
 const COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
 export const MultiBiomarkerComparisonCard = React.forwardRef((props: any, ref: any) => {
@@ -133,7 +134,7 @@ export const MultiBiomarkerComparisonCard = React.forwardRef((props: any, ref: a
               <YAxis tick={{ fontSize: 9, fill: 'currentColor' }} className="text-gray-400" domain={[-50, 150]} ticks={[0, 50, 100]} unit="%" width={40} />
               <Tooltip
                 contentStyle={{ fontSize: 11, borderRadius: 12, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.1)' }}
-                labelFormatter={(d) => { try { return new Date(d as string).toLocaleDateString(); } catch { return d; } }}
+                labelFormatter={(d) => { try { return new Date(d as string).toLocaleDateString(uiLocale()); } catch { return d; } }}
                 formatter={(val: any, _name: any, item: any) => {
                   const dataKey = item?.dataKey as string | undefined;
                   const meta = series.slugs.find((s: any) => s.slug === dataKey);

@@ -20,6 +20,7 @@ import { SecretOnceReveal } from '../../components/settings/SecretOnceReveal';
 import { oauthService } from '../../services/oauthService';
 import type { OAuthClient } from '../../types/oauth';
 import { useUIStore } from '../../store/slices/uiSlice';
+import { useTranslation } from 'react-i18next';
 
 /** Scope presets offered as one-click additions in the editor. */
 const SCOPE_PRESETS: { label: string; scope: string }[] = [
@@ -51,6 +52,7 @@ const ClientIdChip: React.FC<{ value: string }> = ({ value }) => (
 );
 
 const OAuthClients: React.FC = () => {
+  const { t } = useTranslation();
   const [clients, setClients] = useState<OAuthClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -248,7 +250,7 @@ const OAuthClients: React.FC = () => {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {c.scopes.length === 0 ? (
-                        <span className="text-xs text-gray-400 dark:text-dark-muted">No scopes</span>
+                        <span className="text-xs text-gray-400 dark:text-dark-muted">{t('admin.oauth_no_scopes')}</span>
                       ) : (
                         c.scopes.map((s) => (
                           <span
@@ -269,7 +271,7 @@ const OAuthClients: React.FC = () => {
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <IconAction title="Edit" onClick={() => openEdit(c)} icon={<ShieldAlert className="size-4" />} />
-                    <IconAction title="Rotate secret" onClick={() => handleRotate(c)} icon={<RefreshCw className="size-4" />} />
+                    <IconAction title={t('admin.oauth_rotate_secret')} onClick={() => handleRotate(c)} icon={<RefreshCw className="size-4" />} />
                     <IconAction
                       title={c.is_active ? 'Disable' : 'Enable'}
                       onClick={() => handleToggle(c)}
@@ -348,10 +350,7 @@ const OAuthClients: React.FC = () => {
           {!editing && (
             <div className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>
-                The <code>client_secret</code> is shown <strong>only once</strong> after creation. Store it
-                securely — you will need it to call <code>POST /api/v1/oauth/token</code>.
-              </span>
+              <span>{t('admin.oauth_secret_once')}</span>
             </div>
           )}
         </div>

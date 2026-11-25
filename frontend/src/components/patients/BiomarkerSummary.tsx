@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Activity, ArrowUpRight, RefreshCw, AlertTriangle, Upload } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 import { getBiomarkerTrends, getCachedBiomarkerTrends } from '../../services/analyticsService';
 import { useBiomarkers } from '../../hooks/useBiomarkers';
 import { useAuthStore } from '../../store/slices/authSlice';
@@ -14,6 +14,7 @@ import LineChart from '../charts/LineChart';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_RED } from '../ui/SummaryCardHeader';
 import { LogBiomarkerReadingModal } from '../biomarkers/LogBiomarkerReadingModal';
 import { ExaminationModal } from '../examinations/ExaminationModal';
+import { formatDate, DATE_SHORT } from '../../lib/dateFormats';
 
 interface Props {
   patientId: string;
@@ -120,7 +121,7 @@ const BiomarkerSummary: React.FC<Props> = ({ patientId }) => {
   const toSparklineData = (obs: BiomarkerObservation) => {
     const history: any[] = obs._rawJson?.history ?? [];
     return history.slice(-SPARKLINE_POINTS).map(p => ({
-      name: p.date ? format(parseISO(p.date), 'MMM d') : '',
+      name: p.date ? formatDate(parseISO(p.date), DATE_SHORT) : '',
       value: p.value,
     }));
   };

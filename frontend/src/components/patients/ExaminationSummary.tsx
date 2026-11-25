@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileText, Plus, ChevronRight, Calendar, Stethoscope, AlertTriangle, RefreshCw } from 'lucide-react';
-import { format, parseISO, isValid, differenceInDays } from 'date-fns';
+import { parseISO, isValid, differenceInDays } from 'date-fns';
 import { getExaminations } from '../../services/examinationService';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
 import { ExaminationModal } from '../examinations/ExaminationModal';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_BLUE } from '../ui/SummaryCardHeader';
+import { formatDate, DATE_MEDIUM } from '../../lib/dateFormats';
 
 interface Props {
   patientId: string;
@@ -87,7 +88,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
     if (days === 0) return t('patients.today');
     if (days === 1) return t('patients.yesterday');
     if (days < 30) return t('patients.days_ago', { count: days });
-    return format(d, 'MMM d, yyyy');
+    return formatDate(d, DATE_MEDIUM);
   }, [lastVisit, t]);
 
   if (loading) {
@@ -190,7 +191,7 @@ const ExaminationSummary: React.FC<Props> = ({ patientId, initialExaminations })
 // ---------- Row ----------
 const ExaminationRow: React.FC<{ exam: any; t: any; onClick: () => void }> = ({ exam, t, onClick }) => {
   const date = exam.examination_date ? parseISO(exam.examination_date) : null;
-  const dateLabel = date && isValid(date) ? format(date, 'MMM d, yyyy') : '—';
+  const dateLabel = date && isValid(date) ? formatDate(date, DATE_MEDIUM) : '—';
   const clinician = exam.doctors && exam.doctors.length > 0 ? exam.doctors.map((d: any) => d.name).join(', ') : null;
   const status = exam.extraction_status || 'pending';
 

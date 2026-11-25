@@ -9,8 +9,8 @@
  *   - `elevations.*` the break-glass queue and the caller's own ledger.
  */
 import { describe, expect, it } from 'vitest';
-import en from '../locales/en/common.json';
-import el from '../locales/el/common.json';
+import en from '../locales/en.json';
+import el from '../locales/el.json';
 
 type Node = Record<string, unknown>;
 

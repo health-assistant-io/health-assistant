@@ -19,6 +19,7 @@ import { SearchableBiomarkerSelect } from '../shared/SearchableBiomarkerSelect';
 import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
 
+import { uiLocale } from '../../../lib/dateFormats';
 export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -212,7 +213,7 @@ export const BiomarkersCard = React.forwardRef((props: any, ref: any) => {
         <td className="py-3 px-4">
           <BiomarkerStatusIndicator interpretation={lab.status} compact={true} className="items-start!" />
         </td>
-        <td className="py-3 px-4 text-right text-gray-400 dark:text-dark-muted font-bold text-[11px] whitespace-nowrap">{new Date(lab.date).toLocaleDateString()}</td>
+        <td className="py-3 px-4 text-right text-gray-400 dark:text-dark-muted font-bold text-[11px] whitespace-nowrap">{new Date(lab.date).toLocaleDateString(uiLocale())}</td>
       </tr>
     );
   };

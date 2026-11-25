@@ -115,7 +115,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 <h2 className="text-lg font-bold text-gray-900 dark:text-dark-text tracking-tight">{t('ai_labels.agent_capabilities', 'AI Agent Capabilities')}</h2>
                 <ActiveTaskBadge taskType="chat" />
               </div>
-              <p className="text-xs text-gray-500 dark:text-dark-muted font-medium mt-0.5">Explore the tools and actions available to the LLM</p>
+              <p className="text-xs text-gray-500 dark:text-dark-muted font-medium mt-0.5">{t('ai_labels.tools_subtitle')}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full transition-colors">
@@ -131,7 +131,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search tools..."
+                  placeholder={t('ai_labels.tools_search')}
                   className="w-full pl-9 pr-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text transition-all"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
@@ -148,13 +148,13 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                 }`}
               >
                 <Wrench className={`w-4 h-4 ${activeCategoryId === 'all' ? 'text-blue-200' : 'text-gray-400'}`} />
-                <span>All Capabilities</span>
+                <span>{t('ai_labels.tools_all_caps')}</span>
                 <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${activeCategoryId === 'all' ? 'bg-blue-700' : 'bg-gray-200 dark:bg-dark-border'}`}>
                   {tools.length}
                 </span>
               </button>
               
-              <div className="pt-2 pb-1 px-3 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-dark-muted">Categories</div>
+              <div className="pt-2 pb-1 px-3 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-dark-muted">{t('ai_labels.tools_categories')}</div>
               
               {filteredCategories.map(cat => {
                 const Icon = cat.icon;
@@ -185,12 +185,12 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
             {!patientId ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3">
                 <Bot className="w-12 h-12 opacity-20" />
-                <p className="text-sm font-bold text-center">Select a patient to view available agent capabilities.</p>
+                <p className="text-sm font-bold text-center">{t('ai_labels.tools_no_patient')}</p>
               </div>
             ) : loading ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4">
                 <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
-                <p className="text-sm font-bold">Discovering AI capabilities...</p>
+                <p className="text-sm font-bold">{t('ai_labels.tools_discovering')}</p>
               </div>
             ) : filteredCategories.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3">
@@ -210,24 +210,20 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text font-mono truncate">{selectedTool.name}</h3>
                       {selectedTool.source === 'integration' && (
-                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                          Integration
-                        </span>
+                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{t('ai_labels.tools_integration')}</span>
                       )}
                       {selectedTool.name.startsWith('propose_') && (
-                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                          HITL Action
-                        </span>
+                        <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{t('ai_labels.tools_hitl')}</span>
                       )}
                     </div>
-                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">Tool Documentation</p>
+                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">{t('ai_labels.tools_docs')}</p>
                   </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar">
                   {/* Description Card */}
                   <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-3">Description</h4>
+                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-3">{t('ai_labels.tools_description')}</h4>
                     <p className="text-sm text-gray-700 dark:text-dark-text leading-relaxed whitespace-pre-wrap">
                       {selectedTool.description}
                     </p>
@@ -235,7 +231,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
 
                   {/* Arguments Card */}
                   <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-4">Input Arguments</h4>
+                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-4">{t('ai_labels.tools_input_args')}</h4>
                     
                     {selectedTool.schema?.properties && Object.keys(selectedTool.schema.properties).length > 0 ? (
                       <div className="space-y-3">
@@ -254,7 +250,7 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs font-bold font-mono text-indigo-600 dark:text-indigo-400 break-all">{argName}</span>
                                   {isRequired && (
-                                    <span className="text-[8px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400 px-1.5 py-0.5 rounded-sm">Required</span>
+                                    <span className="text-[8px] font-black uppercase tracking-wider text-rose-500 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400 px-1.5 py-0.5 rounded-sm">{t('ai_labels.tools_required')}</span>
                                   )}
                                 </div>
                                 <div className="text-[10px] font-mono text-gray-400 dark:text-dark-muted mt-1">
@@ -262,24 +258,24 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                                 </div>
                               </div>
                               <div className="sm:w-2/3 text-xs text-gray-600 dark:text-dark-text leading-relaxed">
-                                {argDetails.description || argDetails.title || 'No description provided.'}
+                                {argDetails.description || argDetails.title || t('ai_labels.tools_no_description')}
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 italic">This tool does not require any input arguments.</p>
+                      <p className="text-xs text-gray-400 italic">{t('ai_labels.tools_no_args')}</p>
                     )}
                   </div>
                   
                   {/* Expected Output Card */}
                   <div className="bg-gray-50/50 dark:bg-dark-bg/50 rounded-2xl border border-gray-100 dark:border-dark-border p-5 shadow-xs">
-                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">Expected Output</h4>
+                    <h4 className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-widest mb-2">{t('ai_labels.tools_expected_output')}</h4>
                     <p className="text-xs text-gray-600 dark:text-dark-text leading-relaxed">
                       {selectedTool.name.startsWith('propose_') 
-                        ? 'Returns a HITL (Human-in-the-Loop) task payload which will render an interactive confirmation card in the chat interface.'
-                        : 'Returns a JSON string containing the requested clinical data or a confirmation message.'}
+                        ? t('ai_labels.tools_returns_hitl')
+                        : t('ai_labels.tools_returns_hint')}
                     </p>
                   </div>
                 </div>
@@ -311,14 +307,10 @@ export const AIToolsModal: React.FC<Props> = ({ isOpen, onClose, patientId, exam
                                   <div className="flex items-center gap-2 mb-1">
                                     <h4 className="text-sm font-bold text-gray-900 dark:text-dark-text truncate font-mono text-[13px]">{tool.name}</h4>
                                     {tool.source === 'integration' && (
-                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                                        Integration
-                                      </span>
+                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">{t('ai_labels.tools_integration')}</span>
                                     )}
                                     {tool.name.startsWith('propose_') && (
-                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                                        HITL Action
-                                      </span>
+                                      <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{t('ai_labels.tools_hitl')}</span>
                                     )}
                                   </div>
                                   <p className="text-xs text-gray-600 dark:text-dark-muted leading-relaxed line-clamp-3" title={tool.description}>

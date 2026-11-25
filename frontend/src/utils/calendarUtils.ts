@@ -4,6 +4,7 @@ import { isActiveMedication } from './medicationStatus';
 import { AllergyIntolerance } from '../services/allergyService';
 import { ClinicalEvent as ClinicalEventModel, ClinicalEventStatus, ScheduleKind, RecurrenceFrequency } from '../services/clinicalEventService';
 import { CalendarEvent } from '../types/calendar';
+import { formatDate, WEEKDAY_SHORT } from '../lib/dateFormats';
 
 /**
  * Adapts a MedicationRecord into one or more CalendarEvents based on recurrence
@@ -57,12 +58,12 @@ export const adaptMedicationToEvents = (
       const diffDays = Math.floor((day.getTime() - startOfDay(medStartDate).getTime()) / (1000 * 60 * 60 * 24));
       shouldTakeToday = diffDays % (timing.period || 1) === 0;
     } else if (timing.type === 'weekly' || timing.period_unit === 'week') {
-      const dayName = format(day, 'eee').toLowerCase();
+      const dayName = formatDate(day, WEEKDAY_SHORT).toLowerCase();
       if (timing.days_of_week?.includes(dayName)) {
         shouldTakeToday = true;
       }
     } else if (timing.type === 'specific_days') {
-      const dayName = format(day, 'eee').toLowerCase();
+      const dayName = formatDate(day, WEEKDAY_SHORT).toLowerCase();
       if (timing.days_of_week?.includes(dayName)) {
         shouldTakeToday = true;
       }
@@ -328,7 +329,7 @@ function expandRecurrence(
       const diffDays = Math.floor((day.getTime() - startOfDay(onsetDate).getTime()) / (1000 * 60 * 60 * 24));
       shouldInclude = diffDays % interval === 0;
     } else if (frequency === RecurrenceFrequency.WEEKLY) {
-      const dayName = format(day, 'eee').toLowerCase();
+      const dayName = formatDate(day, WEEKDAY_SHORT).toLowerCase();
       if (daysOfWeek.length > 0) {
         shouldInclude = daysOfWeek.includes(dayName);
       } else {

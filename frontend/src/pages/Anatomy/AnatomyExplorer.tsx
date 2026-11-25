@@ -249,7 +249,7 @@ export const AnatomyExplorer: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-dark-bg text-gray-600 dark:text-dark-muted rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-dark-border transition-colors"
             >
               <Layers className="w-3.5 h-3.5" />
-              {t('anatomy.atlas_manager', { defaultValue: 'Atlas' })}
+              {t('anatomy.atlas', { defaultValue: 'Atlas' })}
             </button>
           )}
         </div>

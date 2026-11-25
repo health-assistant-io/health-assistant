@@ -65,7 +65,7 @@ EXPECTED_CAPABILITY_DEFAULTS = {
 
 
 def _locale_keys(locale: str) -> set[str]:
-    data = json.loads((LOCALES / locale / "common.json").read_text(encoding="utf-8"))
+    data = json.loads((LOCALES / f"{locale}.json").read_text(encoding="utf-8"))
     keys: set[str] = set()
 
     def walk(prefix: str, node: object) -> None:
@@ -124,7 +124,9 @@ def test_every_specialist_task_resolves_through_a_declared_default():
 
 
 def test_every_task_label_key_resolves_in_every_locale():
-    shipped = sorted(p.name for p in LOCALES.iterdir() if (p / "common.json").exists())
+    shipped = sorted(
+        p.stem for p in LOCALES.glob("*.json") if p.is_file()
+    )
     assert set(shipped) >= {"en", "el"}, "both shipped locales must exist"
     for locale in shipped:
         keys = _locale_keys(locale)

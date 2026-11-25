@@ -34,7 +34,11 @@ class SettingCategory(BaseModel):
 
 class SettingEnumOption(BaseModel):
     value: str
-    label_key: str
+    # Reference-catalog options (e.g. ``localization.language``) carry no
+    # label key by design: language/country names are catalog data, not i18n
+    # content (ADR-0024). The app resolves them through
+    # ``languageDisplayName(value, uiLocale)``.
+    label_key: str | None = None
 
 
 class SettingDefinition(BaseModel):

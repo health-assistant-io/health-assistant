@@ -20,6 +20,7 @@ import { ActionResultDialog, IntegrationCard } from '../../components/ui/integra
 import { ExaminationCard } from '../../components/examinations/ExaminationCard';
 import type { ActionResult } from '../../services/integrationService';
 
+import { formatTimestamp, uiLocale } from '../../lib/dateFormats';
 const IntegrationDetail: React.FC = () => {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -85,7 +86,7 @@ const IntegrationDetail: React.FC = () => {
       setNotifKinds((prev) =>
         prev?.map((k) => (k.kind_id === kind.kind_id ? { ...k, enabled: !nextEnabled } : k)) ?? prev
       );
-      toast.error(err?.response?.data?.detail ?? 'Failed to update preference');
+      toast.error(err?.response?.data?.detail ?? t('integrations.toast_preference_failed'));
     } finally {
       setNotifBusy(null);
     }
@@ -99,7 +100,7 @@ const IntegrationDetail: React.FC = () => {
       setDetails(data);
     } catch (error) {
       console.error("Failed to load integration details", error);
-      toast.error("Failed to load details");
+      toast.error(t('integrations.toast_load_failed'));
       navigate('/settings/integrations');
     } finally {
       setLoading(false);
@@ -112,7 +113,8 @@ const IntegrationDetail: React.FC = () => {
       const { authorize_url } = await integrationService.oauthStart(details.domain, id, currentPatient.id);
       window.location.href = authorize_url;
     } catch (error: any) {
-      const detail = error?.response?.data?.detail || 'Authorization failed to start.';
+      const detail =
+        error?.response?.data?.detail || t('integrations.toast_auth_failed');
       toast.error(detail);
     }
   };
@@ -161,11 +163,11 @@ const IntegrationDetail: React.FC = () => {
     setSyncing(true);
     try {
       await integrationService.syncIntegration(id, currentPatient.id);
-      toast.success("Sync completed");
+      toast.success(t('integrations.toast_sync_completed'));
       await loadDetails();
     } catch (error) {
       console.error("Sync failed", error);
-      toast.error("Sync failed");
+      toast.error(t('integrations.toast_sync_failed'));
     } finally {
       setSyncing(false);
     }
@@ -179,21 +181,21 @@ const IntegrationDetail: React.FC = () => {
       await loadDetails();
     } catch (error) {
       console.error("Toggle debug failed", error);
-      toast.error("Failed to toggle debug mode");
+      toast.error(t('integrations.toast_debug_failed'));
     }
   };
 
   const handleRemove = async () => {
     if (!currentPatient || !id) return;
-    if (!confirm("Are you sure you want to remove this integration instance? Existing data will not be deleted, but no new data will sync.")) return;
+    if (!confirm(t('integrations.confirm_remove'))) return;
     
     try {
       await integrationService.removeIntegration(id, currentPatient.id);
-      toast.success("Integration removed");
+      toast.success(t('integrations.toast_removed'));
       navigate('/settings/integrations');
     } catch (error) {
       console.error("Remove failed", error);
-      toast.error("Failed to remove integration");
+      toast.error(t('integrations.toast_remove_failed'));
     }
   };
 
@@ -205,9 +207,9 @@ const IntegrationDetail: React.FC = () => {
       return;
     }
     try {
-      toast.info(`Executing ${action.label}...`);
+      toast.info(t('integrations.action_executing', { action: action.label }));
       const response = await integrationService.executeAction(id, currentPatient.id, action.id);
-      toast.success(response.message || "Action completed successfully");
+      toast.success(response.message || t('integrations.toast_action_ok'));
       // If the action returned structured display blocks, show them in the
       // result modal. Otherwise the toast above is enough (backwards compat).
       if (response.results && Array.isArray(response.results) && response.results.length > 0) {
@@ -215,7 +217,7 @@ const IntegrationDetail: React.FC = () => {
       }
       await loadDetails();
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || "Action failed");
+      toast.error(error.response?.data?.detail || t('integrations.toast_action_failed'));
     }
   };
 
@@ -228,7 +230,7 @@ const IntegrationDetail: React.FC = () => {
   }
 
   if (!details) {
-    return <div>Not found</div>;
+    return <div>{t('integrations.detail_not_found')}</div>;
   }
 
   const isConnected = details.status === 'active' || details.status === 'ACTIVE';
@@ -244,10 +246,10 @@ const IntegrationDetail: React.FC = () => {
   const renderDirectionBadge = (direction?: string) => {
     if (!direction) return null;
     const map: Record<string, { icon: any; label: string; cls: string }> = {
-      both: { icon: ArrowUpDown, label: 'Two-way', cls: 'text-purple-600 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-400' },
-      pull_only: { icon: ArrowDown, label: 'Pull only', cls: 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' },
-      push_only: { icon: ArrowUp, label: 'Push only', cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' },
-      none: { icon: Ban, label: 'Manual only', cls: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400' },
+      both: { icon: ArrowUpDown, label: t('integrations.direction_both'), cls: 'text-purple-600 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-400' },
+      pull_only: { icon: ArrowDown, label: t('integrations.direction_pull_only'), cls: 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' },
+      push_only: { icon: ArrowUp, label: t('integrations.direction_push_only'), cls: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' },
+      none: { icon: Ban, label: t('integrations.direction_none'), cls: 'text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-400' },
     };
     const cfg = map[direction];
     if (!cfg) return null;
@@ -266,8 +268,7 @@ const IntegrationDetail: React.FC = () => {
           onClick={() => navigate('/settings/integrations')}
           className="flex items-center text-sm font-bold text-gray-500 hover:text-blue-600 transition-colors"
         >
-          <ArrowLeft className="w-4 h-4 mr-1" /> Back to Integrations
-        </button>
+          <ArrowLeft className="w-4 h-4 mr-1" />{t('integrations.back_to_integrations')}</button>
       </div>
 
       {/* Instance identity through the kit card (plan 33 Phase D): name/
@@ -296,7 +297,7 @@ const IntegrationDetail: React.FC = () => {
               className="flex items-center px-4 py-2 bg-gray-50 text-gray-700 dark:bg-dark-bg dark:text-dark-text rounded-xl font-bold text-sm hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors border border-gray-200 dark:border-dark-border"
             >
               <FileText className="w-4 h-4 mr-2" aria-hidden />
-              Documentation
+              {t('integrations.docs.title')}
             </button>
             <button
               onClick={handleSync}
@@ -304,7 +305,7 @@ const IntegrationDetail: React.FC = () => {
               className="flex items-center px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-sm hover:bg-blue-100 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} aria-hidden />
-              {isError ? 'Retry Sync' : 'Sync Now'}
+              {isError ? t('integrations.retry_sync') : t('integrations.sync_now')}
             </button>
           </div>
         )}
@@ -317,26 +318,26 @@ const IntegrationDetail: React.FC = () => {
           ))}
           {isConnected ? (
             <span className="flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
-              <CheckCircle className="w-3 h-3 mr-1" aria-hidden /> Connected
+              <CheckCircle className="w-3 h-3 mr-1" aria-hidden /> {t('integrations.list.statusOk')}
             </span>
           ) : isError ? (
             <span className="flex items-center text-xs font-bold text-red-600 bg-red-50 dark:bg-red-900/30 px-2 py-0.5 rounded-full">
-              <XCircle className="w-3 h-3 mr-1" aria-hidden /> Error Requires Attention
+              <XCircle className="w-3 h-3 mr-1" aria-hidden /> {t('integrations.status_error')}
             </span>
           ) : (
             <span className="flex items-center text-xs font-bold text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
-              <Settings className="w-3 h-3 mr-1" aria-hidden /> Pending Setup
+              <Settings className="w-3 h-3 mr-1" aria-hidden /> {t('integrations.status_pending')}
             </span>
           )}
           {(details.sync_status?.conditions ?? []).includes('needs-config') && (
             <span className="flex items-center text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full">
-              needs config
+              {t('integrations.list.needsConfig')}
             </span>
           )}
           {renderDirectionBadge(details.sync_direction)}
           {details.last_synced_at && (
             <span className="text-xs text-gray-400 font-medium flex items-center ml-1">
-              <Clock className="w-3 h-3 mr-1" aria-hidden /> Last synced: {new Date(details.last_synced_at).toLocaleString()}
+              <Clock className="w-3 h-3 mr-1" aria-hidden /> {t('integrations.list.lastSynced')}: {formatTimestamp(new Date(details.last_synced_at))}
             </span>
           )}
         </div>
@@ -344,17 +345,17 @@ const IntegrationDetail: React.FC = () => {
 
       <div className="flex space-x-1 bg-gray-50 dark:bg-dark-bg p-1.5 rounded-2xl border border-gray-100 dark:border-dark-border mb-8 overflow-x-auto scrollbar-hide">
         {[
-          { id: 'overview', label: 'Overview' },
-          { id: 'examinations', label: 'Examinations' },
-          { id: 'biomarkers', label: 'Biomarkers' },
-          { id: 'data', label: 'Raw Data' },
+          { id: 'overview', label: t('common.overview') },
+          { id: 'examinations', label: t('common.examinations') },
+          { id: 'biomarkers', label: t('common.biomarkers') },
+          { id: 'data', label: t('integrations.tab_raw_data') },
           // Conditionally show the Notifications tab when the provider
           // declares any types. Hidden for providers without notification
           // support (notifKinds === null while loading, [] after if none).
           ...(notifKinds && notifKinds.length > 0
-            ? [{ id: 'notifications', label: 'Notifications' }]
+            ? [{ id: 'notifications', label: t('common.notifications') }]
             : []),
-          { id: 'settings', label: 'Settings' }
+          { id: 'settings', label: t('common.settings') }
         ].map(tab => (
           <button
             key={tab.id}
@@ -386,26 +387,23 @@ const IntegrationDetail: React.FC = () => {
                 <div className="flex items-center">
                   <Cloud className="w-6 h-6 mr-3 text-blue-600" />
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">Authorization required</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('integrations.auth_required')}</h3>
                     <p className="text-sm text-gray-600 dark:text-dark-muted">
-                      This integration needs you to sign in to the external service to complete the connection.
+                      {t('integrations.auth_required_desc')}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={handleAuthorize}
                   className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-xl shadow-xs text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all"
-                >
-                  Authorize
-                </button>
+                >{t('integrations.authorize')}</button>
               </div>
             </div>
           )}
           {details.custom_actions && details.custom_actions.length > 0 && (
             <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-                <Zap className="w-5 h-5 mr-2 text-yellow-500" /> Actions
-              </h3>
+                <Zap className="w-5 h-5 mr-2 text-yellow-500" />{t('integrations.actions')}</h3>
               <div className="flex flex-wrap gap-3">
                 {details.custom_actions.map((action: CustomAction) => (
                   <button
@@ -428,14 +426,14 @@ const IntegrationDetail: React.FC = () => {
           {details.push_status && (
             <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-                <Upload className="w-5 h-5 mr-2 text-emerald-500" /> Last Push
+                <Upload className="w-5 h-5 mr-2 text-emerald-500" /> {t('integrations.last_push')}
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                 {[
-                  { label: 'Pushed', value: details.push_status.pushed, color: 'text-emerald-600' },
-                  { label: 'Created', value: details.push_status.created, color: 'text-blue-600' },
-                  { label: 'Updated', value: details.push_status.updated, color: 'text-indigo-600' },
-                  { label: 'Skipped (412)', value: details.push_status.skipped, color: 'text-gray-500' },
+                  { label: t('integrations.pushed'), value: details.push_status.pushed, color: 'text-emerald-600' },
+                  { label: t('integrations.created'), value: details.push_status.created, color: 'text-blue-600' },
+                  { label: t('integrations.updated'), value: details.push_status.updated, color: 'text-indigo-600' },
+                  { label: t('integrations.skipped_412'), value: details.push_status.skipped, color: 'text-gray-500' },
                 ].map((stat) => (
                   <div key={stat.label} className="bg-gray-50 dark:bg-dark-bg rounded-xl p-4 border border-gray-100 dark:border-dark-border text-center">
                     <div className={`text-2xl font-black ${stat.color}`}>{stat.value ?? 0}</div>
@@ -445,11 +443,13 @@ const IntegrationDetail: React.FC = () => {
               </div>
               <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-bold ${details.push_status.errors > 0 ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'}`}>
-                  {details.push_status.errors > 0 ? `${details.push_status.errors} error(s)` : 'No errors'}
+                  {details.push_status.errors > 0
+                    ? t('integrations.errors_count', { count: details.push_status.errors })
+                    : t('integrations.no_errors')}
                 </span>
                 {details.push_status.at && (
                   <span className="text-gray-400 font-medium flex items-center">
-                    <Clock className="w-3 h-3 mr-1" /> {new Date(details.push_status.at).toLocaleString()}
+                    <Clock className="w-3 h-3 mr-1" /> {formatTimestamp(new Date(details.push_status.at))}
                   </span>
                 )}
               </div>
@@ -458,7 +458,7 @@ const IntegrationDetail: React.FC = () => {
           
           <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs h-96 flex flex-col">
             <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-               <Activity className="w-5 h-5 mr-2 text-gray-400" /> Sync History
+               <Activity className="w-5 h-5 mr-2 text-gray-400" /> {t('integrations.sync_history')}
             </h3>
             <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-1">
               {details.sync_history && details.sync_history.length > 0 ? (
@@ -466,21 +466,21 @@ const IntegrationDetail: React.FC = () => {
                   <div key={log.id} className="flex flex-col p-4 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-100 dark:border-dark-border">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        {new Date(log.started_at).toLocaleString()}
+                        {formatTimestamp(new Date(log.started_at))}
                       </span>
                       {log.status === 'success' ? (
                         <span className="flex items-center text-[10px] font-bold text-emerald-600">
-                          <CheckCircle className="w-3 h-3 mr-1" /> Success
+                          <CheckCircle className="w-3 h-3 mr-1" /> {t('integrations.sync_success')}
                         </span>
                       ) : (
                         <span className="flex items-center text-[10px] font-bold text-red-600">
-                          <XCircle className="w-3 h-3 mr-1" /> Failed
+                          <XCircle className="w-3 h-3 mr-1" /> {t('integrations.sync_failed')}
                         </span>
                       )}
                     </div>
                     <div className="flex items-baseline space-x-1">
                       <span className="text-lg font-black text-gray-700 dark:text-dark-text">{log.records_synced}</span>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase">records</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">{t('integrations.records')}</span>
                     </div>
                     {log.error_message && (
                       <p className="mt-2 text-xs text-red-500 font-medium">{log.error_message}</p>
@@ -488,7 +488,7 @@ const IntegrationDetail: React.FC = () => {
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-400 italic text-center py-4">No sync history available</p>
+                <p className="text-sm text-gray-400 italic text-center py-4">{t('integrations.no_sync_history')}</p>
               )}
             </div>
           </div>
@@ -498,7 +498,7 @@ const IntegrationDetail: React.FC = () => {
       {activeTab === 'examinations' && (
         <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-            <FileText className="w-5 h-5 mr-2 text-indigo-500" /> Synced Laboratory Reports
+            <FileText className="w-5 h-5 mr-2 text-indigo-500" /> {t('integrations.synced_reports')}
           </h3>
           {details.synced_examinations && details.synced_examinations.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
@@ -516,7 +516,7 @@ const IntegrationDetail: React.FC = () => {
           ) : (
              <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
                 <FileText className="w-8 h-8 mx-auto text-gray-300 mb-3" />
-                <p className="text-sm font-medium text-gray-500">No examinations or laboratory reports have been synced yet.</p>
+                <p className="text-sm font-medium text-gray-500">{t('integrations.no_examinations')}</p>
              </div>
           )}
         </div>
@@ -525,7 +525,7 @@ const IntegrationDetail: React.FC = () => {
       {activeTab === 'biomarkers' && (
         <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-            <Database className="w-5 h-5 mr-2 text-blue-500" /> Exposed Data Dictionary
+            <Database className="w-5 h-5 mr-2 text-blue-500" /> {t('integrations.exposed_dictionary')}
           </h3>
           {details.exposed_items && details.exposed_items.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
@@ -542,12 +542,12 @@ const IntegrationDetail: React.FC = () => {
                       {details.synced_examinations && details.synced_examinations.length > 0 && (
                          <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-sm flex items-center">
                            <FileText className="w-2.5 h-2.5 mr-1" />
-                           Report Sourced
+                           {t('integrations.report_sourced')}
                          </span>
                       )}
                     </div>
                     {item.last_seen && (
-                      <span className="text-[10px] text-gray-400 font-medium">Seen: {new Date(item.last_seen).toLocaleDateString()}</span>
+                      <span className="text-[10px] text-gray-400 font-medium">Seen: {new Date(item.last_seen).toLocaleDateString(uiLocale())}</span>
                     )}
                   </div>
                 </Link>
@@ -556,7 +556,7 @@ const IntegrationDetail: React.FC = () => {
           ) : (
             <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
               <Database className="w-8 h-8 mx-auto text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-500">No biomarker data dictionary has been established yet.</p>
+              <p className="text-sm font-medium text-gray-500">{t('integrations.no_biomarker_dictionary')}</p>
             </div>
           )}
         </div>
@@ -565,7 +565,7 @@ const IntegrationDetail: React.FC = () => {
       {activeTab === 'data' && (
         <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
           <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text mb-6">
-            <Activity className="w-5 h-5 mr-2 text-green-500" /> Recent Raw Measurements
+            <Activity className="w-5 h-5 mr-2 text-green-500" /> {t('integrations.recent_raw_measurements')}
           </h3>
           {details.recent_data && details.recent_data.length > 0 ? (
             <div className="max-h-[800px] overflow-y-auto custom-scrollbar border rounded-xl border-gray-100 dark:border-dark-border">
@@ -623,7 +623,7 @@ const IntegrationDetail: React.FC = () => {
                           {item.examination_id && (
                             <Link 
                               to={`/examinations/${item.examination_id}`}
-                              title="View source examination"
+                              title={t('integrations.view_source_examination')}
                               className="flex items-center justify-center p-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
                             >
                               <FileText className="w-3 h-3" />
@@ -643,7 +643,7 @@ const IntegrationDetail: React.FC = () => {
           ) : (
             <div className="text-center py-12 bg-gray-50 dark:bg-dark-bg rounded-2xl border border-dashed border-gray-200 dark:border-dark-border">
               <Activity className="w-8 h-8 mx-auto text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-500">No recent raw data found.</p>
+              <p className="text-sm font-medium text-gray-500">{t('integrations.no_recent_raw_data')}</p>
             </div>
           )}
         </div>
@@ -652,10 +652,10 @@ const IntegrationDetail: React.FC = () => {
       {activeTab === 'notifications' && notifKinds && notifKinds.length > 0 && (
         <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border p-6">
           <h3 className="text-base font-bold text-gray-900 dark:text-dark-text mb-1">
-            Notification types
+            {t('integrations.notification_types')}
           </h3>
           <p className="text-sm text-gray-500 dark:text-dark-muted mb-5">
-            Choose which kinds of notifications this integration instance can send you. Muting here only affects <span className="font-semibold">this instance</span> — other integrations of the same provider are unaffected.
+            {t('integrations.notification_types_desc')}
           </p>
           <div className="space-y-3">
             {notifKinds.map((k) => (
@@ -672,7 +672,13 @@ const IntegrationDetail: React.FC = () => {
                   className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors mt-1 disabled:opacity-50 ${
                     k.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-dark-border'
                   }`}
-                  title={k.mutable ? (k.enabled ? 'Click to disable' : 'Click to enable') : 'Cannot be disabled'}
+                  title={
+                    k.mutable
+                      ? k.enabled
+                        ? t('integrations.click_to_disable')
+                        : t('integrations.click_to_enable')
+                      : t('integrations.cannot_be_disabled')
+                  }
                 >
                   <span
                     className={`inline-block h-4 w-4 bg-white rounded-full shadow transform transition-transform mt-0.5 ${
@@ -684,7 +690,11 @@ const IntegrationDetail: React.FC = () => {
             ))}
           </div>
           <p className="text-xs text-gray-400 dark:text-dark-muted mt-5 leading-relaxed">
-            These preferences only affect this integration's provider-authored notifications. The platform's per-source and per-channel toggles in <button onClick={() => navigate('/notifications/settings')} className="text-blue-600 dark:text-blue-400 hover:underline">Notification settings</button> are applied independently.
+            {t('integrations.notifications_hint_before')}
+            <button onClick={() => navigate('/notifications/settings')} className="text-blue-600 dark:text-blue-400 hover:underline">
+              {t('notifications.settings_link')}
+            </button>
+            {t('integrations.notifications_hint_after')}
           </p>
         </div>
       )}
@@ -694,14 +704,14 @@ const IntegrationDetail: React.FC = () => {
           <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-gray-100 dark:border-dark-border shadow-xs">
             <div className="flex items-center justify-between mb-6">
               <h3 className="flex items-center text-lg font-bold text-gray-900 dark:text-dark-text">
-                <Settings className="w-5 h-5 mr-2 text-gray-400" /> Configuration
+                <Settings className="w-5 h-5 mr-2 text-gray-400" /> {t('integrations.configuration')}
               </h3>
               <button
                 onClick={() => setIsEditingConfig(true)}
                 className="flex items-center space-x-2 px-3 py-1.5 text-xs font-bold text-gray-600 dark:text-dark-muted hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-gray-200 dark:border-dark-border hover:border-blue-200 dark:hover:border-blue-800"
               >
                 <Edit2 className="w-3 h-3" />
-                <span>Edit Configuration</span>
+                <span>{t('integrations.edit_configuration')}</span>
               </button>
             </div>
             {details.user_config ? (
@@ -709,7 +719,7 @@ const IntegrationDetail: React.FC = () => {
                 {JSON.stringify(details.user_config, null, 2)}
               </pre>
             ) : (
-              <p className="text-sm text-gray-400">No specific configuration.</p>
+              <p className="text-sm text-gray-400">{t('integrations.no_configuration')}</p>
             )}
           </div>
           
@@ -719,17 +729,17 @@ const IntegrationDetail: React.FC = () => {
 
           <div className="bg-white dark:bg-dark-surface rounded-4xl p-8 border border-red-200 dark:border-red-900/30 shadow-xs">
             <h3 className="flex items-center text-lg font-bold text-red-600 dark:text-red-400 mb-6">
-              Danger Zone
+              {t('integrations.danger_zone')}
             </h3>
             <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">
-              Removing this integration will stop all future data syncing. Existing data will remain in your records.
+              {t('integrations.remove_warning')}
             </p>
             <button 
               onClick={handleRemove}
               className="flex items-center px-4 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Remove Integration
+              {t('integrations.remove_integration')}
             </button>
           </div>
         </div>

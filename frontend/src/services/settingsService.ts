@@ -6,7 +6,9 @@ export type SettingLevel = 'system' | 'tenant' | 'user';
 
 export interface SettingEnumOption {
   value: string;
-  label_key: string;
+  /** Absent for reference-catalog options (languages, countries) — those
+   *  resolve through `languageDisplayName(value, uiLocale)` (ADR-0024). */
+  label_key?: string | null;
 }
 
 export interface SettingDefinition {

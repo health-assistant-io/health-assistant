@@ -181,14 +181,14 @@ Every `ClinicalEventType` belongs to exactly one **category** — a `Concept` of
 
 1. Add a concept entry to `backend/data/seeds/concepts.json` with `"kinds": ["event_category"]` and a unique `slug`.
 2. Add the slug to the `case` block in `frontend/src/components/events/EventTypeCard.tsx:getEventIcon` so the picker shows an icon for it.
-3. Add frontend translations under `events.category.{slug}.{name,description}` in both `frontend/src/locales/en/common.json` and `frontend/src/locales/el/common.json` (see *Localization*).
+3. Add frontend translations under `events.category.{slug}.{name,description}` in both `frontend/src/locales/en.json` and `frontend/src/locales/el.json` (see *Localization*).
 4. Restart — the seed loader reconciles the new concept, and types can reference it via `category_slug`.
 
 The `general-event` category is **always present** (seeded by `concepts.json` + defensively re-inserted by migration `p8e5f6g7h8i9` on fresh DBs). It's the NOT-NULL backfill target for types whose seed entry omits `category_slug`. You should rarely need to assign a type to it — every shipped type fits one of the four domain categories above.
 
 ## 8. Localization (i18n)
 
-The seed stores **English source strings** (`name`, `description` for both types and categories). The frontend translates them at display time via two slug-keyed i18n namespaces in `frontend/src/locales/{en,el}/common.json`:
+The seed stores **English source strings** (`name`, `description` for both types and categories). The frontend translates them at display time via two slug-keyed i18n namespaces in `frontend/src/locales/{en,el}.json`:
 
 ```
 events.type.{slug}.name           → "Pregnancy" / "Εγκυμοσύνη"

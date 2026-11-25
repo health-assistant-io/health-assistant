@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getDocumentDownloadUrl } from '../../services/documentService';
+import { useTranslation } from 'react-i18next';
 
 interface AuthenticatedTextProps {
   documentId: string;
@@ -8,6 +9,7 @@ interface AuthenticatedTextProps {
 }
 
 export function AuthenticatedText({ documentId, className, filename }: AuthenticatedTextProps) {
+  const { t } = useTranslation();
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -44,9 +46,7 @@ export function AuthenticatedText({ documentId, className, filename }: Authentic
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center bg-[#1a1c23] text-gray-400 text-sm border border-gray-800 rounded-lg ${className}`}>
-        Failed to load file content
-      </div>
+      <div className={`flex items-center justify-center bg-[#1a1c23] text-gray-400 text-sm border border-gray-800 rounded-lg ${className}`}>{t('documents.load_failed')}</div>
     );
   }
 

@@ -24,6 +24,8 @@
 import React, { useMemo } from 'react';
 import { Check, AlertCircle } from 'lucide-react';
 
+import { formatTimestamp, uiLocale } from '../../lib/dateFormats';
+import { useTranslation } from 'react-i18next';
 interface StateTimelineProps {
   /** Trend points sorted chronologically (oldest first is recommended). */
   points: any[];
@@ -69,6 +71,7 @@ function toneClass(isNormal: boolean | null): {
 }
 
 export const StateTimeline: React.FC<StateTimelineProps> = ({ points, height = 400 }) => {
+  const { t } = useTranslation();
   // Build the unique state bands in first-seen order so the legend matches
   // the order the patient actually experienced them.
   const bands = useMemo(() => {
@@ -166,7 +169,7 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({ points, height = 4
         className="w-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label="State timeline"
+        aria-label={t('biomarkers.state_timeline')}
       >
         {/* Horizontal band guides + labels */}
         {bands.map((b, i) => {
@@ -213,7 +216,7 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({ points, height = 4
                 strokeWidth={2}
               >
                 <title>
-                  {`${new Date(points[i].date).toLocaleString()} — ${r.label}` +
+                  {`${formatTimestamp(new Date(points[i].date))} — ${r.label}` +
                     (r.isNormal === true ? ' (normal)' : r.isNormal === false ? ' (abnormal)' : '')}
                 </title>
               </circle>
@@ -228,7 +231,7 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({ points, height = 4
           className="fill-gray-400 dark:fill-dark-muted"
           style={{ fontSize: 10, fontWeight: 700 }}
         >
-          {new Date(tMin).toLocaleDateString()}
+          {new Date(tMin).toLocaleDateString(uiLocale())}
         </text>
         <text
           x={W - padX}
@@ -237,7 +240,7 @@ export const StateTimeline: React.FC<StateTimelineProps> = ({ points, height = 4
           className="fill-gray-400 dark:fill-dark-muted"
           style={{ fontSize: 10, fontWeight: 700 }}
         >
-          {new Date(tMax).toLocaleDateString()}
+          {new Date(tMax).toLocaleDateString(uiLocale())}
         </text>
       </svg>
 

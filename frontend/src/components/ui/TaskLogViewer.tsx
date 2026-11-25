@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getExaminationLogs } from '../../services/examinationService';
 import { X, Terminal, Clock, AlertCircle, CheckCircle, Activity, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useModalA11y } from '../../hooks/useModalA11y';
+import { useTranslation } from 'react-i18next';
 
 interface TaskLog {
   id: string;
@@ -20,6 +21,7 @@ interface TaskLogViewerProps {
 }
 
 export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerProps) {
+  const { t } = useTranslation();
   const [logs, setLogs] = useState<TaskLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
@@ -77,7 +79,7 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
             </div>
             <div>
               <h3 className="text-sm font-black text-slate-100 uppercase tracking-widest">Pipeline Task Monitor</h3>
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Technical execution logs for AI processors</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase">{t('task_monitor.logs_subtitle')}</p>
             </div>
           </div>
           <button 
@@ -93,12 +95,10 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
           {loading && logs.length === 0 ? (
             <div className="flex items-center justify-center py-20 text-slate-500">
               <Activity className="w-5 h-5 animate-spin mr-2" />
-              <span>Attaching to pipeline output...</span>
+              <span>{t('task_monitor.attaching_output')}</span>
             </div>
           ) : logs.length === 0 ? (
-            <div className="text-center py-20 text-slate-600 italic">
-              No technical logs recorded for this session.
-            </div>
+            <div className="text-center py-20 text-slate-600 italic">{t('task_monitor.no_logs')}</div>
           ) : (
             logs.map((log) => {
               const isExpanded = expandedLogs.has(log.id) || log.level === 'ERROR';
@@ -171,7 +171,7 @@ export function TaskLogViewer({ examinationId, onClose, isOpen }: TaskLogViewerP
                               copyToClipboard(fullText, log.id);
                             }}
                             className="absolute top-2 right-2 p-1.5 bg-slate-800 hover:bg-slate-700 rounded-md text-slate-400 hover:text-slate-200 transition-colors opacity-0 group-hover/data:opacity-100"
-                            title="Copy to clipboard"
+                            title={t('common.copy_to_clipboard')}
                           >
                             {copiedId === log.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>

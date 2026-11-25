@@ -7,6 +7,7 @@ import { useCreateIntent } from '../../hooks/useCreateIntent';
 import { AllergyModal } from './AllergyModal';
 import SummaryCardHeader, { TAG_NEUTRAL } from '../ui/SummaryCardHeader';
 
+import { uiLocale } from '../../lib/dateFormats';
 interface Props {
   patientId: string;
 }
@@ -168,11 +169,11 @@ export const AllergySummary: React.FC<Props> = ({ patientId }) => {
                             <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:items-center sm:space-x-4">
                               <div className="flex items-center text-xs sm:text-sm text-gray-700 dark:text-dark-text">
                                 <Calendar className="w-4 h-4 mr-2 text-blue-500" />
-                                <span>{t('allergies.started')}: {a.onset_date ? new Date(a.onset_date).toLocaleDateString() : t('allergies.unknown')}</span>
+                                <span>{t('allergies.started')}: {a.onset_date ? new Date(a.onset_date).toLocaleDateString(uiLocale()) : t('allergies.unknown')}</span>
                               </div>
                               <div className="flex items-center text-xs sm:text-sm text-gray-700 dark:text-dark-text">
                                 <History className="w-4 h-4 mr-2 text-green-500" />
-                                <span>{t('allergies.last_event')}: {a.last_occurrence ? new Date(a.last_occurrence).toLocaleDateString() : '—'}</span>
+                                <span>{t('allergies.last_event')}: {a.last_occurrence ? new Date(a.last_occurrence).toLocaleDateString(uiLocale()) : '—'}</span>
                               </div>
                             </div>
                           </div>

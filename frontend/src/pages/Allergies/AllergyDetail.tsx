@@ -31,6 +31,7 @@ import { useTabScroll } from '../../hooks/useTabScroll';
 import { useUIStore } from '../../store/slices/uiSlice';
 import { sanitizeHtml } from '../../utils/sanitize';
 
+import { uiLocale } from '../../lib/dateFormats';
 /**
  * Allergen catalog detail page. Mirrors `MedicationDetail` — three tabs:
  *   - info       : description, typical reactions, category, AI reprocess
@@ -418,7 +419,7 @@ function AllergyDetail() {
                           </td>
                           <td className="px-6 py-5 text-xs text-gray-500 dark:text-dark-muted font-medium">
                             {item.allergy.onset_date
-                              ? new Date(item.allergy.onset_date).toLocaleDateString()
+                              ? new Date(item.allergy.onset_date).toLocaleDateString(uiLocale())
                               : '—'}
                           </td>
                           <td className="px-6 py-5">

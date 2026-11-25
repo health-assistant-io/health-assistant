@@ -15,7 +15,6 @@ import {
   Inbox as InboxIcon,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import {
   notificationService,
@@ -25,6 +24,7 @@ import {
   type DeliveryChannel,
 } from '../../services/notificationService';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { dateLocaleFor } from '../../lib/dateLocale';
 
 interface AdminItem {
   id: string;
@@ -59,7 +59,7 @@ const SOURCE_COLORS: Record<string, string> = {
 
 export function AdminNotificationCenter() {
   const { t, i18n } = useTranslation();
-  const dateLocale: Locale = i18n.language === 'el' ? el : enUS;
+  const dateLocale = dateLocaleFor(i18n.language);
   const user = useAuthStore((s) => s.user);
   const isSystemAdmin = user?.role === 'SYSTEM_ADMIN';
 
@@ -372,6 +372,7 @@ function DeliveryDetailModal({
   dateLocale: Locale;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -451,9 +452,7 @@ function DeliveryDetailModal({
 
               {/* Recipient breakdown */}
               <div>
-                <p className="text-gray-400 uppercase font-bold tracking-wider text-[10px] mb-2">
-                  Delivery per recipient
-                </p>
+                <p className="text-gray-400 uppercase font-bold tracking-wider text-[10px] mb-2">{t('notifications.admin.delivery_per_recipient')}</p>
                 <div className="space-y-2">
                   {detail.recipients.map((r) => (
                     <div
@@ -470,7 +469,7 @@ function DeliveryDetailModal({
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {r.deliveries.length === 0 && (
-                          <span className="text-[11px] text-gray-400 italic">No delivery attempts</span>
+                          <span className="text-[11px] text-gray-400 italic">{t('notifications.admin.no_deliveries')}</span>
                         )}
                         {r.deliveries.map((d, i) => (
                           <div

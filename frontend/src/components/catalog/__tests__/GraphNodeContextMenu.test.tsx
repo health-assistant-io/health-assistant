@@ -32,8 +32,8 @@ describe('GraphNodeContextMenu', () => {
         <GraphNodeContextMenu {...props()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Open in catalog')).toBeInTheDocument();
-    expect(screen.getByText('Open in domain')).toBeInTheDocument();
+    expect(screen.getByText('catalogs.open_in_catalog')).toBeInTheDocument();
+    expect(screen.getByText('catalogs.open_in_domain')).toBeInTheDocument();
   });
 
   it('hides domain action for types without a domain page', () => {
@@ -42,8 +42,8 @@ describe('GraphNodeContextMenu', () => {
         <GraphNodeContextMenu {...props({ type: 'concept' })} />
       </MemoryRouter>,
     );
-    expect(screen.getByText('Open in catalog')).toBeInTheDocument();
-    expect(screen.queryByText('Open in domain')).not.toBeInTheDocument();
+    expect(screen.getByText('catalogs.open_in_catalog')).toBeInTheDocument();
+    expect(screen.queryByText('catalogs.open_in_domain')).not.toBeInTheDocument();
   });
 
   it('closes on Escape', () => {
@@ -76,7 +76,7 @@ describe('GraphNodeContextMenu', () => {
         <GraphNodeContextMenu {...props({ onClose })} />
       </MemoryRouter>,
     );
-    const menu = screen.getByText('Open in catalog').closest('.context-menu-root');
+    const menu = screen.getByText('catalogs.open_in_catalog').closest('.context-menu-root');
     fireEvent.mouseDown(menu!);
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -87,7 +87,7 @@ describe('GraphNodeContextMenu', () => {
         <GraphNodeContextMenu {...props({ type: 'medication', id: 'm9' })} />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByText('Open in catalog'));
+    fireEvent.click(screen.getByText('catalogs.open_in_catalog'));
     expect(mockNavigate).toHaveBeenCalledWith('/catalogs?type=medication&item=m9');
   });
 });

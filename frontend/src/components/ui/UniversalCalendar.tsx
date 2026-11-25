@@ -43,6 +43,7 @@ import { useCalendarData } from '../../hooks/useCalendarData';
 import { getActiveConditions } from '../../utils/calendarUtils';
 import { Portal } from './Portal';
 import { useNavigate } from 'react-router-dom';
+import { formatDate, DATE_FULL, DATE_LONG, DATE_MEDIUM, DATE_MONTH_YEAR, DATE_SHORT, WEEKDAY_LONG } from '../../lib/dateFormats';
 
 /**
  * Stable color from a category label — used by the active-conditions strip so
@@ -395,7 +396,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                         const isState = cond.kind === 'state';
                         const rangeLabel = isState
                           ? `→ ${t('patients.ongoing_indicator')}`
-                          : cond.endDate ? `→ ${format(cond.endDate, 'MMM d')}` : '';
+                          : cond.endDate ? `→ ${formatDate(cond.endDate, DATE_SHORT)}` : '';
                         return (
                           <button
                             key={cond.id}
@@ -409,7 +410,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                                 {cond.title}
                               </p>
                               <p className="text-[10px] text-gray-500 dark:text-dark-muted truncate">
-                                {format(cond.date, 'MMM d')} {rangeLabel}
+                                {formatDate(cond.date, DATE_SHORT)} {rangeLabel}
                                 {cond.subtitle ? ` · ${cond.subtitle}` : ''}
                               </p>
                             </div>
@@ -576,7 +577,7 @@ export const UniversalCalendar: React.FC<Props> = ({
     const rangeStart = startDate;
     const rangeEnd = endDate;
     const isOnToday = isSameDay(currentDate, new Date());
-    const label = `${format(rangeStart, 'MMM d')} – ${format(rangeEnd, 'MMM d, yyyy')}`;
+    const label = `${formatDate(rangeStart, DATE_SHORT)} – ${formatDate(rangeEnd, DATE_MEDIUM)}`;
 
     return (
       <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-b border-gray-100 dark:border-dark-border bg-white/50 dark:bg-dark-surface/50">
@@ -637,8 +638,8 @@ export const UniversalCalendar: React.FC<Props> = ({
               <div key={isoKey} className="w-56 sm:w-64 shrink-0 flex flex-col h-full min-h-0">
                 <div className={`p-4 rounded-2xl mb-4 transition-all shrink-0 flex items-center justify-between gap-2 ${isToday ? 'bg-blue-600 text-white shadow-xl shadow-blue-100' : 'bg-gray-50 dark:bg-dark-bg text-gray-400 dark:text-dark-muted border border-gray-100 dark:border-dark-border'}`}>
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{format(day, 'EEEE')}</p>
-                    <p className="text-xl font-black">{format(day, 'MMM d')}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-70">{formatDate(day, WEEKDAY_LONG)}</p>
+                    <p className="text-xl font-black">{formatDate(day, DATE_SHORT)}</p>
                   </div>
                   {dayActive.length > 0 && (
                     <button
@@ -678,7 +679,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                         const condIsState = cond.kind === 'state';
                         const rangeLabel = condIsState
                           ? `→ ${t('patients.ongoing_indicator')}`
-                          : cond.endDate ? `→ ${format(cond.endDate, 'MMM d')}` : '';
+                          : cond.endDate ? `→ ${formatDate(cond.endDate, DATE_SHORT)}` : '';
                         return (
                           <button
                             key={cond.id}
@@ -692,7 +693,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                                 {cond.title}
                               </p>
                               <p className="text-[9px] text-gray-500 dark:text-dark-muted truncate">
-                                {format(cond.date, 'MMM d')} {rangeLabel}
+                                {formatDate(cond.date, DATE_SHORT)} {rangeLabel}
                               </p>
                             </div>
                           </button>
@@ -732,7 +733,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                   )) : (
                     <div className="flex flex-col items-center justify-center bg-gray-50/50 dark:bg-dark-bg/30 rounded-3xl border border-dashed border-gray-200 dark:border-dark-border py-12">
                       <Check className="w-8 h-8 text-gray-200 dark:text-dark-muted mb-2" />
-                      <p className="text-[8px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-tighter">No events</p>
+                      <p className="text-[8px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-tighter">{t('common.no_events')}</p>
                     </div>
                   )}
                 </div>
@@ -757,7 +758,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               <div key={event.id} className="space-y-2">
                 {isNewDay && (
                   <div className="sticky top-0 z-10 py-2 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-xs">
-                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{format(event.date, 'EEEE, MMMM d, yyyy')}</span>
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">{formatDate(event.date, DATE_FULL)}</span>
                   </div>
                 )}
                 <button 
@@ -778,7 +779,7 @@ export const UniversalCalendar: React.FC<Props> = ({
           }) : (
             <div className="flex flex-col items-center justify-center py-20 opacity-30">
               <CalendarIcon className="w-16 h-16 mb-4" />
-              <p className="text-lg font-black uppercase tracking-widest">No upcoming events</p>
+              <p className="text-lg font-black uppercase tracking-widest">{t('common.no_upcoming_events')}</p>
             </div>
           )}
         </div>
@@ -806,7 +807,7 @@ export const UniversalCalendar: React.FC<Props> = ({
               <div className="bg-white dark:bg-dark-surface border border-gray-100 dark:border-dark-border rounded-4xl p-6 hover:shadow-2xl hover:border-blue-200 transition-all cursor-pointer" onClick={() => handleEventClick(event)}>
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-1">{format(event.date, 'MMM d, yyyy')} @ {(event.time && event.time !== 'Unspecified') ? event.time : 'All day'}</span>
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-1">{formatDate(event.date, DATE_MEDIUM)} @ {(event.time && event.time !== 'Unspecified') ? event.time : 'All day'}</span>
                     <h4 className="text-xl font-black text-gray-900 dark:text-dark-text">{event.title}</h4>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${getEventColor(event.type)}`}>{event.type}</span>
@@ -821,7 +822,7 @@ export const UniversalCalendar: React.FC<Props> = ({
           )) : (
             <div className="flex flex-col items-center justify-center py-20 opacity-30">
               <TrendingUp className="w-16 h-16 mb-4" />
-              <p className="text-lg font-black uppercase tracking-widest">No past events</p>
+              <p className="text-lg font-black uppercase tracking-widest">{t('common.no_past_events')}</p>
             </div>
           )}
         </div>
@@ -841,7 +842,7 @@ export const UniversalCalendar: React.FC<Props> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-brand-navy dark:text-dark-text tracking-tight uppercase leading-none flex items-center space-x-1.5">
-                <span>{title || (viewType === 'classic' ? format(currentDate, 'MMMM yyyy') : t('common.calendar'))}</span>
+                <span>{title || (viewType === 'classic' ? formatDate(currentDate, DATE_MONTH_YEAR) : t('common.calendar'))}</span>
                 {titleTo && (
                   <ExternalLink
                     onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(titleTo, '_blank', 'noopener,noreferrer'); }}
@@ -1032,7 +1033,7 @@ export const UniversalCalendar: React.FC<Props> = ({
                   <div className="flex items-center space-x-6">
                     <div className="flex flex-col">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Date</span>
-                      <span className="text-lg font-black">{format(selectedEvent.date, 'MMMM d, yyyy')}</span>
+                      <span className="text-lg font-black">{formatDate(selectedEvent.date, DATE_LONG)}</span>
                     </div>
                     <div className="w-px h-10 bg-gray-100 dark:bg-dark-border" />
                     <div className="flex flex-col">

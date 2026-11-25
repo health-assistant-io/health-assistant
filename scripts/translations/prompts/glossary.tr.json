@@ -1,0 +1,15 @@
+{
+  "Documentation": "Dokümantasyon",
+  "assistant": "asistan",
+  "open source": "açık kaynak",
+  "self-hosted": "kendi sunucunuzda barındırılan",
+  "local-first": "local-first",
+  "download": "indirme",
+  "overview": "genel bakış",
+  "settings": "ayarlar",
+  "endpoint": "API endpoint'i",
+  "system tray": "bildirim alanı",
+  "desktop app": "masaüstü uygulaması",
+  "web app": "web uygulamasi",
+  "live demo": "canlı demo"
+}

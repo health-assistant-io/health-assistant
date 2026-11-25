@@ -20,7 +20,8 @@ import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
 import { useBiomarkerPrecisionProfile } from '../../../hooks/useBiomarkerPrecision';
 import { useBiomarkerChange } from '../../../hooks/useBiomarkerChange';
 
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
+import { formatDate, DATE_SHORT } from '../../../lib/dateFormats';
 
 export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
@@ -223,7 +224,7 @@ export const BiomarkerCard = React.forwardRef((props: any, ref: any) => {
           <div className="w-32 h-16 shrink-0 nodrag opacity-80 hover:opacity-100 transition-opacity">
             <LineChart 
               data={data.slice(-10).map((d: any) => ({ 
-                name: d.date ? format(parseISO(d.date), 'MMM d') : '', 
+                name: d.date ? formatDate(parseISO(d.date), DATE_SHORT) : '', 
                 value: d.value 
               }))}
               height="100%"

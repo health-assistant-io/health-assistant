@@ -58,10 +58,10 @@ const PREDEFINED_DASHBOARDS = [
 ];
 
 const DATE_RANGES = [
-  { id: 'last-30-days', label: 'Last 30 Days' },
-  { id: 'last-90-days', label: 'Last 90 Days' },
-  { id: 'last-12-months', label: 'Last 12 Months' },
-  { id: 'all-time', label: 'All Time' }
+  { id: 'last-30-days', label: 'common.last_30_days' },
+  { id: 'last-90-days', label: 'analytics.range_90d' },
+  { id: 'last-12-months', label: 'analytics.range_12m' },
+  { id: 'all-time', label: 'common.all_time' }
 ];
 
 const CHART_COLORS = [
@@ -241,7 +241,7 @@ const CorrelativeAnalytics: React.FC = () => {
     if (abs > 0.8) return `Strong ${sign}`;
     if (abs > 0.5) return `Moderate ${sign}`;
     if (abs > 0.3) return `Weak ${sign}`;
-    return 'No significant correlation';
+    return t('analytics.no_correlation');
   };
 
   if (!currentPatient) {
@@ -251,8 +251,8 @@ const CorrelativeAnalytics: React.FC = () => {
   return (
     <div className="max-w-[1600px] mx-auto pb-20 px-4 sm:px-6">
       <PageHeader
-        title="Correlative Analytics"
-        subtitle="Explore relationships between different biomarkers over time"
+        title={t('analytics.title')}
+        subtitle={t('analytics.subtitle')}
         icon={<TrendingUp className="w-8 h-8" />}
         breadcrumbs={[
           { label: t('biomarkers.title'), href: '/biomarkers' }
@@ -278,7 +278,7 @@ const CorrelativeAnalytics: React.FC = () => {
                   <button 
                     onClick={clearWorkspace}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
-                    title="Clear All"
+                    title={t('analytics.clear_all')}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -293,9 +293,7 @@ const CorrelativeAnalytics: React.FC = () => {
               {selectedBiomarkers.length === 0 ? (
                 <div className="py-12 text-center border-2 border-dashed border-gray-100 dark:border-dark-border rounded-3xl group hover:border-blue-200 transition-colors">
                    <Plus className="w-8 h-8 text-gray-200 mx-auto mb-3 group-hover:text-blue-200 transition-colors" />
-                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-6">
-                     Add biomarkers to visualize correlations
-                   </p>
+                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-6">{t('analytics.add_biomarkers')}</p>
                 </div>
               ) : (
                 selectedBiomarkers.map((slug, idx) => {
@@ -336,7 +334,7 @@ const CorrelativeAnalytics: React.FC = () => {
                             if (targetId) window.open(`/biomarkers/details/${targetId}`, '_blank');
                           }}
                           className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
-                          title="Open Details"
+                          title={t('analytics.open_details')}
                         >
                           <ExternalLink className="w-4 h-4" />
                         </button>
@@ -379,12 +377,12 @@ const CorrelativeAnalytics: React.FC = () => {
                   <div className="fixed inset-0 z-40" onClick={() => setIsDropdownManualOpen(false)} />
                   <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-4xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto animate-in fade-in slide-in-from-top-2">
                     <div className="p-3 bg-gray-50 dark:bg-dark-bg border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
-                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Available Results</span>
+                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{t('analytics.available_results')}</span>
                        <button onClick={() => { setSearchTerm(''); setIsDropdownManualOpen(false); }}><X className="w-3 h-3 text-gray-400" /></button>
                     </div>
                     {filteredBiomarkers.length === 0 ? (
                       <div className="p-8 text-center">
-                         <p className="text-xs font-bold text-gray-400 uppercase">No matching markers</p>
+                         <p className="text-xs font-bold text-gray-400 uppercase">{t('analytics.no_matching')}</p>
                       </div>
                     ) : (
                       filteredBiomarkers.map(b => (
@@ -468,33 +466,27 @@ const CorrelativeAnalytics: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-10">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <h2 className="text-3xl font-black text-brand-navy dark:text-dark-text tracking-tight">
-                    Correlative Visualizer
-                  </h2>
-                  <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase rounded-sm border border-indigo-100 dark:border-indigo-800">
-                    High-Res
-                  </div>
+                  <h2 className="text-3xl font-black text-brand-navy dark:text-dark-text tracking-tight">{t('analytics.visualizer')}</h2>
+                  <div className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[9px] font-black uppercase rounded-sm border border-indigo-100 dark:border-indigo-800">{t('analytics.high_res')}</div>
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-4">
                   <div className="flex items-center gap-2 text-sm text-gray-500 font-medium bg-gray-50 dark:bg-dark-bg px-4 py-1.5 rounded-full border border-gray-100 dark:border-dark-border">
                     <Calendar className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs uppercase font-black tracking-widest text-gray-400 mr-2">Timeline</span>
+                    <span className="text-xs uppercase font-black tracking-widest text-gray-400 mr-2">{t('analytics.timeline')}</span>
                     <select 
                       value={dateRange}
                       onChange={(e) => setDateRange(e.target.value)}
                       className="bg-transparent border-none text-blue-600 font-black text-xs p-0 focus:ring-0 cursor-pointer uppercase tracking-widest"
                     >
                       {DATE_RANGES.map(range => (
-                        <option key={range.id} value={range.id}>{range.label}</option>
+                        <option key={range.id} value={range.id}>{t(range.label)}</option>
                       ))}
                     </select>
                   </div>
                   <div className="h-4 w-px bg-gray-200 dark:bg-dark-border hidden md:block" />
                   <div className="flex items-center gap-2 text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/30 px-4 py-1.5 rounded-full border border-emerald-100 dark:border-emerald-800">
-                    <Activity className="w-3 h-3" />
-                    Feature: Normalized Scale
-                  </div>
+                    <Activity className="w-3 h-3" />{t('analytics.feature_normalized')}</div>
                 </div>
               </div>
 
@@ -502,14 +494,14 @@ const CorrelativeAnalytics: React.FC = () => {
                  <button 
                   onClick={() => window.print()}
                   className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-dark-bg rounded-2xl transition-all border border-gray-100 dark:border-dark-border group"
-                  title="Print Analysis"
+                  title={t('analytics.print')}
                  >
                     <Download className="w-5 h-5 group-hover:scale-110 transition-transform" />
                  </button>
                  <button 
                   onClick={loadData}
                   className="p-3 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-dark-bg rounded-2xl transition-all border border-gray-100 dark:border-dark-border group"
-                  title="Reload Data"
+                  title={t('analytics.reload')}
                  >
                     <RefreshCcw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
                  </button>
@@ -519,7 +511,7 @@ const CorrelativeAnalytics: React.FC = () => {
             {isLoading ? (
               <div className="flex-1 flex flex-col items-center justify-center py-40">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-6"></div>
-                <p className="text-gray-400 font-black uppercase tracking-[0.3em] text-[10px]">Synchronizing clinical data history...</p>
+                <p className="text-gray-400 font-black uppercase tracking-[0.3em] text-[10px]">{t('analytics.syncing')}</p>
               </div>
             ) : selectedBiomarkers.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center py-40 text-center">
@@ -527,10 +519,8 @@ const CorrelativeAnalytics: React.FC = () => {
                   <div className="absolute inset-0 bg-blue-500/5 rounded-[3rem] scale-0 group-hover:scale-100 transition-transform duration-500" />
                   <Activity className="w-12 h-12 text-gray-300 group-hover:text-blue-400 transition-colors" />
                 </div>
-                <h3 className="text-2xl font-black text-gray-900 dark:text-dark-text tracking-tight uppercase mb-3">Workspace Empty</h3>
-                <p className="text-gray-400 max-w-sm mx-auto font-bold text-sm leading-relaxed uppercase tracking-tighter">
-                  Please select biomarkers from the left side panel to start your cross-temporal analysis.
-                </p>
+                <h3 className="text-2xl font-black text-gray-900 dark:text-dark-text tracking-tight uppercase mb-3">{t('analytics.empty_title')}</h3>
+                <p className="text-gray-400 max-w-sm mx-auto font-bold text-sm leading-relaxed uppercase tracking-tighter">{t('analytics.empty_desc')}</p>
               </div>
             ) : (
               <div className="flex-1 min-h-[500px]">
@@ -551,7 +541,7 @@ const CorrelativeAnalytics: React.FC = () => {
                       <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center border border-blue-500/30">
                         <Sparkles className="w-4 h-4 text-blue-400" />
                       </div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-400">Correlation Engine v1.0</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.4em] text-blue-400">{t('analytics.engine')}</p>
                     </div>
                     
                     <div className="mb-8">
@@ -560,9 +550,7 @@ const CorrelativeAnalytics: React.FC = () => {
                           {correlationScore.toFixed(3)}
                         </h4>
                         <div className="mb-2">
-                          <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest leading-none">
-                            Pearson Coefficient
-                          </p>
+                          <p className="text-gray-400 font-black uppercase text-[10px] tracking-widest leading-none">{t('analytics.pearson')}</p>
                         </div>
                       </div>
                       
@@ -583,15 +571,15 @@ const CorrelativeAnalytics: React.FC = () => {
                       </div>
                       <div className="flex justify-between mt-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">
                         <div className="flex flex-col items-start">
-                          <span>Inverse</span>
+                          <span>{t('analytics.inverse')}</span>
                           <span className="text-orange-500/50">-1.0</span>
                         </div>
                         <div className="flex flex-col items-center">
-                          <span>Neutral</span>
+                          <span>{t('analytics.neutral')}</span>
                           <span>0.0</span>
                         </div>
                         <div className="flex flex-col items-end">
-                          <span>Direct</span>
+                          <span>{t('analytics.direct')}</span>
                           <span className="text-blue-500/50">+1.0</span>
                         </div>
                       </div>
@@ -631,13 +619,13 @@ const CorrelativeAnalytics: React.FC = () => {
                <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 flex flex-col justify-center shadow-xs">
                   <div className="flex items-center gap-3 mb-4">
                     <Activity className="w-5 h-5 text-indigo-500" />
-                    <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">Multi-Variate Mode</h3>
+                    <h3 className="text-sm font-black text-gray-900 dark:text-dark-text uppercase tracking-widest">{t('analytics.multivariate')}</h3>
                   </div>
                   <p className="text-gray-500 font-medium text-sm leading-relaxed mb-6">
-                    You have {selectedBiomarkers.length} biomarkers selected. Correlation scores are currently limited to dual-variable comparisons. Remove markers until only two remain to re-enable statistical indexing.
+                    {t('analytics.multivariate_desc', { count: selectedBiomarkers.length })}
                   </p>
                   <div className="flex items-center gap-2">
-                     <div className="px-3 py-1 bg-gray-50 dark:bg-dark-bg rounded-lg border border-gray-100 dark:border-dark-border text-[10px] font-black text-gray-400 uppercase">Tip: Select only 2 for deep analysis</div>
+                     <div className="px-3 py-1 bg-gray-50 dark:bg-dark-bg rounded-lg border border-gray-100 dark:border-dark-border text-[10px] font-black text-gray-400 uppercase">{t('analytics.tip_two')}</div>
                   </div>
                </div>
              ) : (
@@ -645,31 +633,29 @@ const CorrelativeAnalytics: React.FC = () => {
                   <div className="w-16 h-16 bg-gray-50 dark:bg-dark-bg rounded-2xl flex items-center justify-center mb-4">
                     <Sparkles className="w-8 h-8 text-gray-200" />
                   </div>
-                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Select 2 biomarkers for statistical indexing</h3>
+                  <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{t('analytics.select_two')}</h3>
                </div>
              )}
              
              <div className="bg-white dark:bg-dark-surface rounded-[2.5rem] border border-gray-100 dark:border-dark-border p-10 shadow-xs">
                 <h3 className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-widest mb-8 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-green-500" />
-                  Clinical Methodology
-                </h3>
+                  <Activity className="w-4 h-4 text-green-500" />{t('analytics.methodology')}</h3>
                 <ul className="space-y-6">
                    <li className="flex gap-5 group">
                       <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 shrink-0 group-hover:scale-150 transition-transform" />
                       <div>
-                        <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-wider mb-1">Normalization Algorithm</p>
+                        <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-wider mb-1">{t('analytics.normalization')}</p>
                         <p className="text-xs text-gray-500 dark:text-dark-muted font-bold leading-relaxed">
-                          Values are mapped to a [0, 1] interval based on the temporal min/max. 100% represents the highest peak in the selected range.
+                          {t('analytics.normalization_desc')}
                         </p>
                       </div>
                    </li>
                    <li className="flex gap-5 group">
                       <div className="w-2 h-2 rounded-full bg-amber-500 mt-2 shrink-0 group-hover:scale-150 transition-transform" />
                       <div>
-                        <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-wider mb-1">Synchronized Sampling</p>
+                        <p className="text-xs font-black text-gray-900 dark:text-dark-text uppercase tracking-wider mb-1">{t('analytics.sampling')}</p>
                         <p className="text-xs text-gray-500 dark:text-dark-muted font-bold leading-relaxed">
-                          Visualizer aligns disparate lab results onto a unified daily timeline. Empty dates between measurements are bridged using linear interpolation.
+                          {t('analytics.sampling_desc')}
                         </p>
                       </div>
                    </li>

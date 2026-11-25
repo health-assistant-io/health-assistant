@@ -5,6 +5,7 @@ import { DynamicIcon } from '../ui/DynamicIcon';
 import { AuthenticatedImage } from '../ui/AuthenticatedImage';
 import { CardStyles } from '../../utils/cardStyles';
 
+import { uiLocale } from '../../lib/dateFormats';
 interface Props {
   doc: any;
   isSelected?: boolean;
@@ -70,7 +71,7 @@ export const DocumentCard: React.FC<Props> = ({
             {doc.filename}
           </h4>
           <div className="flex items-center justify-center space-x-2 mt-1">
-            <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted">{new Date(doc.created_at).toLocaleDateString()}</p>
+            <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted">{new Date(doc.created_at).toLocaleDateString(uiLocale())}</p>
             <span className="text-[10px] text-gray-300 dark:text-dark-border">•</span>
             <span className="text-[10px] font-black text-gray-400 dark:text-dark-muted uppercase tracking-tighter">{doc.filename.split('.').pop()}</span>
           </div>
@@ -114,7 +115,7 @@ export const DocumentCard: React.FC<Props> = ({
                 <span className="flex h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shadow-xs shadow-blue-500/50"></span>
               )}
               <span className={CardStyles.date(isSelected)}>
-                {new Date(doc.created_at).toLocaleDateString()}
+                {new Date(doc.created_at).toLocaleDateString(uiLocale())}
               </span>
             </div>
           </div>

@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/slices/authSlice';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Cpu } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 type AITab = 'providers' | 'models' | 'tasks';
 
@@ -30,6 +31,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
   userId,
   embedded = false
 }) => {
+  const { t } = useTranslation();
   const { loadConfigSummary, isLoading } = useAIConfigStore();
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -87,7 +89,7 @@ export const AIConfig: React.FC<AIConfigProps> = ({
       {!embedded && (
         <PageHeader
           title={getPageTitle()}
-          subtitle="Manage AI models, providers and task assignments"
+          subtitle={t('settings.ai.subtitle')}
           icon={<Cpu className="w-8 h-8" />}
         />
       )}

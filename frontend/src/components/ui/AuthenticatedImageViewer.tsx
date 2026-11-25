@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ImageViewer } from './ImageViewer';
 import { getDocumentDownloadUrl, getDocument } from '../../services/documentService';
+import { useTranslation } from 'react-i18next';
 
 interface AuthenticatedImageViewerProps {
   documentId: string;
@@ -15,6 +16,7 @@ interface AuthenticatedImageViewerProps {
 export const AuthenticatedImageViewer: React.FC<AuthenticatedImageViewerProps> = ({ 
   documentId, filename, onClose, category, date, gallery, onRefresh 
 }) => {
+  const { t } = useTranslation();
   const [currentId, setCurrentId] = useState(documentId);
   const [url, setUrl] = useState<string>('');
   const [docDetails, setDocDetails] = useState<{ parent_id?: string; is_edited?: boolean } | null>(null);
@@ -66,7 +68,7 @@ export const AuthenticatedImageViewer: React.FC<AuthenticatedImageViewerProps> =
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
           </div>
         </div>
-        <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Loading clinical scan</p>
+        <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">{t('documents.loading_scan')}</p>
       </div>
     </div>
   );

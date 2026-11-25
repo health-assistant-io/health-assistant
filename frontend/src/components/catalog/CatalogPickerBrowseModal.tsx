@@ -28,7 +28,6 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GitBranch, List, Plus, Search, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import type {
   MultiSelectPickerBrowseProps,
@@ -56,6 +55,7 @@ import {
   type CatalogPickerOption,
 } from './catalogPickerAdapter';
 import type { CatalogItem, CatalogTypeMeta } from '../../types/catalog';
+import { dateLocaleFor } from '../../lib/dateLocale';
 
 const ALL = '';
 const PAGE_SIZE = 50;
@@ -96,7 +96,7 @@ export function useCatalogPickerBrowse({
 } {
   const { t, i18n } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
-  const locale: Locale = i18n.language.startsWith('el') ? el : enUS;
+  const locale = dateLocaleFor(i18n.language);
 
   const singleType =
     allowedList && allowedList.length === 1 ? allowedList[0] : null;

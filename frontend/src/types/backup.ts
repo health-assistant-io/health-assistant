@@ -80,16 +80,24 @@ export interface BackupManifest {
   notes?: string[] | null;
 }
 
-export const EXPORT_TYPE_LABELS: Record<ExportType, string> = {
-  fhir_only: 'FHIR Bundle (.json)',
-  full_backup: 'Full Backup (.zip)',
-  catalog_only: 'Catalog Only (.json)',
+export const EXPORT_TYPE_LABEL_KEYS: Record<ExportType, string> = {
+  fhir_only: 'export_import.type_fhir_only',
+  full_backup: 'export_import.type_full_backup',
+  catalog_only: 'export_import.type_catalog_only',
 };
 
-export const EXPORT_SCOPE_LABELS: Record<ExportScope, string> = {
-  patient: 'Single Patient',
-  group: 'Group of Patients',
-  system: 'Whole Tenant (System)',
+export const EXPORT_SCOPE_LABEL_KEYS: Record<ExportScope, string> = {
+  patient: 'export_import.scope_patient',
+  group: 'export_import.scope_group',
+  system: 'export_import.scope_system',
+};
+
+export const JOB_STATUS_LABEL_KEYS: Record<JobStatus, string> = {
+  PENDING: 'export_import.status_pending',
+  PROCESSING: 'export_import.status_processing',
+  COMPLETED: 'export_import.status_completed',
+  FAILED: 'export_import.status_failed',
+  PARTIAL: 'export_import.status_partial',
 };
 
 export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
