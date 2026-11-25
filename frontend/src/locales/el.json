@@ -3513,7 +3513,8 @@
     "selected_count": "{{count}} επιλεγμένα",
     "no_matches": "Καμία αντιστοίχιση",
     "search_options": "Αναζήτηση επιλογών",
-    "search_options_placeholder": "Αναζήτηση…"
+    "search_options_placeholder": "Αναζήτηση…",
+    "option_with_count": "{{label}}, {{count}}"
   },
   "calendar": {
     "full_schedule_for": "Πλήρες πρόγραμμα για {{name}}",

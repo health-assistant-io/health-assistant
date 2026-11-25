@@ -3513,7 +3513,8 @@
     "selected_count": "{{count}} selected",
     "no_matches": "No matches",
     "search_options": "Search options",
-    "search_options_placeholder": "Search…"
+    "search_options_placeholder": "Search…",
+    "option_with_count": "{{label}}, {{count}}"
   },
   "calendar": {
     "full_schedule_for": "Full schedule for {{name}}",

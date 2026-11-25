@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { X, MoreHorizontal } from 'lucide-react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FilterBar as LibraryFilterBar, type FilterFacet, type FilterValue as LibraryFilterValue } from '@neuronection/assistant-ui/filters';
 import type { FacetDefinition, FacetOption } from './types';
-import { FacetChip } from './FacetChip';
-import type { UseFilterStateResult } from './useFilterState';
+import { filterLabels, fromLibraryValue, toLibraryFacet, toLibraryValue } from './adapter';
+import { defaultFilterValue, type UseFilterStateResult } from './useFilterState';
+import { formatNumber } from '../../../lib/dateFormats';
 
 /** Resolve a facet's options: static `options` first, else derive from items. */
 export function resolveOptions<T>(facet: FacetDefinition<T>, items: T[]): FacetOption[] {
@@ -25,6 +26,13 @@ export interface FilterBarProps<T> {
   className?: string;
 }
 
+/**
+ * Health's filter bar: the family `FilterBar` driven by `useFilterState`.
+ *
+ * The bar itself (chips, "More" disclosure, clear-all, summary) is the
+ * library's; this adapter resolves facet labels/options from health's model and
+ * maps library values back into health's `FilterValue` (nullable single, range).
+ */
 export const FilterBar = <T,>({
   facets,
   filter,
@@ -35,68 +43,63 @@ export const FilterBar = <T,>({
   className = '',
 }: FilterBarProps<T>) => {
   const { t } = useTranslation();
-  const [showMore, setShowMore] = useState(false);
 
-  const { visible, hidden } = useMemo(
-    () => {
-      const vis: FacetDefinition<T>[] = [];
-      const hid: FacetDefinition<T>[] = [];
-      for (const f of facets) (f.defaultHidden ? hid : vis).push(f);
-      return { visible: vis, hidden: hid };
-    },
-    [facets],
-  );
+  const { libraryFacets, values, byId } = useMemo(() => {
+    const facetModels: FilterFacet[] = [];
+    const resolvedValues: Record<string, LibraryFilterValue> = {};
+    const lookup = new Map<string, FacetDefinition<T>>();
 
-  const renderChip = (facet: FacetDefinition<T>) => (
-    <FacetChip<T>
-      key={facet.id}
-      facet={facet}
-      value={filter.state[facet.id]}
-      options={resolveOptions(facet, items)}
-      onValueChange={(v) => filter.set(facet.id, v)}
-      onToggleOption={(opt) => filter.toggle(facet.id, opt)}
-      showActivePills={showActivePills}
-    />
-  );
+    for (const facet of facets) {
+      // `range` facets are not modelled by the library module (they render
+      // through RangeBar/ScaleSlider); everything else is.
+      const model = toLibraryFacet(facet, t, resolveOptions(facet, items));
+      if (!model) continue;
+      // A facet with no state entry still renders at its default — the old bar
+      // did that immediately, and hiding it for a frame caused a layout shift.
+      const libraryValue = toLibraryValue(filter.state[facet.id] ?? defaultFilterValue(facet));
+      if (!libraryValue) continue;
+      facetModels.push(model);
+      resolvedValues[facet.id] = libraryValue;
+      lookup.set(facet.id, facet);
+    }
+
+    return { libraryFacets: facetModels, values: resolvedValues, byId: lookup };
+  }, [facets, items, filter.state, t]);
+
+  const summary =
+    resultCount !== undefined && totalCount !== undefined
+      ? t('filters.result_count', { shown: resultCount, total: totalCount })
+      : undefined;
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      {visible.map(renderChip)}
-
-      {hidden.length > 0 && (
-        <>
-          {showMore && hidden.map(renderChip)}
-          <button
-            type="button"
-            onClick={() => setShowMore((v) => !v)}
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-[var(--as-border)] bg-[var(--as-surface)] px-3.5 py-1.5 text-sm font-medium text-[var(--as-muted-fg)] transition-colors hover:border-[color-mix(in_srgb,var(--as-primary)_40%,var(--as-border))] hover:text-[var(--as-fg)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]"
-          >
-            <MoreHorizontal className="w-4 h-4" />
-            <span>{showMore ? t('filters.fewer', { defaultValue: 'Fewer' }) : t('filters.more', { defaultValue: 'More' })}</span>
-          </button>
-        </>
-      )}
-
-      {filter.isActive && (
-        <button
-          type="button"
-          onClick={filter.clearAll}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium text-[var(--as-muted-fg)] transition-colors hover:bg-[color-mix(in_srgb,var(--as-danger)_12%,transparent)] hover:text-[var(--as-danger)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--as-focus-ring)]"
-        >
-          <X className="w-4 h-4" />
-          <span>{t('filters.clear_all', { defaultValue: 'Clear all' })}</span>
-        </button>
-      )}
-
-      {resultCount !== undefined && totalCount !== undefined && (
-        <span className="ml-auto whitespace-nowrap text-xs font-medium tabular-nums text-[var(--as-muted-fg)]">
-          {t('filters.result_count', {
-            defaultValue: '{{shown}} of {{total}}',
-            shown: resultCount,
-            total: totalCount,
-          })}
-        </span>
-      )}
-    </div>
+    <LibraryFilterBar
+      facets={libraryFacets}
+      values={values}
+      onChange={(facetId, value) => {
+        const facet = byId.get(facetId);
+        if (!facet) return;
+        const current = filter.state[facetId] ?? defaultFilterValue(facet);
+        // Multi facets go through `toggle` (an intent applied to the previous
+        // state) so clicks inside one burst are not collapsed. The rest are
+        // single-shot replacements.
+        if (facet.kind === 'multi' && current.kind === 'multi' && value.kind === 'multi') {
+          for (const option of value.values.filter((v) => !current.values.includes(v))) {
+            filter.toggle(facetId, option);
+          }
+          for (const option of current.values.filter((v) => !value.values.includes(v))) {
+            filter.toggle(facetId, option);
+          }
+          return;
+        }
+        filter.set(facetId, fromLibraryValue(value));
+      }}
+      onClearAll={filter.clearAll}
+      activeCount={filter.activeCount}
+      summary={summary}
+      showActivePills={showActivePills}
+      formatCount={formatNumber}
+      labels={filterLabels(t)}
+      className={className}
+    />
   );
 };

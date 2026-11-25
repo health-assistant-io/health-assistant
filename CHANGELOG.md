@@ -42,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The filter bar and facet chips now come from `@neuronection/assistant-ui`.**
+  The local chip/popover/pill rendering (~450 lines) is replaced by thin
+  adapters over the library's published `filters` module, so the family keeps
+  one implementation of the interaction (including its keyboard and screen
+  reader behaviour). Health's own model stays: `useFilterState`, facet
+  definitions, i18n keys and dynamic icons are unchanged, and `single: null`
+  and `range` values are mapped at the boundary (range facets keep their own
+  `RangeBar`/`ScaleSlider` controls).
+- `@neuronection/assistant-ui` moves to `^0.91.1`, the first release whose
+  filters module is signed on npm (SLSA provenance). No API change for callers.
 - Locale handling is stricter: `i18n` declares `supportedLngs`, loads
   `languageOnly` (so a browser `el-GR` no longer falls back to English date
   formatting) and keeps `<html lang>` in sync on every switch. Date formatting

@@ -1,10 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+const FILTER_STRINGS: Record<string, string> = {
+  'filters.more': 'More',
+  'filters.fewer': 'Fewer',
+  'filters.clear_all': 'Clear all',
+  'filters.result_count': '{{shown}} of {{total}}',
+  'filters.selected_count': '{{count}} selected',
+  'filters.search_options': 'Search options',
+  'filters.search_options_placeholder': 'Search…',
+  'filters.no_matches': 'No matches',
+  'common.no_options': 'No options',
+  'common.remove_named': 'Remove {{name}}',
+};
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (k: string, opts?: any) => {
-      let s = opts?.defaultValue ?? k;
+      let s = FILTER_STRINGS[k] ?? opts?.defaultValue ?? k;
       if (opts) {
         for (const [key, val] of Object.entries(opts)) {
           if (key === 'defaultValue') continue;

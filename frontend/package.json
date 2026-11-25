@@ -19,7 +19,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@neuronection/assistant-ui": "^0.90.0",
+    "@neuronection/assistant-ui": "^0.91.1",
     "@simplewebauthn/browser": "^14.0.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tiptap/react": "^3.35.0",
