@@ -199,7 +199,7 @@ Rules that keep the catalogue honest:
   as raw keys when the catalogue lacks them, and no dictionary or TSX scan can
   see them.
 - Reference-catalog values (languages, countries) are **not** translation keys
-  (ADR-0024): enum options carry no `label_key` and resolve through
+  (the family language policy): enum options carry no `label_key` and resolve through
   `languageOptionLabel()` / `languageDisplayName()`.
 - Dates and numbers go through `frontend/src/lib/dateFormats.ts`
   (`formatDate(date, DATE_SHORT)`, `formatTimestamp`, `formatNumber`,

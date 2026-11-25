@@ -1,6 +1,6 @@
 # translations.toml — repo-specific facts for check_translations.py.
-# Edit this file, never the family script (kept byte-identical to
-# dev/templates/scripts/translations/check_translations.py by verify-wiring).
+# Edit this file, never the family script (kept byte-identical to the family
+# template by the wiring check).
 # Secrets (API key, model) stay in .env / environment — never here.
 
 [project]

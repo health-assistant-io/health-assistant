@@ -179,8 +179,8 @@ jobs:
           pnpm install --frozen-lockfile </dev/null
 
       - name: Run i18n Completeness Gate
-        # Family translation manager (byte-identical to
-        # dev/templates/scripts/translations/check_translations.py). Fails on a
+        # Family translation manager (byte-identical to the family template).
+        # Fails on a
         # missing/empty/orphan dictionary key across every shipped locale.
         #
         # The inventory proves reachability: a key can be spelled correctly,
