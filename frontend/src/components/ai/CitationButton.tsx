@@ -10,6 +10,7 @@ import { getExamination } from '../../services/examinationService';
 import { getEvent } from '../../services/clinicalEventService';
 import { getDocument } from '../../services/documentService';
 import biomarkerService from '../../services/biomarkerService';
+import { useTranslation } from 'react-i18next';
 
 interface CitationButtonProps {
   reference: string; // format: "type=uuid" or "tool_name"
@@ -17,6 +18,7 @@ interface CitationButtonProps {
 }
 
 export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolCalls }) => {
+  const { t } = useTranslation();
   const [showPopup, setShowPopup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchedData, setFetchedData] = useState<any>(null);
@@ -414,7 +416,7 @@ export const CitationButton: React.FC<CitationButtonProps> = ({ reference, toolC
                   onClose={() => setShowPopup(false)}
                />
              ) : (
-               <p className="text-[10px] text-gray-400 italic">No record found for this reference.</p>
+               <p className="text-[10px] text-gray-400 italic">{t('ai_labels.no_record_for_reference')}</p>
              )}
           </div>
         </div>,

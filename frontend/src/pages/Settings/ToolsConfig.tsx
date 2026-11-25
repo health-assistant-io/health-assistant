@@ -2,6 +2,7 @@ import React from 'react';
 import { Wrench } from 'lucide-react';
 import { AgentSettings } from '../../components/settings/AgentSettings';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Tools configuration (ADR-0033, domain tools.agent): run-behavior knobs
@@ -25,6 +26,7 @@ export const ToolsConfig: React.FC<ToolsConfigProps> = ({
   userId,
   embedded = false,
 }) => {
+  const { t } = useTranslation();
   const getPageTitle = () => {
     if (scope === 'global') return 'System Tools';
     if (scope === 'tenant') return 'Tenant Tools';
@@ -36,7 +38,7 @@ export const ToolsConfig: React.FC<ToolsConfigProps> = ({
       {!embedded && (
         <PageHeader
           title={getPageTitle()}
-          subtitle="Agent behavior and tool capabilities"
+          subtitle={t('settings.ai.tools_subtitle')}
           icon={<Wrench className="w-8 h-8" />}
         />
       )}

@@ -22,6 +22,7 @@ import { BiomarkerStatusIndicator } from '../shared/BiomarkerStatusIndicator';
 import { ReferenceRangeDisplay } from '../shared/ReferenceRangeDisplay';
 import { DashboardCardTitle } from '../shared/DashboardCardTitle';
 
+import { uiLocale } from '../../../lib/dateFormats';
 export const TrendsCard = React.forwardRef((props: any, ref: any) => {
   const { t } = useTranslation();
   const precisionProfile = useBiomarkerPrecisionProfile();
@@ -280,7 +281,7 @@ export const TrendsCard = React.forwardRef((props: any, ref: any) => {
           </div>
         ) : (
           <LineChart
-            data={filteredTrendsData.map((d:any) => ({name: new Date(d.date).toLocaleDateString(), value: d.value}))}
+            data={filteredTrendsData.map((d:any) => ({name: new Date(d.date).toLocaleDateString(uiLocale()), value: d.value}))}
             dataKey="value"
             xAxisKey="name"
             color={!isAbnormal(interpretation) ? '#3b82f6' : '#ef4444'}

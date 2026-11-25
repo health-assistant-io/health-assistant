@@ -101,8 +101,10 @@ import { getCurrentUser } from './services/userService';
 import { nativeNotificationService } from './services/nativeNotificationService';
 import { offlineService } from './services/offlineService';
 import { useTenantSwitchStore } from './store/slices/tenantSwitchSlice';
+import { useTranslation } from 'react-i18next';
 
 function App() {
+  const { t } = useTranslation();
   // Session gating (checking → authenticated | anonymous) lives in the
   // shared AuthGate via `SessionGate` below; the store flag only drives
   // the claim-sync / profile-load effects.
@@ -387,9 +389,7 @@ function App() {
             <button
               onClick={() => updateServiceWorker(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2 px-3 rounded-sm transition-colors"
-            >
-              Update now
-            </button>
+            >{t('common.update_now')}</button>
           )}
         </div>
       )}

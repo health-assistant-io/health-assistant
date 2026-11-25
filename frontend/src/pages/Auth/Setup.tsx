@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/slices/authSlice';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
 import api from '../../api/axios';
 import AppVersion from '../../components/ui/AppVersion';
+import { useTranslation } from 'react-i18next';
 
 type SetupTokenMode = 'log' | 'env' | 'time' | 'disabled';
 
@@ -54,6 +55,7 @@ interface SetupProps {
 }
 
 function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { login } = useAuthStore();
   const theme = useSettingsStore(state => state.theme);
@@ -117,11 +119,11 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passwordsMatch) {
-      setError('Passwords do not match.');
+      setError(t('auth.setup_passwords_mismatch'));
       return;
     }
     if (!passwordLongEnough) {
-      setError('Password must be at least 8 characters.');
+      setError(t('auth.setup_password_too_short'));
       return;
     }
     setLoading(true);
@@ -142,7 +144,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
         navigate('/dashboard', { replace: true });
         onSignedIn?.();
       } else {
-        setError('Setup did not return a session. Please try again.');
+        setError(t('auth.setup_no_session'));
       }
     } catch (err) {
       const errorObj = err as Record<string, any>;
@@ -175,16 +177,16 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
     <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-dark-bg px-4 py-8">
       <div className="max-w-md w-full bg-white dark:bg-dark-surface rounded-lg shadow-md p-8">
         <div className="text-center mb-8">
-          <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-16 h-16 mx-auto mb-4" alt="Health Assistant Logo" />
+          <img src={theme === 'dark' ? '/icon.svg' : '/icon-light.svg'} className="w-16 h-16 mx-auto mb-4" alt={t('auth.setup_logo_alt')} />
           <h1 className="text-3xl font-bold text-blue-600">Health Assistant</h1>
           <p className="text-gray-600 dark:text-dark-muted mt-2">
-            Welcome — let's create your administrator account.
+            {t('auth.setup_welcome')}
           </p>
         </div>
 
         <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 rounded-lg text-blue-700 dark:text-blue-300 text-sm">
-          This is a fresh installation. The account you create here becomes the{' '}
-          <strong>System Administrator</strong> for the whole instance.
+          {t('auth.setup_fresh_before')}
+          <strong>{t('auth.setup_fresh_role')}</strong>{t('auth.setup_fresh_after')}
         </div>
 
         {error && (
@@ -199,7 +201,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label htmlFor="tenant_name" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-              Organization / household name
+              {t('auth.setup_org_label')}
             </label>
             <input
               id="tenant_name"
@@ -208,13 +210,13 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
               value={tenantName}
               onChange={(e) => { setTenantName(e.target.value); setError(null); }}
               className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-dark-border dark:text-dark-text"
-              placeholder="My Organization"
+              placeholder={t('auth.setup_org_placeholder')}
             />
           </div>
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-              Admin email
+              {t('auth.setup_email_label')}
             </label>
             <input
               id="email"
@@ -229,7 +231,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-              Password
+              {t('auth.password_label')}
             </label>
             <input
               id="password"
@@ -238,13 +240,13 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(null); }}
               className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-dark-border dark:text-dark-text"
-              placeholder="At least 8 characters"
+              placeholder={t('auth.setup_password_placeholder')}
             />
           </div>
 
           <div>
             <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-              Confirm password
+              {t('auth.setup_confirm_label')}
             </label>
             <input
               id="confirm_password"
@@ -260,14 +262,14 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
               placeholder="••••••••"
             />
             {confirmPassword && !passwordsMatch && (
-              <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>
+              <p className="mt-1 text-xs text-red-500">{t('auth.setup_passwords_mismatch')}</p>
             )}
           </div>
 
           {tokenRequired && (
             <div>
               <label htmlFor="setup_token" className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-                Setup token
+                {t('auth.setup_token_label')}
               </label>
               <input
                 id="setup_token"
@@ -281,26 +283,25 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
               <p className="mt-1 text-xs text-gray-500 dark:text-dark-muted">
                 {tokenMode === 'env' && (
                   <>
-                    The token was passed via the launcher URL (<code>?token=…</code>).
-                    If the field is empty, copy it from the launcher or ask your installer operator.
+                    {t('auth.setup_token_env_before')}<code>?token=…</code>{t('auth.setup_token_env_after')}
                   </>
                 )}
                 {tokenMode === 'time' && (
                   <>
-                    The tokenless grace window has expired. Find the one-time token in the backend
-                    container logs: <code className="text-xs">docker compose -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"</code>
+                    {t('auth.setup_token_time_before')}
+                    <code className="text-xs">docker compose -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"</code>
                   </>
                 )}
                 {tokenMode === 'log' && (
                   <>
-                    Find it in the backend container logs:{' '}
+                    {t('auth.setup_token_log_before')}
                     <code className="text-xs">docker compose -f docker/docker-compose.standalone.yml logs backend | grep -i -A 1 "setup token"</code>
                   </>
                 )}
                 {tokenMode === 'disabled' && (
                   <>
-                    Token mode is disabled — this field should not appear. If it does, set
-                    <code className="text-xs"> SETUP_TOKEN_MODE</code> in the backend env.
+                    {t('auth.setup_token_disabled_before')}
+                    <code className="text-xs"> SETUP_TOKEN_MODE</code>{t('auth.setup_token_disabled_after')}
                   </>
                 )}
               </p>
@@ -312,7 +313,7 @@ function Setup({ onSignedIn, onAlreadyInitialized, embedded = false }: SetupProp
             disabled={loading || !canSubmit}
             className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? 'Creating account…' : 'Create admin account'}
+            {loading ? t('auth.setup_creating') : t('auth.setup_submit')}
           </button>
 
           <div className="text-center border-t border-gray-100 dark:border-white/5 pt-4">

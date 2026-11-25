@@ -24,6 +24,7 @@ import {
 import type { PatientImmunization } from '../../types/vaccine';
 import { getStatusMeta } from './vaccinationStatus';
 
+import { uiLocale } from '../../lib/dateFormats';
 export interface VaccinationCardProps {
   immunization: PatientImmunization;
   onEdit?: (imm: PatientImmunization) => void;
@@ -205,7 +206,7 @@ export const VaccinationCard: React.FC<VaccinationCardProps> = ({
             {(immunization.administered_at || immunization.created_at) && (
               <p className="text-[7px] sm:text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-1 flex items-center">
                 <Calendar className="w-2.5 h-2.5 mr-1 opacity-50" />
-                {new Date(dateLabel as string).toLocaleDateString()}
+                {new Date(dateLabel as string).toLocaleDateString(uiLocale())}
               </p>
             )}
 

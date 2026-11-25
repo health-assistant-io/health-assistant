@@ -10,6 +10,8 @@ import {
 } from '../../api/aiConfig';
 import { Button } from '../ui/Button';
 
+import { formatNumber } from '../../lib/dateFormats';
+import { useTranslation } from 'react-i18next';
 function usd(micros: number | null): string {
   if (micros === null) return '—';
   return `$${(micros / 1_000_000).toFixed(4)}`;
@@ -22,6 +24,7 @@ function perMillion(micros: number): string {
 const WINDOWS = [7, 30, 90] as const;
 
 export function DataCostTab({ tenantId }: { tenantId?: string }) {
+  const { t } = useTranslation();
   const [costs, setCosts] = useState<AICostsResponse | null>(null);
   const [prices, setPrices] = useState<AIPricesResponse | null>(null);
   const [windowDays, setWindowDays] = useState<number>(30);
@@ -48,11 +51,11 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
       setCosts(costData);
       setPrices(priceData);
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? 'Could not load cost data.');
+      setError(err?.response?.data?.detail ?? t('settings.cost_load_failed'));
     } finally {
       setLoading(false);
     }
-  }, [tenantId, windowDays]);
+  }, [tenantId, windowDays, t]);
 
   useEffect(() => {
     void load();
@@ -85,7 +88,7 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
       setForm({ model: '', provider_key: '', input: '', output: '', match: 'exact' });
       await load();
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? 'Could not save the price override.');
+      setError(err?.response?.data?.detail ?? t('settings.cost_save_failed'));
     } finally {
       setSaving(false);
     }
@@ -97,12 +100,12 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
       await deleteAIPrice(id);
       await load();
     } catch (err: any) {
-      setError(err?.response?.data?.detail ?? 'Could not delete the price override.');
+      setError(err?.response?.data?.detail ?? t('settings.cost_delete_failed'));
     }
   };
 
   if (loading) {
-    return <div className="py-10 text-center text-sm text-gray-500">Loading cost data…</div>;
+    return <div className="py-10 text-center text-sm text-gray-500">{t('settings.cost_loading')}</div>;
   }
 
   return (
@@ -110,12 +113,9 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
-            <Coins className="h-5 w-5" />
-            Data &amp; cost
-          </h2>
+            <Coins className="h-5 w-5" />{t('settings.cost_title')}</h2>
           <p className="mt-1 max-w-2xl text-sm text-gray-500">
-            Cost is recorded at call time from the price in effect then. A call without a
-            known price stays unpriced — it is never shown as $0.
+            {t('settings.cost_intro')}
           </p>
         </div>
         <div className="text-right">
@@ -151,19 +151,17 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-gray-800">
             <tr>
-              <th className="px-3 py-2">Provider</th>
-              <th className="px-3 py-2">Model</th>
-              <th className="px-3 py-2 text-right">Calls</th>
-              <th className="px-3 py-2 text-right">Tokens</th>
-              <th className="px-3 py-2 text-right">Cost</th>
+              <th className="px-3 py-2">{t('settings.cost_provider')}</th>
+              <th className="px-3 py-2">{t('settings.cost_model')}</th>
+              <th className="px-3 py-2 text-right">{t('settings.cost_calls')}</th>
+              <th className="px-3 py-2 text-right">{t('settings.cost_tokens')}</th>
+              <th className="px-3 py-2 text-right">{t('settings.cost_cost')}</th>
             </tr>
           </thead>
           <tbody>
             {(costs?.rows ?? []).length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                  No AI calls in this window.
-                </td>
+                <td colSpan={5} className="px-3 py-6 text-center text-gray-500">{t('settings.cost_empty')}</td>
               </tr>
             ) : (
               costs!.rows.map((row) => (
@@ -182,7 +180,7 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{row.calls}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {(row.prompt_tokens + row.completion_tokens).toLocaleString()}
+                    {formatNumber(row.prompt_tokens + row.completion_tokens)}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{usd(row.cost_micros)}</td>
                 </tr>
@@ -194,12 +192,9 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-            Price overrides
-          </h3>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{t('settings.cost_overrides')}</h3>
           <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)}>
-            <Plus className="mr-1 h-4 w-4" /> Add override
-          </Button>
+            <Plus className="mr-1 h-4 w-4" />{t('settings.cost_add_override')}</Button>
         </div>
 
         {showForm && (
@@ -207,9 +202,7 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
             onSubmit={submit}
             className="grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-5 dark:border-gray-700"
           >
-            <label className="text-xs text-gray-600 md:col-span-2 dark:text-gray-300">
-              Model id
-              <input
+            <label className="text-xs text-gray-600 md:col-span-2 dark:text-gray-300">{t('settings.cost_model_id')}<input
                 required
                 value={form.model}
                 onChange={(e) => setForm({ ...form, model: e.target.value })}
@@ -217,18 +210,14 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
                 placeholder="gpt-4o"
               />
             </label>
-            <label className="text-xs text-gray-600 dark:text-gray-300">
-              Preset key (optional)
-              <input
+            <label className="text-xs text-gray-600 dark:text-gray-300">{t('settings.cost_preset_key')}<input
                 value={form.provider_key}
                 onChange={(e) => setForm({ ...form, provider_key: e.target.value })}
                 className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900"
                 placeholder="openai"
               />
             </label>
-            <label className="text-xs text-gray-600 dark:text-gray-300">
-              Input $/1M tokens
-              <input
+            <label className="text-xs text-gray-600 dark:text-gray-300">{t('settings.cost_input_price')}<input
                 required
                 type="number"
                 min="0"
@@ -238,9 +227,7 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
                 className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-900"
               />
             </label>
-            <label className="text-xs text-gray-600 dark:text-gray-300">
-              Output $/1M tokens
-              <input
+            <label className="text-xs text-gray-600 dark:text-gray-300">{t('settings.cost_output_price')}<input
                 required
                 type="number"
                 min="0"
@@ -252,7 +239,7 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
             </label>
             <div className="flex items-end md:col-span-5">
               <Button type="submit" size="sm" disabled={saving}>
-                {saving ? 'Saving…' : 'Save override'}
+                {saving ? t('common.saving') : t('settings.cost_save')}
               </Button>
             </div>
           </form>
@@ -262,19 +249,17 @@ export function DataCostTab({ tenantId }: { tenantId?: string }) {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-gray-800">
               <tr>
-                <th className="px-3 py-2">Model</th>
-                <th className="px-3 py-2">Binding</th>
-                <th className="px-3 py-2 text-right">Input</th>
-                <th className="px-3 py-2 text-right">Output</th>
+                <th className="px-3 py-2">{t('settings.cost_model')}</th>
+                <th className="px-3 py-2">{t('settings.cost_binding')}</th>
+                <th className="px-3 py-2 text-right">{t('settings.cost_input')}</th>
+                <th className="px-3 py-2 text-right">{t('settings.cost_output')}</th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
               {(prices?.overrides ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                    No overrides — built-in prices apply where known.
-                  </td>
+                  <td colSpan={5} className="px-3 py-6 text-center text-gray-500">{t('settings.cost_no_overrides')}</td>
                 </tr>
               ) : (
                 prices!.overrides.map((row) => (

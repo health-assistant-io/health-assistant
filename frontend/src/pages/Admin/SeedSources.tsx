@@ -33,6 +33,7 @@ import {
   type SeedSourceVersion,
 } from '../../services/seedSourcesService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 const KIND_ICON: Record<string, typeof Package> = {
   bundled: DatabaseZap,
   file: HardDriveUpload,
@@ -383,7 +384,7 @@ export default function SeedSources({ scope }: { scope: 'system' | 'tenant' }) {
                       {source.last_check_at && (
                         <span className="mt-1 block text-xs text-gray-400">
                           {t('seed_sources.last_check', 'checked')}{' '}
-                          {new Date(source.last_check_at).toLocaleString()}
+                          {formatTimestamp(new Date(source.last_check_at))}
                         </span>
                       )}
                     </td>

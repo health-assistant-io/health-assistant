@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { Search, ChevronDown } from 'lucide-react';
 import { DynamicIcon, type IconConfig } from './DynamicIcon';
+import { useTranslation } from 'react-i18next';
 
 interface IconPickerProps {
   value: IconConfig;
@@ -20,6 +21,7 @@ interface IconPickerProps {
  * owned by the parent (controlled via ``value`` / ``onChange``).
  */
 export function IconPicker({ value, onChange, color = '#3b82f6', className = '' }: IconPickerProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -70,7 +72,7 @@ export function IconPicker({ value, onChange, color = '#3b82f6', className = '' 
               autoFocus
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search icons..."
+              placeholder={t('common.search_icons')}
               className="flex-1 bg-transparent outline-hidden text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400"
               onKeyDown={(e) => { if (e.key === 'Escape') setIsOpen(false); }}
             />

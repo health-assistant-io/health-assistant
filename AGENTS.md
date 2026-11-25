@@ -60,6 +60,17 @@ cd frontend && npm run build && npm run lint   # build = tsc && vite build
   (first-party: published npm package + public repo, shared with the other
   Neuronection assistants) — extend the library rather than forking it; its
   repo documents the contribution flow.
+- **Translations ship complete, in the same change**: `frontend/src/locales/en.json`
+  is the source of truth and `el.json` must match it key-for-key
+  (`python3 scripts/translations/check_translations.py` — the family manager,
+  CI-gated). Four walls guard it: that gate (dictionary ↔ dictionary),
+  `frontend/src/tests/i18n.audit.test.ts` (static `t()` keys + dynamic
+  families), `backend/tests/test_frontend_i18n_keys.py` (keys the backend
+  emits: labels, settings options, setup steps, seeded event copy), and
+  `scripts/translations/inventory.py --check` (reachability — no key that
+  nothing renders). Never leave
+  an English `defaultValue` where a key belongs: a missing key renders the raw
+  key to the user. See `docs/DEVELOPMENT.md § Internationalization`.
 
 ## Git & GitHub
 

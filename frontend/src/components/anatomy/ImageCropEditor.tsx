@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   /** The source image to crop, as an object URL or data URL (set by the parent
@@ -22,6 +23,7 @@ const MIN_DIM = 40;
  * IS the view.
  */
 export const ImageCropEditor: React.FC<Props> = ({ sourceUrl, onCropChange, className = '' }) => {
+  const { t } = useTranslation();
   const imgRef = useRef<HTMLImageElement>(null);
   const [crop, setCrop] = useState<Crop>({ unit: '%', x: 0, y: 0, width: 100, height: 100 });
 
@@ -64,9 +66,7 @@ export const ImageCropEditor: React.FC<Props> = ({ sourceUrl, onCropChange, clas
 
   if (!sourceUrl) {
     return (
-      <div className={`flex items-center justify-center text-xs text-gray-400 bg-gray-50 dark:bg-dark-bg rounded-xl py-12 ${className}`}>
-        Upload a source image first to crop it.
-      </div>
+      <div className={`flex items-center justify-center text-xs text-gray-400 bg-gray-50 dark:bg-dark-bg rounded-xl py-12 ${className}`}>{t('anatomy.crop_upload_first')}</div>
     );
   }
 

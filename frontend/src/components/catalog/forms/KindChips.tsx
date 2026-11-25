@@ -14,6 +14,7 @@ import {
   KIND_COLORS,
   type ConceptKind,
 } from '../../../types/concept';
+import { useTranslation } from 'react-i18next';
 
 interface KindChipsProps {
   value: ConceptKind[];
@@ -21,6 +22,7 @@ interface KindChipsProps {
 }
 
 export const KindChips: React.FC<KindChipsProps> = ({ value, onChange }) => {
+  const { t } = useTranslation();
   const selected = new Set(value);
   const allKinds = Object.keys(CONCEPT_KIND_LABELS) as ConceptKind[];
 
@@ -53,9 +55,7 @@ export const KindChips: React.FC<KindChipsProps> = ({ value, onChange }) => {
         );
       })}
       {value.length === 0 && (
-        <p className="w-full text-[11px] text-amber-500">
-          At least one kind is required.
-        </p>
+        <p className="w-full text-[11px] text-amber-500">{t('catalogs.kind_required')}</p>
       )}
     </div>
   );

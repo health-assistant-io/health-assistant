@@ -167,6 +167,72 @@ pnpm run build
 pnpm run lint
 ```
 
+### Internationalization (i18n)
+
+The UI ships `en` (source of truth) and `el`, catalogued in
+`frontend/src/locales/en.json` and `frontend/src/locales/el.json` (one
+`common` namespace, flat file per locale). The manager is the family tool,
+kept byte-identical to `dev/templates/scripts/translations/` by the wiring
+drift gate — edit `scripts/translations/translations.toml`, never the script.
+
+```bash
+# CI gate: fails on a missing, empty or orphan key in any shipped locale
+python3 scripts/translations/check_translations.py
+# inside frontend/: pnpm i18n · pnpm i18n:review · pnpm i18n:fix
+
+# LLM flows (-fix/-review) need TRANSLATION_API_KEY / TRANSLATION_MODEL in .env;
+# bootstrap the file with --init-env. Prompts and family glossaries live in
+# scripts/translations/prompts/ — repo additions go in *.local.* files only.
+```
+
+Rules that keep the catalogue honest:
+
+- Every `t('key')` must exist in `en.json`; `frontend/src/tests/i18n.audit.test.ts`
+  enforces that plus `en`/`el` key parity, identical interpolation
+  placeholders, and a **floor for every dynamic family** (a
+  ``t(`prefix.${value}`)`` shape must match catalogue keys or be listed as
+  deliberately value-driven).
+- Every key the **backend** emits for rendered copy — catalog `label_key`,
+  settings definitions/categories/options, setup step titles and descriptions,
+  seeded event type/category slugs — is validated by
+  `backend/tests/test_frontend_i18n_keys.py`. These server-emitted keys render
+  as raw keys when the catalogue lacks them, and no dictionary or TSX scan can
+  see them.
+- Reference-catalog values (languages, countries) are **not** translation keys
+  (the family language policy): enum options carry no `label_key` and resolve through
+  `languageOptionLabel()` / `languageDisplayName()`.
+- Dates and numbers go through `frontend/src/lib/dateFormats.ts`
+  (`formatDate(date, DATE_SHORT)`, `formatTimestamp`, `formatNumber`,
+  `uiLocale()`). Never write a raw date-fns pattern (`'MMM d'`) or a
+  locale-less `toLocale*String()`: `src/tests/i18n.dateFormats.test.ts` fails on
+  both, because they follow the browser locale instead of the app language.
+- Hardcoded copy is capped: `src/tests/i18n.literals.test.ts` compares JSX text
+  nodes and `title`/`placeholder`/`aria-label`/`alt` literals against
+  `i18n.literals.baseline.json`. New copy must pass through `t()`; after a
+  conversion, lower the baseline with
+  `I18N_LITERALS_UPDATE=1 pnpm exec vitest run src/tests/i18n.literals.test.ts`.
+- Every key must be **reachable**: `python3 scripts/translations/inventory.py`
+  classifies the catalogue as static / server / dynamic / dead, and
+  `--check` fails CI on an unreachable key — a stale key survives renames and
+  keeps lying about completeness. `--write-baseline` records a deliberate
+  deferral; the baseline starts empty and should stay that way.
+- The hardcoded copy class is the one no dictionary gate can see. It is capped
+  by `i18n.literals.test.ts` (see above) and must be converted, not deferred.
+- The shipped languages live in **one locale registry**
+  (`src/lib/locales.ts`); `src/tests/i18n.registry.test.ts` pins the i18n
+  resources, the language menus, `translations.toml` and the backend
+  `localization.language` enum together, so a locale cannot be registered on
+  one side only.
+- Do not pass an English default (`t('key', 'English')`) for a string that
+  should be translated — add the key instead. A missing key renders the raw
+  key string in the UI.
+- Some keys are dynamic (`setup.step_desc.<step id>`, `events.type.<slug>.name`)
+  and must therefore be present for every backend-registered id/slug.
+- Keys contain no `.` except as the nesting separator; step ids that carry a
+  dot are joined with `__` at the call site.
+- A shipped locale is complete — the picker's English fallback is not a
+  release tolerance.
+
 ## Development Workflow
 
 ### 1. Backend Development
@@ -402,7 +468,7 @@ async def my_evaluator(db, user: TokenData, scope: dict) -> StepResult:
     )
 ```
 
-Add it to the right registry tuple — `ROLE_CHECKLISTS[Role.ADMIN]` for role steps, `ENTITY_CHECKLISTS["patient"]` for patient-entity steps. The endpoint, schema, and frontend pick it up automatically (the wizard is data-driven). Guided multi-page steps use `"external_config"` with a `payload_hint={"sub_steps": [{"id", "done", "route"}, …]}` — the frontend's `GuidedExternalStep` renders the checklist with no frontend code. Add the step's title/description to both `frontend/src/locales/{en,el}/common.json` under `setup.steps` / `setup.step_desc`; `inline_form` steps also register a section component in `components/setup/sections/registry.ts`. Patient-entity steps run after `check_patient_access` (`USER` → own patient only).
+Add it to the right registry tuple — `ROLE_CHECKLISTS[Role.ADMIN]` for role steps, `ENTITY_CHECKLISTS["patient"]` for patient-entity steps. The endpoint, schema, and frontend pick it up automatically (the wizard is data-driven). Guided multi-page steps use `"external_config"` with a `payload_hint={"sub_steps": [{"id", "done", "route"}, …]}` — the frontend's `GuidedExternalStep` renders the checklist with no frontend code. Add the step's title/description to both `frontend/src/locales/en.json` and `frontend/src/locales/el.json` under `setup.steps` / `setup.step_desc` (step description keys use `__` where the step id has a `.`); `inline_form` steps also register a section component in `components/setup/sections/registry.ts`. Finish with `python3 scripts/translations/check_translations.py` — it fails on any locale gap. Patient-entity steps run after `check_patient_access` (`USER` → own patient only).
 
 Key files: `setup_checklist_service.py` (evaluator registries + extension-catalog builder), `schemas/setup_checklist.py`, `api/v1/endpoints/setup_checklist.py`, `services/fhir/fhir_extensions.py`, `data/seeds/omb_race_ethnicity.json`; frontend: `pages/Setup/RoleSetupWizard.tsx`, `pages/Patients/PatientSetupWizard.tsx`, `components/setup/**` (drawer, layout, stepper, step renderers, inline sections + registry), `services/setupService.ts`, `types/setup.ts`.
 

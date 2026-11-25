@@ -7,6 +7,7 @@ import {
 } from 'date-fns';
 import { MedicationRecord } from '../services/medicationService';
 import { isActiveMedication } from './medicationStatus';
+import { formatDate, WEEKDAY_SHORT } from '../lib/dateFormats';
 
 export interface ScheduledMedication {
   id: string;
@@ -62,14 +63,14 @@ export function getMedicationOccurrences(
           if (medStart) {
             const diffWeeks = Math.floor((day.getTime() - medStart.getTime()) / (1000 * 60 * 60 * 24 * 7));
             if (diffWeeks % weekFreq === 0) {
-              const currentDayName = format(day, 'eee').toLowerCase();
+              const currentDayName = formatDate(day, WEEKDAY_SHORT).toLowerCase();
               if (timing.days_of_week?.includes(currentDayName)) shouldTake = true;
             }
           }
           break;
 
         case 'specific_days':
-          const dayName = format(day, 'eee').toLowerCase();
+          const dayName = formatDate(day, WEEKDAY_SHORT).toLowerCase();
           if (timing.days_of_week?.includes(dayName)) shouldTake = true;
           break;
 

@@ -23,6 +23,7 @@ import { User, Clock, FileText, Database, Shield, Download, Trash2, RotateCw, Ma
 import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 export default function DocumentDetail() {
   const { t } = useTranslation();
   const precisionProfile = useBiomarkerPrecisionProfile();
@@ -336,7 +337,7 @@ export default function DocumentDetail() {
           ) : (
             <div className="text-gray-400 dark:text-dark-muted text-center">
               <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p>Preview not available for this file type.</p>
+              <p>{t('documents.preview_unavailable')}</p>
               <button onClick={handleDownload} className="text-blue-400 hover:text-blue-300 hover:underline mt-2 inline-block text-sm">Download File</button>
             </div>
           )
@@ -427,7 +428,7 @@ export default function DocumentDetail() {
                   onChange={(e) => setSelectedCategory(e.target.value)}
                   className="block w-full rounded-lg border-gray-200 shadow-xs focus:border-blue-500 focus:ring-blue-500 sm:text-xs dark:bg-dark-bg dark:border-dark-border dark:text-dark-text"
                 >
-                  <option value="">Select category...</option>
+                  <option value="">{t('documents.select_category')}</option>
                   {getDocumentCategories().map((cat) => (
                     <option key={cat.slug} value={cat.slug}>{cat.name}</option>
                   ))}
@@ -480,8 +481,8 @@ export default function DocumentDetail() {
              <div>
                 <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('documents_explorer.audit_info')}</p>
                 <div className="mt-1 space-y-0.5">
-                   <p className="text-xs text-gray-600 dark:text-dark-text">{t('documents_explorer.created')}: <span className="font-bold">{docData?.created_at ? new Date(docData.created_at).toLocaleString() : '-'}</span></p>
-                   <p className="text-xs text-gray-600 dark:text-dark-text">{t('documents_explorer.updated')}: <span className="font-bold">{docData?.updated_at ? new Date(docData.updated_at).toLocaleString() : '-'}</span></p>
+                   <p className="text-xs text-gray-600 dark:text-dark-text">{t('documents_explorer.created')}: <span className="font-bold">{docData?.created_at ? formatTimestamp(new Date(docData.created_at)) : '-'}</span></p>
+                   <p className="text-xs text-gray-600 dark:text-dark-text">{t('documents_explorer.updated')}: <span className="font-bold">{docData?.updated_at ? formatTimestamp(new Date(docData.updated_at)) : '-'}</span></p>
                 </div>
              </div>
           </div>
@@ -666,9 +667,7 @@ export default function DocumentDetail() {
                   <h3 className="text-xl font-bold text-gray-900 dark:text-dark-text">
                     Raw Extracted Text
                   </h3>
-                  <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">
-                    OCR results and text extraction from document
-                  </p>
+                  <p className="text-xs text-gray-500 dark:text-dark-muted mt-1">{t('documents.ocr_hint')}</p>
                 </div>
                 <button
                   type="button"
@@ -678,7 +677,7 @@ export default function DocumentDetail() {
                   <svg className="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                     <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                   </svg>
-                  <span className="sr-only">Close modal</span>
+                  <span className="sr-only">{t('common.close_modal')}</span>
                 </button>
               </div>
               <div className="p-6 bg-gray-50 dark:bg-dark-bg overflow-y-auto flex-1">

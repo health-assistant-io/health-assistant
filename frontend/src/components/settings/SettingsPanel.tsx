@@ -10,6 +10,7 @@ import {
   SettingLevel,
 } from '../../services/settingsService';
 import { useSettingsStore } from '../../store/slices/settingsSlice';
+import { languageOptionLabel } from '../../lib/languageOptionLabel';
 import { PageHeader } from '../ui/PageHeader';
 import { LoadingState } from '../ui/LoadingState';
 
@@ -325,7 +326,7 @@ const SettingRow: React.FC<SettingRowProps> = ({
 
       <div className="flex items-center gap-2 shrink-0">
         {busy && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
-        <SettingControl definition={d} value={value} onChange={onChange} t={t} />
+        <SettingControl definition={d} value={value} onChange={onChange} />
         {!isDevice && overridden && (
           <button
             onClick={() => onChange(null, true)}
@@ -358,10 +359,11 @@ interface SettingControlProps {
   definition: SettingDefinition;
   value: any;
   onChange: (value: any, reset?: boolean) => void;
-  t: any;
 }
 
-const SettingControl: React.FC<SettingControlProps> = ({ definition: d, value, onChange, t }) => {
+const SettingControl: React.FC<SettingControlProps> = ({ definition: d, value, onChange }) => {
+  const { t, i18n } = useTranslation();
+  const uiLocale = i18n.resolvedLanguage ?? i18n.language;
   const base = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors';
 
   if (d.type === 'boolean') {
@@ -405,7 +407,9 @@ const SettingControl: React.FC<SettingControlProps> = ({ definition: d, value, o
       >
         {(d.options || []).map((opt) => (
           <option key={opt.value} value={opt.value}>
-            {t(opt.label_key, opt.label_key)}
+            {opt.label_key
+              ? t(opt.label_key)
+              : (languageOptionLabel(opt.value, uiLocale) ?? opt.value)}
           </option>
         ))}
       </select>

@@ -1,8 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
+const TEMPLATES: Record<string, string> = {
+  'filters.selected_count': '{{count}} selected',
+  'common.remove_named': 'Remove {{name}}',
+  'common.no_options': 'No options',
+  'filters.no_matches': 'No matches',
+  'filters.search_options': 'Search options',
+  'filters.search_options_placeholder': 'Search…',
+};
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string, opts?: any) => opts?.defaultValue ?? k }),
+  useTranslation: () => ({
+    t: (k: string, opts?: Record<string, unknown>) =>
+      (TEMPLATES[k] ?? (opts?.defaultValue as string | undefined) ?? k).replace(
+        /\{\{(\w+)\}\}/g,
+        (_match, name: string) => String(opts?.[name] ?? ''),
+      ),
+  }),
 }));
 
 import { FacetChip } from '../FacetChip';
@@ -74,7 +89,7 @@ describe('FacetChip', () => {
         />,
       );
       const btn = screen.getByText('Telemetry only').closest('button')!;
-      expect(btn.className).toMatch(/border-blue-500/);
+      expect(btn.className).toMatch(/border-\[var\(--as-primary\)\]/);
     });
 
     it('calls onValueChange with flipped boolean when clicked', () => {

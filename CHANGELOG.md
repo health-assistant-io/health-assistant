@@ -11,6 +11,121 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Server → frontend i18n key contract.** `backend/tests/test_frontend_i18n_keys.py`
+  proves that every key the backend emits for copy it causes to render exists in
+  every shipped locale: catalog `label_key` values, settings definitions /
+  categories / enum options, setup-wizard step titles and descriptions, and the
+  seeded event type/category slugs. A new dynamic-family floor in the frontend
+  audit fails when a ``t(`prefix.${value}`)`` family loses its catalogue entries,
+  so a key family can no longer silently empty out. (Previously the only
+  guarantees were dictionary ↔ dictionary and static `t()` calls.)
+- **The UI is fully translated again — and the catalogue can no longer drift.**
+  The frontend now runs on the family translation manager
+  (`scripts/translations/`, byte-identical to the dev template, gated in CI by
+  `check_translations.py` and by a new `i18n.audit` vitest suite). Dictionaries
+  moved to the contract layout (`frontend/src/locales/{en,el}.json`).
+  - 273 UI strings that were referenced in code but missing from the catalogue
+    are now real keys: they used to render as raw dotted keys (e.g.
+    `common.time` on every summary modal) or fall back to hard-coded English in
+    Greek. Covers notifications (bulk selection, alert rules, admin broadcast),
+    the unified record browser/picker, anatomy atlas + position editor, catalog
+    graph filters, consent-delta review, medication details, event details,
+    filters and the calendar.
+  - `el` is complete: 333 missing Greek strings filled with the family Greek
+    glossary and native-flow rules, plus 20 pre-existing strings that had stayed
+    English (state-biomarker copy, API tokens, SCIM placeholder, break-glass
+    titles).
+  - `settings.ai.caps_modifiers` was a nested object instead of a string, so
+    that label never rendered; it is now a proper string.
+
+### Changed
+
+- **The filter bar and facet chips now come from `@neuronection/assistant-ui`.**
+  The local chip/popover/pill rendering (~450 lines) is replaced by thin
+  adapters over the library's published `filters` module, so the family keeps
+  one implementation of the interaction (including its keyboard and screen
+  reader behaviour). Health's own model stays: `useFilterState`, facet
+  definitions, i18n keys and dynamic icons are unchanged, and `single: null`
+  and `range` values are mapped at the boundary (range facets keep their own
+  `RangeBar`/`ScaleSlider` controls).
+- `@neuronection/assistant-ui` moves to `^0.91.1`, the first release whose
+  filters module is signed on npm (SLSA provenance). No API change for callers.
+- Locale handling is stricter: `i18n` declares `supportedLngs`, loads
+  `languageOnly` (so a browser `el-GR` no longer falls back to English date
+  formatting) and keeps `<html lang>` in sync on every switch. Date formatting
+  goes through one `dateLocaleFor()` helper.
+- **Filter controls now match the family design system.** The filter bar and
+  facet popovers were styled with raw palette classes (`gray-*`, `blue-*`,
+  `dark:bg-dark-*`), which made them read as older than the library surfaces
+  beside them. They now render on the `--as-*` semantic tokens (surface,
+  border, primary, muted foreground, radius, focus ring, popover shadow) with
+  pill-shaped triggers and an active tint, token-tinted active-filter pills,
+  and `menuitemcheckbox`/`menuitemradio` roles with `aria-checked`. Facets with
+  more than eight options gained a search box (the library `SearchInput`), and
+  the pill's “Remove <name>” accessible name plus the “N selected” trigger
+  label are now translation keys instead of hardcoded strings.
+
+### Fixed
+
+- **The notification centre and the integration detail page are translated.**
+  Both carried inline English (filter menus, trigger cards, push state,
+  permission prompts, sync history, push statistics, notification-type
+  preferences, the danger-zone copy and every toast). 99 strings moved under
+  `notifications.*` / `integrations.*`; the remove-integration confirmation and
+  three `alert()` prompts are localized too.
+- **The remaining hardcoded UI copy is translated — the literal budget is now
+  zero.** 90 strings across 60 files: shared vocabulary (`Show more/less`, grid
+  and list view, `Close modal`, empty states, `Viewing tenant`), documents
+  (preview/OCR/decrypt states, remove), doctors and organizations empty states,
+  tenant admin (optional email, expiry, audit filter), calendar cloud
+  bind/reconnect, catalog import-from-URL, and the AI tool browser. A guard test
+  fails the build on any new hardcoded text node or `title`/`placeholder`/
+  `aria-label`/`alt` string.
+- **Examination grouping/bulk upload, patient contacts, the AI tool browser,
+  the data-cost tab and correlative analytics are translated.** 139 strings
+  moved into `examinations.groups_*`, `examinations.upload_*`,
+  `patient_form.contacts_*`, `ai_labels.tools_*`, `settings.cost_*` and the new
+  `analytics.*` namespace — including the staging area, the bubble editor, the
+  Magic Fill card, the Pearson/methodology panels and the price-override form.
+- **Task Monitor, the first-run setup wizard and the unmapped-biomarker popup
+  are translated.** 78 strings moved under `task_monitor.*`, `auth.setup_*` and
+  `biomarkers.unmapped_*` — including the stalled-document diagnosis and its
+  cause list, the OCR stage labels, the setup-token hints for all four token
+  modes, and the retry/error prompts.
+- **Dates, times and numbers follow the app language.** A Greek UI showed
+  English month and weekday names on the calendar, patient summaries, the
+  summary modal, AI mini-pages and medication schedules, and OS-locale
+  formatting on admin screens. Every user-facing format now goes through one
+  `src/lib/dateFormats.ts`: 33 call sites stopped passing raw date-fns patterns,
+  42 dropped a locale-less `toLocaleDateString()`, and 25 stopped calling
+  `toLocaleString()` with no locale. The patterns themselves are per-locale, so
+  Greek also gets day-first order (“15 Ιαν”, not “Ιαν 15”). A new guard test
+  fails on a raw locale-sensitive pattern or a locale-less `toLocale*String()`.
+- **The backup page (Settings → Export & Import) is translated.** It carried
+  its copy inline — one `t()` call in 1 088 lines — so Greek users saw English
+  headings, table headers, form hints, job statuses, error lines, toasts and the
+  restore confirmation. All 114 strings now live under `export_import.*`, and
+  the shared type module returns label *keys* instead of English labels
+  (`EXPORT_TYPE_LABEL_KEYS`, `EXPORT_SCOPE_LABEL_KEYS`, `JOB_STATUS_LABEL_KEYS`).
+- **Language, role and catalog labels no longer render raw keys.** Three
+  surfaces showed their i18n key because it did not exist or was never
+  resolvable:
+  - the Localization language dropdown showed `settings.language_en` /
+    `settings.language_el`. Language names are reference-catalog data, not
+    translation keys under the family language policy, so the options carry no key and render the
+    endonym from the shared catalog — the same label the user menu shows;
+  - the anatomy and concept catalog chips showed `catalogs.anatomy.label` /
+    `catalogs.concept.label` (the two of six catalogs no test pinned);
+  - role badges showed the raw enum (`SYSTEM_ADMIN`). All four surfaces — header
+    badge, account page, admin user list/detail, setup wizard — now share one
+    `common.role_*` family.
+- **The backend locale helper followed the retired dictionary layout.** The task
+  registry's "every label key resolves in every locale" test still read
+  `locales/<lng>/common.json` after the flat-file move and silently saw zero
+  locales; it reads `locales/<lng>.json` again.
+
 ## [0.12.2] - 2026-11-24
 
 ### Changed

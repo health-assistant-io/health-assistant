@@ -106,7 +106,7 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
             <button
               type="button"
               onClick={clearSelection}
-              aria-label="Clear selection"
+              aria-label={t('common.clear_selection')}
               className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-dark-border text-gray-400 hover:text-gray-600 dark:hover:text-dark-text transition-colors"
             >
               <X className="w-3 h-3" />
@@ -135,7 +135,7 @@ export const SearchableBiomarkerSelect: React.FC<SearchableBiomarkerSelectProps>
           
           <div className="py-1.5 max-h-60 overflow-y-auto custom-scrollbar">
             {filteredOptions.length === 0 ? (
-              <div className="px-4 py-3 text-[10px] text-gray-400 italic">No options found</div>
+              <div className="px-4 py-3 text-[10px] text-gray-400 italic">{t('common.no_options_found')}</div>
             ) : (
               filteredOptions.map((opt) => {
                 const label = opt.displayName || opt.name || opt.slug;

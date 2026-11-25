@@ -15,11 +15,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '../../store/notificationStore';
 import { formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 import type { NotificationCategory, NotificationEvent, NotificationSeverity, NotificationAction, NotificationInboxItem } from '../../services/notificationService';
 import { useNotificationStream } from '../../hooks/useNotificationStream';
 import { NotificationDetailModal } from '../notifications/NotificationDetailModal';
+import { dateLocaleFor } from '../../lib/dateLocale';
 
 const SEVERITY_DOT: Record<NotificationSeverity, string> = {
   info: 'bg-blue-500',
@@ -80,7 +80,7 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const dateLocale = i18n.language === 'el' ? el : enUS;
+  const dateLocale = dateLocaleFor(i18n.language);
 
   const handleAction = (event: NotificationEvent, url: string) => {
     setIsOpen(false);

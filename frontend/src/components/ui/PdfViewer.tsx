@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, ExternalLink } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface PdfViewerProps {
   url: string;
@@ -8,6 +9,7 @@ interface PdfViewerProps {
 }
 
 export const PdfViewer: React.FC<PdfViewerProps> = ({ url, filename, onClose }) => {
+  const { t } = useTranslation();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -30,7 +32,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, filename, onClose }) 
             target="_blank" 
             rel="noopener noreferrer"
             className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-            title="Open in new tab"
+            title={t('common.open_in_new_tab')}
           >
             <ExternalLink className="w-5 h-5" />
           </a>

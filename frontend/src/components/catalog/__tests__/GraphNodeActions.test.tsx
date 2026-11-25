@@ -25,12 +25,12 @@ describe('GraphNodeActions (toolbar variant)', () => {
 
   it('renders the Catalog button for every type', () => {
     renderActions({ type: 'biomarker', id: 'b1' });
-    expect(screen.getByTitle('Open in catalog')).toBeInTheDocument();
+    expect(screen.getByTitle('catalogs.open_in_catalog')).toBeInTheDocument();
   });
 
   it('navigates to the catalog workspace with type + item on click', () => {
     renderActions({ type: 'medication', id: 'm9' });
-    fireEvent.click(screen.getByTitle('Open in catalog'));
+    fireEvent.click(screen.getByTitle('catalogs.open_in_catalog'));
     expect(mockNavigate).toHaveBeenCalledWith(
       '/catalogs?type=medication&item=m9',
     );
@@ -42,19 +42,19 @@ describe('GraphNodeActions (toolbar variant)', () => {
         <GraphNodeActions type="biomarker" id="b1" />
       </MemoryRouter>,
     );
-    expect(screen.getByTitle('Open in domain')).toBeInTheDocument();
+    expect(screen.getByTitle('catalogs.open_in_domain')).toBeInTheDocument();
 
     rerender(
       <MemoryRouter>
         <GraphNodeActions type="concept" id="c1" />
       </MemoryRouter>,
     );
-    expect(screen.queryByTitle('Open in domain')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('catalogs.open_in_domain')).not.toBeInTheDocument();
   });
 
   it('renders the domain link as an anchor with the correct href', () => {
     renderActions({ type: 'biomarker', id: 'b1' });
-    expect(screen.getByTitle('Open in domain')).toHaveAttribute(
+    expect(screen.getByTitle('catalogs.open_in_domain')).toHaveAttribute(
       'href',
       '/biomarkers/details/b1',
     );
@@ -62,7 +62,7 @@ describe('GraphNodeActions (toolbar variant)', () => {
 
   it('uses the slug for anatomy domain links', () => {
     renderActions({ type: 'anatomy', id: 'id-1', slug: 'thyroid' });
-    expect(screen.getByTitle('Open in domain')).toHaveAttribute(
+    expect(screen.getByTitle('catalogs.open_in_domain')).toHaveAttribute(
       'href',
       '/anatomy/thyroid',
     );
@@ -88,13 +88,13 @@ describe('GraphNodeActions (menu variant)', () => {
 
   it('renders full labels in the menu variant', () => {
     renderActions({ type: 'biomarker', id: 'b1', variant: 'menu' });
-    expect(screen.getByText('Open in catalog')).toBeInTheDocument();
-    expect(screen.getByText('Open in domain')).toBeInTheDocument();
+    expect(screen.getByText('catalogs.open_in_catalog')).toBeInTheDocument();
+    expect(screen.getByText('catalogs.open_in_domain')).toBeInTheDocument();
   });
 
   it('navigates on catalog click in menu variant', () => {
     renderActions({ type: 'medication', id: 'm9', variant: 'menu' });
-    fireEvent.click(screen.getByText('Open in catalog'));
+    fireEvent.click(screen.getByText('catalogs.open_in_catalog'));
     expect(mockNavigate).toHaveBeenCalledWith(
       '/catalogs?type=medication&item=m9',
     );

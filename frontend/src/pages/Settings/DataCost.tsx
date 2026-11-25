@@ -3,6 +3,7 @@ import { Coins } from 'lucide-react';
 import { DataCostTab } from '../../components/settings/DataCostTab';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { useTranslation } from 'react-i18next';
 
 interface DataCostProps {
   scope?: 'global' | 'tenant';
@@ -10,6 +11,7 @@ interface DataCostProps {
 
 /** Tenant/system AI usage ledger + price editor (plan 58 P2). */
 export const DataCost: React.FC<DataCostProps> = ({ scope = 'tenant' }) => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const tenantId = user?.tenant_id;
 
@@ -25,9 +27,7 @@ export const DataCost: React.FC<DataCostProps> = ({ scope = 'tenant' }) => {
           <DataCostTab tenantId={tenantId} />
         </div>
       ) : (
-        <p className="text-sm text-gray-500">
-          Select a tenant context to view AI cost data.
-        </p>
+        <p className="text-sm text-gray-500">{t('settings.cost_select_tenant')}</p>
       )}
     </div>
   );

@@ -628,7 +628,7 @@ export const GenerateAnatomyGraphHandler: React.FC<HitlHandlerProps> = ({
                       className={inputCls}
                       value={n.name}
                       onChange={(e) => patchNode(i, { name: e.target.value })}
-                      placeholder="Left ventricle"
+                      placeholder={t('anatomy.example_left_ventricle')}
                     />
                     <input
                       className={inputCls}

@@ -38,13 +38,15 @@ import type {
   JobStatus,
 } from '../../types/backup';
 import {
-  EXPORT_SCOPE_LABELS,
-  EXPORT_TYPE_LABELS,
+  EXPORT_SCOPE_LABEL_KEYS,
+  EXPORT_TYPE_LABEL_KEYS,
   JOB_STATUS_COLORS,
+  JOB_STATUS_LABEL_KEYS,
   TERMINAL_STATUSES,
 } from '../../types/backup';
 import type { Patient } from '../../types/patient';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 const POLL_INTERVAL_MS = 3000;
 const STALL_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -95,11 +97,11 @@ const ExportImport: React.FC = () => {
       const res = await listExportJobs(50);
       setExportJobs(res.items || []);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to load export jobs');
+      toast.error(err.response?.data?.detail || t('export_import.toast_load_failed'));
     } finally {
       if (showSpinner) setIsRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   const pollExportJob = useCallback((jobId: string) => {
     if (pollTimers.current[jobId]) return;
@@ -114,11 +116,15 @@ const ExportImport: React.FC = () => {
             delete pollTimers.current[jobId];
           }
           if (job.status === 'COMPLETED') {
-            toast.success(`Export ${job.export_type} ready`);
+            toast.success(
+              t('export_import.toast_export_ready', {
+                type: t(EXPORT_TYPE_LABEL_KEYS[job.export_type]),
+              })
+            );
           } else if (job.status === 'FAILED') {
-            toast.error(job.error_message || 'Export failed');
+            toast.error(job.error_message || t('export_import.toast_export_failed'));
           } else if (job.status === 'PARTIAL') {
-            toast.warn('Export completed with warnings');
+            toast.warn(t('export_import.toast_export_warnings'));
           }
         }
         if (Date.now() - startedAt > STALL_TIMEOUT_MS) {
@@ -126,13 +132,13 @@ const ExportImport: React.FC = () => {
             clearInterval(pollTimers.current[jobId]);
             delete pollTimers.current[jobId];
           }
-          toast.warn('Export job polling timed out — refresh to check status');
+          toast.warn(t('export_import.toast_export_timeout'));
         }
       } catch (err) {
         console.error('Polling export job failed', err);
       }
     }, POLL_INTERVAL_MS);
-  }, []);
+  }, [t]);
 
   const pollImportJob = useCallback((jobId: string) => {
     const key = `import-${jobId}`;
@@ -153,13 +159,17 @@ const ExportImport: React.FC = () => {
           }
           if (job.status === 'COMPLETED') {
             toast.success(
-              `Import complete — ${job.processed_records ?? 0} record(s) restored`
+              t('export_import.toast_import_complete', {
+                count: job.processed_records ?? 0,
+              })
             );
           } else if (job.status === 'FAILED') {
-            toast.error(job.error_message || 'Import failed');
+            toast.error(job.error_message || t('export_import.import_failed'));
           } else if (job.status === 'PARTIAL') {
             toast.warn(
-              `Import partial — ${job.failed_records ?? 0} failure(s)`
+              t('export_import.toast_import_partial', {
+                count: job.failed_records ?? 0,
+              })
             );
           }
         }
@@ -168,13 +178,13 @@ const ExportImport: React.FC = () => {
             clearInterval(pollTimers.current[key]);
             delete pollTimers.current[key];
           }
-          toast.warn('Import job polling timed out — refresh to check status');
+          toast.warn(t('export_import.toast_import_timeout'));
         }
       } catch (err) {
         console.error('Polling import job failed', err);
       }
     }, POLL_INTERVAL_MS);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchExportJobs(false);
@@ -204,11 +214,11 @@ const ExportImport: React.FC = () => {
 
   const handleScopeChange = (next: ExportScope) => {
     if (next === 'group' && !canUseGroupScope) {
-      toast.error('Group scope requires MANAGER, ADMIN or SYSTEM_ADMIN role');
+      toast.error(t('export_import.toast_group_role'));
       return;
     }
     if (next === 'system' && !canUseSystemScope) {
-      toast.error('System scope requires ADMIN or SYSTEM_ADMIN role');
+      toast.error(t('export_import.toast_system_role'));
       return;
     }
     setScope(next);
@@ -231,15 +241,15 @@ const ExportImport: React.FC = () => {
 
   const handleExportSubmit = async () => {
     if (scope === 'patient' && patientIds.length === 0) {
-      toast.error('Select at least one patient for patient-scoped export');
+      toast.error(t('export_import.toast_select_patient'));
       return;
     }
     if (scope === 'patient' && role === 'USER' && patientIds.length > 1) {
-      toast.error('USER role can only export a single patient');
+      toast.error(t('export_import.toast_user_single'));
       return;
     }
     if (scope === 'group' && patientIds.length === 0) {
-      toast.error('Select at least one patient for group-scoped export');
+      toast.error(t('export_import.toast_select_group'));
       return;
     }
     const request: BackupRequest = {
@@ -256,9 +266,9 @@ const ExportImport: React.FC = () => {
       const job = await createExportJob(request);
       setExportJobs((prev) => [job, ...prev]);
       pollExportJob(job.id);
-      toast.success('Export job started');
+      toast.success(t('export_import.toast_export_started'));
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to start export');
+      toast.error(err.response?.data?.detail || t('export_import.toast_start_failed'));
     } finally {
       setIsSubmittingExport(false);
     }
@@ -273,9 +283,9 @@ const ExportImport: React.FC = () => {
           ? '.catalog.json'
           : '.zip';
       await downloadExportFile(job.id, `${job.export_type}-${job.id}${suffix}`);
-      toast.success('Download started');
+      toast.success(t('export_import.toast_download_started'));
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Download failed');
+      toast.error(err.response?.data?.detail || t('export_import.toast_download_failed'));
     }
   };
 
@@ -290,12 +300,15 @@ const ExportImport: React.FC = () => {
       pollImportJob(job.id);
       setImportMessage({
         type: 'success',
-        text: `Import job ${job.id.slice(0, 8)} queued — processing ${file.name}`,
+        text: t('export_import.import_queued_detail', {
+          id: job.id.slice(0, 8),
+          file: file.name,
+        }),
       });
     } catch (err: any) {
       setImportMessage({
         type: 'error',
-        text: err.response?.data?.detail || err.message || 'Import failed to start',
+        text: err.response?.data?.detail || err.message || t('export_import.toast_import_start_failed'),
       });
     } finally {
       setIsImporting(false);
@@ -307,9 +320,12 @@ const ExportImport: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     showConfirmation({
-      title: 'Restore from backup?',
-      message: `Importing ${file.name} will restore data into the current tenant (${user?.tenant_id?.slice(0, 8) ?? '…'}). Existing records with the same id will be updated; new ids will be remapped. Telemetry, integration configs and (if included) documents will also be restored. This cannot be undone.`,
-      confirmLabel: 'Restore Backup',
+      title: t('export_import.confirm_restore_title'),
+      message: t('export_import.confirm_restore_message', {
+        file: file.name,
+        tenant: user?.tenant_id?.slice(0, 8) ?? '…',
+      }),
+      confirmLabel: t('export_import.confirm_restore_ok'),
       cancelLabel: 'Cancel',
       confirmVariant: 'danger',
       onConfirm: () => handleImportFile(e),
@@ -326,7 +342,7 @@ const ExportImport: React.FC = () => {
   const formatDate = (iso?: string | null) => {
     if (!iso) return '—';
     try {
-      return new Date(iso).toLocaleString();
+      return formatTimestamp(new Date(iso));
     } catch {
       return iso;
     }
@@ -336,7 +352,7 @@ const ExportImport: React.FC = () => {
     <span
       className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${JOB_STATUS_COLORS[status]}`}
     >
-      {status}
+      {t(JOB_STATUS_LABEL_KEYS[status])}
     </span>
   );
 
@@ -360,8 +376,8 @@ const ExportImport: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
       <PageHeader
-        title="Export & Import (Backup)"
-        subtitle="Export data as FHIR Bundles or full backups; restore from a backup archive"
+        title={t('export_import.title')}
+        subtitle={t('export_import.subtitle')}
         icon={<Database className="w-8 h-8" />}
         showBackButton
       />
@@ -389,9 +405,7 @@ const ExportImport: React.FC = () => {
               : 'bg-gray-100 dark:bg-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-bg/50'
           }`}
         >
-          <Download className="w-4 h-4 inline mr-2" />
-          Export
-        </button>
+          <Download className="w-4 h-4 inline mr-2" />{t('export_import.tab_export')}</button>
         <button
           onClick={() => setActiveTab('import')}
           className={`px-4 py-2 font-medium rounded-t-lg ${
@@ -400,9 +414,7 @@ const ExportImport: React.FC = () => {
               : 'bg-gray-100 dark:bg-dark-border text-gray-700 dark:text-dark-text hover:bg-gray-200 dark:hover:bg-dark-bg/50'
           }`}
         >
-          <Upload className="w-4 h-4 inline mr-2" />
-          Import
-        </button>
+          <Upload className="w-4 h-4 inline mr-2" />{t('export_import.tab_import')}</button>
       </div>
 
       {activeTab === 'export' && (
@@ -413,34 +425,32 @@ const ExportImport: React.FC = () => {
               <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
                 <FileArchive className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">
-                Create new export
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('export_import.create_export')}</h3>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Scope */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-dark-muted mb-2">
-                  Scope
+                  {t('export_import.scope')}
                 </label>
                 <select
                   value={scope}
                   onChange={(e) => handleScopeChange(e.target.value as ExportScope)}
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                 >
-                  <option value="patient">{EXPORT_SCOPE_LABELS.patient}</option>
+                  <option value="patient">{t(EXPORT_SCOPE_LABEL_KEYS.patient)}</option>
                   <option value="group" disabled={!canUseGroupScope}>
-                    {EXPORT_SCOPE_LABELS.group}
-                    {!canUseGroupScope ? ' (requires MANAGER+)' : ''}
+                    {t(EXPORT_SCOPE_LABEL_KEYS.group)}
+                    {!canUseGroupScope ? t('export_import.scope_group_locked') : ''}
                   </option>
                   <option value="system" disabled={!canUseSystemScope}>
-                    {EXPORT_SCOPE_LABELS.system}
-                    {!canUseSystemScope ? ' (requires ADMIN+)' : ''}
+                    {t(EXPORT_SCOPE_LABEL_KEYS.system)}
+                    {!canUseSystemScope ? t('export_import.scope_system_locked') : ''}
                   </option>
                 </select>
                 <p className="mt-1 text-[11px] text-gray-400">
-                  SMART scope:{' '}
+                  {t('export_import.smart_scope')}{' '}
                   <code className="bg-gray-100 dark:bg-dark-border px-1 rounded-sm">
                     {scope === 'patient'
                       ? 'patient/*.rs'
@@ -454,24 +464,21 @@ const ExportImport: React.FC = () => {
               {/* Export type */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-dark-muted mb-2">
-                  Format
+                  {t('export_import.format')}
                 </label>
                 <select
                   value={exportType}
                   onChange={(e) => setExportType(e.target.value as ExportType)}
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-hidden dark:text-dark-text"
                 >
-                  <option value="fhir_only">{EXPORT_TYPE_LABELS.fhir_only}</option>
-                  <option value="full_backup">{EXPORT_TYPE_LABELS.full_backup}</option>
-                  <option value="catalog_only">{EXPORT_TYPE_LABELS.catalog_only}</option>
+                  <option value="fhir_only">{t(EXPORT_TYPE_LABEL_KEYS.fhir_only)}</option>
+                  <option value="full_backup">{t(EXPORT_TYPE_LABEL_KEYS.full_backup)}</option>
+                  <option value="catalog_only">{t(EXPORT_TYPE_LABEL_KEYS.catalog_only)}</option>
                 </select>
                 <p className="mt-1 text-[11px] text-gray-400">
-                  {exportType === 'fhir_only' &&
-                    'Portable FHIR R4B Bundle — import into other FHIR systems.'}
-                  {exportType === 'full_backup' &&
-                    'BagIt-style ZIP: FHIR + telemetry + documents + integration configs.'}
-                  {exportType === 'catalog_only' &&
-                    'Biomarker/unit + clinical-event-type definitions (cross-tenant).'}
+                  {exportType === 'fhir_only' && t('export_import.type_fhir_only_hint')}
+                  {exportType === 'full_backup' && t('export_import.type_full_backup_hint')}
+                  {exportType === 'catalog_only' && t('export_import.type_catalog_only_hint')}
                 </p>
               </div>
             </div>
@@ -480,18 +487,20 @@ const ExportImport: React.FC = () => {
             {(scope === 'patient' || scope === 'group') && (
               <div className="mt-6">
                 <label className="block text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-dark-muted mb-2">
-                  {scope === 'patient' ? 'Patient' : 'Patients (select one or more)'}
+                  {scope === 'patient'
+                    ? t('export_import.patient')
+                    : t('export_import.patients_select')}
                 </label>
                 {scope === 'patient' && role === 'USER' ? (
                   <div className="text-sm text-gray-600 dark:text-dark-muted px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border">
                     {currentPatient
-                      ? `Exporting your linked patient: ${currentPatient.name?.family ?? currentPatient.id}`
-                      : 'No patient context selected — pick a patient from the header first.'}
+                      ? t('export_import.exporting_linked', {
+                          name: currentPatient.name?.family ?? currentPatient.id,
+                        })
+                      : t('export_import.no_patient_context')}
                   </div>
                 ) : availablePatients.length === 0 ? (
-                  <div className="text-sm text-gray-400 px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border">
-                    No patients available in this tenant.
-                  </div>
+                  <div className="text-sm text-gray-400 px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border">{t('export_import.no_patients')}</div>
                 ) : (
                   <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-dark-border rounded-xl divide-y divide-gray-100 dark:divide-dark-border">
                     {availablePatients.map((p) => {
@@ -509,13 +518,13 @@ const ExportImport: React.FC = () => {
                             className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-sm text-gray-900 dark:text-dark-text">
-                            {p.name?.family ?? 'Unknown'}
+                            {p.name?.family ?? t('export_import.unknown')}
                             {p.name?.given?.length
                               ? `, ${p.name.given.join(' ')}`
                               : ''}
                             {p.mrn ? (
                               <span className="ml-2 text-[11px] text-gray-400">
-                                MRN: {p.mrn}
+                                {t('export_import.mrn')} {p.mrn}
                               </span>
                             ) : null}
                           </span>
@@ -538,7 +547,7 @@ const ExportImport: React.FC = () => {
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-900 dark:text-dark-text">
-                    Include uploaded documents (raw files)
+                    {t('export_import.include_documents')}
                   </span>
                 </label>
                 <label className="flex items-center space-x-3 px-4 py-3 bg-gray-50 dark:bg-dark-bg rounded-xl border border-gray-200 dark:border-dark-border cursor-pointer">
@@ -549,10 +558,10 @@ const ExportImport: React.FC = () => {
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-900 dark:text-dark-text">
-                    Include telemetry{' '}
+                    {t('export_import.include_telemetry')}{' '}
                     {scope === 'patient' && (
                       <span className="text-[11px] text-amber-600">
-                        (excluded for patient scope — no patient_id on hypertable)
+                        {t('export_import.telemetry_excluded_hint')}
                       </span>
                     )}
                   </span>
@@ -565,7 +574,7 @@ const ExportImport: React.FC = () => {
                     className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-900 dark:text-dark-text">
-                    Include integration configs (encrypted secrets + OAuth tokens)
+                    {t('export_import.include_integrations')}
                   </span>
                 </label>
                 {canUseAiConfig && scope === 'system' && (
@@ -577,7 +586,7 @@ const ExportImport: React.FC = () => {
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm text-gray-900 dark:text-dark-text">
-                      Include AI provider configs (export-only — not restored)
+                      {t('export_import.include_ai_config')}
                     </span>
                   </label>
                 )}
@@ -596,30 +605,30 @@ const ExportImport: React.FC = () => {
                 ) : (
                   <Download className="w-4 h-4" />
                 )}
-                <span>{isSubmittingExport ? 'Starting export…' : 'Start export'}</span>
+                <span>{isSubmittingExport
+                    ? t('export_import.starting_export')
+                    : t('export_import.start_export')}</span>
               </button>
             </div>
           </div>
 
           {/* Export jobs table */}
           <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">
-              Export jobs
-            </h3>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">{t('export_import.export_jobs')}</h3>
             {exportJobs.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">No export jobs yet.</p>
+              <p className="text-sm text-gray-400 py-8 text-center">{t('export_import.export_empty')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-dark-border">
-                      <th className="py-2 pr-4">Created</th>
-                      <th className="py-2 pr-4">Scope</th>
-                      <th className="py-2 pr-4">Type</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Size</th>
-                      <th className="py-2 pr-4">Counts</th>
-                      <th className="py-2 pr-4 text-right">Action</th>
+                      <th className="py-2 pr-4">{t('export_import.col_created')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_scope')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_type')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_status')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_size')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_counts')}</th>
+                      <th className="py-2 pr-4 text-right">{t('export_import.col_action')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
@@ -630,11 +639,11 @@ const ExportImport: React.FC = () => {
                         </td>
                         <td className="py-3 pr-4">
                           <span className="text-xs font-medium text-gray-700 dark:text-dark-text">
-                            {EXPORT_SCOPE_LABELS[job.scope]}
+                            {t(EXPORT_SCOPE_LABEL_KEYS[job.scope])}
                           </span>
                         </td>
                         <td className="py-3 pr-4 text-xs text-gray-700 dark:text-dark-text">
-                          {EXPORT_TYPE_LABELS[job.export_type]}
+                          {t(EXPORT_TYPE_LABEL_KEYS[job.export_type])}
                         </td>
                         <td className="py-3 pr-4">
                           {renderStatusBadge(job.status)}
@@ -656,7 +665,7 @@ const ExportImport: React.FC = () => {
                             onClick={() => setSelectedExportJob(job)}
                             className="inline-flex items-center space-x-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all mr-2"
                           >
-                            <span>Details</span>
+                            <span>{t('export_import.details')}</span>
                           </button>
                           {job.status === 'COMPLETED' && (
                             <button
@@ -664,7 +673,7 @@ const ExportImport: React.FC = () => {
                               className="inline-flex items-center space-x-1 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all"
                             >
                               <Download className="w-3 h-3" />
-                              <span>Download</span>
+                              <span>{t('export_import.download')}</span>
                             </button>
                           )}
                           {job.status === 'FAILED' && job.error_message && (
@@ -673,7 +682,7 @@ const ExportImport: React.FC = () => {
                               className="inline-flex items-center space-x-1 text-xs text-red-600 dark:text-red-400"
                             >
                               <AlertCircle className="w-3 h-3" />
-                              <span>error</span>
+                              <span>{t('export_import.error_badge')}</span>
                             </span>
                           )}
                         </td>
@@ -694,30 +703,20 @@ const ExportImport: React.FC = () => {
               <div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl">
                 <Upload className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">
-                Restore from backup
-              </h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('export_import.restore_title')}</h3>
             </div>
 
             <div className="mb-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 flex items-start space-x-3">
               <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <p>{t('export_import.accepted_formats')}</p>
                 <p>
-                  Accepted formats: <strong>ZIP</strong> (full backup),{' '}
-                  <strong>FHIR Bundle .json</strong>, or{' '}
-                  <strong>catalog .json</strong>.
-                </p>
-                <p>
-                  Restore target: tenant <code>{user?.tenant_id?.slice(0, 8) ?? '…'}</code>.
-                  Existing records with the same id are updated; new ids are remapped
-                  automatically.
+                  {t('export_import.restore_target', {
+                    tenant: user?.tenant_id?.slice(0, 8) ?? '…',
+                  })}
                 </p>
                 {includeIntegrations && (
-                  <p>
-                    Integration secrets are Fernet-encrypted — restoring on a deployment
-                    with a different <code>INTEGRATION_SECRET_KEY</code> will leave secrets
-                    undecryptable.
-                  </p>
+                  <p>{t('export_import.integration_secrets_hint')}</p>
                 )}
               </div>
             </div>
@@ -731,8 +730,8 @@ const ExportImport: React.FC = () => {
                   className="w-4 h-4 mt-0.5 text-blue-600 focus:ring-blue-500"
                 />
                 <div className="text-sm text-gray-900 dark:text-dark-text">
-                  <span className="font-bold block mb-0.5">Auto-map Biomarkers</span>
-                  <span className="text-xs text-gray-500 dark:text-dark-muted">Automatically link imported FHIR observations to your system catalog.</span>
+                  <span className="font-bold block mb-0.5">{t('export_import.auto_map')}</span>
+                  <span className="text-xs text-gray-500 dark:text-dark-muted">{t('export_import.auto_map_hint')}</span>
                 </div>
               </label>
               
@@ -755,14 +754,12 @@ const ExportImport: React.FC = () => {
                            setUseAiNormalization(!useAiNormalization);
                          }
                       }}
-                    >
-                      Use AI Normalization
-                    </label>
+                    >{t('export_import.ai_normalization')}</label>
                     <div className="inline-flex">
                       <ActiveTaskBadge workflow="fhir_import_normalization" />
                     </div>
                   </div>
-                  <span className="text-xs text-gray-500 dark:text-dark-muted block">Use AI to generate standard LOINC codes and names for unknown imported data.</span>
+                  <span className="text-xs text-gray-500 dark:text-dark-muted block">{t('export_import.ai_normalization_hint')}</span>
                 </div>
               </div>
             </div>
@@ -780,11 +777,9 @@ const ExportImport: React.FC = () => {
               ) : (
                 <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
               )}
-              <p className="text-sm font-bold text-gray-700 dark:text-dark-text">
-                Click or drop a backup file to restore
-              </p>
+              <p className="text-sm font-bold text-gray-700 dark:text-dark-text">{t('export_import.drop_hint')}</p>
               <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1">
-                ZIP or JSON · max {''}50 MB
+                {t('export_import.drop_formats')}
               </p>
             </div>
 
@@ -808,10 +803,10 @@ const ExportImport: React.FC = () => {
                 <div className="flex-1">
                   <h4 className="font-bold text-sm">
                     {importMessage.type === 'success'
-                      ? 'Import queued'
+                      ? t('export_import.import_queued')
                       : importMessage.type === 'error'
-                      ? 'Import failed'
-                      : 'Info'}
+                      ? t('export_import.import_failed')
+                      : t('export_import.info')}
                   </h4>
                   <p className="text-xs opacity-90">{importMessage.text}</p>
                 </div>
@@ -827,23 +822,21 @@ const ExportImport: React.FC = () => {
 
           {/* Import jobs table */}
           <div className="bg-white dark:bg-dark-surface rounded-2xl p-6 border border-gray-100 dark:border-dark-border shadow-xs">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">
-              Import jobs
-            </h3>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text mb-4">{t('export_import.import_jobs')}</h3>
             {importJobs.length === 0 ? (
-              <p className="text-sm text-gray-400 py-8 text-center">No import jobs yet.</p>
+              <p className="text-sm text-gray-400 py-8 text-center">{t('export_import.import_empty')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-widest text-gray-400 border-b border-gray-100 dark:border-dark-border">
-                      <th className="py-2 pr-4">Created</th>
-                      <th className="py-2 pr-4">Source</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Records</th>
-                      <th className="py-2 pr-4">Verification</th>
-                      <th className="py-2 pr-4">Errors / warnings</th>
-                      <th className="py-2 pr-4 text-right">Action</th>
+                      <th className="py-2 pr-4">{t('export_import.col_created')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_source')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_status')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_records')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_verification')}</th>
+                      <th className="py-2 pr-4">{t('export_import.col_errors_warnings')}</th>
+                      <th className="py-2 pr-4 text-right">{t('export_import.col_action')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-dark-border">
@@ -860,8 +853,10 @@ const ExportImport: React.FC = () => {
                           {renderProgress(job.progress, job.status)}
                         </td>
                         <td className="py-3 pr-4 text-xs text-gray-600 dark:text-dark-muted">
-                          {job.processed_records ?? 0} processed / {job.failed_records ?? 0}{' '}
-                          failed
+                          {t('export_import.records_line', {
+                            processed: job.processed_records ?? 0,
+                            failed: job.failed_records ?? 0,
+                          })}
                         </td>
                         <td className="py-3 pr-4 text-[11px]">
                           {job.restore_result ? (
@@ -873,7 +868,7 @@ const ExportImport: React.FC = () => {
                                     : 'text-red-600 dark:text-red-400'
                                 }
                               >
-                                {job.restore_result.manifest_verified ? '✓' : '✗'} manifest
+                                {job.restore_result.manifest_verified ? '✓' : '✗'} {t('export_import.manifest')}
                               </div>
                               <div
                                 className={
@@ -882,7 +877,7 @@ const ExportImport: React.FC = () => {
                                     : 'text-red-600 dark:text-red-400'
                                 }
                               >
-                                {job.restore_result.fhir_validated ? '✓' : '✗'} FHIR
+                                {job.restore_result.fhir_validated ? '✓' : '✗'} {t('export_import.fhir')}
                               </div>
                             </div>
                           ) : (
@@ -897,12 +892,12 @@ const ExportImport: React.FC = () => {
                           )}
                           {(job.warnings?.length ?? 0) > 0 && (
                             <div className="text-amber-600 dark:text-amber-400 truncate">
-                              {job.warnings!.length} warning(s)
+                              {t('export_import.warnings_count', { count: job.warnings!.length })}
                             </div>
                           )}
                           {(job.errors?.length ?? 0) > 0 && (
                             <div className="text-red-600 dark:text-red-400 truncate">
-                              {job.errors!.length} error(s)
+                              {t('export_import.errors_count', { count: job.errors!.length })}
                             </div>
                           )}
                           {!job.error_message &&
@@ -915,7 +910,7 @@ const ExportImport: React.FC = () => {
                             onClick={() => setSelectedImportJob(job)}
                             className="inline-flex items-center space-x-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
                           >
-                            <span>Details</span>
+                            <span>{t('export_import.details')}</span>
                           </button>
                         </td>
                       </tr>
@@ -932,32 +927,32 @@ const ExportImport: React.FC = () => {
       <Modal
         open={!!selectedExportJob}
         onOpenChange={(o) => !o && setSelectedExportJob(null)}
-        title="Export Job Details"
+        title={t('export_import.export_job_details')}
       >
         {selectedExportJob && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Status</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.col_status')}</span>
                 <span className="font-medium">{selectedExportJob.status}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Type</span>
-                <span className="font-medium">{EXPORT_TYPE_LABELS[selectedExportJob.export_type]}</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.col_type')}</span>
+                <span className="font-medium">{t(EXPORT_TYPE_LABEL_KEYS[selectedExportJob.export_type])}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Scope</span>
-                <span className="font-medium">{EXPORT_SCOPE_LABELS[selectedExportJob.scope]}</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.col_scope')}</span>
+                <span className="font-medium">{t(EXPORT_SCOPE_LABEL_KEYS[selectedExportJob.scope])}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Size</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.col_size')}</span>
                 <span className="font-medium">{formatBytes(selectedExportJob.file_size_bytes)}</span>
               </div>
             </div>
 
             {selectedExportJob.error_message && (
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block mb-1">Error Message</span>
+                <span className="text-gray-500 dark:text-dark-muted block mb-1">{t('export_import.error_message')}</span>
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs wrap-break-word">
                   {selectedExportJob.error_message}
                 </div>
@@ -966,7 +961,7 @@ const ExportImport: React.FC = () => {
 
             {selectedExportJob.resource_counts && Object.keys(selectedExportJob.resource_counts).length > 0 && (
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block mb-2">Resource Counts</span>
+                <span className="text-gray-500 dark:text-dark-muted block mb-2">{t('export_import.resource_counts')}</span>
                 <div className="grid grid-cols-2 gap-2 text-sm bg-gray-50 dark:bg-dark-bg p-4 rounded-xl border border-gray-100 dark:border-dark-border">
                   {Object.entries(selectedExportJob.resource_counts).map(([key, val]) => (
                     <div key={key} className="flex justify-between">
@@ -985,32 +980,32 @@ const ExportImport: React.FC = () => {
       <Modal
         open={!!selectedImportJob}
         onOpenChange={(o) => !o && setSelectedImportJob(null)}
-        title="Import Job Details"
+        title={t('export_import.import_job_details')}
       >
         {selectedImportJob && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Status</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.col_status')}</span>
                 <span className="font-medium">{selectedImportJob.status}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Source File</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.source_file')}</span>
                 <span className="font-medium break-all">{selectedImportJob.source_filename || '—'}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Records Processed</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.records_processed')}</span>
                 <span className="font-medium">{selectedImportJob.processed_records ?? 0}</span>
               </div>
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block">Records Failed</span>
+                <span className="text-gray-500 dark:text-dark-muted block">{t('export_import.records_failed')}</span>
                 <span className="font-medium">{selectedImportJob.failed_records ?? 0}</span>
               </div>
             </div>
 
             {selectedImportJob.error_message && (
               <div>
-                <span className="text-gray-500 dark:text-dark-muted block mb-1">Fatal Error</span>
+                <span className="text-gray-500 dark:text-dark-muted block mb-1">{t('export_import.fatal_error')}</span>
                 <div className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 p-3 rounded-lg text-xs wrap-break-word">
                   {selectedImportJob.error_message}
                 </div>
@@ -1021,7 +1016,7 @@ const ExportImport: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 {selectedImportJob.restore_result.created_resources && Object.keys(selectedImportJob.restore_result.created_resources).length > 0 && (
                   <div>
-                    <span className="text-gray-500 dark:text-dark-muted block mb-2 text-sm font-bold">Created</span>
+                    <span className="text-gray-500 dark:text-dark-muted block mb-2 text-sm font-bold">{t('export_import.created')}</span>
                     <ul className="text-sm space-y-1 bg-green-50 dark:bg-green-900/10 p-3 rounded-lg border border-green-100 dark:border-green-900/30">
                       {Object.entries(selectedImportJob.restore_result.created_resources).map(([k, v]) => (
                         <li key={k} className="flex justify-between">
@@ -1034,7 +1029,7 @@ const ExportImport: React.FC = () => {
                 )}
                 {selectedImportJob.restore_result.updated_resources && Object.keys(selectedImportJob.restore_result.updated_resources).length > 0 && (
                   <div>
-                    <span className="text-gray-500 dark:text-dark-muted block mb-2 text-sm font-bold">Updated</span>
+                    <span className="text-gray-500 dark:text-dark-muted block mb-2 text-sm font-bold">{t('export_import.updated')}</span>
                     <ul className="text-sm space-y-1 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
                       {Object.entries(selectedImportJob.restore_result.updated_resources).map(([k, v]) => (
                         <li key={k} className="flex justify-between">

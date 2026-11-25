@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Activity, Plus, ChevronRight, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
-import { format, parseISO, isValid } from 'date-fns';
+import { parseISO, isValid } from 'date-fns';
 import {
   getPatientEvents,
   ClinicalEvent,
@@ -11,6 +11,7 @@ import {
 import { ClinicalEventModal } from '../events/ClinicalEventModal';
 import { useCreateIntent } from '../../hooks/useCreateIntent';
 import SummaryCardHeader, { TAG_NEUTRAL, TAG_PURPLE } from '../ui/SummaryCardHeader';
+import { formatDate, DATE_MEDIUM } from '../../lib/dateFormats';
 
 interface Props {
   patientId: string;
@@ -177,9 +178,9 @@ const ClinicalEventSummary: React.FC<Props> = ({ patientId }) => {
 const EventRow: React.FC<{ event: ClinicalEvent; t: any; onClick: () => void }> = ({ event, t, onClick }) => {
   const isActive = event.status === ClinicalEventStatus.ACTIVE;
   const onset = event.onset_date ? parseISO(event.onset_date) : null;
-  const onsetLabel = onset && isValid(onset) ? format(onset, 'MMM d, yyyy') : null;
+  const onsetLabel = onset && isValid(onset) ? formatDate(onset, DATE_MEDIUM) : null;
   const resolved = event.resolved_date ? parseISO(event.resolved_date) : null;
-  const resolvedLabel = resolved && isValid(resolved) ? format(resolved, 'MMM d, yyyy') : null;
+  const resolvedLabel = resolved && isValid(resolved) ? formatDate(resolved, DATE_MEDIUM) : null;
 
   const statusBadge = (() => {
     const map: Record<string, string> = {

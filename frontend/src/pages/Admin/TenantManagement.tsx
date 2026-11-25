@@ -13,6 +13,7 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 import { useTranslation } from 'react-i18next';
 
+import { uiLocale } from '../../lib/dateFormats';
 const PAGE_SIZE = 25;
 
 function TenantManagement() {
@@ -243,7 +244,7 @@ function TenantManagement() {
                     <Building2 className="w-3 h-3 mr-1" /> {t('admin.tenants.created')}
                   </p>
                   <p className="font-bold text-brand-navy dark:text-dark-text">
-                    {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}
+                    {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString(uiLocale()) : '—'}
                   </p>
                 </div>
                 <div className="space-y-0.5">
@@ -251,7 +252,7 @@ function TenantManagement() {
                     <Calendar className="w-3 h-3 mr-1" /> {t('admin.tenants.updated')}
                   </p>
                   <p className="font-bold text-brand-navy dark:text-dark-text">
-                    {tenant.updated_at ? new Date(tenant.updated_at).toLocaleDateString() : '—'}
+                    {tenant.updated_at ? new Date(tenant.updated_at).toLocaleDateString(uiLocale()) : '—'}
                   </p>
                 </div>
               </div>

@@ -168,7 +168,7 @@ export const VaccineForm: React.FC<CatalogItemFormProps> = ({
                 .filter(Boolean),
             })
           }
-          placeholder="Fever, Sore arm"
+          placeholder={t('vaccinations.side_effects_placeholder')}
         />
       </Field>
 

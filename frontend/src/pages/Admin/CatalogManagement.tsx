@@ -58,7 +58,7 @@ const CatalogManagement: React.FC = () => {
             <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
               <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">Import from URL</h3>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">{t('catalogs.import_from_url')}</h3>
           </div>
           <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">
             Synchronize the system clinical ontology (LOINC biomarkers, units) from an external JSON catalog.
@@ -92,9 +92,7 @@ const CatalogManagement: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-dark-text">Upload JSON File</h3>
           </div>
-          <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">
-            Upload a custom compiled JSON ontology file directly.
-          </p>
+          <p className="text-sm text-gray-500 dark:text-dark-muted mb-4">{t('catalogs.upload_ontology_hint')}</p>
           
           <div className="border-2 border-dashed border-gray-200 dark:border-dark-border rounded-2xl p-8 text-center mt-6 hover:bg-gray-50 dark:hover:bg-dark-bg/50 transition-colors relative">
              <input 
@@ -105,8 +103,8 @@ const CatalogManagement: React.FC = () => {
                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
              />
              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
-             <p className="text-sm font-bold text-gray-700 dark:text-dark-text">Click or drag file to upload</p>
-             <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1">JSON format only</p>
+             <p className="text-sm font-bold text-gray-700 dark:text-dark-text">{t('catalogs.drop_file')}</p>
+             <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-1">{t('catalogs.json_only')}</p>
           </div>
         </div>
       </div>

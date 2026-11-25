@@ -21,10 +21,10 @@ import { PageHeader } from '../../components/ui/PageHeader';
 import { StickyToolbar } from '../../components/ui/StickyToolbar';
 
 const ROLE_OPTIONS: { value: UserRole; label: string; color: string }[] = [
-  { value: 'SYSTEM_ADMIN', label: 'admin.role_system_admin', color: 'text-purple-600 bg-purple-50 dark:bg-purple-900/20' },
-  { value: 'ADMIN', label: 'admin.role_admin', color: 'text-red-600 bg-red-50 dark:bg-red-900/20' },
-  { value: 'MANAGER', label: 'admin.role_manager', color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' },
-  { value: 'USER', label: 'admin.role_user', color: 'text-gray-600 bg-gray-50 dark:bg-gray-700/20' }
+  { value: 'SYSTEM_ADMIN', label: 'common.role_system_admin', color: 'text-purple-600 bg-purple-50 dark:bg-purple-900/20' },
+  { value: 'ADMIN', label: 'common.role_admin', color: 'text-red-600 bg-red-50 dark:bg-red-900/20' },
+  { value: 'MANAGER', label: 'common.role_manager', color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' },
+  { value: 'USER', label: 'common.role_user', color: 'text-gray-600 bg-gray-50 dark:bg-gray-700/20' }
 ];
 
 function UserManagement() {

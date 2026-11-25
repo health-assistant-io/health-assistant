@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PdfViewer } from './PdfViewer';
 import { getDocumentDownloadUrl } from '../../services/documentService';
+import { useTranslation } from 'react-i18next';
 
 interface AuthenticatedPdfViewerProps {
   documentId: string;
@@ -9,6 +10,7 @@ interface AuthenticatedPdfViewerProps {
 }
 
 export const AuthenticatedPdfViewer: React.FC<AuthenticatedPdfViewerProps> = ({ documentId, filename, onClose }) => {
+  const { t } = useTranslation();
   const [url, setUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +43,7 @@ export const AuthenticatedPdfViewer: React.FC<AuthenticatedPdfViewerProps> = ({ 
                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
             </div>
           </div>
-          <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Loading secure document</p>
+          <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">{t('documents.loading_document')}</p>
         </div>
       </div>
     );

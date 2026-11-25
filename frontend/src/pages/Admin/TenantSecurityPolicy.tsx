@@ -16,6 +16,7 @@ import {
   type TenantSecurityPolicyPatchPayload,
 } from '../../services/securityPolicyService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 /** A 422 `detail` entry of the policy patch endpoint. */
 interface FieldError {
   field: string;
@@ -517,7 +518,7 @@ export function TenantSecurityPolicyCard({ tenantId, canWrite }: CardProps) {
         <footer className="flex items-center justify-between border-t border-gray-100 dark:border-dark-border pt-4 text-xs text-gray-400">
           <span>
             {t('admin.policy.updated_at', {
-              date: policy.updated_at ? new Date(policy.updated_at).toLocaleString() : '—',
+              date: policy.updated_at ? formatTimestamp(new Date(policy.updated_at)) : '—',
             })}
           </span>
           <Link

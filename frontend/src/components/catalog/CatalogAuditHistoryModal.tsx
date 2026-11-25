@@ -7,12 +7,11 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
-import type { Locale } from 'date-fns';
 import { History } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { LoadingState } from '../ui/LoadingState';
 import { getCatalogItemHistory } from '../../services/catalogService';
+import { dateLocaleFor } from '../../lib/dateLocale';
 import type { CatalogAuditEntry, CatalogType } from '../../types/catalog';
 
 interface CatalogAuditHistoryModalProps {
@@ -29,10 +28,6 @@ const OPERATION_CLASSES: Record<string, string> = {
   promote: 'text-violet-600 dark:text-violet-400',
   demote: 'text-amber-600 dark:text-amber-400',
 };
-
-function pickLocale(lng: string): Locale {
-  return lng.startsWith('el') ? el : enUS;
-}
 
 export const CatalogAuditHistoryModal: React.FC<
   CatalogAuditHistoryModalProps
@@ -63,7 +58,7 @@ export const CatalogAuditHistoryModal: React.FC<
     };
   }, [isOpen, itemId, type, t]);
 
-  const locale = pickLocale(i18n.language);
+  const locale = dateLocaleFor(i18n.language);
 
   return (
     <Modal

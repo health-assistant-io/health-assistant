@@ -16,6 +16,7 @@ import { useBiomarkerPrecisionProfile } from '../../hooks/useBiomarkerPrecision'
 import { UnmappedBiomarkerMenu } from './UnmappedBiomarkerMenu';
 import { sanitizeHtml } from '../../utils/sanitize';
 
+import { uiLocale } from '../../lib/dateFormats';
 interface BiomarkerListProps {
   biomarkers?: BiomarkerObservation[];
   groupedData?: [string, BiomarkerObservation[]][];
@@ -347,7 +348,7 @@ export const BiomarkerList = React.memo(({
               {showDate && (
                 <div className="flex flex-col">
                   <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">{t('common.date')}</span>
-                  <span className="text-xs font-bold text-gray-700 dark:text-dark-text">{new Date(marker.source.date).toLocaleDateString()}</span>
+                  <span className="text-xs font-bold text-gray-700 dark:text-dark-text">{new Date(marker.source.date).toLocaleDateString(uiLocale())}</span>
                 </div>
               )}
               {showSource && marker.source.filename && (
@@ -494,7 +495,7 @@ export const BiomarkerList = React.memo(({
           showDate && (
             <div className="w-full sm:w-32 sm:ml-auto flex flex-col items-end shrink-0 sm:pr-4">
                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{t('common.date')}</span>
-               <span className="text-xs font-bold text-gray-500 font-mono tracking-tight">{new Date(marker.source.date).toLocaleDateString()}</span>
+               <span className="text-xs font-bold text-gray-500 font-mono tracking-tight">{new Date(marker.source.date).toLocaleDateString(uiLocale())}</span>
             </div>
           )
         )}
@@ -630,7 +631,7 @@ export const BiomarkerList = React.memo(({
                          </div>
                       </td>
                     ) : (
-                      showDate && <td className="px-8 py-5 whitespace-nowrap text-xs text-gray-400 font-bold font-mono">{new Date(m.source.date).toLocaleDateString()}</td>
+                      showDate && <td className="px-8 py-5 whitespace-nowrap text-xs text-gray-400 font-bold font-mono">{new Date(m.source.date).toLocaleDateString(uiLocale())}</td>
                     )}
                     <td className="px-8 py-5 whitespace-nowrap text-right">
                        <div className="flex items-center justify-end space-x-2">

@@ -14,8 +14,8 @@
  *     with the `{{name}}` interpolation (Magic Fill unmatched).
  */
 import { describe, it, expect } from 'vitest';
-import en from '../locales/en/common.json';
-import el from '../locales/el/common.json';
+import en from '../locales/en.json';
+import el from '../locales/el.json';
 
 type Node = Record<string, unknown>;
 

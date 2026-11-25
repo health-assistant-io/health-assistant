@@ -3,6 +3,7 @@ import { Terminal, RefreshCw, AlertCircle, Copy, Check } from 'lucide-react';
 import { integrationService } from '../../services/integrationService';
 import { toast } from 'react-toastify';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 interface DebugConsoleProps {
   integrationId: string;
   patientId: string;
@@ -65,7 +66,7 @@ export const DebugConsole: React.FC<DebugConsoleProps> = ({ integrationId, patie
           logs.map((log) => (
             <div key={log.id} className="border-l-2 border-gray-700 pl-3">
               <div className="flex items-center justify-between text-gray-500 mb-1">
-                <span>{new Date(log.timestamp).toLocaleString()}</span>
+                <span>{formatTimestamp(new Date(log.timestamp))}</span>
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => copyToClipboard(log.id, log.payload)}

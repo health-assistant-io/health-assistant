@@ -56,6 +56,7 @@ import { usePatientStore } from '../../store/slices/patientSlice';
 import { isActiveMedication } from '../../utils/medicationStatus';
 import { sanitizeHtml } from '../../utils/sanitize';
 
+import { uiLocale } from '../../lib/dateFormats';
 function MedicationDetail() {
   const { t } = useTranslation();
   const { medicationId } = useParams();
@@ -231,7 +232,7 @@ function MedicationDetail() {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-500 animate-pulse">Loading medication details...</p>
+        <p className="text-gray-500 animate-pulse">{t('medications.loading_details')}</p>
       </div>
     );
   }
@@ -488,7 +489,7 @@ function MedicationDetail() {
                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">{t('medications.started')}</p>
                              <div className="flex items-center space-x-3 text-gray-700 dark:text-dark-text">
                                <Calendar className="w-5 h-5 text-gray-400" />
-                               <span className="font-bold">{record.start_date ? new Date(record.start_date).toLocaleDateString() : 'N/A'}</span>
+                               <span className="font-bold">{record.start_date ? new Date(record.start_date).toLocaleDateString(uiLocale()) : 'N/A'}</span>
                              </div>
                           </div>
                         </div>
@@ -508,7 +509,7 @@ function MedicationDetail() {
                           >
                             <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2">
                               {record.start_date
-                                ? new Date(record.start_date).toLocaleDateString()
+                                ? new Date(record.start_date).toLocaleDateString(uiLocale())
                                 : t('medications.this_record', 'This record')}
                             </p>
                             <InstanceField
@@ -557,7 +558,7 @@ function MedicationDetail() {
                           {patientRecords.map(record => (
                             <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors">
                                <td className="px-6 py-5 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-dark-text">
-                                 {record.start_date ? new Date(record.start_date).toLocaleDateString() : 'N/A'}
+                                 {record.start_date ? new Date(record.start_date).toLocaleDateString(uiLocale()) : 'N/A'}
                                </td>
                                <td className="px-6 py-5 whitespace-nowrap text-sm font-black text-blue-600">
                                  {record.dosage || 'N/A'}

@@ -153,7 +153,7 @@ const CalendarPage: React.FC = () => {
             {loadingDocs ? (
               <div className="flex flex-col items-center justify-center py-10">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-                <p className="text-xs text-gray-400">Loading examination details...</p>
+                <p className="text-xs text-gray-400">{t('common.loading_examination_details')}</p>
               </div>
             ) : (
               <ExaminationPreview 

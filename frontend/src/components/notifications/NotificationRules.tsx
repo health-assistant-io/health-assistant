@@ -15,7 +15,6 @@ import {
   Activity,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import {
   notificationService,
@@ -29,6 +28,7 @@ import biomarkerService from '../../services/biomarkerService';
 import { listPatients } from '../../services/patientService';
 import { listDoctors } from '../../services/doctorService';
 import { useAuthStore } from '../../store/slices/authSlice';
+import { dateLocaleFor } from '../../lib/dateLocale';
 
 type Operator = '>' | '<' | '>=' | '<=' | '==' | 'out_of_normal';
 
@@ -69,7 +69,7 @@ const EMPTY_FORM: RuleFormState = {
 
 export function NotificationRules({ patientId }: { patientId?: string }) {
   const { t, i18n } = useTranslation();
-  const dateLocale: Locale = i18n.language === 'el' ? el : enUS;
+  const dateLocale = dateLocaleFor(i18n.language);
   const user = useAuthStore((s) => s.user);
 
   const [rules, setRules] = useState<NotificationRule[]>([]);
@@ -430,7 +430,7 @@ function RuleForm({
         <h3 className="text-sm font-bold text-gray-900 dark:text-dark-text">
           {editing
             ? t('notifications.rules.edit', { defaultValue: 'Edit rule' })
-            : t('notifications.rules.create', { defaultValue: 'Create biomarker alert' })}
+            : t('notifications.rules.create', { defaultValue: 'Create rule' })}
         </h3>
         <button onClick={onCancel} className="p-1 text-gray-400 hover:text-gray-600 rounded-sm">
           <X className="w-4 h-4" />

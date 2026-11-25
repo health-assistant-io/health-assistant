@@ -41,7 +41,7 @@ export const AtlasManager: React.FC = () => {
   }, [refresh]);
 
   const handleDelete = async (slug: string) => {
-    if (!confirm(t('anatomy.atlas_confirm_delete', { defaultValue: `Delete figure "${slug}"? Markers keyed to it will be orphaned.` }))) return;
+    if (!confirm(t('anatomy.atlas_confirm_delete', { slug }))) return;
     try {
       await anatomyService.deleteFigure(slug);
       await refresh();
@@ -375,7 +375,7 @@ const FigureForm: React.FC<FigureFormProps> = ({ isOpen, onClose, figure, onSave
               <div className="bg-gray-50 dark:bg-dark-bg rounded-xl p-1 shrink-0">
                 <img src={currentImageUrl} alt="current" className="h-20 w-auto object-contain" />
               </div>
-              <span className="text-[10px] text-gray-400">Current image (saved crop)</span>
+              <span className="text-[10px] text-gray-400">{t('anatomy.current_image_saved')}</span>
             </div>
           )}
           <div className="flex gap-2 mb-2 flex-wrap items-center">

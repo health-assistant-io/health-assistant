@@ -6,6 +6,7 @@ import { ShieldAlert, ExternalLink, Edit2, Trash2, MoreVertical, AlertTriangle, 
 import { AllergyIntolerance } from '../../services/allergyService';
 import { AllergyAIActions } from '../ui/AllergyAIActions';
 
+import { uiLocale } from '../../lib/dateFormats';
 export interface AllergyCardProps {
   allergy: AllergyIntolerance;
   showActions?: boolean;
@@ -208,7 +209,7 @@ const AllergyCard: React.FC<AllergyCardProps> = ({
               {allergy.onset_date && (
                 <span className="text-[9px] sm:text-[10px] font-black text-gray-500 dark:text-dark-muted uppercase flex items-center">
                   <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1 opacity-50 shrink-0" />
-                  {new Date(allergy.onset_date).toLocaleDateString()}
+                  {new Date(allergy.onset_date).toLocaleDateString(uiLocale())}
                 </span>
               )}
             </div>
@@ -243,7 +244,7 @@ const AllergyCard: React.FC<AllergyCardProps> = ({
       {allergy.resolved_date && (
         <div className="mt-4 flex items-center justify-between text-[9px] font-black text-gray-400 uppercase tracking-widest">
           <span>
-            {t('allergies.resolved', 'Resolved')}: {new Date(allergy.resolved_date).toLocaleDateString()}
+            {t('allergies.resolved', 'Resolved')}: {new Date(allergy.resolved_date).toLocaleDateString(uiLocale())}
           </span>
         </div>
       )}

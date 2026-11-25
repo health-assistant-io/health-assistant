@@ -18,12 +18,13 @@ import {
   type ApiTokenPermissionCatalog,
 } from '../../services/apiTokenService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 const PATIENT_SCOPES: ApiTokenPatientScope[] = ['all', 'granted', 'none'];
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '—' : formatTimestamp(date);
 }
 
 function tokenState(token: ApiToken): 'active' | 'revoked' | 'expired' {

@@ -43,11 +43,11 @@ describe('EnumBadgeField', () => {
         tones={{ draft: 'warning', active: 'success', retired: 'neutral' }}
       />,
     );
-    expect(screen.getByText('Active').className).toContain('bg-emerald-50');
+    expect(screen.getByText('Active').className).toContain('--as-success');
   });
 
   it('uses defaultTone for values without an explicit tone', () => {
     render(<EnumBadgeField value="retired" options={OPTIONS} defaultTone="neutral" />);
-    expect(screen.getByText('Retired').className).toContain('bg-gray-100');
+    expect(screen.getByText('Retired').className).toContain('--as-secondary');
   });
 });

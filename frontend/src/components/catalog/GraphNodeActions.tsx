@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import { Database, ExternalLink, Crosshair } from 'lucide-react';
 import { domainRouteForType } from '../../utils/domainRoute';
 import type { CatalogType } from '../../types/catalog';
+import { useTranslation } from 'react-i18next';
 
 interface GraphNodeActionsProps {
   type: string;
@@ -31,6 +32,7 @@ export const GraphNodeActions: React.FC<GraphNodeActionsProps> = ({
   onFocus,
   variant = 'toolbar',
 }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const domainRoute = domainRouteForType(type, id, slug);
 
@@ -44,17 +46,13 @@ export const GraphNodeActions: React.FC<GraphNodeActionsProps> = ({
           onClick={openInCatalog}
           className="flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-700 dark:text-gray-200"
         >
-          <Database className="w-3.5 h-3.5 text-blue-500" />
-          Open in catalog
-        </button>
+          <Database className="w-3.5 h-3.5 text-blue-500" />{t('catalogs.open_in_catalog')}</button>
         {domainRoute && (
           <a
             href={domainRoute}
             className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-700 dark:text-gray-200"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-blue-500" />
-            Open in domain
-          </a>
+            <ExternalLink className="w-3.5 h-3.5 text-blue-500" />{t('catalogs.open_in_domain')}</a>
         )}
         {onFocus && (
           <button
@@ -73,7 +71,7 @@ export const GraphNodeActions: React.FC<GraphNodeActionsProps> = ({
     <div className="flex items-center gap-1.5">
       <button
         onClick={openInCatalog}
-        title="Open in catalog"
+        title={t('catalogs.open_in_catalog')}
         className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
       >
         <Database className="w-3 h-3" />
@@ -82,7 +80,7 @@ export const GraphNodeActions: React.FC<GraphNodeActionsProps> = ({
       {domainRoute && (
         <a
           href={domainRoute}
-          title="Open in domain"
+          title={t('catalogs.open_in_domain')}
           className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
         >
           <ExternalLink className="w-3 h-3" />

@@ -21,6 +21,7 @@ import { Biomarker, BiomarkerObservation } from '../../types/biomarker';
 import biomarkerService from '../../services/biomarkerService';
 import { sanitizeHtml } from '../../utils/sanitize';
 
+import { formatTimestamp, uiLocale } from '../../lib/dateFormats';
 interface ExaminationPreviewProps {
   selectedExam: any;
   examDocuments: any[];
@@ -108,7 +109,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
               <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-gray-500 dark:text-dark-muted">
                 <div className="flex items-center space-x-1.5 bg-gray-50 dark:bg-dark-bg px-2 py-0.5 rounded-md">
                   <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  <span className="font-medium">{new Date(selectedExam.examination_date).toLocaleDateString()}</span>
+                  <span className="font-medium">{new Date(selectedExam.examination_date).toLocaleDateString(uiLocale())}</span>
                 </div>
                 {selectedExam.doctors?.length > 0 && (
                   <div className="flex items-center space-x-1.5 bg-blue-50/50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md max-w-xs truncate">
@@ -372,7 +373,7 @@ export const ExaminationPreview: React.FC<ExaminationPreviewProps> = ({
       <div className="p-4 px-6 border-t border-gray-100 dark:border-dark-border bg-gray-50/50 dark:bg-dark-bg/50 flex items-center justify-between">
         <div className="flex flex-col">
           <p className="text-[10px] font-bold text-gray-400 dark:text-dark-muted uppercase tracking-widest">{t('examinations.metadata')}</p>
-          <p className="text-xs text-gray-500 dark:text-dark-muted">{t('examinations.recorded')}: {new Date(selectedExam.created_at).toLocaleString()}</p>
+          <p className="text-xs text-gray-500 dark:text-dark-muted">{t('examinations.recorded')}: {formatTimestamp(new Date(selectedExam.created_at))}</p>
         </div>
         <div className="flex items-center space-x-3">
         </div>

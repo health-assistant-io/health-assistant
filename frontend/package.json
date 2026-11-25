@@ -8,6 +8,9 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "test": "vitest",
+    "i18n": "python3 ../scripts/translations/check_translations.py",
+    "i18n:review": "python3 ../scripts/translations/check_translations.py --review",
+    "i18n:fix": "python3 ../scripts/translations/check_translations.py --fix --apply",
     "capture:ui": "node ../scripts/ui-capture/capture.mjs",
     "capture:ui:gallery": "node ../scripts/ui-capture/capture.mjs --gallery-only",
     "capture:ui:headed": "node ../scripts/ui-capture/capture.mjs --headed"
@@ -16,7 +19,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@neuronection/assistant-ui": "^0.90.0",
+    "@neuronection/assistant-ui": "^0.91.1",
     "@simplewebauthn/browser": "^14.0.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tiptap/react": "^3.35.0",

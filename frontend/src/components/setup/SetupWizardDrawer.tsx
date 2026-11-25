@@ -175,7 +175,7 @@ export const SetupWizardDrawer: React.FC = () => {
               key={step.id}
               step={step}
               title={t(step.title_i18n_key, step.id)}
-              description={t(`setup.step_desc.${step.id}`, '')}
+              description={t(`setup.step_desc.${step.id.replace(/\./g, '__')}`, '')}
               isExpanded={step.id === expandedStepId}
               onToggle={() => setExpandedStepId(step.id === expandedStepId ? null : step.id)}
               loading={loading}

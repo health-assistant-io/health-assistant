@@ -6,6 +6,7 @@ import { CalendarDays, Loader2, Plus, RefreshCw, Trash2, Unplug } from 'lucide-r
 import api from '../../api/axios';
 import { usePatientStore } from '../../store/slices/patientSlice';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 // Cloud calendars (ADR-0052 / plan 52 P2). Providers, scopes and redaction
 // descriptions render from the backend catalog — this card never carries a
 // provider list of its own. Credentials go to the single secret endpoint or
@@ -335,7 +336,7 @@ export const CloudCalendarsCard: React.FC = () => {
                 </select>
               </label>
               <label className="text-xs space-y-1">
-                <span className="text-gray-500 dark:text-gray-400">Detail published</span>
+                <span className="text-gray-500 dark:text-gray-400">{t('calendar.cloud_detail_published')}</span>
                 <select className={inputClass} value={redaction} onChange={(event) => setRedaction(event.target.value)}>
                   {catalog.redactionProfiles.map((profile) => (
                     <option key={profile.id} value={profile.id}>{profile.id}</option>
@@ -410,9 +411,7 @@ export const CloudCalendarsCard: React.FC = () => {
             onClick={() => setAdding(true)}
             disabled={!catalog}
           >
-            <Plus className="w-3.5 h-3.5" aria-hidden />
-            Bind a calendar
-          </button>
+            <Plus className="w-3.5 h-3.5" aria-hidden />{t('calendar.cloud_bind')}</button>
         )}
 
         <div className="space-y-2">
@@ -432,7 +431,7 @@ export const CloudCalendarsCard: React.FC = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {binding.direction} · redaction {binding.redaction} ·{' '}
                       <span className={STATUS_TONE[binding.status] ?? ''}>{binding.status}</span>
-                      {binding.last_synced_at ? ` · last sync ${new Date(binding.last_synced_at).toLocaleString()}` : ''}
+                      {binding.last_synced_at ? ` · last sync ${formatTimestamp(new Date(binding.last_synced_at))}` : ''}
                     </p>
                     {binding.last_error ? (
                       <p className="text-xs text-red-600 dark:text-red-400 mt-1">{binding.last_error}</p>
@@ -462,15 +461,13 @@ export const CloudCalendarsCard: React.FC = () => {
                         toast.error(error?.response?.data?.detail || 'Could not start consent');
                       }
                     }}
-                  >
-                    Reconnect account
-                  </button>
+                  >{t('calendar.cloud_reconnect')}</button>
                 ) : null}
               </div>
             );
           })}
           {!loading && bindings.length === 0 ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">No cloud calendar is bound yet.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('calendar.cloud_none_bound')}</p>
           ) : null}
         </div>
       </div>

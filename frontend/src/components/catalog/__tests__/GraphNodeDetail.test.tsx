@@ -84,7 +84,7 @@ describe('GraphNodeDetail', () => {
         <GraphNodeDetail node={baseNode} degree={2} />
       </MemoryRouter>,
     );
-    expect(screen.getByTitle('Open in catalog')).toBeInTheDocument();
+    expect(screen.getByTitle('catalogs.open_in_catalog')).toBeInTheDocument();
   });
 
   it('renders the Domain link for biomarker', () => {
@@ -94,7 +94,7 @@ describe('GraphNodeDetail', () => {
         <GraphNodeDetail node={baseNode} degree={2} />
       </MemoryRouter>,
     );
-    expect(screen.getByTitle('Open in domain')).toHaveAttribute(
+    expect(screen.getByTitle('catalogs.open_in_domain')).toHaveAttribute(
       'href',
       '/biomarkers/details/b1',
     );
@@ -110,7 +110,7 @@ describe('GraphNodeDetail', () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.queryByTitle('Open in domain')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('catalogs.open_in_domain')).not.toBeInTheDocument();
   });
 
   it('calls onClose when the close button is clicked', () => {
@@ -146,7 +146,7 @@ describe('GraphNodeDetail', () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByTitle('Open in domain')).toHaveAttribute(
+      expect(screen.getByTitle('catalogs.open_in_domain')).toHaveAttribute(
         'href',
         '/anatomy/thyroid',
       );

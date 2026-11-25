@@ -28,10 +28,11 @@ import {
   type MFAEnrollment,
 } from '../../services/mfaService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 function formatSessionDate(value: string | null): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? '—' : formatTimestamp(date);
 }
 
 function Security() {

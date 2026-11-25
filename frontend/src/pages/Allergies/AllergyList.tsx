@@ -140,14 +140,14 @@ function AllergyList() {
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-md' : 'text-gray-400'}`}
-                aria-label="Grid view"
+                aria-label={t('common.grid_view')}
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
                 className={`p-1.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white dark:bg-dark-surface text-blue-600 shadow-md' : 'text-gray-400'}`}
-                aria-label="List view"
+                aria-label={t('common.list_view')}
               >
                 <List className="w-4 h-4" />
               </button>

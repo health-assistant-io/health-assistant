@@ -1,16 +1,18 @@
 import { type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAccessStore } from '../../store/slices/accessSlice';
+import { useTranslation } from 'react-i18next';
 
 /** Rendered while the `/me/access` mirror is still hydrating — guards must
  * not flash a no-access state for a permission the user may well hold. */
 function GuardChecking() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-center min-h-[50vh]">
       <div
         className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"
         role="status"
-        aria-label="Checking access…"
+        aria-label={t('common.checking_access')}
       />
     </div>
   );

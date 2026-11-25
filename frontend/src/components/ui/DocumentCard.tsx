@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   FileText, X, Hospital, Eye, GripVertical, Sparkles 
 } from 'lucide-react';
@@ -17,6 +18,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
   file, onRemove, onPreview, onToggleInclusion, includeInExtraction, 
   draggable = false, onDragStart 
 }) => {
+  const { t } = useTranslation();
   const isDicom = file.name.toLowerCase().endsWith('.dcm');
   const isImage = file.type.startsWith('image/') && !isDicom;
   const isPdf = file.type === 'application/pdf';
@@ -71,7 +73,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
           type="button"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           className="absolute top-1.5 right-1.5 p-1 bg-white/80 dark:bg-dark-surface/80 backdrop-blur-md rounded-full text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-dark-surface opacity-0 group-hover:opacity-100 transition-all shadow-xs z-10"
-          title="Remove document"
+          title={t('common.remove_document')}
         >
           <X className="w-3 h-3" />
         </button>

@@ -21,7 +21,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow, isValid } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import { Inbox, ExternalLink, Calendar, X, AlertCircle } from 'lucide-react';
 import { DynamicIcon } from '../ui/DynamicIcon';
@@ -31,6 +30,7 @@ import { getInstanceDetail } from './detailViewRegistry';
 import { toPlainText } from '../../utils/textFormat';
 import { getAdapter } from './instanceRegistry';
 import type { InstanceRow, InstanceSelection } from './types';
+import { dateLocaleFor } from '../../lib/dateLocale';
 
 /**
  * Defensive coercion of a row display field to a render-safe string. Adapters
@@ -95,7 +95,7 @@ export const InstanceCard: React.FC<InstanceCardProps> = ({
   className = '',
 }) => {
   const { t, i18n } = useTranslation();
-  const locale: Locale = i18n.language.startsWith('el') ? el : enUS;
+  const locale = dateLocaleFor(i18n.language);
   const [detailOpen, setDetailOpen] = useState(false);
   const key = cacheKey(selection.type, selection.id);
 

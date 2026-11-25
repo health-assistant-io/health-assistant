@@ -84,7 +84,7 @@ export default function ConsentDeltaView({ delta, onDecide, onDone }: Props) {
 
       <p className="text-sm text-muted-foreground">
         {t(
-          'consent.delta.digestLine',
+          'consent.delta.digest_line',
           'Content digest {{incoming}} (running: {{running}})',
           {
             incoming: shortDigest(delta.incomingDigest),
@@ -97,7 +97,7 @@ export default function ConsentDeltaView({ delta, onDecide, onDone }: Props) {
         <div className="rounded-md border border-warning/40 bg-warning/5 p-3">
           <h4 className="text-sm font-semibold">
             {t(
-              'consent.delta.newCapabilities',
+              'consent.delta.new_capabilities',
               'New capabilities — your decision is required',
             )}
           </h4>

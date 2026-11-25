@@ -2,9 +2,15 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-// Import translation files
-import commonEn from './locales/en/common.json';
-import commonEl from './locales/el/common.json';
+import commonEn from './locales/en.json';
+import commonEl from './locales/el.json';
+
+import { SHIPPED_LOCALES } from './lib/locales';
+
+const syncDocumentLanguage = (language: string | undefined) => {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = (language ?? 'en').split('-')[0];
+};
 
 i18n
   .use(LanguageDetector)
@@ -14,6 +20,9 @@ i18n
       en: { translation: commonEn },
       el: { translation: commonEl },
     },
+    supportedLngs: [...SHIPPED_LOCALES],
+    nonExplicitSupportedLngs: true,
+    load: 'languageOnly',
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false, // React already protects from XSS
@@ -26,5 +35,8 @@ i18n
       useSuspense: false, // Prevents white screen during loading
     },
   });
+
+syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language);
+i18n.on('languageChanged', syncDocumentLanguage);
 
 export default i18n;

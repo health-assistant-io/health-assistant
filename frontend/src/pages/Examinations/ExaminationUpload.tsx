@@ -230,7 +230,7 @@ function ExaminationUpload() {
     e.preventDefault();
     
     if (!patientId) {
-      alert('Please select a patient from the top navigation bar before saving an examination.');
+      alert(t('examinations.upload_no_patient'));
       return;
     }
 
@@ -324,7 +324,7 @@ function ExaminationUpload() {
       }
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      alert(t('examinations.upload_failed'));
     } finally {
       setUploading(false);
     }
@@ -370,7 +370,7 @@ function ExaminationUpload() {
       setDiscoveredDoctors(prev => prev.filter(d => d !== name));
     } catch (err) {
       console.error("Failed to create doctor", err);
-      alert("Failed to add doctor to system.");
+      alert(t('examinations.upload_doctor_add_failed'));
     } finally {
       setIsCreatingDoctor(false);
     }
@@ -394,7 +394,7 @@ function ExaminationUpload() {
       setCategory(newCat.name);
     } catch (err) {
       console.error("Failed to create category", err);
-      alert("Failed to create category");
+      alert(t('examinations.upload_category_failed'));
     }
   };
 
@@ -425,7 +425,7 @@ function ExaminationUpload() {
                 className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 rounded-xl text-sm font-bold border border-amber-100 dark:border-amber-800 transition-all hover:bg-amber-100"
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>Restore Draft</span>
+                <span>{t('examinations.upload_restore_draft')}</span>
               </button>
             )}
             <button
@@ -434,7 +434,7 @@ function ExaminationUpload() {
               className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Magic Fill</span>
+              <span>{t('examinations.upload_magic_fill')}</span>
             </button>
           </div>
         }
@@ -464,10 +464,8 @@ function ExaminationUpload() {
           <div className="flex-1 flex items-center justify-between">
             <div className="flex flex-col">
               <span className="text-sm font-bold text-gray-900 dark:text-dark-text flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-500" />
-                Bulk Create
-              </span>
-              <span className="text-[10px] text-gray-500 dark:text-dark-muted">Upload and group documents for multiple examinations</span>
+                <FileText className="w-4 h-4 text-indigo-500" />{t('examinations.upload_bulk_create')}</span>
+              <span className="text-[10px] text-gray-500 dark:text-dark-muted">{t('examinations.upload_bulk_desc')}</span>
             </div>
             <button
               type="button"
@@ -487,7 +485,7 @@ function ExaminationUpload() {
           <div className="flex items-center gap-2 p-3 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 rounded-xl">
             <Info className="w-4 h-4 text-indigo-500 shrink-0" />
             <p className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">
-              <strong>Bulk Mode Instructions:</strong> Add documents to the top area, then drag them into examination bubbles below. You can create as many examination bubbles as needed. Each bubble represents a separate clinical visit.
+              <strong>{t('examinations.upload_bulk_instructions')}</strong> Add documents to the top area, then drag them into examination bubbles below. You can create as many examination bubbles as needed. Each bubble represents a separate clinical visit.
             </p>
           </div>
         )}
@@ -509,9 +507,7 @@ function ExaminationUpload() {
             {!isSmartMode && (
               <div className="animate-in fade-in duration-300 space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-                    Examination Date
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">{t('examinations.upload_date')}</label>
                   <DatePicker
                     placeholder={t('common.select_date', 'Select date')}
                     required
@@ -524,9 +520,7 @@ function ExaminationUpload() {
 
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">
-                  Documents
-                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">{t('examinations.upload_documents')}</label>
                 <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} />
               </div>
               
@@ -578,9 +572,7 @@ function ExaminationUpload() {
                       htmlFor="camera-upload"
                       className="flex items-center justify-center px-4 py-3 border-2 border-dashed border-indigo-200 dark:border-indigo-900/30 rounded-xl hover:border-indigo-500 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 transition-all cursor-pointer text-indigo-600 dark:text-indigo-400 font-bold text-sm"
                     >
-                      <Camera className="h-5 w-5 mr-2" />
-                      Take Photo
-                    </label>
+                      <Camera className="h-5 w-5 mr-2" />{t('examinations.upload_take_photo')}</label>
                   </div>
                 )}
               </div>
@@ -590,14 +582,12 @@ function ExaminationUpload() {
               <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6 mt-6">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">
-                      Clinical Notes (Optional)
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted">{t('examinations.upload_clinical_notes_optional')}</label>
                   </div>
                   <RichTextEditor 
                     value={notes} 
                     onChange={setNotes} 
-                    placeholder="Add any clinical notes about this examination" 
+                    placeholder={t('examinations.upload_clinical_notes_placeholder')} 
                     minHeight="150px"
                   />
                 </div>
@@ -605,14 +595,12 @@ function ExaminationUpload() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between mb-2 px-1">
-                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">
-                        Category
-                      </label>
+                      <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">{t('examinations.upload_category')}</label>
                       <AIAssistButton 
                         taskType="magic_fill_examination"
                         context={{ patientId }}
                         showLabel={false}
-                        placeholder="Describe the visit to categorize..."
+                        placeholder={t('examinations.upload_category_placeholder')}
                         onSuggestedData={(data) => {
                           if (data.category) {
                             setCategory(data.category);
@@ -641,9 +629,7 @@ function ExaminationUpload() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">
-                    Attending Doctors (Optional)
-                  </label>
+                  <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">{t('examinations.upload_doctors_optional')}</label>
                   
                   {discoveredDoctors.length > 0 && (
                     <div className="mb-3 flex flex-wrap gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
@@ -677,13 +663,11 @@ function ExaminationUpload() {
             {(!isBulkMode) && (
               <div className="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-                    Patient Notes (Optional)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">{t('examinations.upload_patient_notes_optional')}</label>
                   <textarea
                     value={patientNotes}
                     onChange={(e) => setPatientNotes(e.target.value)}
-                    placeholder="How do you feel? Why did you visit the doctor?"
+                    placeholder={t('examinations.upload_patient_notes_placeholder')}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-hidden min-h-[80px]"
                   />
                 </div>
@@ -703,7 +687,7 @@ function ExaminationUpload() {
                   taskType="magic_fill_examination"
                   context={{ patientId }}
                   showLabel={false}
-                  placeholder="Describe the visit to categorize..."
+                  placeholder={t('examinations.upload_category_placeholder')}
                   onSuggestedData={(data) => {
                     if (data.category) {
                       setCategory(data.category);
@@ -721,13 +705,11 @@ function ExaminationUpload() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">
-                Patient Notes (Optional)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">{t('examinations.upload_patient_notes_optional')}</label>
               <textarea
                 value={patientNotes}
                 onChange={(e) => setPatientNotes(e.target.value)}
-                placeholder="How do you feel? Why did you visit the doctor?"
+                placeholder={t('examinations.upload_patient_notes_placeholder')}
                 className="w-full px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-dark-border dark:text-dark-text outline-hidden min-h-[80px]"
               />
             </div>
@@ -739,9 +721,7 @@ function ExaminationUpload() {
             type="button"
             onClick={() => navigate('/examinations')}
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-bg text-gray-700 dark:text-dark-text transition-colors"
-          >
-            Cancel
-          </button>
+          >{t('common.cancel')}</button>
           <button
             type="submit"
             disabled={uploading}
@@ -757,7 +737,7 @@ function ExaminationUpload() {
         <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
            <div className="flex flex-col items-center gap-6">
               <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
-              <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Initializing Diagnostic Preview</p>
+              <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">{t('examinations.upload_initializing')}</p>
            </div>
         </div>
       )}
@@ -782,10 +762,10 @@ function ExaminationUpload() {
         onSuggestedData={handleAIFill}
         taskType="magic_fill_examination"
         context={{ patientId }}
-        title="Magic Fill"
-        subtitle="Clinical Extraction"
-        description="Describe the visit in natural language. Health Assistant AI will extract the date, category, doctors, and notes automatically."
-        placeholder="e.g. Yesterday I visited Dr. Smith for a checkup..."
+        title={t('examinations.upload_magic_fill')}
+        subtitle={t('examinations.upload_magic_fill_subtitle')}
+        description={t('examinations.upload_magic_fill_desc')}
+        placeholder={t('examinations.upload_magic_fill_placeholder')}
       />
     </div>
   );

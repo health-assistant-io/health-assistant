@@ -1,0 +1,7 @@
+- TRANSCREATE FOR NATIVE FLOW: Never translate word-for-word or mirror English sentence structure mechanically. Capture the exact meaning, purpose, and nuance, but express it in natural, fluent phrasing as written directly by an articulate native speaker.
+- Tone: confident, friendly, modern, clear, and concise. UI copy stays crisp and punchy — do not add unnecessary filler or passive verbiage.
+- Idioms & calques: Avoid literal loan translations of English idioms, marketing cliches, or syntactic quirks (e.g., avoid literal "under the hood", "one click away", "bring your own", "lives in your tray", "on your machine"). Find the natural target-language equivalent.
+- Sentence structure: Feel free to break up or reorganize long English clauses, change word order, and switch between active voice and verbal nouns to achieve smooth native rhythm and flow.
+- UI constraints: Buttons, labels, and badges must remain compact and punchy. Explanatory paragraphs should read like polished, persuasive native copy.
+- Format preservation: Strings ending with "→" keep the arrow. Keep placeholders (`{{variable}}`, `{query}`), symbols, arrows (→), middle dots (·), and version numbers verbatim.
+- Markup: Preserve inline tags (`<code>`, `<b>`, etc.) exactly as-is around equivalent target words.

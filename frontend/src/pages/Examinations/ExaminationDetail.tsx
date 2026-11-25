@@ -1416,10 +1416,10 @@ const ExaminationDetail = () => {
                                         {doc.error_message}
                                       </span>
                                       {expandedErrorId !== doc.id && doc.error_message.length > 50 && (
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedErrorId(doc.id); }} className="text-[8px] font-black uppercase text-red-400 hover:text-red-600 mt-0.5">Show more</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedErrorId(doc.id); }} className="text-[8px] font-black uppercase text-red-400 hover:text-red-600 mt-0.5">{t('common.show_more')}</button>
                                       )}
                                       {expandedErrorId === doc.id && (
-                                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedErrorId(null); }} className="text-[8px] font-black uppercase text-red-400 hover:text-red-600 mt-0.5">Show less</button>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedErrorId(null); }} className="text-[8px] font-black uppercase text-red-400 hover:text-red-600 mt-0.5">{t('common.show_less')}</button>
                                       )}
                                     </div>
                                   )}

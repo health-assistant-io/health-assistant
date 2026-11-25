@@ -23,6 +23,7 @@ import { SsoConfigCard } from '../../components/admin/SsoConfigCard';
 import { ScimTokensCard } from '../../components/admin/ScimTokensCard';
 import { useTranslation } from 'react-i18next';
 
+import { formatNumber, formatTimestamp, uiLocale } from '../../lib/dateFormats';
 type Tab = 'overview' | 'users' | 'audit' | 'identity' | 'settings';
 
 function TenantDetail() {
@@ -449,7 +450,7 @@ function OverviewPanel({ detail }: { detail: TenantDetail }) {
                 <Icon className={`w-5 h-5 text-${c.color}-500`} />
                 {c.sub && <span className="text-[10px] text-gray-400 font-bold">{c.sub}</span>}
               </div>
-              <p className="text-2xl font-black text-brand-navy dark:text-dark-text">{c.value.toLocaleString()}</p>
+              <p className="text-2xl font-black text-brand-navy dark:text-dark-text">{formatNumber(c.value)}</p>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">{c.label}</p>
             </div>
           );
@@ -577,7 +578,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
                   </button>
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-400">
-                  {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                  {u.created_at ? new Date(u.created_at).toLocaleDateString(uiLocale()) : '—'}
                 </td>
                 <td className="px-4 py-3" />
               </tr>
@@ -604,7 +605,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
             </div>
             <form onSubmit={handleInvite} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Email (optional)</label>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{t('admin.tenant_email_optional')}</label>
                 <input
                   type="email"
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-xl dark:text-dark-text"
@@ -626,7 +627,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Expires (days)</label>
+                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">{t('admin.tenant_expires_days')}</label>
                   <input
                     type="number"
                     min={1}
@@ -669,6 +670,7 @@ function UsersPanel({ tenantId }: { tenantId: string }) {
 // ---------- Audit ----------
 
 function AuditPanel({ tenantId }: { tenantId: string }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -696,7 +698,7 @@ function AuditPanel({ tenantId }: { tenantId: string }) {
       <div className="flex items-center gap-2">
         <input
           type="text"
-          placeholder="Filter by action (e.g. tenant.update)"
+          placeholder={t('admin.tenant_filter_action_placeholder')}
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
           className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-xs dark:text-dark-text w-64"
@@ -720,7 +722,7 @@ function AuditPanel({ tenantId }: { tenantId: string }) {
               return (
                 <tr key={e.id} className="align-top hover:bg-gray-50 dark:hover:bg-dark-bg/50">
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {e.created_at ? new Date(e.created_at).toLocaleString() : '—'}
+                    {e.created_at ? formatTimestamp(new Date(e.created_at)) : '—'}
                   </td>
                   <td className="px-4 py-3 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">{e.action}</td>
                   <td className="px-4 py-3 text-xs text-gray-500">{e.resource_type}{e.resource_id ? ` / ${e.resource_id.slice(0, 8)}…` : ''}</td>
@@ -736,7 +738,7 @@ function AuditPanel({ tenantId }: { tenantId: string }) {
               );
             })}
             {entries.length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">No audit entries</td></tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">{t('admin.tenant_no_audit')}</td></tr>
             )}
           </tbody>
         </table>

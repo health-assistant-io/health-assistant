@@ -7,6 +7,7 @@ import { filterBiomarkers } from '../../utils/searchUtils';
 import { Biomarker } from '../../types/biomarker';
 import type { CatalogItem } from '../../types/catalog';
 import { refreshBiomarkerDefinitions } from '../../hooks/useBiomarkers';
+import { useTranslation } from 'react-i18next';
 
 interface UnmappedBiomarkerMenuProps {
   rawName: string;
@@ -28,6 +29,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
   onRemapped,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const { t } = useTranslation();
   const [mode, setMode] = useState<'menu' | 'map'>('menu');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [definitions, setDefinitions] = useState<Biomarker[]>([]);
@@ -94,7 +96,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
         setDefinitions(defs || []);
       } catch (e) {
         console.error('Failed to load definitions', e);
-        toast.error('Could not load biomarker definitions.');
+        toast.error(t('biomarkers.unmapped_load_failed'));
       } finally {
         setLoadingDefs(false);
       }
@@ -118,7 +120,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
       reset();
     } catch (err) {
       console.error('Remap failed', err);
-      toast.error('Failed to link results to the selected definition.');
+      toast.error(t('biomarkers.unmapped_remap_failed'));
     } finally {
       setIsWorking(false);
     }
@@ -136,8 +138,8 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
             e.stopPropagation();
             setIsOpen(!isOpen);
           }}
-          title="Define or map this biomarker"
-          aria-label="Define or map this biomarker"
+          title={t('biomarkers.unmapped_define_title')}
+          aria-label={t('biomarkers.unmapped_define_title')}
           className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors nodrag"
         >
           {isWorking ? (
@@ -152,10 +154,10 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
             <div className="px-4 py-3 border-b border-gray-100 dark:border-dark-border">
               <p className="text-[9px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
                 <Zap className="w-3 h-3" />
-                Unmapped Biomarker
+                {t('biomarkers.unmapped_label')}
               </p>
               <p className="text-xs text-gray-500 dark:text-dark-muted mt-1 truncate">
-                "{rawName}" has no definition
+                {t('biomarkers.unmapped_no_definition', { name: rawName })}
               </p>
             </div>
             <div className="p-1.5">
@@ -166,8 +168,8 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
               >
                 <Plus className="w-4 h-4 text-blue-500" />
                 <div className="flex flex-col">
-                  <span>Create biomarker</span>
-                  <span className="text-[9px] font-medium text-gray-400 normal-case">New definition from this name</span>
+                  <span>{t('biomarkers.unmapped_create')}</span>
+                  <span className="text-[9px] font-medium text-gray-400 normal-case">{t('biomarkers.unmapped_create_hint')}</span>
                 </div>
               </button>
               <button
@@ -177,8 +179,8 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
               >
                 <Link2 className="w-4 h-4 text-emerald-500" />
                 <div className="flex flex-col">
-                  <span>Map to existing</span>
-                  <span className="text-[9px] font-medium text-gray-400 normal-case">Link to a definition</span>
+                  <span>{t('biomarkers.unmapped_map')}</span>
+                  <span className="text-[9px] font-medium text-gray-400 normal-case">{t('biomarkers.unmapped_map_hint')}</span>
                 </div>
               </button>
             </div>
@@ -188,11 +190,11 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
         {isOpen && mode === 'map' && (
           <div className="absolute top-full right-0 mt-1.5 z-200 w-72 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Map to existing</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{t('biomarkers.unmapped_map')}</p>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); reset(); }}
-                aria-label="Close map panel"
+                aria-label={t('biomarkers.unmapped_close')}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-full"
               >
                 <X className="w-3.5 h-3.5 text-gray-400" />
@@ -204,7 +206,7 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
                 <input
                   type="text"
                   className="w-full pl-8 pr-3 py-2 text-xs bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border rounded-lg outline-hidden focus:border-blue-400 focus:ring-1 focus:ring-blue-400 dark:text-dark-text"
-                  placeholder="Search definitions..."
+                  placeholder={t('biomarkers.unmapped_search')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
@@ -214,9 +216,9 @@ export const UnmappedBiomarkerMenu: React.FC<UnmappedBiomarkerMenuProps> = ({
             </div>
             <div className="py-1.5 max-h-56 overflow-y-auto custom-scrollbar">
               {loadingDefs ? (
-                <div className="px-4 py-3 text-[10px] text-gray-400 italic">Loading...</div>
+                <div className="px-4 py-3 text-[10px] text-gray-400 italic">{t('biomarkers.unmapped_loading')}</div>
               ) : filteredDefs.length === 0 ? (
-                <div className="px-4 py-3 text-[10px] text-gray-400 italic">No definitions found</div>
+                <div className="px-4 py-3 text-[10px] text-gray-400 italic">{t('biomarkers.unmapped_empty')}</div>
               ) : (
                 filteredDefs.map((opt) => {
                   const isSelected = selected?.id === opt.id;

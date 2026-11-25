@@ -136,10 +136,10 @@ function Header() {
         : { label: t('common.status_synced'), tone: 'success' };
 
   const roleBadgeLabel =
-    user?.role === 'SYSTEM_ADMIN' ? t('admin.role_system_admin') :
-    user?.role === 'ADMIN' ? t('admin.role_admin') :
-    user?.role === 'MANAGER' ? t('admin.role_manager') :
-    t('admin.role_user');
+    user?.role === 'SYSTEM_ADMIN' ? t('common.role_system_admin') :
+    user?.role === 'ADMIN' ? t('common.role_admin') :
+    user?.role === 'MANAGER' ? t('common.role_manager') :
+    t('common.role_user');
 
   const menuItems: UserMenuItem[] = [
     { id: '/profile', label: t('common.profile'), icon: UserCircle },

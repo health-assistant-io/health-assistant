@@ -112,13 +112,13 @@ describe('CloudCalendarsCard', () => {
     expect(await screen.findByText(/Family calendar/)).toBeTruthy();
     expect(screen.getByText(/redaction neutral/)).toBeTruthy();
     // the redaction description is catalog data, rendered in the bind form
-    await user.click(screen.getByRole('button', { name: /bind a calendar/i }));
+    await user.click(screen.getByRole('button', { name: /calendar\.cloud_bind/i }));
     expect(await screen.findByText(/no detail/)).toBeTruthy();
   });
 
   it('opens the bind form with the provider fields', async () => {
     render(<CloudCalendarsCard />);
-    const button = await screen.findByRole('button', { name: /bind a calendar/i });
+    const button = await screen.findByRole('button', { name: /calendar\.cloud_bind/i });
     await userEvent.click(button);
     expect(await screen.findByText(/Calendar URL \(CalDAV collection\)/)).toBeTruthy();
     expect(screen.getByText(/App password/)).toBeTruthy();
@@ -129,7 +129,7 @@ describe('CloudCalendarsCard', () => {
   it('keys the consent notice to the CHOSEN auth kind (E12)', async () => {
     const user = userEvent.setup();
     render(<CloudCalendarsCard />);
-    const button = await screen.findByRole('button', { name: /bind a calendar/i });
+    const button = await screen.findByRole('button', { name: /calendar\.cloud_bind/i });
     await user.click(button);
     // switch to the ICS provider: the credential-capable kind is the default,
     // so the consent copy names the access token — never "needs no credential"

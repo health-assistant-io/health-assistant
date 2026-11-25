@@ -26,6 +26,7 @@ import { FacetChip, useFilterState } from '../../components/ui/filters';
 import type { FacetDefinition } from '../../components/ui/filters';
 import { PageContainer } from '../../components/ui/PageContainer';
 
+import { uiLocale } from '../../lib/dateFormats';
 function DocumentList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -307,7 +308,7 @@ function DocumentList() {
         })}
         
         {filteredDocuments.length === 0 && (
-          <p className="text-sm text-gray-400 dark:text-dark-muted col-span-full">No documents found matching the criteria.</p>
+          <p className="text-sm text-gray-400 dark:text-dark-muted col-span-full">{t('documents.no_matches')}</p>
         )}
       </div>
   );
@@ -370,7 +371,7 @@ function DocumentList() {
         
         <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-xs text-white px-4 py-2 rounded-lg max-w-[60%] pointer-events-none">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-            {new Date(selectedDoc.created_at).toLocaleDateString()}
+            {new Date(selectedDoc.created_at).toLocaleDateString(uiLocale())}
           </p>
           <p className="font-bold truncate">{selectedDoc.filename}</p>
         </div>

@@ -26,6 +26,7 @@ import {
   type AuditRetentionResponse,
 } from '../../services/adminAuditService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 const OUTCOMES = ['ok', 'denied', 'error'] as const;
 const PAGE_SIZES = [25, 50, 100, 250];
 
@@ -42,7 +43,7 @@ function shortId(id: string | null | undefined): string {
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : formatTimestamp(date);
 }
 
 /** True when a diff value is the write-time redaction marker (no PHI ever

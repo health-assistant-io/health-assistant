@@ -25,6 +25,8 @@ import {
   type AggregationBucket,
 } from '../../../config/timeRanges';
 
+import { uiLocale } from '../../../lib/dateFormats';
+import { useTranslation } from 'react-i18next';
 interface BiomarkerTrendTabProps {
   biomarker: Biomarker;
   filteredTrends: any[];
@@ -42,6 +44,7 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
   aggregation,
   setAggregation,
 }) => {
+  const { t } = useTranslation();
   const { showReferenceRanges, setShowReferenceRanges } = useSettingsStore();
   const isState = biomarker.value_type === 'state';
 
@@ -148,7 +151,7 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
           ) : (
             <LineChart
               data={filteredTrends.map(trendPoint => ({
-                name: new Date(trendPoint.date).toLocaleDateString(),
+                name: new Date(trendPoint.date).toLocaleDateString(uiLocale()),
                 tooltipLabel: new Date(trendPoint.date).toLocaleString(undefined, {
                   year: 'numeric',
                   month: 'short',
@@ -180,7 +183,7 @@ export const BiomarkerTrendTab: React.FC<BiomarkerTrendTabProps> = ({
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
             <Calendar className="w-12 h-12 mb-4 text-gray-300" />
-            <p className="font-bold text-gray-500 uppercase tracking-widest text-sm">No historical data available</p>
+            <p className="font-bold text-gray-500 uppercase tracking-widest text-sm">{t('biomarkers.no_historical_data')}</p>
           </div>
         )}
       </div>

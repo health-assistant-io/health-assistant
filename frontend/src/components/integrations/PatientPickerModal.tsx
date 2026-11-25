@@ -3,6 +3,7 @@ import { X, Search, Check, User, AlertCircle } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { integrationService } from '../../services/integrationService';
 import { Portal } from '../ui/Portal';
+import { useTranslation } from 'react-i18next';
 
 interface RemotePatientMatch {
   id: string;
@@ -38,6 +39,7 @@ interface Props {
  * ``remote_patient_id`` via the ``select_patient`` action.
  */
 const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose, onSelected }) => {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState<RemotePatientMatch[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -135,7 +137,7 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
                 type="text"
                 value={query}
                 onChange={(e) => handleQueryChange(e.target.value)}
-                placeholder="Search by name (e.g. Smith) or clear to auto-match by MRN"
+                placeholder={t('integrations.picker_search_placeholder')}
                 autoFocus
                 className="w-full rounded-xl border border-gray-200 dark:border-dark-border pl-10 pr-4 py-2.5 bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
               />
@@ -164,9 +166,7 @@ const PatientPickerModal: React.FC<Props> = ({ integrationId, patientId, onClose
             {loading ? (
               <div className="py-10 text-center text-sm text-gray-400">Searching…</div>
             ) : matches.length === 0 ? (
-              <div className="py-10 text-center text-sm text-gray-400">
-                No matches found. Try a different name or MRN.
-              </div>
+              <div className="py-10 text-center text-sm text-gray-400">{t('integrations.picker_no_matches')}</div>
             ) : (
               <div className="space-y-2">
                 {matches.map((m) => {

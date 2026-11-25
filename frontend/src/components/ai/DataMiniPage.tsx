@@ -1,7 +1,8 @@
 import React from 'react';
 import { Calendar, ExternalLink, Activity, Pill, ClipboardList, Info } from 'lucide-react';
-import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { formatDate, DATE_MEDIUM, DATE_TIME_MEDIUM } from '../../lib/dateFormats';
+import { useTranslation } from 'react-i18next';
 
 interface DataMiniPageProps {
   data: any;
@@ -10,13 +11,14 @@ interface DataMiniPageProps {
 }
 
 export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onClose }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  if (!data) return <p className="text-gray-400 italic text-xs p-4">No data available for this reference.</p>;
+  if (!data) return <p className="text-gray-400 italic text-xs p-4">{t('ai_labels.no_data_for_reference')}</p>;
 
   const isArray = Array.isArray(data);
   const items = isArray ? data : [data];
 
-  if (items.length === 0) return <p className="text-gray-400 italic text-xs p-4">Empty data set returned.</p>;
+  if (items.length === 0) return <p className="text-gray-400 italic text-xs p-4">{t('ai_labels.empty_dataset')}</p>;
 
   // Detect data type
   const isObservation = toolName === 'observation' || (items[0] && (items[0].resourceType === 'Observation' || 'effective_datetime' in items[0] || 'value_quantity' in items[0]));
@@ -118,7 +120,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                 {date && (
                   <div className="flex items-center gap-1 sm:gap-1.5 pt-1 sm:pt-1.5 border-t border-gray-50 dark:border-white/5 opacity-60">
                      <Calendar className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
-                     <span className="text-[8px] sm:text-[9px] font-medium">{format(new Date(date), 'MMM d, yyyy')}</span>
+                     <span className="text-[8px] sm:text-[9px] font-medium">{formatDate(new Date(date), DATE_MEDIUM)}</span>
                   </div>
                 )}
               </div>
@@ -217,7 +219,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                     </h4>
                     <div className="flex items-center gap-1 text-[8px] sm:text-[9px] font-bold text-gray-500 dark:text-dark-muted shrink-0">
                       <Calendar className="w-2.5 h-2.5" />
-                      {date ? format(new Date(date), 'MMM d, yyyy') : 'N/A'}
+                      {date ? formatDate(new Date(date), DATE_MEDIUM) : 'N/A'}
                     </div>
                   </div>
                 </button>
@@ -272,11 +274,11 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                 )}
                 {item.onset_date && (
                   <div className="flex items-center gap-1 sm:gap-1.5 pt-1 sm:pt-1.5 border-t border-gray-50 dark:border-white/5 opacity-60">
-                     <span className="text-[8px] sm:text-[9px] font-medium">Started: {format(new Date(item.onset_date), 'MMM d, yyyy')}</span>
+                     <span className="text-[8px] sm:text-[9px] font-medium">Started: {formatDate(new Date(item.onset_date), DATE_MEDIUM)}</span>
                      {item.resolved_date && (
                        <>
                          <span className="text-[8px] opacity-40">—</span>
-                         <span className="text-[8px] sm:text-[9px] font-medium">Ended: {format(new Date(item.resolved_date), 'MMM d, yyyy')}</span>
+                         <span className="text-[8px] sm:text-[9px] font-medium">Ended: {formatDate(new Date(item.resolved_date), DATE_MEDIUM)}</span>
                        </>
                      )}
                   </div>
@@ -317,7 +319,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                 {item.created_at && (
                   <div className="flex items-center gap-1 sm:gap-1.5 pt-1 sm:pt-1.5 border-t border-gray-50 dark:border-white/5 opacity-60">
                      <Calendar className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
-                     <span className="text-[8px] sm:text-[9px] font-medium">Uploaded: {format(new Date(item.created_at), 'MMM d, yyyy')}</span>
+                     <span className="text-[8px] sm:text-[9px] font-medium">Uploaded: {formatDate(new Date(item.created_at), DATE_MEDIUM)}</span>
                   </div>
                 )}
               </div>
@@ -357,7 +359,7 @@ export const DataMiniPage: React.FC<DataMiniPageProps> = ({ data, toolName, onCl
                 {item.date && (
                   <div className="flex items-center gap-1 sm:gap-1.5 pt-1 sm:pt-1.5 border-t border-gray-50 dark:border-white/5 opacity-60">
                      <Calendar className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
-                     <span className="text-[8px] sm:text-[9px] font-medium">{format(new Date(item.date), 'MMM d, yyyy HH:mm')}</span>
+                     <span className="text-[8px] sm:text-[9px] font-medium">{formatDate(new Date(item.date), DATE_TIME_MEDIUM)}</span>
                   </div>
                 )}
               </div>

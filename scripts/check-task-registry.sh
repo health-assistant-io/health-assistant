@@ -110,25 +110,38 @@ if not label_keys:
     sys.exit(1)
 
 locales_dir = os.path.join(root, "frontend", "src", "locales")
-locales = sorted(
-    name
-    for name in os.listdir(locales_dir)
-    if os.path.isfile(os.path.join(locales_dir, name, "common.json"))
-)
-if len(locales) < 2:
-    print(f"expected at least 2 shipped locales, found {locales}")
+# Both catalogue layouts are shipped in the family: one file per locale
+# (locales/en.json) and one directory per locale (locales/en/common.json).
+entries = []
+for name in sorted(os.listdir(locales_dir)):
+    path = os.path.join(locales_dir, name)
+    if os.path.isdir(path) and os.path.isfile(os.path.join(path, "common.json")):
+        entries.append((name, os.path.join(path, "common.json")))
+    elif name.endswith(".json") and os.path.isfile(path):
+        entries.append((name[: -len(".json")], path))
+if len(entries) < 2:
+    found = [locale for locale, _ in entries]
+    print(f"expected at least 2 shipped locales, found {found}")
     sys.exit(1)
 
-problems = []
-for locale in locales:
-    data = json.load(open(os.path.join(locales_dir, locale, "common.json"), encoding="utf-8"))
-    for key in label_keys:
-        node = data
-        for part in key.split("."):
-            node = node.get(part) if isinstance(node, dict) else None
-            if node is None:
-                break
+
+def resolve(data, key):
+    # Flat-with-dots and nested catalogues both count as the key resolving.
+    if isinstance(data, dict) and key in data:
+        return data[key]
+    node = data
+    for part in key.split("."):
+        node = node.get(part) if isinstance(node, dict) else None
         if node is None:
+            return None
+    return node
+
+
+problems = []
+for locale, path in entries:
+    data = json.load(open(path, encoding="utf-8"))
+    for key in label_keys:
+        if resolve(data, key) is None:
             problems.append(f"{locale}: missing {key}")
 print("\n".join(problems))
 sys.exit(1 if problems else 0)

@@ -13,10 +13,11 @@ import {
   type StorageStatus,
 } from '../../services/storageService';
 
+import { formatTimestamp } from '../../lib/dateFormats';
 function checkedLabel(value: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? value : formatTimestamp(date);
 }
 
 /** Admin-only read-only deployment storage surface (plan 55 P4b2).

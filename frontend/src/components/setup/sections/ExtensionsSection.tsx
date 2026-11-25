@@ -4,6 +4,7 @@ import { getExtensionCatalog } from '../../../services/setupService';
 import type { ExtensionCatalog, ExtensionOption } from '../../../types/setup';
 import type { PatientExtensions } from '../../../types/patient';
 import { SectionHeader, SetupField, SetupInput, SetupSelect, SaveBar, type SectionProps } from './_shared';
+import { useTranslation } from 'react-i18next';
 
 function findOption(options: ExtensionOption[] | null | undefined, code?: string): ExtensionOption | undefined {
   if (!options || !code) return undefined;
@@ -22,6 +23,7 @@ function findOption(options: ExtensionOption[] | null | undefined, code?: string
  * `onSaved()` so the parent re-polls the checklist.
  */
 export const ExtensionsSection: React.FC<SectionProps> = ({ patient, activeField, onSaved }) => {
+  const { t } = useTranslation();
   const [catalog, setCatalog] = useState<ExtensionCatalog | null>(null);
   const [draft, setDraft] = useState<PatientExtensions>(() => patient.extensions ?? {});
   const [saving, setSaving] = useState(false);
@@ -69,7 +71,7 @@ export const ExtensionsSection: React.FC<SectionProps> = ({ patient, activeField
   return (
     <section className="space-y-6">
       <SectionHeader
-        title="Additional demographics"
+        title={t('patient_form.extension_demographics')}
         description="Race, ethnicity, preferred language, and insurance — all optional. Stored as FHIR R4 extensions."
         optional
       />
@@ -105,7 +107,7 @@ export const ExtensionsSection: React.FC<SectionProps> = ({ patient, activeField
                 <SetupInput
                   value={draft.race?.text ?? ''}
                   onChange={(e) => { setDraft((p) => ({ ...p, race: { ...p.race, text: e.target.value } })); touch(); }}
-                  placeholder="Optional descriptive text"
+                  placeholder={t('patient_form.extension_optional_text')}
                 />
               </SetupField>
             )}

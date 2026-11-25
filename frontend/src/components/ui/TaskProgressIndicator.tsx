@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Activity, Clock, FileText, AlertCircle, Terminal } from 'lucide-react';
 import { TaskLogViewer } from './TaskLogViewer';
+import { useTranslation } from 'react-i18next';
 
 interface TaskProgressIndicatorProps {
   examinationId?: string;
@@ -19,6 +20,7 @@ export function TaskProgressIndicator({
   documents,
   compact = false 
 }: TaskProgressIndicatorProps) {
+  const { t } = useTranslation();
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
   
   // Check if there are any pending tasks or a failed state
@@ -88,8 +90,8 @@ export function TaskProgressIndicator({
             <button 
               onClick={() => setIsLogViewerOpen(true)}
               className="p-1.5 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-sm text-gray-400"
-              title="View technical logs"
-              aria-label="View technical logs"
+              title={t('common.view_technical_logs')}
+              aria-label={t('common.view_technical_logs')}
             >
               <Terminal className="w-3 h-3" />
             </button>

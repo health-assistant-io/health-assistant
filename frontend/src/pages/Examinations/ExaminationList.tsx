@@ -520,7 +520,7 @@ function ExaminationList() {
               setCustomRange({ start: '', end: '' });
             }}
             className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 uppercase tracking-tight rounded-md transition-colors active:scale-95"
-            title="Reset all filters"
+            title={t('examinations.reset_filters')}
           >
             {t('common.reset')}
           </button>

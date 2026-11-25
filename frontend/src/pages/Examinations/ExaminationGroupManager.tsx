@@ -56,6 +56,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
   isSingleMode = false,
   categories = []
 }) => {
+  const { t } = useTranslation();
   const [activePreview, setActivePreview] = useState<{ url: string; name: string; type: string; isBackendProcessed?: boolean; localFile?: File } | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
@@ -173,10 +174,10 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
           <div className="flex items-center justify-between mb-4 px-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">Unassigned Documents</h3>
+                <h3 className="text-sm font-black uppercase tracking-widest text-gray-400">{t('examinations.groups_unassigned')}</h3>
                 <ActiveTaskBadge workflow="full_reconstruction" size="sm" showText={false} />
               </div>
-              <p className="text-[10px] text-gray-500">Click anywhere or drag documents to add to staging area</p>
+              <p className="text-[10px] text-gray-500">{t('examinations.groups_drag_hint')}</p>
             </div>
             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
               <button 
@@ -185,7 +186,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl text-xs font-bold text-gray-700 dark:text-dark-text hover:border-blue-500 transition-all shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add Files</span>
+                <span>{t('examinations.groups_add_files')}</span>
               </button>
               {isMobileDevice() && (
                 <button 
@@ -194,7 +195,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
                   className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-dark-surface border border-indigo-200 dark:border-indigo-900/30 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:border-indigo-500 transition-all shadow-xs"
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>Take Photo</span>
+                  <span>{t('examinations.groups_take_photo')}</span>
                 </button>
               )}
             </div>
@@ -221,7 +222,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
               <div className="p-4 bg-gray-100 dark:bg-dark-surface rounded-full mb-3">
                 <Plus className="w-8 h-8 text-gray-400" />
               </div>
-              <span className="text-sm font-medium text-gray-500">Click or drag documents to begin</span>
+              <span className="text-sm font-medium text-gray-500">{t('examinations.groups_empty_hint')}</span>
             </div>
           ) : (
             <div className="flex flex-wrap gap-4">
@@ -278,8 +279,8 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-full mb-4 group-hover:scale-110 transition-transform">
               <Plus className="w-8 h-8 text-blue-500" />
             </div>
-            <span className="text-lg font-black text-gray-900 dark:text-dark-text tracking-tight">Add Examination Group</span>
-            <p className="text-xs text-gray-400 mt-2 text-center max-w-[200px]">Create a new bubble to group related medical documents</p>
+            <span className="text-lg font-black text-gray-900 dark:text-dark-text tracking-tight">{t('examinations.groups_add_title')}</span>
+            <p className="text-xs text-gray-400 mt-2 text-center max-w-[200px]">{t('examinations.groups_add_desc')}</p>
           </button>
         )}
       </div>
@@ -289,7 +290,7 @@ export const ExaminationGroupManager: React.FC<BulkUploadManagerProps> = ({
         <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-xs animate-in fade-in duration-300">
            <div className="flex flex-col items-center gap-6">
               <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
-              <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">Initializing Diagnostic Preview</p>
+              <p className="text-white font-black text-xs uppercase tracking-[0.3em] animate-pulse">{t('examinations.groups_initializing')}</p>
            </div>
         </div>
       )}
@@ -361,7 +362,7 @@ const ExaminationBubble: React.FC<{
               value={group.name} 
               onChange={(e) => onUpdate({ name: e.target.value })}
               className="text-xl font-black text-gray-900 dark:text-dark-text bg-transparent border-none outline-hidden focus:ring-0 p-0 w-full"
-              placeholder="Examination Name"
+              placeholder={t('examinations.groups_name_placeholder')}
             />
             <div className="flex flex-wrap gap-3 mt-2">
               {!isSmartMode && (
@@ -387,7 +388,7 @@ const ExaminationBubble: React.FC<{
               {isSmartMode && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-400 rounded-lg border border-blue-100 dark:border-blue-900/20 text-[10px] font-black uppercase tracking-wider">
                   <Sparkles className="w-3 h-3" />
-                  <span>Auto-Extracting Details</span>
+                  <span>{t('examinations.groups_auto_extracting')}</span>
                 </div>
               )}
             </div>
@@ -440,7 +441,7 @@ const ExaminationBubble: React.FC<{
                       <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group-hover/add:border-blue-200 transition-all">
                          <Plus className="w-8 h-8" />
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest">Add Files</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">{t('examinations.groups_add_files')}</span>
                    </button>
                    
                    {isMobileDevice() && (
@@ -452,7 +453,7 @@ const ExaminationBubble: React.FC<{
                         <div className="p-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xs border border-gray-100 dark:border-dark-border group-hover/cam:border-indigo-200 transition-all">
                           <Camera className="w-8 h-8" />
                         </div>
-                        <span className="text-[10px] font-black uppercase tracking-widest">Take Photo</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">{t('examinations.groups_take_photo')}</span>
                     </button>
                    )}
                 </div>
@@ -478,7 +479,7 @@ const ExaminationBubble: React.FC<{
                     <div className="p-3 bg-white/50 dark:bg-dark-surface/50 rounded-full mb-2 group-hover/plus:scale-110 transition-transform">
                       <Plus className="w-6 h-6" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-tighter">Add More</span>
+                    <span className="text-[10px] font-black uppercase tracking-tighter">{t('examinations.groups_add_more')}</span>
                   </div>
 
                   {isMobileDevice() && (
@@ -489,7 +490,7 @@ const ExaminationBubble: React.FC<{
                       <div className="p-3 bg-white/50 dark:bg-dark-surface/50 rounded-full mb-2 group-hover/camera:scale-110 transition-transform">
                         <Camera className="w-6 h-6" />
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-tighter">Take Photo</span>
+                      <span className="text-[10px] font-black uppercase tracking-tighter">{t('examinations.groups_take_photo')}</span>
                     </div>
                   )}
                 </div>
@@ -547,11 +548,11 @@ const ExaminationBubble: React.FC<{
 
           {isSmartMode && !isSingleMode && (
             <div className="space-y-2 mt-4">
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Patient Notes</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t('examinations.groups_patient_notes')}</span>
               <textarea 
                 value={group.patientNotes}
                 onChange={(e) => onUpdate({ patientNotes: e.target.value })}
-                placeholder="How do you feel? Why did you visit the doctor?"
+                placeholder={t('examinations.groups_notes_placeholder')}
                 className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
               />
             </div>
@@ -561,7 +562,7 @@ const ExaminationBubble: React.FC<{
             <>
               {/* Doctor Selection */}
               <div className="space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Attending Doctors</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t('examinations.groups_attending_doctors')}</span>
                 <DoctorSelector 
                   doctors={availableDoctors}
                   selectedIds={group.doctorIds}
@@ -575,21 +576,21 @@ const ExaminationBubble: React.FC<{
               {/* Notes */}
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Patient Notes</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t('examinations.groups_patient_notes')}</span>
                   <textarea 
                     value={group.patientNotes}
                     onChange={(e) => onUpdate({ patientNotes: e.target.value })}
-                    placeholder="How do you feel? Why did you visit the doctor?"
+                    placeholder={t('examinations.groups_notes_placeholder')}
                     className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Clinical Notes</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{t('examinations.groups_clinical_notes')}</span>
                   <textarea 
                     value={group.notes}
                     onChange={(e) => onUpdate({ notes: e.target.value })}
-                    placeholder="Add summary notes for this examination..."
+                    placeholder={t('examinations.groups_summary_placeholder')}
                     className="w-full p-4 bg-gray-50/50 dark:bg-dark-bg/20 border border-gray-100 dark:border-dark-border rounded-2xl text-xs outline-hidden focus:ring-1 focus:ring-blue-500 min-h-[80px]"
                   />
                 </div>
@@ -607,6 +608,7 @@ const CategoryDropdown: React.FC<{
   onChange: (value: string) => void;
   categories: any[];
 }> = ({ value, onChange, categories }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -635,7 +637,7 @@ const CategoryDropdown: React.FC<{
                   type="text" 
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search categories..."
+                  placeholder={t('examinations.groups_search_categories')}
                   className="w-full pl-7 pr-3 py-1.5 bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border rounded-lg text-[10px] outline-hidden"
                   autoFocus
                 />

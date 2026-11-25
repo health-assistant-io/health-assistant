@@ -11,8 +11,8 @@
  * always-on, and the legal-holds surface answers "no holds".
  */
 import { describe, it, expect } from 'vitest';
-import en from '../locales/en/common.json';
-import el from '../locales/el/common.json';
+import en from '../locales/en.json';
+import el from '../locales/el.json';
 
 type Node = Record<string, unknown>;
 

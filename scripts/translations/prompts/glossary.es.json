@@ -1,0 +1,15 @@
+{
+  "Documentation": "Documentación",
+  "assistant": "asistente",
+  "open source": "código abierto",
+  "self-hosted": "autoalojado",
+  "local-first": "local-first",
+  "download": "descarga",
+  "overview": "visión general",
+  "settings": "configuración",
+  "endpoint": "endpoint de API",
+  "system tray": "área de notificación",
+  "desktop app": "aplicación de escritorio",
+  "web app": "aplicación web",
+  "live demo": "demo en vivo"
+}

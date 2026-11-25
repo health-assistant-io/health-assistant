@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SetupStep } from '../../types/setup';
 import { StepStatusBadge } from './StepStatusBadge';
+import { useTranslation } from 'react-i18next';
 
 /**
  * A setup step with its already-localised title, for the stepper view.
@@ -37,8 +38,9 @@ export const SetupStepList: React.FC<SetupStepListProps> = ({
   onSelect,
   groupLabel,
 }) => {
+  const { t } = useTranslation();
   return (
-    <nav className="space-y-1" aria-label="Setup steps">
+    <nav className="space-y-1" aria-label={t('common.setup_steps')}>
       {groupLabel && (
         <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-dark-muted">
           {groupLabel}

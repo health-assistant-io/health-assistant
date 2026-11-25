@@ -22,7 +22,6 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';
-import { el, enUS } from 'date-fns/locale';
 import type { Locale } from 'date-fns';
 import { Edit3, GitBranch, History as HistoryIcon, ExternalLink, AlertTriangle, Database, Search, X } from 'lucide-react';
 import { ScopeBadge } from '../ScopeBadge';
@@ -46,6 +45,7 @@ import type { CatalogItem, CatalogType } from '../../../types/catalog';
 import { useAuthStore } from '../../../store/slices/authSlice';
 import { useFieldDescriptors } from './useFieldDescriptors';
 import { SECTION_META, type FieldDescriptor } from './fieldRegistry';
+import { dateLocaleFor } from '../../../lib/dateLocale';
 
 /** Format a raw value for the KeyValueGrid, mirroring the pre-refactor
  *  `renderValue`: arrays → comma-joined, objects → JSON, null/empty → null
@@ -116,7 +116,7 @@ export const CatalogItemInfo: React.FC<CatalogItemInfoProps> = ({
 }) => {
   const { t, i18n } = useTranslation();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
-  const locale: Locale = i18n.language.startsWith('el') ? el : enUS;
+  const locale = dateLocaleFor(i18n.language);
   const labelForDescriptor = useDescriptorLabel();
   const { sections, unknowns } = useFieldDescriptors(catalogType, item);
 
