@@ -114,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolvable:
   - the Localization language dropdown showed `settings.language_en` /
     `settings.language_el`. Language names are reference-catalog data, not
-    translation keys (ADR-0024), so the options carry no key and render the
+    translation keys under the family language policy, so the options carry no key and render the
     endonym from the shared catalog — the same label the user menu shows;
   - the anatomy and concept catalog chips showed `catalogs.anatomy.label` /
     `catalogs.concept.label` (the two of six catalogs no test pinned);
