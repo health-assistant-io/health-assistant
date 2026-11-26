@@ -15,7 +15,7 @@ cd integrations/health-assistant-bridge/ts-sdk && npm run build
 ```
 
 Targets Node 18+ at runtime (global `fetch`, `Buffer`, `AbortController`;
-the package's `engines` floor is higher — builds use Node 24 tooling).
+the package's `engines` floor is higher — builds use Node 26 tooling).
 HMAC uses Node's `crypto` — polyfill it in a pure-browser build.
 
 ## Configure the three credentials

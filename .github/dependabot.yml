@@ -49,7 +49,8 @@ updates:
     allow:
       - dependency-type: "direct"
     ignore:
-      # Keep @types/node on the Node 24 LTS line (matches runtime; see Dockerfile/CI)
+      # Hold @types/node on 24.x deliberately: runtime is Node 26, but the types bump
+      # ships with its own typecheck (see Dockerfile/CI)
       - dependency-name: "@types/node"
         versions: [">=25"]
       # Hold TypeScript on 5.x: @typescript-eslint crashes on TS 7 ("reading 'Intrinsic'")
@@ -90,7 +91,8 @@ updates:
     allow:
       - dependency-type: "direct"
     ignore:
-      # Keep @types/node on the Node 24 LTS line (matches runtime; see Dockerfile/CI)
+      # Hold @types/node on 24.x deliberately: runtime is Node 26, but the types bump
+      # ships with its own typecheck (see Dockerfile/CI)
       - dependency-name: "@types/node"
         versions: [">=25"]
     commit-message:
