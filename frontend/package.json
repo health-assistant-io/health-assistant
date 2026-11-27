@@ -16,7 +16,7 @@
     "capture:ui:headed": "node ../scripts/ui-capture/capture.mjs --headed"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "dependencies": {
     "@neuronection/assistant-ui": "^0.91.1",

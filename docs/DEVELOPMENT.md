@@ -100,7 +100,7 @@ docker compose --env-file .env -f docker/docker-compose.dev.yml up --build
 - **Backend**: AI features need a provider — `OPENAI_API_KEY` is the quickest path, but any OpenAI-compatible endpoint works and providers can be configured per tenant at runtime (see [AI_SYSTEM.md](AI_SYSTEM.md)). Everything else runs without one.
 - **Frontend**: Configured via `VITE_API_URL`.
 
-Requirements: **Python 3.12+** (uv manages the backend environment — `uv sync --frozen`, `uv run …`) and **Node 24+** for the frontend.
+Requirements: **Python 3.12+** (uv manages the backend environment — `uv sync --frozen`, `uv run …`) and **Node 26+** for the frontend.
 
 ### Manual Start
 

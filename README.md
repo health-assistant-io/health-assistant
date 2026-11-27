@@ -174,7 +174,7 @@ Frontend: http://localhost:3000 · API docs: http://localhost:8000/docs · Flowe
 
 ### Prerequisites
 
-- **Docker** and Docker Compose (production) or **Python 3.12+ / Node 24+** (development).
+- **Docker** and Docker Compose (production) or **Python 3.12+ / Node 26+** (development).
 - **PostgreSQL with the TimescaleDB extension** is required — a plain Postgres will crash on the telemetry hypertable migration. The Docker compose files include a compatible image.
 - **An OpenAI-compatible LLM provider** (API key + endpoint) for OCR, document extraction, and the chat assistant. Configure it in `/settings/ai-config` or via env vars. The app works without one — you just lose the AI features.
 - **Redis** for the task queue (included in the compose files).
