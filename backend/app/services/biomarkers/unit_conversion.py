@@ -105,11 +105,11 @@ def normalize_unit(unit: str | None) -> str:
         return _CANONICAL_ALIASES[compact]
     if any(x in compact for x in ("109/l", "x109/l", "billion/l")):
         return "10^9/L"
-    if any(x in compact for x in ("103/ul", "x103/ul", "103/ml", "x103/ml", "k/ul", "k/mm3")):
+    if any(x in compact for x in ("103/ul", "x103/ul", "106/ml", "x106/ml", "k/ul", "k/mm3")):
         return "10^9/L"
     if any(x in compact for x in ("1012/l", "x1012/l", "trillion/l")):
         return "10^12/L"
-    if any(x in compact for x in ("106/ul", "x106/ul", "106/ml", "x106/ml", "m/ul")):
+    if any(x in compact for x in ("106/ul", "x106/ul", "109/ml", "x109/ml", "m/ul")):
         return "10^12/L"
     if compact in {"g/dl", "gr/dl"}:
         return "g/dL"
